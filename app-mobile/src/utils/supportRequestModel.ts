@@ -178,6 +178,40 @@ export function upcomingNextUpdate(nextUpdateAt: string | null | undefined, nowM
   return typeof nextUpdateAt === 'string' && Date.parse(nextUpdateAt) > nowMs ? nextUpdateAt : null;
 }
 
+/**
+ * The customer-safe Product stage of a request (from
+ * issue_4382_ticket_product_stage). Shipped, told and won't-do have no
+ * stage: the Told message or Support's own reply says it.
+ */
+export type SupportProductStage = 'passed_to_product' | 'being_built' | 'final_checks';
+
+const SUPPORT_PRODUCT_STAGES: readonly SupportProductStage[] = ['passed_to_product', 'being_built', 'final_checks'];
+
+/** Reads the RPC result; anything unexpected is "no banner", never a crash. */
+export function parseSupportProductStage(raw: unknown): SupportProductStage | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const stage = (raw as { stage?: unknown }).stage;
+  return typeof stage === 'string' && (SUPPORT_PRODUCT_STAGES as readonly string[]).includes(stage)
+    ? (stage as SupportProductStage)
+    : null;
+}
+
+/** i18n keys (feedback namespace) for the Product banner. */
+export function supportProductBannerKeys(stage: SupportProductStage): { title: string; body: string } {
+  switch (stage) {
+    case 'passed_to_product':
+      return { title: 'support.product_passed', body: 'support.product_passed_body' };
+    case 'being_built':
+      return { title: 'support.product_being_built', body: 'support.product_auto_body' };
+    case 'final_checks':
+      return { title: 'support.product_final_checks', body: 'support.product_auto_body' };
+    default: {
+      const unreachable: never = stage;
+      return unreachable;
+    }
+  }
+}
+
 /** A closed request replaces the reply box with "Start a new request". */
 export function supportComposerMode(status: string | null | undefined): 'composer' | 'start_new' {
   return status === 'closed' ? 'start_new' : 'composer';

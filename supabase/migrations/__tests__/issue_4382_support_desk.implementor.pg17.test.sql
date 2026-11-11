@@ -5,6 +5,7 @@
 -- MINGLA-INVARIANT: I-4382-SUPPORT-REPLY-REOPENS | issue #4382 | A customer reply on a Waiting or Resolved ticket sets it back to Open; a closed ticket refuses replies with PT409.
 -- MINGLA-INVARIANT: I-4382-PRODUCT-MOVES-CHECKED | issue #4382 | Product items move only new->triaged->planned->shipped->told (planned may go back to triaged, anything but told may become wont_do with a reason); planned needs a GitHub link, shipped a verified release, and a refused move raises PT409.
 -- MINGLA-INVARIANT: I-4382-TOLD-ONCE | issue #4382 | Telling reporters runs once per Product item and posts exactly one message into each linked customer-visible ticket.
+-- MINGLA-INVARIANT: I-4382-PRODUCT-STAGE-CUSTOMER-SAFE | issue #4382 | A ticket's Product stage reaches only its requester, a brand member on a brand-visible ticket, or Support staff, and carries only {stage, board_status_label}.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-NO-LOCATION | issue #4382 | A support ticket's client details hold app and device facts only; a location key is refused.
 BEGIN;
 
@@ -548,5 +549,171 @@ BEGIN
   END IF;
 END;
 $moved$;
+
+-- ── The customer-safe Product stage of a ticket ──
+DO $stage$
+DECLARE
+  v_partner constant uuid := '43820000-0000-4000-8000-0000000000a4';
+  v_plain_staff constant uuid := '43820000-0000-4000-8000-0000000000a5';
+  v_host constant uuid := '43820000-0000-4000-8000-0000000000b4';
+  v_mate constant uuid := '43820000-0000-4000-8000-0000000000b5';
+  v_stranger constant uuid := '43820000-0000-4000-8000-0000000000d4';
+  v_brand constant uuid := '43820000-0000-4000-8000-0000000000e4';
+  v_person_ticket constant uuid := '43820000-0000-4000-8000-000000000401';
+  v_brand_ticket constant uuid := '43820000-0000-4000-8000-000000000402';
+  v_lonely_ticket constant uuid := '43820000-0000-4000-8000-000000000403';
+  v_signal uuid;
+  v_item uuid;
+  v_rev integer;
+  v_stage jsonb;
+BEGIN
+  INSERT INTO auth.users(id, email) VALUES
+    (v_partner, 'partner-stage-4382@example.test'),
+    (v_plain_staff, 'plain-staff-stage-4382@example.test'),
+    (v_host, 'host-stage-4382@example.test'),
+    (v_mate, 'mate-stage-4382@example.test'),
+    (v_stranger, 'stranger-stage-4382@example.test');
+  -- A founding partner holds an active partner seat; plain Support staff has
+  -- a team seat but no admin seat.
+  INSERT INTO public.admin_users(email, role, status)
+  VALUES ('partner-stage-4382@example.test', 'partner', 'active')
+  ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status;
+  INSERT INTO public.admin_team_members(email, role, status)
+  VALUES ('plain-staff-stage-4382@example.test', 'growth', 'active');
+  INSERT INTO public.support_staff(user_id, enabled, available)
+  VALUES (v_partner, true, true), (v_plain_staff, true, true)
+  ON CONFLICT (user_id) DO UPDATE SET enabled = true;
+  IF public.is_product_operator(v_partner) IS NOT TRUE THEN
+    RAISE EXCEPTION 'active_partner_is_not_product_operator';
+  END IF;
+  IF public.is_product_operator(v_plain_staff) IS NOT FALSE
+     OR public.issue_4382_is_staff(v_plain_staff) IS NOT TRUE THEN
+    RAISE EXCEPTION 'plain_support_staff_is_product_operator';
+  END IF;
+  UPDATE public.admin_users SET status = 'revoked' WHERE email = 'partner-stage-4382@example.test';
+  IF public.is_product_operator(v_partner) THEN
+    RAISE EXCEPTION 'revoked_partner_is_product_operator';
+  END IF;
+  UPDATE public.admin_users SET status = 'active' WHERE email = 'partner-stage-4382@example.test';
+
+  INSERT INTO public.creator_accounts(id, email, display_name, business_name)
+  VALUES (v_host, 'host-stage-4382@example.test', 'Host stage 4382', 'Brand stage 4382');
+  INSERT INTO public.brands(id, name, slug, account_id)
+  VALUES (v_brand, 'Brand stage 4382', 'brand-stage-4382', v_host);
+  INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at)
+  VALUES (v_brand, v_host, 'brand_owner', now()), (v_brand, v_mate, 'brand_admin', now())
+  ON CONFLICT DO NOTHING;
+
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4382_as(v_host);
+  PERFORM public.issue_4382_create_customer_ticket(v_person_ticket, 'host', 'payouts', 'Just me',
+    'Only I should see this one', ARRAY[]::uuid[], '{}'::jsonb, v_brand, 'person');
+  PERFORM public.issue_4382_create_customer_ticket(v_brand_ticket, 'host', 'payouts', 'Our team',
+    'The whole team can see this one', ARRAY[]::uuid[], '{}'::jsonb, v_brand, 'brand');
+  PERFORM public.issue_4382_create_customer_ticket(v_lonely_ticket, 'host', 'other', 'No Product item',
+    'Nothing for Product here', ARRAY[]::uuid[], '{}'::jsonb, v_brand, 'person');
+
+  -- Plain Support staff sends to Product and links the brand ticket.
+  PERFORM pg_temp.t4382_as(v_plain_staff);
+  v_signal := public.issue_3720_create_product_signal(
+    '43820000-0000-4000-8000-000000000411', 'support_ticket', v_person_ticket, 'bug',
+    'Payout zero', 'Balance shows zero after settlement', 'Host / Payouts', 'Open payouts',
+    'Cannot see money', 1, 'high', now() + interval '2 days', 'Triage', 'Looking at it.');
+  v_rev := public.issue_3720_link_product_signal_source(v_signal, 1, 'support_ticket', v_brand_ticket);
+
+  -- new: the requester, staff, and a brand member on the BRAND ticket see it.
+  PERFORM pg_temp.t4382_as(v_host);
+  v_stage := public.issue_4382_ticket_product_stage(v_person_ticket);
+  IF v_stage IS DISTINCT FROM '{"stage":"passed_to_product","board_status_label":null}'::jsonb THEN
+    RAISE EXCEPTION 'requester_stage_new_%', v_stage;
+  END IF;
+  -- Nothing private: exactly two keys.
+  IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v_stage) k) <> ARRAY['board_status_label', 'stage'] THEN
+    RAISE EXCEPTION 'stage_leaks_extra_keys_%', v_stage;
+  END IF;
+  IF public.issue_4382_ticket_product_stage(v_lonely_ticket) IS NOT NULL THEN
+    RAISE EXCEPTION 'ticket_without_product_item_has_stage';
+  END IF;
+  PERFORM pg_temp.t4382_as(v_mate);
+  IF public.issue_4382_ticket_product_stage(v_brand_ticket)->>'stage' IS DISTINCT FROM 'passed_to_product' THEN
+    RAISE EXCEPTION 'brand_member_cannot_see_brand_ticket_stage';
+  END IF;
+  -- A brand member on a PERSON ticket gets nothing.
+  IF public.issue_4382_ticket_product_stage(v_person_ticket) IS NOT NULL THEN
+    RAISE EXCEPTION 'brand_member_saw_person_ticket_stage';
+  END IF;
+  -- A stranger gets nothing, and no error either.
+  PERFORM pg_temp.t4382_as(v_stranger);
+  IF public.issue_4382_ticket_product_stage(v_person_ticket) IS NOT NULL
+     OR public.issue_4382_ticket_product_stage(v_brand_ticket) IS NOT NULL
+     OR public.issue_4382_ticket_product_stage(gen_random_uuid()) IS NOT NULL THEN
+    RAISE EXCEPTION 'stranger_saw_a_stage';
+  END IF;
+  PERFORM pg_temp.t4382_as(v_plain_staff);
+  IF public.issue_4382_ticket_product_stage(v_person_ticket)->>'stage' IS DISTINCT FROM 'passed_to_product' THEN
+    RAISE EXCEPTION 'staff_cannot_see_stage';
+  END IF;
+
+  -- triaged, then planned with the GitHub board moving.
+  PERFORM pg_temp.t4382_as(v_partner);
+  SELECT revision INTO v_rev FROM public.support_product_signals WHERE id = v_signal;
+  v_rev := public.issue_3720_update_product_signal(v_signal, v_rev, 'triaged', 'high',
+    now() + interval '2 days', 'Link to GitHub', 'Looking at it.');
+  PERFORM pg_temp.t4382_as(v_host);
+  IF public.issue_4382_ticket_product_stage(v_person_ticket)->>'stage' IS DISTINCT FROM 'passed_to_product' THEN
+    RAISE EXCEPTION 'triaged_stage_wrong';
+  END IF;
+  RESET ROLE;
+  INSERT INTO public.product_avengers_items(issue_number, issue_node_id, project_item_id,
+    issue_url, issue_title, issue_state, board_status)
+  VALUES (943822, 'I_4382_stage_node', 'PVTI_4382_stage',
+    'https://github.com/Mingla-LLC/mingla-main/issues/943822', 'Payout zero', 'OPEN', 'Todo')
+  RETURNING id INTO v_item;
+  INSERT INTO public.product_signal_avengers_links(signal_id, item_id, link_kind, linked_by)
+  VALUES (v_signal, v_item, 'existing', v_partner);
+  UPDATE public.support_product_signals SET state = 'planned' WHERE id = v_signal;
+
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4382_as(v_host);
+  IF public.issue_4382_ticket_product_stage(v_person_ticket)
+     IS DISTINCT FROM '{"stage":"passed_to_product","board_status_label":"Todo"}'::jsonb THEN
+    RAISE EXCEPTION 'planned_todo_stage_wrong';
+  END IF;
+  RESET ROLE;
+  UPDATE public.product_avengers_items SET board_status = 'In Progress' WHERE id = v_item;
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4382_as(v_host);
+  IF public.issue_4382_ticket_product_stage(v_person_ticket)
+     IS DISTINCT FROM '{"stage":"being_built","board_status_label":"In Progress"}'::jsonb THEN
+    RAISE EXCEPTION 'in_progress_stage_wrong';
+  END IF;
+  RESET ROLE;
+  UPDATE public.product_avengers_items SET board_status = 'In Review' WHERE id = v_item;
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4382_as(v_mate);
+  IF public.issue_4382_ticket_product_stage(v_brand_ticket)->>'stage' IS DISTINCT FROM 'final_checks'
+     OR public.issue_4382_ticket_product_stage(v_person_ticket) IS NOT NULL THEN
+    RAISE EXCEPTION 'in_review_stage_wrong';
+  END IF;
+
+  -- shipped: the banner goes away (the Told message carries the news).
+  RESET ROLE;
+  UPDATE public.product_avengers_items SET board_status = 'Done' WHERE id = v_item;
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4382_as(v_partner);
+  PERFORM public.issue_3720_verify_product_release(v_signal,
+    'https://github.com/Mingla-LLC/mingla-main/issues/943822#issuecomment-1');
+  PERFORM pg_temp.t4382_as(v_host);
+  IF public.issue_4382_ticket_product_stage(v_person_ticket) IS NOT NULL THEN
+    RAISE EXCEPTION 'shipped_still_has_stage';
+  END IF;
+  RESET ROLE;
+
+  IF has_function_privilege('anon', 'public.issue_4382_ticket_product_stage(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.issue_4382_ticket_product_stage(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'stage_function_grants_wrong';
+  END IF;
+END;
+$stage$;
 
 ROLLBACK;

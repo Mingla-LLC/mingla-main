@@ -21,9 +21,11 @@ import {
   MAX_SUPPORT_IMAGE_BYTES,
   buildHostCreateTicketArgs,
   keepOwnTickets,
+  parseSupportProductStage,
   supportImageMime,
   type HostCreateTicketInput,
   type SupportPickedImage,
+  type SupportProductStage,
 } from "../components/support/supportRequestModel";
 
 const SUPPORT_TICKET_FIELDS =
@@ -82,6 +84,18 @@ export async function getOwnSupportTicket(ticketId: string): Promise<SupportTick
     .maybeSingle();
   if (error) throw new Error(error.message);
   return (data as SupportTicket | null) ?? null;
+}
+
+/**
+ * The request's customer-safe Product stage, or null when it has none (or the
+ * caller cannot see it). Throws on a failed read.
+ */
+export async function getSupportProductStage(ticketId: string): Promise<SupportProductStage | null> {
+  const { data, error } = await supabase.rpc("issue_4382_ticket_product_stage", {
+    p_ticket_id: ticketId,
+  });
+  if (error) throw new Error(error.message);
+  return parseSupportProductStage(data);
 }
 
 // ── Attachments ────────────────────────────────────────────────────────────

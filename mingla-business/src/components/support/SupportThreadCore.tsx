@@ -47,6 +47,7 @@ import { supportTicketKeys } from "../../hooks/useSupportTickets";
 import {
   SupportSendError,
   getOwnSupportTicket,
+  getSupportProductStage,
   listSupportThread,
   sendSupportMessage,
   signSupportAttachments,
@@ -66,8 +67,10 @@ import {
   formatTicketNumber,
   supportComposerMode,
   supportCopy,
+  supportProductBannerKeys,
   supportStatusBanner,
   type SupportPickedImage,
+  type SupportProductStage,
 } from "./supportRequestModel";
 
 /**
@@ -91,11 +94,12 @@ interface ThreadData {
   ticket: SupportTicket | null;
   messages: SupportThreadMessage[];
   signed: Record<string, string>;
+  productStage: SupportProductStage | null;
 }
 
 async function loadThread(ticketId: string): Promise<ThreadData> {
   const ticket = await getOwnSupportTicket(ticketId);
-  if (ticket === null) return { ticket: null, messages: [], signed: {} };
+  if (ticket === null) return { ticket: null, messages: [], signed: {}, productStage: null };
   const messages = await listSupportThread(ticket);
   const paths = messages.flatMap((message) =>
     message.attachments.filter((a) => a.kind === "image").map((a) => a.storage_path),
@@ -107,7 +111,16 @@ async function loadThread(ticketId: string): Promise<ThreadData> {
   } catch (err) {
     console.warn("[support] signing attachment links failed", err instanceof Error ? err.message : err);
   }
-  return { ticket, messages, signed };
+  // The Product banner is extra context: a failed read hides it, never blocks the thread.
+  let productStage: SupportProductStage | null = null;
+  if (ticket.visibility !== "internal") {
+    try {
+      productStage = await getSupportProductStage(ticket.id);
+    } catch (err) {
+      console.warn("[support] reading the Product stage failed", err instanceof Error ? err.message : err);
+    }
+  }
+  return { ticket, messages, signed, productStage };
 }
 
 export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
@@ -144,6 +157,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
   });
   const ticket = data?.ticket ?? null;
   const messages = useMemo(() => data?.messages ?? [], [data]);
+  const productStage = data?.productStage ?? null;
   const signed = data?.signed ?? {};
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -334,6 +348,13 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
               ) : banner.kind === "closed" ? (
                 <Text style={styles.bannerBody}>{supportCopy("thread.banner_closed_body")}</Text>
               ) : null}
+            </View>
+          ) : null}
+
+          {productStage !== null && !isInternalTicket ? (
+            <View style={[styles.banner, styles.bannerProduct]} accessibilityRole="summary">
+              <Text style={styles.bannerTitle}>{supportCopy(supportProductBannerKeys(productStage).title)}</Text>
+              <Text style={styles.bannerBody}>{supportCopy(supportProductBannerKeys(productStage).body)}</Text>
             </View>
           ) : null}
 
@@ -548,6 +569,10 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.successTint,
   },
   bannerClosed: {
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  bannerProduct: {
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
   },

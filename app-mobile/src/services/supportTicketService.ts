@@ -33,7 +33,9 @@ import {
   VOICE_NOTE_MIME,
   buildExplorerCreateTicketArgs,
   keepOwnTickets,
+  parseSupportProductStage,
   type ExplorerCreateTicketInput,
+  type SupportProductStage,
   type SupportScreenshot,
 } from '../utils/supportRequestModel';
 
@@ -79,6 +81,8 @@ export interface SupportThreadData {
   messages: SupportThreadMessage[];
   /** One-hour signed links keyed by storage path. */
   signed: Record<string, string>;
+  /** The customer-safe Product stage, or null (no banner). */
+  productStage: SupportProductStage | null;
 }
 
 const TICKET_FIELDS =
@@ -368,7 +372,7 @@ export async function getSupportThread(userId: string, ticketId: string): Promis
     .eq('requester_user_id', userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!ticket) return { ticket: null, messages: [], signed: {} };
+  if (!ticket) return { ticket: null, messages: [], signed: {}, productStage: null };
   const row = ticket as SupportTicketRow;
 
   const [messagesResult, attachmentsResult] = await Promise.all([
@@ -409,7 +413,24 @@ export async function getSupportThread(userId: string, ticketId: string): Promis
     content: m.content ?? '',
     attachments: byMessage.get(m.id) ?? [],
   }));
-  return { ticket: row, messages, signed };
+  // The Product banner is extra context: a failed read hides it, never blocks the thread.
+  let productStage: SupportProductStage | null = null;
+  try {
+    productStage = await getSupportProductStage(row.id);
+  } catch (stageError) {
+    console.warn('[Support] reading the Product stage failed:', stageError);
+  }
+  return { ticket: row, messages, signed, productStage };
+}
+
+/**
+ * The request's customer-safe Product stage, or null when it has none (or the
+ * caller cannot see it). Throws on a failed read.
+ */
+export async function getSupportProductStage(ticketId: string): Promise<SupportProductStage | null> {
+  const { data, error } = await supabase.rpc('issue_4382_ticket_product_stage', { p_ticket_id: ticketId });
+  if (error) throw new Error(error.message);
+  return parseSupportProductStage(data);
 }
 
 // ── Reply ───────────────────────────────────────────────────────────────────

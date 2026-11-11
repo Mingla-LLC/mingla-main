@@ -219,6 +219,44 @@ export function supportStatusBanner(
   }
 }
 
+/**
+ * The customer-safe Product stage of a request (from
+ * issue_4382_ticket_product_stage). Shipped, told and won't-do have no stage:
+ * the Told message or Support's own reply says it.
+ */
+export type SupportProductStage = "passed_to_product" | "being_built" | "final_checks";
+
+const SUPPORT_PRODUCT_STAGES: readonly SupportProductStage[] = [
+  "passed_to_product",
+  "being_built",
+  "final_checks",
+];
+
+/** Reads the RPC result; anything unexpected is "no banner", never a crash. */
+export function parseSupportProductStage(raw: unknown): SupportProductStage | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const stage = (raw as { stage?: unknown }).stage;
+  return typeof stage === "string" && (SUPPORT_PRODUCT_STAGES as readonly string[]).includes(stage)
+    ? (stage as SupportProductStage)
+    : null;
+}
+
+/** Copy keys for the Product banner under the status banner. */
+export function supportProductBannerKeys(stage: SupportProductStage): { title: string; body: string } {
+  switch (stage) {
+    case "passed_to_product":
+      return { title: "thread.product_passed", body: "thread.product_passed_body" };
+    case "being_built":
+      return { title: "thread.product_being_built", body: "thread.product_auto_body" };
+    case "final_checks":
+      return { title: "thread.product_final_checks", body: "thread.product_auto_body" };
+    default: {
+      const unreachable: never = stage;
+      return unreachable;
+    }
+  }
+}
+
 /** What sits where the reply box is: the composer, or "Start a new request". */
 export function supportComposerMode(status: string | null | undefined): "composer" | "start_new" {
   return isTicketClosed(status) ? "start_new" : "composer";

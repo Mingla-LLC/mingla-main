@@ -15,7 +15,10 @@
 //   * Profile shows Help & Support to everyone, coach step 12 targets it,
 //     Account settings → Contact support opens it, the beta feedback files
 //     are gone, the support address is support@usemingla.com everywhere,
-//     and every locale carries the support strings.
+//     and every locale carries the support strings;
+//   * the thread's Product banner follows issue_4382_ticket_product_stage:
+//     "Passed to our product team", "Product team: being built", "Product
+//     team: final checks"; no stage, no banner; a failed read never blocks.
 //
 // FAILS-ON-REVERT: adding a location key to buildSupportClientMeta's
 // allowlist, switching p_app away from 'explorer', returning 'composer' for
@@ -32,7 +35,9 @@ import {
   buildSupportClientMeta,
   formatTicketNumber,
   keepOwnTickets,
+  parseSupportProductStage,
   supportComposerMode,
+  supportProductBannerKeys,
   supportRoutePath,
   supportStatusKind,
   upcomingNextUpdate,
@@ -230,4 +235,30 @@ Deno.test("support@usemingla.com everywhere and every locale has the support str
       assert(match[1] in english.support, `${file}: feedback:support.${match[1]} exists`);
     }
   }
+});
+
+Deno.test("Product banner: the stage RPC drives the approved wording", async () => {
+  assertEquals(parseSupportProductStage({ stage: "being_built", board_status_label: "In Progress" }), "being_built", "being built");
+  assertEquals(parseSupportProductStage({ stage: "final_checks" }), "final_checks", "final checks");
+  assertEquals(parseSupportProductStage(null), null, "no stage, no banner");
+  assertEquals(parseSupportProductStage({ stage: "told" }), null, "told has no banner");
+  assertEquals(parseSupportProductStage("passed_to_product"), null, "a bare string is not a stage");
+  const english = JSON.parse(await read("src/i18n/locales/en/feedback.json")).support;
+  const words = (stage: "passed_to_product" | "being_built" | "final_checks") => {
+    const keys = supportProductBannerKeys(stage);
+    return [english[keys.title.replace("support.", "")], english[keys.body.replace("support.", "")]];
+  };
+  assertEquals(words("passed_to_product"), [
+    "Passed to our product team",
+    "This needs a change to the app. We'll tell you here when it's fixed.",
+  ], "passed wording");
+  assertEquals(words("being_built"), ["Product team: being built", "Updated automatically"], "being built wording");
+  assertEquals(words("final_checks"), ["Product team: final checks", "Updated automatically"], "final checks wording");
+
+  const service = await read("src/services/supportTicketService.ts");
+  assert(service.includes("supabase.rpc('issue_4382_ticket_product_stage', { p_ticket_id: ticketId })"), "service reads the stage RPC");
+  assert(/catch \(stageError\) \{\s*console\.warn\('\[Support\] reading the Product stage failed:'/.test(service), "a failed stage read never blocks the thread");
+  const screen = await read("src/components/support/SupportThreadScreen.tsx");
+  assert(screen.includes("supportProductBannerKeys(data.productStage)"), "thread maps the stage to copy");
+  assert(screen.includes('testID="support-thread-product-banner"'), "thread renders the Product banner");
 });

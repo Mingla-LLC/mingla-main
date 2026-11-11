@@ -20,6 +20,10 @@
  *   - the thread's composer is replaced by "Start a new request" when the
  *     request is closed; the banner follows status and the next update.
  *
+ *   - Product banner: issue_4382_ticket_product_stage drives "Passed to our
+ *     product team", "Product team: being built" and "Product team: final
+ *     checks"; a stage the server does not send (shipped, told) shows none.
+ *
  * FAILS-ON-REVERT: dropping `.eq("requester_user_id", userId)` from
  * listOwnSupportTickets, adding a location key through buildSupportClientMeta,
  * changing p_app away from 'host', or returning "composer" for a closed
@@ -68,6 +72,7 @@ jest.mock("../supabase", () => ({
 import {
   SupportSendError,
   createSupportTicket,
+  getSupportProductStage,
   listOwnSupportTickets,
   sendSupportMessage,
   uploadSupportImage,
@@ -78,7 +83,9 @@ import {
   buildHostCreateTicketArgs,
   buildSupportClientMeta,
   keepOwnTickets,
+  parseSupportProductStage,
   supportComposerMode,
+  supportProductBannerKeys,
   supportCopy,
   supportStatusBanner,
   type SupportPickedImage,
@@ -327,5 +334,43 @@ describe("#4382 Host thread", () => {
       }
     }
     expect(supportCopy("form.images_hint", { max: 10 })).toBe("Optional. Up to 10 images, 10 MB each.");
+  });
+});
+
+describe("#4382 Host Product banner", () => {
+  test("reads the customer-safe stage RPC for this ticket", async () => {
+    rpcMock.mockResolvedValueOnce({ data: { stage: "being_built", board_status_label: "In Progress" }, error: null });
+    await expect(getSupportProductStage(REQUEST)).resolves.toBe("being_built");
+    expect(rpcMock).toHaveBeenCalledWith("issue_4382_ticket_product_stage", { p_ticket_id: REQUEST });
+  });
+
+  test("no stage (shipped, told, stranger) means no banner; a failed read throws", async () => {
+    rpcMock.mockResolvedValueOnce({ data: null, error: null });
+    await expect(getSupportProductStage(REQUEST)).resolves.toBeNull();
+    rpcMock.mockResolvedValueOnce({ data: null, error: { message: "permission denied" } });
+    await expect(getSupportProductStage(REQUEST)).rejects.toThrow("permission denied");
+    expect(parseSupportProductStage({ stage: "told" })).toBeNull();
+    expect(parseSupportProductStage("being_built")).toBeNull();
+    expect(parseSupportProductStage([])).toBeNull();
+  });
+
+  test("each stage has the approved wording", () => {
+    const words = (stage: "passed_to_product" | "being_built" | "final_checks") => {
+      const keys = supportProductBannerKeys(stage);
+      return [supportCopy(keys.title), supportCopy(keys.body)];
+    };
+    expect(words("passed_to_product")).toEqual([
+      "Passed to our product team",
+      "This needs a change to the app. We'll tell you here when it's fixed.",
+    ]);
+    expect(words("being_built")).toEqual(["Product team: being built", "Updated automatically"]);
+    expect(words("final_checks")).toEqual(["Product team: final checks", "Updated automatically"]);
+  });
+
+  test("the thread shows the Product banner and never lets it block the thread", () => {
+    const core = fs.readFileSync(path.join(ROOT, "src/components/support/SupportThreadCore.tsx"), "utf8");
+    expect(core).toContain("getSupportProductStage(ticket.id)");
+    expect(core).toMatch(/productStage !== null && !isInternalTicket/);
+    expect(core).toMatch(/catch \(err\) \{\s*console\.warn\("\[support\] reading the Product stage failed"/);
   });
 });

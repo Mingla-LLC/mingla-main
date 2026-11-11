@@ -34,6 +34,7 @@ import {
   addScreenshots,
   formatTicketNumber,
   supportComposerMode,
+  supportProductBannerKeys,
   supportStatusKind,
   upcomingNextUpdate,
   type SupportScreenshot,
@@ -250,6 +251,7 @@ export function SupportThreadScreen({ ticketId }: { ticketId: string }): React.R
           ? t('feedback:support.thread_next_update', { when: when(nextUpdate) })
           : null;
   const composerMode = supportComposerMode(ticket.status);
+  const productBanner = data.productStage !== null ? supportProductBannerKeys(data.productStage) : null;
 
   return (
     <View style={supportStyles.screen}>
@@ -258,6 +260,12 @@ export function SupportThreadScreen({ ticketId }: { ticketId: string }): React.R
         {bannerText !== null ? (
           <View style={[styles.banner, kind === 'resolved' && styles.bannerResolved, kind === 'closed' && styles.bannerClosed]} testID="support-thread-banner">
             <Text style={styles.bannerText}>{bannerText}</Text>
+          </View>
+        ) : null}
+        {productBanner !== null ? (
+          <View style={[styles.banner, styles.bannerProduct]} testID="support-thread-product-banner" accessibilityRole="summary">
+            <Text style={styles.bannerTitle}>{t(`feedback:${productBanner.title}`)}</Text>
+            <Text style={styles.bannerText}>{t(`feedback:${productBanner.body}`)}</Text>
           </View>
         ) : null}
         <ScrollView
@@ -350,6 +358,8 @@ const styles = StyleSheet.create({
   },
   bannerResolved: { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.35)' },
   bannerClosed: { backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' },
+  bannerProduct: { backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' },
+  bannerTitle: { color: '#f8fafc', fontSize: 14, fontWeight: '700', lineHeight: 19 },
   bannerText: { color: '#f8fafc', fontSize: 13, lineHeight: 18 },
   messages: { flex: 1 },
   messagesContent: { padding: 12, gap: 12 },
