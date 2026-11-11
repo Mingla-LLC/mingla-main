@@ -36,6 +36,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper.
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 
 import {
   accent,
@@ -1056,14 +1057,20 @@ export const DoorModeScreen = ({
 
       {/* One sheet at a time over the sale; never a sheet over a sheet. */}
       <Sheet visible={overlay === "cash"} onClose={() => setOverlay(null)} snapPoint="half" testID="door-mode-cash-confirm">
-        <View style={styles.sheetBody}>
+        <SheetScrollLayout
+          testID="door-mode-cash-confirm-body"
+          footer={
+            <>
+              <Button label={DOOR_MODE_COPY.confirmCash} onPress={confirmCash} variant="primary" size="lg" fullWidth testID="door-mode-confirm-cash" />
+              <Button label={DOOR_MODE_COPY.back} onPress={() => setOverlay(null)} variant="secondary" size="md" fullWidth />
+            </>
+          }
+        >
           <Text style={styles.sheetTitle} accessibilityRole="header">
             {DOOR_MODE_COPY.cashConfirmTitle(subtotalLabel)}
           </Text>
           <Text style={styles.muted}>{DOOR_MODE_COPY.cashConfirmBody}</Text>
-          <Button label={DOOR_MODE_COPY.confirmCash} onPress={confirmCash} variant="primary" size="lg" fullWidth testID="door-mode-confirm-cash" />
-          <Button label={DOOR_MODE_COPY.back} onPress={() => setOverlay(null)} variant="secondary" size="md" fullWidth />
-        </View>
+        </SheetScrollLayout>
       </Sheet>
 
       <DoorModePayCodeSheet visible={overlay === "code"} codeId={codeId} onPaid={onCodePaid} onDone={onCodeDone} />

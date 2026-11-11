@@ -11,6 +11,7 @@ import type { BrandSetupFacts } from "../../services/brandSetupService";
 import { Button } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { HOME_SETUP_COPY as C } from "./homeSetupCopy";
 
 /** The missing items, in checklist order. */
@@ -40,7 +41,26 @@ export const HomeSetupPromptSheet: React.FC<HomeSetupPromptSheetProps> = ({
   onFinish,
 }) => (
   <Sheet visible={visible} onClose={onLater} snapPoint="half">
-    <View style={styles.body} testID="home-setup-prompt">
+    <SheetScrollLayout
+      testID="home-setup-prompt"
+      footer={
+        <View style={styles.btns}>
+          <View style={styles.btn}>
+            <Button label={C.h2.later} onPress={onLater} variant="secondary" size="md" fullWidth />
+          </View>
+          <View style={styles.btn}>
+            <Button
+              label={C.h2.finish}
+              onPress={onFinish}
+              variant="primary"
+              size="md"
+              fullWidth
+              testID="home-setup-prompt-finish"
+            />
+          </View>
+        </View>
+      }
+    >
       <Text style={styles.title} accessibilityRole="header">
         {C.h2.title(brandName)}
       </Text>
@@ -52,31 +72,16 @@ export const HomeSetupPromptSheet: React.FC<HomeSetupPromptSheetProps> = ({
           </View>
         ))}
       </View>
-      <View style={styles.btns}>
-        <View style={styles.btn}>
-          <Button label={C.h2.later} onPress={onLater} variant="secondary" size="md" fullWidth />
-        </View>
-        <View style={styles.btn}>
-          <Button
-            label={C.h2.finish}
-            onPress={onFinish}
-            variant="primary"
-            size="md"
-            fullWidth
-            testID="home-setup-prompt-finish"
-          />
-        </View>
-      </View>
-    </View>
+    </SheetScrollLayout>
   </Sheet>
 );
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.md },
   title: { ...typography.h3, color: textTokens.primary },
   list: { gap: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44 },
   rowText: { ...typography.body, color: textTokens.primary },
-  btns: { flexDirection: "row", gap: spacing.sm },
+  // Side by side; each label wraps at large text instead of clipping.
+  btns: { flexDirection: "row", gap: spacing.sm, alignItems: "stretch" },
   btn: { flex: 1 },
 });

@@ -120,7 +120,7 @@ export function MinglaToSAcceptanceGate({
   if (acceptanceQuery.isError) {
     return (
       <Sheet visible onClose={() => undefined}>
-        <View style={styles.body}>
+        <ScrollView style={styles.scrollArea} contentContainerStyle={styles.body} testID="tos-gate-error-scroll">
           <Text style={styles.title}>Couldn{"'"}t load Organiser Terms</Text>
           <Text style={styles.bodyText}>
             We need to confirm you{"'"}ve accepted Mingla{"'"}s Organiser Terms
@@ -136,7 +136,7 @@ export function MinglaToSAcceptanceGate({
           >
             <Text style={styles.ctaText}>Try again</Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </Sheet>
     );
   }
@@ -144,13 +144,16 @@ export function MinglaToSAcceptanceGate({
   return (
     <Sheet visible onClose={() => undefined}>
       <View style={styles.body}>
-        <Text style={styles.title}>Accept Organiser Terms</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
-
+        {/* #4389 — everything but the agree row and the CTA scrolls, so at a
+            large text size on a small phone the CTA stays inside the sheet. */}
         <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollAreaContent}
+          testID="tos-gate-scroll"
         >
+          <Text style={styles.title}>Accept Organiser Terms</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+          <View style={[styles.scroll, styles.scrollContent]}>
           <Text style={styles.tosBody}>{ORGANISER_TERMS_SUMMARY}</Text>
           <Pressable
             onPress={handleOpenTerms}
@@ -162,6 +165,7 @@ export function MinglaToSAcceptanceGate({
               Read the full Organiser Terms at usemingla.com/organiser-terms
             </Text>
           </Pressable>
+          </View>
         </ScrollView>
 
         <Pressable
@@ -235,8 +239,10 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     paddingVertical: spacing.sm,
   },
+  // #4389 — the scrolling area above the agree row and CTA.
+  scrollArea: { flex: 1 },
+  scrollAreaContent: { gap: spacing.sm, paddingBottom: spacing.sm },
   scroll: {
-    flex: 1,
     borderRadius: radius.md,
     overflow: "hidden",
     backgroundColor: glass.tint.profileBase,

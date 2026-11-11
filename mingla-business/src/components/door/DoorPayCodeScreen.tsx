@@ -69,6 +69,7 @@ import { IconChrome } from "../ui/IconChrome";
 import { Icon } from "../ui/Icon";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import {
   useCancelDoorPayCode,
   useCreatedDoorPayCode,
@@ -579,7 +580,28 @@ const TextLinkSheet: React.FC<TextLinkSheetProps> = ({ visible, codeId, currency
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
-      <View style={styles.sheetBody}>
+      {/* #4389 — scrolls inside the sheet; Send stays pinned above the keyboard. */}
+      <SheetScrollLayout
+        keyboardAware
+        testID="door-pay-text-link"
+        footer={
+          sentLast4 !== null ? (
+            <View style={[styles.card, styles.sentCard]}>
+              <Text style={styles.kvValueOk}>Sent to the number ending {sentLast4}</Text>
+            </View>
+          ) : (
+            <Button
+              label="Send link"
+              onPress={() => void handleSend()}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={sendLink.isPending}
+              disabled={phone.isEmpty}
+            />
+          )
+        }
+      >
         <Text style={styles.sheetTitle}>Text them the link</Text>
         <Text style={styles.muted}>They tap it and pay on their phone. This screen updates when they do.</Text>
         <Text style={styles.fieldLabel}>Their mobile</Text>
@@ -595,22 +617,7 @@ const TextLinkSheet: React.FC<TextLinkSheetProps> = ({ visible, codeId, currency
             {error}
           </Text>
         ) : null}
-        {sentLast4 !== null ? (
-          <View style={[styles.card, styles.sentCard]}>
-            <Text style={styles.kvValueOk}>Sent to the number ending {sentLast4}</Text>
-          </View>
-        ) : (
-          <Button
-            label="Send link"
-            onPress={() => void handleSend()}
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={sendLink.isPending}
-            disabled={phone.isEmpty}
-          />
-        )}
-      </View>
+      </SheetScrollLayout>
     </Sheet>
   );
 };

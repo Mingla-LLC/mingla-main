@@ -37,8 +37,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
-import { ScrollView } from "../../wrappers/SmartScrollView";
+// ORCH-0892-B v2: the body scrolls in SheetScrollLayout (SmartScrollView +
+// the library KeyboardAvoidingView on the type-to-confirm step). Per SPEC §7.F.
 
 import {
   accent,
@@ -67,6 +67,7 @@ import { captureException } from "../../diagnostics/sentry";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { BRAND_SETUP_COPY } from "./brandSetupCopy";
 
 type DeleteStep = "warn" | "preview" | "confirm" | "submitting" | "rejected";
@@ -232,10 +233,22 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
   if (!isOwner) {
     return (
       <Sheet visible={visible} onClose={onClose} snapPoint="full">
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <SheetScrollLayout
+          contentStyle={styles.scrollContent}
+          testID="brand-delete-not-owner"
+          footer={
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Close"
+                  variant="primary"
+                  size="md"
+                  onPress={onClose}
+                  fullWidth
+                />
+              </View>
+            </View>
+          }
         >
           <Text style={styles.title}>Only the owner can delete this brand</Text>
           <Text style={styles.brandLabel}>{brand.displayName}</Text>
@@ -248,30 +261,106 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
               </Text>
             </View>
           </View>
-          <View style={styles.actionRow}>
-            <View style={styles.actionCell}>
-              <Button
-                label="Close"
-                variant="primary"
-                size="md"
-                onPress={onClose}
-                fullWidth
-              />
-            </View>
-          </View>
-        </ScrollView>
+        </SheetScrollLayout>
       </Sheet>
     );
   }
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="full">
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
+      {/* #4389 — every step scrolls inside the bounded sheet; its buttons are
+          pinned under it (and above the keyboard on the type-to-confirm step). */}
+      <SheetScrollLayout
+        contentStyle={styles.scrollContent}
+        keyboardAware={step === "confirm"}
+        testID="brand-delete-sheet-body"
+        footer={
+          step === "warn" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Cancel"
+                  variant="ghost"
+                  size="md"
+                  onPress={onClose}
+                  fullWidth
+                />
+              </View>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Continue"
+                  variant="primary"
+                  size="md"
+                  onPress={handleNextFromWarn}
+                  fullWidth
+                />
+              </View>
+            </View>
+          ) : step === "preview" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Back"
+                  variant="ghost"
+                  size="md"
+                  onPress={handleBackToWarn}
+                  fullWidth
+                />
+              </View>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Type to confirm"
+                  variant="primary"
+                  size="md"
+                  onPress={handleNextFromPreview}
+                  disabled={previewQuery.isLoading}
+                  fullWidth
+                />
+              </View>
+            </View>
+          ) : step === "confirm" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Back"
+                  variant="ghost"
+                  size="md"
+                  onPress={handleBackToPreview}
+                  fullWidth
+                />
+              </View>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Delete brand"
+                  variant="primary"
+                  size="md"
+                  onPress={handleSubmit}
+                  disabled={!canConfirm}
+                  fullWidth
+                />
+              </View>
+            </View>
+          ) : step === "rejected" && rejection !== null && rejection.rejected &&
+            rejection.reason !== "upcoming_events" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button label={BRAND_SETUP_COPY.delete.close} variant="primary" size="md" onPress={onClose} fullWidth />
+              </View>
+            </View>
+          ) : step === "rejected" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Close"
+                  variant="primary"
+                  size="md"
+                  onPress={onClose}
+                  fullWidth
+                />
+              </View>
+            </View>
+          ) : null
+        }
       >
         {step === "warn" ? (
           <View>
@@ -296,26 +385,6 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                   Once you delete, you can&apos;t undo from inside the app.
                   Future cycles may add a recovery UI.
                 </Text>
-              </View>
-            </View>
-            <View style={styles.actionRow}>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Cancel"
-                  variant="ghost"
-                  size="md"
-                  onPress={onClose}
-                  fullWidth
-                />
-              </View>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Continue"
-                  variant="primary"
-                  size="md"
-                  onPress={handleNextFromWarn}
-                  fullWidth
-                />
               </View>
             </View>
           </View>
@@ -397,27 +466,6 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 )}
               </View>
             ) : null}
-            <View style={styles.actionRow}>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Back"
-                  variant="ghost"
-                  size="md"
-                  onPress={handleBackToWarn}
-                  fullWidth
-                />
-              </View>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Type to confirm"
-                  variant="primary"
-                  size="md"
-                  onPress={handleNextFromPreview}
-                  disabled={previewQuery.isLoading}
-                  fullWidth
-                />
-              </View>
-            </View>
           </View>
         ) : null}
 
@@ -449,27 +497,6 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
             {submitError !== null ? (
               <Text style={styles.errorText}>{submitError}</Text>
             ) : null}
-            <View style={styles.actionRow}>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Back"
-                  variant="ghost"
-                  size="md"
-                  onPress={handleBackToPreview}
-                  fullWidth
-                />
-              </View>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Delete brand"
-                  variant="primary"
-                  size="md"
-                  onPress={handleSubmit}
-                  disabled={!canConfirm}
-                  fullWidth
-                />
-              </View>
-            </View>
           </View>
         ) : null}
 
@@ -500,11 +527,6 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 </Text>
               </View>
             </View>
-            <View style={styles.actionRow}>
-              <View style={styles.actionCell}>
-                <Button label={BRAND_SETUP_COPY.delete.close} variant="primary" size="md" onPress={onClose} fullWidth />
-              </View>
-            </View>
           </View>
         ) : null}
 
@@ -527,20 +549,9 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 </Text>
               </View>
             </View>
-            <View style={styles.actionRow}>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Close"
-                  variant="primary"
-                  size="md"
-                  onPress={onClose}
-                  fullWidth
-                />
-              </View>
-            </View>
           </View>
         ) : null}
-      </ScrollView>
+      </SheetScrollLayout>
     </Sheet>
   );
 };
@@ -562,9 +573,6 @@ export const PaymentAccountPreviewRow: React.FC<{ hasAccount: boolean }> = ({ ha
 );
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-  },
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
@@ -627,7 +635,6 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     gap: spacing.sm,
-    marginTop: spacing.lg,
   },
   actionCell: {
     flex: 1,

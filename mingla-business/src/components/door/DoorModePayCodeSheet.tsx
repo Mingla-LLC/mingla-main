@@ -30,6 +30,7 @@ import { formatCurrency } from "../../utils/currency";
 import { Button } from "../ui/Button";
 import { CenteredState } from "../ui/CenteredState";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { DoorPayQr } from "./DoorPayQr";
 import { DoorStatusPill } from "./DoorStatusPill";
 import { DOOR_MODE_COPY } from "./doorModeCopy";
@@ -159,6 +160,8 @@ export const DoorModePayCodeSheet = ({
   const canLeave = step === "ended" || (step === "loading" && codeQuery.isError);
 
   let body: React.ReactNode;
+  // #4389 — buttons pinned under the scroll area (SheetScrollLayout).
+  let footer: React.ReactNode = null;
   if (row === null) {
     body = codeQuery.isError ? (
       <CenteredState title={DOOR_MODE_COPY.codeLoadFailed} accessibilityRole="alert" testID="door-mode-code-load-failed">
@@ -186,9 +189,9 @@ export const DoorModePayCodeSheet = ({
         <Text style={styles.muted} accessibilityLiveRegion="polite">
           {doorPayHostEndBody(status, latePayment, row.provider)}
         </Text>
-        <Button label={DOOR_MODE_COPY.back} onPress={onDone} variant="primary" size="lg" fullWidth />
       </View>
     );
+    footer = <Button label={DOOR_MODE_COPY.back} onPress={onDone} variant="primary" size="lg" fullWidth />;
   } else {
     const paying = step === "paying";
     body = (
@@ -216,16 +219,18 @@ export const DoorModePayCodeSheet = ({
             {actionError}
           </Text>
         ) : null}
-        <Button
-          label={DOOR_MODE_COPY.cancelSale}
-          onPress={() => void handleCancel()}
-          variant="secondary"
-          size="md"
-          fullWidth
-          loading={cancelCode.isPending}
-          testID="door-mode-code-cancel"
-        />
       </View>
+    );
+    footer = (
+      <Button
+        label={DOOR_MODE_COPY.cancelSale}
+        onPress={() => void handleCancel()}
+        variant="secondary"
+        size="md"
+        fullWidth
+        loading={cancelCode.isPending}
+        testID="door-mode-code-cancel"
+      />
     );
   }
 
@@ -239,13 +244,14 @@ export const DoorModePayCodeSheet = ({
       onDismissed={onDismissed}
       testID="door-mode-code-sheet"
     >
-      <View style={styles.body}>{body}</View>
+      <SheetScrollLayout footer={footer} testID="door-mode-code-body">
+        {body}
+      </SheetScrollLayout>
     </Sheet>
   );
 };
 
 const styles = StyleSheet.create({
-  body: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   center: { alignItems: "center", gap: spacing.md, paddingBottom: spacing.lg },
   title: { fontSize: 22, lineHeight: 28, fontWeight: "700", color: textTokens.primary, textAlign: "center" },
   muted: { fontSize: 14, lineHeight: 20, color: textTokens.secondary, textAlign: "center" },

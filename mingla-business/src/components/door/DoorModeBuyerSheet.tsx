@@ -10,7 +10,7 @@
 import React from "react";
 import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 // ORCH-0892-B v2: keyboard-aware body scroll via the SmartScrollView wrapper.
-import { ScrollView } from "../../wrappers/SmartScrollView";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 
 import { glass, radius as radiusTokens, semantic, spacing, text as textTokens } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
@@ -62,12 +62,26 @@ export const DoorModeBuyerSheet = ({
           </Text>
           <IconChrome icon="close" size={44} onPress={onClose} accessibilityLabel="Close add buyer" />
         </View>
-        <ScrollView
-          style={styles.scrollFlex}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={false}
+        {/* #4389 — the fields scroll inside the sheet; Save stays pinned and,
+            with the keyboard up, above it (SheetScrollLayout keyboardAware). */}
+        <SheetScrollLayout
+          keyboardAware
+          testID="door-mode-buyer-body"
+          contentStyle={styles.scrollContent}
+          footer={
+            <View style={styles.actions}>
+              <Button
+              label={DOOR_MODE_COPY.buyerSave}
+              onPress={onClose}
+              variant="primary"
+              size="lg"
+              fullWidth
+              disabled={!emailValid || !phoneValid}
+              testID="door-mode-buyer-save"
+            />
+            <Button label={DOOR_MODE_COPY.buyerClear} onPress={onClear} variant="ghost" size="md" fullWidth />
+          </View>
+          }
         >
           <Text style={styles.sub}>{DOOR_MODE_COPY.buyerBody}</Text>
           <Text style={styles.label}>{DOOR_MODE_COPY.buyerName}</Text>
@@ -106,29 +120,16 @@ export const DoorModeBuyerSheet = ({
             />
           </View>
           {!emailValid ? <Text style={styles.error}>{DOOR_MODE_COPY.buyerEmailInvalid}</Text> : null}
-          <View style={styles.actions}>
-            <Button
-              label={DOOR_MODE_COPY.buyerSave}
-              onPress={onClose}
-              variant="primary"
-              size="lg"
-              fullWidth
-              disabled={!emailValid || !phoneValid}
-              testID="door-mode-buyer-save"
-            />
-            <Button label={DOOR_MODE_COPY.buyerClear} onPress={onClear} variant="ghost" size="md" fullWidth />
-          </View>
-        </ScrollView>
+        </SheetScrollLayout>
       </View>
     </Sheet>
   );
 };
 
 const styles = StyleSheet.create({
-  body: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  body: { flex: 1, paddingTop: spacing.md },
+  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
   title: { flex: 1, fontSize: 20, fontWeight: "700", color: textTokens.primary },
-  scrollFlex: { flex: 1 },
   scrollContent: { paddingBottom: spacing.lg, gap: spacing.xs },
   sub: { fontSize: 14, lineHeight: 20, color: textTokens.secondary, marginBottom: spacing.sm },
   label: { fontSize: 13, fontWeight: "600", color: textTokens.secondary, marginTop: spacing.sm },
@@ -150,5 +151,5 @@ const styles = StyleSheet.create({
     ...(Platform.OS === "web" ? ({ outlineWidth: 0 } as Record<string, number>) : null),
   },
   error: { fontSize: 12, color: semantic.errorText },
-  actions: { marginTop: spacing.lg, gap: spacing.xs },
+  actions: { gap: spacing.xs },
 });

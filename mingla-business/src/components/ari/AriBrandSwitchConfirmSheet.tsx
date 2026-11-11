@@ -11,6 +11,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { spacing, text as textTokens, typography } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { ARI_BRAND_BAR_COPY as C } from "./ariBrandBarCopy";
 
 export interface AriBrandSwitchConfirmSheetProps {
@@ -29,11 +30,10 @@ export const AriBrandSwitchConfirmSheet: React.FC<AriBrandSwitchConfirmSheetProp
   onStay,
 }) => (
   <Sheet visible={visible} onClose={onStay} snapPoint="half">
-    <View style={styles.body} testID="ari-brand-switch-busy">
-      <Text style={styles.title} accessibilityRole="header">
-        {C.busyTitle}
-      </Text>
-      <Text style={styles.sub}>{C.busyBody(nextBrandName, currentBrandName)}</Text>
+    <SheetScrollLayout
+      testID="ari-brand-switch-busy"
+      footer={
+        <>
       <Button
         label={C.busySwitch(nextBrandName)}
         onPress={onSwitch}
@@ -42,7 +42,6 @@ export const AriBrandSwitchConfirmSheet: React.FC<AriBrandSwitchConfirmSheetProp
         fullWidth
         testID="ari-brand-switch-confirm"
       />
-      <View style={styles.gap} />
       <Button
         label={C.busyStay(currentBrandName)}
         onPress={onStay}
@@ -51,13 +50,18 @@ export const AriBrandSwitchConfirmSheet: React.FC<AriBrandSwitchConfirmSheetProp
         fullWidth
         testID="ari-brand-switch-stay"
       />
-    </View>
+        </>
+      }
+    >
+      <Text style={styles.title} accessibilityRole="header">
+        {C.busyTitle}
+      </Text>
+      <Text style={styles.sub}>{C.busyBody(nextBrandName, currentBrandName)}</Text>
+    </SheetScrollLayout>
   </Sheet>
 );
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm },
   title: { ...typography.h3, color: textTokens.primary },
-  sub: { ...typography.body, color: textTokens.secondary, marginBottom: spacing.md },
-  gap: { height: spacing.xs },
+  sub: { ...typography.body, color: textTokens.secondary },
 });

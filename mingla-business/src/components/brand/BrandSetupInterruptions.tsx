@@ -11,6 +11,7 @@ import { accent, radius, semantic, spacing, text as textTokens, typography } fro
 import { isAuthNotReadyError } from "../../utils/authReadyGate";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { BRAND_SETUP_COPY as C } from "./brandSetupCopy";
 
 // ── rules ────────────────────────────────────────────────────────────────
@@ -114,13 +115,18 @@ export const NameDiscardSheet: React.FC<{
   onDiscard: () => void;
 }> = ({ visible, onKeepEditing, onDiscard }) => (
   <Sheet visible={visible} onClose={onKeepEditing} snapPoint="half">
-    <View style={styles.sheetBody} testID="brand-setup-f1-discard">
+    <SheetScrollLayout
+      testID="brand-setup-f1-discard"
+      footer={
+        <>
+          <Button testID="brand-setup-f1-keep-editing" label={C.f1.keepEditing} onPress={onKeepEditing} variant="secondary" size="lg" fullWidth />
+          <Button testID="brand-setup-f1-discard-confirm" label={C.f1.discard} onPress={onDiscard} variant="destructive" size="lg" fullWidth />
+        </>
+      }
+    >
       <Text style={styles.h3} accessibilityRole="header">{C.f1.discardTitle}</Text>
       <Text style={styles.sub}>{C.f1.discardBody}</Text>
-      <Button testID="brand-setup-f1-keep-editing" label={C.f1.keepEditing} onPress={onKeepEditing} variant="secondary" size="lg" fullWidth />
-      <View style={styles.gap8} />
-      <Button testID="brand-setup-f1-discard-confirm" label={C.f1.discard} onPress={onDiscard} variant="destructive" size="lg" fullWidth />
-    </View>
+    </SheetScrollLayout>
   </Sheet>
 );
 
@@ -131,11 +137,13 @@ export const SessionExpiredSheet: React.FC<{
   onClose: () => void;
 }> = ({ visible, busy, onSignIn, onClose }) => (
   <Sheet visible={visible} onClose={onClose} snapPoint="half">
-    <View style={styles.sheetBody} testID="brand-setup-session-expired">
+    <SheetScrollLayout
+      testID="brand-setup-session-expired"
+      footer={<Button testID="brand-setup-sign-in" label={C.f1.signIn} onPress={onSignIn} variant="primary" size="lg" fullWidth loading={busy} />}
+    >
       <Text style={styles.h3} accessibilityRole="header">{C.f1.sessionTitle}</Text>
       <Text style={styles.sub}>{C.f1.sessionBody}</Text>
-      <Button testID="brand-setup-sign-in" label={C.f1.signIn} onPress={onSignIn} variant="primary" size="lg" fullWidth loading={busy} />
-    </View>
+    </SheetScrollLayout>
   </Sheet>
 );
 
@@ -200,10 +208,8 @@ export const InlineWriteError: React.FC<{ writeError: WriteError | null; testID:
 const styles = StyleSheet.create({
   inlineError: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   errorText: { ...typography.bodySm, color: semantic.errorText },
-  sheetBody: { padding: spacing.lg, gap: spacing.sm },
   h3: { ...typography.h3, color: textTokens.primary },
   sub: { ...typography.body, color: textTokens.secondary },
-  gap8: { height: spacing.sm },
   banner: { padding: spacing.md, gap: spacing.sm, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.06)" },
   bannerRow: { flexDirection: "row", alignItems: "center" },
   bannerText: { ...typography.bodySm, color: textTokens.primary },

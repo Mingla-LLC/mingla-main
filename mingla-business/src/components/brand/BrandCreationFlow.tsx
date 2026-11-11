@@ -63,6 +63,7 @@ import { tapToPayBrandEligible } from "../../utils/tapToPayBrandEligible";
 import { useTapToPaySettingsEntry } from "../../hooks/useTapToPaySettingsEntry";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Toast } from "../ui/Toast";
 import { OfferingChooser, routeForOffering } from "./OfferingChooser";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
@@ -995,22 +996,27 @@ const K1Sheet: React.FC<{
   };
   return (
     <Sheet visible={visible} onClose={bankNow} snapPoint="half">
-      <View style={styles.sheetBody} testID="brand-setup-k1">
+      <SheetScrollLayout
+        testID="brand-setup-k1"
+        footer={
+          <>
+            {error !== null ? <Text style={[styles.helper, styles.errorText]}>{error}</Text> : null}
+            <Button label={C.k1.bankNow} onPress={bankNow} variant="primary" size="lg" fullWidth />
+            <Button
+              label={C.k1.freeOnly}
+              onPress={freeOnly}
+              variant="secondary"
+              size="lg"
+              fullWidth
+              loading={mark.isPending}
+            />
+          </>
+        }
+      >
         <Text style={styles.h3}>{C.k1.title}</Text>
         <Text style={styles.sub}>{Platform.OS === "ios" ? C.k1.body : C.k1.bodyAndroid}</Text>
         <Text style={styles.sub}>{C.k1.later}</Text>
-        <Button label={C.k1.bankNow} onPress={bankNow} variant="primary" size="lg" fullWidth />
-        <View style={styles.gap8} />
-        <Button
-          label={C.k1.freeOnly}
-          onPress={freeOnly}
-          variant="secondary"
-          size="lg"
-          fullWidth
-          loading={mark.isPending}
-        />
-        {error !== null ? <Text style={[styles.helper, styles.errorText]}>{error}</Text> : null}
-      </View>
+      </SheetScrollLayout>
     </Sheet>
   );
 };
@@ -1058,14 +1064,19 @@ export const DraftInProgress: React.FC<{
         <Button label={C.n1.discardNew} onPress={() => setConfirming(true)} variant="secondary" size="lg" fullWidth />
       </View>
       <Sheet visible={confirming} onClose={() => setConfirming(false)} snapPoint="half">
-        <View style={styles.sheetBody}>
+        <SheetScrollLayout
+          testID="brand-setup-n1-confirm"
+          footer={
+            <>
+              {error !== null ? <Text style={[styles.helper, styles.errorText]}>{error}</Text> : null}
+              <Button label={C.n1.discard} onPress={() => void discard()} variant="destructive" size="lg" fullWidth loading={busy} />
+              <Button label={C.n1.keep} onPress={() => setConfirming(false)} variant="secondary" size="lg" fullWidth disabled={busy} />
+            </>
+          }
+        >
           <Text style={styles.h3}>{C.n1.confirmTitle(draftName)}</Text>
           <Text style={styles.sub}>{C.n1.confirmBody}</Text>
-          {error !== null ? <Text style={[styles.helper, styles.errorText]}>{error}</Text> : null}
-          <Button label={C.n1.discard} onPress={() => void discard()} variant="destructive" size="lg" fullWidth loading={busy} />
-          <View style={styles.gap8} />
-          <Button label={C.n1.keep} onPress={() => setConfirming(false)} variant="secondary" size="lg" fullWidth disabled={busy} />
-        </View>
+        </SheetScrollLayout>
       </Sheet>
     </View>
   );
@@ -1126,7 +1137,6 @@ const styles = StyleSheet.create({
   boxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
   ttpCard: { marginTop: spacing.md, padding: spacing.md, gap: spacing.sm, borderRadius: radius.lg, backgroundColor: "rgba(255,255,255,0.06)", overflow: "hidden" },
   ttpVisual: { width: "100%", aspectRatio: 720 / 559, borderRadius: radius.md },
-  sheetBody: { padding: spacing.lg, gap: spacing.sm },
   gap8: { height: spacing.sm },
 });
 
