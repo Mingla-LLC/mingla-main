@@ -85,7 +85,7 @@ const check = (sources) => {
       !/attendanceClaimPresentationPending \|\| attendanceClaimVisible/.test(sources.shell) ||
       !/attendanceClaimReviewModalPolicy\(\s*attendanceClaimSuppressesReview,\s*activeReviewTarget !== null,\s*\)/.test(sources.shell) ||
       !/reviewModalPolicy\.render && activeReviewTarget/.test(sources.shell) ||
-      !/visible=\{voluntaryPlaceReview \? true : showReviewModal\}/.test(sources.shell) ||
+      !/visible=\{voluntaryPlaceReview \? voluntaryPromptPresentable : showReviewModal\}/.test(sources.shell) ||
       !/setAttendanceClaimVisible\(false\)[\s\S]*setAttendanceClaimPresentationPending\(false\)/.test(suppressionClose) ||
       !/render: !attendanceClaimVisible && hasActiveReviewTarget/.test(sources.deepLink)) {
     failures.push("ISSUE871_REVIEW_MODAL_CONTINUOUS_SUPPRESSION open/rearm/voluntary/recovery policy missing");
@@ -134,8 +134,8 @@ if (process.argv.includes("--self-test")) {
   }
   for (const [name, shell] of [
     ["open target", sources.shell.replace("reviewModalPolicy.render && activeReviewTarget", "activeReviewTarget")],
-    ["scheduled re-arm", sources.shell.replace("voluntaryPlaceReview ? true : showReviewModal", "voluntaryPlaceReview ? true : false")],
-    ["voluntary arrival", sources.shell.replace("voluntaryPlaceReview ? true : showReviewModal", "false ? true : showReviewModal")],
+    ["scheduled re-arm", sources.shell.replace("voluntaryPlaceReview ? voluntaryPromptPresentable : showReviewModal", "voluntaryPlaceReview ? voluntaryPromptPresentable : false")],
+    ["voluntary arrival", sources.shell.replace("voluntaryPlaceReview ? voluntaryPromptPresentable : showReviewModal", "false ? voluntaryPromptPresentable : showReviewModal")],
     ["post-close recovery", sources.shell.replace("setAttendanceClaimPresentationPending(false);", "// suppression remains stuck")],
   ]) {
     const broken = { ...sources, shell };

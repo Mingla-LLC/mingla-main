@@ -16,6 +16,7 @@
     "confirm": "ยืนยัน",
     "rescheduled_toast": "เปลี่ยนกำหนดการแล้ว!",
     "reschedule_failed_toast": "เปลี่ยนกำหนดการไม่สำเร็จ กรุณาลองอีกครั้ง",
+    "open_failed_toast": "ไม่สามารถเปิดการให้คะแนนได้ ลองอีกครั้ง",
     "close_label": "ปิด"
   },
   "custom_holiday": {

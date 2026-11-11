@@ -16,6 +16,7 @@
     "confirm": "Sahkan",
     "rescheduled_toast": "Pengalaman dijadualkan semula!",
     "reschedule_failed_toast": "Gagal menjadualkan semula. Sila cuba lagi.",
+    "open_failed_toast": "Tidak dapat membuka penilaian. Cuba lagi.",
     "close_label": "Tutup"
   },
   "custom_holiday": {
