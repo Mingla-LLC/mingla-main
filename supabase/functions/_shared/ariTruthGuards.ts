@@ -693,3 +693,16 @@ export async function preserveStatedSlots(args: {
     timezone,
   });
 }
+
+/**
+ * #3355 Wave F (live eval): "I am about to propose two discount codes … I
+ * will start with GIRLSTRIPLAGOS" — a reply that announces a write and then
+ * makes none. The loop sends it back once to make the proposal as a call.
+ * MINGLA-INVARIANT: I-ARI-ANNOUNCED-WRITE-IS-MADE | issue #3355 | A final reply that announces Ari is about to propose or create something, with no proposal in the turn, is returned to the model once to make the proposal as a tool call.
+ */
+const ANNOUNCED_WRITE =
+  /\bI(?:['’]m| am)\s+(?:about to|going to)\s+(?:propose|create|set up|prepare|draft)\b|\bI(?:['’]ll| will)\s+(?:now\s+(?:propose|create|set up|prepare)|start with)\b|\blet me (?:propose|create)\b/i;
+
+export function announcesWriteWithoutCall(text: string): boolean {
+  return ANNOUNCED_WRITE.test(String(text ?? ""));
+}

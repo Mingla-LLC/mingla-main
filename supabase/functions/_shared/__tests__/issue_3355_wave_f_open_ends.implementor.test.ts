@@ -48,7 +48,11 @@ import {
   ariGuideReadStatus,
   ariToolsForGuideKey,
 } from "../agentAri10xTools.ts";
-import { checkStatedSlots, preserveStatedSlots } from "../ariTruthGuards.ts";
+import {
+  announcesWriteWithoutCall,
+  checkStatedSlots,
+  preserveStatedSlots,
+} from "../ariTruthGuards.ts";
 import {
   HISTORY_CALL_NOTE,
   isPseudoToolCallText,
@@ -599,5 +603,25 @@ Deno.test("F live: a discount code the host never named is asked for, not propos
       userClient: noClient,
     })).kind,
     "ok",
+  );
+});
+
+Deno.test("F live: a reply that announces a proposal and makes none goes back once", () => {
+  assert(
+    announcesWriteWithoutCall(
+      "I am about to propose two discount codes (GIRLSTRIPLAGOS and FFBTSCOM10). I will start with GIRLSTRIPLAGOS.",
+    ),
+  );
+  assert(announcesWriteWithoutCall("Let me create that code for you."));
+  for (
+    const text of [
+      "Tell me the code and how much off, and I'll set it up for you to approve.",
+      "No, FFBTSCOM10 has not been created yet.",
+      "I can set up discount codes for your influencers and marketers.",
+    ]
+  ) assert(!announcesWriteWithoutCall(text), text);
+  assertMatch(
+    read(AGENT_CHAT),
+    /: announcesWriteWithoutCall\(text\) && !announcedWriteBounced &&\s*\(announcedWriteBounced = true\)\s*\? \{\s*code: "WRITE_PROPOSAL_REQUIRED"/,
   );
 });

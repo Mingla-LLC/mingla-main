@@ -266,6 +266,7 @@ import {
   resolveAriScreenContext,
 } from "../_shared/ariTurnContext.ts";
 import {
+  announcesWriteWithoutCall,
   claimEvidenceFromHistory,
   guardWriteClaims,
   ownerMessagesForProposal,
@@ -2419,6 +2420,7 @@ async function handle(req: Request): Promise<Response> {
     // or proposal ends the turn as before.
     let modelFlowDecision: FlowTurnDecision | null = null;
     let setupTextBounced = false;
+    let announcedWriteBounced = false;
     let modelFlowDelegated = false;
     const resolveModelFlowStart = async (
       call: { args: Record<string, unknown> },
@@ -3966,6 +3968,13 @@ ${boundedAgentContext}
               code: "TOOL_CALL_AS_TEXT",
               message:
                 "Your reply was a tool-call marker written as text. Call the tool as a real function call, or answer the owner in plain words. Never write [mingla_tool_call ...] in a reply.",
+            }
+            : announcesWriteWithoutCall(text) && !announcedWriteBounced &&
+                (announcedWriteBounced = true)
+            ? {
+              code: "WRITE_PROPOSAL_REQUIRED",
+              message:
+                "Your reply says you are about to propose or create something, but you made no tool call. Make that proposal now as a tool call (one card; the next one after it is confirmed), or ask the one question you need.",
             }
             : ticketTierTextBypassesApproval(semanticMessage, text)
             ? {
