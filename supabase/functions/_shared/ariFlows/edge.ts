@@ -1312,6 +1312,12 @@ export async function decideFlowTurn(
       if (!live && run && isResumeAnswer(run, args.flowAnswer)) {
         return await resumeParkedRun(args, deps, run);
       }
+      if (
+        args.flowAnswer.choice_id === RESUME_CHOICE &&
+        args.flowAnswer.run_id !== live?.id
+      ) {
+        return await staleResumeReply(args.flowAnswer, store, live);
+      }
       if (!live) return { kind: "stale", next: null, state: flowStateOf(run) };
       return decisionFromOutcome(
         await runFlowStep(deps, {
@@ -1441,8 +1447,18 @@ export async function startFlowFromTool(
         classification: "flow_engine_already_open",
       };
     }
+    // #3355 Wave F (I-ARI-NO-STALE-RESUME): starting a setup closes this
+    // chat's parked run (one open run per chat, migration 20280606013355).
+    // The host is told so in the same reply, and the old Resume card answers
+    // "that was closed" instead of acting.
+    const closedParked = existing?.status === "parked"
+      ? parkArtefact(existing).title.replace(/^Resume /, "")
+      : null;
     if (def.key === WEBSITE_SETUP_FLOW_KEY) {
-      return await startWebsiteSetup(args, store, deps);
+      return withParkedClosedNotice(
+        await startWebsiteSetup(args, store, deps),
+        closedParked,
+      );
     }
     // The owner's own words (this turn) are the setup's request.
     const ownerWords = args.message.slice(0, 600);
@@ -1473,9 +1489,9 @@ export async function startFlowFromTool(
     // A contact list attached to the same message is read straight away.
     if (def.key === IMPORT_CONTACTS_FLOW_KEY && first.kind === "artefact") {
       const filesTurn = await importFilesTurn(args, deps, first.run);
-      if (filesTurn) return filesTurn;
+      if (filesTurn) return withParkedClosedNotice(filesTurn, closedParked);
     }
-    return decisionFromOutcome(first);
+    return withParkedClosedNotice(decisionFromOutcome(first), closedParked);
   } catch (error) {
     if (
       error instanceof FlowEngineUnavailable || error instanceof FlowConflict
@@ -1484,6 +1500,61 @@ export async function startFlowFromTool(
     }
     throw error;
   }
+}
+
+/** #3355 Wave F — the words that say a parked setup was closed. */
+export function parkedClosedNotice(noun: string): string {
+  return `I closed your paused ${noun} to start this one, so its Resume button won't bring it back.`;
+}
+
+/**
+ * #3355 Wave F (I-ARI-NO-STALE-RESUME) — a new setup closed this chat's
+ * parked run: say so first, whatever the new setup's first move is.
+ */
+export function withParkedClosedNotice(
+  decision: FlowTurnDecision,
+  closedNoun: string | null,
+): FlowTurnDecision {
+  if (!closedNoun) return decision;
+  const notice = parkedClosedNotice(closedNoun);
+  switch (decision.kind) {
+    case "reply":
+      return { ...decision, text: `${notice}\n\n${decision.text}` };
+    case "propose":
+    case "delegate":
+      return {
+        ...decision,
+        ack: decision.ack ? `${notice} ${decision.ack}` : notice,
+      };
+    default:
+      return decision;
+  }
+}
+
+/**
+ * #3355 Wave F (I-ARI-NO-STALE-RESUME) — a Resume tap whose run is no longer
+ * this chat's parked run (a new setup closed it, it expired, or another chat
+ * moved on): plain words, plus the setup that is open now. Never acts.
+ */
+async function staleResumeReply(
+  answer: FlowAnswer,
+  store: FlowStore,
+  live: FlowRun | null,
+): Promise<Extract<FlowTurnDecision, { kind: "reply" }>> {
+  const old = await store.getById(answer.run_id).catch(() => null);
+  const noun = old
+    ? parkArtefact(old).title.replace(/^Resume /, "")
+    : "paused setup";
+  const open = live?.current_artefact ?? null;
+  return {
+    kind: "reply",
+    text: open
+      ? `That ${noun} was closed, so there's nothing to pick up. Here's the setup that's open now:\n\n${open.text}`
+      : `That ${noun} was closed, so there's nothing to pick up. Tell me what you'd like to do and I'll start from here.`,
+    artefact: open,
+    state: flowStateOf(live),
+    classification: "flow_engine_resume_closed",
+  };
 }
 
 /**
@@ -1734,6 +1805,17 @@ export async function staleFlowAnswer(args: {
     ) return null;
     // #3355 Wave A: the Resume card of this chat's parked run is current.
     if (run && isResumeAnswer(run, args.answer)) return null;
+    // #3355 Wave F (I-ARI-NO-STALE-RESUME): a Resume card whose run was
+    // closed says so in plain words, with the setup that is open now.
+    if (args.answer.choice_id === RESUME_CHOICE) {
+      const live = run && LIVE_FLOW_STATUSES.has(run.status) ? run : null;
+      const closed = await staleResumeReply(args.answer, args.store, live);
+      return {
+        next: closed.artefact,
+        state: closed.state,
+        taken_over_text: closed.text,
+      };
+    }
     if (!run || !LIVE_FLOW_STATUSES.has(run.status)) {
       const taken = await takenOverReply({
         store: args.store,

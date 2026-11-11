@@ -238,6 +238,7 @@ import {
   ariGuideInitialCalls,
   ariGuideRecoveryCalls,
 } from "../_shared/ariGuideKnowledge.ts";
+import { isPseudoToolCallText } from "../_shared/agentGeminiContents.ts";
 import {
   ariMemoryContextLines,
   readAriMemoryForTurn,
@@ -2363,11 +2364,11 @@ async function handle(req: Request): Promise<Response> {
     const startFlowAllowed = engineOn && activeBrand !== null && !flowSide &&
       !escalation.escalate && !intentSafetyReply &&
       (turnRoute.offerStartFlow || flowParked !== null);
-    const commitModelFlowStart = async (
+    const startModelFlow = async (
       rawArgs: Record<string, unknown>,
-    ): Promise<Response> => {
+    ): Promise<FlowTurnDecision> => {
       const call = startFlowAllowed ? parseStartFlowArgs(rawArgs) : null;
-      const decision: FlowTurnDecision = call && activeBrand
+      return call && activeBrand
         ? await startFlowFromTool({
           service: serviceClient,
           research: ({ userId: researchUser, brandId, plan }) =>
@@ -2399,6 +2400,67 @@ async function handle(req: Request): Promise<Response> {
           call,
         })
         : { kind: "none" };
+    };
+    // #3355 Wave F (I-ARI-FLOW-HANDOFF-SAME-TURN): inside the agent loop, a
+    // setup whose gates pass hands the owner's request back (delegate). The
+    // loop continues and serves it in this same turn; the setup's own card
+    // or proposal ends the turn as before.
+    let modelFlowDecision: FlowTurnDecision | null = null;
+    let modelFlowDelegated = false;
+    const resolveModelFlowStart = async (
+      call: { args: Record<string, unknown> },
+    ): Promise<
+      "stop" | {
+        result?: unknown;
+        error?: { code: string; message: string };
+      }
+    > => {
+      if (modelFlowDelegated) {
+        return {
+          error: {
+            code: "SETUP_ALREADY_HANDED_OFF",
+            message:
+              "The setup already handed this request back to you. Do it now with your tools; a write is still a proposal card.",
+          },
+        };
+      }
+      const decision = await startModelFlow(call.args);
+      if (decision.kind !== "delegate") {
+        modelFlowDecision = decision;
+        return "stop";
+      }
+      modelFlowDelegated = true;
+      if (decision.state?.flow_key === "website_setup") websiteEngine = true;
+      if (decision.ack) {
+        await persistFlowRow({
+          service: serviceClient,
+          userId,
+          conversationId,
+          text: assertOwnerCopy(decision.ack, {
+            fallback: "Okay.",
+            surface: "flow_ack",
+            mode: "prose",
+          }),
+          artefact: null,
+          state: decision.state,
+          promptVersion: TENANT_CONTEXT_VERSION,
+          modelVersion: ARI_MODEL_VERSION,
+        });
+      }
+      return {
+        result: {
+          status: "handed_off",
+          request: decision.semantic_message.slice(0, 600),
+          next:
+            "The setup's checks passed and it handed the owner's request back to you. Do it now with your tools in this turn; a write is still a proposal card.",
+        },
+      };
+    };
+    const commitModelFlowStart = async (
+      rawArgs: Record<string, unknown>,
+    ): Promise<Response> => {
+      const decision = modelFlowDecision ?? await startModelFlow(rawArgs);
+      modelFlowDecision = null;
       if (decision.kind === "propose") {
         return await commitFlowProposal(decision);
       }
@@ -2418,6 +2480,107 @@ async function handle(req: Request): Promise<Response> {
         startedAt: turnStartedAt,
         ...(flowParked ? { flowState: flowParked.state } : {}),
       });
+    };
+
+    // #3355 Wave D (D4, D7a, I-ARI-ASK-TEAM-ONLY-ON-TAP): after the guide
+    // answer, a stuck host is offered "Ask the Mingla team" as a
+    // confirmation card (the receipt-backed tell_owner send into the brand's
+    // group). Nothing is sent unless the host taps Confirm. #3355 Wave F:
+    // shared by the agent loop and the single-call path, and the escalated
+    // turn's own reply gaps are logged (I-ARI-ESCALATED-REPLY-GAPS-LOGGED).
+    const offerAskTheTeam = async (offer: {
+      replyText: string;
+      readyState: TaskStateV1;
+      errorCodes: readonly string[];
+    }): Promise<{ response: Response | null; note: string | null }> => {
+      if (!activeBrand) return { response: null, note: null };
+      const tool = findTool("tell_owner_in_brand_group");
+      try {
+        if (!tool) throw new ToolError("OWNER_NOTE_UNAVAILABLE", "");
+        const askArgs = await bindOwnerNoteProposal(
+          tool.name,
+          {
+            brand_id: activeBrand.id,
+            about: ARI_ASK_TEAM_TOPIC,
+            ari_conversation_id: conversationId,
+          },
+          userClient,
+          userId,
+        );
+        await authorizeAgentTool(tool, askArgs, userClient, userId);
+        const leadGuard = guardAriReplyRoutes({
+          text: `${offer.replyText}\n\n${ASK_TEAM_LEAD}`,
+        });
+        const leadMessageId = await persistFlowRow({
+          service: serviceClient,
+          userId,
+          conversationId,
+          text: assertOwnerCopy(leadGuard.text, {
+            fallback: ASK_TEAM_LEAD,
+            surface: "ask_team_lead",
+            mode: "prose",
+          }),
+          artefact: null,
+          state: flowParked?.state ?? null,
+          promptVersion: TENANT_CONTEXT_VERSION,
+          modelVersion: ARI_MODEL_VERSION,
+        });
+        // The escalated turn ends in a proposal, not commitTextTurn, so its
+        // reply's own gaps (refusal, tool errors, dropped routes) are
+        // recorded here. Fail-soft.
+        await recordAriTurnGaps({
+          service: serviceClient,
+          userId,
+          conversationId,
+          messageId: leadMessageId,
+          turnKey: `${conversationId}:${body.client_turn_id}`,
+          signals: classifyAriReplyGaps({
+            replyText: offer.replyText,
+            ownerText: semanticMessage,
+            hasRendition: false,
+            errorCodes: offer.errorCodes,
+            droppedRoutes: leadGuard.dropped.length,
+          }),
+        });
+        return {
+          response: await commitPendingTurn({
+            client: serviceClient,
+            pendingClient: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            uiCapabilities: ariUiCapabilities,
+            previousState: taskState,
+            readyState: offer.readyState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            toolName: tool.name,
+            toolArgs: askArgs,
+            proposalContext: {
+              flow_title: ARI_ASK_TEAM_TITLE,
+              flow_rows: [
+                { label: "Sends to", value: String(askArgs.send_to ?? "") },
+                { label: "Message", value: String(askArgs.message ?? "") },
+              ],
+              flow_rows_only: true,
+            },
+            classification: "ari_escalation_ask_team",
+            startedAt: turnStartedAt,
+          }),
+          note: null,
+        };
+      } catch (err: unknown) {
+        if (!(err instanceof ToolError)) throw err;
+        // Already asked this hour: say so. No group or no access: the
+        // guide answer stands on its own.
+        console.warn("[agent-chat] ask-the-team not offered", err.code);
+        return {
+          response: null,
+          note: err.code === "ASK_TEAM_RECENTLY_SENT"
+            ? ASK_TEAM_ALREADY_SENT
+            : null,
+        };
+      }
     };
 
     // Load last N messages
@@ -3765,7 +3928,13 @@ ${boundedAgentContext}
           }
         },
         validateFinalText: (text) =>
-          ticketTierTextBypassesApproval(semanticMessage, text)
+          isPseudoToolCallText(text)
+            ? {
+              code: "TOOL_CALL_AS_TEXT",
+              message:
+                "Your reply was a tool-call marker written as text. Call the tool as a real function call, or answer the owner in plain words. Never write [mingla_tool_call ...] in a reply.",
+            }
+            : ticketTierTextBypassesApproval(semanticMessage, text)
             ? {
               code: "WRITE_PROPOSAL_REQUIRED",
               message:
@@ -3912,6 +4081,7 @@ ${boundedAgentContext}
         // #3355 Wave B (B4): a failed call reaches the model with its
         // user_reason and next_step; only a stopped turn ends the loop.
         normalizeError: normalizeAriToolError,
+        resolveFlowStart: resolveModelFlowStart,
       });
       let loopResult: Awaited<typeof loopRun>;
       try {
@@ -4273,70 +4443,15 @@ ${boundedAgentContext}
         !websiteSetupPresentation && !launchPlan && !resumePrompt &&
         loopResult.kind === "text"
       ) {
-        const tool = findTool("tell_owner_in_brand_group");
-        try {
-          if (!tool) throw new ToolError("OWNER_NOTE_UNAVAILABLE", "");
-          const askArgs = await bindOwnerNoteProposal(
-            tool.name,
-            {
-              brand_id: activeBrand.id,
-              about: ARI_ASK_TEAM_TOPIC,
-              ari_conversation_id: conversationId,
-            },
-            userClient,
-            userId,
-          );
-          await authorizeAgentTool(tool, askArgs, userClient, userId);
-          const leadGuard = guardAriReplyRoutes({
-            text: `${safeLoopText}\n\n${ASK_TEAM_LEAD}`,
-          });
-          await persistFlowRow({
-            service: serviceClient,
-            userId,
-            conversationId,
-            text: assertOwnerCopy(leadGuard.text, {
-              fallback: ASK_TEAM_LEAD,
-              surface: "ask_team_lead",
-              mode: "prose",
-            }),
-            artefact: null,
-            state: flowParked?.state ?? null,
-            promptVersion: TENANT_CONTEXT_VERSION,
-            modelVersion: ARI_MODEL_VERSION,
-          });
-          return await commitPendingTurn({
-            client: serviceClient,
-            pendingClient: serviceClient,
-            userId,
-            conversationId,
-            clientTurnId: body.client_turn_id,
-            uiCapabilities: ariUiCapabilities,
-            previousState: taskState,
-            readyState: resumedState,
-            expectedRevision: taskStateRevision,
-            previousSummary: conversationSummary,
-            toolName: tool.name,
-            toolArgs: askArgs,
-            proposalContext: {
-              flow_title: ARI_ASK_TEAM_TITLE,
-              flow_rows: [
-                { label: "Sends to", value: String(askArgs.send_to ?? "") },
-                { label: "Message", value: String(askArgs.message ?? "") },
-              ],
-              flow_rows_only: true,
-            },
-            classification: "ari_escalation_ask_team",
-            startedAt: turnStartedAt,
-          });
-        } catch (err: unknown) {
-          if (!(err instanceof ToolError)) throw err;
-          // Already asked this hour: say so. No group or no access: the
-          // guide answer stands on its own.
-          if (err.code === "ASK_TEAM_RECENTLY_SENT") {
-            escalationNote = ASK_TEAM_ALREADY_SENT;
-          }
-          console.warn("[agent-chat] ask-the-team not offered", err.code);
-        }
+        const offer = await offerAskTheTeam({
+          replyText: safeLoopText,
+          readyState: resumedState,
+          errorCodes: loopResult.observations.flatMap((observation) =>
+            observation.error?.code ? [observation.error.code] : []
+          ),
+        });
+        if (offer.response) return offer.response;
+        escalationNote = offer.note;
       }
       return await commitTextTurn({
         client: serviceClient,
@@ -5074,8 +5189,25 @@ ${boundedAgentContext}
     const resumePrompt = (readInterruption || questionInterruption)
       ? liveChoices?.prompt ?? pendingQuestionPrompt(resumedState)
       : null;
+    // #3355 Wave F: the single-call path offers "Ask the Mingla team" to a
+    // stuck host too (the same card, the same server checks).
+    let singleCallEscalationNote: string | null = null;
+    if (
+      escalation.escalate && activeBrand && !websiteSetupBoundary &&
+      !resumePrompt
+    ) {
+      const offer = await offerAskTheTeam({
+        replyText: answer,
+        readyState: resumedState,
+        errorCodes: [],
+      });
+      if (offer.response) return offer.response;
+      singleCallEscalationNote = offer.note;
+    }
     const text = resumePrompt
       ? `${answer}\n\nBack to your event plan: ${resumePrompt}`
+      : singleCallEscalationNote
+      ? `${answer}\n\n${singleCallEscalationNote}`
       : answer;
     return await commitTextTurn({
       client: serviceClient,
@@ -5092,6 +5224,7 @@ ${boundedAgentContext}
         : questionInterruption
         ? "question_interruption"
         : "general",
+      gapOwnerText: semanticMessage,
       startedAt: turnStartedAt,
       choices: (readInterruption || questionInterruption) && liveChoices
         ? liveChoices

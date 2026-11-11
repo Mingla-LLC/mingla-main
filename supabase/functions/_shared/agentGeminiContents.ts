@@ -98,6 +98,19 @@ function safeJson(value: unknown): string {
  * pass just downgraded to text also downgrades its own response — the pair
  * never half-survives.
  */
+/**
+ * #3355 Wave F (live eval): Flash sometimes copies the repaired marker above
+ * into its own answer ("[mingla tool call name=get_operator_snapshot] {}")
+ * instead of calling the tool. That text must never reach a host.
+ * MINGLA-INVARIANT: I-ARI-NO-PSEUDO-TOOL-TEXT | issue #3355 | A final reply that imitates the repaired tool-call marker is sent back to the model once and never shown to the host.
+ */
+const PSEUDO_TOOL_TEXT =
+  /\[\s*mingla[\s_-]*tool[\s_-]*(?:call|result)\b|^\s*\{?\s*"?(?:functionCall|function_call|tool_code)"?\s*[:=]/im;
+
+export function isPseudoToolCallText(text: string): boolean {
+  return PSEUDO_TOOL_TEXT.test(text);
+}
+
 export function repairGeminiContents(
   contents: readonly GeminiContentMessage[],
 ): GeminiContentsRepair {

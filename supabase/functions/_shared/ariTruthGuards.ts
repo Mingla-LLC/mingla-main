@@ -384,6 +384,9 @@ export function mergeModelStatedSlots(
   return out;
 }
 
+/** The widest UTC offset (14 h): a value this close to the local end is that day. */
+const ZONE_OFFSET_SLACK_MS = 14 * 60 * 60 * 1000;
+
 /** 23:59:59 on the stated day in the brand's time zone, as UTC ISO. */
 export function endOfLocalDayIso(
   day: { year: number; month: number; day: number },
@@ -489,8 +492,22 @@ export function checkStatedSlots(args: {
         asks.push(`an end on ${spokenDay(stated.ends_on)}`);
       }
     } else if (localDayOf(out.ends_at, args.timezone) !== wanted) {
-      missing.push("ends_at");
-      asks.push(`an end on ${spokenDay(stated.ends_on)}`);
+      // #3355 Wave F (live eval): Flash writes the stated day's end in UTC
+      // ("2026-12-19T23:59:59Z"), which is already 20 December in Lagos. A
+      // value within a time-zone offset of the stated day's local end is that
+      // day, so it is bound exactly; a different day is still asked about.
+      const iso = endOfLocalDayIso(stated.ends_on, args.timezone);
+      const proposedAt = Date.parse(String(out.ends_at));
+      if (
+        iso && Number.isFinite(proposedAt) &&
+        Math.abs(proposedAt - Date.parse(iso)) <= ZONE_OFFSET_SLACK_MS
+      ) {
+        out.ends_at = iso;
+        bound.push("ends_at");
+      } else {
+        missing.push("ends_at");
+        asks.push(`an end on ${spokenDay(stated.ends_on)}`);
+      }
     }
   }
   if (stated.max_total_uses !== undefined && schemaKeys.has("max_total_uses")) {

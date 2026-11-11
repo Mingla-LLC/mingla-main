@@ -51,6 +51,7 @@ import {
 } from "./ariGaps.ts";
 import { toolBelongsTo } from "./agentToolsets.ts";
 import { ARI_APP_ROUTES, ariHandoffRoute } from "./ariAppMap.ts";
+import { TOOL_CAPABILITY_KEYS } from "./ariToolDescriptions.ts";
 import {
   type AriResearchResult,
   readPublicUrl,
@@ -677,6 +678,37 @@ const GUIDE_STATUS: Readonly<
   Retired: { status: "retired", how_to_say: "not_available" },
 });
 
+/**
+ * #3355 Wave F: a guide entry still claimed "planned" whose feature Ari can
+ * already do with one of its own registered tools (create_discount for
+ * events-discount-codes). The guide claim lags the product; the tool is the
+ * ground truth for "can Ari do this", so Ari offers the tool instead of
+ * saying "not available yet". Retired entries are never upgraded.
+ * MINGLA-INVARIANT: I-ARI-TOOL-OUTRANKS-PLANNED-GUIDE | issue #3355 | A planned guide entry that a registered Ari tool serves is read as available through that tool, never as "not available yet".
+ */
+export function ariToolsForGuideKey(key: string): string[] {
+  const registered = new Set(DOMAIN_TOOLS.map((tool) => tool.name));
+  return Object.entries(TOOL_CAPABILITY_KEYS)
+    .filter(([tool, capability]) => capability === key && registered.has(tool))
+    .map(([tool]) => tool);
+}
+
+export function ariGuideReadStatus(
+  guideStatus: unknown,
+  key: string,
+): { status: string; how_to_say: string; ari_tools: string[] } {
+  const status = GUIDE_STATUS[String(guideStatus)] ??
+    GUIDE_STATUS["Needs review"];
+  const tools = status.status === "planned" ? ariToolsForGuideKey(key) : [];
+  return tools.length > 0
+    ? {
+      status: "available_through_ari",
+      how_to_say: "offer_the_ari_tool",
+      ari_tools: tools.slice(0, 5),
+    }
+    : { ...status, ari_tools: [] };
+}
+
 function guideText(value: unknown, max: number): string {
   return typeof value === "string"
     ? sanitizeAriPublicText(value).text.trim().slice(0, max)
@@ -693,7 +725,7 @@ function guideList(value: unknown): string[] {
 const searchMinglaGuide: AgentToolDefinition = {
   name: "search_mingla_guide",
   description:
-    "Search the Mingla Feature Guide: what Mingla can do, who can use it, the exact steps (how_to) and limits. Use it before saying Mingla can't do something and before giving how-to steps. status live = say it as fact; needs_review = hedge and point to the screen; planned or retired = not available. Cite the capability_key of the entry you used.",
+    "Search the Mingla Feature Guide: what Mingla can do, who can use it, the exact steps (how_to) and limits. Use it before saying Mingla can't do something and before giving how-to steps. status live = say it as fact; needs_review = hedge and point to the screen; planned or retired = not available; available_through_ari = Ari can do it now with the listed ari_tools, so offer that. Cite the capability_key of the entry you used.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -728,8 +760,7 @@ const searchMinglaGuide: AgentToolDefinition = {
       query,
       results: rows.slice(0, limit).map((row) => {
         const key = guideText(row.capability_key, 80);
-        const status = GUIDE_STATUS[String(row.guide_status)] ??
-          GUIDE_STATUS["Needs review"];
+        const status = ariGuideReadStatus(row.guide_status, key);
         return {
           capability_key: key,
           title: guideText(row.title, 160),
@@ -743,6 +774,9 @@ const searchMinglaGuide: AgentToolDefinition = {
           status: status.status,
           evidence_current: row.evidence_current === true,
           how_to_say: status.how_to_say,
+          ...(status.ari_tools.length > 0
+            ? { ari_tools: status.ari_tools }
+            : {}),
           screens: ARI_APP_ROUTES.filter((route) =>
             route.capability_keys.includes(key)
           ).slice(0, 3).map((route) => ({

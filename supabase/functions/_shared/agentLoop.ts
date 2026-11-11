@@ -230,6 +230,19 @@ export async function runAgentLoop(args: {
       AgentLoopProposalValidationIssue | null
     >;
   executeTool: (call: AgentLoopToolCall) => Promise<unknown>;
+  /**
+   * #3355 Wave F (I-ARI-FLOW-HANDOFF-SAME-TURN): the caller starts the
+   * setup the model asked for. "stop" ends the loop with `flow_start` (the
+   * setup's card or proposal is the reply). An observation means the setup
+   * handed the owner's request to another lane (its gates passed): the model
+   * sees it and serves the request in this same turn. Absent: every
+   * start_flow ends the loop, as before.
+   */
+  resolveFlowStart?: (
+    call: AgentLoopToolCall,
+  ) => Promise<
+    "stop" | { result?: unknown; error?: AgentLoopToolErrorObservation }
+  >;
   isCancelled?: () => Promise<boolean>;
   onProgress?: (
     event: { phase: string; step: number; tool?: string },
@@ -521,6 +534,23 @@ export async function runAgentLoop(args: {
     for (const call of calls) {
       const classification = args.classifyTool(call);
       if (classification === "flow") {
+        const resolved = args.resolveFlowStart
+          ? await args.resolveFlowStart(call)
+          : "stop";
+        if (resolved !== "stop") {
+          observations.push({
+            tool: call.name,
+            args: call.args,
+            ...(call.thoughtSignature
+              ? { thoughtSignature: call.thoughtSignature }
+              : {}),
+            ...(resolved.error
+              ? { error: resolved.error }
+              : { result: resolved.result ?? null }),
+            elapsedMs: 0,
+          });
+          continue modelTurns;
+        }
         return {
           kind: "flow_start",
           toolCall: call,
