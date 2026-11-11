@@ -5601,6 +5601,8 @@ async function guardReplyClaims(args: {
       replaced: check.replaced.map((item) => item.status),
       removed: check.removed.length,
       elapsed_ms: check.elapsedMs,
+      // #3355 rework 5: this turn's brand read (ok / failed / none).
+      fresh_read: check.freshRead ?? "none",
     }),
   );
   return check.text;
