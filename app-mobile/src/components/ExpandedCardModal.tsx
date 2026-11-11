@@ -123,7 +123,11 @@ import { DeviceCalendarService } from "../services/deviceCalendarService";
 import { CalendarService } from "../services/calendarService";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
-import { usePlaceReviewRequest } from "../store/placeReviewRequestStore";
+import {
+  holdPlaceReviewSlot,
+  releasePlaceReviewSlot,
+  usePlaceReviewSuspendsHost,
+} from "../store/placeReviewRequestStore";
 import { toastManager } from "./ui/Toast";
 import { useUserLocation } from "../hooks/useUserLocation";
 import {
@@ -720,9 +724,14 @@ export default function ExpandedCardModal({
   // #4381: "Been here" does not write on tap; it opens the review prompt, which
   // is the single PostExperienceModal (an RN Modal) mounted in app/index.tsx.
   // iOS will not present it over this sheet's own RN Modal (ORCH-1022), so the
-  // tap did nothing. While a review request is open the sheet steps aside like
-  // it does for its own child surfaces, and comes back when the prompt closes.
-  const placeReviewOpen = usePlaceReviewRequest() !== null;
+  // sheet steps aside while a review request is open. The handoff is sequenced
+  // on native acknowledgements, like the share handoff: this sheet holds the
+  // presentation slot from its native show to its native dismiss
+  // (handleRootNativeShow / handleRootNativeDismiss), the prompt presents only
+  // once no host holds it, and this sheet stays down until the prompt has
+  // natively dismissed too.
+  const placeReviewOpen = usePlaceReviewSuspendsHost();
+  const holdsPresentationSlot = useRef(false);
 
   // Every child surface that takes the native presentation slot. The share
   // handoff is added separately below because the close guard reads its ref.
@@ -967,11 +976,27 @@ export default function ExpandedCardModal({
   ]);
 
   const handleRootNativeDismiss = useCallback((): void => {
+    if (holdsPresentationSlot.current) {
+      holdsPresentationSlot.current = false;
+      releasePlaceReviewSlot();
+    }
     rootDismissedAcknowledgement.current?.resolve();
   }, []);
 
   const handleRootNativeShow = useCallback((): void => {
+    if (!holdsPresentationSlot.current) {
+      holdsPresentationSlot.current = true;
+      holdPlaceReviewSlot();
+    }
     rootShownAcknowledgement.current?.resolve();
+  }, []);
+
+  // #4381: an unmount never delivers the native dismiss, so give the slot back.
+  useEffect(() => () => {
+    if (holdsPresentationSlot.current) {
+      holdsPresentationSlot.current = false;
+      releasePlaceReviewSlot();
+    }
   }, []);
 
   useEffect(() => {

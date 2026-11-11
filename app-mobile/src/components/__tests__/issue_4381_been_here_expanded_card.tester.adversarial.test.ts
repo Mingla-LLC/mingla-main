@@ -2,37 +2,40 @@
 //
 // Issue #4381 — TESTER ADVERSARIAL. "Been here" did nothing on an expanded card.
 //
-// The implementor's suite reads the source and checks that the right names sit
-// in the right statements. This one does not grep for names. It RUNS the real
-// decision code:
+// The first fix lowered the expanded card while a review request was open. It
+// passed every source test and FAILED on the iOS simulator: the prompt was told
+// to present in the SAME commit the sheet was told to dismiss, UIKit logged
+// "Attempt to present <RCTFabricModalHostViewController> ... which is already
+// presenting <RCTFabricModalHostViewController>", the prompt never appeared,
+// the request stayed open, and the sheet stayed suspended until a restart.
 //
-//   * the real placeReviewRequestStore.ts (its own openRequest / cancelRequest /
-//     confirmRequest, and its own usePlaceReviewRequest selector), with zustand's
-//     React binding replaced by a plain selector over the same vanilla store
-//     semantics zustand uses (shallow merge, function updaters, subscribers);
-//   * the real ExpandedCardModal.tsx statements, from `rootSuspendedForShare`
-//     through `handleRootSheetClose`, plus the real `visible=` and `onClose=`
-//     expressions handed to the root <BaseBottomSheet wrapInRNModal>;
+// This suite RUNS the real decision code against a model of the native layer
+// that has the property the device has and the old tests lacked:
 //
-// and drives them the way BaseBottomSheet does: when the `visible` it is given
-// flips true -> false, it calls the `onClose` it was given (onChange(-1),
-// BaseBottomSheet.tsx). That synthetic close is exactly what must be swallowed.
+//   * the real placeReviewRequestStore.ts, with zustand's React binding replaced
+//     by a plain selector over the same vanilla store semantics;
+//   * the real ExpandedCardModal.tsx statements from `rootSuspendedForShare`
+//     through `handleRootSheetClose`, its real `handleRootNativeShow` /
+//     `handleRootNativeDismiss`, and the real `visible=` / `onClose=` handed to
+//     the root <BaseBottomSheet wrapInRNModal>;
+//   * the real app/index.tsx wiring of the single <PostExperienceModal>: which
+//     store hook feeds `voluntaryPlaceReview`, its `visible=` expression, and
+//     which store actions it hands to `onNativeShow` / `onNativeDismiss`;
 //
-// Angles the implementor's test cannot see:
-//   A. open -> cancel brings the SAME card back, and onClose never fires;
-//   B. open -> confirm brings it back, arms the thank-you token, onClose never fires;
-//   C. a request for a DIFFERENT card id still lowers this sheet (it is the one
-//      native presentation slot, whoever asked for it);
-//   D. confirmRequest with no open request is a no-op for the store AND the sheet;
-//   E. negative control: a real user close (visible prop -> false) with no request
-//      DOES call onClose, before and after a review cycle — so the zero counts in
-//      A-D are zeros-because-guarded, not zeros-because-the-spy-is-broken.
+// and a NATIVE MODEL of iOS: ONE presentation slot. A present while another
+// host still holds it (its dismiss has not completed) is REFUSED and logged,
+// and onShow never fires. Dismissal completes asynchronously and only then
+// fires onDismiss. Android is modelled as stacking dialogs with a post-commit
+// dismiss acknowledgement (BaseBottomSheet's NativeModalLifecycleAdapter).
 //
-// FAILS-ON-REVERT: on dda822635a (before the fix) the sheet stays up when a
-// review request opens, so A, B, C and F fail on "sheet steps aside".
+// FAILS-ON-REVERT: on fe43221285 (the first fix) A1/A2/A3/B1/B2/C1 fail on the
+// "already presenting" refusal or on a prompt that is presentable while the
+// sheet still holds the slot, and D1/D2/D4 fail because there is no safety net.
 
 const root = new URL("../../", import.meta.url);
+const appRoot = new URL("../../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
+const readApp = (path: string) => Deno.readTextFile(new URL(path, appRoot));
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -68,55 +71,206 @@ const create = (initializer) => {
 };
 `;
 
+let storeCounter = 0;
 async function loadStore() {
   const source = await read("store/placeReviewRequestStore.ts");
   const importLine = "import { create } from 'zustand';";
   assert(source.split(importLine).length === 2, "the store still creates itself with zustand's create");
-  return await importTs(source.replace(importLine, ZUSTAND_SHIM));
+  // A unique suffix gives every test its own module instance (and its own store).
+  storeCounter += 1;
+  return await importTs(`${source.replace(importLine, ZUSTAND_SHIM)}\n// instance ${storeCounter}\n`);
 }
 
-async function loadSheetDecision() {
+function extractCallback(source: string, name: string): string {
+  const re = new RegExp(`const ${name} = useCallback\\(\\(\\): void => \\{[\\s\\S]*?\\n  \\}, \\[[^\\]]*\\]\\);`);
+  const match = re.exec(source);
+  assert(match, `found ${name} in ExpandedCardModal`);
+  return match[0];
+}
+
+async function loadSheet(storeExports: string[]) {
   const sheet = await read("components/ExpandedCardModal.tsx");
   const start = sheet.indexOf("const rootSuspendedForShare =");
   const end = sheet.indexOf("const focusShareControl = useCallback(");
   assert(start > 0 && end > start, "found the child-surface block in ExpandedCardModal");
   const block = sheet.slice(start, end);
+  const nativeShow = extractCallback(sheet, "handleRootNativeShow");
+  const nativeDismiss = extractCallback(sheet, "handleRootNativeDismiss");
 
   const rootSheet = /<BaseBottomSheet\s+visible=\{([^}]*)\}\s+onClose=\{([^}]*)\}[\s\S]*?\bwrapInRNModal\b/.exec(sheet);
   assert(rootSheet, "found the root <BaseBottomSheet wrapInRNModal> and its visible/onClose props");
 
   const module = await importTs(`
 export function render(env) {
+  const { ${storeExports.join(", ")} } = env.store;
   const {
-    visible, onClose, useCallback, usePlaceReviewRequest,
+    visible, onClose, useCallback, useRef,
     browserUrl, ticketBrowserUrl, isSchedulePickerOpen, curatedLightbox,
     selectedVenueExperience, isReserveSheetOpen, shareHandoffPhase, shareHandoffPhaseRef,
+    rootDismissedAcknowledgement, rootShownAcknowledgement,
   } = env;
   ${block}
-  return { sheetVisible: (${rootSheet[1]}), sheetOnClose: ${rootSheet[2]} };
+  ${nativeShow}
+  ${nativeDismiss}
+  return {
+    sheetVisible: (${rootSheet[1]}),
+    sheetOnClose: ${rootSheet[2]},
+    onNativeShow: handleRootNativeShow,
+    onNativeDismiss: handleRootNativeDismiss,
+  };
 }
 `);
   return module.render;
 }
 
-/**
- * One expanded card, mounted. Re-renders on every store change (as the hook
- * subscription would) and on prop changes, and plays BaseBottomSheet's part:
- * a visible true -> false edge calls the onClose prop of that render.
- */
-async function mountExpandedCard(store, cardId: string) {
-  const render = await loadSheetDecision();
-  const calls = { onClose: 0 };
-  let props = { visible: true };
-  let lastVisible = false;
-  let current;
+/** The single <PostExperienceModal> mount in app/index.tsx, as wired today. */
+async function loadPromptWiring() {
+  const index = await readApp("app/index.tsx");
+  const feed = /const voluntaryPlaceReview = (\w+)\(\);/.exec(index);
+  assert(feed, "index.tsx derives voluntaryPlaceReview from a store hook");
+  const presentable = /const voluntaryPromptPresentable = (\w+)\(\);/.exec(index);
+  const mount = index.indexOf("<PostExperienceModal");
+  assert(mount > 0, "index.tsx mounts PostExperienceModal");
+  const element = index.slice(mount, index.indexOf("/>", index.indexOf("onCancel=", mount)));
+  const visible = /visible=\{([^}]*)\}/.exec(element);
+  assert(visible, "the mount has a visible= expression");
+  const shown = /onNativeShow=\{(\w+)\}/.exec(element);
+  const dismissed = /onNativeDismiss=\{(\w+)\}/.exec(element);
+  const visibleOf = new Function(
+    "voluntaryPlaceReview",
+    "voluntaryPromptPresentable",
+    "showReviewModal",
+    `return (${visible[1]});`,
+  );
+  return {
+    feed: feed[1],
+    presentable: presentable?.[1] ?? null,
+    visibleOf,
+    onShow: shown?.[1] ?? null,
+    onDismiss: dismissed?.[1] ?? null,
+  };
+}
 
-  const commit = () => {
-    current = render({
+/**
+ * The native presentation layer.
+ *  iOS: ONE slot. A present while another host holds it (including while that
+ *       host's dismiss is still in flight) is refused, logged, and never shown.
+ *  Android: dialogs stack; dismiss is acknowledged post-commit.
+ */
+function createNative(platform: "ios" | "android") {
+  const tasks: Array<() => void> = [];
+  const refusals: string[] = [];
+  const hosts = new Map();
+  let slot: string | null = null;
+
+  const host = (name: string) => {
+    if (!hosts.has(name)) hosts.set(name, { intent: false, presented: false, attempted: false, dropDismiss: false });
+    return hosts.get(name);
+  };
+
+  return {
+    refusals,
+    get slot() { return slot; },
+    isPresented: (name: string) => host(name).presented,
+    occupy(name: string) { slot = name; host(name).presented = true; host(name).intent = true; },
+    dropDismissFor(name: string) { host(name).dropDismiss = true; },
+    /** One host's committed `visible`, with the callbacks of that render. */
+    commit(name: string, visible: boolean, callbacks: { onShow?: () => void; onDismiss?: () => void }) {
+      const h = host(name);
+      h.callbacks = callbacks;
+      if (visible === h.intent) return;
+      h.intent = visible;
+      if (visible) {
+        if (platform === "ios" && slot !== null && slot !== name) {
+          refusals.push(`Attempt to present ${name} which is already presenting ${slot}`);
+          h.attempted = false;
+          return;
+        }
+        h.attempted = true;
+        if (platform === "ios") slot = name;
+        tasks.push(() => {
+          h.presented = true;
+          h.callbacks.onShow?.();
+        });
+        return;
+      }
+      if (!h.attempted && !h.presented) return;
+      h.attempted = false;
+      const finish = () => {
+        h.presented = false;
+        if (slot === name) slot = null;
+        if (!h.dropDismiss) h.callbacks.onDismiss?.();
+      };
+      if (platform === "android") tasks.unshift(finish);
+      else tasks.push(finish);
+    },
+    flush() {
+      let guard = 0;
+      while (tasks.length > 0) {
+        guard += 1;
+        assert(guard < 500, "native task queue did not settle");
+        tasks.shift()();
+      }
+    },
+  };
+}
+
+function createClock() {
+  let now = 0;
+  const timers = new Map();
+  let nextId = 1;
+  return {
+    timers: {
+      set: (callback: () => void, ms: number) => {
+        const id = nextId++;
+        timers.set(id, { at: now + ms, callback });
+        return id;
+      },
+      clear: (id: number) => { timers.delete(id); },
+    },
+    advance(ms: number) {
+      now += ms;
+      for (const [id, t] of [...timers.entries()].sort((a, b) => a[1].at - b[1].at)) {
+        if (t.at <= now && timers.has(id)) {
+          timers.delete(id);
+          t.callback();
+        }
+      }
+    },
+  };
+}
+
+/**
+ * The app: one expanded card (optional) and the single prompt mount, committed
+ * together on every store change, in tree order (the card's sheet first).
+ */
+async function mountApp({ platform = "ios", withExpandedCard = true } = {}) {
+  const store = await loadStore();
+  const exportNames = Object.keys(store);
+  const renderSheet = await loadSheet(exportNames);
+  const wiring = await loadPromptWiring();
+  const native = createNative(platform);
+  const clock = createClock();
+  const calls = { onClose: 0, toasts: 0 };
+  const refSlots: Array<{ current: unknown }> = [];
+  let props = { visible: true };
+  let lastSheetVisible = false;
+  let current;
+  let promptMounted = false;
+  let promptVisible = false;
+
+  const env = () => {
+    let refIndex = 0;
+    return {
+      store,
       visible: props.visible,
       onClose: () => { calls.onClose += 1; },
       useCallback: (fn) => fn,
-      usePlaceReviewRequest: store.usePlaceReviewRequest,
+      useRef: (initial) => {
+        const i = refIndex++;
+        if (!refSlots[i]) refSlots[i] = { current: initial };
+        return refSlots[i];
+      },
       browserUrl: null,
       ticketBrowserUrl: null,
       isSchedulePickerOpen: false,
@@ -125,24 +279,50 @@ async function mountExpandedCard(store, cardId: string) {
       isReserveSheetOpen: false,
       shareHandoffPhase: "idle",
       shareHandoffPhaseRef: { current: "idle" },
+      rootDismissedAcknowledgement: { current: null },
+      rootShownAcknowledgement: { current: null },
+    };
+  };
+
+  const commit = () => {
+    if (withExpandedCard) {
+      current = renderSheet(env());
+      if (lastSheetVisible && !current.sheetVisible) current.sheetOnClose();
+      lastSheetVisible = current.sheetVisible;
+      native.commit("sheet", current.sheetVisible, {
+        onShow: current.onNativeShow,
+        onDismiss: current.onNativeDismiss,
+      });
+    }
+    const voluntary = store[wiring.feed]();
+    const presentable = wiring.presentable ? store[wiring.presentable]() : undefined;
+    promptMounted = voluntary !== null;
+    promptVisible = promptMounted && wiring.visibleOf(voluntary, presentable, false) === true;
+    native.commit("prompt", promptVisible, {
+      onShow: wiring.onShow ? store[wiring.onShow] : undefined,
+      onDismiss: wiring.onDismiss ? store[wiring.onDismiss] : undefined,
     });
-    if (lastVisible && !current.sheetVisible) current.sheetOnClose();
-    lastVisible = current.sheetVisible;
   };
 
-  const unsubscribe = store.usePlaceReviewRequestStore.subscribe(commit);
+  store.usePlaceReviewRequestStore.subscribe(commit);
+  const stopWatch = typeof store.watchPlaceReviewPresentation === "function"
+    ? store.watchPlaceReviewPresentation(() => { calls.toasts += 1; }, 1500, clock.timers)
+    : () => {};
   commit();
-  return {
-    cardId,
-    calls,
-    get sheetVisible() { return current.sheetVisible; },
-    setVisible(next: boolean) { props = { visible: next }; commit(); },
-    unmount: unsubscribe,
-  };
-}
+  native.flush();
 
-function freshStore(store) {
-  store.usePlaceReviewRequestStore.setState({ request: null, confirmedCardId: null, confirmToken: 0 });
+  return {
+    store,
+    native,
+    clock,
+    calls,
+    get sheetVisible() { return current?.sheetVisible ?? false; },
+    get promptVisible() { return promptVisible; },
+    get promptMounted() { return promptMounted; },
+    get request() { return store.usePlaceReviewRequestStore.getState().request; },
+    setVisible(next: boolean) { props = { visible: next }; commit(); native.flush(); },
+    unmount: stopWatch,
+  };
 }
 
 const SINGLE = {
@@ -158,109 +338,194 @@ const CURATED = {
   cardType: "curated",
 };
 
-Deno.test("#4381 A: Been here then cancel brings the same card back and never closes it", async () => {
-  const store = await loadStore();
-  freshStore(store);
-  const card = await mountExpandedCard(store, SINGLE.id);
-  assert(card.sheetVisible, "the expanded card is up before the tap");
+/** The prompt's own close: the user taps X (cancel) or Done after submit (confirm). */
+function closePrompt(app, how: "cancel" | "confirm") {
+  if (how === "cancel") app.store.cancelPlaceReviewRequest();
+  else app.store.confirmPlaceReviewRequest();
+}
 
-  store.openPlaceReviewRequest(store.placeReviewRequestFromCard(SINGLE));
-  assert(!card.sheetVisible, "sheet steps aside while the review prompt is open");
-  assertEquals(card.calls.onClose, 0, "stepping aside is not the user closing the card");
+Deno.test("#4381 A1: the device bug — Been here on an expanded card presents the prompt on iOS", async () => {
+  const app = await mountApp();
+  assert(app.native.isPresented("sheet"), "the expanded card is natively up before the tap");
 
-  store.cancelPlaceReviewRequest();
-  assert(card.sheetVisible, "the same expanded card comes back after cancel");
-  assertEquals(card.calls.onClose, 0, "cancel never tears the card down");
-  const s = store.usePlaceReviewRequestStore.getState();
-  assertEquals(s.confirmToken, 0, "cancel leaves no thank-you flash");
-  assertEquals(s.confirmedCardId, null, "cancel records no confirmation");
-  card.unmount();
+  app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+  app.native.flush();
+
+  assertEquals(app.native.refusals.length, 0, `no "already presenting" refusal (${app.native.refusals.join("; ")})`);
+  assert(app.native.isPresented("prompt"), "the rating prompt is natively on screen");
+  assert(!app.native.isPresented("sheet"), "the expanded card stepped aside");
+  assertEquals(app.calls.onClose, 0, "stepping aside is not the user closing the card");
+  app.unmount();
 });
 
-Deno.test("#4381 B: Been here then submit on a curated plan brings the card back and never closes it", async () => {
-  const store = await loadStore();
-  freshStore(store);
-  const card = await mountExpandedCard(store, CURATED.id);
+Deno.test("#4381 A2: the prompt is NOT presentable while the sheet still holds the slot, and is after its native dismiss", async () => {
+  const app = await mountApp();
 
-  store.openPlaceReviewRequest(store.placeReviewRequestFromCard(CURATED));
-  assert(!card.sheetVisible, "sheet steps aside while the review prompt is open");
+  app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+  // The commit that lowered the sheet has happened; its native dismiss has not landed.
+  assert(!app.sheetVisible, "the sheet was told to dismiss");
+  assert(app.native.isPresented("sheet"), "natively the sheet still holds the slot");
+  assert(!app.promptVisible, "the prompt must not be told to present in the same commit");
 
-  store.confirmPlaceReviewRequest();
-  assert(card.sheetVisible, "the expanded card comes back after submit");
-  assertEquals(card.calls.onClose, 0, "submit never tears the card down");
-  const s = store.usePlaceReviewRequestStore.getState();
-  assertEquals(s.request, null, "the request is cleared");
-  assertEquals(s.confirmedCardId, CURATED.id, "the confirmed card is the curated plan");
-  assertEquals(s.confirmToken, 1, "exactly one thank-you flash is armed");
-  card.unmount();
+  app.native.flush();
+  assert(app.promptVisible, "after the sheet's native dismiss the prompt is told to present");
+  assert(app.native.isPresented("prompt"), "and it presents");
+  app.unmount();
 });
 
-Deno.test("#4381 C: a review request for a DIFFERENT card still frees the presentation slot", async () => {
-  const store = await loadStore();
-  freshStore(store);
-  const card = await mountExpandedCard(store, SINGLE.id);
+Deno.test("#4381 A3: reverse — the sheet re-presents only after the prompt natively dismissed", async () => {
+  for (const how of ["cancel", "confirm"] as const) {
+    const app = await mountApp();
+    app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(how === "cancel" ? SINGLE : CURATED));
+    app.native.flush();
+    assert(app.native.isPresented("prompt"), `${how}: prompt up`);
 
-  store.openPlaceReviewRequest(store.placeReviewRequestFromCard(CURATED));
-  assert(!card.sheetVisible, "sheet steps aside for any open review request, not only its own card");
-  assertEquals(card.calls.onClose, 0, "and still does not close");
+    closePrompt(app, how);
+    assertEquals(app.request, null, `${how}: the request is closed at once`);
+    assert(!app.promptVisible, `${how}: the prompt is told to dismiss`);
+    assert(app.promptMounted, `${how}: and stays mounted until its native dismiss (ORCH-1063)`);
+    assert(app.native.isPresented("prompt"), `${how}: natively it is still on screen`);
+    assert(!app.sheetVisible, `${how}: the sheet must not re-present while the prompt holds the slot`);
 
-  store.cancelPlaceReviewRequest();
-  assert(card.sheetVisible, "and comes back when that request is cancelled");
-  assertEquals(card.calls.onClose, 0, "no close across the whole cycle");
-  card.unmount();
+    app.native.flush();
+    assertEquals(app.native.refusals.length, 0, `${how}: no refusal on the way back (${app.native.refusals.join("; ")})`);
+    assert(app.sheetVisible && app.native.isPresented("sheet"), `${how}: the same expanded card is back`);
+    assert(!app.promptMounted, `${how}: the prompt unmounts only after it is gone`);
+    assertEquals(app.calls.onClose, 0, `${how}: the card was never torn down`);
+    const s = app.store.usePlaceReviewRequestStore.getState();
+    assertEquals(s.confirmToken, how === "confirm" ? 1 : 0, `${how}: thank-you flash armed only on confirm`);
+    app.unmount();
+  }
 });
 
-Deno.test("#4381 D: confirmRequest with no open request is a no-op for the store and the sheet", async () => {
-  const store = await loadStore();
-  freshStore(store);
-  const card = await mountExpandedCard(store, SINGLE.id);
-  const before = store.usePlaceReviewRequestStore.getState();
+Deno.test("#4381 B1: four cycles in a row (the third try failed on device) never wedge the app", async () => {
+  const app = await mountApp();
+  for (const how of ["cancel", "confirm", "cancel", "confirm"] as const) {
+    app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+    app.native.flush();
+    assert(app.native.isPresented("prompt"), `prompt presented (${how} cycle)`);
+    closePrompt(app, how);
+    app.native.flush();
+    assert(app.native.isPresented("sheet"), `sheet back (${how} cycle)`);
+    assertEquals(app.request, null, `no request left open (${how} cycle)`);
+  }
+  assertEquals(app.native.refusals.length, 0, `zero refusals (${app.native.refusals.join("; ")})`);
+  assertEquals(app.calls.onClose, 0, "four cycles, zero closes");
+  assertEquals(app.calls.toasts, 0, "and no failure toast");
+  assertEquals(app.store.usePlaceReviewRequestStore.getState().confirmToken, 2, "two submits, two flashes");
+  app.unmount();
+});
 
-  store.confirmPlaceReviewRequest();
-  const after = store.usePlaceReviewRequestStore.getState();
-  assertEquals(after.request, null, "no request appears");
-  assertEquals(after.confirmedCardId, before.confirmedCardId, "no card is marked confirmed");
-  assertEquals(after.confirmToken, before.confirmToken, "no thank-you flash is armed");
-  assert(card.sheetVisible, "the sheet does not flicker away");
-  assertEquals(card.calls.onClose, 0, "and is not closed");
+Deno.test("#4381 B2: Android — stacking dialogs, post-commit dismiss: the full cycle still works", async () => {
+  const app = await mountApp({ platform: "android" });
+  app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+  app.native.flush();
+  assert(app.native.isPresented("prompt"), "prompt up on Android");
+  app.store.cancelPlaceReviewRequest();
+  app.native.flush();
+  assert(app.native.isPresented("sheet"), "sheet back on Android");
+  assertEquals(app.calls.onClose, 0, "never closed");
+  assertEquals(app.calls.toasts, 0, "no failure toast");
+  app.unmount();
+});
 
-  store.cancelPlaceReviewRequest();
-  assert(card.sheetVisible, "a stray cancel is equally harmless");
-  assertEquals(card.calls.onClose, 0, "stray cancel does not close");
-  card.unmount();
+Deno.test("#4381 C1: the deck path (no host modal) presents in the same commit as the tap", async () => {
+  for (const platform of ["ios", "android"] as const) {
+    const app = await mountApp({ platform, withExpandedCard: false });
+    app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+    assert(app.promptVisible, `${platform}: no host holds the slot, so the prompt is presentable at once`);
+    app.native.flush();
+    assert(app.native.isPresented("prompt"), `${platform}: and presents`);
+    app.unmount();
+  }
+});
+
+Deno.test("#4381 D1: safety net — an outer sheet holds the slot, onShow never fires: cancel + toast", async () => {
+  const app = await mountApp({ withExpandedCard: false });
+  // e.g. SessionViewModal / PlansSheet: a full-screen RN Modal the store does not know about.
+  app.native.occupy("outer");
+
+  app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+  app.native.flush();
+  assertEquals(app.native.refusals.length, 1, "iOS refused the present");
+  assert(app.request !== null, "the request is still open before the bound");
+
+  app.clock.advance(1499);
+  assert(app.request !== null, "not cancelled before the bound");
+  app.clock.advance(1);
+  app.native.flush();
+  assertEquals(app.request, null, "the request is cancelled at the bound");
+  assertEquals(app.calls.toasts, 1, "exactly one failure toast");
+  assert(!app.promptMounted, "the prompt mount is released");
+  app.unmount();
+});
+
+Deno.test("#4381 D2: safety net — the host's native dismiss never lands: cancel + toast, the card comes back", async () => {
+  const app = await mountApp();
+  app.native.dropDismissFor("sheet");
+
+  app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+  app.native.flush();
+  assert(!app.promptVisible, "the prompt waits for the slot");
+  app.clock.advance(1500);
+  app.native.flush();
+  assertEquals(app.request, null, "a request that can never present is cancelled");
+  assertEquals(app.calls.toasts, 1, "and the user is told");
+  assert(app.sheetVisible, "the expanded card is no longer suspended");
+  assertEquals(app.calls.onClose, 0, "and was never torn down");
+  app.unmount();
+});
+
+Deno.test("#4381 D4: safety net — the prompt's native dismiss never lands: the card still comes back", async () => {
+  const app = await mountApp();
+  app.native.dropDismissFor("prompt");
+  app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+  app.native.flush();
+  app.store.cancelPlaceReviewRequest();
+  app.native.flush();
+  assert(!app.sheetVisible, "before the bound the sheet waits for the prompt's dismiss");
+  app.clock.advance(1500);
+  app.native.flush();
+  assert(app.sheetVisible && app.native.isPresented("sheet"), "after the bound the expanded card is back");
+  assert(!app.promptMounted, "and the prompt mount is released");
+  assertEquals(app.calls.toasts, 0, "a cancel that worked is not reported as a failure");
+  app.unmount();
+});
+
+Deno.test("#4381 D3: a prompt that presents in time is never cancelled by the net", async () => {
+  const app = await mountApp();
+  app.store.openPlaceReviewRequest(app.store.placeReviewRequestFromCard(SINGLE));
+  app.native.flush();
+  app.clock.advance(10_000);
+  assert(app.request !== null, "the open, presented request survives the bound");
+  assertEquals(app.calls.toasts, 0, "no toast");
+  app.unmount();
 });
 
 Deno.test("#4381 E: negative control — a real close still calls onClose, before and after a review cycle", async () => {
-  const store = await loadStore();
-  freshStore(store);
-
-  const first = await mountExpandedCard(store, SINGLE.id);
+  const first = await mountApp();
   first.setVisible(false);
   assertEquals(first.calls.onClose, 1, "the user closing the card with no review open closes it");
   first.unmount();
 
-  const second = await mountExpandedCard(store, SINGLE.id);
-  store.openPlaceReviewRequest(store.placeReviewRequestFromCard(SINGLE));
-  store.cancelPlaceReviewRequest();
+  const second = await mountApp();
+  second.store.openPlaceReviewRequest(second.store.placeReviewRequestFromCard(SINGLE));
+  second.native.flush();
+  second.store.cancelPlaceReviewRequest();
+  second.native.flush();
   assertEquals(second.calls.onClose, 0, "the review cycle itself did not close");
   second.setVisible(false);
   assertEquals(second.calls.onClose, 1, "the guard does not stick once the prompt has gone");
+  assertEquals(second.store.usePlaceReviewRequestStore.getState().slotHolds, 0, "and the slot is released");
   second.unmount();
 });
 
-Deno.test("#4381 F: repeated cycles (cancel then submit) never close the card", async () => {
+Deno.test("#4381 F: the scheduled prompt's show and dismiss never suspend a host", async () => {
   const store = await loadStore();
-  freshStore(store);
-  const card = await mountExpandedCard(store, SINGLE.id);
-
-  for (const finish of ["cancel", "confirm", "cancel", "confirm"]) {
-    store.openPlaceReviewRequest(store.placeReviewRequestFromCard(SINGLE));
-    assert(!card.sheetVisible, `sheet steps aside (${finish} cycle)`);
-    if (finish === "cancel") store.cancelPlaceReviewRequest();
-    else store.confirmPlaceReviewRequest();
-    assert(card.sheetVisible, `sheet comes back (${finish} cycle)`);
-  }
-  assertEquals(card.calls.onClose, 0, "four cycles, zero closes");
-  assertEquals(store.usePlaceReviewRequestStore.getState().confirmToken, 2, "two submits, two flashes");
-  card.unmount();
+  store.markPlaceReviewPromptShown();
+  const s = store.usePlaceReviewRequestStore.getState();
+  assertEquals(s.promptOnScreen, false, "no voluntary display request, so nothing is tracked");
+  assertEquals(store.isHostSuspendedForPrompt(s), false, "the expanded card is not held down");
+  store.confirmPlaceReviewRequest();
+  assertEquals(store.usePlaceReviewRequestStore.getState().confirmToken, 0, "confirm with nothing open is a no-op");
 });

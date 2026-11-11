@@ -16,6 +16,7 @@
     "confirm": "確認",
     "rescheduled_toast": "体験を再スケジュールしました！",
     "reschedule_failed_toast": "再スケジュールに失敗しました。もう一度お試しください。",
+    "open_failed_toast": "評価を開けませんでした。もう一度お試しください。",
     "close_label": "閉じる"
   },
   "custom_holiday": {

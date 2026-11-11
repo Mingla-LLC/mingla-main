@@ -3,16 +3,27 @@
 // Issue #4381 — "Been here" did nothing on an expanded card. The control opens
 // the review prompt through placeReviewRequestStore, and the one
 // PostExperienceModal (an RN Modal in app/index.tsx) presents it. iOS will not
-// present that modal over the expanded card's own RN Modal (ORCH-1022), so the
-// sheet must step aside while a review request is open, and must not treat
-// stepping aside as the user closing the card.
+// present that modal while the expanded card's own RN Modal holds the
+// presentation slot (ORCH-1022).
 //
-// FAILS-ON-REVERT: drop the usePlaceReviewRequest() subscription, drop it from
-// the child-surface condition, or let handleRootSheetClose call onClose while
-// a review request is open — each fails here.
+// The first fix lowered the sheet and raised the prompt in the SAME commit;
+// on device iOS refused the present ("already presenting"), the request stayed
+// open and every card tap was dead until restart. The handoff is now sequenced
+// on native acknowledgements, like the share handoff:
+//
+//   1. the sheet holds the slot from its native show to its native dismiss;
+//   2. the prompt is presentable only when a request is open and no host holds
+//      the slot;
+//   3. the sheet stays down until the prompt has natively dismissed, and the
+//      prompt stays mounted until then (ORCH-1063);
+//   4. a request that never shows within a bound is cancelled with a toast.
+//
+// FAILS-ON-REVERT: on fe43221285 every test below except the close guard fails.
 
 const root = new URL("../../", import.meta.url);
+const appRoot = new URL("../../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
+const readApp = (path: string) => Deno.readTextFile(new URL(path, appRoot));
 const strip = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
@@ -28,8 +39,8 @@ function statement(source: string, start: RegExp): string {
   return source.slice(match.index, end + 1);
 }
 
-function callbackBody(source: string, name: string): string {
-  const head = new RegExp(`const ${name} = useCallback\\(\\(\\) => \\{`).exec(source);
+function callbackBody(source: string, name: string): { body: string; deps: string } {
+  const head = new RegExp(`const ${name} = useCallback\\(\\(\\)(?:: void)? => \\{`).exec(source);
   assert(head, `missing ${name}`);
   const start = source.indexOf("{", head.index + head[0].length - 1);
   let depth = 0;
@@ -47,28 +58,34 @@ function callbackBody(source: string, name: string): string {
   throw new Error(`unterminated ${name}`);
 }
 
-Deno.test("#4381 the expanded card subscribes to the open review request", async () => {
+Deno.test("#4381 the expanded card steps aside while the review prompt is open or still on screen", async () => {
   const sheet = strip(await read("components/ExpandedCardModal.tsx"));
   assert(
-    /import \{[^}]*\busePlaceReviewRequest\b[^}]*\} from "\.\.\/store\/placeReviewRequestStore";/.test(sheet),
-    "imports the existing usePlaceReviewRequest selector",
+    /const placeReviewOpen = usePlaceReviewSuspendsHost\(\);/.test(sheet),
+    "the sheet is suspended by the store's request-open-or-prompt-on-screen selector",
   );
-  assert(
-    /const placeReviewOpen = usePlaceReviewRequest\(\) !== null;/.test(sheet),
-    "derives placeReviewOpen from the open request",
-  );
-});
-
-Deno.test("#4381 an open review request lowers the sheet (feeds anyChildModalOpen)", async () => {
-  const sheet = strip(await read("components/ExpandedCardModal.tsx"));
   const child = statement(sheet, /const childSurfaceOpen =/);
   assert(/\bplaceReviewOpen\b/.test(child), "placeReviewOpen is a child surface");
   const any = statement(sheet, /const anyChildModalOpen =/);
-  assert(/\bchildSurfaceOpen\b/.test(any), "anyChildModalOpen includes every child surface");
-  assert(/\brootSuspendedForShare\b/.test(any), "anyChildModalOpen still includes the share handoff");
+  assert(/\bchildSurfaceOpen\b/.test(any) && /\brootSuspendedForShare\b/.test(any), "anyChildModalOpen keeps both halves");
   assert(
-    /visible=\{visible && !anyChildModalOpen\}\s*onClose=\{handleRootSheetClose\}/.test(sheet),
-    "the root sheet is gated on anyChildModalOpen and closes through handleRootSheetClose",
+    /visible=\{visible && !anyChildModalOpen\}\s*onClose=\{handleRootSheetClose\}\s*onNativeShow=\{handleRootNativeShow\}\s*onNativeDismiss=\{handleRootNativeDismiss\}/.test(sheet),
+    "the root sheet is gated on anyChildModalOpen and reports its native show/dismiss",
+  );
+});
+
+Deno.test("#4381 the sheet holds the presentation slot from native show to native dismiss", async () => {
+  const sheet = strip(await read("components/ExpandedCardModal.tsx"));
+  const show = callbackBody(sheet, "handleRootNativeShow").body;
+  const dismiss = callbackBody(sheet, "handleRootNativeDismiss").body;
+  assert(/holdPlaceReviewSlot\(\)/.test(show), "native show takes the slot");
+  assert(/if \(!holdsPresentationSlot\.current\)/.test(show), "at most one hold per sheet");
+  assert(/rootShownAcknowledgement\.current\?\.resolve\(\)/.test(show), "the share handoff ack is kept");
+  assert(/releasePlaceReviewSlot\(\)/.test(dismiss), "native dismiss gives the slot back");
+  assert(/rootDismissedAcknowledgement\.current\?\.resolve\(\)/.test(dismiss), "the share handoff ack is kept");
+  assert(
+    /useEffect\(\(\) => \(\) => \{\s*if \(holdsPresentationSlot\.current\) \{\s*holdsPresentationSlot\.current = false;\s*releasePlaceReviewSlot\(\);/.test(sheet),
+    "unmounting never strands a hold",
   );
 });
 
@@ -81,4 +98,42 @@ Deno.test("#4381 lowering the sheet for the review prompt is not a close", async
   assert(/shareHandoffPhaseRef\.current !== 'idle'/.test(guard[1]), "the guard still covers the share handoff");
   assert(body.indexOf("return;") < body.indexOf("onClose()"), "onClose runs only after the guard");
   assert(/\bchildSurfaceOpen\b/.test(deps), "the callback re-binds when the review request opens or closes");
+});
+
+Deno.test("#4381 the single prompt presents only when no host holds the slot, and reports its native show/dismiss", async () => {
+  const index = strip(await readApp("app/index.tsx"));
+  assert(/const voluntaryPlaceReview = usePlaceReviewDisplayRequest\(\);/.test(index), "the mount renders the display request");
+  assert(/const voluntaryPromptPresentable = usePlaceReviewPromptPresentable\(\);/.test(index), "and reads presentability");
+  assert(
+    /visible=\{voluntaryPlaceReview \? voluntaryPromptPresentable : showReviewModal\}/.test(index),
+    "the voluntary prompt is visible only while presentable; the scheduled path is unchanged",
+  );
+  assert(/onNativeShow=\{markPlaceReviewPromptShown\}/.test(index), "the prompt's native show is reported");
+  assert(/onNativeDismiss=\{markPlaceReviewPromptDismissed\}/.test(index), "the prompt's native dismiss is reported");
+  assert(
+    /watchPlaceReviewPresentation\(\(\) => \{\s*toastManager\.error\(i18n\.t\('modals:post_experience\.open_failed_toast'\)\);/.test(index),
+    "the safety net is armed and tells the user",
+  );
+  assert((index.match(/<PostExperienceModal\b/g) ?? []).length === 1, "still exactly one mount (ORCH-1063)");
+});
+
+Deno.test("#4381 the prompt's RN Modal reports native show/dismiss through the shared adapter", async () => {
+  const modal = strip(await read("components/PostExperienceModal.tsx"));
+  assert(/import \{ NativeModalLifecycleAdapter \} from "\.\/ui\/BaseBottomSheet";/.test(modal), "reuses BaseBottomSheet's adapter");
+  assert(/<NativeModalLifecycleAdapter\s+visible=\{visible\}\s+onNativeShow=\{onNativeShow\}\s+onNativeDismiss=\{onNativeDismiss\}/.test(modal), "adapter wired to the props");
+  assert(/onShow=\{nativeLifecycle\.onNativeShow\}\s+onDismiss=\{nativeLifecycle\.onNativeDismiss\}/.test(modal), "Modal onShow/onDismiss go through the adapter");
+  const sheet = strip(await read("components/ui/BaseBottomSheet.tsx"));
+  assert(/export function NativeModalLifecycleAdapter\(/.test(sheet), "the one adapter is exported from BaseBottomSheet");
+  assert(!/function NativeModalLifecycleAdapter|Platform\.OS === 'android'/.test(modal), "no second copy of the lifecycle logic in the prompt");
+});
+
+Deno.test("#4381 the failure toast has copy in every locale", async () => {
+  for await (const entry of Deno.readDir(new URL("i18n/locales/", root))) {
+    if (!entry.isDirectory) continue;
+    const json = JSON.parse(await read(`i18n/locales/${entry.name}/modals.json`));
+    const copy = json.post_experience?.open_failed_toast;
+    assert(typeof copy === "string" && copy.length > 0, `${entry.name} has post_experience.open_failed_toast`);
+  }
+  const en = JSON.parse(await read("i18n/locales/en/modals.json"));
+  assert(en.post_experience.open_failed_toast === "Couldn't open the rating. Try again.", "en copy");
 });
