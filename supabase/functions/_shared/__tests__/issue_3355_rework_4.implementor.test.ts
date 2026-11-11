@@ -191,6 +191,48 @@ Deno.test("R4-1: a described claim on a NEW write turn needs this turn's record;
   assertEquals(followUp.text, "Your discount is **live**.");
 });
 
+Deno.test("R4-1: a follow-up 'did it go through?' is backed by the confirmed card, even with a later duplicate card waiting", async () => {
+  const ticket = (status: WriteState["status"], id: string): WriteState => ({
+    actionId: id,
+    toolName: "create_support_ticket",
+    status,
+    object: id === "t1" ? "Payout missing" : "Missing Payout 693c12",
+    args: { subject: "Payout missing" },
+    receiptText: null,
+  });
+  const reply =
+    "Your request has been sent to the team. They usually reply within a day.";
+  const out = await check({
+    host: "Did it go through?",
+    reply,
+    intent: "question",
+    asked: false,
+    states: [ticket("executed", "t1"), ticket("pending", "t2")],
+    claims: [{
+      quote: "Your request has been sent to the team.",
+      action: "sent",
+      object: "Your request",
+      kind: "support",
+    }],
+  });
+  assertEquals(out.text, reply);
+  // With no saved card before it, the waiting card is the truth.
+  const waiting = await check({
+    host: "Did it go through?",
+    reply,
+    intent: "question",
+    asked: false,
+    states: [ticket("pending", "t2")],
+    claims: [{
+      quote: "Your request has been sent to the team.",
+      action: "sent",
+      object: "Your request",
+      kind: "support",
+    }],
+  });
+  assert(!/has been sent/.test(waiting.text), waiting.text);
+});
+
 Deno.test("R4-1: exact identity only — no substring or paraphrase match", () => {
   assert(objectsMatch("FAVY10", ["favy10"]));
   assert(objectsMatch('"Lagos Food Fest"', ["Lagos Food Fest"]));

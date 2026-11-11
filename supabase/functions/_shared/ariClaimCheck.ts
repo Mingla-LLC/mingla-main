@@ -780,10 +780,19 @@ export function judgeClaim(
   const cards = evidence.filter((item) =>
     item.state !== null && kinds.has(item.kind)
   );
-  const latest = cards[cards.length - 1];
-  return latest
-    ? decide(claim, [latest], null)
-    : { backed: false, found: null, object: null };
+  if (cards.length === 0) return { backed: false, found: null, object: null };
+  // The confirmed card the reply follows: the latest saved card of the kind
+  // and anything after it (a later duplicate card waiting for Confirm does
+  // not unsave it — live answer eval, "did my request go through?").
+  let lastDone = -1;
+  cards.forEach((item, index) => {
+    if (item.status === "done") lastDone = index;
+  });
+  return decide(
+    claim,
+    lastDone >= 0 ? cards.slice(lastDone) : cards.slice(-1),
+    null,
+  );
 }
 
 /** The deciding record for a claim (see judgeClaim). */
