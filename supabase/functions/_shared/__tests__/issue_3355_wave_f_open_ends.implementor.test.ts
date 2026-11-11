@@ -48,7 +48,7 @@ import {
   ariGuideReadStatus,
   ariToolsForGuideKey,
 } from "../agentAri10xTools.ts";
-import { checkStatedSlots } from "../ariTruthGuards.ts";
+import { checkStatedSlots, preserveStatedSlots } from "../ariTruthGuards.ts";
 import {
   HISTORY_CALL_NOTE,
   isPseudoToolCallText,
@@ -565,5 +565,39 @@ Deno.test("F live: a setup answered with the model's own questions goes back onc
   assertMatch(
     source,
     /\(!modelFlowDelegated && !setupTextBounced &&\s*\(setupTextBounced = true\) &&\s*ariSetupTextIssue\(/,
+  );
+});
+
+Deno.test("F live: a discount code the host never named is asked for, not proposed", async () => {
+  const parameters = { properties: { code: {}, value_bps: {}, kind: {} } };
+  const noClient = {} as never;
+  const invented = await preserveStatedSlots({
+    toolName: "create_discount",
+    toolArgs: { code: "VIP10", kind: "code", value_bps: 1000 },
+    parameters,
+    ownerMessages: [
+      "I want to create discount codes for influencers and marketers of my event",
+    ],
+    userClient: noClient,
+  });
+  assertEquals(invented.kind, "ask");
+  const named = await preserveStatedSlots({
+    toolName: "create_discount",
+    toolArgs: { code: "FAVY10", kind: "code", value_bps: 1000 },
+    parameters,
+    ownerMessages: ['Use "FAVY10" for 10% off'],
+    userClient: noClient,
+  });
+  assertEquals(named.kind, "ok");
+  // An automatic discount has no code to name.
+  assertEquals(
+    (await preserveStatedSlots({
+      toolName: "create_discount",
+      toolArgs: { kind: "automatic", value_bps: 1000 },
+      parameters,
+      ownerMessages: ["10% off everything"],
+      userClient: noClient,
+    })).kind,
+    "ok",
   );
 });

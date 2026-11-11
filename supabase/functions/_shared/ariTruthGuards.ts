@@ -642,6 +642,26 @@ export async function preserveStatedSlots(args: {
     args.modelStated,
     args.ownerMessages,
   );
+  // #3355 Wave F (live eval): Flash proposed "VIP10, 10% off" for a host who
+  // had named no code at all. A code is the host's to choose: one the
+  // host's words never contain is asked for, never proposed.
+  // MINGLA-INVARIANT: I-ARI-NO-INVENTED-CODE | issue #3355 | A create_discount proposal whose code does not appear in the host's own recent words is replaced by a question asking for the code.
+  if (
+    args.toolName === "create_discount" && args.toolArgs.kind !== "automatic"
+  ) {
+    const proposed = normaliseAriDiscountCode(args.toolArgs.code);
+    const words = args.ownerMessages.map((message) =>
+      normaliseAriDiscountCode(message)
+    ).join(" ");
+    if (proposed && !words.includes(proposed)) {
+      return {
+        kind: "ask",
+        missing: ["code"],
+        text:
+          "Before I set this up: what code should people type at checkout? For example FAVY10. Tell me the code and how much off, and I'll prepare it for you to approve. Nothing has been saved yet.",
+      };
+    }
+  }
   const relevant = (stated.code && schemaKeys.has("code")) ||
     (stated.value_bps !== undefined && schemaKeys.has("value_bps")) ||
     (stated.ends_on && schemaKeys.has("ends_at")) ||
