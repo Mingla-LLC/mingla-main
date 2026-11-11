@@ -179,6 +179,15 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   }, [loadQueue]);
 
   useEffect(() => { setTicketInHash(selectedId); }, [selectedId]);
+  // A link to #/support?ticket=<id> (People drawer, alerts) opens that ticket.
+  useEffect(() => {
+    const onHash = () => {
+      const id = ticketIdFromHash();
+      if (id) setSelectedId(id);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   const ctx = useMemo(() => ({ openedBy, filters, search, profilesById, brandsById, me: myUserId }), [openedBy, filters, search, profilesById, brandsById, myUserId]);
   // #4382: the rail counts and the list come from the same rows, after the

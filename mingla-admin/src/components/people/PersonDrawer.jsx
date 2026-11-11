@@ -23,10 +23,61 @@ import { CONFIRM_WORDS } from "../../lib/personActions";
 import { brandRoleLabel, signInMethodLabel } from "../../lib/peopleSegments";
 import { formatDate, formatDateTime, timeAgo } from "../../lib/formatters";
 import { formatMoneyMinor } from "../../lib/moneyFormat";
+import { listPersonSupportTickets } from "../../services/supportDeskService";
+import { ticketNumberLabel } from "../../lib/supportTicketMetrics";
+
+const SUPPORT_STATUS = {
+  new: { label: "New", variant: "info" },
+  open: { label: "Open", variant: "brand" },
+  pending: { label: "Waiting", variant: "warning" },
+  resolved: { label: "Resolved", variant: "success" },
+  closed: { label: "Closed", variant: "default" },
+};
+
+// #4382 Wave 2 — this person's support tickets, each a link into the inbox.
+function PersonSupportTickets({ userId }) {
+  const [state, setState] = useState({ loading: true, error: null, rows: [] });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let live = true;
+    listPersonSupportTickets(userId)
+      .then((rows) => { if (live) setState({ loading: false, error: null, rows }); })
+      .catch((error) => { if (live) setState({ loading: false, error: error.message, rows: [] }); });
+    return () => { live = false; };
+  }, [userId, attempt]);
+  if (state.loading) return <Skeleton height={18} width="60%" />;
+  if (state.error) {
+    return <LoadError title="Couldn't load support tickets" message={state.error} onRetry={() => { setState({ loading: true, error: null, rows: [] }); setAttempt((n) => n + 1); }} />;
+  }
+  if (state.rows.length === 0) {
+    return <p className="text-sm text-[var(--color-text-secondary)]">No support tickets from this person.</p>;
+  }
+  return (
+    <ul className="flex flex-col divide-y divide-[var(--gray-200)]">
+      {state.rows.map((ticket) => {
+        const status = SUPPORT_STATUS[ticket.status] || { label: ticket.status, variant: "default" };
+        return (
+          <li key={ticket.id} className="flex flex-col gap-1 py-2.5">
+            <a href={`#/support?ticket=${encodeURIComponent(ticket.id)}`} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
+              {ticketNumberLabel(ticket)} · {ticket.subject}
+            </a>
+            <span className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+              <Badge variant={status.variant}>{status.label}</Badge>
+              <span>{ticket.requester_segment === "explorer" ? "Explorer" : "Host"}</span>
+              {ticket.origin === "staff" && <span>· opened by staff</span>}
+              <span>· {timeAgo(ticket.last_message_at || ticket.created_at)}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 const DRAWER_TABS = [
   { id: "activity", label: "Activity" },
   { id: "tickets", label: "Tickets" },
+  { id: "support", label: "Support" },
   { id: "business", label: "Business" },
   { id: "subscription", label: "Subscription" },
 ];
@@ -252,6 +303,8 @@ export function PersonDrawer({ userId, onClose, onChanged }) {
                 <p className="text-sm text-[var(--color-text-secondary)]">No tickets or RSVP orders yet. Tickets they buy or claim will appear here.</p>
               )
             )}
+
+            {tab === "support" && <PersonSupportTickets userId={userId} />}
 
             {tab === "business" && (
               <div className="flex flex-col gap-4">
