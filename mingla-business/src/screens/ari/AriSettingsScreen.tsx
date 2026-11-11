@@ -35,6 +35,7 @@ import {
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useAriKnowledge } from "../../hooks/useAriKnowledge";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import type {
   AriAgentJob,
   AriMemoryKind,
@@ -103,6 +104,9 @@ export const AriSettingsScreen: React.FC = () => {
   );
   const [memoryKind, setMemoryKind] = useState<AriMemoryKind>("preference");
   const [memoryDraft, setMemoryDraft] = useState("");
+  const [forgetTarget, setForgetTarget] = useState<AriMemoryNote | null>(null);
+  const [forgetBusy, setForgetBusy] = useState(false);
+  const [forgetError, setForgetError] = useState<string | null>(null);
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
 
   React.useEffect(() => {
@@ -190,31 +194,32 @@ export const AriSettingsScreen: React.FC = () => {
     setMemoryDraft(note.content);
   };
 
+  // #3355 rework 3 (R3-6): Alert.alert's buttons do nothing on Host web
+  // (react-native-web), so Delete was a dead tap there. The app's own
+  // cross-platform ConfirmDialog asks on every surface.
   const handleForgetMemory = (note: AriMemoryNote): void => {
-    Alert.alert(
-      "Delete this note?",
-      note.scope === "brand"
-        ? "Ari will stop using it in future conversations for everyone on the brand."
-        : "Ari will stop using it in future conversations.",
-      [
-        { text: "Keep", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await knowledge.forgetMemory(note.id);
-              if (editingMemoryId === note.id) resetMemoryComposer();
-            } catch (err) {
-              Alert.alert(
-                "Couldn't delete note",
-                err instanceof Error ? err.message : "Unknown error",
-              );
-            }
-          },
-        },
-      ],
-    );
+    setForgetError(null);
+    setForgetTarget(note);
+  };
+
+  const confirmForgetMemory = async (): Promise<void> => {
+    const note = forgetTarget;
+    if (!note) return;
+    setForgetBusy(true);
+    setForgetError(null);
+    try {
+      await knowledge.forgetMemory(note.id);
+      if (editingMemoryId === note.id) resetMemoryComposer();
+      setForgetTarget(null);
+    } catch (err) {
+      setForgetError(
+        err instanceof Error
+          ? `Couldn't delete the note: ${err.message}`
+          : "Couldn't delete the note. Try again.",
+      );
+    } finally {
+      setForgetBusy(false);
+    }
   };
 
   const handleJobControl = async (
@@ -538,6 +543,29 @@ export const AriSettingsScreen: React.FC = () => {
           </Section>
         ) : null}
       </ScrollView>
+      <ConfirmDialog
+        visible={forgetTarget !== null}
+        onClose={() => {
+          if (!forgetBusy) {
+            setForgetTarget(null);
+            setForgetError(null);
+          }
+        }}
+        onConfirm={confirmForgetMemory}
+        title="Delete this note?"
+        description={forgetTarget?.scope === "brand"
+          ? "Ari will stop using it in future conversations for everyone on the brand."
+          : "Ari will stop using it in future conversations."}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        confirmLoading={forgetBusy}
+        closeDisabled={forgetBusy}
+        errorMessage={forgetError}
+        confirmTestID="ari-memory-delete-confirm"
+        cancelTestID="ari-memory-delete-keep"
+        testID="ari-memory-delete-dialog"
+      />
     </View>
   );
 };

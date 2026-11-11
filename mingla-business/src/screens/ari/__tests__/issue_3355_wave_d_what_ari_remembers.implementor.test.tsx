@@ -58,6 +58,13 @@ jest.mock("../../../wrappers/SmartScrollView", () => ({
     require("react").createElement("scroll", null, children),
 }));
 jest.mock("expo-router", () => ({ useRouter: () => ({ back: jest.fn() }) }));
+// #3355 rework 3 (R3-6): delete asks through the app's cross-platform
+// ConfirmDialog (Alert.alert's buttons do nothing on Host web).
+jest.mock("../../../components/ui/ConfirmDialog", () => ({
+  ConfirmDialog: (props: Record<string, unknown>) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("react").createElement("confirm-dialog", props),
+}));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -200,25 +207,53 @@ describe("#3355 Wave D — What Ari remembers", () => {
     r.unmount();
   });
 
-  it("delete confirms, then forgets the note", async () => {
+  it("delete confirms, then forgets the note (never through Alert.alert)", async () => {
     const r = mount();
+    const dialog = () =>
+      r.root.findAll((n) => n.type === "confirm-dialog")[0] as Node;
+    expect(dialog().props.visible).toBe(false);
     const [button] = labelled(r, "Delete Correction memory");
     await TestRenderer.act(() => {
       (button.props.onPress as () => void)();
     });
-    expect(mockAlert).toHaveBeenCalledTimes(1);
-    const [title, body, actions] = mockAlert.mock.calls[0] as [
-      string,
-      string,
-      { text: string; onPress?: () => Promise<void> }[],
-    ];
-    expect(title).toBe("Delete this note?");
-    expect(body).toMatch(/everyone on the brand/);
+    expect(mockAlert).not.toHaveBeenCalled();
+    expect(dialog().props.visible).toBe(true);
+    expect(dialog().props.title).toBe("Delete this note?");
+    expect(String(dialog().props.description)).toMatch(/everyone on the brand/);
+    expect(dialog().props.confirmLabel).toBe("Delete");
     expect(mockForget).not.toHaveBeenCalled();
     await TestRenderer.act(async () => {
-      await actions.find((a) => a.text === "Delete")?.onPress?.();
+      await (dialog().props.onConfirm as () => Promise<void>)();
     });
     expect(mockForget).toHaveBeenCalledWith("mine-shared");
+    expect(dialog().props.visible).toBe(false);
+    expect(mockAlert).not.toHaveBeenCalled();
+    r.unmount();
+  });
+
+  it("Keep closes the dialog and forgets nothing; a failed delete says so in the dialog", async () => {
+    const r = mount();
+    const dialog = () =>
+      r.root.findAll((n) => n.type === "confirm-dialog")[0] as Node;
+    const [button] = labelled(r, "Delete Preference memory");
+    await TestRenderer.act(() => {
+      (button.props.onPress as () => void)();
+    });
+    await TestRenderer.act(() => {
+      (dialog().props.onClose as () => void)();
+    });
+    expect(dialog().props.visible).toBe(false);
+    expect(mockForget).not.toHaveBeenCalled();
+    mockForget.mockImplementationOnce(() => Promise.reject(new Error("offline")));
+    await TestRenderer.act(() => {
+      (button.props.onPress as () => void)();
+    });
+    await TestRenderer.act(async () => {
+      await (dialog().props.onConfirm as () => Promise<void>)();
+    });
+    expect(dialog().props.visible).toBe(true);
+    expect(String(dialog().props.errorMessage)).toMatch(/Couldn't delete the note: offline/);
+    expect(mockAlert).not.toHaveBeenCalled();
     r.unmount();
   });
 
