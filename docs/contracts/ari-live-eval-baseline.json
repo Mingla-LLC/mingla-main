@@ -2,17 +2,17 @@
   "schemaVersion": 1,
   "ownerIssue": "#3355",
   "description": "Ari live-eval baseline (local stack, Gemini Flash). scripts/ari/eval/gate.mjs fails a run that drops 2+ points on any suite or overall. Refresh with run-live.mjs --write-baseline after a reviewed improvement.",
-  "run_id": "live-20261111T045630Z-397a3088",
-  "ran_at": "2026-11-11T04:58:45Z",
+  "run_id": "live-20261111T052045Z-044f3197",
+  "ran_at": "2026-11-11T05:22:51Z",
   "revision": {
-    "sha": "e021dd98b80a510995749a4ddceacf54b56a3980",
-    "functions_dirty": true
+    "sha": "415e27c9ba2fcabb260939f377feec08405d5d12",
+    "functions_dirty": false
   },
   "scores": {
     "replay": 100,
-    "flows": 84.6,
+    "flows": 69.2,
     "route_table": 100,
-    "overall": 94.9
+    "overall": 89.7
   },
   "replay": [
     {
@@ -35,7 +35,7 @@
     },
     {
       "id": "event_paid_blocked",
-      "verdict": "pass"
+      "verdict": "fail"
     },
     {
       "id": "trip_create_lagos_3day",
@@ -63,7 +63,7 @@
     },
     {
       "id": "brand_gate_defer_remembered",
-      "verdict": "pass"
+      "verdict": "fail"
     },
     {
       "id": "influencer_request_discount_path",
@@ -88,19 +88,19 @@
   },
   "latency": {
     "setup_start": {
-      "n": 11,
-      "p50": 2519,
-      "p95": 2822
+      "n": 10,
+      "p50": 2398,
+      "p95": 3023
     },
     "typed_turn": {
-      "n": 11,
-      "p50": 3215,
-      "p95": 5344
+      "n": 12,
+      "p50": 2861,
+      "p95": 6301
     },
     "card_answer_or_confirm": {
-      "n": 56,
-      "p50": 62,
-      "p95": 109
+      "n": 41,
+      "p50": 138,
+      "p95": 200
     }
   }
 }

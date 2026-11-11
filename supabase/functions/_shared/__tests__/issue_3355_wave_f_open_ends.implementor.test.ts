@@ -30,6 +30,11 @@ import {
 
 import { runAgentLoop } from "../agentLoop.ts";
 import {
+  collectAriIntentHints,
+  readAriIntent,
+  routeAriTurn,
+} from "../ariIntentRead.ts";
+import {
   decideFlowTurn,
   parkedClosedNotice,
   staleFlowAnswer,
@@ -624,4 +629,49 @@ Deno.test("F live: a reply that announces a proposal and makes none goes back on
     read(AGENT_CHAT),
     /: announcesWriteWithoutCall\(text\) && !announcedWriteBounced &&\s*\(announcedWriteBounced = true\)\s*\? \{\s*code: "WRITE_PROPOSAL_REQUIRED"/,
   );
+});
+
+Deno.test("F live: a create-tool read of a new offering hints its guided setup", async () => {
+  const message = "Create an event called Defer Check";
+  const hints = collectAriIntentHints(message, null);
+  const result = await readAriIntent({
+    input: {
+      message,
+      snapshotText: "Brand: Lantern",
+      openFlow: null,
+      recentOwnerTurns: [],
+      hints,
+      toolNames: ["create_event", "create_discount"],
+    },
+    call: () =>
+      Promise.resolve({
+        intent: "tool",
+        target: "create_event",
+        confidence: 0.9,
+        stated_values: {},
+      }),
+  });
+  const route = routeAriTurn({
+    result,
+    hints,
+    openFlow: null,
+    engineOn: true,
+    message,
+    safetyReply: false,
+  });
+  assertEquals(route.startFlowHint, "create_event");
+  assert(route.offerStartFlow);
+  // A discount stays a tool, never a setup.
+  const discount = routeAriTurn({
+    result: {
+      ...result,
+      read: { ...result.read, target: "create_discount" },
+    } as typeof result,
+    hints,
+    openFlow: null,
+    engineOn: true,
+    message,
+    safetyReply: false,
+  });
+  assertEquals(discount.startFlowHint, null);
 });

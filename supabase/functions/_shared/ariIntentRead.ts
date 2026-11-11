@@ -41,7 +41,10 @@ import {
   type FlowTextIntent,
   textChoiceFor,
 } from "./ariFlows/runner.ts";
-import { ARI_START_FLOW_KEYS } from "./ariFlows/startFlowTool.ts";
+import {
+  ARI_SETUP_CREATE_TOOLS,
+  ARI_START_FLOW_KEYS,
+} from "./ariFlows/startFlowTool.ts";
 import type { FlowArtefact, FlowRun } from "./ariFlows/types.ts";
 import { LIVE_FLOW_STATUSES } from "./ariFlows/types.ts";
 import { isCreateEventPlanningRequest } from "./agentConversationPlanner.ts";
@@ -701,9 +704,21 @@ export function routeAriTurn(args: {
     ? (hints.readiness ?? classifyReadinessQuestion(args.message) ?? "all")
     : null;
 
+  // #3355 Wave F (live eval): Flash sometimes reads "Create an event called
+  // X" as the create_event TOOL. A new offering that has a guided setup is
+  // that setup (the setup asks for what the tool needs), so the read's tool
+  // target counts as the setup's hint too.
+  const setupForTool = fromModel && !live && read.intent === "tool" &&
+      read.target
+    ? Object.entries(ARI_SETUP_CREATE_TOOLS).find(([, tool]) =>
+      tool === read.target
+    )?.[0] ?? null
+    : null;
   const startFlowHint = !args.safetyReply && read.intent === "flow" &&
       read.target && ARI_START_FLOW_KEYS.includes(read.target)
     ? read.target
+    : !args.safetyReply && setupForTool
+    ? setupForTool
     : null;
   const offerStartFlow = engineOn && !args.safetyReply && !live;
   const planner = !engineOn && !args.safetyReply &&
