@@ -570,6 +570,7 @@ Deno.test("R5-17: with the judge failing, the must-catch forms are caught", asyn
       "It's up and running.",
       "Everything went through.",
       "I've created FAVY10 for you.",
+      "All set ✅",
     ]
   ) {
     const out = await check({
