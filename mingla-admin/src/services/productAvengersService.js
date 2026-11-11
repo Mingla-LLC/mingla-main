@@ -11,10 +11,11 @@ function oneBy(rows, key) {
 }
 
 export async function listProductAvengersWorkspace() {
-  const [signals, reviews, candidates, links, items, commands, drafts, cards] = await Promise.all([
+  // #4382 Wave 3: every Product item is on the board (questions too), with
+  // its reporters (linked tickets and Community ideas).
+  const [signals, reviews, candidates, links, items, commands, drafts, cards, sources] = await Promise.all([
     supabase.from("support_product_signals")
-      .select("id,signal_kind,state,title,problem_statement,product_area,user_journey,impact_summary,affected_people,priority,next_update_at,next_step,customer_reply_draft,updated_at,revision")
-      .in("signal_kind", ["bug", "feature"])
+      .select("id,signal_kind,state,title,problem_statement,product_area,user_journey,impact_summary,affected_people,priority,owner_user_id,next_update_at,next_step,customer_reply_draft,wont_do_reason,told_at,told_ticket_count,created_at,updated_at,revision")
       .order("updated_at", { ascending: false }).limit(300),
     supabase.from("product_avengers_reviews").select("*"),
     supabase.from("product_avengers_candidates").select("*").order("issue_number", { ascending: false }),
@@ -23,8 +24,9 @@ export async function listProductAvengersWorkspace() {
     supabase.from("product_avengers_commands").select("id,signal_id,action,state,error_code,requested_at,completed_at").order("requested_at", { ascending: false }).limit(500),
     supabase.from("product_customer_update_drafts").select("*").order("created_at", { ascending: false }).limit(500),
     supabase.from("community_roadmap_cards").select("id,public_title,public_body,lane,status,avengers_item_id,source_signal_id,updated_at"),
+    supabase.from("support_product_signal_sources").select("signal_id,source_kind,source_id,linked_at").order("linked_at", { ascending: true }).limit(2000),
   ]);
-  for (const result of [signals, reviews, candidates, links, items, commands, drafts, cards]) {
+  for (const result of [signals, reviews, candidates, links, items, commands, drafts, cards, sources]) {
     if (result.error) throw new Error(result.error.message || "Couldn't load Product Inbox");
   }
   const reviewBySignal = oneBy(reviews.data, "signal_id");
@@ -43,6 +45,7 @@ export async function listProductAvengersWorkspace() {
       commands: (commands.data || []).filter((row) => row.signal_id === signal.id),
       drafts: (drafts.data || []).filter((row) => row.signal_id === signal.id),
       roadmap: item ? cardByItem.get(item.id) || null : null,
+      sources: (sources.data || []).filter((row) => row.signal_id === signal.id),
     };
   });
 }
@@ -116,4 +119,48 @@ export async function verifyProductRelease(signalId, evidenceUrl) {
     p_signal_id: signalId,
     p_release_evidence_url: evidenceUrl,
   }), "Couldn't verify the release record");
+}
+
+// #4382 Wave 3 — the tickets behind the board's reporters, by id.
+export async function listReporterTickets(ticketIds) {
+  const ids = [...new Set((ticketIds || []).filter(Boolean))];
+  if (ids.length === 0) return {};
+  const rows = unwrap(await supabase.from("support_tickets")
+    .select("id,ticket_number,subject,status,visibility,origin,requester_user_id,requester_segment,brand_id")
+    .in("id", ids), "Couldn't load the reporters' tickets") || [];
+  const userIds = [...new Set(rows.map((row) => row.requester_user_id).filter(Boolean))];
+  const brandIds = [...new Set(rows.map((row) => row.brand_id).filter(Boolean))];
+  const [profiles, brands] = await Promise.all([
+    userIds.length ? supabase.from("profiles_with_segment").select("id,display_name,username,email").in("id", userIds) : Promise.resolve({ data: [], error: null }),
+    brandIds.length ? supabase.from("brands").select("id,name").in("id", brandIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  const profileById = oneBy(unwrap(profiles, "Couldn't load reporters"), "id");
+  const brandById = oneBy(unwrap(brands, "Couldn't load brands"), "id");
+  return Object.fromEntries(rows.map((row) => {
+    const person = profileById.get(row.requester_user_id);
+    return [row.id, {
+      ...row,
+      person_name: person?.display_name || person?.username || person?.email || null,
+      brand_name: brandById.get(row.brand_id)?.name || null,
+    }];
+  }));
+}
+
+// #4382 Wave 3 — Won't do, with a reason written for reporters.
+export async function setProductWontDo(signalId, expectedRevision, reason) {
+  return unwrap(await supabase.rpc("issue_4382_set_wont_do", {
+    p_signal_id: signalId,
+    p_expected_revision: expectedRevision,
+    p_reason: reason,
+  }), "Couldn't mark this Won't do");
+}
+
+// #4382 Wave 3 (D2) — Tell reporters, once. The server posts the approved
+// wording into every linked customer-visible ticket, resolves them and marks
+// the item Told; a second call is refused (already_told).
+export async function tellProductReporters(signalId, draftId) {
+  return unwrap(await supabase.rpc("issue_4382_tell_reporters", {
+    p_signal_id: signalId,
+    p_draft_id: draftId,
+  }), "Couldn't tell the reporters");
 }

@@ -1,46 +1,56 @@
+// [TEST-MOD #4382] Rewritten for the Support Desk redesign. The rules this
+// suite has always pinned still hold, now against the new files:
+//   - the inbox tells customer tickets from staff tickets, and staff threads
+//     are support tickets (no separate table);
+//   - staff reply with no promise; "Send and wait" sets one;
+//   - every workflow write is a gated RPC or support-send, never a browser
+//     table write;
+//   - Send to Product says plainly it stays inside Mingla until Triage;
+//   - no model service is embedded;
+//   - "is this already on the board?" matching is deterministic.
 import {
   assertEquals,
   assertMatch,
   assertNotMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { findRelatedSignals } from "../components/community/supportWorkflowUtils.js";
+import { searchOpenItems } from "../components/support/productBoardModel.js";
 
 const read = (relative: string) => Deno.readTextFile(new URL(`../${relative}`, import.meta.url));
 const page = await read("pages/SupportDeskPage.jsx");
+const panel = await read("components/support/TicketPanel.jsx");
+const composer = await read("components/support/SupportComposer.jsx");
+const model = await read("components/support/supportComposerModel.js");
+const metrics = await read("lib/supportTicketMetrics.js");
 const service = await read("services/supportProductWorkflowService.js");
-const modals = await read("components/community/SupportWorkflowModals.jsx");
+const desk = await read("services/supportDeskService.js");
+const sendToProduct = await read("components/support/SendToProductModal.jsx");
 const supportSend = await Deno.readTextFile(
   new URL("../../../supabase/functions/support-send/index.ts", import.meta.url),
 );
 
-Deno.test("the inbox distinguishes live chats from staff-created internal tickets", () => {
-  // [TEST-MOD-APPROVED #3988] The former literal pinned every live support row
-  // to "Live chat" and rejected the shipped brand-visible support audience.
-  // Keep both public-conversation labels bound to the audience decision.
-  assertMatch(page, /source_label:\s*row\.audience === "brand" \? "Brand-visible" : "Live chat"/);
-  assertMatch(page, /source_label:\s*"Staff-created"/);
-  assertMatch(page, /Support inbox/);
-  assertMatch(page, /No customer linked/);
-  assertMatch(page, /Internal only · no customer message was sent/);
-  assertMatch(page, /table: "support_internal_threads"/);
+Deno.test("the inbox tells customer tickets from staff tickets; staff threads are tickets", () => {
+  assertMatch(metrics, /label: `Staff · \$\{VISIBILITY_LABEL\[ticket\.visibility\] \|\| "Internal"\}`/);
+  assertMatch(metrics, /\{ value: "staff", label: "Staff" \}/);
+  assertMatch(panel, /No customer linked/);
+  assertNotMatch(`${page}${panel}${desk}`, /support_internal_threads/);
   assertMatch(page, /table: "support_product_signals"/);
+  assertMatch(page, /table: "support_tickets"/);
 });
 
-Deno.test("staff replies fail closed until an active next-update promise exists", () => {
-  assertMatch(page, /Set the next update first/);
-  assertMatch(page, /function hasActiveNextUpdate\(ticket\)/);
-  assertMatch(page, /disabled=\{acting \|\| !reply\.trim\(\) \|\| !hasActiveNextUpdate\(selectedTicket\)\}/);
-  assertMatch(supportSend, /senderIsStaff && \(!Number\.isFinite\(nextUpdateMs\) \|\| nextUpdateMs <= Date\.now\(\)\)/);
-  assertMatch(supportSend, /next_update_required/);
-  assertMatch(page, /actorMode:\s*"staff"/);
+Deno.test("staff replies need no promise; Send and wait sets one", () => {
+  assertNotMatch(supportSend, /next_update_required/);
+  assertMatch(supportSend, /p_wait_until: send\.setWaiting\?\.nextUpdateAt \?\? null/);
+  assertMatch(model, /actorMode: "staff"/);
+  assertMatch(model, /if \(!isInternal && waiting\) \{\n\s+body\.setWaiting =/);
+  assertMatch(composer, /Send and wait/);
+  assertNotMatch(composer, /hasActiveNextUpdate/);
 });
 
 Deno.test("workflow writes use gated RPCs and never a browser table mutation", () => {
   for (const rpc of [
-    "issue_3720_create_internal_thread",
-    "issue_3720_set_next_update",
-    "issue_3720_update_internal_thread",
+    "issue_4382_create_staff_ticket",
     "issue_3720_update_product_signal",
+    "issue_3988_reassign_product_signal",
   ]) assertMatch(service, new RegExp(`rpc\\("${rpc}"`));
   for (const rpc of [
     "issue_3720_create_product_signal",
@@ -48,45 +58,35 @@ Deno.test("workflow writes use gated RPCs and never a browser table mutation", (
     "issue_3720_link_product_signal_source",
     "issue_3720_link_brand_message_product_signal",
   ]) assertMatch(service, new RegExp(`"${rpc}"`));
-  assertMatch(service, /supabase\.rpc\(rpcName, params\)/);
-  assertMatch(service, /supabase\.rpc\(\s*brandMessage \? "issue_3720_link_brand_message_product_signal"/);
-  assertNotMatch(service, /\.insert\s*\(/);
-  assertNotMatch(service, /\.update\s*\(/);
+  assertMatch(desk, /rpc\("issue_4382_register_support_attachment"/);
+  for (const source of [service, desk, page, panel, composer]) {
+    assertNotMatch(source, /\.insert\s*\(/);
+    assertNotMatch(source, /\.update\s*\(/);
+    assertNotMatch(source, /\.delete\s*\(\s*\)/); // a table delete; URLSearchParams.delete(key) is fine
+  }
 });
 
-Deno.test("private Product signal UI makes the human review boundary explicit", () => {
-  assertMatch(modals, /This stays inside Mingla/);
-  assertMatch(modals, /does not create a public GitHub issue/);
-  assertMatch(modals, /Product must review it first/);
-  assertNotMatch(modals, /gh\s+issue|api\.github\.com|github_token/i);
+Deno.test("Send to Product makes the human review boundary explicit", () => {
+  assertMatch(sendToProduct, /This stays inside Mingla/);
+  assertMatch(sendToProduct, /Nothing goes to GitHub until an admin or founding partner writes public-safe wording in Triage/);
+  assertMatch(sendToProduct, /Is this already on the board\?/);
+  assertNotMatch(sendToProduct, /gh\s+issue|api\.github\.com|github_token/i);
 });
 
 Deno.test("the core workflow is deterministic and does not embed a model service", () => {
-  const source = `${page}\n${service}\n${modals}`;
+  const source = `${page}\n${panel}\n${composer}\n${service}\n${desk}\n${sendToProduct}`;
   assertNotMatch(source, /openai|anthropic|gemini|claude|embedding|vector[_-]?store/i);
-  assertMatch(modals, /findRelatedSignals\(signals, form\.title, form\.productArea\)/);
+  assertMatch(sendToProduct, /searchOpenItems\(signals, query\)/);
 });
 
-Deno.test("support workflow controls reuse the premium shared controls and keep primary actions text-only", () => {
-  // #4130 Wave 6: the status segments became the inbox filter chips.
-  assertMatch(page, /aria-pressed=\{inboxFilter === option\.id\}/);
-  assertMatch(page, /<Select/);
-  assertMatch(modals, /Select, TEXTAREA_CLASS/);
-  assertNotMatch(page, /icon=\{(?:FilePlus2|Inbox|Sparkles)\}/);
-  assertNotMatch(modals, /icon=\{(?:FilePlus2|Clock3|Lightbulb|Bug|Save)\}/);
-  assertMatch(page, /aria-label=\{`Open \$\{t\.source_label\.toLowerCase\(\)\}: \$\{t\.subject\}`\}/);
-});
-
-Deno.test("related-signal suggestions are deterministic and require meaningful overlap", () => {
+Deno.test("open-item search is deterministic, skips closed items and needs a shared word", () => {
   const signals = [
-    { id: "a", title: "Host calendar card fails to publish", product_area: "Host app" },
-    { id: "b", title: "Explorer profile photo", product_area: "Consumer app" },
-    { id: "c", title: "Calendar filters", product_area: "Host app" },
+    { id: "a", state: "new", title: "Payout page shows wrong total", product_area: "Host app · Payouts" },
+    { id: "b", state: "told", title: "Payout balance fixed", product_area: "Host app · Payouts" },
+    { id: "c", state: "planned", title: "Payout balance shows zero", product_area: "Host app" },
+    { id: "d", state: "wont_do", title: "Payout balance colour", product_area: "Host app" },
   ];
-  assertEquals(
-    findRelatedSignals(signals, "Host calendar publishing fails", "Host app")
-      .map((signal: { id: string }) => signal.id),
-    ["a", "c"],
-  );
-  assertEquals(findRelatedSignals(signals, "Different request", "Other"), []);
+  assertEquals(searchOpenItems(signals, "payout balance").map((s: { id: string }) => s.id), ["c", "a"]);
+  assertEquals(searchOpenItems(signals, "door scanner"), []);
+  assertEquals(searchOpenItems(signals, ""), []);
 });

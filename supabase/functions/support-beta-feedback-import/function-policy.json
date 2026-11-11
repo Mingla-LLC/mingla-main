@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "support-beta-feedback-import",
+  "verify_jwt": false,
+  "gateway_reason": "One-off service-role copy of beta feedback files into the private support-attachments bucket; the handler compares the service-role bearer in code.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

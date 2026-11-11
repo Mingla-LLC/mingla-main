@@ -10,7 +10,8 @@ const sendSource = await Deno.readTextFile(
 Deno.test("#3988 staff replies reach every active member of a brand-visible case", () => {
   assertStringIncludes(
     notifySource,
-    'ticket.audience === "brand" && ticket.brand_id',
+    // #4382: visibility replaced audience.
+    'ticket.visibility === "brand" && ticket.brand_id',
   );
   assertStringIncludes(notifySource, '.not("accepted_at", "is", null)');
   assertStringIncludes(notifySource, '.is("removed_at", null)');
@@ -26,6 +27,7 @@ Deno.test("#3988 any active brand member can reply through the authenticated sup
     "const isRequester = isDirectRequester || isBrandRequester",
   );
   assertStringIncludes(sendSource, '.eq("user_id", user.id)');
-  assertStringIncludes(sendSource, 'body.actorMode === "staff"');
-  assertStringIncludes(sendSource, 'body.actorMode === "requester"');
+  // #4382: request parsing moved to sendLogic.ts; the handler keeps the modes.
+  assertStringIncludes(sendSource, 'actorMode === "staff" && !isStaff');
+  assertStringIncludes(sendSource, 'actorMode === "requester" && !isRequester');
 });

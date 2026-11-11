@@ -21,7 +21,8 @@
  *     `ImagePicker.requestMediaLibraryPermissionsAsync(` token (comment-stripped).
  *  B. Each routed gate site imports from `mediaLibraryPermission` AND calls
  *     `requestGalleryPermission(`:
- *       - app-mobile/src/components/BetaFeedbackModal.tsx
+ *       - app-mobile/src/components/support/SupportNewRequestScreen.tsx
+ *       - app-mobile/src/components/support/SupportThreadScreen.tsx
  *       - app-mobile/src/components/MessageInterface.tsx
  *       - app-mobile/src/services/cameraService.ts
  *  C. NO file under app-mobile/src (except the wrapper itself and __tests__)
@@ -44,7 +45,8 @@ const root = path.join(__dirname, "..", "..", "..");
 
 const WRAPPER_REL = "app-mobile/src/utils/mediaLibraryPermission.ts";
 const SITE_RELS = [
-  "app-mobile/src/components/BetaFeedbackModal.tsx",
+  "app-mobile/src/components/support/SupportNewRequestScreen.tsx",
+  "app-mobile/src/components/support/SupportThreadScreen.tsx",
   "app-mobile/src/components/MessageInterface.tsx",
   "app-mobile/src/services/cameraService.ts",
 ];
@@ -259,7 +261,7 @@ if (failures.length > 0) {
 }
 console.log(
   "ORCH-1322 gallery-permission-wrapper-routed PASS — the shared wrapper " +
-    "short-circuits granted:true on Android and all 3 gallery gates route " +
+    "short-circuits granted:true on Android and all " + SITE_RELS.length + " gallery gates route " +
     "through requestGalleryPermission (no raw ImagePicker permission call " +
     "outside the wrapper).",
 );

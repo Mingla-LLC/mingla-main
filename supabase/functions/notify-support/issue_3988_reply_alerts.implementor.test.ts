@@ -76,7 +76,9 @@ Deno.test("a database error or a throw is reported, never treated as sent", asyn
 
 Deno.test("support-send hands notify-support the message id; notify-support enqueues before any push", async () => {
   const send = await Deno.readTextFile(new URL("../support-send/index.ts", import.meta.url));
-  assertEquals(/messageId: inserted\?\.id \?\? null/.test(send), true);
+  // [TEST-MOD #4382] the message id now comes back from the one send RPC.
+  assertEquals(send.includes("const messageId = result.message_id ?? null;"), true);
+  assertEquals(/\n\s+messageId,\n/.test(send), true);
   const notify = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   const enqueue = notify.indexOf("await enqueueReplyAlerts(admin,");
   const fallback = notify.indexOf("for (const id of await availableStaffIds(admin))");

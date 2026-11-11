@@ -224,9 +224,15 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4334: re-sealed after merging origin/main d27f8b82c0 (#4273 country switch rows kept beside the #4334 follow-up rows).
 // #4334: re-sealed after registering the tester follow-ups PostgreSQL proof (issue_4334_place_id_followups.tester) beside the implementor proof in the #1931 and #2117 lanes.
 // #4334: re-sealed after merging origin/main b9d9ba3bab (#3645 payout ledger rows kept beside the #4334 follow-up rows).
+// #4382: drop the deleted FeedbackHistorySheet.tsx from the #1540 pathScope (the file is gone; the path matched nothing); re-sealed.
+// #4382: register the ticket Product stage migration (20280613044382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
+// #4382: register the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes; re-sealed after merging origin/main b805c52b1d.
+// #4382: register the support write guards migration (20280613054382) in the replay lanes; re-sealed.
 // #4383: re-sealed after registering the Communications scheduling migration and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
 // #4383: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
-export const BOOTSTRAP_SHA256 = "ab006f2bfec36332926822904053a543b74da18918b000ed7517d74765b1e443";
+// #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
+// #4382: re-sealed after renumbering the Support Desk migrations to 20280613*4382.
+export const BOOTSTRAP_SHA256 = "3c8d145a1c22bc291c2c64297323e18472bb9fbe95516dc4239ce7d459e38a7d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

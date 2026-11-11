@@ -1,3 +1,5 @@
+// #4382 — Support → Product writes. Every write is a gated RPC; nothing here
+// inserts or updates a table from the browser.
 import { supabase } from "../lib/supabase";
 
 function unwrap(result, fallback) {
@@ -21,20 +23,11 @@ export function createClientRequestId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export async function listInternalSupportThreads() {
-  const result = await supabase
-    .from("support_internal_threads")
-    .select("id, subject, details, status, priority, linked_user_id, brand_id, brand_group_context, assigned_staff_id, next_update_at, next_update_note, created_by, created_at, updated_at, resolved_at, revision")
-    .order("updated_at", { ascending: false })
-    .limit(200);
-  return unwrap(result, "Couldn't load staff-created tickets") || [];
-}
-
 export async function listProductSignals() {
   const [signalsResult, sourcesResult] = await Promise.all([
     supabase
       .from("support_product_signals")
-      .select("id, signal_kind, state, title, problem_statement, product_area, user_journey, impact_summary, affected_people, priority, owner_user_id, next_update_at, next_step, customer_reply_draft, duplicate_of_signal_id, created_by, created_at, updated_at, revision")
+      .select("id, signal_kind, state, title, problem_statement, product_area, user_journey, impact_summary, affected_people, priority, owner_user_id, next_update_at, next_step, customer_reply_draft, duplicate_of_signal_id, wont_do_reason, told_at, told_ticket_count, created_by, created_at, updated_at, revision")
       .order("updated_at", { ascending: false })
       .limit(300),
     supabase
@@ -54,62 +47,26 @@ export async function listProductSignals() {
   return signals.map((signal) => ({ ...signal, sources: bySignal.get(signal.id) || [] }));
 }
 
-export async function createInternalSupportThread(input) {
-  const result = await supabase.rpc("issue_3720_create_internal_thread", {
+// #4382 — one staff create for every visibility (internal | person | brand).
+// Exact parameters: see issue_4382_create_staff_ticket.
+export async function createStaffSupportTicket(input) {
+  const result = await supabase.rpc("issue_4382_create_staff_ticket", {
     p_client_request_id: input.clientRequestId,
+    p_visibility: input.visibility,
     p_subject: input.subject,
     p_details: input.details,
-    p_customer_email: input.customerEmail || null,
+    p_requester_user_id: input.requesterUserId || null,
     p_brand_id: input.brandId || null,
-    p_brand_group_context: input.brandGroupContext || null,
-    p_priority: input.priority,
-    p_next_update_at: input.nextUpdateAt,
-    p_next_update_note: input.nextUpdateNote,
+    p_segment: input.segment || null,
+    p_priority: input.priority || "normal",
+    p_product_area: input.productArea || null,
+    p_assigned_staff_id: input.assignedStaffId || null,
+    p_next_update_at: input.nextUpdateAt || null,
+    p_next_update_note: input.nextUpdateNote || null,
+    p_first_message: input.firstMessage || null,
+    p_attachment_ids: input.attachmentIds || [],
   });
-  return unwrap(result, "Couldn't create the staff ticket");
-}
-
-export async function createBrandVisibleSupportTicket(input) {
-  const result = await supabase.rpc("issue_3988_create_brand_support_ticket", {
-    p_client_request_id: input.clientRequestId,
-    p_subject: input.subject,
-    p_details: input.details,
-    p_brand_id: input.brandId,
-    p_priority: input.priority,
-    p_next_update_at: input.nextUpdateAt,
-    p_next_update_note: input.nextUpdateNote,
-  });
-  return unwrap(result, "Couldn't create the brand-visible support ticket");
-}
-
-export async function setSupportNextUpdate(input) {
-  const result = await supabase.rpc("issue_3720_set_next_update", {
-    p_source_kind: input.sourceKind,
-    p_source_id: input.sourceId,
-    p_expected_revision: input.expectedRevision,
-    p_next_update_at: input.nextUpdateAt,
-    p_next_update_note: input.nextUpdateNote,
-  });
-  return unwrap(result, "Couldn't set the next update");
-}
-
-export async function updateInternalSupportThread(input) {
-  const result = await supabase.rpc("issue_3720_update_internal_thread", {
-    p_thread_id: input.threadId,
-    p_expected_revision: input.expectedRevision,
-    p_status: input.status,
-    p_priority: input.priority,
-  });
-  return unwrap(result, "Couldn't update the staff ticket");
-}
-
-export async function reassignInternalSupportThread(input) {
-  const result = await supabase.rpc("issue_3988_reassign_internal_thread", {
-    p_thread_id: input.threadId,
-    p_expected_revision: input.expectedRevision,
-    p_assigned_staff_id: input.assignedStaffId,
-  });
-  return unwrap(result, "Couldn't reassign the staff ticket");
+  return unwrap(result, "Couldn't create the support ticket");
 }
 
 export async function reassignProductSignal(input) {
@@ -159,6 +116,9 @@ export async function createProductSignal(input) {
   return unwrap(result, "Couldn't create the Product signal");
 }
 
+// Planned can go back to Triaged when the wrong issue was picked. The other
+// stages have their own doors (GitHub link, verify release, Tell reporters,
+// Won't do).
 export async function updateProductSignal(input) {
   const result = await supabase.rpc("issue_3720_update_product_signal", {
     p_signal_id: input.signalId,
@@ -169,7 +129,7 @@ export async function updateProductSignal(input) {
     p_next_step: input.nextStep,
     p_customer_reply_draft: input.customerReplyDraft,
   });
-  return unwrap(result, "Couldn't update the Product signal");
+  return unwrap(result, "Couldn't update the Product item");
 }
 
 export async function linkSourceToProductSignal(input) {

@@ -1,6 +1,8 @@
 -- #3720 Support -> Product bridge executable contract.
 -- Runs after migration replay against a disposable PostgreSQL 17 database.
--- MINGLA-INVARIANT: I-3720-SUPPORT-PRODUCT-PRIVATE | issue #3720 | Internal support threads and product signals are readable only by enabled support staff or admins and mutate only through gated RPCs.
+-- [TEST-MOD #4382] Staff threads are internal support tickets
+-- (issue_4382_create_staff_ticket); the private-workflow guarantees still hold.
+-- MINGLA-INVARIANT: I-3720-SUPPORT-PRODUCT-PRIVATE | issue #3720 | Internal support tickets and product signals are readable only by enabled support staff or admins and mutate only through gated RPCs.
 -- MINGLA-INVARIANT: I-3720-NEXT-UPDATE-HONEST | issue #3720 | Staff-created tickets and product signals require a future update promise, while live-chat promises create a customer-visible system event.
 -- MINGLA-INVARIANT: I-3720-PRODUCT-SIGNAL-NO-GITHUB-WRITE | issue #3720 | Product signals remain private Mingla records and this slice exposes no GitHub write path or browser mutation grant.
 BEGIN;
@@ -30,34 +32,28 @@ BEGIN
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
 
-  v_thread := public.issue_3720_create_internal_thread(
-    '37200000-0000-4000-8000-000000000101',
+  v_thread := public.issue_4382_create_staff_ticket(
+    '37200000-0000-4000-8000-000000000101', 'internal',
     'Host cannot find published content',
     'Support recorded the report during a call.',
-    NULL,
-    NULL,
-    'Brand pilot group',
-    'high',
+    NULL, NULL, NULL, 'high', NULL, NULL,
     now() + interval '1 day',
-    'Support will confirm the publishing state.'
+    'Support will confirm the publishing state.', NULL, ARRAY[]::uuid[]
   );
-  v_replay := public.issue_3720_create_internal_thread(
-    '37200000-0000-4000-8000-000000000101',
+  v_replay := public.issue_4382_create_staff_ticket(
+    '37200000-0000-4000-8000-000000000101', 'internal',
     'Host cannot find published content',
     'Support recorded the report during a call.',
-    NULL,
-    NULL,
-    'Brand pilot group',
-    'high',
+    NULL, NULL, NULL, 'high', NULL, NULL,
     now() + interval '1 day',
-    'Support will confirm the publishing state.'
+    'Support will confirm the publishing state.', NULL, ARRAY[]::uuid[]
   );
   IF v_thread IS DISTINCT FROM v_replay THEN
     RAISE EXCEPTION 'create_internal_thread_not_idempotent';
   END IF;
 
   v_revision := public.issue_3720_set_next_update(
-    'internal_thread', v_thread, 1, now() + interval '2 days',
+    'support_ticket', v_thread, 1, now() + interval '2 days',
     'Support will return with Product triage.'
   );
   IF v_revision <> 2 THEN
@@ -65,7 +61,8 @@ BEGIN
   END IF;
 
   BEGIN
-    PERFORM public.issue_3720_update_internal_thread(v_thread, 1, 'open', 'high');
+    PERFORM public.issue_3720_set_next_update(
+      'support_ticket', v_thread, 1, now() + interval '3 days', 'A stale promise');
   EXCEPTION WHEN sqlstate 'PT409' THEN
     v_stale := true;
   END;
@@ -75,7 +72,7 @@ BEGIN
 
   v_signal := public.issue_3720_create_product_signal(
     '37200000-0000-4000-8000-000000000102',
-    'internal_thread',
+    'support_ticket',
     v_thread,
     'bug',
     'Published content is missing',
@@ -91,20 +88,20 @@ BEGIN
   );
   IF NOT EXISTS (
     SELECT 1 FROM public.support_product_signal_sources
-     WHERE signal_id = v_signal AND source_kind = 'internal_thread' AND source_id = v_thread
+     WHERE signal_id = v_signal AND source_kind = 'support_ticket' AND source_id = v_thread
   ) THEN
     RAISE EXCEPTION 'signal_source_link_missing';
   END IF;
 
-  v_thread_two := public.issue_3720_create_internal_thread(
-    '37200000-0000-4000-8000-000000000105',
+  v_thread_two := public.issue_4382_create_staff_ticket(
+    '37200000-0000-4000-8000-000000000105', 'internal',
     'Second host reports missing content',
     'A second report should aggregate into the same Product signal.',
-    NULL, NULL, NULL, 'normal', now() + interval '1 day',
-    'Support will follow the shared Product signal.'
+    NULL, NULL, NULL, 'normal', NULL, NULL, now() + interval '1 day',
+    'Support will follow the shared Product signal.', NULL, ARRAY[]::uuid[]
   );
   v_revision := public.issue_3720_link_product_signal_source(
-    v_signal, 1, 'internal_thread', v_thread_two
+    v_signal, 1, 'support_ticket', v_thread_two
   );
   IF v_revision <> 2
      OR (SELECT affected_people FROM public.support_product_signals WHERE id = v_signal) <> 2
@@ -115,7 +112,7 @@ BEGIN
   BEGIN
     PERFORM public.issue_3720_create_product_signal(
       '37200000-0000-4000-8000-000000000103',
-      'internal_thread', v_thread, 'bug', 'Duplicate source', 'Duplicate source',
+      'support_ticket', v_thread, 'bug', 'Duplicate source', 'Duplicate source',
       'Host app', 'Publish', 'Blocked', 1, 'normal', now() + interval '1 day',
       'Review', 'We are reviewing this.'
     );
@@ -128,9 +125,9 @@ BEGIN
 
   PERFORM set_config('request.jwt.claim.sub', v_outsider::text, true);
   BEGIN
-    PERFORM public.issue_3720_create_internal_thread(
-      '37200000-0000-4000-8000-000000000104', 'Forbidden', 'Forbidden outsider',
-      NULL, NULL, NULL, 'normal', now() + interval '1 day', 'No access'
+    PERFORM public.issue_4382_create_staff_ticket(
+      '37200000-0000-4000-8000-000000000104', 'internal', 'Forbidden', 'Forbidden outsider',
+      NULL, NULL, NULL, 'normal', NULL, NULL, now() + interval '1 day', 'No access', NULL, ARRAY[]::uuid[]
     );
   EXCEPTION WHEN insufficient_privilege THEN
     v_forbidden := true;
@@ -138,7 +135,7 @@ BEGIN
   IF NOT v_forbidden THEN
     RAISE EXCEPTION 'non_operator_created_internal_thread';
   END IF;
-  IF (SELECT count(*) FROM public.support_internal_threads) <> 0
+  IF (SELECT count(*) FROM public.support_tickets) <> 0
      OR (SELECT count(*) FROM public.support_product_signals) <> 0
      OR (SELECT count(*) FROM public.support_product_signal_sources) <> 0
      OR (SELECT count(*) FROM public.support_product_workflow_audit) <> 0 THEN
@@ -155,9 +152,8 @@ BEGIN
      WHERE n.nspname = 'public'
        AND p.proname IN (
          'issue_3720_support_operator_required',
-         'issue_3720_create_internal_thread',
+         'issue_4382_create_staff_ticket',
          'issue_3720_set_next_update',
-         'issue_3720_update_internal_thread',
          'issue_3720_create_product_signal',
          'issue_3720_update_product_signal',
          'issue_3720_link_product_signal_source'
@@ -170,8 +166,8 @@ BEGIN
   IF has_table_privilege('authenticated', 'public.support_tickets', 'UPDATE') THEN
     RAISE EXCEPTION 'browser_mutation_privilege_exposed:support_tickets_update';
   END IF;
-  IF has_table_privilege('authenticated', 'public.support_internal_threads', 'INSERT') THEN
-    RAISE EXCEPTION 'browser_mutation_privilege_exposed:internal_threads_insert';
+  IF has_table_privilege('authenticated', 'public.support_tickets', 'INSERT') THEN
+    RAISE EXCEPTION 'browser_mutation_privilege_exposed:support_tickets_insert';
   END IF;
   IF has_table_privilege('authenticated', 'public.support_product_signals', 'UPDATE') THEN
     RAISE EXCEPTION 'browser_mutation_privilege_exposed:product_signals_update';
@@ -183,7 +179,7 @@ BEGIN
          SELECT 1 FROM pg_publication_tables
           WHERE pubname = 'supabase_realtime'
             AND schemaname = 'public'
-            AND tablename = 'support_internal_threads'
+            AND tablename = 'support_tickets'
        )
        OR NOT EXISTS (
          SELECT 1 FROM pg_publication_tables

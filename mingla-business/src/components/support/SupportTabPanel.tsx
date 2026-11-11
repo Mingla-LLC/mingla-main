@@ -5,13 +5,12 @@
  * Community · Support · Guides without losing Phase 0 ticket UX.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -23,65 +22,65 @@ import {
 import { SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
 import { useSupportIsOnline } from "../../hooks/useCommunity";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
-import {
-  useCreateSupportTicket,
-  useSupportTickets,
-} from "../../hooks/useSupportTickets";
+import { useSupportTickets } from "../../hooks/useSupportTickets";
 import type { SupportTicket } from "../../services/supportService";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Pill, type PillVariant } from "../ui/Pill";
-
-const SUBJECT_MAX = 200;
+import { SupportNewRequestForm } from "./SupportNewRequestForm";
+import { formatTicketNumber, supportCopy } from "./supportRequestModel";
 
 function statusPill(status: string): { variant: PillVariant; label: string } {
   switch (status) {
     case "new":
     case "open":
-      return { variant: "live", label: "OPEN" };
+      return { variant: "live", label: supportCopy("status.open") };
     case "pending":
-      return { variant: "warn", label: "PENDING" };
+      return { variant: "warn", label: supportCopy("status.pending") };
     case "resolved":
-      return { variant: "info", label: "RESOLVED" };
+      return { variant: "info", label: supportCopy("status.resolved") };
     case "closed":
-      return { variant: "draft", label: "CLOSED" };
+      return { variant: "draft", label: supportCopy("status.closed") };
     default:
-      return { variant: "draft", label: status.toUpperCase() };
+      return { variant: "draft", label: status };
   }
+}
+
+function rowMeta(ticket: SupportTicket): string {
+  const parts: string[] = [];
+  const number = formatTicketNumber(ticket.ticket_number);
+  if (number) parts.push(number);
+  if (ticket.topic) parts.push(supportCopy(`topic.${ticket.topic}`));
+  if (ticket.visibility === "brand") parts.push(supportCopy("panel.shared_with_brand"));
+  const upcoming = ticket.next_update_at && Date.parse(ticket.next_update_at) > Date.now();
+  parts.push(
+    upcoming
+      ? supportCopy("panel.next_update", { when: new Date(ticket.next_update_at as string).toLocaleString() })
+      : supportCopy("panel.updated", { when: new Date(ticket.last_message_at).toLocaleDateString() }),
+  );
+  return parts.join(" · ");
 }
 
 export type SupportTabPanelProps = {
   onToast: (message: string) => void;
+  /** Open straight on the new-request form (the closed thread's "Start a new request"). */
+  startNew?: boolean;
 };
 
 export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
   onToast,
+  startNew = false,
 }) => {
   const router = useRouter();
   const { data: tickets, isLoading, isError, refetch } = useSupportTickets();
-  const { mutateAsync: createTicket, isPending: creating } =
-    useCreateSupportTicket();
   const { online, isLoading: onlineLoading } = useSupportIsOnline();
   const { isWideDesktop } = useResponsiveLayout();
+  const [composing, setComposing] = useState(startNew);
 
-  const [subject, setSubject] = useState("");
-
-  const handleStartChat = useCallback(async (): Promise<void> => {
-    const trimmed = subject.trim();
-    if (trimmed.length === 0 || creating) return;
-    try {
-      const ticketId = await createTicket({ subject: trimmed });
-      setSubject("");
-      router.push(`/support/${ticketId}` as never);
-    } catch (err) {
-      onToast(
-        err instanceof Error
-          ? err.message
-          : "Couldn't start the chat. Tap to try again.",
-      );
-    }
-  }, [subject, creating, createTicket, router, onToast]);
+  useEffect(() => {
+    if (startNew) setComposing(true);
+  }, [startNew]);
 
   const handleOpenTicket = useCallback(
     (ticketId: string): void => {
@@ -90,7 +89,13 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
     [router],
   );
 
-  const canStart = subject.trim().length > 0 && !creating;
+  const handleCreated = useCallback(
+    (ticketId: string): void => {
+      setComposing(false);
+      router.push(`/support/${ticketId}` as never);
+    },
+    [router],
+  );
 
   return (
     <View style={styles.col}>
@@ -98,11 +103,7 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
         <View
           style={[styles.banner, online ? styles.bannerOnline : styles.bannerAway]}
           accessibilityRole="text"
-          accessibilityLabel={
-            online
-              ? "Support is online"
-              : "Support is away — we'll reply when we're back"
-          }
+          accessibilityLabel={online ? supportCopy("panel.online") : supportCopy("panel.away")}
         >
           <View
             style={[
@@ -111,9 +112,7 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
             ]}
           />
           <Text style={styles.bannerText}>
-            {online
-              ? "Support is online"
-              : "Support is away — we'll reply when we're back"}
+            {online ? supportCopy("panel.online") : supportCopy("panel.away")}
           </Text>
         </View>
       ) : null}
@@ -125,27 +124,25 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
             isWideDesktop && styles.primaryColumnWide,
           ]}
         >
-          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-            <Text style={styles.cardTitle}>Need a hand?</Text>
-            <Text style={styles.cardBody}>
-              Start a chat and {SUPPORT_HOST_FACING_AGENT} will reply right here.
-              Add a short subject so we know what you need.
-            </Text>
-            <TextInput
-              value={subject}
-              onChangeText={setSubject}
-              placeholder="What's it about? (e.g. payouts, a stuck event)"
-              placeholderTextColor={textTokens.tertiary}
-              style={styles.subjectInput}
-              maxLength={SUBJECT_MAX}
-              editable={!creating}
-              accessibilityLabel="Subject"
-              returnKeyType="done"
-              onSubmitEditing={() => void handleStartChat()}
+          {composing ? (
+            <SupportNewRequestForm
+              onCancel={() => setComposing(false)}
+              onCreated={handleCreated}
+              onToast={onToast}
             />
-            <Button label="Start a chat" leadingIcon="chat" onPress={handleStartChat} loading={creating} disabled={!canStart} />
-            {!canStart && !creating ? <Text style={styles.disabledHint}>Add a subject to start</Text> : null}
-          </GlassCard>
+          ) : (
+            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+              <Text style={styles.cardTitle}>{supportCopy("panel.new_request")}</Text>
+              <Text style={styles.cardBody}>
+                {supportCopy("panel.new_request_hint", { agent: SUPPORT_HOST_FACING_AGENT })}
+              </Text>
+              <Button
+                label={supportCopy("panel.new_request")}
+                leadingIcon="plus"
+                onPress={() => setComposing(true)}
+              />
+            </GlassCard>
+          )}
         </View>
         <View
           style={[
@@ -153,35 +150,45 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
             isWideDesktop && styles.supportColumnWide,
           ]}
         >
-          <Text style={styles.sectionLabel}>My support requests</Text>
+          <Text style={styles.sectionLabel}>{supportCopy("panel.my_requests")}</Text>
           {isLoading ? (
             <View style={styles.listState}><ActivityIndicator color={textTokens.secondary} /></View>
           ) : isError ? (
             <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-              <Text style={styles.cardBody}>We couldn&apos;t load your requests just now.</Text>
-              <Button label="Try again" variant="secondary" onPress={() => void refetch()} />
+              <Text style={styles.cardBody}>{supportCopy("panel.load_error")}</Text>
+              <Button label={supportCopy("panel.try_again")} variant="secondary" onPress={() => void refetch()} />
             </GlassCard>
           ) : tickets.length === 0 ? (
             <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-              <Text style={styles.emptyTitle}>No requests yet</Text>
-              <Text style={styles.cardBody}>When you start a chat, it&apos;ll show up here so you can pick the conversation back up anytime.</Text>
+              <Text style={styles.emptyTitle}>{supportCopy("panel.empty_title")}</Text>
+              <Text style={styles.cardBody}>{supportCopy("panel.empty_body")}</Text>
             </GlassCard>
           ) : (
             <View style={styles.list}>
               {tickets.map((ticket: SupportTicket) => {
                 const pill = statusPill(ticket.status);
                 return (
-                  <Pressable key={ticket.id} onPress={() => handleOpenTicket(ticket.id)} accessibilityRole="button" accessibilityLabel={`Open support request: ${ticket.subject}`} style={({ pressed }) => [pressed && styles.rowPressed]}>
+                  <Pressable
+                    key={ticket.id}
+                    onPress={() => handleOpenTicket(ticket.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={supportCopy("panel.open_request", {
+                      number: formatTicketNumber(ticket.ticket_number),
+                      subject: ticket.subject,
+                    })}
+                    style={({ pressed }) => [pressed && styles.rowPressed]}
+                  >
                     <GlassCard variant="elevated" radius="md" padding={spacing.md}>
                       <View style={styles.rowTop}><Text style={styles.rowSubject} numberOfLines={1}>{ticket.subject}</Text><Pill variant={pill.variant}>{pill.label}</Pill></View>
                       <View style={styles.rowBottom}>
-                        <Text style={styles.rowMeta} numberOfLines={1}>{ticket.audience === "brand" ? "Shared with your brand · " : ""}{ticket.next_update_at ? `Next update ${new Date(ticket.next_update_at).toLocaleString()}` : `Updated ${new Date(ticket.last_message_at).toLocaleDateString()}`}</Text>
+                        <Text style={styles.rowMeta} numberOfLines={1}>{rowMeta(ticket)}</Text>
                         <Icon name="chevR" size={16} color={textTokens.tertiary} />
                       </View>
                     </GlassCard>
                   </Pressable>
                 );
               })}
+              <Text style={styles.listNote}>{supportCopy("panel.my_requests_note")}</Text>
             </View>
           )}
         </View>
@@ -246,25 +253,6 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     marginBottom: spacing.md,
   },
-  subjectInput: {
-    minHeight: 46,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 12,
-    overflow: "hidden",
-    color: textTokens.primary,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    marginBottom: spacing.md,
-    letterSpacing: 0,
-  },
-  disabledHint: {
-    marginTop: spacing.xs,
-    textAlign: "center",
-    color: textTokens.tertiary,
-    fontSize: 12,
-  },
   sectionLabel: {
     fontSize: 13,
     fontWeight: "600",
@@ -305,6 +293,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginTop: spacing.sm,
+  },
+  listNote: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    textAlign: "center",
+    paddingTop: spacing.xs,
   },
   rowMeta: {
     flex: 1,

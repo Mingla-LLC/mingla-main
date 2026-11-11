@@ -1,22 +1,29 @@
 /**
- * META-ORCH-1104 Phase 0 — support-send.
+ * support-send — the one way a person or Support staff adds to a ticket.
  *
- * Inserts a message into a support ticket's conversation. Allowed senders:
- * the requester (their own ticket) OR support staff/admin. Side effects:
- *   - sets first_response_at on the FIRST staff message;
- *   - bumps last_message_at (the queue sort key);
- *   - dispatches push via the internal notify-support fan-out (D6).
+ * Body: { ticketId, content?, attachmentIds?: uuid[], isInternal?: boolean,
+ *         setWaiting?: { nextUpdateAt, note }, actorMode?: "staff"|"requester" }
  *
- * Staff inserts go through the option-b RLS INSERT policy (the user client, so
- * the messages_support_staff_insert + restrictive broadcast-only policies both
- * apply); the requester inserts as a participant. Status side-effects + the
- * last_message_at/first_response_at bump use the service-role client.
+ * Allowed senders: the requester or an active member of a brand-visible
+ * ticket's brand, or Support staff/admin. Internal notes and "Send and wait"
+ * are staff only. The database function issue_4382_post_support_message then
+ * checks everything again and writes the message, attaches the files, applies
+ * the status rules (#4382: a customer reply reopens a Waiting or Resolved
+ * ticket; a closed ticket refuses replies; staff may reply with no promise)
+ * and enqueues the Explorer reply push. This function then asks
+ * notify-support for the Host and staff fan-out. Internal notes notify nobody.
  *
- * Auth template = admin-review-venue-claim. verify_jwt = true (config.toml).
+ * verify_jwt = true (config.toml).
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  mapPostError,
+  parseSendRequest,
+  staffOnlyViolation,
+  TICKET_CLOSED_MESSAGE,
+} from "./sendLogic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -35,13 +42,6 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function isUuid(v: unknown): v is string {
-  return typeof v === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-}
-
-const VALID_MESSAGE_TYPES = ["text", "image", "file"] as const;
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -50,25 +50,10 @@ serve(async (req) => {
     const authHeader = req.headers.get("authorization");
     if (!authHeader) return json({ error: "No authorization header" }, 401);
 
-    const body = await req.json().catch(() => null) as
-      | { ticketId?: unknown; content?: unknown; messageType?: unknown; actorMode?: unknown }
-      | null;
-    const ticketId = body?.ticketId;
-    if (!isUuid(ticketId)) return json({ error: "ticketId_required" }, 400);
-    const content = typeof body?.content === "string" ? body.content.trim() : "";
-    if (content.length === 0) return json({ error: "content_required" }, 400);
-    const messageTypeRaw = typeof body?.messageType === "string" ? body.messageType : "text";
-    const messageType = (VALID_MESSAGE_TYPES as readonly string[]).includes(messageTypeRaw)
-      ? messageTypeRaw
-      : "text";
-    const actorMode = body?.actorMode === undefined
-      ? null
-      : body.actorMode === "staff" || body.actorMode === "requester"
-      ? body.actorMode
-      : null;
-    if (body?.actorMode !== undefined && actorMode === null) {
-      return json({ error: "invalid_actor_mode" }, 400);
-    }
+    const parsed = parseSendRequest(await req.json().catch(() => null));
+    if (!parsed.ok) return json({ error: parsed.error }, parsed.status);
+    const send = parsed.value;
+    const { ticketId, actorMode } = send;
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
@@ -78,20 +63,20 @@ serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Resolve the ticket + its conversation. service-role read so we have the
-    // requester/assignee regardless of the caller's RLS view.
     const { data: ticket, error: tErr } = await admin
       .from("support_tickets")
-      .select("id, requester_user_id, assigned_staff_id, conversation_id, first_response_at, next_update_at, audience, brand_id")
+      .select("id, requester_user_id, visibility, brand_id, status")
       .eq("id", ticketId)
       .maybeSingle();
     if (tErr) return json({ error: tErr.message }, 500);
     if (!ticket) return json({ error: "ticket_not_found" }, 404);
 
-    // Authorize: requester (own ticket) OR staff/admin.
-    const isDirectRequester = ticket.requester_user_id === user.id;
+    // Authorize: requester (own ticket), active brand member of a brand
+    // ticket, or staff/admin. Nobody but staff touches an internal ticket.
+    const isDirectRequester = ticket.visibility !== "internal" &&
+      ticket.requester_user_id === user.id;
     let isBrandRequester = false;
-    if (ticket.audience === "brand" && ticket.brand_id) {
+    if (ticket.visibility === "brand" && ticket.brand_id) {
       const { data: membership } = await admin
         .from("brand_team_members")
         .select("id")
@@ -115,12 +100,10 @@ serve(async (req) => {
     // the Support desk as staff. The calling surface makes that intent explicit;
     // older clients are inferred without changing their existing behavior.
     const senderIsStaff = actorMode === "staff" || (actorMode === null && !isRequester && isStaff);
-    // I-3720-NEXT-UPDATE-HONEST: a staff reply must not leave the customer
-    // without a concrete communication promise. Requesters can always add more
-    // context to their own ticket; the gate applies only to staff replies.
-    const nextUpdateMs = ticket.next_update_at ? Date.parse(ticket.next_update_at) : Number.NaN;
-    if (senderIsStaff && (!Number.isFinite(nextUpdateMs) || nextUpdateMs <= Date.now())) {
-      return json({ error: "next_update_required" }, 422);
+    const staffOnly = staffOnlyViolation(send, senderIsStaff);
+    if (staffOnly) return json({ error: staffOnly }, 403);
+    if (ticket.status === "closed") {
+      return json({ error: "ticket_closed", message: TICKET_CLOSED_MESSAGE }, 409);
     }
 
     let senderDisplayName: string | null = null;
@@ -150,68 +133,74 @@ serve(async (req) => {
       )?.trim() ?? "Mingla teammate";
     }
 
-    // Insert the message. Use the USER client so the RLS INSERT policies
-    // (participant path for the requester, messages_support_staff_insert for
-    // staff) AND the restrictive broadcast-only policy both apply (defense in
-    // depth — the same auth.uid() that passed the gate above).
-    const { data: inserted, error: insErr } = await userClient
-      .from("messages")
-      .insert({
-        conversation_id: ticket.conversation_id,
-        sender_id: user.id,
-        content,
-        message_type: messageType,
-        sender_display_name_snapshot: senderDisplayName,
-        sender_role_snapshot: senderIsStaff ? "Mingla Support" : null,
-      })
-      .select("id")
-      .single();
-    if (insErr) return json({ error: insErr.message }, 403);
-
-    // Side-effects (service-role): bump last_message_at; set first_response_at
-    // on the FIRST staff message.
-    const nowIso = new Date().toISOString();
-    const patch: Record<string, unknown> = { last_message_at: nowIso };
-    if (senderIsStaff && !ticket.first_response_at) {
-      patch.first_response_at = nowIso;
+    // One atomic write: message + attachments + status + audit + Explorer push.
+    const { data: posted, error: postErr } = await admin.rpc(
+      "issue_4382_post_support_message",
+      {
+        p_ticket_id: ticketId,
+        p_sender_id: user.id,
+        p_as_staff: senderIsStaff,
+        p_content: send.content,
+        p_attachment_ids: send.attachmentIds,
+        p_is_internal: send.isInternal,
+        p_wait_until: send.setWaiting?.nextUpdateAt ?? null,
+        p_wait_note: send.setWaiting?.note ?? null,
+        p_sender_display_name: senderDisplayName,
+      },
+    );
+    if (postErr) {
+      const mapped = mapPostError(postErr);
+      if (mapped.error === "ticket_closed") {
+        return json({ error: "ticket_closed", message: TICKET_CLOSED_MESSAGE }, 409);
+      }
+      if (mapped.status === 500) console.error("[support-send] post failed", postErr);
+      return json({ error: mapped.error }, mapped.status);
     }
-    await admin.from("support_tickets").update(patch).eq("id", ticketId);
+    const result = (posted ?? {}) as {
+      message_id?: string;
+      is_internal?: boolean;
+      status?: string;
+      previous_status?: string;
+      reopened?: boolean;
+    };
+    const messageId = result.message_id ?? null;
 
-    await admin.from("support_audit_log").insert({
-      actor_user_id: user.id,
-      action: senderIsStaff ? "staff_reply" : "requester_reply",
+    // Internal notes notify nobody. Everything else: Host requester or brand
+    // team push, or the staff reply alerts (D6 / #3988).
+    if (result.is_internal !== true) {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/notify-support`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            event: "message",
+            ticketId,
+            senderUserId: user.id,
+            senderIsStaff,
+            senderDisplayName,
+            messageId,
+          }),
+        });
+      } catch (pushErr) {
+        console.warn(
+          "[support-send] notify-support dispatch threw (non-fatal):",
+          pushErr instanceof Error ? pushErr.message : String(pushErr),
+        );
+      }
+    }
+
+    return json({
+      ok: true,
       ticket_id: ticketId,
-      metadata: { message_id: inserted?.id ?? null },
+      message_id: messageId,
+      is_internal: result.is_internal === true,
+      status: result.status ?? null,
+      previous_status: result.previous_status ?? null,
+      reopened: result.reopened === true,
     });
-
-    // Push fan-out (D6) — internal notify-support producer, service-role bearer.
-    // staff reply → push the requester; requester reply → push staff (assignee +
-    // available roster). Non-fatal: a push failure never fails the send.
-    try {
-      await fetch(`${SUPABASE_URL}/functions/v1/notify-support`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          event: "message",
-          ticketId,
-          senderUserId: user.id,
-          senderIsStaff,
-          senderDisplayName,
-          // #3988 — one reply alert per message and recipient.
-          messageId: inserted?.id ?? null,
-        }),
-      });
-    } catch (pushErr) {
-      console.warn(
-        "[support-send] notify-support dispatch threw (non-fatal):",
-        pushErr instanceof Error ? pushErr.message : String(pushErr),
-      );
-    }
-
-    return json({ ok: true, ticket_id: ticketId, message_id: inserted?.id ?? null });
   } catch (e) {
     console.error("[support-send]", e);
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);

@@ -6,6 +6,10 @@
  * when transitioning to resolved/closed; clears it on reopen. Illegal
  * transitions are rejected (T-2.4).
  *
+ * #4382: the status trigger on support_tickets tells the requester (person
+ * tickets) or every active brand member (brand tickets) about the change;
+ * internal tickets tell nobody.
+ *
  * Auth template = admin-review-venue-claim. verify_jwt = true (config.toml).
  */
 
@@ -16,6 +20,7 @@ import {
   isSupportStatus,
   resolvedAtForTransition,
   type SupportStatus,
+  waitingNeedsNextUpdate,
 } from "./statusLogic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -86,7 +91,7 @@ serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: ticket, error: readErr } = await admin
       .from("support_tickets")
-      .select("status, resolved_at")
+      .select("status, resolved_at, next_update_at")
       .eq("id", ticketId)
       .maybeSingle();
     if (readErr) return json({ error: readErr.message }, 500);
@@ -99,6 +104,13 @@ serve(async (req) => {
       const to = wantStatus as SupportStatus;
       if (!isLegalTransition(from, to)) {
         return json({ error: "illegal_transition", from, to }, 422);
+      }
+      // #4382: Waiting needs a next-update time ("Send and wait" sets both).
+      if (
+        from !== to &&
+        waitingNeedsNextUpdate(to, (ticket.next_update_at as string | null) ?? null)
+      ) {
+        return json({ error: "next_update_required" }, 422);
       }
       patch.status = to;
       patch.resolved_at = resolvedAtForTransition(
