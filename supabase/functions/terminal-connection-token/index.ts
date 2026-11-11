@@ -35,7 +35,7 @@ import {
 import {
   identityAddressOf,
   retrieveAccountIdentity,
-} from "../_shared/stripeBlueprintClient.ts";
+} from "../_shared/stripeAccountIdentity.ts";
 import { isUuid } from "../_shared/doorPay.ts";
 
 export interface TerminalConnectionTokenDeps {

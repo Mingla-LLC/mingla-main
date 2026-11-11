@@ -58,6 +58,7 @@ RETURNS TABLE(provider text, currency text, tap_to_pay boolean)
 LANGUAGE sql IMMUTABLE PARALLEL SAFE
 SET search_path TO 'public', 'pg_temp'
 AS $function$
+  -- orch-strict-grep-allow offering-currency-list: bank-country to payout-currency map (which currency a bank in each country is paid in), not a list of allowed offering currencies; supported_brand_currencies stays the only allow-list, and the bank-parity pin keeps this map and that table in step.
   SELECT m.provider, m.currency, m.tap_to_pay
   FROM (VALUES
     ('US','stripe','USD',true),  ('GB','stripe','GBP',true),

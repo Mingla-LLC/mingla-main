@@ -12,7 +12,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { createTerminalConnectionTokenHandler } from "../index.ts";
 import { terminalAddressFor } from "../../_shared/doorTerminal.ts";
-import { identityAddressOf } from "../../_shared/stripeBlueprintClient.ts";
+import { identityAddressOf } from "../../_shared/stripeAccountIdentity.ts";
 import { FakeDb, fakeStripe, post } from "../../_shared/__tests__/doorPayFakes.ts";
 
 const BRAND = "43890000-0000-4000-8000-0000000000c3";

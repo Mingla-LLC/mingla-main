@@ -3205,6 +3205,7 @@
     {
       "capability_key": "payouts-stripe",
       "paths": [
+        "supabase/functions/_shared/stripeAccountIdentity.ts",
         "supabase/functions/_shared/stripeBlueprintClient.ts",
         "supabase/functions/_shared/stripeSupportedCountries.ts"
       ]
