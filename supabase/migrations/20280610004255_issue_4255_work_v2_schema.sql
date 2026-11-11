@@ -91,12 +91,12 @@ INSERT INTO public.ops_work_statuses (id, name, color, grp, position, created_by
   ('a4255000-0000-4000-8000-000000000003', 'Done',        '#1f8a5b', 'done',  2, 'system@usemingla.com', 'system@usemingla.com');
 
 -- The column a card lands in when only its group is known: the first live
--- column of that group.
+-- column of that group. The retired status person (#4270) reads as To do.
 CREATE FUNCTION public.ops_status_default(p_grp text) RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
   SELECT s.id FROM public.ops_work_statuses s
-   WHERE s.grp = p_grp AND s.archived_at IS NULL
+   WHERE s.grp = CASE WHEN p_grp = 'person' THEN 'todo' ELSE p_grp END AND s.archived_at IS NULL
    ORDER BY s.position, s.created_at, s.id LIMIT 1
 $$;
 REVOKE ALL ON FUNCTION public.ops_status_default(text) FROM PUBLIC, anon, authenticated;
@@ -255,6 +255,10 @@ REVOKE ALL ON FUNCTION public.ops_4255_status_sync() FROM PUBLIC, anon, authenti
 CREATE TRIGGER ops_4255_a_status_sync
   BEFORE INSERT OR UPDATE OF status, status_id ON public.ops_work_cards
   FOR EACH ROW EXECUTE FUNCTION public.ops_4255_status_sync();
+-- ALWAYS: it holds even for a session in replica mode (fixtures and bulk
+-- loads write rows with ordinary triggers off; a card must still land in a
+-- column).
+ALTER TABLE public.ops_work_cards ENABLE ALWAYS TRIGGER ops_4255_a_status_sync;
 
 -- (b) The tree: depth comes from the parent, no cycles, at most two levels,
 --     no open subtask under a closed card, subtasks keep a position.
@@ -317,6 +321,7 @@ REVOKE ALL ON FUNCTION public.ops_4255_tree_guard() FROM PUBLIC, anon, authentic
 CREATE TRIGGER ops_4255_b_tree_guard
   BEFORE INSERT OR UPDATE OF parent_id, depth, status, status_id ON public.ops_work_cards
   FOR EACH ROW EXECUTE FUNCTION public.ops_4255_tree_guard();
+ALTER TABLE public.ops_work_cards ENABLE ALWAYS TRIGGER ops_4255_b_tree_guard;
 
 -- A card that moves brings its subtasks' depth along.
 CREATE FUNCTION public.ops_4255_tree_follow() RETURNS trigger
@@ -681,17 +686,32 @@ COMMENT ON FUNCTION public.ops_4255_plan_to_subtasks() IS
   'Issue #4255. One-time move of every card''s plan steps into subtasks; called once by its migration (tested directly by issue_4255_work_v2.implementor.pg17.test.sql). Internal: no client can call it.';
 SELECT public.ops_4255_plan_to_subtasks();
 
--- (b) Notes become thread messages, with the teammates each one tagged.
-INSERT INTO public.ops_work_messages (card_id, author_email, via, chat, body_md, mentions, event_id, created_at)
-SELECT e.card_id, e.actor_email, e.via, e.chat, left(e.body, 10000),
-       COALESCE((SELECT array_agg(DISTINCT lower(btrim(u.email)) ORDER BY lower(btrim(u.email)))
-                   FROM public.team_mentions m JOIN auth.users u ON u.id = m.target_user_id
-                  WHERE m.source_kind = 'work_card' AND m.source_id = e.id AND u.email IS NOT NULL), ARRAY[]::text[]),
-       e.id, e.at
-  FROM public.ops_work_events e
- WHERE e.action = 'note' AND e.body IS NOT NULL AND btrim(e.body) <> ''
-   AND NOT EXISTS (SELECT 1 FROM public.ops_work_messages x WHERE x.event_id = e.id)
- ORDER BY e.at;
+-- (b) Notes become thread messages, with the teammates each one tagged. The
+--     note event stays (it is what each notice points at) and the message
+--     keeps it, so nothing is copied twice.
+CREATE FUNCTION public.ops_4255_notes_to_messages() RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_n integer;
+BEGIN
+  INSERT INTO public.ops_work_messages (card_id, author_email, via, chat, body_md, mentions, event_id, created_at)
+  SELECT e.card_id, e.actor_email, e.via, e.chat, left(e.body, 10000),
+         COALESCE((SELECT array_agg(DISTINCT lower(btrim(u.email)) ORDER BY lower(btrim(u.email)))
+                     FROM public.team_mentions m JOIN auth.users u ON u.id = m.target_user_id
+                    WHERE m.source_kind = 'work_card' AND m.source_id = e.id AND u.email IS NOT NULL), ARRAY[]::text[]),
+         e.id, e.at
+    FROM public.ops_work_events e
+   WHERE e.action = 'note' AND e.body IS NOT NULL AND btrim(e.body) <> ''
+     AND NOT EXISTS (SELECT 1 FROM public.ops_work_messages x WHERE x.event_id = e.id)
+   ORDER BY e.at;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN v_n;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ops_4255_notes_to_messages() FROM PUBLIC, anon, authenticated, service_role;
+COMMENT ON FUNCTION public.ops_4255_notes_to_messages() IS
+  'Issue #4255. One-time copy of every note into its card''s thread; called once by its migration and safe to repeat (a note already copied is skipped). Internal.';
+SELECT public.ops_4255_notes_to_messages();
 
 -- (c) Each card's Files link becomes a link file.
 INSERT INTO public.ops_work_files (card_id, kind, name, url, from_files_url, added_by, added_via, added_at, archived_at, archived_by)

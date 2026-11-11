@@ -1,4 +1,5 @@
 -- Issue #3980 synced program, Wave 1 rework -- implementor regression suite
+-- #4255: a card's plan is read from its subtasks now (ops_plan_from_subtasks); the plan column is retired and stays empty.
 -- for the tester's FAIL, on the fully replayed PG17 schema. Each block turns
 -- one defect probe into a permanent check:
 --   D4   a deploy whose result never arrives becomes a "Deploy still pending"
@@ -370,10 +371,10 @@ begin
   v := pg_temp.t3980w_chat('KX', 'bbbbbbbbbbbbbbbb', 'update_work', format($j${"id":"%s","expected_revision":%s,"changes":{"plan":[{"n":1,"text":"Call the host","tool":"person","status":"done","result":{"said":"yes"}},{"n":2,"text":"Log the reply","tool":"record_reply"}]}}$j$, v_id, v_rev));
   perform pg_temp.t3980w_like('P4', 'an object as a result in a whole plan is refused naming "result"', v, '%Plan step 1: _"result_" must be words%');
   perform pg_temp.t3980w_check('P4', 'nothing was written',
-    (select revision::text || ':' || (plan->0->>'status') from public.ops_work_cards where id = v_id::uuid), v_rev::text || ':todo');
+    (select revision::text || ':' || (public.ops_plan_from_subtasks(id)->0->>'status') from public.ops_work_cards where id = v_id::uuid), v_rev::text || ':todo');
   v := pg_temp.t3980w_chat('KX', 'bbbbbbbbbbbbbbbb', 'update_work', format('{"id":"%s","expected_revision":%s,"step":{"n":1,"status":"done","result":"Host said yes"}}', v_id, v_rev));
   perform pg_temp.t3980w_check('P4', 'words as a result are kept',
-    (select plan->0->>'status' || ':' || (plan->0->>'result') from public.ops_work_cards where id = v_id::uuid), 'done:Host said yes');
+    (select public.ops_plan_from_subtasks(id)->0->>'status' || ':' || (public.ops_plan_from_subtasks(id)->0->>'result') from public.ops_work_cards where id = v_id::uuid), 'done:Host said yes');
 end;
 $rework$;
 

@@ -247,7 +247,8 @@ BEGIN
   RETURN jsonb_build_object(
     'id', c.id, 'number', c.number, 'title', c.title, 'instructions', c.instructions, 'done_means', c.done_means,
     'status', c.status, 'blocked', c.blocked, 'blocked_kind', c.blocked_kind, 'blocked_reason', c.blocked_reason,
-    'person_reason', c.person_reason, 'tag', c.person_reason, 'files_url', c.files_url, 'kind', c.kind, 'kit_step', c.kit_step,
+    'person_reason', c.person_reason, 'tag', c.person_reason, 'files_url', c.files_url,
+    'on_brand_plan', c.on_brand_plan, 'brand_plan_source', c.brand_plan_source, 'kind', c.kind, 'kit_step', c.kit_step,
     'anchor', public.ops_card_anchor(c.anchor_kind, c.anchor_id, p_today),
     'due_on', c.due_on, 'due_source', c.due_source, 'overdue', (c.due_on < p_today AND c.status <> 'done'),
     'sprint', jsonb_build_object('id', v_sprint.id, 'starts_on', v_sprint.starts_on, 'ends_on', v_sprint.ends_on, 'goal', v_sprint.goal),
@@ -299,7 +300,8 @@ CREATE OR REPLACE FUNCTION public.ops_card_lite(c public.ops_work_cards) RETURNS
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
   SELECT jsonb_build_object('id', c.id, 'number', c.number, 'title', c.title, 'status', c.status, 'blocked', c.blocked,
-    'blocked_reason', c.blocked_reason, 'person_reason', c.person_reason, 'files_url', c.files_url, 'kind', c.kind, 'kit_step', c.kit_step,
+    'blocked_reason', c.blocked_reason, 'person_reason', c.person_reason, 'tag', c.person_reason, 'files_url', c.files_url,
+    'on_brand_plan', c.on_brand_plan, 'brand_plan_source', c.brand_plan_source, 'kind', c.kind, 'kit_step', c.kit_step,
     'due_on', c.due_on, 'close_kind', c.close_kind, 'anchor_kind', c.anchor_kind, 'anchor_id', c.anchor_id)
     || jsonb_build_object('status_id', c.status_id, 'parent_id', c.parent_id, 'depth', c.depth, 'position', c.position,
                           'estimate_minutes', c.estimate_minutes, 'goal_id', c.goal_id)  -- #4255
@@ -308,13 +310,13 @@ CREATE OR REPLACE FUNCTION public.ops_validate_card(p_item jsonb, p_mode text, p
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
-  c_keys constant text[] := ARRAY['title','instructions','done_means','owners','watchers','due_on','links','anchor','kit_step','kind','plan','person_reason','github','files_url',
+  c_keys constant text[] := ARRAY['title','instructions','done_means','owners','watchers','due_on','links','anchor','kit_step','kind','plan','person_reason','github','files_url','on_brand_plan',
                                   'parent','description','start_on','estimate_minutes','goal','in_backlog'];  -- #4255
   v_fixes jsonb := '[]'::jsonb; v_bad text; v_title text; v_instr text; v_done text; v_people jsonb; v_links jsonb;
   v_anchor jsonb; v_anchor_kind text; v_anchor_id uuid; v_kit integer; v_kind text; v_due date; v_due_source text;
   v_parent public.ops_work_cards; v_parent_id uuid; v_sub boolean := false; v_desc text; v_start date; v_est integer; -- #4255
   v_goal uuid; v_goal_week date; v_backlog boolean;
-  v_plan jsonb; v_reason text; v_files text; v_gh jsonb := '[]'::jsonb; v_g jsonb; v_p jsonb; v_dup_id uuid; v_dup_number bigint; v_dup_title text; v_self uuid; v_dates integer;
+  v_plan jsonb; v_reason text; v_files text; v_on_plan boolean := false; v_gh jsonb := '[]'::jsonb; v_g jsonb; v_p jsonb; v_dup_id uuid; v_dup_number bigint; v_dup_title text; v_self uuid; v_dates integer;
 BEGIN
   IF p_item IS NULL OR jsonb_typeof(p_item) <> 'object' THEN
     RETURN jsonb_build_object('clean', NULL, 'fixes', jsonb_build_array(jsonb_build_object('field', 'item', 'message', 'Each card must be an object.')));
@@ -325,7 +327,7 @@ BEGIN
     SELECT k INTO v_bad FROM jsonb_object_keys(p_item) k WHERE NOT k = ANY (c_keys) ORDER BY k LIMIT 1;
     IF v_bad IS NOT NULL THEN
       v_fixes := v_fixes || jsonb_build_array(jsonb_build_object('field', 'item', 'message',
-        format('A card does not take "%s". It takes: title, instructions, done_means, owners, watchers, due_on, links, anchor, kit_step, kind, plan, person_reason, github, files_url, parent, description, start_on, estimate_minutes, goal, in_backlog.', left(v_bad, 60))));
+        format('A card does not take "%s". It takes: title, instructions, done_means, owners, watchers, due_on, links, anchor, kit_step, kind, plan, person_reason, github, files_url, on_brand_plan, parent, description, start_on, estimate_minutes, goal, in_backlog.', left(v_bad, 60))));
     END IF;
   END IF;
 
@@ -513,10 +515,17 @@ BEGIN
     v_files := CASE WHEN jsonb_typeof(p_item->'files_url') = 'string' THEN btrim(p_item->>'files_url') END;
     IF v_files = '' THEN v_files := NULL;
     ELSIF v_files IS NULL OR char_length(v_files) NOT BETWEEN 9 AND 2000 OR v_files !~ '^https://[^[:space:]]+$'
-          OR public.ops_has_control(v_files) THEN
+          OR v_files !~ '^https://[^/?#:@\\]' OR public.brand_plan_link_hidden(v_files) THEN
       v_fixes := v_fixes || jsonb_build_array(jsonb_build_object('field', 'files_url', 'message', 'Links start with https:// and stay under 2,000 characters.'));
       v_files := NULL;
     END IF;
+  END IF;
+
+  -- #4270 W2: "Host can see this task on their plan" (true or false).
+  IF p_item ? 'on_brand_plan' AND jsonb_typeof(p_item->'on_brand_plan') <> 'null' THEN
+    IF jsonb_typeof(p_item->'on_brand_plan') <> 'boolean' THEN
+      v_fixes := v_fixes || jsonb_build_array(jsonb_build_object('field', 'on_brand_plan', 'message', 'Host can see this must be true or false.'));
+    ELSE v_on_plan := (p_item->>'on_brand_plan')::boolean; END IF;
   END IF;
 
   v_plan := public.ops_plan_check(p_item->'plan');
@@ -585,7 +594,7 @@ BEGIN
     'clean', jsonb_build_object('title', v_title, 'instructions', v_instr, 'done_means', v_done,
       'owners', v_people->'owners', 'watchers', v_people->'watchers', 'links', v_links->'links',
       'anchor_kind', v_anchor_kind, 'anchor_id', v_anchor_id, 'anchor', v_anchor, 'kit_step', v_kit, 'kind', v_kind,
-      'due_on', v_due, 'due_source', v_due_source, 'plan', COALESCE(v_plan, '[]'::jsonb), 'person_reason', v_reason, 'github', v_gh, 'files_url', v_files)
+      'due_on', v_due, 'due_source', v_due_source, 'plan', COALESCE(v_plan, '[]'::jsonb), 'person_reason', v_reason, 'github', v_gh, 'files_url', v_files, 'on_brand_plan', v_on_plan)
       || jsonb_build_object('parent_id', v_parent_id, 'parent_sprint_id', v_parent.sprint_id, 'description', v_desc,  -- #4255
                             'start_on', v_start, 'estimate_minutes', v_est, 'goal_id', v_goal, 'in_backlog', v_backlog),
     'fixes', v_fixes,
@@ -599,7 +608,7 @@ AS $$
     WHEN 'title' THEN 'title' WHEN 'instructions' THEN 'instructions' WHEN 'done_means' THEN 'done means'
     WHEN 'owners' THEN 'owners' WHEN 'watchers' THEN 'watchers' WHEN 'due_on' THEN 'due date'
     WHEN 'links' THEN 'links' WHEN 'anchor' THEN 'event' WHEN 'kit_step' THEN 'launch kit step'
-    WHEN 'kind' THEN 'card type' WHEN 'plan' THEN 'plan' WHEN 'person_reason' THEN 'Send, Spend or Publish tag' WHEN 'files_url' THEN 'files link'
+    WHEN 'kind' THEN 'card type' WHEN 'plan' THEN 'plan' WHEN 'person_reason' THEN 'Send, Spend or Publish tag' WHEN 'files_url' THEN 'files link' WHEN 'on_brand_plan' THEN 'Host can see this'
     WHEN 'status' THEN 'status' WHEN 'week' THEN 'sprint week' WHEN 'blocked_reason' THEN 'what blocks it'
     WHEN 'result' THEN 'result' WHEN 'blocked' THEN 'blocked' WHEN 'item' THEN 'the card'
     WHEN 'parent' THEN 'parent card' WHEN 'description' THEN 'description' WHEN 'start_on' THEN 'start date'  -- #4255
@@ -636,7 +645,7 @@ BEGIN
   END IF;
   SELECT k INTO v_bad FROM jsonb_object_keys(p_changes) k
    WHERE k NOT IN ('title','instructions','done_means','due_on','week','owners','watchers','links','anchor','plan','result',
-                   'blocked','blocked_reason','status','person_reason','reason','github','blocked_on_github','files_url',
+                   'blocked','blocked_reason','status','person_reason','reason','github','blocked_on_github','files_url','on_brand_plan',
                    'description','start_on','estimate_minutes','goal','in_backlog','parent') ORDER BY k LIMIT 1;
   IF v_bad IS NOT NULL THEN
     RAISE EXCEPTION '%', format('unknown_field: A card change does not take "%s".', left(v_bad, 60)) USING ERRCODE = '22023';
@@ -680,6 +689,7 @@ BEGIN
     'estimate_minutes', CASE WHEN p_changes ? 'estimate_minutes' THEN p_changes->'estimate_minutes' ELSE to_jsonb(c.estimate_minutes) END,
     'goal', CASE WHEN p_changes ? 'goal' THEN p_changes->'goal' ELSE to_jsonb(c.goal_id) END,
     'in_backlog', CASE WHEN p_changes ? 'in_backlog' THEN p_changes->'in_backlog' ELSE to_jsonb(c.in_backlog) END,
+    'on_brand_plan', CASE WHEN p_changes ? 'on_brand_plan' THEN p_changes->'on_brand_plan' ELSE to_jsonb(c.on_brand_plan) END,
     'plan', CASE WHEN p_changes ? 'plan' THEN p_changes->'plan' ELSE c.plan END,
     'github', CASE WHEN p_changes ? 'github' THEN p_changes->'github'
                    ELSE COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', g.kind, 'number', g.number) ORDER BY g.number)
@@ -740,6 +750,14 @@ BEGIN
     RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person moves this card.' USING ERRCODE = '42501';
   END IF;
   n := c;
+  -- #4270 W2 (D15): "Host can see this". A person decides what hosts see: an
+  -- agent cannot switch it on.
+  IF p_changes ? 'on_brand_plan' AND jsonb_typeof(p_changes->'on_brand_plan') = 'boolean' THEN
+    IF v.via IS NOT NULL AND (p_changes->>'on_brand_plan')::boolean AND NOT c.on_brand_plan THEN
+      RAISE EXCEPTION 'people_only: A person decides what hosts see.' USING ERRCODE = '42501';
+    END IF;
+    n.on_brand_plan := (p_changes->>'on_brand_plan')::boolean;
+  END IF;
   -- Wave 2: the GitHub issues and pull requests the card waits for.
   SELECT string_agg('#' || (x->>'number'), ', ' ORDER BY (x->>'number')::integer) INTO v_gh_list
     FROM jsonb_array_elements(COALESCE(cl->'github', '[]'::jsonb)) x;
@@ -888,9 +906,9 @@ BEGIN
     RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person changes who owns or watches this card.' USING ERRCODE = '42501';
   END IF;
 
-  IF ROW(n.title, n.instructions, n.done_means, n.due_on, n.sprint_id, n.anchor_kind, n.anchor_id, n.result, n.files_url,
+  IF ROW(n.title, n.instructions, n.done_means, n.due_on, n.sprint_id, n.anchor_kind, n.anchor_id, n.result, n.files_url, n.on_brand_plan,
          n.parent_id, n.description_md, n.start_on, n.estimate_minutes, n.goal_id, n.in_backlog)
-     IS DISTINCT FROM ROW(c.title, c.instructions, c.done_means, c.due_on, c.sprint_id, c.anchor_kind, c.anchor_id, c.result, c.files_url,
+     IS DISTINCT FROM ROW(c.title, c.instructions, c.done_means, c.due_on, c.sprint_id, c.anchor_kind, c.anchor_id, c.result, c.files_url, c.on_brand_plan,
          c.parent_id, c.description_md, c.start_on, c.estimate_minutes, c.goal_id, c.in_backlog) THEN
     v_cats := v_cats || 'updated'::text;
   END IF;
@@ -902,7 +920,7 @@ BEGIN
   END IF;
 
   UPDATE public.ops_work_cards SET title = n.title, instructions = n.instructions, done_means = n.done_means,
-    status = n.status, person_reason = n.person_reason, files_url = n.files_url, blocked = n.blocked, blocked_kind = n.blocked_kind, blocked_reason = n.blocked_reason,
+    status = n.status, person_reason = n.person_reason, files_url = n.files_url, on_brand_plan = n.on_brand_plan, blocked = n.blocked, blocked_kind = n.blocked_kind, blocked_reason = n.blocked_reason,
     anchor_kind = n.anchor_kind, anchor_id = n.anchor_id, due_on = n.due_on, due_source = n.due_source, sprint_id = n.sprint_id,
     parent_id = n.parent_id, description_md = n.description_md, start_on = n.start_on, estimate_minutes = n.estimate_minutes,  -- #4255
     goal_id = n.goal_id, in_backlog = n.in_backlog,
@@ -1009,6 +1027,7 @@ DECLARE
   v record; v_today date := public.ops_today(NULL); v_replay jsonb; v_item jsonb; v_idx integer := 0; v_rows jsonb := '[]'::jsonb;
   v_chk jsonb; cl jsonb; c public.ops_work_cards; v_event uuid; v_gate jsonb; v_added integer := 0; v_refused integer := 0;
   v_dups integer := 0; v_out jsonb; v_fields text; v_owners text[]; v_watchers text[]; v_ex_id uuid; v_ex_number bigint; v_ex_title text; v_who text;
+  v_quick boolean; v_host_name text; v_source text; -- #4270 W2: a quick add from a host card
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   IF p_request_key IS NULL OR p_request_key !~ '^[A-Za-z0-9_-]{8,80}$' THEN
@@ -1020,8 +1039,37 @@ BEGIN
   v_replay := public.ops_request_begin(v.actor_email, p_request_key || '-add', 'add', p_items);
   IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
   v_who := public.ops_actor_label(v.actor_email, v.via);
+  -- #4270 W2 (D15): a person decides what hosts see. An agent never adds a
+  -- card the host can see on their plan.
+  IF v.via IS NOT NULL AND EXISTS (SELECT 1 FROM jsonb_array_elements(p_items) e
+                                    WHERE jsonb_typeof(e) = 'object' AND e->'on_brand_plan' = 'true'::jsonb) THEN
+    RAISE EXCEPTION 'people_only: A person decides what hosts see.' USING ERRCODE = '42501';
+  END IF;
 
   FOR v_item IN SELECT e.value FROM jsonb_array_elements(p_items) WITH ORDINALITY e(value, ord) ORDER BY e.ord LOOP
+    -- #4270 W2 (C-6): a quick add from a host card says what, who and when;
+    -- Mingla writes the instructions and done means, and staff can edit them.
+    v_quick := jsonb_typeof(v_item) = 'object' AND v_item->'quick' = 'true'::jsonb;
+    v_source := NULL;
+    IF jsonb_typeof(v_item) = 'object' AND v_item ? 'quick' THEN
+      v_item := v_item - 'quick';
+    END IF;
+    IF v_quick THEN
+      v_source := 'host_card';
+      SELECT r.name INTO v_host_name FROM public.crm_records r
+       WHERE r.deleted_at IS NULL AND r.pipeline = 'hosts'
+         AND r.id = (SELECT CASE WHEN public.ops_is_uuid(l->>'id') THEN (l->>'id')::uuid END
+                       FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_item->'links') = 'array' THEN v_item->'links' ELSE '[]'::jsonb END) l
+                      WHERE l->>'kind' = 'host' LIMIT 1);
+      IF NOT (v_item ? 'instructions') OR jsonb_typeof(v_item->'instructions') <> 'string' OR btrim(v_item->>'instructions') = '' THEN
+        v_item := v_item || jsonb_build_object('instructions',
+          format('Added by %s from %s''s host card.', v_who, COALESCE(v_host_name, 'a host')));
+      END IF;
+      IF NOT (v_item ? 'done_means') OR jsonb_typeof(v_item->'done_means') <> 'string' OR btrim(v_item->>'done_means') = '' THEN
+        v_item := v_item || jsonb_build_object('done_means',
+          CASE WHEN v_item->'on_brand_plan' = 'true'::jsonb THEN 'Done and the host is told in the Brand group.' ELSE 'Done with proof on this card.' END);
+      END IF;
+    END IF;
     v_chk := public.ops_validate_card(v_item, 'add', v.actor_email, v_today);
     IF jsonb_array_length(v_chk->'fixes') > 0 THEN
       SELECT string_agg(DISTINCT public.ops_field_words(f->>'field'), ', ') INTO v_fields FROM jsonb_array_elements(v_chk->'fixes') f;
@@ -1051,14 +1099,14 @@ BEGIN
       v_gate := CASE WHEN cl->>'kind' = 'promo' THEN public.ops_promo_gate(cl->'anchor', v_today) END;
       BEGIN
         INSERT INTO public.ops_work_cards (title, instructions, done_means, status, blocked, blocked_kind, blocked_reason, person_reason, files_url,
-          kind, kit_step, anchor_kind, anchor_id, due_on, due_source, sprint_id, plan, created_by, created_via, updated_by, updated_via, request_key,
+          on_brand_plan, brand_plan_source, kind, kit_step, anchor_kind, anchor_id, due_on, due_source, sprint_id, plan, created_by, created_via, updated_by, updated_via, request_key,
           parent_id, description_md, start_on, estimate_minutes, goal_id, in_backlog)  -- #4255
         VALUES (cl->>'title', cl->>'instructions', cl->>'done_means',
           'todo', -- #4270: a tagged card waits in To do; the tag is person_reason
           COALESCE((v_gate->>'blocked')::boolean, false),
           CASE WHEN COALESCE((v_gate->>'blocked')::boolean, false) THEN v_gate->>'kind' END,
           CASE WHEN COALESCE((v_gate->>'blocked')::boolean, false) THEN v_gate->>'reason' END,
-          cl->>'person_reason', cl->>'files_url', cl->>'kind', (cl->>'kit_step')::integer, cl->>'anchor_kind', (cl->>'anchor_id')::uuid,
+          cl->>'person_reason', cl->>'files_url', COALESCE((cl->>'on_brand_plan')::boolean, false), v_source, cl->>'kind', (cl->>'kit_step')::integer, cl->>'anchor_kind', (cl->>'anchor_id')::uuid,
           -- #4255: a subtask is in its parent's sprint; the plan is subtasks
           (cl->>'due_on')::date, cl->>'due_source', COALESCE((cl->>'parent_sprint_id')::uuid, public.ops_sprint_for((cl->>'due_on')::date, v_today)), '[]'::jsonb,
           v.actor_email, v.via, v.actor_email, v.via, p_request_key || '-i' || v_idx,
@@ -1398,6 +1446,11 @@ BEGIN
     UPDATE public.ops_work_cards SET title = r.title, instructions = r.instructions, done_means = r.done_means,
       -- #4270: a snapshot from before the move reads person as To do (the move also bumped every revision).
       status = CASE WHEN r.status = 'person' THEN 'todo' ELSE r.status END, files_url = r.files_url,
+      -- #4270 W2 rework (P3-5): Undo puts back Host can see this. Undo is a
+      -- person's (an agent never undoes), so D15 still holds.
+      on_brand_plan = r.on_brand_plan,
+      -- The words hosts saw go back with the stored title (W4 retest P3 4).
+      plan_title = r.plan_title,
       blocked = r.blocked, blocked_kind = r.blocked_kind, blocked_reason = r.blocked_reason, person_reason = r.person_reason,
       anchor_kind = r.anchor_kind, anchor_id = r.anchor_id, due_on = r.due_on, due_source = r.due_source, sprint_id = r.sprint_id,
       plan = r.plan, result = r.result, proof = r.proof, close_kind = r.close_kind, close_reason = r.close_reason,
@@ -2505,7 +2558,6 @@ DECLARE
     "Before any work, call read_log for the records you will touch and check the open claims.",
     "Claim every record you will change or message with claim. A claim ends after 30 minutes without an update. Cards are not claimed: start_work marks you as working on a card for as long as it takes; post each step with update_work.",
     "Write the plan on the card: each step names the connector tool that does it, or person when no tool can.",
-    "Plan steps are the card's subtasks: step n is the n-th subtask. Add a subtask with add_subtask (a message a person must send is a subtask they own), and post updates in the card's thread with post_message.",
     "After each step, read the record back and mark the step done only if the change is really there.",
     "Never report a step done that you could not do. Leave it to a person with exact instructions.",
     "Close a card only with close_work and proof that names what you read back. If it was already done, use push_back with already_done and the proof; if it should not be done, push_back with declined and the reason.",
