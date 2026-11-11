@@ -2,7 +2,7 @@
  * #4255 W5 — Mingla team: React Query reads and the realtime bridge.
  *
  * Server state lives in React Query only (Constitution 5), under
- * teamChatKeys (one key per entity, every key under the signed-in user's id).
+ * teamChatKey (one key per entity, every key under the signed-in user's id).
  * Realtime only invalidates: the database functions stay the one source of
  * what a person may see. Channels close when the screen goes away or the
  * person signs out (Constitution 6), and reopen when the app comes back to
@@ -14,7 +14,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 
 import { useAuth } from "../../context/AuthContext";
-import { fetchTeamBadge, teamChatKeys } from "../../hooks/teamChatKeys";
+import { teamChatKey } from "../../hooks/useBusinessNotifications";
 import { supabase } from "../../services/supabase";
 import {
   getTeamMessages,
@@ -39,8 +39,9 @@ export function useTeamAccess(): TeamAccess {
   const { user, loading } = useAuth();
   const userId = user?.id ?? null;
   const badge = useQuery({
-    queryKey: teamChatKeys.badge(userId ?? "signed-out"),
-    queryFn: fetchTeamBadge,
+    queryKey: teamChatKey(userId ?? "signed-out", "badge"),
+    // The same small lazy chunk the top bar uses (teamBadge.tsx).
+    queryFn: async () => (await import("./teamBadge")).fetchTeamBadge(),
     enabled: userId !== null,
     staleTime: 30 * 1000,
   });
@@ -57,7 +58,7 @@ export function useTeamAccess(): TeamAccess {
 
 export function useTeamThreads(userId: string | null, enabled: boolean) {
   return useQuery({
-    queryKey: teamChatKeys.threads(userId ?? "signed-out"),
+    queryKey: teamChatKey(userId ?? "signed-out", "threads"),
     queryFn: listTeamThreads,
     enabled: enabled && userId !== null,
     staleTime: 15 * 1000,
@@ -66,7 +67,7 @@ export function useTeamThreads(userId: string | null, enabled: boolean) {
 
 export function useTeamPeople(userId: string | null, enabled: boolean) {
   return useQuery({
-    queryKey: teamChatKeys.people(userId ?? "signed-out"),
+    queryKey: teamChatKey(userId ?? "signed-out", "people"),
     queryFn: listTeamPeople,
     enabled: enabled && userId !== null,
     staleTime: 5 * 60 * 1000,
@@ -75,7 +76,7 @@ export function useTeamPeople(userId: string | null, enabled: boolean) {
 
 export function useTeamMentions(userId: string | null, enabled: boolean) {
   return useQuery({
-    queryKey: teamChatKeys.mentions(userId ?? "signed-out"),
+    queryKey: teamChatKey(userId ?? "signed-out", "mentions"),
     queryFn: listTeamMentions,
     enabled: enabled && userId !== null,
     staleTime: 15 * 1000,
@@ -99,7 +100,7 @@ export function flattenTeamPages(data: InfiniteData<TeamMessagesPage> | undefine
 
 export function useTeamMessages(userId: string | null, threadId: string | null, enabled: boolean) {
   const query = useInfiniteQuery({
-    queryKey: teamChatKeys.messages(userId ?? "signed-out", threadId ?? "none"),
+    queryKey: teamChatKey(userId ?? "signed-out", "messages", threadId ?? "none"),
     queryFn: ({ pageParam }) => getTeamMessages(threadId as string, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => (last.has_more && last.messages.length > 0 ? last.messages[0].created_at : undefined),
@@ -126,9 +127,9 @@ export function useTeamRealtime(userId: string | null, threadId: string | null, 
   useEffect(() => {
     if (!enabled || userId === null) return undefined;
     const refresh = (): void => {
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.threads(userId) });
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.badge(userId) });
-      if (threadId) void queryClient.invalidateQueries({ queryKey: teamChatKeys.messages(userId, threadId) });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "threads") });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "badge") });
+      if (threadId) void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "messages", threadId) });
     };
     const open = (): void => {
       const name = threadId ? `team:${threadId}` : `team:list:${userId}`;

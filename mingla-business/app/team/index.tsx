@@ -6,21 +6,23 @@ import { createRetryableLazyErrorBoundary } from "../../src/components/ui/Retrya
 import { canvas } from "../../src/constants/designSystem";
 
 /**
- * #4255 W5 — Mingla team (staff only; not a bottom tab: staff is not a brand
- * role, the same reason as support/inbox.tsx). Every team route loads one
- * shared lazy module, so none of team chat joins the bundle every Host app
- * screen loads. A host who is not staff sees "This space is for the Mingla
+ * #4255 W5 — Mingla team: the chat list and Mentions, a chat (?thread=<id>)
+ * and new chats (?compose=…), all on this one route (staff only; not a bottom tab: staff is not a brand
+ * role, the same reason as support/inbox.tsx). Every team route loads the
+ * Brand group route's lazy chunk (app/messages/[conversationId].tsx re-exports
+ * the team screens), so none of team chat joins the bundle every Host app
+ * screen loads, and nothing it shares with Brand groups is hoisted there. A host who is not staff sees "This space is for the Mingla
  * team" there.
  */
-const LazyTeamHomeScreen = createRetryableLazyErrorBoundary<Record<string, never>>(
-  async () => ({ default: (await import("../../src/components/minglaTeam/TeamScreens")).TeamHomeScreen }),
+const LazyTeamScreen = createRetryableLazyErrorBoundary<Record<string, never>>(
+  async () => ({ default: (await import("../messages/[conversationId]")).TeamScreen }),
   { loadingLabel: "Loading Mingla team", style: { flex: 1 } },
 );
 
 export default function TeamRoute(): React.ReactElement {
   return (
     <View style={styles.screen} testID="team-route">
-      <LazyTeamHomeScreen />
+      <LazyTeamScreen />
     </View>
   );
 }

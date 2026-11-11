@@ -72,22 +72,23 @@ import {
   setBrandGroupPushPrefEnabled,
 } from "../../src/services/brandGroupsService";
 
-import { fetchTeamBadge, teamChatKeys } from "../../src/hooks/teamChatKeys";
+import { teamChatKey } from "../../src/hooks/useBusinessNotifications";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
 
-// #4255 W5 — the staff-only group loads with the Mingla team screens (one lazy
-// module), and only once team_badge says this person is staff.
+// #4255 W5 — the staff-only group loads with the Mingla team screens (the
+// Brand group route's lazy chunk), and only once team_badge says staff.
 const LazyTeamNotificationPrefs = React.lazy(async () => ({
-  default: (await import("../../src/components/minglaTeam/TeamScreens")).TeamNotificationPrefs,
+  default: (await import("../messages/[conversationId]")).TeamNotificationPrefs,
 }));
 
 export function MinglaTeamPrefsGroup({ userId }: { userId: string | null }): React.ReactElement | null {
   const badge = useQuery({
-    queryKey: teamChatKeys.badge(userId ?? "signed-out"),
-    queryFn: fetchTeamBadge,
+    queryKey: teamChatKey(userId ?? "signed-out", "badge"),
+    // The staff check is the top bar's small lazy chunk (teamBadge.tsx).
+    queryFn: async () => (await import("../../src/components/minglaTeam/teamBadge")).fetchTeamBadge(),
     enabled: userId !== null,
     staleTime: 30 * 1000,
   });

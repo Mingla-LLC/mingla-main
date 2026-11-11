@@ -14,7 +14,7 @@ import { Linking, Platform } from "react-native";
 
 import { supabase } from "./supabase";
 import { uploadStorageObject, type BrandGroupPickedFile } from "./brandGroupFilesService";
-import type { TeamBadge } from "../hooks/teamChatKeys";
+import type { TeamBadge } from "../components/minglaTeam/teamBadge";
 
 export type { TeamBadge };
 

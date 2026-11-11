@@ -236,6 +236,8 @@ jest.mock("../useResponsiveLayout", () => ({
 }));
 jest.mock("../useBusinessNotifications", () => ({
   useBusinessNotificationsInbox: () => ({ unreadCount: 0 }),
+  // #4255 W5: the top bar's Mingla team check keys its read with this.
+  teamChatKey: (...parts: unknown[]) => ["team-chat", ...parts],
 }));
 jest.mock("../useGlobalSearchSheet", () => ({
   useGlobalSearchSheet: { getState: () => ({ open: jest.fn() }) },

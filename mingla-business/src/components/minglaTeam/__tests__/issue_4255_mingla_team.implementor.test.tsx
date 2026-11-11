@@ -1,5 +1,5 @@
 // MINGLA-INVARIANT: I-4255-TEAM-ICON-STAFF-ONLY | issue #4255 | the Host app top bar shows the Mingla team "M" only when team_badge says staff:true; without a query client, while loading, on an error or for a host who is not staff it renders nothing. Its badge is unread team chats plus unread mentions.
-// MINGLA-INVARIANT: I-4255-TEAM-DEEP-LINKS | issue #4255 | mingla-business://team/<thread> opens that chat and mingla-business://team/mention/<id> opens Mentions at that row; anything else opens Mingla team, never the account tab.
+// MINGLA-INVARIANT: I-4255-TEAM-DEEP-LINKS | issue #4255 | mingla-business://team/<thread> opens that chat (/team?thread=) and mingla-business://team/mention/<id> opens Mentions at that row; an odd id still opens Mingla team, never the account tab.
 // MINGLA-INVARIANT: I-4255-TEAM-NON-STAFF-GATE | issue #4255 | every Mingla team screen shows "This space is for the Mingla team" to a signed-in host who is not staff, and the staff-only settings group never renders for them.
 // MINGLA-INVARIANT: I-4255-TEAM-FILES-PATH | issue #4255 | a team file uploads only to bucket team-files at the path the database issued for that chat and that attachment; over 25 MB is refused before upload.
 import fs from "node:fs";
@@ -57,7 +57,10 @@ jest.mock("../../../store/currentBrandStore", () => {
 });
 jest.mock("../../../hooks/useCurrentBrand", () => ({ useCurrentBrand: () => ({ id: "b1", displayName: "A brand name that is long", stats: {} }) }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: false }) }));
-jest.mock("../../../hooks/useBusinessNotifications", () => ({ useBusinessNotificationsInbox: () => ({ unreadCount: 0 }) }));
+jest.mock("../../../hooks/useBusinessNotifications", () => ({
+  ...(jest.requireActual("../../../hooks/useBusinessNotifications") as object),
+  useBusinessNotificationsInbox: () => ({ unreadCount: 0 }),
+}));
 jest.mock("../../../hooks/useBrandGroups", () => ({ useBrandGroups: () => ({ unreadCount: 0 }) }));
 jest.mock("../../../hooks/useBrandEnquiries", () => ({ useBrandEnquiries: () => ({ data: undefined }) }));
 jest.mock("../../ui/GlassChrome", () => {
@@ -70,10 +73,16 @@ jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../ui/Toast", () => ({ Toast: () => null }));
 jest.mock("../../brand/BrandMark", () => ({ BrandMark: () => null, brandMarkPhotoUrl: () => null }));
 jest.mock("../../../services/mixpanelService", () => ({ mixpanelService: { track: jest.fn() } }));
+// The team screens load from the Brand group route's lazy chunk; that route
+// module is heavy, so stand in with just what it re-exports.
+jest.mock("../../../../app/messages/[conversationId]", () => ({
+  TeamNotificationPrefs: (jest.requireActual("../TeamScreens") as typeof import("../TeamScreens")).TeamNotificationPrefs,
+}));
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { TopBar } = require("../../ui/TopBar") as typeof import("../../ui/TopBar");
-const { teamBadgeCount, teamChatKeys } = require("../../../hooks/teamChatKeys") as typeof import("../../../hooks/teamChatKeys");
+const { teamBadgeCount, fetchTeamBadge } = require("../teamBadge") as typeof import("../teamBadge");
+const { teamChatKey } = require("../../../hooks/useBusinessNotifications") as typeof import("../../../hooks/useBusinessNotifications");
 const routing = require("../../../services/businessNotificationRouting") as typeof import("../../../services/businessNotificationRouting");
 const service = require("../../../services/teamChatService") as typeof import("../../../services/teamChatService");
 const { TeamAccessGate } = require("../TeamCommon") as typeof import("../TeamCommon");
@@ -94,7 +103,8 @@ function client(): QueryClient {
 async function mount(node: React.ReactElement): Promise<Renderer> {
   let renderer!: Renderer;
   await TestRenderer.act(async () => { renderer = TestRenderer.create(node); });
-  await TestRenderer.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  // Queries settle, then lazy chunks (the M button, the settings group) resolve.
+  for (let i = 0; i < 3; i += 1) await TestRenderer.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   mounted.push(renderer);
   return renderer;
 }
@@ -153,7 +163,7 @@ describe("#4255 W5 top bar: the Mingla team M", () => {
     await TestRenderer.act(async () => { (button[0].props.onPress as () => void)(); });
     expect(mockPush).toHaveBeenCalledWith("/team");
     const source = fs.readFileSync(path.resolve(__dirname, "../../ui/TopBar.tsx"), "utf8");
-    const order = ["<EnquiryAwareMessagesButton", "<MinglaTeamButton", 'icon="bell"'].map((s) => source.indexOf(s));
+    const order = ["<EnquiryAwareMessagesButton", "<LazyMinglaTeamSlot", 'icon="bell"'].map((s) => source.indexOf(s));
     expect(order[0]).toBeGreaterThan(0);
     expect(order[1]).toBeGreaterThan(order[0]);
     expect(order[2]).toBeGreaterThan(order[1]);
@@ -174,18 +184,26 @@ describe("#4255 W5 top bar: the Mingla team M", () => {
 
 describe("#4255 W5 badge math", () => {
   test("unread chats plus unread mentions; nothing for non-staff or bad values", () => {
-    expect(teamBadgeCount({ staff: true, chats: 2, mentions: 3, messages: 40, total: 5 })).toBe(5);
+    expect(teamBadgeCount({ staff: true, chats: 2, mentions: 3 })).toBe(5);
     expect(teamBadgeCount({ staff: false, chats: 2, mentions: 3 })).toBe(0);
     expect(teamBadgeCount(null)).toBe(0);
     expect(teamBadgeCount({ staff: true, chats: -1, mentions: Number.NaN })).toBe(0);
     expect(teamBadgeCount({ staff: true, chats: 1.7, mentions: 0 })).toBe(1);
   });
+  test("the top bar's read cleans the counts and zeroes them for non-staff", async () => {
+    badge({ staff: true, chats: "2", mentions: -4, messages: null, total: 9 });
+    expect(await fetchTeamBadge()).toEqual({ staff: true, chats: 2, messages: 0, mentions: 0, total: 9 });
+    badge({ staff: false, chats: 3, mentions: 3 });
+    expect(await fetchTeamBadge()).toEqual({ staff: false, chats: 0, messages: 0, mentions: 0, total: 0 });
+    mockRpc.mockResolvedValue({ data: null, error: { message: "nope" } });
+    await expect(fetchTeamBadge()).rejects.toThrow("nope");
+  });
 });
 
 describe("#4255 W5 push routing", () => {
   test("a team chat link opens that chat", () => {
-    expect(routing.parseBusinessDeepLink(`mingla-business://team/${THREAD}`)).toBe(`/team/${THREAD}`);
-    expect(routing.resolveBusinessNavTarget({ type: "business.team_message", deepLink: `mingla-business://team/${THREAD}` })).toBe(`/team/${THREAD}`);
+    expect(routing.parseBusinessDeepLink(`mingla-business://team/${THREAD}`)).toBe(`/team?thread=${THREAD}`);
+    expect(routing.resolveBusinessNavTarget({ type: "business.team_message", deepLink: `mingla-business://team/${THREAD}` })).toBe(`/team?thread=${THREAD}`);
   });
   test("an Admin mention link opens Mentions at that row", () => {
     expect(routing.parseBusinessDeepLink(`mingla-business://team/mention/${MENTION}`)).toBe(`/team?tab=mentions&mention=${MENTION}`);
@@ -195,9 +213,8 @@ describe("#4255 W5 push routing", () => {
     expect(routing.parseBusinessDeepLink("mingla-business://team/not-a-thread")).toBe("/team");
     expect(routing.parseBusinessDeepLink("mingla-business://team/mention/../../x")).toBe("/team?tab=mentions");
     expect(routing.parseBusinessDeepLink("mingla-business://team")).toBe("/team");
-    expect(routing.resolveBusinessNavTarget({ type: "business.team_message", thread_id: THREAD })).toBe(`/team/${THREAD}`);
-    expect(routing.resolveBusinessNavTarget({ type: "business.team_decision", mention_id: MENTION })).toBe(`/team?tab=mentions&mention=${MENTION}`);
-    expect(routing.resolveBusinessNavTarget({ type: "business.team_mention", source_kind: "team_message", thread_id: THREAD })).toBe(`/team/${THREAD}`);
+    expect(routing.resolveBusinessNavTarget({ type: "business.team_decision", deepLink: "mingla-business://team/mention/" })).toBe("/team?tab=mentions");
+    expect(routing.resolveBusinessNavTarget({ type: "business.team_member_joined", brandId: "b1" })).toBe("/brand/b1/team");
   });
 });
 
@@ -247,6 +264,18 @@ describe("#4255 W5 a host who is not staff", () => {
     expect(byTestId(view.root, "team-pref-business.team_message-push")[0].props.value).toBe(true);
   });
 
+  test("the team screens load from the Brand group chunk, never the boot bundle", () => {
+    const route = fs.readFileSync(path.resolve(__dirname, "../../../../app/messages/[conversationId].tsx"), "utf8");
+    expect(route).toContain('export { TeamNotificationPrefs, TeamScreen } from "../../src/components/minglaTeam/TeamScreens";');
+    // One team route: the list, a chat (?thread=) and new chats (?compose=) share it.
+    expect(fs.readdirSync(path.resolve(__dirname, "../../../../app/team"))).toEqual(["index.tsx"]);
+    expect(fs.readFileSync(path.resolve(__dirname, "../../../../app/team/index.tsx"), "utf8")).toContain('await import("../messages/[conversationId]")');
+    const topBar = fs.readFileSync(path.resolve(__dirname, "../../ui/TopBar.tsx"), "utf8");
+    // Only the badge check is static; the button is a lazy chunk.
+    expect(topBar).not.toMatch(/^import[^;]*(minglaTeam|teamChatService)/m);
+    expect(topBar).toContain('React.lazy(() => import("../minglaTeam/teamBadge"))');
+  });
+
   test("defaults match the database: everything on except group message pushes", () => {
     expect(teamPrefOn([], "business.team_mention", "push")).toBe(true);
     expect(teamPrefOn([], "business.team_decision", "inapp")).toBe(true);
@@ -277,10 +306,12 @@ describe("#4255 W5 sign-out clears team data", () => {
 
   test("every team key sits under the signed-in user, and sign-out clears the whole query cache", () => {
     const keys = [
-      teamChatKeys.badge("u1"), teamChatKeys.threads("u1"), teamChatKeys.messages("u1", THREAD), teamChatKeys.people("u1"),
-      teamChatKeys.mentions("u1"), teamChatKeys.file("u1", ATTACHMENT), teamChatKeys.prefs("u1"),
+      teamChatKey("u1", "badge"), teamChatKey("u1", "threads"), teamChatKey("u1", "messages", THREAD), teamChatKey("u1", "people"),
+      teamChatKey("u1", "mentions"), teamChatKey("u1", "file", ATTACHMENT), teamChatKey("u1", "prefs"),
     ];
     for (const key of keys) expect(key.slice(0, 2)).toEqual(["team-chat", "u1"]);
+    expect(teamChatKey("u1", "messages", THREAD)).toEqual(["team-chat", "u1", "messages", THREAD]);
+    expect(teamChatKey("u2", "badge")).not.toEqual(teamChatKey("u1", "badge"));
     const auth = fs.readFileSync(path.resolve(__dirname, "../../../context/AuthContext.tsx"), "utf8");
     const signOut = auth.slice(auth.indexOf("const signOut = useCallback("), auth.indexOf("const authStatus = useMemo("));
     expect(signOut).toContain("queryClient.clear();");

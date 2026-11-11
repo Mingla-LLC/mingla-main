@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
 import { accent, radius, spacing } from "../../constants/designSystem";
-import { teamChatKeys } from "../../hooks/teamChatKeys";
+import { teamChatKey } from "../../hooks/useBusinessNotifications";
 import { supabase } from "../../services/supabase";
 import {
   addTeamMembers,
@@ -36,7 +36,7 @@ import { teamTime, useTeamText, type TeamT } from "./teamText";
 import { PersonAvatar, TeamAccessGate, TeamAvatar, TeamHeader, useBack } from "./TeamCommon";
 import { useTeamMentions, useTeamPeople, useTeamRealtime, useTeamThreads } from "./useTeamChat";
 
-export { TeamThreadScreen } from "./TeamThreadScreen";
+import { TeamThreadScreen } from "./TeamThreadScreen";
 export { TeamLockedScreen } from "./TeamCommon";
 
 function threadPreview(thread: TeamThread, t: TeamT): string {
@@ -108,7 +108,15 @@ function MentionCard({ mention, highlighted, onOpen }: { mention: TeamMention; h
   );
 }
 
-export function TeamHomeScreen(): React.ReactElement {
+/**
+ * The one Mingla team route (/team): the chat list and Mentions, a chat
+ * (?thread=<id>), or a new chat, group or added people (?compose=chat|group|add).
+ * One route keeps the router's list in the boot bundle short.
+ */
+export function TeamScreen(): React.ReactElement {
+  const params = useLocalSearchParams<{ thread?: string; compose?: string }>();
+  if (typeof params.compose === "string") return <TeamAccessGate>{(userId) => <TeamNewChat userId={userId} />}</TeamAccessGate>;
+  if (typeof params.thread === "string") return <TeamThreadScreen />;
   return <TeamAccessGate>{(userId) => <TeamHome userId={userId} />}</TeamAccessGate>;
 }
 
@@ -139,9 +147,9 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
   const dm = useMutation({
     mutationFn: (person: TeamPerson) => openTeamDm(person.user_id),
     onSuccess: (thread) => {
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.threads(userId) });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "threads") });
       setFind("");
-      router.push(`/team/${thread.id}` as never);
+      router.push(`/team?thread=${thread.id}` as never);
     },
     onError: (error) => setToast(error instanceof Error ? error.message : t("team.try_again")),
   });
@@ -156,8 +164,8 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
     if (mention.read_at !== null) return;
     try {
       await markTeamMentionRead(mention.id);
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.mentions(userId) });
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.badge(userId) });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "mentions") });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "badge") });
     } catch (error) {
       setToast(error instanceof Error ? error.message : t("team.try_again"));
     }
@@ -207,7 +215,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
               autoCorrect={false}
               testID="team-find"
             />
-            <Pressable accessibilityRole="button" accessibilityLabel={t("team.new_group")} onPress={() => router.push("/team/new?mode=group" as never)} style={styles.chipButton} testID="team-new-group">
+            <Pressable accessibilityRole="button" accessibilityLabel={t("team.new_group")} onPress={() => router.push("/team?compose=group" as never)} style={styles.chipButton} testID="team-new-group">
               <Text style={styles.chipButtonText}>{t("team.new_group")}</Text>
             </Pressable>
           </View>
@@ -223,7 +231,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
           ) : (
             <>
               {shownThreads.map((thread) => (
-                <ThreadRow key={thread.id} thread={thread} onOpen={() => router.push(`/team/${thread.id}` as never)} />
+                <ThreadRow key={thread.id} thread={thread} onOpen={() => router.push(`/team?thread=${thread.id}` as never)} />
               ))}
               {shownPeople.map((person) => (
                 <Pressable
@@ -280,17 +288,13 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
 
 // ── New chat or group ───────────────────────────────────────────────────────
 
-export function TeamNewChatScreen(): React.ReactElement {
-  return <TeamAccessGate>{(userId) => <TeamNewChat userId={userId} />}</TeamAccessGate>;
-}
-
 function TeamNewChat({ userId }: { userId: string }): React.ReactElement {
   const { t } = useTeamText();
   const router = useRouter();
   const back = useBack("/team");
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ mode?: string; thread?: string }>();
-  const mode: "chat" | "group" | "add" = params.mode === "group" ? "group" : params.mode === "add" && typeof params.thread === "string" ? "add" : "chat";
+  const params = useLocalSearchParams<{ compose?: string; thread?: string }>();
+  const mode: "chat" | "group" | "add" = params.compose === "group" ? "group" : params.compose === "add" && typeof params.thread === "string" ? "add" : "chat";
   const group = mode !== "chat";
   const people = useTeamPeople(userId, true);
   const [name, setName] = useState("");
@@ -305,10 +309,10 @@ function TeamNewChat({ userId }: { userId: string }): React.ReactElement {
       return (mode === "group" ? await createTeamGroup(name.trim(), ids) : await openTeamDm(ids[0])).id;
     },
     onSuccess: (threadId) => {
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.threads(userId) });
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.messages(userId, threadId) });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "threads") });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "messages", threadId) });
       if (mode === "add") back();
-      else router.replace(`/team/${threadId}` as never);
+      else router.replace(`/team?thread=${threadId}` as never);
     },
     onError: (error) => setToast(error instanceof Error ? error.message : t("team.try_again")),
   });
@@ -428,7 +432,7 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<string | null>(null);
   const prefs = useQuery({
-    queryKey: teamChatKeys.prefs(userId),
+    queryKey: teamChatKey(userId, "prefs"),
     queryFn: async (): Promise<TeamPrefRow[]> => {
       const { data, error } = await supabase
         .from("notification_channel_prefs")
@@ -448,7 +452,7 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
         : await supabase.from("notification_channel_prefs").upsert({ user_id: userId, category_key: key, channel, enabled: on, updated_at: new Date().toISOString() });
       if (result.error) throw new Error(result.error.message || t("team.save_failed"));
     },
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: teamChatKeys.prefs(userId) }); },
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "prefs") }); },
     onError: () => setToast(t("team.save_failed")),
   });
   const rows = prefs.data ?? [];

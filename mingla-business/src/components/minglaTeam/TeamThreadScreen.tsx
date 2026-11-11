@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
 import { accent, radius, spacing } from "../../constants/designSystem";
-import { teamChatKeys } from "../../hooks/teamChatKeys";
+import { teamChatKey } from "../../hooks/useBusinessNotifications";
 import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import {
   addTeamFile,
@@ -136,14 +136,14 @@ function docType(name: string): string {
 }
 
 export function TeamThreadScreen(): React.ReactElement {
-  const params = useLocalSearchParams<{ threadId?: string }>();
-  const threadId = typeof params.threadId === "string" ? params.threadId : null;
+  const params = useLocalSearchParams<{ thread?: string }>();
+  const threadId = typeof params.thread === "string" ? params.thread : null;
   return <TeamAccessGate>{(userId) => <TeamThread userId={userId} threadId={threadId} />}</TeamAccessGate>;
 }
 
 function TeamImage({ userId, attachment, style }: { userId: string; attachment: TeamAttachment; style: StyleProp<ViewStyle> }): React.ReactElement {
   const signed = useQuery({
-    queryKey: teamChatKeys.file(userId, attachment.id),
+    queryKey: teamChatKey(userId, "file", attachment.id),
     queryFn: () => signTeamAttachment(attachment.id),
     staleTime: 4 * 60 * 1000,
   });
@@ -184,9 +184,9 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
 
   const refresh = useCallback(() => {
     if (!threadId) return;
-    void queryClient.invalidateQueries({ queryKey: teamChatKeys.messages(userId, threadId) });
-    void queryClient.invalidateQueries({ queryKey: teamChatKeys.threads(userId) });
-    void queryClient.invalidateQueries({ queryKey: teamChatKeys.badge(userId) });
+    void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "messages", threadId) });
+    void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "threads") });
+    void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "badge") });
   }, [queryClient, threadId, userId]);
 
   const fail = useCallback((error: unknown, fallback?: string) => {
@@ -199,8 +199,8 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
     if (!threadId || !thread || lastRead.current === (newestId ?? "empty")) return;
     lastRead.current = newestId ?? "empty";
     void markTeamRead(threadId).then(() => {
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.threads(userId) });
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.badge(userId) });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "threads") });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "badge") });
     }).catch(() => { lastRead.current = null; });
   }, [newestId, queryClient, thread, threadId, userId]);
 
@@ -376,7 +376,7 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
     if (!threadId) return;
     setOptionsOpen(false);
     void removeTeamMember(threadId, userId).then(() => {
-      void queryClient.invalidateQueries({ queryKey: teamChatKeys.threads(userId) });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "threads") });
       router.replace("/team" as never);
     }).catch(fail);
   };
@@ -583,7 +583,7 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
                     <Pressable accessibilityRole="button" accessibilityLabel={t("team.save")} onPress={saveRename} style={styles.chip}><Text style={styles.chipText}>{t("team.save")}</Text></Pressable>
                   </View>
                 )}
-                <SheetButton label={t("team.add_people")} onPress={() => { setOptionsOpen(false); router.push(`/team/new?mode=add&thread=${threadId}` as never); }} />
+                <SheetButton label={t("team.add_people")} onPress={() => { setOptionsOpen(false); router.push(`/team?compose=add&thread=${threadId}` as never); }} />
                 <SheetButton label={t("team.leave")} danger onPress={leave} />
               </>
             ) : null}

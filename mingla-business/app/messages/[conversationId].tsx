@@ -95,6 +95,10 @@ import {
 // lazy chunk: the inbox list, tiles, thread model and chat tokens are never
 // hoisted into the eager __common boot chunk (bundle-baseline-movement).
 export { BrandGroupInboxScreen } from "../../src/components/messages/BrandGroupInboxScreen";
+// #4255 W5 — the Mingla team screens (staff only) load from this chunk too:
+// they reuse the Brand group file sheet, pickers, upload and chat tokens, and
+// a module shared by two lazy chunks is hoisted into __common.
+export { TeamNotificationPrefs, TeamScreen } from "../../src/components/minglaTeam/TeamScreens";
 
 const LazyBrandGroupMediaPanel = React.lazy(async () => {
   const module = await import("../../src/components/messages/BrandGroupMediaPanel");

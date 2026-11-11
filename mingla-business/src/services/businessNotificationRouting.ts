@@ -35,8 +35,9 @@
  * #4255 W5 adds Mingla team (staff only; the team screens show a host who is
  * not staff "This space is for the Mingla team"):
  *   mingla-business://team/{threadId}         business.team_message / team chat mentions
+ *                                             -> /team?thread={threadId}
  *   mingla-business://team/mention/{id}       business.team_mention / team_decision
- *                                             (Admin items: Mentions, at that row)
+ *                                             -> /team?tab=mentions&mention={id}
  */
 
 import { useRouter } from "expo-router";
@@ -92,17 +93,6 @@ const BRAND_ENQUIRY_PUSH_TYPES = new Set([
   "business.brand_enquiry_message",
   "business.brand_enquiry_nudge",
 ]);
-
-/** #4255 W5 — a team chat, an Admin item on Mentions, or Mingla team itself. */
-function teamTarget(head: unknown, id: unknown): BusinessNavTarget {
-  const clean = (value: unknown): string => (typeof value === "string" ? value.split(/[?#]/, 1)[0] : "");
-  if (clean(head) === "mention") {
-    const mentionId = clean(id);
-    return UUID_RE.test(mentionId) ? `/team?tab=mentions&mention=${mentionId}` : "/team?tab=mentions";
-  }
-  const threadId = clean(head);
-  return UUID_RE.test(threadId) ? `/team/${threadId}` : "/team";
-}
 
 /**
  * Parse a `mingla-business://…` deep link into an expo-router path.
@@ -164,8 +154,11 @@ export function parseBusinessDeepLink(
       const ticketId = rest[0];
       return ticketId ? `/support/${ticketId}` : null;
     }
+    // #4255 W5 — a team chat, an Admin item on Mentions, or Mingla team.
     case "team":
-      return teamTarget(rest[0], rest[1]);
+      return rest[0] === "mention"
+        ? `/team?tab=mentions${UUID_RE.test(rest[1] ?? "") ? `&mention=${rest[1]}` : ""}`
+        : `/team${UUID_RE.test(rest[0] ?? "") ? `?thread=${rest[0]}` : ""}`;
     case "messages": {
       const conversationId = rest[0];
       return conversationId ? `/messages/${conversationId}` : "/messages";
@@ -339,15 +332,6 @@ export function resolveBusinessNavTarget(
         data.relatedId) as string | undefined;
       return conversationId ? `/messages/${conversationId}` : "/messages";
     }
-
-    // #4255 W5 — a team push without its deep link still opens Mingla team.
-    case "business.team_message":
-      return teamTarget(data.thread_id ?? data.threadId, null);
-    case "business.team_mention":
-    case "business.team_decision":
-      return data.source_kind === "team_message" || data.sourceKind === "team_message"
-        ? teamTarget(data.thread_id ?? data.threadId, null)
-        : teamTarget("mention", data.mention_id ?? data.mentionId);
 
     // Issue #1791 (SPEC #1788 P-54): the two venue-order types. Both carry a
     // `deepLink` today, so branch 1 above normally wins — this is the fallback
