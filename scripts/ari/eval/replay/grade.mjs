@@ -111,9 +111,10 @@ export function gradeTurn(expect, observed, previous = null) {
     );
   }
   for (const [flowKey, status] of Object.entries(expect.run_status ?? {})) {
-    const actual =
-      (observed.runs ?? []).find((run) => run.flow_key === flowKey)?.status ??
-        null;
+    const actual = (observed.runs ?? []).find((run) =>
+      run.flow_key === flowKey
+    )?.status ??
+      null;
     facts.push(fact(`${flowKey} run`, actual === status, status, actual));
   }
   for (const needle of expect.reply_must ?? []) {
@@ -212,6 +213,9 @@ export function percentiles(values) {
  * passed, facts}], route_table: { total, misroutes } }. Each suite scores out
  * of 100; overall is their mean.
  */
+/** The suites "overall" is the mean of (the Wave F baseline's three). */
+export const CORE_SUITES = ["replay", "flows", "route_table"];
+
 export function scoreRun(suites) {
   const scores = {};
   if (suites.replay?.length) {
@@ -231,12 +235,31 @@ export function scoreRun(suites) {
       (1 - suites.route_table.misroutes / suites.route_table.total) * 100,
     );
   }
-  const values = Object.values(scores);
+  const core = CORE_SUITES.flatMap((suite) =>
+    typeof scores[suite] === "number" ? [scores[suite]] : []
+  );
+  // #3355 rework 3: answer quality (facts passed / compared) and the claim
+  // check's must-catch / must-keep cases. Gated on their own baseline
+  // section; "overall" stays the mean of the core suites so it compares
+  // with every earlier baseline.
+  const extra = {};
+  if (suites.answers?.length) {
+    const facts = suites.answers.flatMap((item) => item.facts ?? []);
+    extra.answers = facts.length
+      ? round(facts.filter((fact) => fact.passed).length / facts.length * 100)
+      : 0;
+  }
+  if (suites.claim_check?.total) {
+    extra.claim_check = round(
+      suites.claim_check.passed / suites.claim_check.total * 100,
+    );
+  }
   return {
     ...scores,
-    overall: values.length
-      ? round(values.reduce((sum, value) => sum + value, 0) / values.length)
+    overall: core.length
+      ? round(core.reduce((sum, value) => sum + value, 0) / core.length)
       : 0,
+    ...extra,
   };
 }
 
@@ -248,7 +271,11 @@ export const GATE_DROP_POINTS = 2;
  * suite (or overall) that drops by GATE_DROP_POINTS or more fails; a suite
  * the baseline scored and the run is missing also fails.
  */
-export function compareToBaseline(baseline, run, dropPoints = GATE_DROP_POINTS) {
+export function compareToBaseline(
+  baseline,
+  run,
+  dropPoints = GATE_DROP_POINTS,
+) {
   const drops = [];
   const base = baseline?.scores ?? {};
   const now = run?.scores ?? {};
@@ -275,7 +302,10 @@ export function baselineFromRun(run) {
     ran_at: run.ran_at,
     revision: run.revision,
     scores: run.scores,
-    replay: (run.suites?.replay ?? []).map((item) => ({ id: item.id, score: item.score })),
+    replay: (run.suites?.replay ?? []).map((item) => ({
+      id: item.id,
+      score: item.score,
+    })),
     flows: (run.suites?.flows ?? []).map((item) => ({
       id: item.id,
       verdict: item.skipped ? "skipped" : item.passed ? "pass" : "fail",
@@ -285,5 +315,23 @@ export function baselineFromRun(run) {
       misroutes: run.suites?.route_table?.misroutes ?? 0,
     },
     latency: run.latency ?? null,
+    ...(run.suites?.answers?.length
+      ? {
+        answers: run.suites.answers.map((item) => ({
+          id: item.id,
+          facts_passed: (item.facts ?? []).filter((fact) => fact.passed).length,
+          facts_total: (item.facts ?? []).length,
+        })),
+      }
+      : {}),
+    ...(run.suites?.claim_check?.total
+      ? {
+        claim_check: {
+          total: run.suites.claim_check.total,
+          passed: run.suites.claim_check.passed,
+          latency_ms: run.suites.claim_check.latency_ms,
+        },
+      }
+      : {}),
   };
 }

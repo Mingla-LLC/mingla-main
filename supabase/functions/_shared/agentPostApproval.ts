@@ -257,6 +257,29 @@ export async function continueAfterApprovedAction(args: {
     }),
   });
 
+  if (
+    loop.kind === "proposal" &&
+    repeatsApprovedWrite({
+      toolName: args.toolName,
+      toolArgs: args.toolArgs ?? {},
+      nextToolName: loop.toolCall.name,
+      nextToolArgs: loop.toolCall.args,
+    })
+  ) {
+    // #3355 rework 3 (live answer eval): the continuation proposed the very
+    // write the host just approved (a second "Payout missing" ticket). The
+    // approved one is saved; no duplicate card is offered.
+    console.warn(JSON.stringify({
+      event: "ari_post_approval_repeat_dropped",
+      issue: "3355",
+      tool_name: loop.toolCall.name,
+    }));
+    return {
+      kind: "text",
+      text: null,
+      observations: loop.observations,
+    };
+  }
   if (loop.kind === "proposal") {
     return {
       kind: "proposal",
@@ -328,6 +351,32 @@ export async function continueAfterApprovedAction(args: {
     text: text || null,
     observations: loop.observations,
   };
+}
+
+const IDENTITY_KEYS = ["code", "subject", "title", "name", "ticket_id"] as const;
+
+/**
+ * The continuation's proposal is the write the host just approved, again:
+ * the same tool naming the same thing (code, subject, title, name or
+ * ticket), or the same tool with no name at all.
+ */
+export function repeatsApprovedWrite(args: {
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  nextToolName: string;
+  nextToolArgs: Record<string, unknown>;
+}): boolean {
+  if (args.toolName !== args.nextToolName) return false;
+  const key = (value: unknown) =>
+    typeof value === "string" ? value.trim().toLowerCase() : null;
+  const named = IDENTITY_KEYS.filter((field) =>
+    key(args.toolArgs[field]) !== null || key(args.nextToolArgs[field]) !== null
+  );
+  if (named.length === 0) return true;
+  return named.some((field) =>
+    key(args.toolArgs[field]) !== null &&
+    key(args.toolArgs[field]) === key(args.nextToolArgs[field])
+  );
 }
 
 /**

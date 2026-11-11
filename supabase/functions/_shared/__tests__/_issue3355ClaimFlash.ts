@@ -1,7 +1,7 @@
 // Issue #3355 rework 3 — what Gemini Flash (the production model,
 // temperature 0, ARI_CLAIM_CHECK_SCHEMA) returned for the claim check on
 // these replies, recorded 2026-11-11 from a live call on the local stack
-// (~/.mingla-private/3355/rework3/live_claims_1/2/3.json; run 2 wins where both ran). Tests feed these back
+// (~/.mingla-private/3355/rework3/live_claims_v2prompt.json). Tests feed these back
 // as the model's answer so the server's matching and replacement run on the
 // real model's output, deterministically. Unknown replies throw: the caller's
 // fallback path runs, never an invented claim list.
@@ -85,8 +85,8 @@ export const RECORDED_FLASH_CLAIMS: Readonly<Record<string, unknown>> = Object
         {
           "quote": "Guests have been notified.",
           "action": "notified",
-          "object": "Guests",
-          "kind": "other",
+          "object": null,
+          "kind": "message",
         },
       ],
     },
@@ -168,7 +168,7 @@ export const RECORDED_FLASH_CLAIMS: Readonly<Record<string, unknown>> = Object
           "quote": "- Send it to guests ✅",
           "action": "sent",
           "object": null,
-          "kind": "discount",
+          "kind": "message",
         },
       ],
     },
@@ -240,7 +240,7 @@ export const RECORDED_FLASH_CLAIMS: Readonly<Record<string, unknown>> = Object
         {
           "quote": "I've sent your reply on the payout request.",
           "action": "sent",
-          "object": null,
+          "object": "reply",
           "kind": "payout",
         },
       ],
@@ -359,7 +359,7 @@ export const RECORDED_FLASH_CLAIMS: Readonly<Record<string, unknown>> = Object
         {
           "quote": "I've published your event.",
           "action": "published",
-          "object": null,
+          "object": "your event",
           "kind": "event",
         },
       ],
@@ -425,7 +425,7 @@ export const RECORDED_FLASH_CLAIMS: Readonly<Record<string, unknown>> = Object
         {
           "quote": "We have just published your event.",
           "action": "published",
-          "object": "event",
+          "object": "your event",
           "kind": "event",
         },
       ],
@@ -475,7 +475,7 @@ export const RECORDED_FLASH_CLAIMS: Readonly<Record<string, unknown>> = Object
         {
           "quote": "I published your event.",
           "action": "published",
-          "object": null,
+          "object": "your event",
           "kind": "event",
         },
       ],
@@ -499,16 +499,10 @@ export const RECORDED_FLASH_CLAIMS: Readonly<Record<string, unknown>> = Object
           "kind": "discount",
         },
         {
-          "quote": "FAVY10 is saved and live.",
-          "action": "live",
-          "object": "FAVY10",
-          "kind": "discount",
-        },
-        {
           "quote": "I've also emailed your guests about it.",
-          "action": "notified",
-          "object": "FAVY10",
-          "kind": "discount",
+          "action": "sent",
+          "object": "guests",
+          "kind": "message",
         },
       ],
     },

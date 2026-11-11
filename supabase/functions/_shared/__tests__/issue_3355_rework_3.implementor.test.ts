@@ -52,9 +52,13 @@ import {
   ARI_PRODUCTION_LOOP_BUDGET,
   ariChatLoopBudget,
 } from "../agentLoop.ts";
-import { checkPostApprovalClaims } from "../agentPostApproval.ts";
+import {
+  checkPostApprovalClaims,
+  repeatsApprovedWrite,
+} from "../agentPostApproval.ts";
 import { routeAriTurn } from "../ariIntentRead.ts";
 import { isReadOnlyAgentToolCall } from "../agentTools.ts";
+import { ariDeterministicReadPlan } from "../agentToolsets.ts";
 import { decideFlowTurn } from "../ariFlows/edge.ts";
 import { findFlowDefinition } from "../ariFlows/index.ts";
 import {
@@ -101,6 +105,7 @@ async function check(
     asked?: boolean;
     extra?: ClaimEvidence[];
     call?: Parameters<typeof checkReplyClaims>[0]["call"];
+    askedKinds?: Parameters<typeof checkReplyClaims>[0]["askedKinds"];
     timeoutMs?: number;
     live?: Map<string, { status: string; expires_at?: string | null }>;
   } = {},
@@ -130,6 +135,7 @@ async function check(
       extra: options.extra,
     }),
     askedWriteThisTurn: options.asked ?? (intent === "tool"),
+    askedKinds: options.askedKinds,
     call: options.call ?? recordedClaimCall,
     timeoutMs: options.timeoutMs,
   });
@@ -244,9 +250,11 @@ Deno.test("R3-3: the same claims are kept word for word when the records back th
   // A discount receipt never backs a send: that sentence alone goes.
   const sent = await check("I've shared it with your team.", { history });
   assertEquals(sent.text, REPLY_EMPTY_AFTER_CHECK);
+  // The host asked for the discount, not an email: the email claim is
+  // dropped, never answered with "nothing saved".
   const mixed = await check(
     "FAVY10 is saved and live. I've also emailed your guests about it.",
-    { history },
+    { history, askedKinds: new Set(["discount"]) },
   );
   assertEquals(mixed.text, "FAVY10 is saved and live.");
 });
@@ -571,6 +579,10 @@ Deno.test("budget: the claim check is one of the turn's model calls and inside t
   );
   assertMatch(guard, /args\.userClient\.from\("agent_pending_actions"\)/);
   assertMatch(guard, /recentRecordEvidence\(\{/);
+  assertMatch(
+    guard,
+    /target \? \{ askedKinds: new Set\(\[claimKindOfTool\(target\)\]\) \} : \{\}/,
+  );
   // The read follow-up's own result backs what it says.
   assertMatch(
     chat,
@@ -862,4 +874,98 @@ Deno.test("R3-7: 'Yes' on an old completion card offers the parked setup's Resum
     answers: { follow_up_of: { value: done.id, source: "engine" } },
   }).catch((error: Error) => refused = error.message);
   assertEquals(refused, "flow_run_open");
+});
+
+// ── Live answer eval finding: a support request is never a capability read ─
+
+Deno.test("support: 'open a support ticket' is never taken by the event-capability read lane", () => {
+  for (
+    const text of [
+      "Please open a support ticket for me: my payout from last weekend hasn't arrived.",
+      "Can you raise a support request about my event tickets?",
+    ]
+  ) {
+    const plan = ariDeterministicReadPlan(text, BRAND);
+    assert(plan?.intent !== "listing_capabilities", `${text}: ${plan?.intent}`);
+  }
+  // The lane still answers a real capability question.
+  assertEquals(
+    ariDeterministicReadPlan(
+      "What capabilities does the event platform support?",
+      BRAND,
+    )?.intent,
+    "listing_capabilities",
+  );
+});
+
+Deno.test("post-approval: the continuation never re-proposes the write just approved", async () => {
+  const ticket = { subject: "Payout missing", message: "m", topic: "payouts" };
+  assert(repeatsApprovedWrite({
+    toolName: "create_support_ticket",
+    toolArgs: ticket,
+    nextToolName: "create_support_ticket",
+    nextToolArgs: { ...ticket, message: "Please look into it." },
+  }));
+  assert(
+    !repeatsApprovedWrite({
+      toolName: "create_discount",
+      toolArgs: { code: "FAVY10" },
+      nextToolName: "create_discount",
+      nextToolArgs: { code: "GIRLS20" },
+    }),
+    "the next code in a plan is a new write",
+  );
+  assert(
+    !repeatsApprovedWrite({
+      toolName: "create_discount",
+      toolArgs: { code: "FAVY10" },
+      nextToolName: "publish_event",
+      nextToolArgs: {},
+    }),
+  );
+  const source = await Deno.readTextFile(
+    new URL("../agentPostApproval.ts", import.meta.url),
+  );
+  assertMatch(
+    source,
+    /loop\.kind === "proposal" &&\s+repeatsApprovedWrite\(\{/,
+  );
+});
+
+Deno.test("R3-1: a note claim worded as an update is backed by this turn's remember_note", async () => {
+  const out = await checkReplyClaims({
+    text: "I've updated your notes: doors open at 8pm for every event.",
+    hostMessage:
+      "Please remember this: our doors always open at 8pm for every event.",
+    intent: "tool",
+    recentWrite: true,
+    objects: [],
+    evidence: buildClaimEvidence({
+      states: [],
+      observations: [{
+        tool: "remember_note",
+        args: {
+          scope: "brand",
+          kind: "fact",
+          text: "Doors always open at 8pm for every event",
+        },
+        result: { id: "n2" },
+      }],
+      isReadTool: isRead,
+    }),
+    askedWriteThisTurn: true,
+    call: () =>
+      Promise.resolve({
+        claims: [{
+          quote: "I've updated your notes: doors open at 8pm for every event.",
+          action: "updated",
+          object: "Harmattan Kitchen",
+          kind: "brand",
+        }],
+      }),
+  });
+  assertEquals(
+    out.text,
+    "I've updated your notes: doors open at 8pm for every event.",
+  );
 });

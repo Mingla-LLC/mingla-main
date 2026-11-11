@@ -109,7 +109,7 @@ function printEval(result) {
   }
 }
 
-export async function runFlowEvals({ ids = null } = {}) {
+export async function runFlowEvals({ ids = null, evals = FLOW_EVALS } = {}) {
   const config = localConfig();
   const rest = serviceRest(config);
   const { brands, users } = await seedFlowBrands(config);
@@ -131,9 +131,7 @@ export async function runFlowEvals({ ids = null } = {}) {
       return tokens.get(account);
     },
   };
-  const selected = FLOW_EVALS.filter((mod) =>
-    !ids || ids.includes(mod.meta.id)
-  );
+  const selected = evals.filter((mod) => !ids || ids.includes(mod.meta.id));
   const results = [];
   for (const mod of selected) {
     const ctx = {
@@ -189,7 +187,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   const ran = results.filter((result) => !result.skipped);
   const passed = ran.filter((result) => result.passed).length;
-  console.log(`\n${passed}/${ran.length} live flow evals passed (run ${runId})`);
+  console.log(
+    `\n${passed}/${ran.length} live flow evals passed (run ${runId})`,
+  );
   if (process.argv.includes("--record")) {
     const path = join(ROOT, RUNS_PATH);
     const ledger = JSON.parse(readFileSync(path, "utf8"));

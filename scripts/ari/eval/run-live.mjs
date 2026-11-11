@@ -14,7 +14,14 @@
  *   - flows: the flow evals in flows/ (S3–S6 and the guided setups), which
  *     drive agent-chat and agent-confirm-action like the Host does;
  *   - route_table: the 51-row Wave E route table, read by the real model
- *     (replay/route_table_live.ts, Deno).
+ *     (replay/route_table_live.ts, Deno);
+ *   - answers (#3355 rework 3): answer quality for read, how-to, remember and
+ *     support turns, graded on the words the host reads (answers/);
+ *   - claim_check (#3355 rework 3): the reply claim check on the real model,
+ *     the tester's must-catch list and the must-keep answers
+ *     (replay/claim_check_live.ts), with the check's own latency.
+ * "overall" is the mean of replay, flows and route_table (the baseline the
+ * gate has always compared); answers and claim_check have their own scores.
  * Latency: p50 / p95 per turn for setup starts, typed turns and card answers.
  *
  * Writes <out>/<run id>.json and .md (default ~/.mingla-private/3355/evals).
@@ -47,6 +54,7 @@ import {
   seedFlowBrands,
 } from "./seed-flow-brands.mjs";
 import { runFlowEvals } from "./flows/run.mjs";
+import { ANSWER_EVALS } from "./answers/index.mjs";
 import { LIVE_FLOW_EVAL_IDS, REPLAY_FIXTURES } from "./replay/fixtures.mjs";
 import {
   baselineFromRun,
@@ -139,11 +147,16 @@ function observe(data, runsBefore, runsAfter, ms) {
     text,
     card_id: artefact?.artefact_id ?? null,
     new_flow_runs: newRuns.map((run) => run.flow_key),
-    runs: runsAfter.map((run) => ({ flow_key: run.flow_key, status: run.status })),
+    runs: runsAfter.map((run) => ({
+      flow_key: run.flow_key,
+      status: run.status,
+    })),
     handoffs: artefact?.handoff?.item_key ? [artefact.handoff.item_key] : [],
     ms,
     setup_start: newRuns.length > 0 && Boolean(artefact),
-    ...(data.kind === "error" ? { error: `${data.code}: ${data.message}` } : {}),
+    ...(data.kind === "error"
+      ? { error: `${data.code}: ${data.message}` }
+      : {}),
   };
 }
 
@@ -174,7 +187,11 @@ export async function runReplay(config, rest, brands) {
       try {
         data = await session.say(turn.say);
       } catch (error) {
-        data = { kind: "error", code: "EVAL", message: String(error?.message ?? error) };
+        data = {
+          kind: "error",
+          code: "EVAL",
+          message: String(error?.message ?? error),
+        };
       }
       const ms = Date.now() - started;
       const runsAfter = await chatRuns(rest, session.conversationId);
@@ -188,6 +205,22 @@ export async function runReplay(config, rest, brands) {
 }
 
 function runRouteTable(functionsEnv) {
+  return runDenoSuite(
+    functionsEnv,
+    "scripts/ari/eval/replay/route_table_live.ts",
+    "route_table_live",
+  );
+}
+
+function runClaimCheck(functionsEnv) {
+  return runDenoSuite(
+    functionsEnv,
+    "scripts/ari/eval/replay/claim_check_live.ts",
+    "claim_check_live",
+  );
+}
+
+function runDenoSuite(functionsEnv, script, suiteName) {
   const result = spawnSync(
     "deno",
     [
@@ -197,7 +230,7 @@ function runRouteTable(functionsEnv) {
       "--allow-read",
       "--allow-env",
       "--allow-net",
-      "scripts/ari/eval/replay/route_table_live.ts",
+      script,
     ],
     {
       cwd: ROOT,
@@ -211,11 +244,11 @@ function runRouteTable(functionsEnv) {
     },
   );
   const line = String(result.stdout ?? "").split("\n").find((item) =>
-    item.startsWith('{"suite":"route_table_live"')
+    item.startsWith(`{"suite":"${suiteName}"`)
   );
   if (!line) {
     throw new Error(
-      `route table run failed: ${String(result.stderr ?? "").slice(-400)}`,
+      `${suiteName} run failed: ${String(result.stderr ?? "").slice(-400)}`,
     );
   }
   return JSON.parse(line);
@@ -318,10 +351,44 @@ function markdown(run) {
     }%), ${table.model_reads} model reads; read latency p50 ${table.latency_ms.p50} ms, p95 ${table.latency_ms.p95} ms.`,
     "",
     ...table.rows.filter((row) => !row.passed).map((row) =>
-      `- ${row.open} | ${row.text.slice(0, 80)} → ${row.got} (want ${row.expect}; ${row.source}${
+      `- ${row.open} | ${
+        row.text.slice(0, 80)
+      } → ${row.got} (want ${row.expect}; ${row.source}${
         row.reason ? `/${row.reason}` : ""
       })`
     ),
+    "",
+    "## Answer quality (#3355 rework 3)",
+    "",
+    "| Eval | Facts | Pass |",
+    "|---|---|---|",
+    ...(run.suites.answers ?? []).map((item) =>
+      `| ${item.id} | ${(item.facts ?? []).filter((f) => f.passed).length}/${
+        (item.facts ?? []).length
+      } | ${item.passed ? "yes" : "no"} |`
+    ),
+    "",
+    ...(run.suites.answers ?? []).flatMap((item) =>
+      (item.facts ?? []).filter((f) => !f.passed).map((f) =>
+        `- ${item.id}: ${f.fact}: expected ${JSON.stringify(f.expected)}, got ${
+          JSON.stringify(f.actual).slice(0, 300)
+        }`
+      ).concat(item.error ? [`- ${item.id}: error ${item.error}`] : [])
+    ),
+    "",
+    "## Claim check on the live model (#3355 rework 3)",
+    "",
+    run.suites.claim_check
+      ? `${run.suites.claim_check.passed}/${run.suites.claim_check.total} (must catch ${run.suites.claim_check.must_catch.passed}/${run.suites.claim_check.must_catch.total}, must keep ${run.suites.claim_check.must_keep.passed}/${run.suites.claim_check.must_keep.total}, ${run.suites.claim_check.fallbacks} fallbacks); check latency p50 ${run.suites.claim_check.latency_ms.p50} ms, p95 ${run.suites.claim_check.latency_ms.p95} ms.`
+      : "not run",
+    "",
+    ...((run.suites.claim_check?.rows ?? []).filter((row) => !row.passed).map((
+      row,
+    ) =>
+      `- ${row.group}: ${JSON.stringify(row.reply)} → ${
+        JSON.stringify(row.text)
+      }`
+    )),
     "",
     "## Latency (per turn, ms)",
     "",
@@ -338,7 +405,7 @@ function markdown(run) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const functionsEnv = readEnvFile(option("functions-env"));
   const only = option("only")?.split(",").filter(Boolean) ??
-    ["replay", "flows", "route_table"];
+    ["replay", "flows", "route_table", "answers", "claim_check"];
   const config = localConfig();
   const rest = serviceRest(config);
   const { brands, users } = await seedFlowBrands(config);
@@ -346,7 +413,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const runId = `live-${
     new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)
   }Z-${randomUUID().slice(0, 8)}`;
-  const suites = { replay: [], flows: [], route_table: null };
+  const suites = {
+    replay: [],
+    flows: [],
+    route_table: null,
+    answers: [],
+    claim_check: null,
+  };
   if (only.includes("replay")) {
     suites.replay = await runReplay(config, rest, brands);
   }
@@ -363,9 +436,31 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       transcript: item.transcript,
     }));
   }
+  if (only.includes("answers")) {
+    await resetTurnWindow(rest, Object.values(users));
+    suites.answers = (await runFlowEvals({ evals: ANSWER_EVALS })).map((
+      item,
+    ) => ({
+      id: item.id,
+      passed: item.passed ?? false,
+      facts: item.facts,
+      error: item.error ?? null,
+      transcript: item.transcript,
+    }));
+  }
+  if (only.includes("claim_check")) {
+    if (!functionsEnv.GEMINI_API_KEY_ARI) {
+      throw new Error(
+        "--functions-env must name a local env with GEMINI_API_KEY_ARI",
+      );
+    }
+    suites.claim_check = runClaimCheck(functionsEnv);
+  }
   if (only.includes("route_table")) {
     if (!functionsEnv.GEMINI_API_KEY_ARI) {
-      throw new Error("--functions-env must name a local env with GEMINI_API_KEY_ARI");
+      throw new Error(
+        "--functions-env must name a local env with GEMINI_API_KEY_ARI",
+      );
     }
     suites.route_table = runRouteTable(functionsEnv);
   }
@@ -380,16 +475,29 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     suites: {
       ...suites,
       route_table: suites.route_table ??
-        { total: 0, misroutes: 0, misroute_rate: 0, model_reads: 0, rows: [], latency_ms: {} },
+        {
+          total: 0,
+          misroutes: 0,
+          misroute_rate: 0,
+          model_reads: 0,
+          rows: [],
+          latency_ms: {},
+        },
     },
   };
   const out = option("out") ?? join(homedir(), ".mingla-private/3355/evals");
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, `${runId}.json`), `${JSON.stringify(run, null, 2)}\n`);
+  writeFileSync(
+    join(out, `${runId}.json`),
+    `${JSON.stringify(run, null, 2)}\n`,
+  );
   writeFileSync(join(out, `${runId}.md`), markdown(run));
   if (process.argv.includes("--write-baseline")) {
     const baseline = baselineFromRun(run);
-    writeFileSync(join(ROOT, BASELINE_PATH), `${JSON.stringify(baseline, null, 2)}\n`);
+    writeFileSync(
+      join(ROOT, BASELINE_PATH),
+      `${JSON.stringify(baseline, null, 2)}\n`,
+    );
     console.log(`baseline written to ${BASELINE_PATH}`);
   }
   console.log(markdown(run));

@@ -281,6 +281,7 @@ import {
 import {
   buildClaimEvidence,
   checkReplyClaims,
+  claimKindOfTool,
   dedupeReplySentences,
   recentRecordEvidence,
 } from "../_shared/ariClaimCheck.ts";
@@ -5534,6 +5535,8 @@ async function guardReplyClaims(args: {
         kinds,
       }),
     askedWriteThisTurn,
+    // The tool the host asked for names what "nothing saved" may be about.
+    ...(target ? { askedKinds: new Set([claimKindOfTool(target)]) } : {}),
     timeoutMs: ARI_TURN_DEADLINE_MS - (Date.now() - args.turnStartedAt),
     call: async (request) =>
       (await callGeminiStructured({

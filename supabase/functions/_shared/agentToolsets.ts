@@ -403,6 +403,10 @@ export function selectAriCampaignWorkflowTools(
  * small model to guess which product feature implements the request. Specific
  * CRUD requests still go directly to their scoped toolset.
  */
+/** A request to Mingla support ("open a support ticket", "my support request"). */
+export const ARI_SUPPORT_REQUEST =
+  /\bsupport\s+(?:ticket|request|team|chat|case)s?\b|\b(?:open|raise|file|submit|log|create|send|start)\s+(?:a\s+|an\s+|my\s+)?(?:support\s+)?(?:ticket|request|case)\b/i;
+
 export function needsAriCapabilityDiscovery(text: string): boolean {
   return /\b(?:host\s+promotion|promotion\s+plan|marketing\s+plan|growth\s+plan|launch\s+strategy|what\s+can\s+(?:ari|mingla)|can\s+(?:ari|mingla)\s+help|available\s+capabilit(?:y|ies))\b/i
     .test(text);
@@ -936,7 +940,10 @@ export function ariDeterministicReadPlan(
   if (
     listingType &&
     /\b(?:platform|capabilit|support|comparison|time[- ]dependent|per[- ]hour|rate\s+card|bookable)\b/i
-      .test(text)
+      .test(text) &&
+    // #3355 rework 3 (live answer eval): "open a support ticket" is a
+    // support request for the support tools, never an event-capability read.
+    !ARI_SUPPORT_REQUEST.test(text)
   ) {
     return {
       intent: "listing_capabilities",

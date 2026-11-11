@@ -107,7 +107,7 @@ export const ARI_CLAIM_CHECK_SCHEMA: Readonly<Record<string, unknown>> = Object
 export const ARI_CLAIM_CHECK_SYSTEM_PROMPT =
   `You check one reply that Ari (an assistant inside Mingla Host) drafted for a host. You never rewrite it and never answer the host. Return only JSON matching the schema.
 
-List in claims every place where the REPLY says or implies that an action is already done: something was created, made, saved, sent, published, made live or active, updated, deleted, cancelled, scheduled, shared, added, or people were notified, invited or emailed; or that Ari already proposed, prepared or drafted a card for the host to approve. Count it in any wording, tense, voice or language (English, Nigerian Pidgin, Yoruba, French and others), inside bold, quotes or code, as a checkmark (✅ ✔) next to a task, as a finished-outcome phrase ("All set", "Done!", "Sorted", "up and running", "good to go", "went through", "you're all set", "it's live"), and inside a question or a "since"/"now that"/"which is now" clause ("Since I've created X, want me to share it?").
+List in claims every place where the REPLY says or implies that an action is already done: something was created, made, saved, sent, published, made live or active, updated, switched or turned on or off, deleted, cancelled, scheduled, shared, added, or people were notified, invited, added to the team or emailed; or that Ari already proposed, prepared or drafted a card for the host to approve. Count it in any wording, tense, voice or language (English, Nigerian Pidgin, Yoruba, French and others), inside bold, quotes or code, as a checkmark (✅ ✔) next to a task, as a finished-outcome phrase ("All set", "Done!", "Sorted", "up and running", "good to go", "went through", "you're all set", "it's live"), and inside a question or a "since"/"now that"/"which is now" clause that takes it for granted ("Since I've created X, want me to share it?", "Should I tell your guests X now works?").
 
 Do NOT list:
 - instructions or steps for the host ("tap Publish", "you can create a code from Marketing");
@@ -419,7 +419,7 @@ const NAMED_OBJECT = /\b[A-Z][A-Z0-9]{3,}\b|^["“'‘].+["”'’]$/;
 /** Kind words in a claim, beyond the kind the check gave it. */
 const KIND_WORDS: ReadonlyArray<[RegExp, AriClaimKind]> = [
   [/\b(?:request|ticket|support|reply|replied)\b/i, "support"],
-  [/\b(?:note|remember|remembered|memory|saved\s+that)\b/i, "note"],
+  [/\b(?:notes?|remember|remembered|memory|memories|saved\s+that)\b/i, "note"],
   [
     /\b(?:guests?|notified|emailed|texted|messaged|announcement|broadcast|group)\b/i,
     "message",
@@ -453,9 +453,15 @@ function actionFits(action: AriClaimAction, item: ClaimEvidence): boolean {
         !/delete|cancel|end_|remove|forget|pause|archive/.test(tool);
     case "proposed":
       return item.status !== "read";
+    case "updated":
+      // An edit is backed by an edit tool, or by this turn's own write (a
+      // memory note "updated" is the remember_note that just ran).
+      return item.status === "read" || item.status === "pending" ||
+        item.thisTurn || item.kind === "note" ||
+        /update|edit|change|set_|patch|pause|resume|upsert|manage|remember/
+          .test(tool);
     case "created":
     case "saved":
-    case "updated":
     case "scheduled":
     case "added":
     case "completed":
@@ -491,9 +497,9 @@ const READ_BACKS: ReadonlySet<AriClaimAction> = new Set([
 ]);
 
 /**
- * The record a claim is about, in its deciding state: an open card wins
- * (the change is still waiting), then a saved one, then a read, then the
- * latest contradicting state. Null: the chat holds nothing for it.
+ * The record a claim is about, in its deciding state: a saved one wins, then
+ * an open card (the change is still waiting), then a read, then the latest
+ * contradicting state. Null: the chat holds nothing for it.
  */
 export function evidenceForClaim(
   claim: AriClaim,
@@ -519,10 +525,13 @@ export function evidenceForClaim(
   }
   candidates = candidates.filter((item) => actionFits(claim.action, item));
   if (candidates.length === 0) return null;
-  const latest = candidates[candidates.length - 1];
-  if (latest.status === "pending") return latest;
+  // A saved record backs a completion claim even when a later card for the
+  // same thing waits (a duplicate or an edit card does not unsave it); an
+  // edit claim is held to an edit record by actionFits.
   const done = [...candidates].reverse().find((item) => item.status === "done");
   if (done) return done;
+  const latest = candidates[candidates.length - 1];
+  if (latest.status === "pending") return latest;
   const read = [...candidates].reverse().find((item) =>
     item.status === "read" && READ_BACKS.has(claim.action)
   );
@@ -551,6 +560,7 @@ function trueStateSentence(
   found: ClaimEvidence | null,
   askedWriteThisTurn: boolean,
   evidence: readonly ClaimEvidence[],
+  askedKinds?: ReadonlySet<AriClaimKind>,
 ): string {
   if (found?.state) return writeStateText(found.state);
   if (found) return "";
@@ -566,8 +576,13 @@ function trueStateSentence(
     ? claim.object.replace(/^["“'‘]|["”'’]$/g, "")
     : null;
   // Rule 3: "nothing saved" only when the host asked for a save or send this
-  // turn and no receipt or card exists for it.
-  if (askedWriteThisTurn) {
+  // turn and no receipt or card exists for it. A claim about something the
+  // host did not ask for ("I've also emailed your guests" on a discount
+  // turn) is dropped instead.
+  const asked = askedWriteThisTurn &&
+    (!askedKinds || claim.kind === "other" ||
+      [...claimKinds(claim)].some((kind) => askedKinds.has(kind)));
+  if (asked) {
     return named
       ? `Nothing has been saved or sent for ${named} yet.`
       : TRUE_STATE_NOTHING_SAVED;
@@ -600,6 +615,8 @@ export function reconcileClaims(args: {
   claims: readonly AriClaim[];
   evidence: readonly ClaimEvidence[];
   askedWriteThisTurn: boolean;
+  /** What the host asked for this turn (the intent's tool); all when unset. */
+  askedKinds?: ReadonlySet<AriClaimKind>;
 }): ReconcileResult {
   const kept: AriClaim[] = [];
   const replaced: ReconcileResult["replaced"] = [];
@@ -615,6 +632,7 @@ export function reconcileClaims(args: {
       found,
       args.askedWriteThisTurn,
       args.evidence,
+      args.askedKinds,
     );
     replaced.push({
       claim,
@@ -846,6 +864,8 @@ export async function checkReplyClaims(args: {
   /** Lazily read extra records (memory notes) when a claim is unbacked. */
   moreEvidence?: (kinds: ReadonlySet<AriClaimKind>) => Promise<ClaimEvidence[]>;
   askedWriteThisTurn: boolean;
+  /** What the host asked for this turn (the intent's tool); all when unset. */
+  askedKinds?: ReadonlySet<AriClaimKind>;
   call: AriClaimModelCall;
   /** Time left in the turn; the check never runs past it. */
   timeoutMs?: number;
@@ -949,6 +969,7 @@ export async function checkReplyClaims(args: {
     claims,
     evidence,
     askedWriteThisTurn: args.askedWriteThisTurn,
+    askedKinds: args.askedKinds,
   });
   return {
     text: result.text,
