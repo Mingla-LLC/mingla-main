@@ -4,6 +4,10 @@
 // direct messages, newest first), find or start a chat, + Group, and a chat
 // with replies, reactions, @mentions, photos, documents and links (rev4).
 // Every write goes through the team_* functions; realtime keeps it live.
+// #4255 fix-up: edit and delete your own messages (team_edit, team_delete:
+// a stale revision is PT409 and shows the latest), load older pages
+// (team_get_messages with p_before, as the Host app does), and @everyone only
+// for an owner or admin (team_badge admin, the rule team_post enforces).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ExternalLink, Plus, X } from "lucide-react";
 import { Skeleton } from "../ui/Skeleton";
@@ -13,13 +17,12 @@ import { MarkdownText } from "../ops/MarkdownText";
 import { ThreadComposer } from "../ops/CardThread";
 import { FileTile, ImageViewer } from "../ops/CardFiles";
 import { useToast } from "../../context/ToastContext";
-import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 import * as team from "../../services/teamChatService";
-import { announceMessagesChange } from "../../hooks/useMessages";
+import { announceMessagesChange, useMessages } from "../../hooks/useMessages";
 import { opsErrorWords } from "../../lib/opsModel";
 import { REACTIONS, clockTime, dayHeading, fileMime, threadDays } from "../../lib/workBoardModel";
-import { composerPeople, filterThreads, mentionIds, peopleToStart, threadPreview } from "../../lib/messagesModel";
+import { composerPeople, filterThreads, mentionIds, mergeTeamPages, olderCursor, peopleToStart, threadPreview } from "../../lib/messagesModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const ICON_BTN = `inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`;
@@ -210,13 +213,39 @@ function Reactions({ message, onReact }) {
   );
 }
 
+/** Your own message, edited in place: Enter saves, Shift+Enter is a new line, Esc cancels. */
+function EditBox({ message, busy, onSave, onCancel }) {
+  const [text, setText] = useState(String(message.body || ""));
+  return (
+    <form data-edit-box={message.id} className="mt-0.5 flex min-w-0 flex-col gap-1.5" onSubmit={(e) => { e.preventDefault(); onSave(text); }}>
+      <label className="sr-only" htmlFor={`edit-${message.id}`}>Edit your message</label>
+      <textarea id={`edit-${message.id}`} autoFocus value={text} maxLength={10000} rows={Math.min(8, Math.max(2, text.split("\n").length))}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); }
+          else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSave(text); }
+        }}
+        className={`w-full min-w-0 resize-y rounded-md border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-[13px] text-[var(--color-text-primary)] ${FOCUS}`} />
+      <span className="flex gap-1.5">
+        <button type="submit" disabled={busy || !text.trim()} className={`min-h-8 rounded-md bg-[var(--color-brand-500)] px-2.5 text-[12px] font-semibold text-white disabled:opacity-50 ${FOCUS}`}>{busy ? "Saving…" : "Save"}</button>
+        <button type="button" onClick={onCancel} className={`min-h-8 rounded-md px-2 text-[12px] text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`}>Cancel</button>
+      </span>
+    </form>
+  );
+}
+
 function Thread({ threadId, onBack, allowEveryone }) {
   const { addToast } = useToast();
   const [data, setData] = useState({ status: "loading", value: null, error: null });
   const [people, setPeople] = useState([]);
   const [replyTo, setReplyTo] = useState(null);
   const [viewing, setViewing] = useState(null);
+  const [older, setOlder] = useState({ rows: [], hasMore: null, loading: false });
+  const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [busyId, setBusyId] = useState(null);
   const scrollRef = useRef(null);
+  const keepScroll = useRef(null);
   const load = useCallback(async ({ quiet = false } = {}) => {
     try {
       const value = await team.getMessages(threadId, 100);
@@ -243,13 +272,69 @@ function Thread({ threadId, onBack, allowEveryone }) {
   }, [threadId, load]);
   const thread = data.value?.thread;
   const members = useMemo(() => data.value?.members || [], [data.value]);
-  const messages = useMemo(() => (Array.isArray(data.value?.messages) ? data.value.messages : []), [data.value]);
+  const messages = useMemo(() => mergeTeamPages(older.rows, data.value?.messages), [older.rows, data.value]);
+  const hasMore = older.hasMore ?? !!data.value?.has_more;
   const files = useMemo(() => messages.flatMap((m) => m.attachments || []), [messages]);
   const thumbs = useTeamThumbs(files);
+  const newestId = messages.length ? messages[messages.length - 1].id : null;
+  // A new newest message scrolls to the bottom; an older page keeps your place.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+  }, [newestId]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    const kept = keepScroll.current;
+    if (!el || kept === null) return;
+    keepScroll.current = null;
+    el.scrollTop = el.scrollHeight - kept;
+  }, [older.rows]);
+  const loadOlder = async () => {
+    const before = olderCursor(messages);
+    if (!before || older.loading) return;
+    setOlder((o) => ({ ...o, loading: true }));
+    try {
+      const page = await team.getMessages(threadId, 100, before);
+      const el = scrollRef.current;
+      keepScroll.current = el ? el.scrollHeight - el.scrollTop : null;
+      setOlder((o) => ({ rows: mergeTeamPages(page?.messages, o.rows), hasMore: !!page?.has_more, loading: false }));
+    } catch (error) {
+      setOlder((o) => ({ ...o, loading: false }));
+      addToast({ variant: "error", title: "Couldn’t load earlier messages", description: opsErrorWords(error) });
+    }
+  };
+  // Edit and delete your own message at the revision you saw.
+  const changed = async (task, done) => {
+    try {
+      const answer = await task();
+      // The server's copy replaces the one on an older page too.
+      const fresh = answer?.message;
+      if (fresh?.id) setOlder((o) => ({ ...o, rows: o.rows.map((x) => (x.id === fresh.id ? fresh : x)) }));
+      done?.();
+      await load({ quiet: true });
+      announceMessagesChange();
+    } catch (error) {
+      if (error?.token === "stale_write") {
+        addToast({ variant: "warning", title: "Someone changed this first. Showing the latest." });
+        done?.();
+        await load({ quiet: true });
+      } else {
+        addToast({ variant: "error", title: "That didn’t save", description: opsErrorWords(error) });
+      }
+    } finally { setBusyId(null); }
+  };
+  const saveEdit = (m, body) => {
+    const text = String(body || "").trim();
+    if (!text || busyId) return;
+    if (text === String(m.body || "").trim()) { setEditing(null); return; }
+    setBusyId(m.id);
+    void changed(() => team.editMessage(m.id, text, m.revision), () => setEditing(null));
+  };
+  const confirmDelete = (m) => {
+    if (busyId) return;
+    setBusyId(m.id);
+    void changed(() => team.deleteMessage(m.id, m.revision), () => setDeleting(null));
+  };
   const days = threadDays(messages.map((m) => ({ ...m, author_email: m.author_id })));
   const adapter = useMemo(() => ({
     upload: (tid, item) => (item.kind === "link" ? team.addLink(tid, item.url, item.name) : team.uploadAttachment(tid, item.file, { kind: item.kind, mime: fileMime(item.file) })),
@@ -257,7 +342,11 @@ function Thread({ threadId, onBack, allowEveryone }) {
       team.postMessage(tid, { body, mentions: mentionIds(emails, people, members), replyToId: parentId, attachmentIds: fileIds, everyone, key: `admin_team_${globalThis.crypto?.randomUUID?.() || Date.now()}` }),
   }), [people, members]);
   const react = async (m, emoji, on) => {
-    try { await team.reactMessage(m.id, emoji, on); await load({ quiet: true }); }
+    try {
+      const fresh = (await team.reactMessage(m.id, emoji, on))?.message;
+      if (fresh?.id) setOlder((o) => ({ ...o, rows: o.rows.map((x) => (x.id === fresh.id ? fresh : x)) }));
+      await load({ quiet: true });
+    }
     catch (error) { addToast({ variant: "error", title: "That didn’t save", description: opsErrorWords(error) }); }
   };
   const openFile = async (file) => {
@@ -288,7 +377,13 @@ function Thread({ threadId, onBack, allowEveryone }) {
           <LoadError title="Couldn’t load this chat" message={opsErrorWords(data.error)} onRetry={() => load()} />
         ) : (
           <>
-            {data.value?.has_more && <p className="py-1 text-center text-[11.5px] text-[var(--color-text-tertiary)]">Older messages are in the Host app.</p>}
+            {hasMore && (
+              <p className="py-1 text-center">
+                <button type="button" data-load-older="" disabled={older.loading} onClick={loadOlder} className={`min-h-8 rounded-md px-2.5 text-[12px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-100)] disabled:opacity-50 ${FOCUS}`}>
+                  {older.loading ? "Loading earlier messages…" : "Load earlier messages"}
+                </button>
+              </p>
+            )}
             {messages.length === 0 && <p className="py-6 text-center text-[13px] text-[var(--color-text-tertiary)]">No messages yet. Say hello, share a file or tag a teammate.</p>}
             <ul className="flex min-w-0 flex-col">
               {days.flatMap((d) => [
@@ -306,6 +401,7 @@ function Thread({ threadId, onBack, allowEveryone }) {
                       )}
                       {m.reply_to && <p className="truncate border-l-2 border-[var(--gray-300)] pl-2 text-[12px] text-[var(--color-text-tertiary)]">↩ {m.reply_to.author_name}: {m.reply_to.deleted ? "a deleted message" : `“${m.reply_to.excerpt || ""}”`}</p>}
                       {m.deleted ? <p className="text-[12.5px] italic text-[var(--color-text-tertiary)]">This message was deleted.</p>
+                        : editing === m.id ? <EditBox message={m} busy={busyId === m.id} onSave={(body) => saveEdit(m, body)} onCancel={() => setEditing(null)} />
                         : m.body ? <MarkdownText text={m.body} mentionNames={[...(m.mentions || []).map((x) => x.name), ...(m.everyone ? ["everyone"] : [])]} className="text-[13px] text-[var(--color-text-primary)]" /> : null}
                       {!m.deleted && (m.attachments || []).length > 0 && (
                         <ul className="mt-1.5 flex min-w-0 flex-wrap gap-1.5">
@@ -316,6 +412,20 @@ function Thread({ threadId, onBack, allowEveryone }) {
                         <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1 text-[12px] text-[var(--color-text-tertiary)]">
                           <Reactions message={m} onReact={react} />
                           <button type="button" onClick={() => setReplyTo(m)} className={`min-h-7 rounded px-1.5 font-semibold hover:bg-[var(--gray-100)] ${FOCUS}`}>Reply</button>
+                          {m.mine && editing !== m.id && (
+                            <>
+                              {m.body && <button type="button" data-edit-message={m.id} disabled={!!busyId} onClick={() => { setDeleting(null); setEditing(m.id); }} className={`min-h-7 rounded px-1.5 font-semibold hover:bg-[var(--gray-100)] disabled:opacity-50 ${FOCUS}`}>Edit</button>}
+                              {deleting === m.id ? (
+                                <span role="group" aria-label="Delete this message for everyone?" className="inline-flex items-center gap-1">
+                                  <span className="text-[var(--color-text-secondary)]">Delete for everyone?</span>
+                                  <button type="button" data-confirm-delete={m.id} disabled={busyId === m.id} onClick={() => confirmDelete(m)} className={`min-h-7 rounded px-1.5 font-semibold text-[var(--color-error-700)] hover:bg-[var(--color-error-50)] disabled:opacity-50 ${FOCUS}`}>{busyId === m.id ? "Deleting…" : "Delete"}</button>
+                                  <button type="button" onClick={() => setDeleting(null)} className={`min-h-7 rounded px-1.5 hover:bg-[var(--gray-100)] ${FOCUS}`}>Keep</button>
+                                </span>
+                              ) : (
+                                <button type="button" data-delete-message={m.id} disabled={!!busyId} onClick={() => { setEditing(null); setDeleting(m.id); }} className={`min-h-7 rounded px-1.5 font-semibold hover:bg-[var(--gray-100)] disabled:opacity-50 ${FOCUS}`}>Delete</button>
+                              )}
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -347,8 +457,9 @@ function Thread({ threadId, onBack, allowEveryone }) {
 
 /** The Team chats tab: the list, or one chat. `threadId` opens a chat (from a mention or #/messages?thread=). */
 export function TeamChats({ threadId = null, onThreadChange }) {
-  const { access } = useAuth();
-  const allowEveryone = access?.role === "owner" || access?.role === "admin";
+  // #4255 fix-up: the server says who may mention everyone (team_badge admin).
+  const { badge } = useMessages();
+  const allowEveryone = badge?.staff === true && badge?.admin === true;
   return (
     <div data-team-chats="" className="flex min-h-0 flex-1 flex-col">
       {threadId

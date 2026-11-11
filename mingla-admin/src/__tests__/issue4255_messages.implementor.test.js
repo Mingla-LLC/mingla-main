@@ -10,7 +10,11 @@
 //   M-5 Notifications: For you / Watching / All, grouped by card, decisions
 //       first; support alerts (#3988) still appear as their own group
 //   M-6 Settings writes the same stored preferences the Host app writes, and
-//       email keeps the #3988 per-alert setting
+//       email keeps the #3988 per-alert setting; direct messages and group
+//       messages are separate switches (fix-up, 10 Nov)
+//   F-5 (fix-up) Team chats: edit and delete your own message at its
+//       revision, load older pages with p_before, and @everyone only when
+//       team_badge says admin
 //
 // FAILS-ON-REVERT: deleting the `notifications` line from
 // RETIRED_PAGE_REDIRECTS (lib/adminRoutes.js) reds M-3; putting the support
@@ -30,7 +34,10 @@ import {
   messagesBadge,
   messagesButtonLabel,
   notificationGroups,
+  mergeTeamPages,
+  olderCursor,
   rowTarget,
+  SETTING_ROWS,
   teamPrefOn,
   threadFromSearch,
 } from "../lib/messagesModel.js";
@@ -206,20 +213,33 @@ describe("M-6 Settings writes the same stored preferences", () => {
   const settings = stripComments(read("components/messages/MessagesSettings.jsx"));
   it("in-app and push are notification_channel_prefs rows of the signed-in user, as the Host app writes them", () => {
     assert.match(service, /from\("notification_channel_prefs"\)\.upsert\(\{ user_id: userId, category_key: categoryKey, channel, enabled: !!enabled, updated_at:/);
-    assert.match(service, /categoryKey === "business\.team_message" && channel === "push" && !enabled\s*\? supabase\.from\("notification_channel_prefs"\)\.delete\(\)/);
-    assert.match(service, /TEAM_PREF_CATEGORIES = Object\.freeze\(\["business\.team_mention", "business\.team_decision", "business\.team_message"\]\)/);
+    assert.match(service, /categoryKey === "business\.team_group_message" && channel === "push" && !enabled\s*\? supabase\.from\("notification_channel_prefs"\)\.delete\(\)/);
+    assert.match(service, /TEAM_PREF_CATEGORIES = Object\.freeze\(\["business\.team_mention", "business\.team_decision", "business\.team_message", "business\.team_group_message"\]\)/);
     assert.match(settings, /team\.setTeamPref\(userId, key, channel, on\)/);
   });
   it("the defaults read exactly as the Host app's (group message pushes off until switched on)", () => {
-    assert.equal(teamPrefOn([], "business.team_message", "push"), false);
+    // Fix-up: a DM pushes by default; a group only once its own switch is on.
+    assert.equal(teamPrefOn([], "business.team_message", "push"), true);
+    assert.equal(teamPrefOn([], "business.team_group_message", "push"), false);
+    assert.equal(teamPrefOn([{ category_key: "business.team_message", channel: "push", enabled: true }], "business.team_group_message", "push"), false);
+    assert.equal(teamPrefOn([{ category_key: "business.team_group_message", channel: "push", enabled: true }], "business.team_group_message", "push"), true);
     assert.equal(teamPrefOn([], "business.team_message", "inapp"), true);
     assert.equal(teamPrefOn([], "business.team_mention", "push"), true);
     assert.equal(teamPrefOn([{ category_key: "business.team_mention", channel: "push", enabled: false }], "business.team_mention", "push"), false);
     const host = path.join(SRC, "..", "..", "mingla-business", "src", "components", "minglaTeam", "TeamScreens.tsx");
     if (fs.existsSync(host)) {
       const h = fs.readFileSync(host, "utf8");
-      assert.match(h, /return !\(key === "business\.team_message" && channel === "push"\);/);
+      assert.match(h, /return key !== "business\.team_group_message";/);
     }
+  });
+  it("Direct messages and Group messages are two rows; Group messages has a push switch alone", () => {
+    assert.deepEqual(SETTING_ROWS.map((r) => [r.key, r.label, r.channels.join("+")]), [
+      ["business.team_mention", "Mentions and tags", "inapp+push"],
+      ["business.team_decision", "Decisions for me", "inapp+push"],
+      ["business.team_message", "Direct messages", "inapp+push"],
+      ["business.team_group_message", "Group messages", "push"],
+    ]);
+    assert.match(settings, /\(row\.channels \|\| \["inapp", "push"\]\)\.includes\(channel\) \?/);
   });
   it("email is the #3988 per-alert setting, moved, not reset", () => {
     assert.match(settings, /collaboration\.getEmailAlertPreferences\(\)/);
@@ -232,5 +252,39 @@ describe("Team chats: mentions are people in the chat", () => {
   it("RichComposer emails become user ids, only for members", () => {
     const people = [{ user_id: "u1", email: "ray@x.test" }, { user_id: "u2", email: "fey@x.test" }];
     assert.deepEqual(mentionIds(["RAY@x.test", "fey@x.test", "nobody@x.test"], people, [{ user_id: "u1" }]), ["u1"]);
+  });
+});
+
+describe("F-5 Team chats: edit, delete, older pages, @everyone for admins (fix-up, 10 Nov)", () => {
+  const chats = stripComments(read("components/messages/TeamChats.jsx"));
+  const msg = (id, minute, extra = {}) => ({ id, created_at: at(-minute), body: id, revision: 1, ...extra });
+  it("older pages and the latest page merge oldest first, each message once, the newer copy winning", () => {
+    const older = [msg("a", 1), msg("b", 2), msg("c", 3, { body: "old words" })];
+    const latest = [msg("c", 3, { body: "edited", revision: 2 }), msg("d", 4)];
+    const merged = mergeTeamPages(older, latest);
+    assert.deepEqual(merged.map((m) => m.id), ["a", "b", "c", "d"]);
+    assert.equal(merged[2].body, "edited");
+    assert.deepEqual(mergeTeamPages(null, undefined), []);
+    assert.equal(olderCursor(merged), merged[0].created_at);
+    assert.equal(olderCursor([]), null);
+  });
+  it("Load earlier messages reads the page before the oldest shown, as the Host app does", () => {
+    assert.match(chats, /const page = await team\.getMessages\(threadId, 100, before\);/);
+    assert.match(chats, /const before = olderCursor\(messages\);/);
+    assert.match(chats, /data-load-older=""/);
+    assert.doesNotMatch(chats, /Older messages are in the Host app\./);
+  });
+  it("your own messages offer Edit and Delete; both send the revision you saw", () => {
+    assert.match(chats, /\{m\.mine && editing !== m\.id && \(/);
+    assert.match(chats, /team\.editMessage\(m\.id, text, m\.revision\)/);
+    assert.match(chats, /team\.deleteMessage\(m\.id, m\.revision\)/);
+    assert.match(chats, /Delete for everyone\?/);
+    // A stale revision (PT409, stale_write) shows the latest instead of failing silently.
+    assert.match(chats, /if \(error\?\.token === "stale_write"\) \{\s*addToast\(\{ variant: "warning", title: "Someone changed this first\. Showing the latest\." \}\);/);
+  });
+  it("@everyone is offered only when team_badge says admin (the rule team_post enforces)", () => {
+    assert.match(chats, /const allowEveryone = badge\?\.staff === true && badge\?\.admin === true;/);
+    assert.doesNotMatch(chats, /access\?\.role === "owner"/);
+    assert.match(chats, /allowEveryone=\{allowEveryone && thread\.kind !== "dm"\}/);
   });
 });

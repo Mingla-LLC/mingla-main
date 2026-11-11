@@ -169,21 +169,26 @@ export function threadFromSearch(search) {
 // Settings (D14): one table, the same rows the Host app writes.
 // ---------------------------------------------------------------------------
 
+// #4255 fix-up: direct messages and group messages are switched apart. A
+// group message only ever pushes (team chat lives in Team chats, never a
+// notification list), so its row has a push switch alone; `channels` says
+// which switches a row has.
 export const SETTING_ROWS = Object.freeze([
-  { key: "business.team_mention", label: "Mentions and tags", hint: "On work cards, in team chats", email: "admin.team_mention" },
-  { key: "business.team_decision", label: "Decisions for me", hint: "Approve, sent back, You send", email: null },
-  { key: "business.team_message", label: "Team chat messages", hint: "Direct messages push; groups push only when you switch it on", email: null },
+  { key: "business.team_mention", label: "Mentions and tags", hint: "On work cards, in team chats", email: "admin.team_mention", channels: ["inapp", "push"] },
+  { key: "business.team_decision", label: "Decisions for me", hint: "Approve, sent back, You send", email: null, channels: ["inapp", "push"] },
+  { key: "business.team_message", label: "Direct messages", hint: "Push on by default", email: null, channels: ["inapp", "push"] },
+  { key: "business.team_group_message", label: "Group messages", hint: "Push off: only when you’re mentioned", email: null, channels: ["push"] },
 ]);
 
 /**
  * Whether a switch is on. No row means the default: in-app and push on,
- * except group message pushes, which stay off until switched on (direct
- * messages always push), exactly as team_chat_enqueue reads them.
+ * except group message pushes, which stay off until switched on (a DM always
+ * pushes), exactly as team_chat_enqueue reads them.
  */
 export function teamPrefOn(rows, key, channel) {
   const row = (Array.isArray(rows) ? rows : []).find((r) => r.category_key === key && r.channel === channel);
   if (row) return !!row.enabled;
-  return !(key === "business.team_message" && channel === "push");
+  return key !== "business.team_group_message";
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +210,25 @@ export function mentionIds(emails, people, members) {
     if (id && (!inChat.size || inChat.has(id)) && !out.includes(id)) out.push(id);
   }
   return out;
+}
+
+/**
+ * #4255 fix-up: one chat's messages from the pages read so far (older first),
+ * oldest first, each message once (a newer copy wins, so an edit or a delete
+ * seen on the latest page replaces the copy on an older page).
+ */
+export function mergeTeamPages(olderRows, newerRows) {
+  const byId = new Map();
+  for (const m of [...(Array.isArray(olderRows) ? olderRows : []), ...(Array.isArray(newerRows) ? newerRows : [])]) {
+    if (m && m.id) byId.set(m.id, m);
+  }
+  return [...byId.values()].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
+}
+
+/** The p_before for the next older page: the oldest message shown. */
+export function olderCursor(messages) {
+  const first = Array.isArray(messages) && messages.length ? messages[0] : null;
+  return first?.created_at || null;
 }
 
 /** "Photo", "Document" or "Link" for a message with no words (the server's last_message.preview). */

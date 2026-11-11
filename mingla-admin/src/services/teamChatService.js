@@ -72,16 +72,18 @@ export async function attachmentUrl(attachmentId) {
 // The shared settings (#4255 D14): notification_channel_prefs, keyed by the
 // signed-in auth user, the same rows the Host app's Mingla team settings
 // read and write (mingla-business TeamNotificationPrefs).
-export const TEAM_PREF_CATEGORIES = Object.freeze(["business.team_mention", "business.team_decision", "business.team_message"]);
+// #4255 fix-up: direct messages (business.team_message) and group messages
+// (business.team_group_message) are separate switches.
+export const TEAM_PREF_CATEGORIES = Object.freeze(["business.team_mention", "business.team_decision", "business.team_message", "business.team_group_message"]);
 
 export const getTeamPrefs = (userId) =>
   call(() => supabase.from("notification_channel_prefs").select("category_key, channel, enabled").eq("user_id", userId).in("category_key", TEAM_PREF_CATEGORIES));
 
 /**
- * One switch. Group message pushes off goes back to the default (direct
- * messages only), exactly as the Host app does.
+ * One switch. Group message pushes off goes back to the default (a group
+ * pushes only on a mention), exactly as the Host app does.
  */
 export const setTeamPref = (userId, categoryKey, channel, enabled) =>
-  call(() => (categoryKey === "business.team_message" && channel === "push" && !enabled
+  call(() => (categoryKey === "business.team_group_message" && channel === "push" && !enabled
     ? supabase.from("notification_channel_prefs").delete().eq("user_id", userId).eq("category_key", categoryKey).eq("channel", channel)
     : supabase.from("notification_channel_prefs").upsert({ user_id: userId, category_key: categoryKey, channel, enabled: !!enabled, updated_at: new Date().toISOString() })));

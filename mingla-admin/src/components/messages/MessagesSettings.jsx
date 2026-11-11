@@ -109,8 +109,10 @@ export function MessagesSettings() {
                     <th scope="row" className="py-2 pr-2 text-left font-medium text-[var(--color-text-primary)]">{row.label}<small className="block text-[11.5px] font-normal text-[var(--color-text-tertiary)]">{row.hint}</small></th>
                     {["inapp", "push"].map((channel, i) => (
                       <td key={channel} className="py-2 text-center">
-                        <Switch on={teamPrefOn(prefs, row.key, channel)} label={`${row.label}: ${COLUMNS[i]}`} disabled={saving !== null || !userId}
-                          onChange={(on) => setPref(row.key, channel, on, row.label)} />
+                        {(row.channels || ["inapp", "push"]).includes(channel) ? (
+                          <Switch on={teamPrefOn(prefs, row.key, channel)} label={`${row.label}: ${COLUMNS[i]}`} disabled={saving !== null || !userId}
+                            onChange={(on) => setPref(row.key, channel, on, row.label)} />
+                        ) : <span className="text-[11.5px] text-[var(--color-text-tertiary)]" aria-label={`${row.label}: not ${COLUMNS[i].toLowerCase()}`}>—</span>}
                       </td>
                     ))}
                     <td className="py-2 text-center">
