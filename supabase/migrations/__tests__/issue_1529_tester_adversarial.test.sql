@@ -313,8 +313,12 @@ DECLARE
     'pg_notify_reminders_enqueue',
     'finalize_rsvp_contribution',
     'issue_1389_enqueue_stay_event',
-    'community_publish_announcement',
-    'community_notify_roadmap_change',
+    -- #4383: the public publish / notify RPCs are now an admin gate in front
+    -- of these internals, which hold the INSERTs; plus the Admin push fan-out.
+    'issue_4383_publish_announcement_internal',
+    'issue_4383_notify_roadmap_internal',
+    'issue_4383_fire_push_internal',
+    'issue_4383_push_test_to_me',
     'issue_3720_send_brand_group_message',
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',

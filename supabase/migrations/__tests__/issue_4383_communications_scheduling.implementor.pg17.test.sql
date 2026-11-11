@@ -418,6 +418,9 @@ begin
   v_e := pg_temp.err($$select public.issue_4383_roadmap_unschedule_card('43830000-0000-4000-f000-000000000001')$$);
   perform pg_temp.chk('T16', 'unscheduling a card that went live is PT409', v_e like 'PT409 already_published%', v_e);
   v := public.issue_4383_roadmap_scheduled_list();
+  perform pg_temp.chk('T16', 'the 3720 column contract holds: go-live columns readable, internal_note not',
+    has_column_privilege('authenticated', 'public.community_roadmap_cards', 'go_live_at', 'SELECT')
+    and not has_column_privilege('authenticated', 'public.community_roadmap_cards', 'internal_note', 'SELECT'), null);
   perform pg_temp.chk('T17', 'the scheduled list shows the sent notice and no live card',
     jsonb_array_length(v->'cards') = 0 and exists (select 1 from jsonb_array_elements(v->'notices') n where n->>'id' = v_n1::text and n->>'status' = 'sent'), v::text);
   reset role;

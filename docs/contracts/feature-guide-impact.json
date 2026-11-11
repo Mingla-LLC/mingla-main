@@ -2963,6 +2963,50 @@
       "paths": [
         "mingla-business/src/utils/brandEnquiryDisplay.ts"
       ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/components/communications/ConfirmCancel.jsx",
+        "mingla-admin/src/components/communications/SchedulePicker.jsx",
+        "mingla-admin/src/components/communications/ScheduleTime.jsx",
+        "mingla-admin/src/components/community/FailedPushBanner.jsx",
+        "mingla-admin/src/components/community/RoadmapPanel.jsx",
+        "mingla-admin/src/lib/communications.js",
+        "mingla-admin/src/lib/communicationsErrors.js",
+        "mingla-admin/src/lib/pushDestinations.js",
+        "mingla-admin/src/lib/scheduleTime.js",
+        "mingla-admin/src/pages/communications/AnnouncementsPage.jsx",
+        "mingla-admin/src/pages/communications/CommunicationsOverviewPage.jsx",
+        "mingla-admin/src/pages/communications/LinksPage.jsx",
+        "mingla-admin/src/pages/communications/PushPage.jsx",
+        "mingla-admin/src/pages/communications/RoadmapPage.jsx",
+        "mingla-admin/src/services/communicationsService.js",
+        "supabase/functions/_shared/adminPushDestinations.ts",
+        "supabase/functions/notify-outbox-drain/index.ts",
+        "supabase/migrations/20280608004383_issue_4383_communications_scheduling.sql"
+      ]
+    },
+    {
+      "capability_key": "help-announcements-roadmap",
+      "paths": [
+        "supabase/migrations/20280608004383_issue_4383_communications_scheduling.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-email",
+      "paths": [
+        "mingla-admin/src/lib/emailViews.js",
+        "mingla-admin/src/services/adminSendEmailService.js"
+      ]
+    },
+    {
+      "capability_key": "web-blog",
+      "paths": [
+        "mingla-admin/src/components/blog/BlogPanel.jsx",
+        "mingla-admin/src/components/blog/BlogPostList.jsx",
+        "mingla-admin/src/pages/communications/BlogPage.jsx"
+      ]
     }
   ]
 }

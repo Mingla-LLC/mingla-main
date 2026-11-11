@@ -117,8 +117,13 @@ CREATE INDEX IF NOT EXISTS community_announcements_due_idx
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.community_roadmap_cards
   ADD COLUMN IF NOT EXISTS go_live_at timestamptz,
-  ADD COLUMN IF NOT EXISTS go_live_timezone text,
-  ADD COLUMN IF NOT EXISTS go_live_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS go_live_timezone text;
+-- I-3720-ROADMAP-INTERNAL-NOTE-ADMIN-ONLY: authenticated holds column SELECT on
+-- every column except internal_note. The row policy still shows hosts only
+-- published cards, and a card's go-live time is cleared when it goes live, so
+-- no draft schedule is ever visible to a host. Who scheduled it lives in
+-- community_audit_log (schedule_roadmap_card), not on the card.
+GRANT SELECT (go_live_at, go_live_timezone) ON TABLE public.community_roadmap_cards TO authenticated;
 
 CREATE INDEX IF NOT EXISTS community_roadmap_cards_go_live_idx
   ON public.community_roadmap_cards (go_live_at)
@@ -864,7 +869,7 @@ BEGIN
     FOR UPDATE SKIP LOCKED
   LOOP
     UPDATE public.community_roadmap_cards
-    SET status = 'published', go_live_at = NULL, updated_at = now()
+    SET status = 'published', go_live_at = NULL, go_live_timezone = NULL, updated_at = now()
     WHERE id = r.id;
     INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
     VALUES (NULL, 'roadmap_card_go_live', 'community_roadmap_card', r.id, '{}'::jsonb);
@@ -953,6 +958,23 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.issue_4383_person_label(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4383_person_label(uuid) TO service_role;
+
+-- Who last gave a roadmap card its go-live time (from the audit log).
+CREATE OR REPLACE FUNCTION public.issue_4383_roadmap_card_scheduler(p_card_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.issue_4383_person_label(l.actor_user_id)
+  FROM public.community_audit_log l
+  WHERE l.entity_type = 'community_roadmap_card' AND l.entity_id = p_card_id AND l.action = 'schedule_roadmap_card'
+  ORDER BY l.created_at DESC
+  LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.issue_4383_roadmap_card_scheduler(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4383_roadmap_card_scheduler(uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_4383_push_row(p public.admin_push_campaigns)
 RETURNS jsonb
@@ -1307,7 +1329,7 @@ BEGIN
   IF v_status = 'published' THEN RAISE EXCEPTION 'already_published' USING ERRCODE = 'PT409'; END IF;
   IF v_status <> 'draft' THEN RAISE EXCEPTION 'not_schedulable' USING ERRCODE = '22023'; END IF;
   UPDATE public.community_roadmap_cards
-  SET go_live_at = p_go_live_at, go_live_timezone = p_timezone, go_live_by = auth.uid(), updated_at = now()
+  SET go_live_at = p_go_live_at, go_live_timezone = p_timezone, updated_at = now()
   WHERE id = p_card_id;
   INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
   VALUES (auth.uid(), 'schedule_roadmap_card', 'community_roadmap_card', p_card_id,
@@ -1413,7 +1435,7 @@ BEGIN
       SELECT jsonb_agg(jsonb_build_object(
         'id', c.id, 'public_title', c.public_title, 'lane', c.lane,
         'go_live_at', c.go_live_at, 'go_live_timezone', c.go_live_timezone,
-        'by', public.issue_4383_person_label(c.go_live_by)
+        'by', public.issue_4383_roadmap_card_scheduler(c.id)
       ) ORDER BY c.go_live_at, c.id)
       FROM public.community_roadmap_cards c
       WHERE c.status = 'draft' AND c.go_live_at IS NOT NULL
@@ -1500,7 +1522,7 @@ BEGIN
     UNION ALL
     SELECT jsonb_build_object('kind', 'roadmap_card', 'id', c.id, 'title', c.public_title, 'scheduled_for', c.go_live_at,
       'timezone', COALESCE(c.go_live_timezone, 'UTC'), 'status', 'scheduled', 'href', '#/roadmap?card=' || c.id::text,
-      'by', public.issue_4383_person_label(c.go_live_by), 'can_cancel', true)
+      'by', public.issue_4383_roadmap_card_scheduler(c.id), 'can_cancel', true)
     FROM public.community_roadmap_cards c WHERE v_admin AND c.status = 'draft' AND c.go_live_at IS NOT NULL
     UNION ALL
     SELECT jsonb_build_object('kind', 'roadmap_notice', 'id', n.id, 'title', 'Tell hosts the roadmap changed', 'scheduled_for', n.scheduled_for,
