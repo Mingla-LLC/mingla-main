@@ -7,6 +7,11 @@
 // removing teamInAppSuppressed from the inbox insert puts a mention in the
 // Host app bell (the bell test reds); removing resolveTeamPushText from the
 // drain loses the names (the title tests red).
+// #4255 fix-up: group messages are business.team_group_message, and chat
+// messages (DMs and groups) never land in the Host app bell either: removing
+// either from teamNotifications IN_APP_SUPPRESSED reds the group and DM tests;
+// removing business.team_group_message from TEAM_NOTIFY_CATEGORIES reds the
+// group test (no Host app push, no names).
 
 import {
   assert,
@@ -247,14 +252,20 @@ async function send(world: World, row: AnyRecord): Promise<boolean> {
   }
 }
 
-// Shapes exactly as team_chat_enqueue and ops_notify_people write them.
+// Shapes exactly as team_chat_enqueue and ops_notify_people write them. A DM
+// is business.team_message; a group or the Mingla team is
+// business.team_group_message (#4255 fix-up, 20280612004255).
+const chatCategory = (over: AnyRecord): string =>
+  over.thread_kind === "dm"
+    ? "business.team_message"
+    : "business.team_group_message";
 const chatMessageRow = (over: AnyRecord = {}): AnyRecord => ({
   id: "outbox-team-message",
-  category_key: "business.team_message",
+  category_key: chatCategory(over),
   user_id: USER_ID,
   contact: null,
   attempts: 0,
-  idempotency_key: `business.team_message:${MESSAGE}:${USER_ID}`,
+  idempotency_key: `${chatCategory(over)}:${MESSAGE}:${USER_ID}`,
   payload: {
     source_kind: "team_message",
     thread_id: THREAD,
@@ -320,10 +331,16 @@ Deno.test("#4255 a group message pushes '<Sender> in <Chat>' with the first 120 
     ) {
       assertEquals(key in push.data, false, `${key} must not reach OneSignal`);
     }
+    // #4255 fix-up: team chat lives in the Mingla team space, not the bell.
+    assertEquals(row.category_key, "business.team_group_message");
+    assertEquals(world.inbox.length, 1);
+    assert(
+      typeof world.inbox[0].in_app_suppressed_at === "string",
+      "the bell must not show a group message",
+    );
     assertEquals(
-      world.inbox[0].in_app_suppressed_at ?? null,
-      null,
-      "a chat message is not a mention",
+      world.deliveries.find((d) => d.channel === "inapp")?.status,
+      "suppressed",
     );
     assertEquals(world.outboxUpdates.at(-1)?.status, "done");
   });
@@ -338,7 +355,12 @@ Deno.test("#4255 a direct message is titled with the sender only", async () => {
       deep_link: `mingla-business://team/${OTHER_THREAD}`,
     });
     assertEquals(await send(world, row), true);
+    assertEquals(row.category_key, "business.team_message");
     assertEquals(world.onesignal[0].headings.en, "Feyikemi");
+    assert(
+      typeof world.inbox[0].in_app_suppressed_at === "string",
+      "the bell must not show a direct message",
+    );
   });
 });
 
@@ -479,6 +501,16 @@ Deno.test("#4255 deep-link shape check accepts only team/<uuid> and team/mention
   // Refused.
   const refused: Array<[string, string | null | undefined, AnyRecord]> = [
     ["business.team_message", null, thread],
+    [
+      "business.team_group_message",
+      `mingla-business://team/mention/${MENTION}`,
+      mention,
+    ],
+    [
+      "business.team_group_message",
+      `mingla-business://team/${OTHER_THREAD}`,
+      thread,
+    ],
     ["business.team_message", undefined, thread],
     ["business.team_message", "", thread],
     [
@@ -561,7 +593,13 @@ Deno.test("#4255 a failed name lookup retries the row instead of sending without
   });
 });
 
-Deno.test("#4255 the three team categories go to the Host OneSignal app; only a mention skips the bell", () => {
+Deno.test("#4255 the four team categories go to the Host OneSignal app; mentions and chat messages skip the bell", () => {
+  assertEquals([...TEAM_NOTIFY_CATEGORIES], [
+    "business.team_message",
+    "business.team_group_message",
+    "business.team_mention",
+    "business.team_decision",
+  ]);
   for (const category of TEAM_NOTIFY_CATEGORIES) {
     assertEquals(resolveOneSignalApp(category), "business", category);
     const safe = providerSafePayload(category, {
@@ -579,7 +617,8 @@ Deno.test("#4255 the three team categories go to the Host OneSignal app; only a 
     );
   }
   assertEquals(teamInAppSuppressed("business.team_mention"), true);
-  assertEquals(teamInAppSuppressed("business.team_message"), false);
+  assertEquals(teamInAppSuppressed("business.team_message"), true);
+  assertEquals(teamInAppSuppressed("business.team_group_message"), true);
   assertEquals(teamInAppSuppressed("business.team_decision"), false);
   assertEquals(teamInAppSuppressed("admin.team_mention"), false);
 });

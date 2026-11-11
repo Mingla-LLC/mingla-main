@@ -20,7 +20,8 @@
 --   C-EVERY   @everyone: owner or admin only, not in a DM, once every 10
 --             minutes (deleting does not reset it); each member told once
 --   C-NOTIFY  group messages push only to mentions (or to people who switched
---             message pushes on); DMs push by default; preferences and mute
+--             group message pushes on: business.team_group_message, #4255
+--             fix-up 20280612004255); DMs push by default; preferences and mute
 --             are respected; payloads carry ids only; deep links
 --   C-CARD    a card-thread mention: one in-app, one email, one push row with
 --             mingla-business://team/mention/<id>; no push for an
@@ -339,7 +340,7 @@ begin
   perform pg_temp.lk('C-RLS', 'a host calling the list is told the space is for the team',
     pg_temp.person('host', 'select public.team_list_threads()::text'), 'ERR:42501:team_access_required: This space is for the Mingla team.');
   perform pg_temp.chk('C-RLS', 'a host''s badge says not staff, without an error',
-    pg_temp.person('host', 'select public.team_badge()::text'), '{"chats": 0, "staff": false, "total": 0, "mentions": 0, "messages": 0}');
+    pg_temp.person('host', 'select public.team_badge()::text'), '{"admin": false, "chats": 0, "staff": false, "total": 0, "mentions": 0, "messages": 0}');
   -- The unconfirmed look-alike with a staff address.
   perform pg_temp.chk('C-RLS', 'the unconfirmed look-alike reads no team chat rows',
     pg_temp.person('look', 'select ((select count(*) from public.team_messages) + (select count(*) from public.team_threads))::text'), '0');
@@ -435,18 +436,19 @@ begin
   perform pg_temp.lk('C-NOTIFY', 'only people in the chat can be mentioned', v, 'ERR:22023:invalid_mention_recipient:%');
   v := pg_temp.post(null, 'gem', v_g, 'Mention an outsider', array[pg_temp.uid('owner')]);
   perform pg_temp.lk('C-NOTIFY', 'a teammate outside the group cannot be mentioned into it', v, 'ERR:22023:invalid_mention_recipient:%');
-  -- Switching group message pushes on.
-  insert into public.notification_channel_prefs (user_id, category_key, channel, enabled) values (pg_temp.uid('ray'), 'business.team_message', 'push', true);
+  -- Switching group message pushes on (#4255 fix-up: groups have their own
+  -- category, business.team_group_message; 20280612004255).
+  insert into public.notification_channel_prefs (user_id, category_key, channel, enabled) values (pg_temp.uid('ray'), 'business.team_group_message', 'push', true);
   v := pg_temp.post('g3', 'gem', v_g, 'Second plain update');
   v_m := pg_temp.id('g3');
   perform pg_temp.chk('C-NOTIFY', 'after switching message pushes on, only that person is queued',
-    pg_temp.outbox('business.team_message', 'ray', v_m) || '/' || pg_temp.outbox('business.team_message', 'admin', v_m), '1/0');
+    pg_temp.outbox('business.team_group_message', 'ray', v_m) || '/' || pg_temp.outbox('business.team_group_message', 'admin', v_m), '1/0');
   -- Muting the group stops message pushes but not mentions.
   v := pg_temp.person('ray', format('select public.team_mute(%L, true)::text', v_g));
   v := pg_temp.post('g4', 'gem', v_g, 'Muted update');
   v := pg_temp.post('g5', 'gem', v_g, 'Ray, still you', array[pg_temp.uid('ray')]);
   perform pg_temp.chk('C-NOTIFY', 'muted: no message push, but a mention still pushes',
-    pg_temp.outbox('business.team_message', 'ray', pg_temp.id('g4')) || '/' || pg_temp.outbox('business.team_mention', 'ray', pg_temp.id('g5')), '0/1');
+    pg_temp.outbox('business.team_group_message', 'ray', pg_temp.id('g4')) || '/' || pg_temp.outbox('business.team_mention', 'ray', pg_temp.id('g5')), '0/1');
   perform pg_temp.chk('C-NOTIFY', 'a muted chat is left out of the badge chats',
     (pg_temp.person('ray', $q$select (public.team_badge()->>'chats')$q$)::integer
        < pg_temp.person('ray', $q$select count(*)::text from jsonb_array_elements(public.team_list_threads()->'threads') x where (x->>'unread')::int > 0$q$)::integer)::text,

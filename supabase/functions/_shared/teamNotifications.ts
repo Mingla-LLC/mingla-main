@@ -16,6 +16,9 @@
 
 export const TEAM_NOTIFY_CATEGORIES = [
   "business.team_message",
+  // #4255 fix-up: group and Mingla team messages have their own switch
+  // (20280612004255): a DM pushes by default, a group only once switched on.
+  "business.team_group_message",
   "business.team_mention",
   "business.team_decision",
 ] as const;
@@ -32,8 +35,13 @@ export function isTeamNotifyCategory(
 // Mentions tab (team_mentions), so business.team_mention never adds a row to
 // the Host app bell. The notifications row is still written (the delivery
 // ledger hangs off it) but is born suppressed.
+// #4255 fix-up (orchestrator decision): team chat lives in the Mingla team
+// space, not the bell, so chat messages (DMs and groups) are born suppressed
+// too. Decisions (business.team_decision) still reach the bell.
 const IN_APP_SUPPRESSED: ReadonlySet<string> = new Set([
   "business.team_mention",
+  "business.team_message",
+  "business.team_group_message",
 ]);
 
 export function teamInAppSuppressed(category: string): boolean {
@@ -62,7 +70,10 @@ export function teamDeepLinkValid(
   if (typeof deepLink !== "string") return false;
   const thread = THREAD_LINK.exec(deepLink);
   if (thread) return thread[1] === idOf(payload, "thread_id");
-  if (category === "business.team_message") return false;
+  if (
+    category === "business.team_message" ||
+    category === "business.team_group_message"
+  ) return false;
   const mention = MENTION_LINK.exec(deepLink);
   return !!mention && mention[1] === idOf(payload, "mention_id");
 }
@@ -128,7 +139,10 @@ export function renderTeamMessage(
   const inChat = chatKind !== "dm" && chat ? ` in ${chat}` : "";
 
   let title: string;
-  if (category === "business.team_message") {
+  if (
+    category === "business.team_message" ||
+    category === "business.team_group_message"
+  ) {
     title = chatKind === "dm" || !chat ? sender : `${sender} in ${chat}`;
   } else if (category === "business.team_decision") {
     title = card
