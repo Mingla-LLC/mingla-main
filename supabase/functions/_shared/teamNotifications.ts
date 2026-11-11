@@ -11,8 +11,11 @@
 //   * teamInAppSuppressed     which category never makes a Host app bell row
 //   * renderTeamMessage       push words from the resolved names (templates)
 //   * resolveTeamPushText     names and excerpts looked up from the ids (drain)
+//   * teamQuietUntil         quiet hours 22:00 to 07:00 local (drain)
 // Pushes go to the business (Host) OneSignal app: every category here starts
 // with "business.", which resolveOneSignalApp routes there.
+
+import { isQuietHours } from "./quietHours.ts";
 
 export const TEAM_NOTIFY_CATEGORIES = [
   "business.team_message",
@@ -21,6 +24,9 @@ export const TEAM_NOTIFY_CATEGORIES = [
   "business.team_group_message",
   "business.team_mention",
   "business.team_decision",
+  // #4255 rework: "My cards due and late", one notice at 09:00 local
+  // (ops_due_digest, 20280612014255).
+  "business.team_due",
 ] as const;
 
 export type TeamNotifyCategory = typeof TEAM_NOTIFY_CATEGORIES[number];
@@ -44,8 +50,53 @@ const IN_APP_SUPPRESSED: ReadonlySet<string> = new Set([
   "business.team_group_message",
 ]);
 
-export function teamInAppSuppressed(category: string): boolean {
-  return IN_APP_SUPPRESSED.has(category);
+export function teamInAppSuppressed(
+  category: string,
+  payload: Record<string, unknown> = {},
+): boolean {
+  if (IN_APP_SUPPRESSED.has(category)) return true;
+  // #4255 rework: a decision or the due notice for someone who switched its
+  // in-app notices off still pushes (when push is on) but makes no bell row.
+  // The producer reads the switch (can_send) and says so in the payload.
+  return isTeamNotifyCategory(category) && payload.inapp === false;
+}
+
+// ---------------------------------------------------------------------------
+// Quiet hours (spec rev 3: "Quiet hours 22:00 to 07:00 hold pushes, which stay
+// waiting in Messages"). The drain holds a team row until 07:00 in the
+// person's own time zone (profiles.timezone, the source the legacy path
+// reads); the Mentions tab and Admin Messages already have it.
+// ---------------------------------------------------------------------------
+export const TEAM_QUIET_END_HOUR = 7;
+
+/** The instant quiet hours end (07:00:00 local), or null when it is not quiet. */
+export function teamQuietUntil(
+  timezone: string | null,
+  now: Date = new Date(),
+): string | null {
+  if (!isQuietHours(timezone, now, TEAM_QUIET_END_HOUR)) return null;
+  let hour = 0, minute = 0, second = 0;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+      hour12: false,
+      timeZone: timezone || "America/New_York",
+    }).formatToParts(now);
+    const part = (type: string): number =>
+      Number(parts.find((p) => p.type === type)?.value ?? "0");
+    hour = part("hour") % 24;
+    minute = part("minute");
+    second = part("second");
+  } catch {
+    // An unknown zone counts as quiet (isQuietHours fails closed): hold an hour.
+    return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+  }
+  const secondsLeft = ((TEAM_QUIET_END_HOUR - hour + 24) % 24) * 3600 -
+    minute * 60 - second;
+  return new Date(now.getTime() + Math.max(secondsLeft, 60) * 1000)
+    .toISOString();
 }
 
 const UUID =
@@ -144,6 +195,10 @@ export function renderTeamMessage(
     category === "business.team_group_message"
   ) {
     title = chatKind === "dm" || !chat ? sender : `${sender} in ${chat}`;
+  } else if (category === "business.team_due") {
+    // #4255 rework: the 09:00 notice; its words are the excerpt ("2 due
+    // today · 1 late: …").
+    title = "Your cards due and late";
   } else if (category === "business.team_decision") {
     title = card
       ? `${sender} needs your decision · ${card}`

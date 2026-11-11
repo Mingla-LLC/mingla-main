@@ -36,8 +36,10 @@ import {
 } from "../_shared/issue4111EnquiryNotifications.ts";
 // #4255 W4 — Mingla team pushes: the words are looked up from the ids here.
 import {
+  isTeamNotifyCategory,
   resolveTeamPushText,
   TEAM_NOTIFY_CATEGORIES,
+  teamQuietUntil,
 } from "../_shared/teamNotifications.ts";
 // #4383: the Admin push categories (one list, the destination module).
 import { ADMIN_PUSH_CATEGORIES } from "../_shared/adminPushDestinations.ts";
@@ -346,6 +348,8 @@ export async function processGeneric(
   row: Record<string, unknown>,
   url: string,
   key: string,
+  // #4255 rework: the clock the team quiet hours read (tests pin it).
+  now: Date = new Date(),
 ) {
   const id = row.id as string;
   // #3720 Slice B — deferred legacy push after quiet hours. Payload carries the
@@ -435,6 +439,28 @@ export async function processGeneric(
   let contact = (row.contact as string | null | undefined) ?? null;
   let reservationManageUrl: string | null = null;
   try {
+    // #4255 rework (P1): Mingla team notices wait out quiet hours (22:00 to
+    // 07:00 in the person's time zone) here, before notify-dispatch, whose
+    // v2 path has no quiet-hours step. The row is parked, not failed: its
+    // attempts are untouched and it is claimed again at 07:00.
+    if (isTeamNotifyCategory(String(row.category_key ?? "")) && row.user_id) {
+      const { data: profile, error: profileError } = await admin
+        .from("profiles").select("timezone").eq("id", row.user_id)
+        .maybeSingle();
+      if (profileError) throw new Error("team_quiet_hours_lookup_failed");
+      const until = teamQuietUntil(
+        typeof profile?.timezone === "string" ? profile.timezone : null,
+        now,
+      );
+      if (until) {
+        await admin.from("notification_outbox").update({
+          status: "retry_wait",
+          next_attempt_at: until,
+          last_error: "quiet_hours",
+        }).eq("id", id);
+        return false;
+      }
+    }
     contact = await resolveIssue3720Contact(admin, row);
     // #4255 W4: names and excerpts for a team push, resolved from the ids
     // (the outbox row itself keeps ids only). A failed read retries the row.

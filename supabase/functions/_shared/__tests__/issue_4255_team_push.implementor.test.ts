@@ -12,6 +12,11 @@
 // either from teamNotifications IN_APP_SUPPRESSED reds the group and DM tests;
 // removing business.team_group_message from TEAM_NOTIFY_CATEGORIES reds the
 // group test (no Host app push, no names).
+// #4255 rework: quiet hours (22:00 to 07:00 in the person's time zone) hold
+// every team row in the drain: deleting the quiet-hours block from
+// processGeneric reds the R-QUIET tests (the push goes out at 23:00).
+// Decisions and the due notice obey their in-app switch (payload.inapp):
+// deleting the payload check from teamInAppSuppressed reds R-INAPP.
 
 import {
   assert,
@@ -30,6 +35,7 @@ import {
   TEAM_NOTIFY_CATEGORIES,
   teamDeepLinkValid,
   teamInAppSuppressed,
+  teamQuietUntil,
 } from "../teamNotifications.ts";
 
 const SERVICE_KEY = "issue-4255-service-role";
@@ -57,6 +63,7 @@ interface World {
   onesignal: AnyRecord[];
   inbox: AnyRecord[];
   deliveries: AnyRecord[];
+  reads?: string[];
 }
 
 const LONG =
@@ -78,6 +85,8 @@ const newWorld = (over: Partial<World> = {}): World => ({
       },
     },
     ops_work_cards: { [CARD]: { number: 612 } },
+    // #4255 rework: the person's time zone, read for quiet hours.
+    profiles: { [USER_ID]: { timezone: "Africa/Lagos" } },
   },
   names: { [RAY]: "Ray", [FEYIKEMI]: "Feyikemi" },
   outboxUpdates: [],
@@ -99,12 +108,14 @@ function drainAdmin(world: World) {
           id = value;
           return builder;
         },
-        maybeSingle: () =>
-          Promise.resolve(
+        maybeSingle: () => {
+          (world.reads ??= []).push(table);
+          return Promise.resolve(
             world.failTable === table
               ? { data: null, error: { message: "boom" } }
               : { data: world.tables[table]?.[id] ?? null, error: null },
-          ),
+          );
+        },
         update(values: AnyRecord) {
           if (table === "notification_outbox") world.outboxUpdates.push(values);
           return { eq: () => Promise.resolve({ data: null, error: null }) };
@@ -211,7 +222,14 @@ async function withEnv(fn: () => Promise<void>) {
   }
 }
 
-async function send(world: World, row: AnyRecord): Promise<boolean> {
+// 10:00 in Lagos (09:00 UTC): outside quiet hours, so the older tests send.
+const DAYTIME = new Date("2026-11-11T09:00:00Z");
+
+async function send(
+  world: World,
+  row: AnyRecord,
+  now: Date = DAYTIME,
+): Promise<boolean> {
   const originalFetch = globalThis.fetch;
   globalThis.fetch =
     (async (input: string | URL | Request, init?: RequestInit) => {
@@ -246,6 +264,7 @@ async function send(world: World, row: AnyRecord): Promise<boolean> {
       row,
       SUPABASE_URL,
       SERVICE_KEY,
+      now,
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -599,6 +618,7 @@ Deno.test("#4255 the four team categories go to the Host OneSignal app; mentions
     "business.team_group_message",
     "business.team_mention",
     "business.team_decision",
+    "business.team_due",
   ]);
   for (const category of TEAM_NOTIFY_CATEGORIES) {
     assertEquals(resolveOneSignalApp(category), "business", category);
@@ -621,4 +641,226 @@ Deno.test("#4255 the four team categories go to the Host OneSignal app; mentions
   assertEquals(teamInAppSuppressed("business.team_group_message"), true);
   assertEquals(teamInAppSuppressed("business.team_decision"), false);
   assertEquals(teamInAppSuppressed("admin.team_mention"), false);
+});
+
+// ---------------------------------------------------------------------------
+// #4255 rework (P1): quiet hours. Lagos is UTC+1 all year.
+// ---------------------------------------------------------------------------
+
+const decisionRow = (over: AnyRecord = {}): AnyRecord => ({
+  ...cardMentionRow(),
+  id: "outbox-decision",
+  category_key: "business.team_decision",
+  idempotency_key: `business.team_decision:${MENTION}`,
+  payload: {
+    ...cardMentionRow().payload,
+    reason: "decision",
+    inapp: true,
+    ...over,
+  },
+});
+const dueRow = (over: AnyRecord = {}): AnyRecord => ({
+  id: "outbox-due",
+  category_key: "business.team_due",
+  user_id: USER_ID,
+  contact: null,
+  attempts: 0,
+  idempotency_key: `business.team_due:${MENTION}`,
+  payload: {
+    source_kind: "work_due",
+    reason: "due",
+    mention_id: MENTION,
+    due_today: 1,
+    late: 1,
+    inapp: true,
+    deep_link: `mingla-business://team/mention/${MENTION}`,
+    ...over,
+  },
+});
+
+Deno.test("#4255 R-QUIET a team push queued at 23:00 local is held until 07:00 local, untouched attempts, nothing sent", async () => {
+  await withEnv(async () => {
+    for (
+      const row of [
+        chatMessageRow({
+          thread_kind: "dm",
+          thread_id: OTHER_THREAD,
+          deep_link: `mingla-business://team/${OTHER_THREAD}`,
+        }),
+        chatMessageRow(),
+        cardMentionRow(),
+        decisionRow(),
+        dueRow(),
+      ]
+    ) {
+      const world = newWorld();
+      // 23:00 in Lagos = 22:00 UTC.
+      const sent = await send(world, row, new Date("2026-11-11T22:00:00Z"));
+      assertEquals(sent, false, row.category_key);
+      assertEquals(world.dispatchBodies.length, 0, row.category_key);
+      assertEquals(world.onesignal.length, 0, row.category_key);
+      assertEquals(world.outboxUpdates, [{
+        status: "retry_wait",
+        // 07:00 in Lagos the next morning = 06:00 UTC.
+        next_attempt_at: "2026-11-12T06:00:00.000Z",
+        last_error: "quiet_hours",
+      }], row.category_key);
+    }
+  });
+});
+
+Deno.test("#4255 R-QUIET 06:59:30 waits 30 seconds more; 07:00 sends; 21:59 sends; 22:00 waits", async () => {
+  await withEnv(async () => {
+    let world = newWorld();
+    await send(world, cardMentionRow(), new Date("2026-11-12T05:59:30Z"));
+    assertEquals(
+      world.outboxUpdates[0]?.next_attempt_at,
+      "2026-11-12T06:00:30.000Z",
+      "a minute at least, never a busy loop",
+    );
+    assertEquals(world.onesignal.length, 0);
+    for (const at of ["2026-11-12T06:00:00Z", "2026-11-11T20:59:00Z"]) {
+      world = newWorld();
+      assertEquals(await send(world, cardMentionRow(), new Date(at)), true, at);
+      assertEquals(world.onesignal.length, 1, at);
+      assertEquals(world.outboxUpdates.at(-1)?.status, "done", at);
+    }
+    world = newWorld();
+    assertEquals(
+      await send(world, cardMentionRow(), new Date("2026-11-11T21:00:00Z")),
+      false,
+    );
+    assertEquals(world.outboxUpdates[0]?.last_error, "quiet_hours");
+  });
+});
+
+Deno.test("#4255 R-QUIET the person's own time zone decides (New York 23:00 is Lagos 05:00)", async () => {
+  await withEnv(async () => {
+    const world = newWorld();
+    world.tables.profiles[USER_ID] = { timezone: "America/New_York" };
+    // 2026-11-11 23:00 New York (EST, UTC-5) = 04:00Z.
+    assertEquals(
+      await send(world, cardMentionRow(), new Date("2026-11-12T04:00:00Z")),
+      false,
+    );
+    assertEquals(
+      world.outboxUpdates[0]?.next_attempt_at,
+      "2026-11-12T12:00:00.000Z",
+    );
+    // 10:00 New York = 15:00Z: sent.
+    const day = newWorld();
+    day.tables.profiles[USER_ID] = { timezone: "America/New_York" };
+    assertEquals(
+      await send(day, cardMentionRow(), new Date("2026-11-12T15:00:00Z")),
+      true,
+    );
+  });
+});
+
+Deno.test("#4255 R-QUIET a failed time-zone read retries the row (never sent, never dropped); other categories never read it", async () => {
+  await withEnv(async () => {
+    const world = newWorld({ failTable: "profiles" });
+    assertEquals(
+      await send(world, cardMentionRow(), new Date("2026-11-11T22:00:00Z")),
+      false,
+    );
+    assertEquals(world.onesignal.length, 0);
+    assertEquals(world.outboxUpdates[0]?.status, "retry_wait");
+    assertEquals(world.outboxUpdates[0]?.attempts, 1);
+    assert(
+      String(world.outboxUpdates[0]?.last_error).includes(
+        "team_quiet_hours_lookup_failed",
+      ),
+    );
+    const other = newWorld();
+    await send(other, {
+      ...cardMentionRow(),
+      category_key: "admin.team_mention",
+    }, new Date("2026-11-11T22:00:00Z"));
+    assertEquals((other.reads ?? []).includes("profiles"), false);
+  });
+});
+
+Deno.test("#4255 R-QUIET teamQuietUntil: 22:00 to 07:00 local, to the second; an unknown zone holds an hour", () => {
+  const lagos = (iso: string) => teamQuietUntil("Africa/Lagos", new Date(iso));
+  assertEquals(lagos("2026-11-11T20:59:59Z"), null); // 21:59:59
+  assertEquals(lagos("2026-11-11T21:00:00Z"), "2026-11-12T06:00:00.000Z"); // 22:00
+  assertEquals(lagos("2026-11-11T23:30:00Z"), "2026-11-12T06:00:00.000Z"); // 00:30
+  assertEquals(lagos("2026-11-12T05:59:59Z"), "2026-11-12T06:00:59.000Z"); // 06:59:59, a minute floor
+  assertEquals(lagos("2026-11-12T06:00:00Z"), null); // 07:00
+  assertEquals(
+    teamQuietUntil("Not/AZone", new Date("2026-11-11T12:00:00Z")),
+    "2026-11-11T13:00:00.000Z",
+  );
+});
+
+Deno.test("#4255 R-INAPP decisions and the due notice: in-app off pushes without a bell row; in-app on reaches the bell", async () => {
+  await withEnv(async () => {
+    for (
+      const [row, title] of [[
+        decisionRow({ inapp: false }),
+        "Ray needs your decision · #612",
+      ], [dueRow({ inapp: false }), "Your cards due and late"]] as const
+    ) {
+      const world = newWorld();
+      assertEquals(await send(world, row), true, row.category_key);
+      assertEquals(world.onesignal.length, 1, row.category_key);
+      assertEquals(world.onesignal[0]?.headings?.en, title, row.category_key);
+      assert(
+        world.inbox[0]?.in_app_suppressed_at,
+        `${row.category_key}: no bell row`,
+      );
+    }
+    for (const row of [decisionRow(), dueRow()]) {
+      const world = newWorld();
+      assertEquals(await send(world, row), true);
+      assertEquals(
+        world.inbox[0]?.in_app_suppressed_at,
+        undefined,
+        `${row.category_key}: in the bell`,
+      );
+    }
+  });
+  assertEquals(
+    teamInAppSuppressed("business.team_decision", { inapp: false }),
+    true,
+  );
+  assertEquals(
+    teamInAppSuppressed("business.team_due", { inapp: false }),
+    true,
+  );
+  assertEquals(
+    teamInAppSuppressed("business.team_due", { inapp: true }),
+    false,
+  );
+  assertEquals(
+    teamInAppSuppressed("admin.team_mention", { inapp: false }),
+    false,
+    "only team categories",
+  );
+});
+
+Deno.test("#4255 R-DUE the due notice opens Mentions and carries ids and counts only", () => {
+  const link = `mingla-business://team/mention/${MENTION}`;
+  assertEquals(
+    teamDeepLinkValid("business.team_due", link, { mention_id: MENTION }),
+    true,
+  );
+  assertEquals(
+    teamDeepLinkValid("business.team_due", `mingla-business://team/${THREAD}`, {
+      mention_id: MENTION,
+    }),
+    false,
+  );
+  const safe = providerSafePayload("business.team_due", dueRow().payload);
+  assertEquals(Object.keys(safe).sort(), ["mention_id", "reason"]);
+  assertEquals(
+    renderTeamMessage("business.team_due", {
+      team_excerpt: "1 due today · 1 late: Book the venue",
+    }).push,
+    {
+      title: "Your cards due and late",
+      body: "1 due today · 1 late: Book the venue",
+    },
+  );
 });

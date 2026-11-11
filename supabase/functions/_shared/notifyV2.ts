@@ -555,7 +555,7 @@ export async function dispatchV2(
         idempotency_key: input.idempotency_key,
         // #4255 W4: a team mention lives in the Mingla team Mentions tab, not
         // the Host app bell.
-        ...(teamInAppSuppressed(input.category_key)
+        ...(teamInAppSuppressed(input.category_key, input.payload)
           ? { in_app_suppressed_at: new Date().toISOString() }
           : {}),
       })
@@ -612,7 +612,10 @@ export async function dispatchV2(
   const deliveries: NonNullable<DispatchV2Result["deliveries"]> = [];
   const inappClaim = await claimChannel(client, nid, "inapp");
   // #4255 W4: a suppressed in-app row is recorded as suppressed, not delivered.
-  const inappSuppressed = teamInAppSuppressed(input.category_key);
+  const inappSuppressed = teamInAppSuppressed(
+    input.category_key,
+    input.payload,
+  );
   if (inappClaim.outcome === "claimed") {
     await completeChannel(
       client,
