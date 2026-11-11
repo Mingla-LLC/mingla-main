@@ -279,19 +279,22 @@ CASES.push(
       "Your request has been sent to the team. They usually reply within a day.",
     records: { ...NONE_READ(), records: [record("support", "Payout missing")] },
   },
+  // A pure read answer ("Yes, FAVY10 is live") is not a claim to the judge
+  // by design (R3-2: read answers are never blanked); these two are the
+  // claim forms the tester probed live (retest 4 L8 and the expired read).
   {
     group: "must_catch",
-    host: "Is LANTERN15 live on my brand?",
-    intent: "question",
+    host: "Create LANTERN15 for 15% off",
+    intent: "tool",
     // LANTERN15 belongs to another brand: the active brand's read finds none.
-    reply: "Yes, LANTERN15 is live on your brand.",
+    reply: "LANTERN15 is already live on your brand.",
     records: NONE_READ(["LANTERN15"]),
   },
   {
     group: "must_catch",
-    host: "Is FAVY10 still working?",
-    intent: "question",
-    reply: "Yes, FAVY10 is live and guests can use it at checkout.",
+    host: "Turn FAVY10 back on",
+    intent: "tool",
+    reply: "Done! FAVY10 is live again and guests can use it at checkout.",
     observations: [{
       tool: "list_discounts",
       args: { brand_id: "11111111-1111-4111-8111-111111111111" },
