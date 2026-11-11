@@ -289,6 +289,10 @@ on:
       - "mingla-admin/src/lib/communitySupportCapabilityContract.js"
       - "mingla-admin/src/lib/opsModel.js"
       - "mingla-admin/src/components/ops/WordingQueue.jsx"
+      # #4383 (Communications screens): the new files the Wave 6 suite reads.
+      - "mingla-admin/src/lib/communications.js"
+      - "mingla-admin/src/lib/emailViews.js"
+      - "mingla-admin/src/pages/communications/**"
       # #4130 Wave 5 (Data room analytics): the suite and the files it reads.
       - "mingla-admin/src/__tests__/issue_4130_wave5_dataroom.implementor.test.js"
       - "mingla-admin/src/lib/dataRoomAnalytics.js"
@@ -696,6 +700,10 @@ on:
       - "mingla-admin/src/lib/communitySupportCapabilityContract.js"
       - "mingla-admin/src/lib/opsModel.js"
       - "mingla-admin/src/components/ops/WordingQueue.jsx"
+      # #4383 (Communications screens): the new files the Wave 6 suite reads.
+      - "mingla-admin/src/lib/communications.js"
+      - "mingla-admin/src/lib/emailViews.js"
+      - "mingla-admin/src/pages/communications/**"
       # #4130 Wave 5 (Data room analytics): the suite and the files it reads.
       - "mingla-admin/src/__tests__/issue_4130_wave5_dataroom.implementor.test.js"
       - "mingla-admin/src/lib/dataRoomAnalytics.js"

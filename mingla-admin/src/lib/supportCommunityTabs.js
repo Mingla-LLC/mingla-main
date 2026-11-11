@@ -1,6 +1,12 @@
 // Issue #4130 (Wave 6) — the old Community & Support console is two pages now:
-// Support (the inbox first, then Email and the Support team) and Community
-// (what hosts are told and what they ask for).
+// Support (the inbox and the Support team) and Community (what hosts ask for
+// and talk about).
+//
+// Issue #4383 — what we TELL hosts and explorers (Email, Blog, Links page,
+// Announcements, Roadmap) left these two pages for their own screens in the
+// Communications menu group. COMMUNICATIONS_TAB_PAGES below is how an old tab
+// address finds its new screen: delete a row and old bookmarks, email alerts
+// and Work links to that tab land on the wrong page.
 //
 // Pure module: no React, no Supabase. The two pages, the address redirects in
 // lib/adminRoutes.js and the plain node / Deno tests all read it.
@@ -12,17 +18,12 @@
 /** The Support page's tabs, in order. The first is the default. */
 export const SUPPORT_PAGE_TABS = Object.freeze([
   Object.freeze({ id: "support", label: "Inbox" }),
-  Object.freeze({ id: "email", label: "Email" }),
-  Object.freeze({ id: "blog", label: "Blog" }),
-  // #4318 — the custom strips on usemingla.com/links, directly after Blog.
-  Object.freeze({ id: "links", label: "Links page" }),
+  // #4383 (D1): the Support team list stays next to the inbox.
   Object.freeze({ id: "team", label: "People and roles" }),
 ]);
 
-/** The Community page's tabs, in order. */
+/** The Community page's tabs, in order. #4383: it opens on Ideas. */
 export const COMMUNITY_PAGE_TABS = Object.freeze([
-  Object.freeze({ id: "announcements", label: "Announcements" }),
-  Object.freeze({ id: "roadmap", label: "Roadmap" }),
   Object.freeze({ id: "ideas", label: "Ideas from hosts" }),
   Object.freeze({ id: "questions", label: "Questions" }),
   Object.freeze({ id: "moderation", label: "Moderation" }),
@@ -31,8 +32,31 @@ export const COMMUNITY_PAGE_TABS = Object.freeze([
   Object.freeze({ id: "enquiry-reports", label: "Reported enquiries" }),
   Object.freeze({ id: "brand-groups", label: "Brand groups" }),
   Object.freeze({ id: "feature-guide", label: "Feature guide" }),
-  Object.freeze({ id: "product", label: "Product inbox" }),
+  // #4383: renamed to match #4382's Product board (the tab id is unchanged).
+  Object.freeze({ id: "product", label: "Product board" }),
 ]);
+
+/**
+ * #4383 — an old Support / Community / console tab id -> the Communications
+ * screen (page id) that now holds it. Each screen is a single page, so the
+ * old `tab` is dropped and every other query value is kept:
+ *   "#/support?tab=blog&view=editor&post=X" -> "#/blog?view=editor&post=X"
+ * lib/adminRoutes.js TAB_PAGE_REDIRECTS reads this map; do not restate it.
+ */
+export const COMMUNICATIONS_TAB_PAGES = Object.freeze({
+  email: "email",
+  blog: "blog",
+  links: "links",
+  announcements: "announcements",
+  roadmap: "roadmap",
+});
+
+/** The Communications screen that now holds an old tab, or null. */
+export function communicationsPageForTab(tabId) {
+  return typeof tabId === "string" && Object.hasOwn(COMMUNICATIONS_TAB_PAGES, tabId)
+    ? COMMUNICATIONS_TAB_PAGES[tabId]
+    : null;
+}
 
 export const SUPPORT_COMMUNITY_PAGE_TABS = Object.freeze({
   support: SUPPORT_PAGE_TABS,
@@ -46,8 +70,13 @@ export function pageTabsFor(pageId) {
     : null;
 }
 
-/** "support" or "community": the page that now holds a console tab, or null. */
+/**
+ * The page that now holds a console tab, or null: "support", "community", or
+ * (#4383) the Communications screen's own page id.
+ */
 export function pageForConsoleTab(tabId) {
+  const screen = communicationsPageForTab(tabId);
+  if (screen) return screen;
   if (SUPPORT_PAGE_TABS.some((tab) => tab.id === tabId)) return "support";
   if (COMMUNITY_PAGE_TABS.some((tab) => tab.id === tabId)) return "community";
   return null;
@@ -69,14 +98,16 @@ function queryOf(hash) {
  * and anything unknown open Support's inbox. Every other query value
  * (ticket=, signal=, card=, …) is kept, so email alerts and Work links that
  * were sent before the split still land on the right tab.
- *   "#/community-support?tab=roadmap&card=x" -> "#/community?tab=roadmap&card=x"
+ *   "#/community-support?tab=roadmap&card=x" -> "#/roadmap?card=x" (#4383)
  *   "#/community-support?tab=support&ticket=t" -> "#/support?ticket=t"
  */
 export function consoleRedirectHash(hash) {
   const params = queryOf(hash);
   const tab = params.get("tab") || "";
   const page = pageForConsoleTab(tab) || "support";
-  const keepTab = Boolean(pageForConsoleTab(tab)) && tab !== pageTabsFor(page)[0].id;
+  // #4383: a Communications screen has no tabs, so its old tab is dropped.
+  const pageTabs = pageTabsFor(page);
+  const keepTab = Boolean(pageTabs) && Boolean(pageForConsoleTab(tab)) && tab !== pageTabs[0].id;
   params.delete("tab");
   const next = new URLSearchParams();
   if (keepTab) next.set("tab", tab);

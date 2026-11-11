@@ -41,7 +41,17 @@
     "sessions_hint": "Itiẹ, emwi ne ọ gha gbe vbe ẹvbo, ne emwi bọọdụ",
     "tips_reengagement": "Ẹmwẹ & Ido",
     "tips_hint": "Ido, ẹmwẹ ọse, ne emwi ne a kẹ",
-    "error_update": "I gha rhan ehe ne a rhan ẹmwẹ."
+    "error_update": "I gha rhan ehe ne a rhan ẹmwẹ.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Mingla updates",
+        "mingla_updates_hint": "Ehe ọkpa vbe Mingla ye ẹre.",
+        "brand_campaign_push": "Ẹmwẹ vbe ẹghe ne u lele",
+        "brand_campaign_push_hint": "Ẹmwẹ vbe ẹghe ne u lele ẹre.",
+        "brand_offering_invite": "Ẹse vbe ẹghe ne u lele",
+        "brand_offering_invite_hint": "Ẹghe ne ẹghe ra ọmwa ru ẹse gu ẹwe."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Ẹghẹ Ifuẹko",

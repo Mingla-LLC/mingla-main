@@ -41,7 +41,17 @@
     "sessions_hint": "الدعوات وتحديثات الأعضاء ونشاط اللوحة",
     "tips_reengagement": "نصائح وتذكيرات",
     "tips_hint": "تذكيرات عرضية وملخص أسبوعي وتوصيات",
-    "error_update": "فشل تحديث إعداد الإشعارات."
+    "error_update": "فشل تحديث إعداد الإشعارات.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "تحديثات Mingla",
+        "mingla_updates_hint": "أخبار وتحديثات من فريق Mingla.",
+        "brand_campaign_push": "رسائل من الأماكن التي تتابعها",
+        "brand_campaign_push_hint": "عروض وأخبار من الأماكن والمضيفين الذين تتابعهم.",
+        "brand_offering_invite": "دعوات من الأماكن التي تتابعها",
+        "brand_offering_invite_hint": "عندما يدعوك مكان أو مضيف إلى شيء ما."
+      }
+    }
   },
   "quiet_hours": {
     "title": "ساعات الهدوء",

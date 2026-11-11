@@ -32,11 +32,13 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
 
   // #4130 Wave 6: the grouped navigation became two pages, Support and
   // Community, each with one flat row of tabs (a select on a phone).
-  for (const tab of ["Inbox", "Email", "People and roles", "Announcements", "Roadmap", "Ideas from hosts", "Questions", "Moderation", "Reported enquiries", "Brand groups", "Feature guide", "Product inbox"]) assert(tabs.includes(`label: "${tab}"`), tab);
+  // #4383: Email, Announcements and Roadmap are Communications screens; the
+  // Product inbox tab is called Product board.
+  for (const tab of ["Inbox", "People and roles", "Ideas from hosts", "Questions", "Moderation", "Reported enquiries", "Brand groups", "Feature guide", "Product board"]) assert(tabs.includes(`label: "${tab}"`), tab);
   assertMatch(navigation, /md:hidden/);
   assertMatch(page, /Available for support/);
   assertMatch(page, /Conversations with hosts and explorers, oldest waiting first[.]/);
-  assertMatch(page, /What we tell hosts, what we've shipped, and what they ask for[.]/);
+  assertMatch(page, /What hosts ask for and talk about[.] What we tell them now lives in Communications[.]/);
   assertNotMatch(page, /CutoverPanel|activeTab === "availability"|OverviewPanel/);
   assertMatch(ideas, /not_now/);
   assertMatch(ideas, /Response from Mingla/);
@@ -53,7 +55,8 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   assertMatch(roadmap, /line-clamp-2/);
   assertMatch(support, /Requester[\s\S]+Subject[\s\S]+Status[\s\S]+Idle[\s\S]+Next update/);
   assertMatch(support, /lg:hidden/);
-  assertMatch(email, /History[\s\S]+Send[\s\S]+Templates[\s\S]+Unsubscribes/);
+  // #4383: the sections live in lib/emailViews.js (History is Sent, Send is Write).
+  assertMatch(email, /emailViewsFor\(access\)/);
   assertMatch(composer, /userType: "host"/);
   assertMatch(composer, /Explorer users/);
   assertMatch(composer, /Insert ▾/);

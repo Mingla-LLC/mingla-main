@@ -1,6 +1,5 @@
 import {
   AREA,
-  BLOG_AREA,
   COMMUNITY_OPERATIONS_AREA,
   SUPPORT_OPERATIONS_AREA,
 } from "./access.js";
@@ -20,16 +19,15 @@ export function communitySupportCapabilities(access) {
     isAdmin,
     canSupport: isAdmin || areas.includes(SUPPORT_OPERATIONS_AREA),
     canCommunity: isAdmin || areas.includes(COMMUNITY_OPERATIONS_AREA),
-    // #4255: every teammate writes blog posts and email (D5).
-    canBlog: isAdmin || areas.includes(BLOG_AREA),
-    canEmail: isAdmin || areas.includes(AREA.EMAIL_DRAFTS),
   };
 }
 
 // #4130 Wave 6: the Support and Community pages both filter their tabs here;
 // a page opens on the first tab this leaves (lib/supportCommunityTabs.js).
+// #4383: Email, Blog and Links page are their own screens now, gated by
+// lib/access.js PAGE_ADDITIONAL_AREAS (the same areas these tabs had).
 export function communitySupportTabsForAccess(access, tabs) {
-  const { isAdmin, canSupport, canCommunity, canBlog, canEmail } = communitySupportCapabilities(access);
+  const { isAdmin, canSupport, canCommunity } = communitySupportCapabilities(access);
   if (isAdmin) return tabs;
 
   const allowed = new Set();
@@ -45,10 +43,6 @@ export function communitySupportTabsForAccess(access, tabs) {
     allowed.add("support");
     allowed.add("feature-guide");
     allowed.add("brand-groups");
-    // #4318: admin_links_* RPCs guard on is_support_staff.
-    allowed.add("links");
   }
-  if (canBlog) allowed.add("blog");
-  if (canEmail) allowed.add("email");
   return tabs.filter((tab) => allowed.has(tab.id));
 }

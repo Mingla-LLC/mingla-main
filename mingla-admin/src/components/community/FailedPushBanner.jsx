@@ -77,7 +77,7 @@ export function FailedPushBanner() {
       >
         On the {latest.sentAt ? `${formatDate(latest.sentAt)} ` : ""}announcement
         {latest.title ? ` "${latest.title}"` : ""}. Those hosts did not get it on their phone.
-        {others > 0 ? ` ${others} older announcement${others === 1 ? " has" : "s have"} failed pushes too: see Community, Announcements.` : ""}
+        {others > 0 ? ` ${others} older announcement${others === 1 ? " has" : "s have"} failed pushes too: see Communications, Announcements.` : ""}
       </AlertCard>
       <Modal open={Boolean(confirming)} onClose={() => (retrying ? null : setConfirming(null))} title="Send the failed pushes again?">
         <ModalBody>

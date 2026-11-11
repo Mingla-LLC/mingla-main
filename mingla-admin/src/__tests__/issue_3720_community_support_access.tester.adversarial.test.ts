@@ -39,14 +39,19 @@ Deno.test("additional page exceptions stay one-to-one with server capabilities",
     "community-support": [COMMUNITY_SUPPORT_AREA],
     notifications: [TEAM_NOTIFICATIONS_AREA],
     "data-room": [DATA_ROOM_AREA],
-    // #4255: the Email and Blog tabs' areas open Support (never Community).
-    "support-content": [AREA.EMAIL_DRAFTS, BLOG_AREA],
+    // #4383: the Email, Blog and Links page screens, each with the area its
+    // old tab had (the #4255 support-content pseudo page is gone).
+    email: [AREA.EMAIL_DRAFTS],
+    blog: [BLOG_AREA],
+    links: [SUPPORT_OPERATIONS_AREA],
   });
   const candidate = access(COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA);
   assertEquals(canOpenPage(candidate, "community-support"), true);
-  for (const page of ["overview", "announcements", "roadmap", "email", "team", "availability"]) {
+  for (const page of ["overview", "announcements", "roadmap", "email", "team", "availability", "push"]) {
     assertEquals(canOpenPage(candidate, page), false, `scoped staff unexpectedly opened ${page}`);
   }
+  // #4383: Support staff open the Links page, as they opened its tab.
+  assertEquals(canOpenPage(candidate, "links"), true);
   assertEquals(canOpenPage(access(TEAM_NOTIFICATIONS_AREA), "notifications"), true);
   assertEquals(canOpenPage(access(TEAM_NOTIFICATIONS_AREA), "data-room"), false);
   assertEquals(canOpenPage(access(DATA_ROOM_AREA), "data-room"), true);

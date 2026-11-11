@@ -41,7 +41,17 @@
     "sessions_hint": "Davet Ets, member updates, ve board activity",
     "tips_reengagement": "Tips & Re-engagement",
     "tips_hint": "Occasional nudges, weekly digest, ve recommendations",
-    "error_update": "Failed to update notification setting."
+    "error_update": "Failed to update notification setting.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Mingla haberleri",
+        "mingla_updates_hint": "Mingla ekibinden haberler ve güncellemeler.",
+        "brand_campaign_push": "Takip ettiğin mekânlardan mesajlar",
+        "brand_campaign_push_hint": "Takip ettiğin mekân ve ev sahiplerinden fırsatlar ve haberler.",
+        "brand_offering_invite": "Takip ettiğin mekânlardan davetler",
+        "brand_offering_invite_hint": "Bir mekân ya da ev sahibi seni bir şeye davet ettiğinde."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Quiet Hours",

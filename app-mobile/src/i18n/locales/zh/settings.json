@@ -41,7 +41,17 @@
     "sessions_hint": "邀请、成员更新和看板活动",
     "tips_reengagement": "提示与提醒",
     "tips_hint": "偶尔提醒、每周摘要和推荐",
-    "error_update": "更新通知设置失败。"
+    "error_update": "更新通知设置失败。",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Mingla 动态",
+        "mingla_updates_hint": "来自 Mingla 团队的新闻和动态。",
+        "brand_campaign_push": "你关注的地点发来的消息",
+        "brand_campaign_push_hint": "你关注的地点和主办方的优惠与动态。",
+        "brand_offering_invite": "你关注的地点发来的邀请",
+        "brand_offering_invite_hint": "当某个地点或主办方邀请你参加活动时。"
+      }
+    }
   },
   "quiet_hours": {
     "title": "免打扰时段",

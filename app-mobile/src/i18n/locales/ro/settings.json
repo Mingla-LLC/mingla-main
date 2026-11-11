@@ -41,7 +41,17 @@
     "sessions_hint": "Invităs, member updates, și board activity",
     "tips_reengagement": "Tips & Re-engagement",
     "tips_hint": "Occasional nudges, weekly digest, și recommendations",
-    "error_update": "Failed to update notification setting."
+    "error_update": "Failed to update notification setting.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Noutăți Mingla",
+        "mingla_updates_hint": "Știri și noutăți de la echipa Mingla.",
+        "brand_campaign_push": "Mesaje de la locurile pe care le urmărești",
+        "brand_campaign_push_hint": "Oferte și noutăți de la locurile și gazdele pe care le urmărești.",
+        "brand_offering_invite": "Invitații de la locurile pe care le urmărești",
+        "brand_offering_invite_hint": "Când un loc sau o gazdă te invită la ceva."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Quiet Hours",
