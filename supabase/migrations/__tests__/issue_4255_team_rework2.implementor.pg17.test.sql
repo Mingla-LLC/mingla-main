@@ -14,6 +14,13 @@
 --              Retest target: a Lagos-only staff account (no zone before)
 --              saves Africa/Lagos and gets the due notice at 09:00 Lagos,
 --              not at 09:00 New York.
+--   R3-ASK     Retest 2 (P3): changing the tag to a DIFFERENT ask (Send to
+--              Spend, Publish to Needs your OK) asks the owner again; the
+--              same ask again or taking it off does not. P3b: the verdict is
+--              stored on the notice (team_mentions.decision) and team_inbox
+--              returns it, true for the owner, false for the watcher.
+--   R3-AGENT   Retest 2 (P4): a connected agent cannot set its person's time
+--              zone (42501 agents_cannot_post) and nothing is written.
 --
 -- FAILS-ON-REVERT (each proved by deleting the line from the migration and
 -- re-running this suite on a fresh replay; see the #4255 rework 2 evidence):
@@ -21,6 +28,10 @@
 --   * ops_notify_people: v_tag_set from the event snapshots, back to the
 --     text match (R2-DECIDE note)
 --   * team_set_my_timezone: the pg_timezone_names check (R2-TZ unknown zone)
+--   * Retest 2: v_tag_set back to "before had no tag" (R3-ASK Send to Spend)
+--   * Retest 2: the decision column in the team_mentions insert, or in
+--     team_inbox (R3-ASK flag checks)
+--   * Retest 2: the crm_ctx() via refusal in team_set_my_timezone (R3-AGENT)
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -236,6 +247,76 @@ begin
   perform pg_temp.chk('R2-TZ', 'at 09:10 Lagos, Ray is told once, with a due push',
     (select count(*)::text from public.notification_outbox o where o.user_id = pg_temp.uid('ray') and o.category_key = 'business.team_due'
       and o.payload->>'mention_id' in (select tm.id::text from public.team_mentions tm where tm.source_kind = 'work_due' and tm.target_user_id = pg_temp.uid('ray'))), '1');
+end;
+$t$;
+
+-- ───────────────────────────── R3-ASK ─────────────────────────────
+do $t$
+declare v text; v_inbox text;
+begin
+  v := pg_temp.add('AK', 'R34255 Ask changes', pg_temp.email('ray'), pg_temp.email('gem'));
+  perform pg_temp.chk('R3-ASK', 'control: the card was added', (v::jsonb)->'results'->0->>'status', 'added');
+  v := pg_temp.tag('AK', 'send');
+  perform pg_temp.chk('R3-ASK', 'control: Send asks the owner',
+    (select count(*)::text from public.notification_outbox o where o.user_id = pg_temp.uid('ray')
+      and o.category_key = 'business.team_decision' and o.payload->>'card_id' = pg_temp.id('AK')::text), '1');
+  perform pg_temp.chk('R3-ASK', 'the owner''s notice is flagged a decision, the watcher''s is not',
+    (select string_agg(p.who || '=' || tm.decision::text, ',' order by p.who) from public.team_mentions tm
+       join public.ops_work_events e on e.id = tm.source_id join tx_people p on p.id = tm.target_user_id
+      where tm.source_kind = 'work_card' and e.card_id = pg_temp.id('AK') and e.after->'fields'->>'person_reason' = 'send'), 'gem=false,ray=true');
+
+  delete from public.notification_outbox where payload->>'card_id' = pg_temp.id('AK')::text;
+  v := pg_temp.tag('AK', 'spend');
+  perform pg_temp.chk('R3-ASK', 'control: Send to Spend was saved', (select person_reason from public.ops_work_cards where id = pg_temp.id('AK')), 'spend');
+  perform pg_temp.chk('R3-ASK', 'Send to Spend asks the owner again, not the watcher',
+    (select coalesce(string_agg(p.who, ',' order by p.who), 'nobody') from public.notification_outbox o join tx_people p on p.id = o.user_id
+      where o.category_key = 'business.team_decision' and o.payload->>'card_id' = pg_temp.id('AK')::text), 'ray');
+
+  delete from public.notification_outbox where payload->>'card_id' = pg_temp.id('AK')::text;
+  v := pg_temp.tag('AK', 'spend');
+  perform pg_temp.chk('R3-ASK', 'Spend again (the same ask) asks nobody',
+    (select count(*)::text from public.notification_outbox o where o.category_key = 'business.team_decision'
+      and o.payload->>'card_id' = pg_temp.id('AK')::text), '0');
+
+  v := pg_temp.tag('AK', 'publish');
+  delete from public.notification_outbox where payload->>'card_id' = pg_temp.id('AK')::text;
+  v := pg_temp.tag('AK', 'other');
+  perform pg_temp.chk('R3-ASK', 'You publish to Needs your OK asks the owner again',
+    (select coalesce(string_agg(p.who, ',' order by p.who), 'nobody') from public.notification_outbox o join tx_people p on p.id = o.user_id
+      where o.category_key = 'business.team_decision' and o.payload->>'card_id' = pg_temp.id('AK')::text), 'ray');
+
+  delete from public.notification_outbox where payload->>'card_id' = pg_temp.id('AK')::text;
+  v := pg_temp.tag('AK', null);
+  perform pg_temp.chk('R3-ASK', 'taking Needs your OK off asks nobody',
+    (select count(*)::text from public.notification_outbox o where o.category_key = 'business.team_decision'
+      and o.payload->>'card_id' = pg_temp.id('AK')::text), '0');
+
+  -- team_inbox carries the same flag for Admin Messages and the Host app.
+  v_inbox := pg_temp.person('ray', $q$select public.team_inbox(null, 200)::text$q$);
+  perform pg_temp.chk('R3-ASK', 'Ray''s inbox: one decision per different ask (send, spend, publish, other), none for the rest',
+    (select count(*)::text from jsonb_array_elements((v_inbox::jsonb)->'mentions') x
+      where x->>'card_id' = pg_temp.id('AK')::text and (x->>'decision')::boolean), '4');
+  perform pg_temp.chk('R3-ASK', 'every inbox mention carries a decision boolean',
+    (select bool_and(jsonb_typeof(x->'decision') = 'boolean')::text from jsonb_array_elements((v_inbox::jsonb)->'mentions') x), 'true');
+  v_inbox := pg_temp.person('gem', $q$select public.team_inbox(null, 200)::text$q$);
+  perform pg_temp.chk('R3-ASK', 'Gem (watcher) has notices for the card, none of them a decision',
+    (select (count(*) > 0)::text || '/' || count(*) filter (where (x->>'decision')::boolean)::text
+       from jsonb_array_elements((v_inbox::jsonb)->'mentions') x where x->>'card_id' = pg_temp.id('AK')::text), 'true/0');
+end;
+$t$;
+
+-- ───────────────────────────── R3-AGENT ─────────────────────────────
+do $t$
+declare v text;
+begin
+  perform pg_temp.chk('R3-AGENT', 'control: Gem''s zone before', pg_temp.tz('gem'), 'Europe/London');
+  perform pg_temp.lk('R3-AGENT', 'control: the agent ledger row makes Gem an agent for team chat writes',
+    pg_temp.agent('gem', format('select public.team_dm_open(%L)::text', pg_temp.uid('ray'))), 'ERR:42501:agents_cannot_post%');
+  perform pg_temp.lk('R3-AGENT', 'a connected agent cannot set its person''s time zone',
+    pg_temp.agent('gem', $q$select public.team_set_my_timezone('Asia/Tokyo')::text$q$), 'ERR:42501:agents_cannot_post%');
+  perform pg_temp.chk('R3-AGENT', 'and nothing was written', pg_temp.tz('gem'), 'Europe/London');
+  v := pg_temp.person('gem', $q$select public.team_set_my_timezone('Asia/Tokyo')::text$q$);
+  perform pg_temp.chk('R3-AGENT', 'the person herself still can', (v::jsonb)->>'changed' || '/' || pg_temp.tz('gem'), 'true/Asia/Tokyo');
 end;
 $t$;
 

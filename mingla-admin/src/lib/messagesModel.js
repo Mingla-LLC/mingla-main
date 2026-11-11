@@ -30,17 +30,18 @@ export const NOTIFICATION_GROUPS = Object.freeze([
   { id: "status", label: "Changes on cards you watch", tone: "success", filters: ["watch", "all"] },
 ]);
 
-// A card tagged Send, Spend, Publish or Needs your OK tells its people with
-// the tag's own words at the end (ops_work_update, #4270): that is a decision.
-const DECISION_TAIL = /·\s*(You send|You spend|You publish|Needs your OK)\s*$/;
-
 /** Which group a team_inbox mention belongs to. */
 export function mentionGroup(m) {
   if (!m) return "status";
   // #4255 rework: the 09:00 "due and late" notice (ops_due_digest).
   if (m.source_kind === "work_due") return "late";
+  // #4255 Retest 2 (P3b): a decision is the server's per-person flag
+  // (team_mentions.decision, set by ops_notify_people on the tag-change
+  // event, owners only), never the excerpt's words. The Host app's
+  // Mentions read the same flag.
+  if (m.decision === true) return "decide";
   if (m.kind === "mention") return "mention";
-  return DECISION_TAIL.test(String(m.body_excerpt || "")) ? "decide" : "status";
+  return "status";
 }
 
 function time(iso) {

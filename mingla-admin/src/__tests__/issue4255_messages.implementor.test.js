@@ -24,6 +24,9 @@
 //       tab comes back with a new one; Settings shows "Time zone: <zone>
 //       (from this device)"
 //
+// Retest 2 FAILS-ON-REVERT: putting the excerpt's "· You send" tail back in
+// mentionGroup (or dropping the m.decision line) reds R3-1.
+//
 // Rework 2 FAILS-ON-REVERT: deleting the useTeamTimeZoneSync call in
 // MessagesButton, or the "zone !== lastSaved" check in timeZoneToSave, reds
 // R2-1.
@@ -76,7 +79,7 @@ const INBOX = {
   mentions: [
     { id: "m1", kind: "mention", source_kind: "work_card", card_id: CARD_A, actor_name: "Ray", body_excerpt: "Ray on Edit: @Seth the end card", created_at: at(34), read_at: null },
     { id: "m2", kind: "mention", source_kind: "work_card", card_id: CARD_A, actor_name: "Abimbola", body_excerpt: "Abimbola on Edit: uploading", created_at: at(40), read_at: null },
-    { id: "m3", kind: "work_update", source_kind: "work_card", card_id: CARD_B, actor_name: "Taofeek", body_excerpt: "Taofeek: Approve spend · You spend", created_at: at(12), read_at: null },
+    { id: "m3", kind: "work_update", source_kind: "work_card", card_id: CARD_B, actor_name: "Taofeek", body_excerpt: "Taofeek: Approve spend · You spend", decision: true, created_at: at(12), read_at: null },
     { id: "m4", kind: "work_update", source_kind: "work_card", card_id: CARD_B, actor_name: "Taofeek", body_excerpt: "Taofeek moved it to Waiting", created_at: at(90), read_at: null },
     { id: "m5", kind: "mention", source_kind: "team_message", card_id: null, thread_id: THREAD, actor_name: "Feyikemi", body_excerpt: "@Seth flyer?", created_at: at(20), read_at: null },
   ],
@@ -210,7 +213,7 @@ describe("M-5 Notifications: chips and groups; support alerts stay a group", () 
     assert.deepEqual(card.more.map((m) => m.key), ["m-m2"]);
     assert.equal(card.sources.length, 2, "Done marks both read");
   });
-  it("a tag's words make a decision; other card changes are Watching", () => {
+  it("the server's decision flag makes a decision; other card changes are Watching", () => {
     assert.equal(mentionGroup(INBOX.mentions[2]), "decide");
     assert.equal(mentionGroup(INBOX.mentions[3]), "status");
     assert.equal(mentionGroup(INBOX.mentions[0]), "mention");
@@ -391,5 +394,26 @@ describe("R2-1 this browser's time zone is saved for quiet hours and the 09:00 n
     const settings = stripComments(read("components/messages/MessagesSettings.jsx"));
     assert.match(settings, /useState\(\(\) => timeZoneLine\(deviceTimeZone\(\)\)\)/);
     assert.match(settings, /\{zoneLine && <p data-setting-timezone=""[^>]*>\{zoneLine\}<\/p>\}/);
+  });
+});
+
+describe("R3-1 Needs your decision follows the server's flag only (Retest 2, P3b)", () => {
+  const base = { kind: "work_update", source_kind: "work_card", card_id: CARD_B, actor_name: "Taofeek", created_at: at(3), read_at: null };
+  it("a flagged notice is a decision whatever its words", () => {
+    assert.equal(mentionGroup({ ...base, id: "x1", decision: true, body_excerpt: "Taofeek changed the ask: Send to Spend" }), "decide");
+    const row = notificationGroups({ mentions: [{ ...base, id: "x1", decision: true, body_excerpt: "Taofeek changed the ask" }], alerts: [] }, "you")[0].rows[0];
+    assert.equal(row.title, "Taofeek needs your decision");
+  });
+  it("words ending like a tag are not a decision without the flag (watcher, same ask, tag off)", () => {
+    assert.equal(mentionGroup({ ...base, id: "x2", decision: false, body_excerpt: "Taofeek: Approve spend · You spend" }), "status");
+    assert.equal(mentionGroup({ ...base, id: "x3", body_excerpt: "Over to you · Needs your OK" }), "status");
+    assert.equal(mentionGroup({ ...base, id: "x4", kind: "mention", decision: false, body_excerpt: "Ray, the deck · You send" }), "mention");
+  });
+  it("the model no longer parses the excerpt for a tag", () => {
+    const model = stripComments(read("lib/messagesModel.js"));
+    const fn = model.slice(model.indexOf("export function mentionGroup"), model.indexOf("function time("));
+    assert.ok(fn.length > 0);
+    assert.equal(/body_excerpt|\.test\(/.test(fn), false);
+    assert.match(fn, /if \(m\.decision === true\) return "decide";/);
   });
 });

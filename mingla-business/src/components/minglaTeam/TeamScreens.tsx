@@ -92,17 +92,14 @@ export function teamTabCounts(
   };
 }
 
-// #4255 rework: a card tagged You send, You spend, You publish or Needs your
-// OK tells its people with the tag's words at the end (ops_work_update), the
-// same rule Admin Messages groups decisions by.
-const DECISION_TAIL = /·\s*(You send|You spend|You publish|Needs your OK)\s*$/;
-
-export function mentionKindLabel(mention: Pick<TeamMention, "kind" | "action"> & Partial<Pick<TeamMention, "source_kind" | "body_excerpt">>, t: TeamT): string {
+export function mentionKindLabel(mention: Pick<TeamMention, "kind" | "action"> & Partial<Pick<TeamMention, "source_kind" | "body_excerpt" | "decision">>, t: TeamT): string {
   // #4255 rework: the 09:00 "due and late" notice (ops_due_digest).
   if (mention.source_kind === "work_due") return t("team.kind_due");
+  // #4255 Retest 2 (P3b): a decision is the server's per-person flag
+  // (team_mentions.decision: the tag-change event, owners only), the same
+  // flag Admin Messages groups decisions by; never the excerpt's words.
+  if (mention.decision === true) return t("team.kind_decision");
   if (mention.kind === "mention") return t("team.kind_mention");
-  if (mention.action === "decision" || mention.action === "approval_requested") return t("team.kind_decision");
-  if (DECISION_TAIL.test(String(mention.body_excerpt ?? ""))) return t("team.kind_decision");
   if (mention.kind === "work_update") return t("team.kind_update");
   return t("team.kind_update");
 }

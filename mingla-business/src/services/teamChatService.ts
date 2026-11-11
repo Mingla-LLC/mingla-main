@@ -115,6 +115,8 @@ export interface TeamMention {
   source_kind: string;
   card_id: string | null;
   action: string | null;
+  /** #4255: true when this notice asks you to decide (team_inbox). */
+  decision?: boolean;
   thread_id: string | null;
   message_id: string | null;
   actor_name: string;

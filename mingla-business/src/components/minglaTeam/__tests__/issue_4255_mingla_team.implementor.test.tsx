@@ -457,8 +457,9 @@ describe("#4255 W5 Open in Mingla Admin", () => {
 // FAILS-ON-REVERT: deleting teamPrefHintKey's switch check (or the screen
 // showing t(row.hint) again) reds R-HINT; counting muted chats or team chat
 // mentions in teamTabCounts, or TeamScreen counting the tabs its old way,
-// reds R-TABS; deleting the work_due or decision-tail lines in
-// mentionKindLabel reds R-KIND; dropping &side=thread from teamAdminUrl reds
+// reds R-TABS; deleting the work_due or decision-flag lines in
+// mentionKindLabel reds R-KIND (Retest 2: putting the excerpt's "· You send"
+// tail back reds R3-KIND); dropping &side=thread from teamAdminUrl reds
 // the Open in Mingla Admin test; letting the Photos button accept documents
 // on the web reds R-PHOTOS.
 
@@ -517,8 +518,8 @@ describe("#4255 rework R-TABS: the M badge equals Chats unread + Mentions unread
 
 describe("#4255 rework R-KIND: decisions and the due notice say what they are", () => {
   const t = (key: string): string => key;
-  test("a tagged card is a Decision, the 09:00 notice is Due and late", () => {
-    expect(mentionKindLabel({ kind: "work_update", action: "updated", source_kind: "work_card", body_excerpt: "Gem: Send the deck · You send" }, t as never)).toBe("team.kind_decision");
+  test("a flagged notice is a Decision, the 09:00 notice is Due and late", () => {
+    expect(mentionKindLabel({ kind: "work_update", action: "updated", source_kind: "work_card", body_excerpt: "Gem: Send the deck · You send", decision: true }, t as never)).toBe("team.kind_decision");
     expect(mentionKindLabel({ kind: "mention", action: null, source_kind: "work_due", body_excerpt: "1 due today" }, t as never)).toBe("team.kind_due");
     expect(mentionKindLabel({ kind: "work_update", action: "status", source_kind: "work_card", body_excerpt: "Gem moved it" }, t as never)).toBe("team.kind_update");
     expect(mentionKindLabel({ kind: "mention", action: "note", source_kind: "work_card", body_excerpt: "Gem tagged you" }, t as never)).toBe("team.kind_mention");
@@ -595,5 +596,16 @@ describe("#4255 rework 2 (P1): the device time zone", () => {
     const line = byTestId(view.root, "team-prefs-timezone");
     expect(line).toHaveLength(1);
     expect(allText(line[0])).toBe(`Time zone: ${zone} (from this device)`);
+  });
+});
+
+describe("#4255 Retest 2 R3-KIND: Needs your decision follows the server's flag only (P3b)", () => {
+  const t = (key: string): string => key;
+  test("the flag makes a Decision whatever the words; words alone never do", () => {
+    expect(mentionKindLabel({ kind: "work_update", action: "updated", source_kind: "work_card", body_excerpt: "Gem changed the ask: Send to Spend", decision: true }, t as never)).toBe("team.kind_decision");
+    expect(mentionKindLabel({ kind: "work_update", action: "updated", source_kind: "work_card", body_excerpt: "Gem: Approve spend · You spend", decision: false }, t as never)).toBe("team.kind_update");
+    expect(mentionKindLabel({ kind: "work_update", action: "updated", source_kind: "work_card", body_excerpt: "Over to you · Needs your OK" }, t as never)).toBe("team.kind_update");
+    expect(mentionKindLabel({ kind: "mention", action: "note", source_kind: "work_card", body_excerpt: "Ray, the deck · You send", decision: false }, t as never)).toBe("team.kind_mention");
+    expect(mentionKindLabel({ kind: "work_update", action: "decision", source_kind: "work_card", body_excerpt: "x" }, t as never)).toBe("team.kind_update");
   });
 });
