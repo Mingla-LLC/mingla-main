@@ -132,7 +132,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
   useEffect(() => { if (params.tab === "mentions") setTab("mentions"); }, [params.tab, params.mention]);
 
   const threads = useTeamThreads(userId, true);
-  const mentions = useTeamMentions(userId, tab === "mentions" || params.tab === "mentions");
+  const mentions = useTeamMentions(userId, true);
   const people = useTeamPeople(userId, find.trim().length > 0);
   useTeamRealtime(userId, null, true);
 

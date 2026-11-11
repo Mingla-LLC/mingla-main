@@ -20,7 +20,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
@@ -159,7 +158,6 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
   const router = useRouter();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
   const { query, messages, thread, members } = useTeamMessages(userId, threadId, threadId !== null);
   useTeamRealtime(userId, threadId, threadId !== null);
@@ -406,7 +404,9 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
   return (
     <SafeScreen
       edges={["top"]}
-      style={[styles.screen, Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" } : null]}
+      // On web the app root already leaves room for the privacy strip; a
+      // window-height screen would push the composer under it.
+      style={styles.screen}
       testID="team-thread"
     >
       <View style={styles.header}>
