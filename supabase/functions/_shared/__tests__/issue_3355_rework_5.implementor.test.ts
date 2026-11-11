@@ -32,6 +32,7 @@ import {
   type ClaimEvidence,
   type ClaimObservation,
   type ClaimRecordsRead,
+  deterministicClaims,
   fallbackStripClaims,
   hostAsksForWrite,
   isStatusQuestion,
@@ -674,6 +675,35 @@ Deno.test("R5-17: the deterministic pass never blanks reads or how-to answers (j
     );
   }
   assert(REPLY_EMPTY_AFTER_CHECK.length > 0);
+});
+
+Deno.test("R5-17: each false-positive guard of the deterministic pass, on its own", () => {
+  const claims = (text: string, kind: "discount" | "support") =>
+    deterministicClaims({
+      text,
+      objects: [],
+      asked: true,
+      skip: [],
+      hostCodes: [],
+      askedKinds: new Set([kind]),
+    });
+  // A quoted screen label is not a statement.
+  assertEquals(
+    claims('Your codes are listed under "ACTIVE CODES".', "discount"),
+    [],
+  );
+  // "working days" is not a state.
+  assertEquals(
+    claims("Your refund request is answered within 3 working days.", "support"),
+    [],
+  );
+  // The kind word must be the subject of the status.
+  assertEquals(
+    claims("Print all your codes for the active spots.", "discount"),
+    [],
+  );
+  // The same forms with a real status are claims.
+  assertEquals(claims("Your codes are all active now.", "discount").length, 1);
 });
 
 // ── R5-4, R5-5, R5-18 ───────────────────────────────────────────────────────
