@@ -32,6 +32,7 @@ import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 // design's SE frame shows (#4389 P1: Continue sat under the keyboard).
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
 import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 
 import { useAuth } from "../../context/AuthContext";
 import { accent, canvas, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
@@ -556,6 +557,13 @@ const CountryStep: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<WriteError | null>(null);
   const save = useSetBrandPayoutCountry(brandId);
+  // #4389 P1 (SE, keyboard up): the search results had no room above the
+  // footer, so the first result sat behind Continue and a tap hit the disabled
+  // button. With the keyboard up the footer gives the list the room: nothing
+  // picked yet → no footer at all (Continue would be disabled anyway); a pick
+  // made → Continue only ("Save and finish later" hides, as the design does).
+  const keyboardUp = useKeyboardIsVisible();
+  const footerShown = !(keyboardUp && selected === null);
   useEffect(() => {
     if (selected === null && current !== null) setSelected(current);
   }, [current, selected]);
@@ -621,16 +629,22 @@ const CountryStep: React.FC<{
         ) : null}
         <PayoutCountryList selected={selected} onSelect={setSelected} disabled={locked || forbidden || save.isPending} deviceLocale={locale} />
       </ScrollView>
-      <View style={styles.footer}>
+      {footerShown ? (
+      <View style={styles.footer} testID="brand-setup-country-footer">
         {option !== null ? (
           <Text style={styles.footnote}>{C.f2.footnote(option.name, option.currency)}</Text>
         ) : null}
         <Button testID="brand-setup-country-continue" label={C.f2.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={selected === null || offline || forbidden || !authReady || save.isPending || (locked && selected !== current)} loading={save.isPending} />
         {error !== null ? <Text style={[styles.helper, styles.errorText]} accessibilityRole="alert">{error}</Text> : null}
         <InlineWriteError writeError={writeError} testID="brand-setup-country-error" />
-        <View style={styles.gap8} />
-        <Button label={C.common.later} onPress={onLater} variant="secondary" size="md" fullWidth />
+        {keyboardUp ? null : (
+          <>
+            <View style={styles.gap8} />
+            <Button label={C.common.later} onPress={onLater} variant="secondary" size="md" fullWidth />
+          </>
+        )}
       </View>
+      ) : null}
     </>
   );
 };

@@ -35,6 +35,7 @@ export const harness = {
   focusEffects: [] as Array<() => void>,
   beforeRemove: null as null | ((e: unknown) => void),
   params: {} as Record<string, string>,
+  keyboardUp: false,
 };
 
 export function checklistAt(step: "country" | "pay" | "done", over: Partial<FlowFacts> = {}): NonNullable<typeof harness.checklist> {
@@ -82,9 +83,10 @@ jest.mock("expo-router", () => ({
     }, [cb]);
   },
 }));
+jest.mock("../../../wrappers/useKeyboardIsVisible", () => ({ useKeyboardIsVisible: () => harness.keyboardUp }));
 jest.mock("../../../wrappers/SmartScrollView", () => {
   const RN = jest.requireActual("react-native") as typeof import("react-native");
-  return { ScrollView: RN.ScrollView };
+  return { ScrollView: RN.ScrollView, DONE_BAR_OCCUPIED: 53 };
 });
 jest.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "acct-4389" }, isAuthReady: true, signOut: jest.fn() }),
@@ -225,4 +227,5 @@ export function resetHarness(): void {
   harness.focusEffects = [];
   harness.beforeRemove = null;
   harness.params = {};
+  harness.keyboardUp = false;
 }
