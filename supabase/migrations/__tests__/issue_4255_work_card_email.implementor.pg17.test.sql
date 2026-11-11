@@ -51,17 +51,19 @@ language sql as $fn$ select id from t4255_people where who = p_who; $fn$;
 create function pg_temp.email(p_who text) returns text
 language sql as $fn$ select email from t4255_people where who = p_who; $fn$;
 -- email rows / bell rows for one card and one person
+-- [TEST-MOD-APPROVED #4255] rework (20280612014255): card links end with
+-- &side=thread:<card> (the card opens with its thread).
 create function pg_temp.mails(p_card uuid, p_who text) returns bigint
 language sql as $fn$
   select count(*) from public.notification_outbox o
    where o.category_key = 'admin.team_mention' and o.user_id = pg_temp.uid(p_who)
-     and o.payload->>'deep_link' like '%card=' || p_card::text;
+     and o.payload->>'deep_link' like '%card=' || p_card::text || '&side=thread:' || p_card::text;
 $fn$;
 create function pg_temp.bells(p_card uuid, p_who text) returns bigint
 language sql as $fn$
   select count(*) from public.team_mentions m
    where m.source_kind = 'work_card' and m.target_user_id = pg_temp.uid(p_who)
-     and m.deep_link like '%card=' || p_card::text;
+     and m.deep_link like '%card=' || p_card::text || '&side=thread:' || p_card::text;
 $fn$;
 create function pg_temp.item(p_title text) returns jsonb
 language sql as $fn$

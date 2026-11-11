@@ -535,7 +535,8 @@ do $notify$
 begin
   perform pg_temp.t3980_check('W1-NOTIFY', 'adding the first card told the other owner and the watcher, not the author',
     (select string_agg(p.who, ',' order by p.who) from public.team_mentions m join t3980_people p on p.id = m.target_user_id
-      where m.source_kind = 'work_card' and m.deep_link = 'https://admin.usemingla.com/#/work-board?card=' || pg_temp.t3980_id('c1')
+      -- [TEST-MOD-APPROVED #4255] rework: card notices open the card with its thread (&side=thread:<id>).
+      where m.source_kind = 'work_card' and m.deep_link = 'https://admin.usemingla.com/#/work-board?card=' || pg_temp.t3980_id('c1') || '&side=thread:' || pg_temp.t3980_id('c1')
         and m.source_id = (select e.id from public.ops_work_events e where e.card_id = pg_temp.t3980_id('c1')::uuid and e.action = 'added')), 'admin,partner');
   perform pg_temp.t3980_check('W1-NOTIFY', 'each notice has an outbox row with no country code',
     ((select count(*) from public.team_mentions m join public.notification_outbox o on o.idempotency_key = 'admin.team_mention:' || m.id::text

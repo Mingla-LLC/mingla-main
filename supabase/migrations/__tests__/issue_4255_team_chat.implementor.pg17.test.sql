@@ -472,8 +472,12 @@ begin
     (select count(*)::text from public.team_mentions where source_kind = 'team_message' and source_id = pg_temp.id('g6') and target_user_id = pg_temp.uid('admin')) || '/' ||
     pg_temp.outbox('business.team_mention', 'admin', pg_temp.id('g6')), '1/0');
   -- The badge: unread chats plus unread mentions, and reading clears it.
-  perform pg_temp.chk('C-NOTIFY', 'the badge counts unread chats and unread mentions',
-    pg_temp.person('ray', $q$select (public.team_badge()->>'total')::int = (public.team_badge()->>'chats')::int + (public.team_badge()->>'mentions')::int and (public.team_badge()->>'mentions')::int >= 2$q$), 'true');
+  -- [TEST-MOD-APPROVED #4255] rework (20280612014255): a team chat mention is
+  -- counted once, in its chat; the mentions part is the Mentions tab only.
+  perform pg_temp.chk('C-NOTIFY', 'the badge counts unread chats and unread Mentions-tab items (a chat mention once, in its chat)',
+    pg_temp.person('ray', $q$select (public.team_badge()->>'total')::int = (public.team_badge()->>'chats')::int + (public.team_badge()->>'mentions')::int
+      and (public.team_badge()->>'mentions')::int = (select count(*)::int from public.team_mentions where target_user_id = auth.uid() and read_at is null and source_kind <> 'team_message')
+      and (select count(*) from public.team_mentions where target_user_id = auth.uid() and read_at is null and source_kind = 'team_message') >= 2$q$), 'true');
   v := pg_temp.person('ray', format('select public.team_mark_read(%L)::text', v_g));
   perform pg_temp.chk('C-NOTIFY', 'reading the group marks its mentions read', (v::jsonb)->>'mentions_read', '3');
 end;

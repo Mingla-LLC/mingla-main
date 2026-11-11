@@ -301,7 +301,8 @@ begin
     (select public.ops_actor_label('gia.y3980@test.local', 'claude')) || ' took you off this card: Y3980 Reviewer taken off');
   select m.deep_link into v_link from public.team_mentions m join ti_people p on p.id = m.target_user_id
    where p.who = 'admin' and m.body_excerpt like '%took you off%' limit 1;
-  perform pg_temp.ti_like('R-REMOVED', 'the notice links to the card', v_link, '%work-board?card=' || v_card);
+  -- [TEST-MOD-APPROVED #4255] rework: the link opens the card with its thread.
+  perform pg_temp.ti_like('R-REMOVED', 'the notice links to the card', v_link, '%work-board?card=' || v_card || '&side=thread:' || v_card);
   perform pg_temp.ti_check('R-REMOVED', 'whoever stayed on is not told they were taken off',
     pg_temp.ti_told('owner', '%took you off%'), '0');
 
