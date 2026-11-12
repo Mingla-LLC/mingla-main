@@ -165,7 +165,7 @@ export class MemoryStore implements FlowStore {
     } as FlowRun;
   }
   start(args: Parameters<FlowStore["start"]>[0]) {
-    // #3355 rework 3 (R3-7, as 20280623133355): a follow-up run never closes
+    // #3355 rework 3 (R3-7, as 20280628133355): a follow-up run never closes
     // another setup open in the chat, live or parked; it is refused.
     const followUp = args.answers !== undefined && args.answers !== null &&
       "follow_up_of" in (args.answers as Record<string, unknown>);

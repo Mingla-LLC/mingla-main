@@ -12,7 +12,7 @@
 --   * turns to done         = host messages between a setup's start and its
 --                              completion, per setup (flow_key);
 --   * thumbs up / down      = ari_message_feedback in the window.
--- Gap events come from ari_capability_gap_events (Wave D, 20280623073355).
+-- Gap events come from ari_capability_gap_events (Wave D, 20280628073355).
 -- A rate whose denominator is 0 is NULL (the panel shows "no data"), never 0.
 --
 -- Static SQL (no EXECUTE), SECURITY DEFINER with a fixed search_path, and

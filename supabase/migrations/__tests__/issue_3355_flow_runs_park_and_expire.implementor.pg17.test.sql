@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-ARI-RUNS-EXPIRE | issue #3355 | An Ari flow run idle for 24 hours (database clock, ari_flow_run_last_activity) becomes expired through ari_flow_runs_expire_idle, which the Ari turn sweep calls; a chat holds at most one open (live or parked) run; a parked run comes back only through ari_flow_run_resume in its own chat, by the person who started it, and an idle one expires instead of coming back (edge side: supabase/functions/_shared/__tests__/issue_3355_wave_a_understand_first.implementor.test.ts).
 --
 -- Issue #3355 Wave A (A2 + A5) — parked runs and run expiry
--- (migration 20280623013355_issue_3355_flow_runs_park_and_expire.sql).
+-- (migration 20280628013355_issue_3355_flow_runs_park_and_expire.sql).
 -- Pins:
 --   * advance parks a live run (lease cleared, prior status kept); a parked run
 --     cannot be leased (the runner treats it as not live);

@@ -2,7 +2,7 @@
 -- MINGLA-INVARIANT: I-ARI-GAP-DIGEST-WEEKLY | issue #3355 | public.ari_gap_weekly_digest records one ari_gap_digests row per ISO week and adds at most ONE Work board card for it through ops_auto_card_upsert (auto_key ari_gap_digest:<ISO week>); Ari gaps and "Turn into eval" are admin only.
 -- MINGLA-INVARIANT: I-ARI-ASK-TEAM-HOURLY | issue #3355 | An "Ask the Mingla team" note (tell_owner_in_brand_group about ask_mingla_team) posts at most once per Ari conversation per hour; a retry of the same approval replays its receipt.
 --
--- Wave D (20280623073355). Reverting the migration fails the first block
+-- Wave D (20280628073355). Reverting the migration fails the first block
 -- (no ari_record_turn_gaps).
 
 \set ON_ERROR_STOP on

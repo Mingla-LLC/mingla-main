@@ -1,6 +1,6 @@
 -- MINGLA-INVARIANT: I-ARI-QUALITY-PANEL-ADMIN-ONLY | issue #3355 | public.ari_admin_quality_metrics is read-only and refused for everyone but a Mingla admin; its flow completion, park, refusal, repeat-request, empty-reply and thumbs-up rates are the counts it reports over the chosen window (1..180 days), and turns to done counts host messages between a setup's start and completion.
 --
--- Wave F (20280623093355). Reverting the migration fails the first block
+-- Wave F (20280628093355). Reverting the migration fails the first block
 -- (no ari_admin_quality_metrics). The database may already hold rows, so
 -- counts are checked as deltas against a read taken before this test's rows.
 

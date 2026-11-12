@@ -1,7 +1,7 @@
 // Issue #3355 Wave D — the personal-data rules Ari memory and gap logging share.
 //
 // ariSensitiveReason mirrors public.ari_memory_sensitive_reason (migration
-// 20280623063355): the edge refuses first, in plain words, and the SQL check
+// 20280628063355): the edge refuses first, in plain words, and the SQL check
 // is the server's last word for every writer. scrubAriExcerpt keeps gap
 // excerpts PII-minimised: emails, phone numbers and card-like numbers become
 // placeholders and the text is capped.

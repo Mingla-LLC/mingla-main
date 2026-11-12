@@ -235,12 +235,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 Wave B: re-sealed after registering the Feature Guide search and Wave B content migrations and the search PostgreSQL proof.
 // #3355 Wave D: re-sealed after registering the memory, gap-logging and Wave D Feature Guide migrations and their PostgreSQL proofs.
 // #3355 Wave D step 0: re-sealed after adding the two Wave A migrations to the #1931 replay lane skip list (issue-2492 closure).
-// #3355 rework 1: re-sealed after merging origin/main 1d23fd97e8 (#4383 rows kept) and renaming the nine #3355 migrations out of the 20280606xx3355 range (since renumbered to 20280623xx3355, rework 3).
-// #3355 rework 1: register 20280623103355 (discount-codes Feature Guide sync) in the #1857, #1931 and #2117 replay lanes (skipped by exact filename in #1931), and the rework and tester adversarial PostgreSQL proofs in #1931 and #2117.
-// #3355 rework 2: register 20280623113355 (memory brand voice at read; skipped by exact filename in #1931) and 20280623123355 (quality panel follow-up runs) in the #1857, #1931 and #2117 lanes, and the rework 2 PostgreSQL proof in #1931 and #2117.
+// #3355 rework 1: re-sealed after merging origin/main 1d23fd97e8 (#4383 rows kept) and renaming the nine #3355 migrations out of the 20280606xx3355 range (since renumbered to 20280628xx3355, rework 3).
+// #3355 rework 1: register 20280628103355 (discount-codes Feature Guide sync) in the #1857, #1931 and #2117 replay lanes (skipped by exact filename in #1931), and the rework and tester adversarial PostgreSQL proofs in #1931 and #2117.
+// #3355 rework 2: register 20280628113355 (memory brand voice at read; skipped by exact filename in #1931) and 20280628123355 (quality panel follow-up runs) in the #1857, #1931 and #2117 lanes, and the rework 2 PostgreSQL proof in #1931 and #2117.
 // #3355 rework 2: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #3355 rows).
-// #3355 rework 3: register 20280623133355 (a follow-up setup run never cancels a parked or live one) in the #1857, #1931 and #2117 lanes, and the rework 3 PostgreSQL proof in #1931 and #2117.
-// #3355 rework 3: merged origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept) and renumbered the thirteen #3355 migrations into 20280623xx3355 (after production's 20280622004382); re-sealed.
+// #3355 rework 3: register 20280628133355 (a follow-up setup run never cancels a parked or live one) in the #1857, #1931 and #2117 lanes, and the rework 3 PostgreSQL proof in #1931 and #2117.
+// #3355 rework 3: merged origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept) and renumbered the thirteen #3355 migrations into 20280628xx3355 (after production's 20280622004382); re-sealed.
 // #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
 // #4255: re-sealed after registering the Work board v2 and Mingla team migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes.
 // #4255: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
@@ -254,9 +254,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4255: re-sealed after renumbering the seven Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280622004382).
 // #3355 rework 4: re-sealed after merging origin/main 3dc6c44093 (#4255 rows kept beside the #3355 rows).
 // #3355 rework 6: re-sealed after merging origin/main 559e3e6902 (#3281 rows kept beside the #3355 rows).
-// #3355 rework 6: register 20280627003355 (payout readiness for brand members) in the #1857, #1931 and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
+// #3355 rework 6: register 20280628143355 (payout readiness for brand members) in the #1857, #1931 and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #3355 rework 7: register the retest 7 payout readiness callers PostgreSQL proof in the #1931 and #2117 replay lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "58d4b8a4cfd1a1ae88c68254a61951fdb5c87e79d2ea00e4ba8350857728db7f";
+// #3355 rework 8: merged origin/main 811c033211 (#4398 rows kept) and renumbered the fourteen #3355 migrations to 20280628013355 … 20280628143355 (above main's 20280626044398), in order; re-sealed.
+export const BOOTSTRAP_SHA256 = "29d63869638ab43120afccde6e8565cd76a5529dff8e4d43a1d6d2347f6e034c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

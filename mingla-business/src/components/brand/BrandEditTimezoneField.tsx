@@ -7,7 +7,7 @@
  * pass. This field writes `brands.default_timezone` through Brand Edit's own
  * save (useUpdateBrand → mapUiToBrandUpdatePatch); the database's
  * `brands_default_timezone_guard` still refuses a zone it does not know, and a
- * single-zone country fills the zone on its own (migration 20280623023355).
+ * single-zone country fills the zone on its own (migration 20280628023355).
  *
  * Same picker as the venue Availability timezone card (issue #1586): the
  * ~400-zone list only mounts when "Change" is pressed, labels come from the

@@ -5,7 +5,7 @@
 -- run marked answers.follow_up_of. The quality panel counts setups, so a
 -- follow-up run is not a second setup started: it is left out of the flow
 -- counts and of turns to done. Everything else is unchanged from
--- 20280623093355 (same signature, same shape, admin only, read only).
+-- 20280628093355 (same signature, same shape, admin only, read only).
 
 CREATE OR REPLACE FUNCTION public.ari_admin_quality_metrics(
   p_days integer DEFAULT 30

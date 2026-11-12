@@ -323,7 +323,7 @@ Deno.test("I-ARI-KNOWLEDGE-FROM-GUIDE: agent-chat wires the guide read, the refu
 
 Deno.test("B1 migration: ari_search_feature_guide is static, definer, pinned, authenticated-only and reuses the guide's status", () => {
   const sql = read(
-    "supabase/migrations/20280623043355_issue_3355_ari_search_feature_guide.sql",
+    "supabase/migrations/20280628043355_issue_3355_ari_search_feature_guide.sql",
   );
   assertStringIncludes(
     sql,
