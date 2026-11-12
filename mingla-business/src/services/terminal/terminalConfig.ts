@@ -7,7 +7,9 @@
  * otherwise Stripe Terminal shows "tap to simulate payment" and the server then
  * fails the payment.
  *
- * - pk_test_ key: simulated.
+ * - pk_test_ key: simulated, unless EXPO_PUBLIC_TERMINAL_SIMULATED=0 (#4389:
+ *   Apple's real "Hold Here to Pay" sheet in Stripe test mode, e.g. for the
+ *   Tap to Pay on iPhone review video).
  * - EXPO_PUBLIC_TERMINAL_SIMULATED=1: simulated only when the key is not live.
  * - pk_live_ key: never simulated, even with the env set (a warning is logged).
  * - no key: not simulated.
@@ -36,7 +38,8 @@ export const resolveTerminalSimulated = (
     }
     return false;
   }
-  if (key.startsWith("pk_test_")) return true;
+  // #4389 — an explicit "0" asks for the real reader even with a test key.
+  if (key.startsWith("pk_test_")) return simulatedFlag !== "0";
   return flagOn && key.length > 0;
 };
 
