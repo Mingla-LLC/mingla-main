@@ -250,6 +250,13 @@
     "notFoundBody": "Возможно, оно удалено.",
     "addressMissing": "Добавьте адрес, где вы будете принимать оплату картой",
     "addAddress": "Добавить адрес",
+    "ttpFinishTitle": "Сначала завершите настройку платежей",
+    "ttpFinishBody": "{{name}} заработает, когда вы добавите банковские реквизиты.",
+    "ttpFinishCta": "Завершить настройку",
+    "ttpUsePayCode": "Использовать код оплаты",
+    "ttpUnavailableTitle": "{{name}} здесь недоступна",
+    "ttpCountryBody": "{{name}} работает для брендов, которые получают деньги в США или Великобритании.",
+    "ttpUnavailableBody": "Используйте код оплаты. Он работает на любом телефоне.",
     "ticketCount_few": "{{count}} билета",
     "paidLine_few": "{{count}} билета отмечено · {{how}}",
     "cashReceiptLine_few": "Оплачено {{total}} наличными за {{count}} билета."

@@ -249,7 +249,14 @@
     "notFound": "Không tìm thấy sự kiện",
     "notFoundBody": "Có thể sự kiện đã bị xóa.",
     "addressMissing": "Thêm địa chỉ nơi bạn nhận thanh toán thẻ",
-    "addAddress": "Thêm địa chỉ"
+    "addAddress": "Thêm địa chỉ",
+    "ttpFinishTitle": "Hãy hoàn tất thiết lập thanh toán trước",
+    "ttpFinishBody": "{{name}} hoạt động khi bạn đã thêm thông tin ngân hàng.",
+    "ttpFinishCta": "Hoàn tất thiết lập",
+    "ttpUsePayCode": "Dùng mã thanh toán",
+    "ttpUnavailableTitle": "{{name}} không có ở đây",
+    "ttpCountryBody": "{{name}} dùng cho thương hiệu nhận tiền tại Mỹ hoặc Anh.",
+    "ttpUnavailableBody": "Hãy dùng mã thanh toán. Mã này dùng được trên mọi điện thoại."
   },
   "ariSetup": {
     "items": {

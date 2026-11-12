@@ -249,7 +249,14 @@
     "notFound": "Ba a sami taron ba",
     "notFoundBody": "Wataƙila an goge shi.",
     "addressMissing": "Ƙara adireshin da za ka karɓi biyan kati",
-    "addAddress": "Ƙara adireshi"
+    "addAddress": "Ƙara adireshi",
+    "ttpFinishTitle": "Ka gama saita biyan kuɗi tukuna",
+    "ttpFinishBody": "{{name}} zai yi aiki da zarar ka ƙara bayanan bankinka.",
+    "ttpFinishCta": "Gama saitawa",
+    "ttpUsePayCode": "Yi amfani da lambar biya",
+    "ttpUnavailableTitle": "{{name}} babu a nan",
+    "ttpCountryBody": "{{name}} yana aiki ga alamomin da ke karɓar kuɗi a Amurka ko Birtaniya.",
+    "ttpUnavailableBody": "Yi amfani da lambar biya a maimakon haka. Tana aiki a kowace waya."
   },
   "ariSetup": {
     "items": {

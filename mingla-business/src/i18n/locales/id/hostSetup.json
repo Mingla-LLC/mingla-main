@@ -249,7 +249,14 @@
     "notFound": "Acara tidak ditemukan",
     "notFoundBody": "Mungkin sudah dihapus.",
     "addressMissing": "Tambahkan alamat tempat kamu menerima pembayaran kartu",
-    "addAddress": "Tambah alamat"
+    "addAddress": "Tambah alamat",
+    "ttpFinishTitle": "Selesaikan pengaturan pembayaran dulu",
+    "ttpFinishBody": "{{name}} berfungsi setelah detail bank kamu ditambahkan.",
+    "ttpFinishCta": "Selesaikan pengaturan",
+    "ttpUsePayCode": "Pakai kode bayar",
+    "ttpUnavailableTitle": "{{name}} tidak tersedia di sini",
+    "ttpCountryBody": "{{name}} berfungsi untuk brand yang menerima dana di AS atau Inggris.",
+    "ttpUnavailableBody": "Pakai kode bayar saja. Bisa di ponsel apa pun."
   },
   "ariSetup": {
     "items": {

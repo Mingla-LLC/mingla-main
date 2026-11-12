@@ -249,7 +249,14 @@
     "notFound": "A i miẹ ukpo na",
     "notFoundBody": "Ọ sẹtin ọre a fi ẹre fiẹ.",
     "addressMissing": "Mu adrẹsi ne u gha miẹ igho kaadi fiaẹ",
-    "addAddress": "Mu adrẹsi fiaẹ"
+    "addAddress": "Mu adrẹsi fiaẹ",
+    "ttpFinishTitle": "Kpa ọna ugho ruẹ rre",
+    "ttpFinishBody": "{{name}} ya gha ru iyan vbe ọ ghi gbe ẹmwẹ banki ruẹ ye.",
+    "ttpFinishCta": "Kpa ọna rre",
+    "ttpUsePayCode": "Ya pay code",
+    "ttpUnavailableTitle": "{{name}} i rre ẹvba",
+    "ttpCountryBody": "{{name}} ya ru iyan ne ẹre ne a ye US ra UK.",
+    "ttpUnavailableBody": "Ya pay code. Ọ ya ru iyan vbe ẹro phone hia."
   },
   "ariSetup": {
     "items": {

@@ -249,7 +249,14 @@
     "notFound": "Événement introuvable",
     "notFoundBody": "Il a peut-être été supprimé.",
     "addressMissing": "Ajoutez l'adresse où vous accepterez les paiements par carte",
-    "addAddress": "Ajouter une adresse"
+    "addAddress": "Ajouter une adresse",
+    "ttpFinishTitle": "Termine d'abord la configuration des paiements",
+    "ttpFinishBody": "{{name}} fonctionne une fois tes coordonnées bancaires ajoutées.",
+    "ttpFinishCta": "Terminer la configuration",
+    "ttpUsePayCode": "Utiliser un code de paiement",
+    "ttpUnavailableTitle": "{{name}} n'est pas disponible ici",
+    "ttpCountryBody": "{{name}} fonctionne pour les marques qui encaissent aux États-Unis ou au Royaume-Uni.",
+    "ttpUnavailableBody": "Utilise plutôt un code de paiement. Il fonctionne sur tous les téléphones."
   },
   "ariSetup": {
     "items": {

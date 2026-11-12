@@ -88,7 +88,7 @@ jest.mock("../../../hooks/useTapToPayRelease", () => ({
   tapToPayLive: () => mockLive,
 }));
 jest.mock("../../../hooks/useBrands", () => ({
-  useBrand: () => ({ data: { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP" } }),
+  useBrand: () => ({ data: { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP", stripeStatus: "active", chargesEnabled: true } }),
 }));
 jest.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "user-1" }, isAuthReady: true }),

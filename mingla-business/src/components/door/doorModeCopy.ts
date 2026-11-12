@@ -127,4 +127,13 @@ export const DOOR_MODE_COPY = {
   // #4389 S-i — Tap to Pay setup with no card-payment address (T1 entry).
   get addressMissing(): string { return t("addressMissing"); },
   get addAddress(): string { return t("addAddress"); },
+  /** #4389 — Tap to Pay blocked only because payments aren't set up yet. */
+  get ttpFinishTitle(): string { return t("ttpFinishTitle"); },
+  ttpFinishBody: (os: string): string => t("ttpFinishBody", { name: tapToPayName(os) }),
+  get ttpFinishCta(): string { return t("ttpFinishCta"); },
+  get ttpUsePayCode(): string { return t("ttpUsePayCode"); },
+  /** #4389 — truly unavailable (country / rail / not switched on): say why. */
+  ttpUnavailableTitle: (os: string): string => t("ttpUnavailableTitle", { name: tapToPayName(os) }),
+  ttpCountryBody: (os: string): string => t("ttpCountryBody", { name: tapToPayName(os) }),
+  get ttpUnavailableBody(): string { return t("ttpUnavailableBody"); },
 };

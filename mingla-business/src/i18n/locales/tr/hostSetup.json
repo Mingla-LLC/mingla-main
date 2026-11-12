@@ -249,7 +249,14 @@
     "notFound": "Etkinlik bulunamadı",
     "notFoundBody": "Silinmiş olabilir.",
     "addressMissing": "Kart ödemelerini alacağın adresi ekle",
-    "addAddress": "Adres ekle"
+    "addAddress": "Adres ekle",
+    "ttpFinishTitle": "Önce ödeme kurulumunu bitir",
+    "ttpFinishBody": "{{name}}, banka bilgilerin eklenince çalışır.",
+    "ttpFinishCta": "Kurulumu bitir",
+    "ttpUsePayCode": "Ödeme kodu kullan",
+    "ttpUnavailableTitle": "{{name}} burada kullanılamıyor",
+    "ttpCountryBody": "{{name}}, ABD veya Birleşik Krallık'ta tahsilat yapan markalar için çalışır.",
+    "ttpUnavailableBody": "Bunun yerine ödeme kodu kullan. Her telefonda çalışır."
   },
   "ariSetup": {
     "items": {

@@ -250,6 +250,13 @@
     "notFoundBody": "Можливо, її видалено.",
     "addressMissing": "Додайте адресу, де ви прийматимете оплату карткою",
     "addAddress": "Додати адресу",
+    "ttpFinishTitle": "Спершу завершіть налаштування платежів",
+    "ttpFinishBody": "{{name}} запрацює, щойно ви додасте банківські дані.",
+    "ttpFinishCta": "Завершити налаштування",
+    "ttpUsePayCode": "Використати код оплати",
+    "ttpUnavailableTitle": "{{name}} тут недоступна",
+    "ttpCountryBody": "{{name}} працює для брендів, які отримують кошти у США або Великій Британії.",
+    "ttpUnavailableBody": "Використайте код оплати. Він працює на будь-якому телефоні.",
     "ticketCount_few": "{{count}} квитки",
     "paidLine_few": "{{count}} квитки позначено · {{how}}",
     "cashReceiptLine_few": "Оплачено {{total}} готівкою за {{count}} квитки."

@@ -249,7 +249,14 @@
     "notFound": "इवेंट नहीं मिला",
     "notFoundBody": "शायद इसे हटा दिया गया है।",
     "addressMissing": "वह पता जोड़ें जहाँ आप कार्ड भुगतान लेंगे",
-    "addAddress": "पता जोड़ें"
+    "addAddress": "पता जोड़ें",
+    "ttpFinishTitle": "पहले पेमेंट सेटअप पूरा करें",
+    "ttpFinishBody": "बैंक विवरण जोड़ने के बाद {{name}} काम करेगा।",
+    "ttpFinishCta": "सेटअप पूरा करें",
+    "ttpUsePayCode": "पे कोड इस्तेमाल करें",
+    "ttpUnavailableTitle": "{{name}} यहाँ उपलब्ध नहीं है",
+    "ttpCountryBody": "{{name}} उन ब्रांडों के लिए है जो अमेरिका या यूके में पैसे लेते हैं।",
+    "ttpUnavailableBody": "इसके बजाय पे कोड इस्तेमाल करें। यह किसी भी फ़ोन पर चलता है।"
   },
   "ariSetup": {
     "items": {

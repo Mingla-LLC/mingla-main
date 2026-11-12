@@ -32,6 +32,7 @@ import {
 import { useAuth } from "../../../context/AuthContext";
 import { useBrand } from "../../../hooks/useBrands";
 import { useBrandSetupChecklist } from "../../../hooks/useBrandSetupChecklist";
+import { isBrandChargeReady } from "../../../utils/brandPayout";
 import { useCurrentBrandRole } from "../../../hooks/useCurrentBrandRole";
 import { tapToPayBrandEligible, useTapToPaySettingsEntry } from "../../../hooks/useTapToPaySettingsEntry";
 import { useCurrentBrandId } from "../../../store/currentBrandStore";
@@ -165,7 +166,13 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
         assets={assets}
         onGetStarted={() => {
           close();
-          router.push(tapSetupRoute(brandId) as never);
+          // #4389 — a brand still without a payment account finishes setup
+          // first (Get paid), instead of landing on a Tap to Pay dead end.
+          router.push(
+            (isBrandChargeReady(brandQuery.data ?? null)
+              ? tapSetupRoute(brandId)
+              : `/brand/${encodeURIComponent(brandId)}/setup?step=pay`) as never,
+          );
         }}
         onNotNow={close}
       />

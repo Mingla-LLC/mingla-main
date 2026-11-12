@@ -249,7 +249,14 @@
     "notFound": "Evenement niet gevonden",
     "notFoundBody": "Het is mogelijk verwijderd.",
     "addressMissing": "Voeg het adres toe waar je kaartbetalingen ontvangt",
-    "addAddress": "Adres toevoegen"
+    "addAddress": "Adres toevoegen",
+    "ttpFinishTitle": "Rond eerst de betalingen af",
+    "ttpFinishBody": "{{name}} werkt zodra je bankgegevens zijn toegevoegd.",
+    "ttpFinishCta": "Instellen afronden",
+    "ttpUsePayCode": "Betaalcode gebruiken",
+    "ttpUnavailableTitle": "{{name}} is hier niet beschikbaar",
+    "ttpCountryBody": "{{name}} werkt voor merken die geld ontvangen in de VS of het VK.",
+    "ttpUnavailableBody": "Gebruik in plaats daarvan een betaalcode. Die werkt op elke telefoon."
   },
   "ariSetup": {
     "items": {

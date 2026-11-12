@@ -249,7 +249,14 @@
     "notFound": "Evenemanget hittades inte",
     "notFoundBody": "Det kan ha raderats.",
     "addressMissing": "Lägg till adressen där du tar emot kortbetalningar",
-    "addAddress": "Lägg till adress"
+    "addAddress": "Lägg till adress",
+    "ttpFinishTitle": "Gör klart betalningarna först",
+    "ttpFinishBody": "{{name}} fungerar när dina bankuppgifter är tillagda.",
+    "ttpFinishCta": "Slutför inställningen",
+    "ttpUsePayCode": "Använd en betalkod",
+    "ttpUnavailableTitle": "{{name}} är inte tillgängligt här",
+    "ttpCountryBody": "{{name}} fungerar för varumärken som tar emot pengar i USA eller Storbritannien.",
+    "ttpUnavailableBody": "Använd en betalkod i stället. Den fungerar på alla telefoner."
   },
   "ariSetup": {
     "items": {

@@ -253,3 +253,80 @@ export const TapAddressMissing = ({
     testID="tap-address-missing"
   />
 );
+
+/**
+ * #4389 (iPhone 15 recording) — why Tap to Pay can't be used for this brand.
+ * A US / UK brand that simply has no payment account yet ("no_card_payments")
+ * is told to finish setting up payments, never that it "isn't available"; that
+ * title is kept for brands that truly can't use it, with the reason.
+ */
+export type TapNotReadyReason =
+  | "no_card_payments"
+  | "unsupported_country"
+  | "paystack"
+  | "not_released"
+  | "no_brand"
+  | "server_not_available";
+
+export function tapNotReadyCopy(
+  reason: TapNotReadyReason,
+  os: string,
+): { kind: "finish_setup" | "unavailable"; title: string; body: string } {
+  if (reason === "no_card_payments") {
+    return { kind: "finish_setup", title: DOOR_MODE_COPY.ttpFinishTitle, body: DOOR_MODE_COPY.ttpFinishBody(os) };
+  }
+  return {
+    kind: "unavailable",
+    title: DOOR_MODE_COPY.ttpUnavailableTitle(os),
+    body:
+      reason === "unsupported_country" || reason === "paystack"
+        ? DOOR_MODE_COPY.ttpCountryBody(os)
+        : DOOR_MODE_COPY.ttpUnavailableBody,
+  };
+}
+
+export const TapNotReady = ({
+  reason,
+  os,
+  onFinishSetup,
+  onUsePayCode,
+  payCodeBusy = false,
+  onHelp,
+  testID,
+}: {
+  reason: TapNotReadyReason;
+  os: string;
+  /** Opens brand setup at Get paid (`/brand/{id}/setup?step=pay`). */
+  onFinishSetup: (() => void) | null;
+  onUsePayCode: () => void;
+  payCodeBusy?: boolean;
+  onHelp?: (() => void) | null;
+  testID: string;
+}): React.ReactElement => {
+  const copy = tapNotReadyCopy(reason, os);
+  if (copy.kind === "finish_setup" && onFinishSetup !== null) {
+    return (
+      <TapStatusView
+        tone="neutral"
+        icon="bank"
+        title={copy.title}
+        body={copy.body}
+        primary={{ label: DOOR_MODE_COPY.ttpFinishCta, onPress: onFinishSetup, testID: "tap-finish-setup" }}
+        secondary={{ label: DOOR_MODE_COPY.ttpUsePayCode, onPress: onUsePayCode, loading: payCodeBusy, testID: "tap-use-pay-code" }}
+        onHelp={onHelp}
+        testID={`${testID}-finish-setup`}
+      />
+    );
+  }
+  return (
+    <TapStatusView
+      tone="neutral"
+      icon={os === "ios" ? "globe" : "tap"}
+      title={copy.kind === "finish_setup" ? DOOR_MODE_COPY.ttpUnavailableTitle(os) : copy.title}
+      body={copy.kind === "finish_setup" ? DOOR_MODE_COPY.ttpUnavailableBody : copy.body}
+      primary={{ label: DOOR_MODE_COPY.ttpUsePayCode, onPress: onUsePayCode, loading: payCodeBusy }}
+      onHelp={onHelp}
+      testID={testID}
+    />
+  );
+};

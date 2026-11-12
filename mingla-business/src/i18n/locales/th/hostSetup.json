@@ -249,7 +249,14 @@
     "notFound": "ไม่พบงาน",
     "notFoundBody": "อาจถูกลบไปแล้ว",
     "addressMissing": "เพิ่มที่อยู่ที่คุณจะรับชำระด้วยบัตร",
-    "addAddress": "เพิ่มที่อยู่"
+    "addAddress": "เพิ่มที่อยู่",
+    "ttpFinishTitle": "ตั้งค่าการชำระเงินให้เสร็จก่อน",
+    "ttpFinishBody": "{{name}} ใช้ได้เมื่อเพิ่มข้อมูลธนาคารแล้ว",
+    "ttpFinishCta": "ตั้งค่าให้เสร็จ",
+    "ttpUsePayCode": "ใช้รหัสชำระเงิน",
+    "ttpUnavailableTitle": "{{name}} ใช้ที่นี่ไม่ได้",
+    "ttpCountryBody": "{{name}} ใช้ได้กับแบรนด์ที่รับเงินในสหรัฐฯ หรือสหราชอาณาจักร",
+    "ttpUnavailableBody": "ใช้รหัสชำระเงินแทน ใช้ได้กับทุกโทรศัพท์"
   },
   "ariSetup": {
     "items": {

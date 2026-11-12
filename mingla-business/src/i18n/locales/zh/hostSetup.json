@@ -249,7 +249,14 @@
     "notFound": "未找到活动",
     "notFoundBody": "它可能已被删除。",
     "addressMissing": "添加你将接受银行卡付款的地址",
-    "addAddress": "添加地址"
+    "addAddress": "添加地址",
+    "ttpFinishTitle": "请先完成付款设置",
+    "ttpFinishBody": "添加银行信息后即可使用 {{name}}。",
+    "ttpFinishCta": "完成设置",
+    "ttpUsePayCode": "使用付款码",
+    "ttpUnavailableTitle": "此处无法使用 {{name}}",
+    "ttpCountryBody": "{{name}} 适用于在美国或英国收款的品牌。",
+    "ttpUnavailableBody": "请改用付款码，任何手机都能用。"
   },
   "ariSetup": {
     "items": {

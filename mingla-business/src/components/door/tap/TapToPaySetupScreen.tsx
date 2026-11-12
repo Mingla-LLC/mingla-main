@@ -63,7 +63,7 @@ import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
 import { TapConfiguringView } from "./TapConfiguringView";
 import { TapFactList } from "./TapFactList";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
-import { TapAddressMissing, TapStatusView } from "./TapStatusView";
+import { TapAddressMissing, TapNotReady, TapStatusView } from "./TapStatusView";
 import { TapToPayEducation } from "./TapToPayEducation";
 import { TapUpdateIos } from "./TapUpdateIos";
 import { tapToPayAcceptanceFor, useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
@@ -291,13 +291,24 @@ export const TapToPaySetupScreen = ({
   } else if (deviceBlocked) {
     body = <TapNotOnThisPhone onUsePayCode={() => void startPayCode()} loading={payCodeBusy} onHelp={openHelp} />;
   } else if (!availability.available || brandNotAvailable) {
+    // #4389 — a US / UK brand without a payment account is told to finish
+    // setup; "isn't available here" says why, for brands that truly can't.
     body = (
-      <TapStatusView
-        tone="neutral"
-        icon={Platform.OS === "ios" ? "globe" : "tap"}
-        title={`${tapToPayName(Platform.OS)} isn't available here`}
-        body="This brand can't take taps. Use a pay code instead. It works on any phone."
-        primary={{ label: "Use a pay code", onPress: () => void startPayCode(), loading: payCodeBusy }}
+      <TapNotReady
+        reason={
+          !availability.available &&
+          (availability.reason === "no_card_payments" ||
+            availability.reason === "unsupported_country" ||
+            availability.reason === "paystack" ||
+            availability.reason === "not_released" ||
+            availability.reason === "no_brand")
+            ? availability.reason
+            : "server_not_available"
+        }
+        os={Platform.OS}
+        onFinishSetup={brandId !== null ? () => router.push(`/brand/${brandId}/setup?step=pay` as never) : null}
+        onUsePayCode={() => void startPayCode()}
+        payCodeBusy={payCodeBusy}
         onHelp={openHelp}
         testID="tap-setup-not-available"
       />

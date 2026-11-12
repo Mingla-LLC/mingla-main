@@ -249,7 +249,14 @@
     "notFound": "Event nicht gefunden",
     "notFoundBody": "Es wurde möglicherweise gelöscht.",
     "addressMissing": "Füge die Adresse hinzu, an der du Kartenzahlungen annimmst",
-    "addAddress": "Adresse hinzufügen"
+    "addAddress": "Adresse hinzufügen",
+    "ttpFinishTitle": "Richte zuerst die Zahlungen fertig ein",
+    "ttpFinishBody": "{{name}} funktioniert, sobald deine Bankdaten hinterlegt sind.",
+    "ttpFinishCta": "Einrichtung abschließen",
+    "ttpUsePayCode": "Zahlcode verwenden",
+    "ttpUnavailableTitle": "{{name}} ist hier nicht verfügbar",
+    "ttpCountryBody": "{{name}} funktioniert für Marken, die Geld in den USA oder im Vereinigten Königreich einnehmen.",
+    "ttpUnavailableBody": "Verwende stattdessen einen Zahlcode. Er funktioniert auf jedem Handy."
   },
   "ariSetup": {
     "items": {

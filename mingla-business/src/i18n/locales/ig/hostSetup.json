@@ -249,7 +249,14 @@
     "notFound": "Ahụghị mmemme ahụ",
     "notFoundBody": "E nwere ike ịhichapụ ya.",
     "addressMissing": "Tinye adreesị ebe ị ga-anabata ịkwụ ụgwọ kaadị",
-    "addAddress": "Tinye adreesị"
+    "addAddress": "Tinye adreesị",
+    "ttpFinishTitle": "Buru ụzọ mezue ịhazi ịkwụ ụgwọ",
+    "ttpFinishBody": "{{name}} ga-arụ ọrụ ozugbo ịtinyere nkọwa ụlọ akụ gị.",
+    "ttpFinishCta": "Mezue nhazi",
+    "ttpUsePayCode": "Jiri koodu ịkwụ ụgwọ",
+    "ttpUnavailableTitle": "{{name}} adịghị ebe a",
+    "ttpCountryBody": "{{name}} na-arụ ọrụ maka akara na-anata ego na US ma ọ bụ UK.",
+    "ttpUnavailableBody": "Jiri koodu ịkwụ ụgwọ kama. Ọ na-arụ ọrụ na ekwentị ọ bụla."
   },
   "ariSetup": {
     "items": {

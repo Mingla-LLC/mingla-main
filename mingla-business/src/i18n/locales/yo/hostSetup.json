@@ -249,7 +249,14 @@
     "notFound": "A kò rí ìṣẹ̀lẹ̀ náà",
     "notFoundBody": "Ó lè jẹ́ pé wọ́n ti pa á rẹ́.",
     "addressMissing": "Fi àdírẹ́sì tí o ti máa gba ìsanwó káàdì kún un",
-    "addAddress": "Fi àdírẹ́sì kún un"
+    "addAddress": "Fi àdírẹ́sì kún un",
+    "ttpFinishTitle": "Kọ́kọ́ parí ètò ìsanwó",
+    "ttpFinishBody": "{{name}} yóò ṣiṣẹ́ nígbà tí o bá fi àlàyé ilé ìfowópamọ́ rẹ kún un.",
+    "ttpFinishCta": "Parí ètò",
+    "ttpUsePayCode": "Lo kóòdù ìsanwó",
+    "ttpUnavailableTitle": "{{name}} kò sí níbí",
+    "ttpCountryBody": "{{name}} ń ṣiṣẹ́ fún àwọn àmì tí ń gba owó ní US tàbí UK.",
+    "ttpUnavailableBody": "Lo kóòdù ìsanwó dípò. Ó ń ṣiṣẹ́ lórí fóònù èyíkéyìí."
   },
   "ariSetup": {
     "items": {

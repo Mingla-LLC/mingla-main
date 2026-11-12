@@ -249,7 +249,14 @@
     "notFound": "لم يتم العثور على الفعالية",
     "notFoundBody": "ربما تم حذفها.",
     "addressMissing": "أضف العنوان الذي ستقبل فيه المدفوعات بالبطاقات",
-    "addAddress": "إضافة عنوان"
+    "addAddress": "إضافة عنوان",
+    "ttpFinishTitle": "أكمِل إعداد المدفوعات أولًا",
+    "ttpFinishBody": "تعمل {{name}} بعد إضافة بيانات بنكك.",
+    "ttpFinishCta": "إكمال الإعداد",
+    "ttpUsePayCode": "استخدم رمز دفع",
+    "ttpUnavailableTitle": "{{name}} غير متاحة هنا",
+    "ttpCountryBody": "تعمل {{name}} للعلامات التي تستلم أموالها في الولايات المتحدة أو المملكة المتحدة.",
+    "ttpUnavailableBody": "استخدم رمز دفع بدلًا من ذلك. يعمل على أي هاتف."
   },
   "ariSetup": {
     "items": {

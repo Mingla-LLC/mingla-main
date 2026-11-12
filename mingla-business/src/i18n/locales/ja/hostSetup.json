@@ -249,7 +249,14 @@
     "notFound": "イベントが見つかりません",
     "notFoundBody": "削除された可能性があります。",
     "addressMissing": "カード決済を受け付ける住所を追加してください",
-    "addAddress": "住所を追加"
+    "addAddress": "住所を追加",
+    "ttpFinishTitle": "先に支払いの設定を完了してください",
+    "ttpFinishBody": "{{name}} は銀行口座の情報を追加すると使えます。",
+    "ttpFinishCta": "設定を完了",
+    "ttpUsePayCode": "支払いコードを使う",
+    "ttpUnavailableTitle": "{{name}} はここでは使えません",
+    "ttpCountryBody": "{{name}} は米国または英国で売上を受け取るブランドで使えます。",
+    "ttpUnavailableBody": "代わりに支払いコードを使ってください。どのスマホでも使えます。"
   },
   "ariSetup": {
     "items": {

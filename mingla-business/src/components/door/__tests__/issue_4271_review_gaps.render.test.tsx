@@ -99,8 +99,11 @@ jest.mock("../../../hooks/useTapToPayRelease", () => ({
   useTapToPayRelease: () => ({ live: mockLive }),
   tapToPayLive: () => mockLive,
 }));
+// #4389 — a brand whose payments are set up (Get started opens Tap to Pay
+// setup); the #4389 case below flips it to a brand still in setup.
+let mockBrandData: Record<string, unknown> = { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP", stripeStatus: "active", chargesEnabled: true };
 jest.mock("../../../hooks/useBrands", () => ({
-  useBrand: () => ({ data: { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP" } }),
+  useBrand: () => ({ data: mockBrandData }),
 }));
 jest.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "user-1" }, isAuthReady: true }),
@@ -790,5 +793,29 @@ describe("#4389 the awareness splash never opens by itself outside Home", () => 
     expect(tapAwarenessAutoShowAllowed({ pathname: "/home", setupComplete: false })).toBe(false);
     expect(tapAwarenessAutoShowAllowed({ pathname: "/brand/b/setup", setupComplete: true })).toBe(false);
     expect(tapAwarenessAutoShowAllowed({ pathname: null, setupComplete: true })).toBe(false);
+  });
+});
+
+// #4389 (iPhone 15 recording): Get started for a US brand still in setup led
+// to "isn't available here … can't take taps". It now finishes setup first.
+describe("#4389 Get started for a brand without a payment account", () => {
+  afterEach(() => {
+    mockBrandData = { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP", stripeStatus: "active", chargesEnabled: true };
+  });
+  test("opens brand setup at Get paid, not Tap to Pay setup", async () => {
+    mockBrandData = { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "USD", payoutCountry: "US", stripeStatus: "not_connected" };
+    mockPathname = "/home";
+    mockSetupComplete = true;
+    mockRole = { rank: BRAND_ROLE_RANK.brand_owner, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    mockPush.mockClear();
+    const tree = mount(<TapToPayAwarenessModal />);
+    await settle();
+    const cta = tree.root.findAll((n) => n.props.testID === "tap-awareness-get-started" && typeof n.type !== "string")[0];
+    act(() => {
+      cta?.props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledWith("/brand/brand-1/setup?step=pay");
+    act(() => tree.unmount());
   });
 });

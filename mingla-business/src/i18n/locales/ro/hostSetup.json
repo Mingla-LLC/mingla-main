@@ -249,7 +249,14 @@
     "notFound": "Evenimentul nu a fost găsit",
     "notFoundBody": "Poate a fost șters.",
     "addressMissing": "Adaugă adresa unde vei accepta plăți cu cardul",
-    "addAddress": "Adaugă adresa"
+    "addAddress": "Adaugă adresa",
+    "ttpFinishTitle": "Mai întâi termină configurarea plăților",
+    "ttpFinishBody": "{{name}} funcționează după ce adaugi datele bancare.",
+    "ttpFinishCta": "Termină configurarea",
+    "ttpUsePayCode": "Folosește un cod de plată",
+    "ttpUnavailableTitle": "{{name}} nu este disponibil aici",
+    "ttpCountryBody": "{{name}} funcționează pentru brandurile care încasează în SUA sau Regatul Unit.",
+    "ttpUnavailableBody": "Folosește în schimb un cod de plată. Merge pe orice telefon."
   },
   "ariSetup": {
     "items": {

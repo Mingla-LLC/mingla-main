@@ -79,6 +79,13 @@
     "notFound": "Event not found",
     "notFoundBody": "It may have been deleted.",
     "addressMissing": "Add the address where you'll take card payments",
-    "addAddress": "Add address"
+    "addAddress": "Add address",
+    "ttpFinishTitle": "Finish setting up payments first",
+    "ttpFinishBody": "{{name}} works once your bank details are added.",
+    "ttpFinishCta": "Finish setup",
+    "ttpUsePayCode": "Use a pay code",
+    "ttpUnavailableTitle": "{{name}} isn't available here",
+    "ttpCountryBody": "{{name}} works for brands that collect funds in the US or UK.",
+    "ttpUnavailableBody": "Use a pay code instead. It works on any phone."
   }
 }

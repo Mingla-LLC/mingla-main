@@ -79,7 +79,7 @@ import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
 import { DoorStatusPill } from "../DoorStatusPill";
 import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
-import { TapStatusView, type TapStatusAction } from "./TapStatusView";
+import { TapNotReady, TapStatusView, type TapStatusAction } from "./TapStatusView";
 import { TAP_SAVE_FAILED_PAID_LINE, tapSaleTone } from "./tapSaleTone";
 import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
 import { TapConfiguringView } from "./TapConfiguringView";
@@ -364,13 +364,15 @@ export const TapToPaySaleScreen = ({
         availability.reason === "no_card_payments" ||
         availability.reason === "no_brand"
       ) {
+        // #4389 — finish setup (no payment account yet) vs truly unavailable.
+        const saleBrandId = route.brand?.id ?? null;
         return (
-          <TapStatusView
-            tone="neutral"
-            icon={Platform.OS === "ios" ? "globe" : "tap"}
-            title={`${tapToPayName(Platform.OS)} isn't available here`}
-            body="This brand can't take taps. Use a pay code instead. It works on any phone."
-            primary={{ label: "Use a pay code", onPress: () => void showPayCodeInstead(), loading: payCodeBusy }}
+          <TapNotReady
+            reason={availability.reason}
+            os={Platform.OS}
+            onFinishSetup={saleBrandId !== null ? () => router.push(`/brand/${saleBrandId}/setup?step=pay` as never) : null}
+            onUsePayCode={() => void showPayCodeInstead()}
+            payCodeBusy={payCodeBusy}
             onHelp={openHelp}
             testID="tap-state-not_available"
           />

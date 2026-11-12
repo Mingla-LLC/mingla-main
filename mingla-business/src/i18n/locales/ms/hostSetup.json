@@ -249,7 +249,14 @@
     "notFound": "Acara tidak ditemui",
     "notFoundBody": "Ia mungkin telah dipadam.",
     "addressMissing": "Tambah alamat tempat anda menerima bayaran kad",
-    "addAddress": "Tambah alamat"
+    "addAddress": "Tambah alamat",
+    "ttpFinishTitle": "Selesaikan tetapan pembayaran dahulu",
+    "ttpFinishBody": "{{name}} berfungsi selepas butiran bank anda ditambah.",
+    "ttpFinishCta": "Selesaikan tetapan",
+    "ttpUsePayCode": "Guna kod bayaran",
+    "ttpUnavailableTitle": "{{name}} tiada di sini",
+    "ttpCountryBody": "{{name}} berfungsi untuk jenama yang menerima dana di AS atau UK.",
+    "ttpUnavailableBody": "Guna kod bayaran sebaliknya. Ia berfungsi pada mana-mana telefon."
   },
   "ariSetup": {
     "items": {

@@ -249,7 +249,14 @@
     "notFound": "האירוע לא נמצא",
     "notFoundBody": "ייתכן שהוא נמחק.",
     "addressMissing": "הוסיפו את הכתובת שבה תקבלו תשלומים בכרטיס",
-    "addAddress": "הוספת כתובת"
+    "addAddress": "הוספת כתובת",
+    "ttpFinishTitle": "קודם צריך לסיים את הגדרת התשלומים",
+    "ttpFinishBody": "{{name}} יעבוד אחרי שתוסיף את פרטי הבנק.",
+    "ttpFinishCta": "סיום ההגדרה",
+    "ttpUsePayCode": "שימוש בקוד תשלום",
+    "ttpUnavailableTitle": "{{name}} לא זמין כאן",
+    "ttpCountryBody": "{{name}} זמין למותגים שגובים כסף בארה\"ב או בבריטניה.",
+    "ttpUnavailableBody": "אפשר להשתמש בקוד תשלום. הוא עובד בכל טלפון."
   },
   "ariSetup": {
     "items": {

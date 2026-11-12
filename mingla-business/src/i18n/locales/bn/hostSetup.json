@@ -249,7 +249,14 @@
     "notFound": "ইভেন্ট পাওয়া যায়নি",
     "notFoundBody": "এটি হয়তো মুছে ফেলা হয়েছে।",
     "addressMissing": "যেখানে কার্ড পেমেন্ট নেবেন সেই ঠিকানা যোগ করুন",
-    "addAddress": "ঠিকানা যোগ করুন"
+    "addAddress": "ঠিকানা যোগ করুন",
+    "ttpFinishTitle": "আগে পেমেন্ট সেটআপ শেষ করুন",
+    "ttpFinishBody": "ব্যাংকের তথ্য যোগ করার পর {{name}} কাজ করবে।",
+    "ttpFinishCta": "সেটআপ শেষ করুন",
+    "ttpUsePayCode": "পে কোড ব্যবহার করুন",
+    "ttpUnavailableTitle": "{{name}} এখানে উপলব্ধ নয়",
+    "ttpCountryBody": "{{name}} যুক্তরাষ্ট্র বা যুক্তরাজ্যে টাকা নেওয়া ব্র্যান্ডের জন্য কাজ করে।",
+    "ttpUnavailableBody": "বদলে পে কোড ব্যবহার করুন। এটি যেকোনো ফোনে কাজ করে।"
   },
   "ariSetup": {
     "items": {
