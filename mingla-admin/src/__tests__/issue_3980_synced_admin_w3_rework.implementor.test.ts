@@ -75,9 +75,10 @@ Deno.test("#3980 W3 rework D6: a name match comes before an address match, so ku
 
 Deno.test("#3980 W3 rework D5: the last owner is kept once there is one, on automatic cards too", () => {
   const detail = code("components/ops/WorkDetail.jsx");
-  assertMatch(detail, /min=\{ownerEmails\.length \? 1 : 0\}/);
+  assertMatch(detail, /label="Owner" single[\s\S]{0,240}?min=\{1\}/  /* #4398: one owner, always kept */);
   assertNotMatch(detail, /min=\{card\.auto \? 0 : 1\}/);
-  assertMatch(detail, /This card keeps one owner once it has one\. Add someone else first, then remove this one\./);
+  // #4398: the owner field is single (Change, never empty), so the old words are gone.
+  assertMatch(detail, /label="Owner" single/);
   const r = fieldKey({ open: false, hi: 0 }, "Backspace", { options: [], value: ["seth@usemingla.com"], query: "", min: 1, minWords: "keep" });
   assertEquals(r.refused, "keep");
 });
