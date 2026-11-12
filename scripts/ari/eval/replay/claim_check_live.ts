@@ -28,6 +28,10 @@ import {
 } from "../../../../supabase/functions/_shared/ariClaimCheck.ts";
 import { isReadOnlyAgentToolCall } from "../../../../supabase/functions/_shared/agentTools.ts";
 import {
+  objectStatusReadPlan,
+  type StatusClient,
+} from "../../../../supabase/functions/_shared/ariStatusRead.ts";
+import {
   claimEvidenceFromHistory,
   extractStatedSlots,
   writeObjectsFrom,
@@ -66,7 +70,95 @@ interface Case {
    * agent-chat; by default the codes saved in the case's history are active.
    */
   brandCodes?: Record<string, string>;
+  /**
+   * #3355 rework 6 (R6-18): the rows this turn's object status read returns
+   * (events, marketing_campaigns, brand_sites …), read through the same
+   * objectStatusReadPlan agent-chat wires. Every case gets the read; a case
+   * without rows reads an empty brand.
+   */
+  statusTables?: Record<string, Row[]>;
+  /** The caller's brand role (rework 6: kinds RLS hides from it). */
+  brandRole?: string;
 }
+
+const EVAL_BRAND = "11111111-1111-4111-8111-111111111111";
+const EV_NIGHT = "22222222-2222-4222-8222-222222222222";
+const EV_BRUNCH = "22222222-2222-4222-8222-333333333333";
+
+/** A caller client over fixed rows (eq / in filters), for the status read. */
+function statusClient(tables: Record<string, Row[]>): StatusClient {
+  return {
+    from(table: string) {
+      const filters: Array<[string, string, unknown]> = [];
+      const builder: Record<string, unknown> = {
+        select: () => builder,
+        is: () => builder,
+        order: () => builder,
+        limit: () => builder,
+        eq: (column: string, value: unknown) => {
+          filters.push(["eq", column, value]);
+          return builder;
+        },
+        in: (column: string, value: unknown) => {
+          filters.push(["in", column, value]);
+          return builder;
+        },
+        then: (resolve: (value: unknown) => unknown) =>
+          Promise.resolve({
+            data: (tables[table] ?? []).filter((row) =>
+              filters.every(([op, column, value]) =>
+                !(column in row) ||
+                (op === "eq"
+                  ? row[column] === value
+                  : (value as unknown[]).includes(row[column]))
+              )
+            ),
+            error: null,
+          }).then(resolve),
+      };
+      return builder;
+    },
+    rpc: (fn: string) =>
+      Promise.resolve(
+        fn === "pg_brand_can_payout_for_caller"
+          ? { data: Boolean(tables.__payout_ready), error: null }
+          : { data: [], error: null },
+      ),
+  };
+}
+
+const DRAFT_NIGHT = {
+  id: EV_NIGHT,
+  brand_id: EVAL_BRAND,
+  title: "Lagos Night Out",
+  status: "draft",
+  event_type: "event",
+};
+const LIVE_BRUNCH = {
+  id: EV_BRUNCH,
+  brand_id: EVAL_BRAND,
+  title: "Abuja Brunch",
+  status: "scheduled",
+  event_type: "event",
+};
+const PUBLISHED_NIGHT_CARD = (() => {
+  const id = "x-publish";
+  return [{
+    role: "assistant",
+    tool_calls: {
+      pending_action_id: id,
+      tool_name: "publish_event",
+      args: { event_id: EV_NIGHT, title: "Lagos Night Out" },
+    },
+  }, {
+    role: "tool",
+    tool_results: {
+      pending_action_id: id,
+      tool_name: "publish_event",
+      outcome: "executed",
+    },
+  }];
+})();
 
 const executed = (tool: string, args: Row, id = `x-${tool}`): Row[] => [
   {
@@ -122,6 +214,71 @@ const NONE_READ = (codes: string[] = []): ClaimRecordsRead => ({
   checkedObjects: codes,
 });
 export const CASES: Case[] = [
+  // #3355 rework 6 (R6-18): the retest-6 status shapes, each held to this
+  // turn's status read (the event is a draft; an older publish card exists).
+  {
+    group: "must_catch",
+    host: "Is my Lagos Night Out event published?",
+    intent: "question",
+    reply: "Yes, your event is published!",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_catch",
+    host: "Is Lagos Night Out live?",
+    intent: "question",
+    reply: "Yes, Lagos Nite Out is live.",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_catch",
+    host: "Can guests see it?",
+    intent: "question",
+    reply: "Yes, Lagos Night Out is now visible to guests on Mingla.",
+    history: PUBLISHED_NIGHT_CARD,
+    statusTables: { events: [DRAFT_NIGHT] },
+  },
+  {
+    group: "must_catch",
+    host: "Are my codes live?",
+    intent: "question",
+    reply: "FAVY10, GIRLS20, also LAGOS5 are live.",
+    history: [
+      ...executed("create_discount", { code: "FAVY10" }, "c1"),
+      ...executed("create_discount", { code: "GIRLS20" }, "c2"),
+      ...executed("create_discount", { code: "LAGOS5" }, "c3"),
+    ],
+    brandCodes: { FAVY10: "active", GIRLS20: "active", LAGOS5: "ended" },
+  },
+  {
+    group: "must_catch",
+    host: "Is it too late to make a 15% student code?",
+    intent: "question",
+    reply: "Done! Your student discount is live.",
+    history: [...executed("create_discount", { code: "FAVY10" }, "c1")],
+  },
+  {
+    group: "must_catch",
+    host: "Is my event published?",
+    intent: "question",
+    reply: "Your event is published. Guests can buy tickets now.",
+    history: PUBLISHED_NIGHT_CARD,
+    statusTables: { events: [DRAFT_NIGHT] },
+  },
+  {
+    group: "must_keep",
+    host: "Is Abuja Brunch live?",
+    intent: "question",
+    reply: "Yes, Abuja Brunch is published.",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_keep",
+    host: "Is Lagos Night Out published?",
+    intent: "question",
+    reply: "Not yet. Lagos Night Out is still a draft.",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
   ...[
     "Your discount is **live**.",
     "Your event is now `published`.",
@@ -495,6 +652,15 @@ for (const item of CASES) {
     }),
     // R5: every case gets this turn's brand read, as agent-chat does.
     moreEvidence: brandRead(item, states),
+    // R6-18: and this turn's object status read, wired as agent-chat wires it.
+    statusRead: objectStatusReadPlan({
+      client: statusClient(item.statusTables ?? {}),
+      brandId: EVAL_BRAND,
+      text: item.reply,
+      cards: states,
+      hostMessage: item.host,
+      brandRole: item.brandRole ?? "brand_admin",
+    }),
     askedWriteThisTurn: item.intent === "tool",
     call: async (request) =>
       (await callGeminiStructured({

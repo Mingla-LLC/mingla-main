@@ -10,6 +10,7 @@ import type { AriBrandLaunchPlan } from "./agentLaunchPlan.ts";
 import { sanitizeAriPublicText } from "./agentSanitization.ts";
 import { canonicalizePublicResearchUrl } from "./agentWebResearch.ts";
 import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
+import { ownerCopyViolations } from "./ariOwnerCopy.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -68,6 +69,38 @@ function toolLabel(name: string): string {
     : "Check your workspace";
 }
 
+/**
+ * #3355 rework 6 (R6-9): codes whose message is an instruction to the MODEL
+ * (start the guided setup, call the tool for real, propose the host's own
+ * target). They steer the next model turn; the host never reads them.
+ *
+ * MINGLA-INVARIANT: I-ARI-NO-MODEL-INSTRUCTION-IN-HOST-COPY | issue #3355 | No host-visible rendition text (plan card titles, timeline rows, blocker callouts, labels) carries a model instruction, an internal tool name or a snake_case key: model-steer observations ("reasoning" and the codes below) are never rendered, and any other error message that fails the owner-copy lint or reads as an instruction is replaced by a plain sentence (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_6.implementor.test.ts).
+ */
+export const ARI_MODEL_STEER_CODES: ReadonlySet<string> = new Set([
+  "USE_GUIDED_SETUP",
+  "TOOL_CALL_AS_TEXT",
+  "WRITE_PROPOSAL_REQUIRED",
+  "REQUESTED_TOOL_MISMATCH",
+  "SETUP_ALREADY_HANDED_OFF",
+  "QUESTION_STALE",
+]);
+
+/** Words that open an instruction to the model, not a sentence for a host. */
+const MODEL_INSTRUCTION =
+  /^(?:call|return|make\s+that|do\s+not|don['’]t|use|your\s+reply|the\s+(?:host|user|owner)\s+(?:asked|supplied|wants)|propose|remove|answer\s+the\s+owner)\b/i;
+
+/** An observation that only steers the model (never shown to the host). */
+export function isModelSteerObservation(
+  observation: Pick<AgentLoopObservation, "tool" | "error">,
+): boolean {
+  if (observation.tool === "reasoning") return true;
+  const code = safeText(
+    (observation.error as { code?: unknown } | undefined)?.code,
+    80,
+  ).toUpperCase();
+  return ARI_MODEL_STEER_CODES.has(code);
+}
+
 /** Raw diagnostic slugs belong in traces and the Improvement Lab, never UI. */
 export function ariUserFacingToolError(
   error:
@@ -81,6 +114,10 @@ export function ariUserFacingToolError(
   const code = safeText(error?.code, 80).toUpperCase();
   const message = safeText(error?.message, 260);
   const signal = `${code} ${message.toUpperCase()}`;
+  // R6-9: a model instruction is never a host sentence.
+  if (ARI_MODEL_STEER_CODES.has(code)) {
+    return "Ari needed another try at this step.";
+  }
   if (signal.includes("RESEARCH_UNGROUNDED")) {
     return "No usable public sources were found for this search.";
   }
@@ -104,7 +141,14 @@ export function ariUserFacingToolError(
   }
   if (signal.includes("TURN_STOPPED")) return "This step was stopped.";
   if (message && !/^[A-Z][A-Z0-9_]*(?:\s*\([^)]*\))?$/.test(message)) {
-    return message.replace(/\s*\([A-Z][A-Z0-9_]*\)\s*$/g, "");
+    const plain = message.replace(/\s*\([A-Z][A-Z0-9_]*\)\s*$/g, "");
+    if (
+      ownerCopyViolations(plain, "prose").length === 0 &&
+      !MODEL_INSTRUCTION.test(plain.trim()) &&
+      !/\b(?:flow_key|start_flow|tool\s+call|function\s+call)\b/i.test(plain)
+    ) {
+      return plain;
+    }
   }
   return "This step could not be completed yet.";
 }
@@ -152,7 +196,10 @@ function timelineRows(
   observations: readonly AgentLoopObservation[],
   result: AgentLoopResult,
 ) {
-  const rows = observations.slice(0, 9).map((observation, index) => ({
+  // R6-9: a model-steer observation is not a step the host took.
+  const rows = observations.filter((observation) =>
+    !isModelSteerObservation(observation)
+  ).slice(0, 9).map((observation, index) => ({
     id: `step-${index + 1}`,
     label: toolLabel(observation.tool),
     detail: observation.error
@@ -223,8 +270,9 @@ export function buildAgentRunRendition(input: {
       "fetch_public_listing_page",
     ].includes(observation.tool)
   );
+  // R6-9: model-steer observations are the model's, never the host's.
   const failed = input.result.observations.filter((observation) =>
-    observation.error
+    observation.error && !isModelSteerObservation(observation)
   );
   const stoppedReason = input.result.kind === "stopped"
     ? input.result.reason

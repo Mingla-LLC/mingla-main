@@ -587,10 +587,13 @@ const KIND_WORDS: ReadonlyArray<[RegExp, AriClaimKind]> = [
   [/\b(?:request|ticket|support|reply|replied)\b/i, "support"],
   [/\b(?:notes?|remember|remembered|memory|memories|saved\s+that)\b/i, "note"],
   [
-    /\b(?:guests?|notified|emailed|texted|messaged|announcement|broadcast|group|reminders?)\b/i,
+    /\b(?:guests?|notified|emailed|texted|messaged|announcement|broadcast|group|reminders?|invités?|clients?|abonnés?)\b/i,
     "message",
   ],
-  [/\b(?:discount|code|promo|coupon|voucher)s?\b/i, "discount"],
+  [
+    /\b(?:discount|code|promo|coupon|voucher|réduction|remise)s?\b/i,
+    "discount",
+  ],
   [/\b(?:team|scanner|invited|invite)\b/i, "team"],
 ];
 
@@ -678,7 +681,7 @@ const READ_SPEAKS: ReadonlySet<AriClaimAction> = new Set([
 const POSITIVE_STATE =
   /\b(?:live|active|activated|reactivated|running|enabled|working(?!\s+(?:days?|hours?|weeks?))|valid|usable|back\s+on|turned\s+(?:back\s+)?on|switched\s+(?:back\s+)?on|up\s+and\s+running|good\s+to\s+go|in\s+effect)\b|\bnow\s+works\b|\bworks\s+(?:now|again)\b/i;
 const NEGATED_STATE =
-  /\b(?:not|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|no\s+longer|never|won['’]t|doesn['’]t|don['’]t|hasn['’]t|haven['’]t|yet\s+to|no\s+more)\b/i;
+  /\b(?:not|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|no\s+longer|never|won['’]t|doesn['’]t|don['’]t|hasn['’]t|haven['’]t|yet\s+to|no\s+more|no\s+dey|neva|pas|plus\s+actif)\b/i;
 const FUTURE_STATE =
   /\b(?:will\s+(?:be|go|become|start)|go(?:es)?\s+live\s+(?:on|from|at)|starts?\s+(?:on|from|at)|from\s+(?:mon|tue|wed|thu|fri|sat|sun|\d))/i;
 
@@ -1051,7 +1054,10 @@ export const STATUS_READ_KINDS: ReadonlySet<AriClaimKind> = new Set<
 ]);
 
 const STATUS_KIND_WORDS: ReadonlyArray<[RegExp, AriClaimKind]> = [
-  [/\b(?:events?|rsvps?|party|parties|show|gig|concert)\b/i, "event"],
+  [
+    /\b(?:events?|rsvps?|party|parties|show|gig|concert)\b|événements?|evenements?/i,
+    "event",
+  ],
   [/\btrips?\b/i, "trip"],
   [/\bexperiences?\b/i, "experience"],
   [/\b(?:stays?|rooms?|booking\s+page)\b/i, "stay"],
@@ -1429,7 +1435,7 @@ export function cantFindSentence(thing: string): string {
 
 /** Rework 6 (R6-6 / R6-7 / R6-10): the caller's role cannot see the kind. */
 export function hiddenKindSentence(kind: AriClaimKind): string {
-  const noun = (KIND_NOUN[kind] ?? "that").replace(/^your\s+/, "");
+  const noun = (KIND_NOUN[kind] ?? "that").replace(/^(?:your|the)\s+/, "");
   return `I can't check the ${noun} for you, because your role on this brand doesn't include it. Someone with more access can see it in ${
     STATUS_PLACE[kind] ?? "Mingla Host"
   }.`;
@@ -1589,6 +1595,13 @@ export function judgeClaim(
 ): ClaimJudgement {
   // Rework 5b: a status claim about an event, trip, blast, website … is
   // decided by this turn's read of that object first.
+  // R6-13: "Confirm to set it up" is true only while a card waits.
+  if (claim.action === "proposed" && isConfirmPrompt(claim.quote)) {
+    const waiting = [...all].reverse().find((item) =>
+      item.status === "pending"
+    );
+    return { backed: Boolean(waiting), found: waiting ?? null, object: null };
+  }
   const status = statusJudgement(claim, all, context);
   if (status) return status;
   const kinds = claimKinds(claim);
@@ -1698,6 +1711,14 @@ export function evidenceForClaim(
 
 // ── Reconcile ───────────────────────────────────────────────────────────────
 
+/** R6-13: said in place of "Confirm to set it up" when no card waits. */
+export const NO_CARD_TO_CONFIRM =
+  "There's no card to confirm yet. Tell me if you'd like me to prepare it.";
+
+/** R6-15: said in place of an unbacked "Reminders are switched on". */
+export const REMINDERS_UNSEEN =
+  "I can't see your reminder settings from this chat, so I can't confirm they're on.";
+
 /** Said when every sentence was an unbacked claim and no state applies. */
 export const REPLY_EMPTY_AFTER_CHECK =
   "I don't have a saved change to show for that. Tell me what you'd like and I'll prepare it for you to approve.";
@@ -1774,6 +1795,10 @@ function trueStateSentence(args: {
   const named = namedObject(object);
   // Rework 5b: a status kind's read decided it (or could not run).
   if (judged.say) return judged.say;
+  // R6-13: nothing waits for the host's Confirm.
+  if (claim.action === "proposed" && !found && isConfirmPrompt(claim.quote)) {
+    return NO_CARD_TO_CONFIRM;
+  }
   if (judged.unverified && judged.unverifiedKind) {
     const title = object && !DESCRIBED_OBJECT.test(object.trim()) &&
         object.length <= 60
@@ -1809,6 +1834,12 @@ function trueStateSentence(args: {
     evidence.some((item) => objectsMatch(object, item.objects))
   ) return "";
   const kinds = claimKinds(claim);
+  // R6-15: reminder settings are not a message Ari sent.
+  if (!named && /\breminders?\b/i.test(claim.quote) && claim.kind !== "note") {
+    if (isStatusQuestion(args.hostMessage ?? "") || !args.quiet) {
+      return REMINDERS_UNSEEN;
+    }
+  }
   // R5-16: a status question about a record the chat does not hold.
   if (
     !named && isStatusQuestion(args.hostMessage ?? "") &&
@@ -2038,6 +2069,18 @@ const PRESUPPOSITION =
 const KIND_SUBJECT =
   /(?:^\s*|\b(?:your|the|this|that|my)\s+)(?:[\p{L}]+\s+)?(?:discount|code|promo|coupon|voucher|event|trip|experience|website|site|page|note|message|email|ticket|request|reminder|announcement|guest)s?\b[^.!?]{0,25}?(?:\b(?:is|are|has\s+been|have\s+been)\b|['’]s\b)/iu;
 
+/**
+ * #3355 rework 6 (R6-13): the reply tells the host to press Confirm. It is
+ * true only while a card waits for them; with none, there is nothing to
+ * press.
+ */
+const CONFIRM_PROMPT =
+  /\b(?:tap|press|hit|click|select|use)\s+(?:the\s+)?["“'‘*]*confirm\b|(?:^|[.!?]\s+|\band\s+)["“'‘*]*confirm["”'’*]*\s+(?:to|it|this|that|below|above|the\s+card)\b|\bconfirm\s+(?:on|in)\s+the\s+card\b/i;
+
+export function isConfirmPrompt(text: string): boolean {
+  return CONFIRM_PROMPT.test(text.replace(/[*_`]/g, ""));
+}
+
 /** Ari asking the host back ("Is FAVY10 still needed?"). */
 const ARI_QUESTION =
   /^\s*(?:is|are|does|do|did|has|have|was|were)\b[^?]*\?\s*$/i;
@@ -2048,6 +2091,7 @@ function escapeRegExp(value: string): string {
 
 function actionOfSentence(sentence: string): AriClaimAction {
   if (/\b(?:proposed|prepared|drafted)\b/i.test(sentence)) return "proposed";
+  if (ML_SENT.test(sentence)) return "sent";
   if (
     /\b(?:sent|emailed|texted|messaged|notified|told|informed|shared|invited|posted|replied|through)\b/i
       .test(sentence)
@@ -2084,9 +2128,23 @@ function kindOfSentence(sentence: string): AriClaimKind {
  * "your Friday blast") and the state verb that asserts it.
  */
 const STATUS_SUBJECT =
-  /\b(?:your|the|this)\s+(?:[\p{L}\p{N}'’-]+\s+){0,3}?(?:events?|rsvps?|trips?|experiences?|stays?|venues?|listings?|tiers?|tickets?|blasts?|campaigns?|newsletters?|website|site|refunds?|payouts?)\b/iu;
+  /\b(?:your|the|this|votre|ton|ta|le|la)\s+(?:[\p{L}\p{N}'’-]+\s+){0,3}?(?:events?|rsvps?|trips?|experiences?|stays?|venues?|listings?|tiers?|tickets?|blasts?|campaigns?|newsletters?|website|site|refunds?|payouts?|événements?|evenements?)(?![\p{L}\p{N}])/iu;
 const STATUS_VERB =
-  /\b(?:is|are|was|were|has\s+been|have\s+been|now|went|has\s+gone|have\s+gone|got)\b|['’]s\b|['’]re\b/i;
+  /\b(?:is|are|was|were|has\s+been|have\s+been|now|went|has\s+gone|have\s+gone|got|est|sont|don|dey)\b|['’]s\b|['’]re\b/i;
+
+/**
+ * #3355 rework 6 (R6-11): the judge-down backup also reads the two other
+ * languages hosts write to Ari in: Nigerian Pidgin ("your event don publish",
+ * "FAVY10 still dey work", "I don notify your guests") and French ("votre
+ * événement est publié", "FAVY10 est toujours actif", "J'ai prévenu vos
+ * invités"). The judge (any language) stays the primary reader.
+ */
+const ML_STATE =
+  /\b(?:don|done)\s+(?:publish|go\s+live|live|activate|start)\b|\b(?:still\s+)?dey\s+(?:work|live|active|run|on)\b|\b(?:est|sont)\s+(?:maintenant\s+|toujours\s+|bien\s+|désormais\s+)?(?:publiée?s?|en\s+ligne|actifs?|actives?|en\s+vente|disponibles?|valides?)(?![\p{L}])/iu;
+const ML_DONE =
+  /\b(?:i|we|ari)\s+(?:don|done|don\s+already)\s+(?:create|make|send|publish|notify|tell|add|set|save|share|post|cancel|delete|remove|update|change|do|message|email|text|open|raise)\b|(?:\bj['’]ai|\bnous\s+avons|\bari\s+a)\s+(?:bien\s+|déjà\s+)?(?:créé|fait|envoyé|publié|prévenu|informé|notifié|ajouté|enregistré|partagé|annulé|supprimé|mis\s+à\s+jour|modifié|programmé|ouvert)(?![\p{L}])/iu;
+const ML_SENT =
+  /\b(?:don|done)\s+(?:send|notify|tell|message|email|text|share|post)\b|(?:envoyé|prévenu|informé|notifié|partagé)(?![\p{L}])/iu;
 
 /**
  * Rework 5b: a status said as fact about an object of a status kind ("Your
@@ -2103,7 +2161,7 @@ function statusFact(
   if (
     /\?\s*$/.test(plain) || NEGATED_STATE.test(plain) ||
     FUTURE_STATE.test(plain) || CONDITIONAL.test(plain) ||
-    !STATUS_VERB.test(plain)
+    (!STATUS_VERB.test(plain) && !ML_STATE.test(plain))
   ) return null;
   let kind: AriClaimKind | null = null;
   let object: string | null = null;
@@ -2130,7 +2188,7 @@ function statusFact(
   if (SOLD_OUT.test(plain) && (kind !== "message" && kind !== "payout")) {
     return { action: "live", kind, object };
   }
-  if (!words?.test(plain)) return null;
+  if (!words?.test(plain) && !ML_STATE.test(plain)) return null;
   return {
     action: kind === "message"
       ? "sent"
@@ -2239,6 +2297,10 @@ export function deterministicClaims(args: {
         claim("saved", "note");
         continue;
       }
+      if (isConfirmPrompt(plain)) {
+        claim("proposed", "other", null);
+        continue;
+      }
       if (TEAM_DONE.test(plain)) {
         claim("added", "team");
         continue;
@@ -2263,13 +2325,15 @@ export function deterministicClaims(args: {
         continue;
       }
       if (
-        (FIRST_PERSON_PAST.test(plain) || PASSIVE_DONE.test(plain)) && subject
+        (FIRST_PERSON_PAST.test(plain) || PASSIVE_DONE.test(plain) ||
+          ML_DONE.test(plain)) && subject
       ) {
         claim(actionOfSentence(plain));
         continue;
       }
-      const stated = STATE_ASSERTION.test(plain) &&
-        (quoteAssertsLive(plain) || /\bpublished\b/i.test(plain)) &&
+      const stated = ((STATE_ASSERTION.test(plain) &&
+        (quoteAssertsLive(plain) || /\bpublished\b/i.test(plain))) ||
+        ML_STATE.test(plain)) &&
         !NEGATED_STATE.test(plain);
       if (stated && codes.length > 0 && args.fresh) {
         claim("live", "discount");
@@ -2416,6 +2480,30 @@ export function fallbackStripClaims(args: {
     text: dedupeReplySentences(text) || REPLY_EMPTY_AFTER_CHECK,
     removed,
   };
+}
+
+// ── R6-19: one moment, two clock times ──────────────────────────────────────
+
+const CLOCK_PAIR =
+  /(?:\bat\s+)?\b([01]?\d|2[0-3]):([0-5]\d)\s*\(\s*(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*([ap])\.?\s*m\.?\s*\)(?:\s+(?:\p{Lu}\p{L}+\s+)?time\b)?/giu;
+
+/**
+ * #3355 rework 6 (R6-19): "at 18:00 (7:00 PM) Lagos time" says two
+ * different hours for one moment (a UTC hour beside the local one). Neither
+ * can be trusted, so the pair becomes "at the time shown on the card"; a
+ * pair that agrees ("18:00 (6:00 PM)") is left as written.
+ */
+export function fixClockPairs(text: string): string {
+  return text.replace(
+    CLOCK_PAIR,
+    (whole, hour24: string, minute24: string, hour12: string, minute12, ap) => {
+      let hour = Number(hour12) % 12;
+      if (String(ap).toLowerCase() === "p") hour += 12;
+      const agree = hour === Number(hour24) &&
+        Number(minute12 ?? "0") === Number(minute24);
+      return agree ? whole : "at the time shown on the card";
+    },
+  );
 }
 
 // ── R3-11: a reply never says the same line twice ───────────────────────────
@@ -2950,7 +3038,7 @@ export async function checkReplyClaims(args: {
       status: statusFreshOf(status, Boolean(args.statusRead)),
     });
     return {
-      text: stripped.text,
+      text: fixClockPairs(stripped.text),
       source: "fallback",
       reason,
       claims: [],
@@ -3103,7 +3191,7 @@ export async function checkReplyClaims(args: {
     ],
   });
   return {
-    text: strip.text,
+    text: fixClockPairs(strip.text),
     source: "model",
     reason: "ok",
     claims,
