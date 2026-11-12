@@ -125,7 +125,14 @@ jest.mock("../../../hooks/useManagedEventRoute", () => ({
     event: { id: "event-1", brandId: "brand-1", currency: "GBP", tickets: [] },
   }),
 }));
+// #4389 — the splash auto-shows only on Home with brand setup complete.
+let mockPathname = "/home";
+let mockSetupComplete = true;
+jest.mock("../../../hooks/useBrandSetupChecklist", () => ({
+  useBrandSetupChecklist: () => ({ data: { facts: { complete: mockSetupComplete } } }),
+}));
 jest.mock("expo-router", () => ({
+  usePathname: () => mockPathname,
   useRouter: () => ({ replace: mockReplace, push: mockPush, back: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => ({}),
   Stack: () => null,
@@ -202,7 +209,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 // eslint-disable-next-line import/first
 import AsyncStorage from "@react-native-async-storage/async-storage";
 // eslint-disable-next-line import/first
-import { TapToPayAwarenessModal } from "../tap/TapToPayAwarenessModal";
+import { TapToPayAwarenessModal, openTapToPayAwareness, tapAwarenessAutoShowAllowed } from "../tap/TapToPayAwarenessModal";
 // eslint-disable-next-line import/first
 import { TapNotOnThisPhone } from "../tap/TapNotOnThisPhone";
 // eslint-disable-next-line import/first
@@ -712,5 +719,76 @@ describe("G5 Tap to Pay's entry lives on Home, with Apple's symbol", () => {
       const { root } = mount(<TapToPayIcon size={18} />);
       expect(textOf(root)).toContain("wave.3.right.circle.fill");
     });
+  });
+});
+
+// #4389 (Seth, device: the splash "just opened from nowhere" during brand
+// setup). The automatic once-only showing happens only on the Home tab with
+// brand setup complete; a host's own request opens it anywhere; the seen flag
+// is written only after it was shown.
+describe("#4389 the awareness splash never opens by itself outside Home", () => {
+  const shownAt = async (pathname: string, complete: boolean): Promise<boolean> => {
+    mockPathname = pathname;
+    mockSetupComplete = complete;
+    mockRole = { rank: BRAND_ROLE_RANK.brand_owner, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockReset();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    const tree = mount(<TapToPayAwarenessModal />);
+    await settle();
+    const shown = tree.root.findAll((n) => n.props.testID === "tap-awareness-modal").length > 0;
+    act(() => tree.unmount());
+    return shown;
+  };
+  afterEach(() => {
+    mockPathname = "/home";
+    mockSetupComplete = true;
+  });
+
+  test("no auto-show on any setup, bank-setup, door or checkout route (setup complete or not)", async () => {
+    for (const path of [
+      "/brand/new",
+      "/brand/brand-1/setup",
+      "/brand/brand-1/connect",
+      "/brand/brand-1/payments/onboard",
+      "/event/event-1/door/sell",
+      "/checkout/event-1",
+      "/ari",
+    ]) {
+      expect([path, await shownAt(path, true)]).toEqual([path, false]);
+    }
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  test("no auto-show on Home while brand setup is incomplete", async () => {
+    expect(await shownAt("/home", false)).toBe(false);
+  });
+
+  test("auto-shows once on Home when brand setup is complete", async () => {
+    expect(await shownAt("/home", true)).toBe(true);
+  });
+
+  test("a host's own request opens it anywhere (setup route, setup incomplete)", async () => {
+    mockPathname = "/brand/brand-1/setup";
+    mockSetupComplete = false;
+    mockRole = { rank: BRAND_ROLE_RANK.brand_owner, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue("1");
+    const tree = mount(<TapToPayAwarenessModal />);
+    await settle();
+    expect(tree.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+    act(() => {
+      expect(openTapToPayAwareness("brand-1")).toBe(true);
+    });
+    await settle();
+    expect(tree.root.findAll((n) => n.props.testID === "tap-awareness-modal").length).toBeGreaterThan(0);
+    act(() => tree.unmount());
+  });
+
+  test("the rule: Home only, and only with setup complete", () => {
+    expect(tapAwarenessAutoShowAllowed({ pathname: "/home", setupComplete: true })).toBe(true);
+    expect(tapAwarenessAutoShowAllowed({ pathname: "/home/", setupComplete: true })).toBe(true);
+    expect(tapAwarenessAutoShowAllowed({ pathname: "/home", setupComplete: false })).toBe(false);
+    expect(tapAwarenessAutoShowAllowed({ pathname: "/brand/b/setup", setupComplete: true })).toBe(false);
+    expect(tapAwarenessAutoShowAllowed({ pathname: null, setupComplete: true })).toBe(false);
   });
 });

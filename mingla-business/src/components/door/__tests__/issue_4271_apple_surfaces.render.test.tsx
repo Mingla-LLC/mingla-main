@@ -113,7 +113,12 @@ jest.mock("../../../hooks/useManagedEventRoute", () => ({
     event: { id: "event-1", brandId: "brand-1", currency: "GBP", tickets: [] },
   }),
 }));
+// #4389 — the splash auto-shows only on Home with brand setup complete.
+jest.mock("../../../hooks/useBrandSetupChecklist", () => ({
+  useBrandSetupChecklist: () => ({ data: { facts: { complete: true } } }),
+}));
 jest.mock("expo-router", () => ({
+  usePathname: () => "/home",
   useRouter: () => ({ replace: mockReplace, push: mockPush, back: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => ({}),
   Stack: () => null,
