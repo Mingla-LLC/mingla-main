@@ -51,7 +51,7 @@ export async function getCreatorDetail(creatorId) {
   return data;
 }
 
-// #4402 — approve (optionally recording the audience band the admin saw) or
+// #4402 — approve (recording the audience band the admin saw; required), reopen, or
 // reject (a short note the creator sees) one social account.
 export function decideCreatorHandle(handleId, decision, { note = null, band = null } = {}) {
   return write("admin_creator_handle_decide", {

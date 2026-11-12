@@ -100,7 +100,13 @@ function handler(
         });
       }
       saved.push(decision);
-      return Promise.resolve();
+      return Promise.resolve({
+        saved: true,
+        last_check_status: decision.check,
+        verified: false,
+        follower_band: "lt1k",
+        follower_source: "self_reported",
+      });
     },
     recompute: () => Promise.resolve({ verification: "review" }),
     report: (error) => {

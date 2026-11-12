@@ -53,6 +53,13 @@ export type VerifyDecision = {
     | "verification_code_expired";
 };
 export type FollowerSource = "self_reported" | "provider" | "admin";
+export type SaveResult = {
+  saved: boolean;
+  last_check_status: string | null;
+  verified: boolean;
+  follower_band: string | null;
+  follower_source: string | null;
+};
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -168,7 +175,15 @@ export type HandleVerifyDeps = {
   actorId(req: Request): Promise<string | null>;
   load(actorId: string, handleId: string): Promise<HandleRow | null>;
   fetchPublic(platform: Platform, handle: string): Promise<PublicFetch>;
-  save(handleId: string, decision: VerifyDecision): Promise<void>;
+  /**
+   * Compare-and-set: saves only while the handle still waits for an admin with
+   * the code this check read. Returns the row's current state either way, or
+   * null when the handle is gone.
+   */
+  save(
+    row: Pick<HandleRow, "id" | "creator_account_id" | "verify_code">,
+    decision: VerifyDecision,
+  ): Promise<SaveResult | null>;
   recompute(actorId: string): Promise<unknown>;
   report?(error: unknown): void;
 };
@@ -221,7 +236,25 @@ export function createHandleVerifyHandler(deps: HandleVerifyDeps) {
       }
       const fetched = await deps.fetchPublic(row.platform, row.handle);
       const decision = decideHandleVerification(row, fetched);
-      await deps.save(row.id, decision);
+      const result = await deps.save(row, decision);
+      if (!result) return json({ error: "handle_not_found" }, 404);
+      if (!result.saved) {
+        // An admin decided (or a new code was issued) while the profile was
+        // being fetched: nothing was written; report what the row says now.
+        const now = result.last_check_status === "rejected"
+          ? "rejected"
+          : result.verified
+          ? "verified"
+          : "review";
+        return json({
+          status: now,
+          check: null,
+          followerBand: result.follower_band ?? null,
+          followerSource: followerSource(result.follower_source),
+          reason: now === "rejected" ? "handle_rejected" : "superseded",
+          verification: null,
+        });
+      }
       const verification = await deps.recompute(actorId);
       return json({
         status: decision.check === "expired" ? "expired" : "review",
@@ -273,11 +306,22 @@ if (import.meta.main) {
         return { ok: false, blocked: true, body: "", finalUrl: null };
       }
     },
-    save: async (handleId, decision) => {
-      const { error } = await supabase.from("creator_handles")
-        .update(handleUpdateFor(decision))
-        .eq("id", handleId);
+    save: async (row, decision) => {
+      // I-4402-CHECK-NEVER-UNDOES-ADMIN: the only write path is the
+      // compare-and-set RPC (handleUpdateFor documents the same fields).
+      const { data, error } = await supabase.rpc(
+        "issue_4402_record_handle_check",
+        {
+          p_handle_id: row.id,
+          p_creator_account_id: row.creator_account_id,
+          p_verify_code: row.verify_code,
+          p_check: decision.check,
+          p_reason: decision.reason,
+        },
+      );
       if (error) throw error;
+      const out = data as (SaveResult & { found?: boolean }) | null;
+      return out && out.found !== false ? out : null;
     },
     recompute: async (actorId) => {
       const { data, error } = await supabase.rpc(

@@ -17,6 +17,9 @@
 --   I-4402-HANDLE-DECISION-IS-AUDITED: a handle is approved, rejected or
 --     reopened only by admin_creator_handle_decide, which writes a
 --     creator_review_events row.
+--   I-4402-CHECK-NEVER-UNDOES-ADMIN: the bio-code check writes only through
+--     issue_4402_record_handle_check, which skips the write once an admin
+--     decided or the code changed.
 --   I-4402-ONLY-ADMIN-VERIFIES: no recompute, handle check or setup write sets
 --     a creator or a handle verified; only admin_creator_decide('verify') and
 --     admin_creator_handle_decide('approve') do.
@@ -530,6 +533,42 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
 $fn$;
 REVOKE ALL ON FUNCTION public.gig_applicants(uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.gig_applicants(uuid) TO authenticated,service_role;
+
+-- 12c. The bio-code check's only write path (creator-handle-verify, service
+--      role). Compare-and-set under a row lock: evidence is saved only while
+--      the handle still waits for an admin with the code the check read. If an
+--      admin approved, rejected or the creator took a new code while the
+--      profile fetch ran, nothing is written and the current state comes back
+--      (retest P2-A: an in-flight check must never undo an admin decision).
+CREATE OR REPLACE FUNCTION public.issue_4402_record_handle_check(
+  p_handle_id uuid,p_creator_account_id uuid,p_verify_code text,p_check text,p_reason text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_row public.creator_handles; v_saved boolean:=false;
+BEGIN
+  IF p_check IS NULL OR p_check NOT IN ('code_seen','code_not_seen','unreadable','expired') THEN
+    RAISE EXCEPTION 'invalid_check' USING ERRCODE='22023';
+  END IF;
+  IF p_reason IS NULL OR p_reason NOT IN ('code_seen','verification_code_not_found','provider_unreadable','provider_fetch_blocked','verification_code_expired') THEN
+    RAISE EXCEPTION 'invalid_reason' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_row FROM public.creator_handles
+   WHERE id=p_handle_id AND creator_account_id=p_creator_account_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN jsonb_build_object('saved',false,'found',false); END IF;
+  IF v_row.review_required AND v_row.verified_at IS NULL
+     AND v_row.last_check_status IS DISTINCT FROM 'rejected' AND v_row.last_check_status IS DISTINCT FROM 'verified'
+     AND v_row.verify_code=p_verify_code THEN
+    UPDATE public.creator_handles SET last_checked_at=now(),last_check_status=p_check,review_required=true,review_reason=p_reason
+     WHERE id=p_handle_id RETURNING * INTO v_row;
+    v_saved:=true;
+  END IF;
+  RETURN jsonb_build_object('saved',v_saved,'found',true,
+    'last_check_status',v_row.last_check_status,'verified',v_row.verified_at IS NOT NULL AND NOT v_row.review_required,
+    'review_required',v_row.review_required,'follower_band',v_row.follower_band,'follower_source',v_row.follower_source);
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4402_record_handle_check(uuid,uuid,text,text,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4402_record_handle_check(uuid,uuid,text,text,text) TO service_role;
 
 -- 13. Existing handles onto the admin-review rule: a handle no admin approved
 --     waits for one (a rejected one stays rejected), and a band no admin

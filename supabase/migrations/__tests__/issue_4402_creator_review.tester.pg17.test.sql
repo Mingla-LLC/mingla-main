@@ -1,5 +1,7 @@
 -- #4402 tester: negative cases on the creator review migration.
 --
+-- MINGLA-INVARIANT: I-4402-CHECK-NEVER-UNDOES-ADMIN | issue #4402 | The bio-code check writes creator_handles only through issue_4402_record_handle_check (service role), a compare-and-set that skips the write once an admin approved or rejected the handle or its code changed, so an in-flight check never undoes an admin decision.
+--
 -- Written by the tester (verdict comment 6829319693), moved into the repo by
 -- the implementor's rework and updated to Seth's 12 Nov 2026 rule (an admin
 -- verifies every handle and every creator; a rejection sticks; no platform
@@ -7,7 +9,9 @@
 --
 -- Fails on 1f14a6c44c: T2d (a 1e20 provider count overflowed bigint), T3j (a
 -- rejected handle took a new code), T3k (reject kept the admin band), T4a
--- (approve without a band) and T4b (the handle approve auto-verified).
+-- (approve without a band) and T4b (the handle approve auto-verified). Fails
+-- on fdbce4cd91: T5 (issue_4402_record_handle_check did not exist; the edge
+-- overwrote an admin decision made during its profile fetch).
 \set ON_ERROR_STOP on
 BEGIN;
 CREATE FUNCTION pg_temp.act(p_user uuid) RETURNS void LANGUAGE sql AS $fn$
@@ -142,6 +146,56 @@ DO $$ DECLARE st text; BEGIN
   INSERT INTO r VALUES('T4c rate off leaves verified', st<>'verified', st);
 END $$;
 RESET ROLE;
+-- T5 (retest 6830468345, P2-A, probes R5/R5b): an admin decision that lands
+-- while the bio check fetches the profile is never overwritten. The edge saves
+-- only through issue_4402_record_handle_check (compare-and-set).
+SELECT pg_temp.act('44029000-0000-4000-8000-0000000000c1');
+SET LOCAL ROLE authenticated;
+DO $$ BEGIN
+  PERFORM public.creator_handle_upsert('youtube','t4402yt','1k_10k');
+  PERFORM public.creator_handle_upsert('snapchat','t4402snap','1k_10k');
+  PERFORM public.creator_handle_upsert('instagram','t4402ig','1k_10k');
+  BEGIN PERFORM public.issue_4402_record_handle_check(gen_random_uuid(),'44029000-0000-4000-8000-0000000000c1','X','code_seen','code_seen'); INSERT INTO r VALUES('T5f creator cannot call the check writer',false,'ran');
+  EXCEPTION WHEN others THEN INSERT INTO r VALUES('T5f creator cannot call the check writer',SQLSTATE='42501',SQLSTATE); END;
+END $$;
+RESET ROLE;
+CREATE TEMP TABLE race AS SELECT platform,id,verify_code FROM public.creator_handles WHERE creator_account_id='44029000-0000-4000-8000-0000000000c1' AND platform IN ('youtube','snapchat','instagram');
+GRANT SELECT ON race TO PUBLIC;
+-- The edge has read each row (id, code). Now the admin acts.
+SELECT pg_temp.act('44029000-0000-4000-8000-0000000000a1');
+SET LOCAL ROLE authenticated;
+DO $$ BEGIN
+  PERFORM public.admin_creator_handle_decide((SELECT id FROM race WHERE platform='youtube'),'reject','Not their account');
+  PERFORM public.admin_creator_handle_decide((SELECT id FROM race WHERE platform='snapchat'),'approve','Saw the code','10k_50k');
+END $$;
+RESET ROLE;
+-- The in-flight check finishes (service role path), with the code it read.
+DO $$ DECLARE v jsonb; BEGIN
+  v:=public.issue_4402_record_handle_check((SELECT id FROM race WHERE platform='youtube'),'44029000-0000-4000-8000-0000000000c1',(SELECT verify_code FROM race WHERE platform='youtube'),'code_seen','code_seen');
+  INSERT INTO r VALUES('T5a in-flight check after reject writes nothing', v->>'saved'='false' AND v->>'last_check_status'='rejected', v::text);
+  INSERT INTO r SELECT 'T5a rejection still on the row', last_check_status='rejected' AND NOT review_required AND rejected_note='Not their account', to_jsonb(h)::text FROM public.creator_handles h WHERE id=(SELECT id FROM race WHERE platform='youtube');
+  v:=public.issue_4402_record_handle_check((SELECT id FROM race WHERE platform='snapchat'),'44029000-0000-4000-8000-0000000000c1',(SELECT verify_code FROM race WHERE platform='snapchat'),'code_not_seen','verification_code_not_found');
+  INSERT INTO r VALUES('T5c in-flight check after approve writes nothing', v->>'saved'='false' AND (v->>'verified')::boolean AND v->>'follower_source'='admin', v::text);
+  INSERT INTO r SELECT 'T5c approval still on the row', verified_at IS NOT NULL AND NOT review_required AND follower_source='admin' AND follower_band='10k_50k', to_jsonb(h)::text FROM public.creator_handles h WHERE id=(SELECT id FROM race WHERE platform='snapchat');
+  -- A check for a code that has since been replaced writes nothing.
+  v:=public.issue_4402_record_handle_check((SELECT id FROM race WHERE platform='instagram'),'44029000-0000-4000-8000-0000000000c1','MINGLA-OLD0','code_seen','code_seen');
+  INSERT INTO r VALUES('T5d evidence for an old code is not written', v->>'saved'='false', v::text);
+  -- The normal path still saves evidence and keeps the handle with a person.
+  v:=public.issue_4402_record_handle_check((SELECT id FROM race WHERE platform='instagram'),'44029000-0000-4000-8000-0000000000c1',(SELECT verify_code FROM race WHERE platform='instagram'),'code_seen','code_seen');
+  INSERT INTO r SELECT 'T5e a pending handle saves evidence', v->>'saved'='true' AND last_check_status='code_seen' AND review_required AND verified_at IS NULL, v::text FROM public.creator_handles WHERE id=(SELECT id FROM race WHERE platform='instagram');
+  -- Wrong owner: not found, nothing written.
+  v:=public.issue_4402_record_handle_check((SELECT id FROM race WHERE platform='instagram'),'44029000-0000-4000-8000-0000000000a1',(SELECT verify_code FROM race WHERE platform='instagram'),'unreadable','provider_unreadable');
+  INSERT INTO r VALUES('T5g another creator''s handle is not written', v->>'found'='false', v::text);
+END $$;
+-- R5b: the creator still cannot take a new code on the rejected platform.
+SELECT pg_temp.act('44029000-0000-4000-8000-0000000000c1');
+SET LOCAL ROLE authenticated;
+DO $$ BEGIN
+  BEGIN PERFORM public.creator_handle_upsert('youtube','someone.else','1k_10k'); INSERT INTO r VALUES('T5b rejected platform still refuses a new code',false,'ran');
+  EXCEPTION WHEN others THEN INSERT INTO r VALUES('T5b rejected platform still refuses a new code',SQLERRM='handle_rejected',SQLERRM); END;
+END $$;
+RESET ROLE;
+
 SELECT CASE WHEN ok THEN 'PASS' ELSE 'FAIL' END, name, left(detail,220) FROM r ORDER BY name;
 DO $$ DECLARE v_failed text; BEGIN
   SELECT string_agg(name||' => '||left(coalesce(detail,''),160),E'\n' ORDER BY name) INTO v_failed FROM r WHERE ok IS NOT TRUE;

@@ -76,7 +76,13 @@ Deno.test("#3872 handle endpoint owns the row and recomputes creator truth", asy
       Promise.resolve({ ok: true, blocked: false, body: "bio MINGLA-A1B2" }),
     save: (_id, decision) => {
       saved = decision.check;
-      return Promise.resolve();
+      return Promise.resolve({
+        saved: true,
+        last_check_status: decision.check,
+        verified: false,
+        follower_band: "lt1k",
+        follower_source: "self_reported",
+      });
     },
     recompute: () => {
       recomputed += 1;
