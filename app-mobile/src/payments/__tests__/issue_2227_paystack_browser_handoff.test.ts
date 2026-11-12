@@ -131,9 +131,12 @@ describe("#2227 T-1 — the Paystack hand-off uses the SAFE browser primitive", 
   it("the source contains no openAuthSessionAsync CALL and carries the protective comment", () => {
     expect(FLOW_SOURCE).not.toMatch(/openAuthSessionAsync\s*\(/);
     expect(FLOW_SOURCE).toMatch(
-      /WebBrowser\.openBrowserAsync\(\s*authorizationUrl\s*\)/,
+      /WebBrowser\.openBrowserAsync\(\s*handoff\.authorizationUrl\s*\)/,
     );
-    expect(FLOW_SOURCE).toMatch(/followPaystackHandoff\([\s\S]{0,240}data\.authorizationUrl/);
+    // #3281 6d — the create arm holds the page it was given, then follows it.
+    expect(FLOW_SOURCE).toMatch(
+      /authorizationUrl: data\.authorizationUrl,[\s\S]{0,600}followPaystackHandoff\(\s*input\.eventId,\s*handoff,/,
+    );
     expect(FLOW_SOURCE).toContain(
       "DO NOT change this back to openAuthSessionAsync with an https redirect",
     );
@@ -214,11 +217,16 @@ describe("#2227 T-11 — a re-tap REPLAYS the held page instead of creating agai
 
     // Tap 2 — same cart. The buyer's CTA re-opens the page they were already
     // given. NO second create: the server would 409 it, and rightly.
+    // #3281 6d — the page is re-checked first (one status read, then the
+    // #1930 preflight), then opened, then polled.
     mockOpenBrowserAsync.mockResolvedValueOnce({ type: "dismiss" });
-    mockInvoke.mockResolvedValueOnce({
-      data: { order: { orderId: "ord-replay" } },
-      error: null,
-    });
+    mockInvoke
+      .mockResolvedValueOnce({ data: { status: "pending", order: null }, error: null })
+      .mockResolvedValueOnce({ data: { status: "present_allowed" }, error: null })
+      .mockResolvedValueOnce({
+        data: { order: { orderId: "ord-replay" } },
+        error: null,
+      });
     const second = await useNativeCheckoutFlow()(input);
 
     expect(second).toEqual({ outcome: "succeeded", orderId: "ord-replay" });
@@ -316,7 +324,9 @@ describe("#2227 T-11 — a re-tap REPLAYS the held page instead of creating agai
 });
 
 describe("#2227 T-10 — an expired hold is deleted, never served", () => {
-  it("a hold older than the 15-minute session window is deleted, not served", async () => {
+  // #3281 6d — the hold is now bounded by 14 minutes (the session is 15; the
+  // hold stops a minute early) or by the server's own seconds left.
+  it("a hold at the 14-minute bound is deleted, not served", async () => {
     const eventId = nextEventId();
     const input = inputFor(eventId);
     const t0 = Date.parse("2026-08-18T12:00:00.000Z");
@@ -326,8 +336,8 @@ describe("#2227 T-10 — an expired hold is deleted, never served", () => {
     mockOpenBrowserAsync.mockResolvedValueOnce({ type: "locked" });
     await useNativeCheckoutFlow()(input);
 
-    // 15 minutes + 1 second later the held page can no longer be paid.
-    now.mockReturnValue(t0 + 15 * 60 * 1000 + 1000);
+    // 14 minutes later the held page is no longer reopened.
+    now.mockReturnValue(t0 + 14 * 60 * 1000);
     mockInvoke.mockResolvedValueOnce(
       httpError(409, { error: "checkout_in_progress" }),
     );
@@ -360,8 +370,17 @@ describe("#2227 T-12 — the held page is memory-only", () => {
     expect(FLOW_SOURCE).not.toMatch(/SecureStore\s*\./);
     expect(FLOW_SOURCE).not.toMatch(/\bpersist\s*\(/);
     expect(FLOW_SOURCE).not.toMatch(/zustand/);
-    expect(FLOW_SOURCE).toContain("const heldPaystackHandoffs = new Map<");
-    expect(FLOW_SOURCE).toContain("MEMORY ONLY");
+    // #3281 6d — the hold moved to the shared in-memory store.
+    expect(FLOW_SOURCE).toContain(
+      'from "@mingla/payments-native/paystackHeldHandoff"',
+    );
+    const store = readFileSync(
+      join(__dirname, "..", "..", "..", "..", "packages", "payments-native", "paystackHeldHandoff.ts"),
+      "utf8",
+    );
+    expect(store).toContain("const held = new Map<");
+    expect(store).toContain("MEMORY ONLY");
+    expect(store).not.toMatch(/AsyncStorage\s*\.|SecureStore\s*\.|from\s+["'][^"']*async-storage/);
   });
 });
 

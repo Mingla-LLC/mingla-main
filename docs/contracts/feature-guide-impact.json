@@ -181,6 +181,8 @@
         "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
         "mingla-business/src/payments/paystackHeldHandoff.ts",
         "packages/payments-native/paymentPageReturn.ts",
+        "packages/payments-native/paystackHeldHandoff.ts",
+        "app-mobile/src/payments/nativeCheckoutRecovery.ts",
         "supabase/functions/ticket-checkout-status/index.ts",
         "supabase/functions/_shared/checkoutSaleTruth.ts",
         "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",

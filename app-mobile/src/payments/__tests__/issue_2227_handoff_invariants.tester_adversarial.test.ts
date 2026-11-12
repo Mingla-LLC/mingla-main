@@ -313,11 +313,21 @@ describe("#2227 adversarial — a browser that never presented", () => {
     // The hold must SURVIVE — the buyer never saw the page, so their next tap
     // has to reach that same page rather than ask for a second checkout.
     mockOpenBrowserAsync.mockResolvedValue({ type: "dismiss" });
-    mockInvoke.mockImplementation(async (fn: string) =>
-      fn === "ticket-checkout-create"
-        ? paystackCreate(eventId, "https://checkout.paystack.com/SHOULD-NEVER-BE-USED")
-        : { data: { order: { orderId: "ord-locked" } }, error: null },
-    );
+    // #3281 6d — the held page is re-checked before it reopens: one status
+    // read (not settled yet), then the #1930 preflight, then the poll.
+    let statusReads = 0;
+    mockInvoke.mockImplementation(async (fn: string, opts?: { body?: { preflight?: boolean } }) => {
+      if (fn === "ticket-checkout-create") {
+        return paystackCreate(eventId, "https://checkout.paystack.com/SHOULD-NEVER-BE-USED");
+      }
+      if (opts?.body?.preflight === true) {
+        return { data: { status: "present_allowed" }, error: null };
+      }
+      statusReads += 1;
+      return statusReads === 1
+        ? { data: { status: "pending", order: null }, error: null }
+        : { data: { order: { orderId: "ord-locked" } }, error: null };
+    });
     const second = await useNativeCheckoutFlow()(inputFor(eventId));
 
     expect(second).toEqual({ outcome: "succeeded", orderId: "ord-locked" });
@@ -347,17 +357,25 @@ describe("#2227 adversarial — a browser that never presented", () => {
 });
 
 describe("#2227 adversarial — the hold is a cache with edges", () => {
-  it("expires EXACTLY at the 15-minute session window, not a tick later", async () => {
+  // #3281 6d — the hold's bound is 14 minutes (the session is 15; the hold
+  // stops a minute early), or the server's own seconds left when it sends them.
+  it("expires EXACTLY at the 14-minute hold bound, not a tick later", async () => {
     const eventId = nextEvent();
     const t0 = 1_800_000_000_000;
-    const TTL = 15 * 60 * 1000;
+    const TTL = 14 * 60 * 1000;
     let now = t0;
     jest.spyOn(Date, "now").mockImplementation(() => now);
 
     // Seed the hold without paying the 25-second poll: the page is held BEFORE
     // the browser is opened, and `locked` returns immediately.
     mockOpenBrowserAsync.mockResolvedValue({ type: "locked" });
-    mockInvoke.mockResolvedValue(paystackCreate(eventId));
+    mockInvoke.mockImplementation(async (fn: string, opts?: { body?: { preflight?: boolean } }) => {
+      if (fn === "ticket-checkout-create") return paystackCreate(eventId);
+      // #3281 6d — the replay's re-check: not settled yet, still admitted.
+      return opts?.body?.preflight === true
+        ? { data: { status: "present_allowed" }, error: null }
+        : { data: { status: "pending", order: null }, error: null };
+    });
     await useNativeCheckoutFlow()(inputFor(eventId)); // holds at t0
 
     expect(countInvokes("ticket-checkout-create")).toBe(1);
@@ -429,7 +447,14 @@ describe("#2227 adversarial — the hold is a cache with edges", () => {
   it("the hold never touches disk — a payment URL is a bearer capability", () => {
     expect(FLOW_CODE).not.toMatch(/AsyncStorage|SecureStore|expo-secure-store/);
     expect(FLOW_CODE).not.toMatch(/zustand|persist\(/);
-    expect(FLOW_CODE).toMatch(/new Map<string,\s*HeldPaystackHandoff>\(\)/);
+    // #3281 6d — the hold lives in the shared in-memory store.
+    expect(FLOW_CODE).toMatch(/from "@mingla\/payments-native\/paystackHeldHandoff"/);
+    const store = readFileSync(
+      join(__dirname, "..", "..", "..", "..", "packages", "payments-native", "paystackHeldHandoff.ts"),
+      "utf8",
+    );
+    expect(store).not.toMatch(/AsyncStorage\s*\.|SecureStore|expo-secure-store|zustand|persist\(/);
+    expect(store).toMatch(/new Map<string,\s*Map<string,\s*HeldPaystackHandoff>>\(\)/);
   });
 });
 

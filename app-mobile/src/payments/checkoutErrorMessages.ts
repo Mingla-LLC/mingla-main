@@ -59,6 +59,17 @@ export const CHECKOUT_ALREADY_RESERVED_MESSAGE =
 export const CHECKOUT_NO_HANDOFF_MESSAGE =
   "We couldn't open the secure payment page. You have not been charged — please try again.";
 
+// issue #3281 (bundle 6d) — a held Paystack page could not be checked before
+// reopening it, so it was not opened. Byte-identical to the Host app's copy.
+export const CHECKOUT_RECHECK_FAILED_MESSAGE =
+  "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
+
+// issue #3281 (bundle 6d) — the page's session ran out before it could open. A
+// held page may already be paid and settling, so this never says "not charged".
+// Byte-identical to the Host app's copy.
+export const CHECKOUT_PAGE_EXPIRED_MESSAGE =
+  "This payment page has expired, so we didn't reopen it. If you already paid, your tickets will arrive here and by email within a few minutes — don't pay again. If you didn't, start the payment again.";
+
 export const CHECKOUT_FAILED_MESSAGE =
   "We couldn't start your payment. You have not been charged — please try again.";
 

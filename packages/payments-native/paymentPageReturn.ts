@@ -65,13 +65,16 @@ export type PaymentPageReturn = "closed" | "returned" | "unconfirmed";
  * Resolves once the buyer is back from the payment page, or once it is clear
  * the page is not covering the app.
  */
-export async function waitForPaymentPageClosed(
+// Deliberately NOT `async`: Explorer's jest compiles files under packages/
+// with babel-preset-expo, and an async function pulls in an @babel/runtime
+// helper that cannot be resolved from packages/ (issue #3281 bundle 6d).
+export function waitForPaymentPageClosed(
   result: { type?: string } | null | undefined,
   options: WaitForPaymentPageClosedOptions = {},
 ): Promise<PaymentPageReturn> {
-  if (result?.type !== "opened") return "closed";
+  if (result?.type !== "opened") return Promise.resolve("closed");
   const appState = options.appState ?? loadAppState();
-  if (appState === null) return "unconfirmed";
+  if (appState === null) return Promise.resolve("unconfirmed");
   const coverWaitMs = options.coverWaitMs ?? PAYMENT_PAGE_COVER_WAIT_MS;
 
   // Only these mean the page is covering the app. `unknown`, `extension` or a
@@ -80,7 +83,7 @@ export async function waitForPaymentPageClosed(
   const covering = (state: AppStateStatusLike | null | undefined) =>
     state === "background" || state === "inactive";
 
-  return await new Promise<PaymentPageReturn>((resolve) => {
+  return new Promise<PaymentPageReturn>((resolve) => {
     // Already backgrounded before we subscribed (the page opened fast): skip
     // straight to waiting for the return.
     let left = covering(appState.currentState);
