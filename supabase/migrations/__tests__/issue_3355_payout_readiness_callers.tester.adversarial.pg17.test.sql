@@ -31,7 +31,12 @@ INSERT INTO public.brands(id,account_id,name,slug,paystack_subaccount_code,defau
   ('33557000-0a70-4000-8000-0000000000b1','33557000-0a70-4000-8000-000000000001','T7 Ready','t7-3355-ready','ACCT_t73355','NGN'),
   ('33557000-0a70-4000-8000-0000000000b2','33557000-0a70-4000-8000-000000000001','T7 Not Ready','t7-3355-not-ready',NULL,'NGN'),
   ('33557000-0a70-4000-8000-0000000000b3','33557000-0a70-4000-8000-000000000001','T7 Deleted','t7-3355-deleted','ACCT_t7del','NGN');
+-- #4389: a brand with a payment account is soft-deleted only through the
+-- provider-closing path (guard issue_4389_guard_brand_delete_providers); the
+-- fixture takes that path's marker for this one row.
+SELECT set_config('mingla.brand_delete_via', 'issue_4389', true);
 UPDATE public.brands SET deleted_at = now() WHERE id = '33557000-0a70-4000-8000-0000000000b3';
+SELECT set_config('mingla.brand_delete_via', '', true);
 INSERT INTO public.brand_team_members(brand_id,user_id,role,accepted_at,removed_at) VALUES
   ('33557000-0a70-4000-8000-0000000000b1','33557000-0a70-4000-8000-000000000002','brand_admin',NULL,NULL),
   ('33557000-0a70-4000-8000-0000000000b1','33557000-0a70-4000-8000-000000000003','event_manager',now(),NULL),
