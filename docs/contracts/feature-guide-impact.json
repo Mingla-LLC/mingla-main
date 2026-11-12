@@ -802,7 +802,8 @@
         "mingla-admin/src/lib/ariQuality.js",
         "supabase/migrations/20280623113355_issue_3355_ari_memory_brand_voice.sql",
         "supabase/migrations/20280623123355_issue_3355_ari_quality_follow_up_runs.sql",
-        "supabase/migrations/20280623133355_issue_3355_flow_follow_up_never_cancels.sql"
+        "supabase/migrations/20280623133355_issue_3355_flow_follow_up_never_cancels.sql",
+        "supabase/migrations/20280627003355_issue_3355_scope_payout_readiness_to_members.sql"
       ]
     },
     {
