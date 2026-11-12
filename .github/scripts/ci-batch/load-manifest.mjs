@@ -246,7 +246,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389: re-sealed after registering the four #4389 migrations (renumbered 20280629*4389, above main's 20280626*4398) and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes, skipping the brand setup migration in the #1931 template replay, and merging origin/main 811c033211.
 // #4389: re-sealed after skipping the brand setup and Ari brand operation migrations in the #2117 pre-landing replay (they re-emit #2117-gated readers before #2117 lands there).
 // #4389: re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows) and renumbering the four #4389 migrations to 20280701*4389 (above main's 20280630004402).
-export const BOOTSTRAP_SHA256 = "a8808f13944bf75d6a4910a97d0344217a74d906c2d73620593ac395d39983d6";
+// #4402: re-sealed after registering the shared payee bank account migration (20280701904402) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes, and skipping it in the #1931 template replay.
+export const BOOTSTRAP_SHA256 = "11d6a01e8459833318a5306ae0a423117b2627b4c3c920d8f444e6709aa7b2d8";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
