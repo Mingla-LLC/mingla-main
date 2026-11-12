@@ -214,6 +214,51 @@ const NONE_READ = (codes: string[] = []): ClaimRecordsRead => ({
   checkedObjects: codes,
 });
 export const CASES: Case[] = [
+  // #3355 rework 8: the retest-8 shapes — a hedged present, a list line, a
+  // negated draft, Seth's write tie-break, and a plan kept as said.
+  {
+    group: "must_catch",
+    host: "Is Lagos Night Out published?",
+    intent: "question",
+    reply: "Your event should be live now.",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_catch",
+    host: "Are my events live?",
+    intent: "question",
+    reply:
+      "Here's where things stand:\n- Lagos Night Out: published\n- Abuja Brunch: published",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_catch",
+    host: "Is Lagos Night Out published?",
+    intent: "question",
+    reply: "Lagos Night Out is no longer a draft.",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_catch",
+    host: "Can you make a code for students?",
+    intent: "question",
+    reply: "Done! Your student discount is live.",
+    history: [...executed("create_discount", { code: "FAVY10" }, "c8")],
+  },
+  {
+    group: "must_keep",
+    host: "How do guests buy tickets?",
+    intent: "question",
+    reply: "Once you publish Lagos Night Out, guests can buy tickets.",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_keep",
+    host: "Can guests use FAVY10 now?",
+    intent: "question",
+    reply: "Yes, FAVY10 is live.",
+    history: [...executed("create_discount", { code: "FAVY10" }, "c9")],
+  },
   // #3355 rework 7: the retest-7 shapes — a status asserted in one clause
   // whatever another clause negates, dates or conditions; the obvious object
   // resolved; a true negative and a true mixed answer kept.
