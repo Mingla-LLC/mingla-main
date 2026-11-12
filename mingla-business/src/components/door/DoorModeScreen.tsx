@@ -130,6 +130,7 @@ import { TapStatusView } from "./tap/TapStatusView";
 import { TapToPayIcon } from "./tap/TapToPayIcon";
 import { tapSaleTone } from "./tap/tapSaleTone";
 import { formatTapAmount, useDoorModeTapSale } from "./useDoorModeTapSale";
+import { tapLocationReadyForSale } from "../../services/terminal/tapToPayIosLocation";
 
 export interface DoorModeScreenProps {
   eventId: string;
@@ -609,7 +610,8 @@ export const DoorModeScreen = ({
         };
         postHogService.capture("door_sale_tap_started", { ticket_count: ticketCount });
         // Setup and an iOS update are the Tap to Pay route's screens.
-        if (tapToPay.needsSetup || tapToPay.reason === "ios_update_required") handOff(draft);
+        // #4389 — location not answered (or refused) on iPhone: setup asks, never checkout.
+        if (tapToPay.needsSetup || tapToPay.reason === "ios_update_required" || !tapLocationReadyForSale()) handOff(draft);
         else tapCharge(draft, basketKey);
         return;
       }

@@ -55,6 +55,20 @@ export const tapReaderProblemCopy = (problem: TapReaderProblem, os: string): str
 
 export const tapReaderProblemTitle = (os: string): string => `${tapToPayName(os)} didn't start`;
 
+/** #4389 — Apple's onboarding pre-alert, shown in setup before the system prompt. */
+export const TAP_LOCATION_PREALERT_COPY = {
+  title: "Allow location for card payments",
+  body: "Tap to Pay on iPhone uses your location to confirm where payments are taken. We only check it when you take a payment.",
+  cta: "Continue",
+} as const;
+
+/** #4389 — location refused: setup says why and opens Settings; checkout never asks. */
+export const TAP_LOCATION_DENIED_COPY = {
+  title: "Location is off for Mingla Host",
+  body: "Tap to Pay on iPhone uses your location to confirm where payments are taken. Turn on Location for Mingla Host in Settings, then come back.",
+  cta: "Open Settings",
+} as const;
+
 export const TAP_ADMIN_ONLY_COPY = {
   title: "Ask an admin to turn this on",
   body: "A brand owner or admin needs to accept Apple's terms for Tap to Pay on iPhone. Ask them to open Account, then Tap to Pay on iPhone, in Mingla Host.",

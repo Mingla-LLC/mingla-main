@@ -198,6 +198,16 @@ jest.mock("../../../diagnostics/reportNonFatal", () => ({ reportNonFatal: jest.f
 jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: jest.fn() }, rpc: jest.fn() },
 }));
+let mockLocation: "granted" | "denied" | "not_determined" | "unavailable" = "unavailable";
+const mockRequestLocation = jest.fn(async () => mockLocation);
+jest.mock("../../../services/terminal/tapToPayIosLocation", () => ({
+  tapLocationStatus: () => mockLocation,
+  requestTapLocation: () => mockRequestLocation(),
+  tapLocationReadyForSale: (status?: string) => {
+    const st = status ?? mockLocation;
+    return st === "granted" || st === "unavailable";
+  },
+}));
 jest.mock("../tap/tapSetupTakePayment", () => ({
   loadHasDoorSaleEvent: jest.fn(async () => false),
   openDoorSaleFromTapSetup: jest.fn(async () => undefined),
@@ -263,6 +273,9 @@ beforeEach(() => {
   Object.defineProperty(Platform, "Version", { value: "18.1", configurable: true });
   mockRole = { rank: 60, isLoading: false };
   mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+  mockLocation = "unavailable";
+  mockRequestLocation.mockClear();
+  mockReplace.mockClear();
   resetTapToPaySessionForTests();
 });
 
@@ -367,5 +380,89 @@ describe("#4389 — 'On for this brand' offers Take a payment when an event is o
     });
     await settle();
     expect(door.openDoorSaleFromTapSetup).toHaveBeenCalledWith(expect.anything(), "brand-1");
+  });
+});
+
+describe("#4389 — Apple: location is asked in setup behind a pre-alert, never at checkout", () => {
+  test("L1: not asked yet → pre-alert before Apple's terms / the reader; Continue asks, then setup runs", async () => {
+    mockLocation = "not_determined";
+    const c = client();
+    updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    const tree = await mountSetup("event-1");
+    act(() => {
+      (pressables(tree.root, "tap-setup-start")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(textOf(tree.root)).toContain("Allow location for card payments");
+    expect(textOf(tree.root)).toContain(
+      "Tap to Pay on iPhone uses your location to confirm where payments are taken. We only check it when you take a payment.",
+    );
+    expect(c.ensureReaderConnected).not.toHaveBeenCalled();
+    expect(mockRequestLocation).not.toHaveBeenCalled();
+    mockRequestLocation.mockImplementationOnce(async () => {
+      mockLocation = "granted";
+      return "granted";
+    });
+    await act(async () => {
+      (pressables(tree.root, "tap-location-continue")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(mockRequestLocation).toHaveBeenCalledTimes(1);
+    expect(c.ensureReaderConnected).toHaveBeenCalledTimes(1);
+  });
+
+  test("L2: refused → setup explains and opens Settings; the reader never connects", async () => {
+    mockLocation = "not_determined";
+    const c = client();
+    updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    const tree = await mountSetup("event-1");
+    act(() => {
+      (pressables(tree.root, "tap-setup-start")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    mockRequestLocation.mockImplementationOnce(async () => "denied");
+    await act(async () => {
+      (pressables(tree.root, "tap-location-continue")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(textOf(tree.root)).toContain("Location is off for Mingla Host");
+    const { Linking } = jest.requireActual("react-native") as typeof import("react-native");
+    const open = jest.spyOn(Linking, "openSettings").mockResolvedValue(undefined);
+    act(() => {
+      (pressables(tree.root, "tap-location-open-settings")[0] as ReactTestInstance).props.onPress();
+    });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(c.ensureReaderConnected).not.toHaveBeenCalled();
+  });
+
+  test("L3: a sale with location not answered goes to setup and never starts (no prompt mid-checkout)", async () => {
+    mockLocation = "not_determined";
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    const c = client();
+    updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { TapToPaySaleScreen } = require("../tap/TapToPaySaleScreen") as typeof import("../tap/TapToPaySaleScreen");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { encodeTapToPayDraft } = require("../../../services/terminal/tapToPayDraft") as typeof import("../../../services/terminal/tapToPayDraft");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const edge = require("../../../services/terminal/doorTapEdge") as { createDoorTapIntent: jest.Mock };
+    edge.createDoorTapIntent.mockClear();
+    const draft = encodeTapToPayDraft({ lines: [{ ticketTypeId: "tier-1", quantity: 1 }], eventDateId: null, buyerPhone: null, phoneCountryIso: null } as never);
+    act(() => {
+      renderer.create(<TapToPaySaleScreen eventId="event-1" saleId="new" rawDraft={draft} />);
+    });
+    await settle();
+    expect(String(mockReplace.mock.calls[0]?.[0] ?? "")).toContain("/door/tap/setup");
+    expect(edge.createDoorTapIntent).not.toHaveBeenCalled();
+    expect(c.ensureReaderConnected).not.toHaveBeenCalled();
+  });
+
+  test("L4: Door mode's Charge and the warm-up are gated the same way", () => {
+    const fs = jest.requireActual("fs") as typeof import("fs");
+    const path = jest.requireActual("path") as typeof import("path");
+    const door = fs.readFileSync(path.join(__dirname, "../DoorModeScreen.tsx"), "utf8");
+    expect(door).toMatch(/!tapLocationReadyForSale\(\)\) handOff\(draft\)/);
+    const host = fs.readFileSync(path.join(__dirname, "../tap/TapToPayTerminalHost.tsx"), "utf8");
+    expect(host).toMatch(/Platform\.OS === "ios" && options\?\.warm === true && !tapLocationReadyForSale\(\)/);
   });
 });

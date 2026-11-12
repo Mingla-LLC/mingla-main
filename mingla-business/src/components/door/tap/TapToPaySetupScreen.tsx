@@ -19,7 +19,7 @@
  * red is kept for Apple's hard blocks (device banned, merchant blocked).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -35,10 +35,13 @@ import {
 } from "../../../constants/designSystem";
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 import { loadHasDoorSaleEvent, openDoorSaleFromTapSetup } from "./tapSetupTakePayment";
+import { requestTapLocation, tapLocationStatus } from "../../../services/terminal/tapToPayIosLocation";
 import {
   TAP_GET_HELP,
   TAP_ON_FOR_BRAND,
   TAP_DONE,
+  TAP_LOCATION_DENIED_COPY,
+  TAP_LOCATION_PREALERT_COPY,
   TAP_TAKE_PAYMENT,
   TAP_ADMIN_ONLY_COPY,
   TAP_APPLE_TERMS_ROW,
@@ -286,10 +289,60 @@ export const TapToPaySetupScreen = ({
       .catch((openError: unknown) => reportNonFatal("door-tap.setup-take-payment", openError));
   }, [brandId, router]);
 
+  // #4389 — Apple: location is asked here, behind our pre-alert, before Apple's
+  // terms and the reader connect; never in the checkout flow.
+  const [locationStep, setLocationStep] = useState<"ask" | "denied" | null>(null);
+  const locationGate = useCallback((): boolean => {
+    if (Platform.OS !== "ios") return true;
+    const status = tapLocationStatus();
+    if (status === "not_determined") {
+      setLocationStep("ask");
+      return false;
+    }
+    if (status === "denied") {
+      setLocationStep("denied");
+      return false;
+    }
+    return true;
+  }, []);
+
   const startHostSetup = useCallback((): void => {
     setHostAttempted(true);
+    if (!locationGate()) return;
     void runSetup(mayAcceptTerms);
-  }, [runSetup, mayAcceptTerms]);
+  }, [runSetup, mayAcceptTerms, locationGate]);
+
+  const continueFromLocation = useCallback(async (): Promise<void> => {
+    const status = await requestTapLocation().catch((locationError: unknown) => {
+      reportNonFatal("door-tap.setup-location", locationError);
+      return "unavailable" as const;
+    });
+    if (status === "denied") {
+      setLocationStep("denied");
+      return;
+    }
+    setLocationStep(null);
+    if (availability.available && !availability.needsSetup) {
+      // Already set up here: only location was missing. A waiting sale carries on.
+      if (draft !== null && eventId !== null) {
+        // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
+        router.replace(
+          `/event/${eventId}/door/tap/new?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
+        );
+      }
+      return;
+    }
+    void runSetup(mayAcceptTerms);
+  }, [runSetup, mayAcceptTerms, availability.available, availability.needsSetup, draft, eventId, router]);
+
+  // A phone already set up (a sale sent here because location was never
+  // answered): the pre-alert comes first, without the setup button.
+  const locationCheckedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (locationCheckedRef.current || !availability.available || availability.needsSetup) return;
+    locationCheckedRef.current = true;
+    locationGate();
+  }, [availability.available, availability.needsSetup, locationGate]);
 
   // Someone who may not accept the terms never gets a setup button, but an admin
   // may already have accepted them. Apple only answers when asked, so ask once,
@@ -335,7 +388,7 @@ export const TapToPaySetupScreen = ({
   // the screen stays on "Getting ready": Apple's answer flips to accepted the
   // moment the reader connects, and "On for this brand" + Done used to show
   // before How to Tap, so Done left first and the guide then opened over F4.
-  if (settingsGuideOnly && !busy) {
+  if (settingsGuideOnly && !busy && locationStep === null) {
     // #4389 — "On for this brand" ends with a clear way out (back to F4, Home
     // or Settings, wherever the host came from), not only the back arrow.
     body = (
@@ -420,6 +473,35 @@ export const TapToPaySetupScreen = ({
         }
         onHelp={openHelp}
         testID="tap-setup-admin-only"
+      />
+    );
+  } else if (locationStep === "ask") {
+    body = (
+      <TapStatusView
+        tone="neutral"
+        icon="location"
+        title={TAP_LOCATION_PREALERT_COPY.title}
+        body={TAP_LOCATION_PREALERT_COPY.body}
+        primary={{ label: TAP_LOCATION_PREALERT_COPY.cta, onPress: () => void continueFromLocation(), testID: "tap-location-continue" }}
+        testID="tap-location-prealert"
+      />
+    );
+  } else if (locationStep === "denied") {
+    body = (
+      <TapStatusView
+        tone="neutral"
+        icon="location"
+        title={TAP_LOCATION_DENIED_COPY.title}
+        body={TAP_LOCATION_DENIED_COPY.body}
+        primary={{
+          label: TAP_LOCATION_DENIED_COPY.cta,
+          onPress: () => {
+            void Linking.openSettings().catch((settingsError: unknown) => reportNonFatal("door-tap.open-settings", settingsError));
+          },
+          testID: "tap-location-open-settings",
+        }}
+        onHelp={openHelp}
+        testID="tap-location-denied"
       />
     );
   } else if (busy || terminal.config.installing) {

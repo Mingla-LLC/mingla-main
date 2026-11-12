@@ -83,6 +83,7 @@ import { DoorStatusPill } from "../DoorStatusPill";
 import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
 import { TapNotReady, TapStatusView, type TapStatusAction } from "./TapStatusView";
 import { TAP_SAVE_FAILED_PAID_LINE, tapSaleTone } from "./tapSaleTone";
+import { tapLocationReadyForSale } from "../../../services/terminal/tapToPayIosLocation";
 import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
 import { TapConfiguringView } from "./TapConfiguringView";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
@@ -115,6 +116,8 @@ export const TapToPaySaleScreen = ({
     brand: route.brand,
     currency: route.event?.currency ?? route.brand?.defaultCurrency ?? null,
   });
+  // #4389 — Apple: never a location prompt mid-checkout; setup asks first.
+  const locationReady = useMemo(() => tapLocationReadyForSale(), []);
   const terminal = useTapToPayTerminal();
   const [state, setState] = useState<TapSaleState>({ kind: "idle" });
   const [payCodeBusy, setPayCodeBusy] = useState<boolean>(false);
@@ -155,14 +158,16 @@ export const TapToPaySaleScreen = ({
     if (
       draft !== null &&
       availability.available &&
-      ((availability.needsSetup && availability.checking !== true) || state.kind === "needs_setup")
+      ((availability.needsSetup && availability.checking !== true) ||
+        state.kind === "needs_setup" ||
+        !locationReady)
     ) {
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(
         `/event/${eventId}/door/tap/setup?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
       );
     }
-  }, [draft, availability.available, availability.needsSetup, availability.checking, state.kind, router, eventId]);
+  }, [draft, availability.available, availability.needsSetup, availability.checking, state.kind, locationReady, router, eventId]);
 
   // Start the sale once the reader session is ready.
   useEffect(() => {
@@ -171,6 +176,7 @@ export const TapToPaySaleScreen = ({
       !availability.available ||
       availability.reason === "ios_update_required" ||
       availability.needsSetup ||
+      !locationReady ||
       terminal.status !== "ready" ||
       terminal.client === null ||
       flowRef.current !== null
@@ -202,7 +208,7 @@ export const TapToPaySaleScreen = ({
     });
     flowRef.current = flow;
     void flow.start();
-  }, [draft, availability.available, availability.needsSetup, terminal.status, terminal.client, eventId, queryClient]);
+  }, [draft, availability.available, availability.needsSetup, locationReady, terminal.status, terminal.client, eventId, queryClient]);
 
   // A phone that slept on the ready screen: the flow rechecks the intent's age.
   useEffect(() => {
