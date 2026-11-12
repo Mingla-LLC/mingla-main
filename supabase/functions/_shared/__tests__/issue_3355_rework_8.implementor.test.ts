@@ -311,6 +311,27 @@ Deno.test("R8-1 / R8-6: a plan, a condition or a how-to about a status kind is k
       assertEquals(out, reply, `${JSON.stringify(judge)}: ${reply}`);
     }
   }
+  // A plan about a LIVE event, or with the status read down, is kept too
+  // (it asserts nothing about the row).
+  const livePlan = "When Abuja Brunch is published, guests can buy tickets.";
+  for (const tables of [EV, { events: "error" as const }]) {
+    for (
+      const judge of JUDGES(
+        claim(livePlan, "published", "event", "Abuja Brunch"),
+      )
+    ) {
+      assertEquals(
+        await run({
+          host: "How do guests buy?",
+          reply: livePlan,
+          tables,
+          claims: judge,
+        }),
+        livePlan,
+        `${JSON.stringify(judge)} ${JSON.stringify(tables).slice(0, 20)}`,
+      );
+    }
+  }
   const event = new Set<AriClaimKind>(["event"]);
   assertEquals(
     statusAssertion(
