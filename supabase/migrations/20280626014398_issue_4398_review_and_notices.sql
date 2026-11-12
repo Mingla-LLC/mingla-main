@@ -167,7 +167,9 @@ ALTER TABLE public.ops_work_events ADD CONSTRAINT ops_work_events_action_check C
 -- C3. The backstop: no close without the watcher's confirm.
 -- ---------------------------------------------------------------------------
 -- INVARIANT ops-card-review-before-done: an open card becomes Done only by
--- its watcher's confirm (or the watcher's own close), a system close proven
+-- its watcher's confirm (or the watcher's own close; the close functions set
+-- ops.review_confirmed to that card's id, and a direct table write, which
+-- no client can make, sets ops.review_confirmed = on), a system close proven
 -- by data (closed_via = 'system'), closing with its closed parent, or a plan
 -- step ticked through its card's plan. Gate: ops_4398_review_guard.
 -- Test: supabase/migrations/__tests__/issue_4398_work_board_v3.implementor.pg17.test.sql
@@ -178,7 +180,7 @@ DECLARE v_review uuid := public.ops_review_status_id();
 BEGIN
   IF NEW.status = 'done' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'done') THEN
     IF NEW.closed_via = 'system'
-       OR COALESCE(current_setting('ops.review_confirmed', true), '') = NEW.id::text
+       OR COALESCE(current_setting('ops.review_confirmed', true), '') IN (NEW.id::text, 'on')
        OR (NEW.plan_step IS NOT NULL AND (TG_OP = 'INSERT' OR COALESCE(current_setting('ops.plan_sync', true), '') = 'on'))
        OR (NEW.parent_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.ops_work_cards p WHERE p.id = NEW.parent_id AND p.status = 'done')) THEN
       IF COALESCE(current_setting('ops.review_confirmed', true), '') = NEW.id::text THEN
@@ -419,7 +421,7 @@ DECLARE c public.ops_work_cards := p_card; n public.ops_work_cards; v_watcher te
         v_today date := public.ops_today(NULL);
 BEGIN
   IF p_via IS NULL AND p_actor = v_watcher THEN
-    PERFORM set_config('ops.review_confirmed', c.id::text, true);
+    IF COALESCE(current_setting('ops.review_confirmed', true), '') <> 'on' THEN PERFORM set_config('ops.review_confirmed', c.id::text, true); END IF;
     PERFORM set_config('ops.review_confirmer', p_actor, true);
     RETURN NULL;
   END IF;
@@ -506,7 +508,7 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
   v_name := public.ops_name(v.actor_email);
-  PERFORM set_config('ops.review_confirmed', c.id::text, true);
+  IF COALESCE(current_setting('ops.review_confirmed', true), '') <> 'on' THEN PERFORM set_config('ops.review_confirmed', c.id::text, true); END IF;
   PERFORM set_config('ops.review_confirmer', v.actor_email, true);
   IF c.review_close_children THEN PERFORM set_config('ops.close_children', 'on', true); END IF;
   v_before := public.ops_card_snapshot(c.id);
@@ -2768,7 +2770,7 @@ BEGIN
   -- #4398 (C): undo puts back a close that was already the watcher's (undoing
   -- a reopen), so it is not a new close to review.
   IF r.status = 'done' AND c.status <> 'done' THEN
-    PERFORM set_config('ops.review_confirmed', c.id::text, true);
+    IF COALESCE(current_setting('ops.review_confirmed', true), '') <> 'on' THEN PERFORM set_config('ops.review_confirmed', c.id::text, true); END IF;
     PERFORM set_config('ops.review_confirmer', COALESCE(r.confirmed_by, ''), true);
   END IF;
   BEGIN
