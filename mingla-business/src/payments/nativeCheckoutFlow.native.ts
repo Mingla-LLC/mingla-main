@@ -409,24 +409,25 @@ async function pollPaystackOrder(
 async function revalidateHeldHandoff(
   eventId: string,
   handoff: HeldPaystackHandoff,
+  generation: number,
 ): Promise<NativeCheckoutOutcome | null> {
   const reading = await readCheckoutStatusOnce(
     handoff.checkoutSessionId,
     handoff.buyerStatusToken,
   );
   if (reading.kind === "finalized") {
-    clearHeldHandoff(eventId);
+    clearHeldHandoff(eventId, generation);
     return { outcome: "succeeded", orderId: reading.orderId };
   }
   if (reading.kind === "refused") {
-    clearHeldHandoff(eventId);
+    clearHeldHandoff(eventId, generation);
     return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   if (
     reading.kind === "terminal" &&
     reading.code === "paystack_payment_mismatch"
   ) {
-    clearHeldHandoff(eventId);
+    clearHeldHandoff(eventId, generation);
     return { outcome: "failed", message: paystackReturnMessage(reading.code) };
   }
   // No usable answer: the preflight checks admission, not payment, so it
@@ -459,10 +460,17 @@ async function revalidateHeldHandoff(
   const status =
     (preflight.error as { context?: { status?: number } } | null)?.context
       ?.status ?? null;
-  if (status === 409 || status === 403 || status === 404) {
-    // The sale is no longer admitted for this session (or the session is not
-    // this buyer's). The buyer has not paid into it: say the sale is gone.
-    clearHeldHandoff(eventId);
+  if (status === 403 || status === 404) {
+    // The session is gone or is not this buyer's: the page is spent.
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "failed", message: CHECKOUT_UNAVAILABLE_MESSAGE };
+  }
+  if (status === 409) {
+    // Not admitted right now. The server answers the same 409 for a sale the
+    // organiser paused or cancelled AND for a database hiccup in the admission
+    // check, so the page is NOT dropped: dropping a still-payable page would
+    // leave the next tap stuck on `checkout_in_progress`. It is not opened
+    // either; every later tap re-checks before opening.
     return { outcome: "failed", message: CHECKOUT_UNAVAILABLE_MESSAGE };
   }
   return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
@@ -477,6 +485,7 @@ async function revalidateHeldHandoff(
 async function followPaystackHandoff(
   eventId: string,
   handoff: HeldPaystackHandoff,
+  generation: number,
 ): Promise<NativeCheckoutOutcome> {
   let opened: WebBrowser.WebBrowserResult;
   try {
@@ -517,18 +526,18 @@ async function followPaystackHandoff(
     handoff.buyerStatusToken,
   );
   if (poll.kind === "finalized") {
-    clearHeldHandoff(eventId);
+    clearHeldHandoff(eventId, generation);
     return { outcome: "succeeded", orderId: poll.orderId };
   }
   if (poll.kind === "refused") {
     // Reopening the page would ask the buyer to pay into a refused sale.
-    clearHeldHandoff(eventId);
+    clearHeldHandoff(eventId, generation);
     return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   if (poll.kind === "terminal" && poll.code === "paystack_payment_mismatch") {
     // Money moved and the server already failed the session: reopening the
     // page would invite a second payment.
-    clearHeldHandoff(eventId);
+    clearHeldHandoff(eventId, generation);
     return { outcome: "failed", message: paystackReturnMessage(poll.code) };
   }
   // The page is DELIBERATELY kept on the remaining arms (#2264). An abandoned
@@ -736,12 +745,20 @@ export const useNativeCheckoutFlow = (): ((
     const generation = handoffGeneration();
     const heldForCart = readHeldHandoff(input.eventId, fingerprint);
     if (heldForCart !== null) {
-      const refused = await revalidateHeldHandoff(input.eventId, heldForCart);
+      const refused = await revalidateHeldHandoff(
+        input.eventId,
+        heldForCart,
+        generation,
+      );
       // Signed out while we were checking: whatever the check found (even a
       // finalized order) belongs to that session, never to whoever is here now.
       if (handoffGeneration() !== generation) return { outcome: "canceled" };
       if (refused !== null) return refused;
-      return await followPaystackHandoff(input.eventId, heldForCart);
+      return await followPaystackHandoff(
+        input.eventId,
+        heldForCart,
+        generation,
+      );
     }
 
     // Taken BEFORE the create: the server starts the session's 15 minutes when
@@ -782,7 +799,7 @@ export const useNativeCheckoutFlow = (): ((
     if (data.kind === "free_completed") {
       // issue #3281 (bundle 6b) — this event is bought: an older cart's held
       // Paystack page is spent too (Explorer parity).
-      clearHeldHandoff(input.eventId);
+      clearHeldHandoff(input.eventId, generation);
       return { outcome: "succeeded", orderId: data.orderId };
     }
 
@@ -899,7 +916,7 @@ export const useNativeCheckoutFlow = (): ((
       // produce the order row asynchronously; we surface the checkoutSessionId
       // here so the caller can navigate to a confirmation surface that polls
       // for the finalized order.
-      clearHeldHandoff(input.eventId); // #3281 6b — Explorer parity
+      clearHeldHandoff(input.eventId, generation); // #3281 6b — Explorer parity
       return { outcome: "succeeded", orderId: data.checkoutSessionId };
     }
 
@@ -919,7 +936,7 @@ export const useNativeCheckoutFlow = (): ((
         cachedAt: requestedAt,
       };
       holdHandoff(input.eventId, handoff);
-      return await followPaystackHandoff(input.eventId, handoff);
+      return await followPaystackHandoff(input.eventId, handoff, generation);
     }
 
     // 2d. Web redirect from a native client is a server/client mismatch

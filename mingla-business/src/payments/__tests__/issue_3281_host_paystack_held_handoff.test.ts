@@ -513,7 +513,6 @@ describe("#3281 6b — a held page is re-checked before it is reopened", () => {
   });
 
   it.each([
-    ["paused or cancelled (409)", 409],
     ["no longer this buyer's (403)", 403],
     ["gone (404)", 404],
   ])(
@@ -600,6 +599,28 @@ describe("#3281 6b — a held page is re-checked before it is reopened", () => {
     expect(openBrowserAsync).toHaveBeenCalledTimes(2);
   });
 
+  it("a preflight 409 (paused, cancelled, or a server hiccup) is not reopened, but the page is kept", async () => {
+    await pay(v2Input());
+    preflightAnswer = () => http(409, { error: "checkout_unavailable" });
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: UNAVAILABLE,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+
+    // The same 409 also covers a database hiccup, so a later tap re-checks
+    // and, once admitted, reopens the SAME page rather than creating again.
+    preflightAnswer = () => ({
+      data: { status: "present_allowed" },
+      error: null,
+    });
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+    expect(openBrowserAsync.mock.calls[1][0]).toBe(
+      "https://checkout.paystack.test/page-1",
+    );
+  });
+
   it("an order that already finalized is returned, not reopened", async () => {
     statusAnswers = [abandoned, finalized];
     await pay(v2Input());
@@ -658,6 +679,40 @@ describe("#3281 6b — signing out mid-checkout", () => {
     expect(await pay(v2Input())).toEqual({ outcome: "canceled" });
     expect(reads).toBe(1);
     expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("a check from before a sign-out never deletes the next account's page", async () => {
+    // Account A holds a page and taps Pay again; its status read is slow.
+    await pay(v2Input());
+    let releaseA: (answer: unknown) => void = () => undefined;
+    const slowRead = new Promise((resolve) => {
+      releaseA = resolve;
+    });
+    invoke.mockImplementationOnce(async () => slowRead);
+    const pendingA = pay(v2Input());
+
+    // A signs out; B signs in and is given a page for the same event.
+    clearAllStores();
+    const accountB = v2Input({
+      checkoutAttemptId: ATTEMPT_2,
+      buyer: {
+        name: "Bo Guest",
+        email: "bo@example.test",
+        phone: "+2348000000002",
+      },
+    });
+    await pay(accountB);
+
+    // A's stale check now finds A's session refused.
+    releaseA(http(409, { error: "checkout_unavailable" }));
+    expect(await pendingA).toEqual({ outcome: "canceled" });
+
+    // B's page survived: tapping Pay again reopens it with no new create.
+    await pay(accountB);
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+    expect(openBrowserAsync.mock.calls.at(-1)?.[0]).toBe(
+      "https://checkout.paystack.test/page-2",
+    );
   });
 
   it("a sign-out during the re-check never reopens the old account's page", async () => {

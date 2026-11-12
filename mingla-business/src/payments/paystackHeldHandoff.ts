@@ -83,9 +83,16 @@ export const holdHandoff = (
 
 /**
  * The event was bought, or a sale on it was refused: every page held for it
- * is spent.
+ * is spent. `sinceGeneration` is the sign-out generation the caller captured
+ * before its network calls.
  */
-export const clearHeldHandoff = (eventId: string): void => {
+export const clearHeldHandoff = (
+  eventId: string,
+  sinceGeneration: number,
+): void => {
+  // A check that started before a sign-out must never delete a page the next
+  // account has since been given for the same event.
+  if (sinceGeneration !== generation) return;
   held.delete(eventId);
 };
 
