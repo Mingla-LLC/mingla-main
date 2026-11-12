@@ -3596,7 +3596,7 @@ export function completionClaimWithoutProposal(args: {
 // ── #3355 rework 9 (fix 1): a memory claim needs this turn's memory save ────
 
 /**
- * MINGLA-INVARIANT: I-ARI-MEMORY-CLAIM-NEEDS-SAVE | issue #3355 | A reply that says Ari saved, noted or will remember something ("I remember that…", "I've saved that", "I'll keep that in mind", "Noted!") with no successful remember_note / save_memory_note in the same turn is corrected to "I haven't saved that yet — want me to remember it?", whatever the AI judge did (listed it, timed out or failed); the agent loop first sends it back once so the model can call the tool. Recalling a note the host already has (a note read backs the words) is never corrected (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts).
+ * MINGLA-INVARIANT: I-ARI-MEMORY-CLAIM-NEEDS-SAVE | issue #3355 | A reply that says Ari saved, noted or will remember something ("I remember that…", "I've saved that", "I'll keep that in mind", "Noted!") with no successful remember_note / save_memory_note in the same turn is corrected to "I haven't saved that yet — want me to remember it?", whatever the AI judge did (listed it, timed out or failed); the agent loop first sends it back once so the model can call the tool. Rework 10 adds the shapes that present a new fact as kept brand memory: a memory-label line ("Preference: …", "Fact: …", "Correction: …") that files the host's new fact, and keep-for-later promises ("noted for your brand", "added to what I know", "I'll keep in mind…", "I'll use that next time"). Recalling a note the host already has (a note read backs the words, including a memory read of this turn), quoting the host, a plain "Got it" and explaining the memory feature are never corrected (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts and issue_3355_rework_10.implementor.test.ts).
  */
 export const ARI_MEMORY_WRITE_TOOLS: ReadonlySet<string> = new Set([
   "remember_note",
@@ -3658,13 +3658,101 @@ const MEMORY_CLAIM_ON_REQUEST = new RegExp(
 const MEMORY_RECALL_WORDS =
   /\b(?:you\s+(?:told|said|mentioned|asked)\s+me|you(?:['’]ve|\s+have)\s+(?:told|said|mentioned)|from\s+(?:your|my)\s+(?:notes|memory)|in\s+your\s+notes|as\s+you\s+(?:said|mentioned|noted))\b/i;
 
+/**
+ * #3355 rework 10 (fix 1 extended): a line that files a fact the way a saved
+ * note reads ("Preference: …", "- **Fact:** …", "Correction — …").
+ */
+const MEMORY_LABEL_LINE =
+  /^\s*(?:(?:\d+[.)]|[-•*])\s+)?(?:(?:(?:brand|business)\s+)?(?:preference|fact|correction|memory)s?|(?:brand|saved|memory)\s+notes?)\s*(?::|—|–)\s*(\S.*)$/i;
+
+/** Words that present a fact as kept for later, on any turn (rework 10). */
+const MEMORY_PERSIST_PROMISE = new RegExp(
+  [
+    // "Noted for your brand", "remembered in your brand", "kept on your brand".
+    String
+      .raw`\b(?:noted|remembered|kept|filed|logged|saved|stored)\s+(?:that\s+|this\s+|it\s+)?(?:down\s+)?(?:for|in|on|against|under)\s+(?:your|the)\s+brand(?:['’]s)?(?:\s+(?:memory|notes|profile))?\b`,
+    // "Added to what I know", "that's now part of what I know".
+    String
+      .raw`\b(?:added|saved|stored|filed)\s+(?:that\s+|this\s+|it\s+)?(?:to|into)\s+(?:what\s+I\s+know|my\s+(?:brand\s+)?(?:knowledge|notes\s+on\s+you))\b`,
+    String
+      .raw`\b(?:that|this|it)(?:['’]s|\s+is)\s+(?:now\s+)?part\s+of\s+what\s+I\s+know\b`,
+    String
+      .raw`\bI\s+(?:now\s+)?know\s+(?:that|this)\s+(?:now|for\s+next\s+time|going\s+forward|from\s+now\s+on)\b`,
+    // "I'll keep in mind that…".
+    String
+      .raw`\bI(?:['’]ll|\s+will)\s+(?:always\s+|definitely\s+|now\s+|also\s+)?(?:keep|bear)\s+in\s+mind\b`,
+    // "Got it, I'll use that next time", "I'll apply it going forward".
+    String
+      .raw`\bI(?:['’]ll|\s+will)\s+(?:\w+\s+){0,2}?(?:use|apply|follow|include|factor|suggest|default\s+to|go\s+with|stick\s+(?:to|with)|keep\s+using|plan\s+(?:around|for)|remember)\b[^.!?\n]{0,60}?\b(?:next\s+time|going\s+forward|from\s+now\s+on|in\s+(?:the\s+)?future|every\s+time|each\s+time|for\s+future\s+\w+|for\s+(?:all\s+)?(?:your\s+)?(?:next|future|upcoming)\s+\w+)\b`,
+    // "Going forward, I'll…", "Next time you plan a brunch, I'll…".
+    String
+      .raw`\b(?:next\s+time|going\s+forward|from\s+now\s+on|in\s+(?:the\s+)?future)\b[^.!?\n]{0,50}?,?\s+I(?:['’]ll|\s+will)\b`,
+  ].join("|"),
+  "i",
+);
+
+/**
+ * How the memory feature works in general ("When you ask me to remember
+ * something…", "I can remember preferences", "You can ask me to…"): an
+ * explanation, never a claim about this fact (rework 10).
+ */
+const MEMORY_EXPLAINER =
+  /\b(?:(?:if|when|whenever|once)\s+you\s+(?:ask|tell|want|let)\s+me\b|you\s+can\s+(?:ask|tell|have)\s+me\b|(?:I|Ari)\s+can\s+(?:remember|save|keep|store|note|learn)\b|(?:my|Ari['’]s|the)\s+memory\s+(?:feature|lets|works|keeps|is)\b|(?:for\s+example|e\.g\.|such\s+as)\b)/i;
+
+/** Ari quotes the host ("You said: …"): their words, not a save claim. */
+const QUOTES_HOST =
+  /\byou\s+(?:said|wrote|typed|asked|told\s+me|mentioned)\b|^\s*>/i;
+
+/** The sentence with its quoted parts removed (a quote is not Ari's claim). */
+function withoutQuotes(text: string): string {
+  return text.replace(/"[^"\n]*"|“[^”\n]*”/g, " ");
+}
+
+/** Content words of the label line the host's own message also has. */
+function restatesHost(content: string, hostMessage: string): boolean {
+  const words = [...new Set(noteWords(content))];
+  if (words.length === 0) return false;
+  const host = new Set(noteWords(hostMessage));
+  const shared = words.filter((word) => host.has(word)).length;
+  return shared >= Math.min(3, words.length) &&
+    shared / words.length >= 0.5;
+}
+
+/**
+ * #3355 rework 10: the new shapes — a memory-label line ("Preference: …")
+ * that files the host's new fact (its content may say "not": it is the
+ * fact), or a keep-for-later promise ("noted for your brand", "I'll use that
+ * next time"). Explanations of the memory feature and quotes of the host
+ * never count.
+ */
+function labelFilesMemory(
+  plain: string,
+  hostAsked: boolean,
+  hostMessage: string,
+): boolean {
+  if (MEMORY_EXPLAINER.test(plain) || QUOTES_HOST.test(plain)) return false;
+  const label = plain.match(MEMORY_LABEL_LINE);
+  if (!label) return false;
+  const content = label[1].trim();
+  // The host's own words in quotes are a quote, not a filed note.
+  if (/^["“]/.test(content)) return false;
+  return hostAsked || restatesHost(content, hostMessage);
+}
+
+function promiseKeepsMemory(plain: string): boolean {
+  if (MEMORY_EXPLAINER.test(plain)) return false;
+  return MEMORY_PERSIST_PROMISE.test(withoutQuotes(plain));
+}
+
 /** One sentence claims Ari saved or will remember something. */
 export function sentenceClaimsMemorySave(
   sentence: string,
   hostAsked: boolean,
+  hostMessage = "",
 ): boolean {
   const plain = sentence.replace(/[*_`]/g, "").trim();
   if (!plain || /\?\s*$/.test(plain)) return false;
+  if (labelFilesMemory(plain, hostAsked, hostMessage)) return true;
   if (
     /\b(?:haven['’]?t|hasn['’]?t|didn['’]?t|not|never|couldn['’]?t|can['’]?t|cannot|won['’]?t|unable)\b/i
       .test(plain) && !/\bnot\s+forget\b/i.test(plain)
@@ -3673,7 +3761,18 @@ export function sentenceClaimsMemorySave(
   }
   if (MEMORY_RECALL_WORDS.test(plain)) return false;
   if (MEMORY_CLAIM_STRONG.test(plain)) return true;
-  return hostAsked && MEMORY_CLAIM_ON_REQUEST.test(plain);
+  if (hostAsked && MEMORY_CLAIM_ON_REQUEST.test(plain)) return true;
+  return promiseKeepsMemory(plain);
+}
+
+/** Every sentence of the reply that claims a memory save. */
+function memoryClaimSentences(text: string, hostMessage: string): string[] {
+  const hostAsked = hostAsksToRemember(hostMessage);
+  return String(text ?? "").split("\n").flatMap((line) =>
+    lineSentences(line).filter((sentence) =>
+      sentenceClaimsMemorySave(sentence, hostAsked, hostMessage)
+    )
+  );
 }
 
 /** The reply claims a memory save somewhere. */
@@ -3681,12 +3780,7 @@ export function replyClaimsMemorySave(
   text: string,
   hostMessage: string,
 ): boolean {
-  const hostAsked = hostAsksToRemember(hostMessage);
-  return String(text ?? "").split("\n").some((line) =>
-    lineSentences(line).some((sentence) =>
-      sentenceClaimsMemorySave(sentence, hostAsked)
-    )
-  );
+  return memoryClaimSentences(text, hostMessage).length > 0;
 }
 
 /** A memory write of this turn succeeded (its receipt). */
@@ -3768,9 +3862,11 @@ export function correctMemoryClaimWithoutSave(args: {
   const hostAsked = hostAsksToRemember(args.hostMessage);
   const notes = [
     ...(args.memoryNotes ?? []),
-    // Notes a records read of this chat found (kind note, not this turn's).
-    ...args.evidence.filter((item) => item.kind === "note" && !item.thisTurn)
-      .flatMap((item) => item.objects),
+    // Notes a records read of this chat found (kind note, not this turn's),
+    // and (rework 10) the notes a memory read of this turn returned.
+    ...args.evidence.filter((item) =>
+      item.kind === "note" && (!item.thisTurn || item.status === "read")
+    ).flatMap((item) => item.objects),
   ];
   const corrected: string[] = [];
   let said = false;
@@ -3784,13 +3880,19 @@ export function correctMemoryClaimWithoutSave(args: {
     for (const sentence of lineSentences(line)) {
       // On a remember request the ordinary note true state ("I haven't
       // saved that as a note yet.") says the same thing: one wording.
-      if (hostAsked && NOTE_TRUE_STATES.has(sentence.trim())) {
+      if (
+        hostAsked &&
+        NOTE_TRUE_STATES.has(
+          // Rework 10: the true state may sit on a list line ("- …").
+          sentence.trim().replace(/^(?:\d+[.)]|[-•*])\s+/, ""),
+        )
+      ) {
         if (!said) parts.push(MEMORY_NOT_SAVED_SENTENCE);
         said = true;
         continue;
       }
       if (
-        sentenceClaimsMemorySave(sentence, hostAsked) &&
+        sentenceClaimsMemorySave(sentence, hostAsked, args.hostMessage) &&
         !(notes.length > 0 && recallsKnownNote(sentence, notes))
       ) {
         corrected.push(sentence.trim());
@@ -3822,11 +3924,24 @@ export function memoryClaimWithoutSave(args: {
   hostMessage: string;
   observations: readonly ClaimObservation[];
 }): { code: "MEMORY_SAVE_REQUIRED"; message: string } | null {
-  if (!replyClaimsMemorySave(args.text, args.hostMessage)) return null;
+  const claims = memoryClaimSentences(args.text, args.hostMessage);
+  if (claims.length === 0) return null;
   const saved = args.observations.some((item) =>
     !item.error && ARI_MEMORY_WRITE_TOOLS.has(item.tool)
   );
   if (saved) return null;
+  // Rework 10: reading back notes a memory read of this turn returned.
+  const readNotes: string[] = [];
+  for (const item of args.observations) {
+    if (item.error || item.tool !== "list_memory_notes") continue;
+    const rows: ReadRow[] = [];
+    rowsInResult(item.result, rows, new Date());
+    for (const row of rows) readNotes.push(...row.names);
+  }
+  if (
+    readNotes.length > 0 &&
+    claims.every((sentence) => recallsKnownNote(sentence, readNotes))
+  ) return null;
   return {
     code: "MEMORY_SAVE_REQUIRED",
     message:
