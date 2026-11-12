@@ -230,6 +230,7 @@
         "app-mobile/src/components/profile/CreatorProgramsSection.tsx",
         "app-mobile/src/components/profile/PublicCreatorSection.tsx",
         "app-mobile/src/components/programs/CreatorMediaPlayerModal.tsx",
+        "app-mobile/src/components/wallet/PayoutConnect.tsx",
         "app-mobile/src/services/creatorGigsService.ts",
         "app-mobile/src/services/creatorProgramService.ts",
         "app-mobile/src/services/localProgramService.ts",
@@ -268,6 +269,7 @@
         "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
         "supabase/migrations/20280221004216_issue_4216_creator_rights.sql",
         "supabase/migrations/20280630004402_issue_4402_creator_identity_without_host_account.sql",
+        "supabase/migrations/20280701904402_issue_4402_payee_shared_bank_account.sql",
         "mingla-marketing/app/creators/page.tsx",
         "mingla-marketing/app/locals/page.tsx"
       ]
