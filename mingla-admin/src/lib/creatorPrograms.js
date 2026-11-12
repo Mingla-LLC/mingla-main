@@ -190,7 +190,7 @@ export function creatorFlagGroups(flags) {
       continue;
     }
     if (flag.startsWith("handle_review:")) {
-      needsPerson.push(`${platformWord(flag.slice("handle_review:".length))} couldn't be checked automatically`);
+      needsPerson.push(`${platformWord(flag.slice("handle_review:".length))} waiting for your review`);
     } else {
       missing.push(MISSING_WORDS[flag] ?? FLAG_WORDS[flag] ?? sentenceFromKey(flag));
     }
@@ -274,58 +274,48 @@ export function bandWord(band) {
   return band ? (BAND_WORDS[band] ?? sentenceFromKey(band)) : "Not given";
 }
 
-/** The band a follower count falls in (same boundaries as the edge function). */
-export function bandForCount(count) {
-  const n = Number(count);
-  if (!Number.isFinite(n) || n < 0) return null;
-  if (n < 1_000) return "lt1k";
-  if (n < 10_000) return "1k_10k";
-  if (n < 50_000) return "10k_50k";
-  if (n < 250_000) return "50k_250k";
-  if (n < 1_000_000) return "250k_1m";
-  return "gt1m";
-}
-
+// What our bio-code check last saw: evidence for the reviewer, never a verdict
+// (Seth, 12 Nov 2026: a person at Mingla verifies every handle).
+const CHECK_EVIDENCE_WORDS = {
+  code_seen: "our check saw the bio code",
+  code_not_seen: "our check didn't see the bio code",
+  unreadable: "our check couldn't read the profile",
+  expired: "the bio code expired",
+};
 const REVIEW_REASON_WORDS = {
-  provider_unreadable: "couldn't read the profile from our server",
-  provider_fetch_blocked: "blocked our check",
+  provider_fetch_blocked: "the platform blocked our check",
   handle_conflict: "this handle is claimed by another creator",
 };
+
+/** What the bio-code check saw, as a short line, or null before any check. */
+export function handleEvidence(handle) {
+  if (!handle) return null;
+  if (handle.review_reason && REVIEW_REASON_WORDS[handle.review_reason]) return REVIEW_REASON_WORDS[handle.review_reason];
+  return CHECK_EVIDENCE_WORDS[handle.last_check_status] ?? null;
+}
 
 /** One state for a handle row: { tone, text }. Words as well as colour. */
 export function handleState(handle) {
   if (!handle) return { tone: "default", text: "Not added" };
-  const platform = platformWord(handle.platform);
-  if (handle.review_required) {
-    const why = REVIEW_REASON_WORDS[handle.review_reason] ?? "couldn't be checked automatically";
-    return { tone: "warning", text: `Needs a person: ${platform} ${why}` };
-  }
   if (handle.last_check_status === "rejected") {
     return { tone: "error", text: `Rejected${handle.rejected_note ? `: ${handle.rejected_note}` : ""}` };
   }
-  if (handle.verified_at) {
-    return handle.follower_source === "admin"
-      ? { tone: "success", text: "Approved by Mingla" }
-      : { tone: "success", text: `Confirmed by ${platform}` };
+  if (handle.review_required) {
+    const evidence = handleEvidence(handle);
+    return { tone: "warning", text: `Waiting for your review${evidence ? ` · ${evidence}` : " · not checked yet"}` };
   }
-  const expiresAt = handle.verify_expires_at ? new Date(handle.verify_expires_at).getTime() : null;
-  if (handle.last_check_status === "expired" || (expiresAt !== null && expiresAt <= Date.now())) {
-    return { tone: "default", text: "Bio code expired · creator needs a new code" };
-  }
-  if (handle.last_check_status === "pending") return { tone: "default", text: "Bio code not found yet" };
+  if (handle.verified_at) return { tone: "success", text: "Approved by Mingla" };
   return { tone: "default", text: "Bio code added · not checked yet" };
 }
 
-/** Audience: what the creator said and what was checked, and whether they differ. */
+/** Audience: what the creator said and the band an admin recorded. */
 export function audienceCompare(handle) {
   const self = handle?.self_reported_band ?? (handle?.follower_source === "self_reported" ? handle?.follower_band : null) ?? null;
-  const checked = handle && handle.follower_source !== "self_reported" ? handle.follower_band ?? null : null;
-  const source = handle?.follower_source === "admin" ? "Checked by Mingla" : handle?.follower_source === "provider" ? `${platformWord(handle.platform)} shows` : null;
+  const checked = handle?.follower_source === "admin" ? handle.follower_band ?? null : null;
   return {
     selfReported: self,
     checked,
-    source,
-    count: handle?.provider_follower_count ?? null,
+    source: checked ? "Checked by Mingla" : null,
     mismatch: Boolean(self && checked && self !== checked),
   };
 }
@@ -358,12 +348,13 @@ const HISTORY_WORDS = {
   suspend: "Suspended",
   handle_approve: "Approved handle",
   handle_reject: "Rejected handle",
+  handle_reopen: "Reopened handle",
 };
 
 export function historyLine(event) {
   if (!event) return "";
   const base = HISTORY_WORDS[event.action] ?? sentenceFromKey(event.action);
-  if (event.action === "handle_approve" || event.action === "handle_reject") {
+  if (["handle_approve", "handle_reject", "handle_reopen"].includes(event.action)) {
     const band = event.follower_band ? ` · band ${bandWord(event.follower_band)}` : "";
     return `${base} · ${platformWord(event.platform)}${band}`;
   }
@@ -455,13 +446,14 @@ export function creatorStepRows(detail) {
   const rejected = handles.find((h) => h.last_check_status === "rejected");
   const pending = handles.find((h) => !h.verified_at && !h.review_required && h.last_check_status !== "rejected");
   if (done("socials") && confirmed) {
-    rows.push({ key: "socials", tone: "done", text: `${platformWord(confirmed.platform)} @${confirmed.handle} ${confirmed.follower_source === "admin" ? "approved by Mingla" : "confirmed (bio code found)"}` });
+    rows.push({ key: "socials", tone: "done", text: `${platformWord(confirmed.platform)} @${confirmed.handle} approved by Mingla` });
   } else if (review) {
-    rows.push({ key: "socials", tone: "you", tag: "Needs you", text: `${platformWord(review.platform)} couldn't be checked automatically. Open the profile and approve or reject the handle.` });
+    const evidence = handleEvidence(review);
+    rows.push({ key: "socials", tone: "you", tag: "Needs you", text: `${platformWord(review.platform)} @${review.handle} is waiting for your review${evidence ? ` (${evidence})` : ""}. Open the profile, look for the bio code, then approve or reject the handle.` });
   } else if (pending) {
-    rows.push({ key: "socials", tone: "you", tag: "You can check", text: `${platformWord(pending.platform)} bio code not found yet. Open the profile and check it yourself.` });
+    rows.push({ key: "socials", tone: "creator", tag: "Creator's turn", text: `${platformWord(pending.platform)} bio code added, not sent for review yet.` });
   } else if (rejected) {
-    rows.push({ key: "socials", tone: "bad", tag: "Creator's turn", text: `Handle rejected${rejected.rejected_note ? `: ${rejected.rejected_note}` : ""}. Waiting for a new code.` });
+    rows.push({ key: "socials", tone: "bad", tag: "Rejected", text: `Handle rejected${rejected.rejected_note ? `: ${rejected.rejected_note}` : ""}. It stays rejected until you reopen it.` });
   } else {
     rows.push({ key: "socials", tone: "creator", tag: "Creator's turn", text: "No social account added yet" });
   }
@@ -811,6 +803,8 @@ const ERROR_WORDS = {
   checks_incomplete: "This creator still has steps missing.",
   handle_not_found: "This social account was removed. Refresh the creator.",
   invalid_band: "Choose an audience band from the list.",
+  band_required: "Choose the audience band you saw before approving.",
+  not_rejected: "This social account isn't rejected, so there is nothing to reopen. Refresh the creator.",
   note_too_long: "Keep the note shorter.",
   creator_not_reviewable: "This creator's state changed. Refresh the list.",
   dispute_not_escalated: "This dispute was already settled or withdrawn. Refresh the list.",

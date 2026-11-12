@@ -43,7 +43,6 @@ import {
   VERIFICATION_TONE,
   askMoreSuggestions,
   audienceCompare,
-  bandForCount,
   bandWord,
   cardStepTones,
   checksProgress,
@@ -315,9 +314,9 @@ function ReasonDialog({ kind, name, onClose, onConfirm }) {
 
 function ApproveHandleDialog({ handle, onClose, onConfirm }) {
   const compare = audienceCompare(handle);
-  const providerBand = compare.count != null ? bandForCount(compare.count) : compare.checked;
   const [seen, setSeen] = useState(false);
-  const [band, setBand] = useState(providerBand ?? compare.selfReported ?? "");
+  // The band comes only from the admin (Seth, 12 Nov 2026): no preselection.
+  const [band, setBand] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const url = profileUrl(handle.platform, handle.handle);
@@ -325,7 +324,7 @@ function ApproveHandleDialog({ handle, onClose, onConfirm }) {
     setSaving(true);
     setError("");
     try {
-      await onConfirm({ band: band || null, note: `Saw ${handle.verify_code} in the bio` });
+      await onConfirm({ band, note: `Saw ${handle.verify_code} in the bio` });
     } catch (cause) {
       setError(programErrorMessage(cause));
       setSaving(false);
@@ -344,19 +343,18 @@ function ApproveHandleDialog({ handle, onClose, onConfirm }) {
         <label className="block text-sm">
           <span className="mb-1.5 block font-medium text-[var(--color-text-primary)]">Audience band you saw</span>
           <select className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm" value={band} onChange={(e) => setBand(e.target.value)}>
-            <option value="">Keep what is recorded ({bandWord(handle.follower_band)})</option>
+            <option value="">Choose the band you saw</option>
             {FOLLOWER_BANDS.map((b) => <option key={b} value={b}>{bandWord(b)}</option>)}
           </select>
           <span className="mt-1 block text-xs text-[var(--color-text-tertiary)]">
-            {compare.count != null ? `${platformWord(handle.platform)} showed ${Number(compare.count).toLocaleString("en-US")} followers. ` : ""}
-            The creator said "{bandWord(compare.selfReported)}". Hosts see the band you record.
+            Required. The creator said "{bandWord(compare.selfReported)}". Hosts see only the band you record.
           </span>
         </label>
         {error ? <p role="alert" className="text-sm text-[var(--color-error-700)]">{error}</p> : null}
       </ModalBody>
       <ModalFooter>
         <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-        <Button loading={saving} disabled={!seen} onClick={() => void submit()} icon={Check}>Approve handle</Button>
+        <Button loading={saving} disabled={!seen || !band} onClick={() => void submit()} icon={Check}>Approve handle</Button>
       </ModalFooter>
     </Modal>
   );
@@ -449,8 +447,9 @@ function SetupSteps({ detail }) {
   );
 }
 
-function HandleRow({ handle, canAct, onApprove, onReject }) {
+function HandleRow({ handle, canAct, onApprove, onReject, onReopen }) {
   const state = handleState(handle);
+  const rejected = handle.last_check_status === "rejected";
   const compare = audienceCompare(handle);
   const url = profileUrl(handle.platform, handle.handle);
   const verified = Boolean(handle.verified_at) && !handle.review_required;
@@ -472,11 +471,9 @@ function HandleRow({ handle, canAct, onApprove, onReject }) {
           <p className="text-xs text-[var(--color-text-tertiary)]">Self-reported at setup</p>
         </div>
         <div className={`rounded-lg border p-3 ${compare.mismatch ? "border-[var(--color-warning-700)] bg-[var(--color-warning-50)]" : "border-[var(--gray-200)]"}`}>
-          <p className="text-xs text-[var(--color-text-tertiary)]">{compare.source ?? "Checked"}</p>
-          <p className="text-sm font-semibold tabular-nums text-[var(--color-text-primary)]">
-            {compare.count != null ? `${Number(compare.count).toLocaleString("en-US")} followers` : compare.checked ? bandWord(compare.checked) : "Not checked yet"}
-          </p>
-          <p className="text-xs text-[var(--color-text-tertiary)]">{compare.count != null && compare.checked ? `Band ${bandWord(compare.checked)}` : "Only a person or the public page can confirm this"}</p>
+          <p className="text-xs text-[var(--color-text-tertiary)]">{compare.source ?? "Checked by Mingla"}</p>
+          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{compare.checked ? bandWord(compare.checked) : "Not recorded yet"}</p>
+          <p className="text-xs text-[var(--color-text-tertiary)]">{compare.checked ? "Recorded when the handle was approved" : "You record it when you approve the handle"}</p>
         </div>
       </div>
       {compare.mismatch ? <p className="text-xs text-[var(--color-warning-700)]">The band doesn't match what the creator said. Hosts see the band Mingla checked.</p> : null}
@@ -486,24 +483,26 @@ function HandleRow({ handle, canAct, onApprove, onReject }) {
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />View profile
           </a>
         ) : null}
-        {canAct && !verified ? <Button size="sm" icon={Check} onClick={() => onApprove(handle)}>Approve handle</Button> : null}
-        {canAct && handle.last_check_status !== "rejected" ? (
+        {canAct && !verified && !rejected ? <Button size="sm" icon={Check} onClick={() => onApprove(handle)}>Approve handle</Button> : null}
+        {canAct && rejected ? <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => onReopen(handle)}>Reopen handle</Button> : null}
+        {canAct && !rejected ? (
           <Button size="sm" variant="ghost" className="text-[var(--color-error-700)]" icon={XIcon} onClick={() => onReject(handle)}>{verified ? "Revoke handle" : "Reject handle"}</Button>
         ) : null}
-        {canAct && !verified ? <span className="text-xs text-[var(--color-text-tertiary)]">Look for <span className="font-mono">{handle.verify_code}</span> in the bio.</span> : null}
+        {canAct && !verified && !rejected ? <span className="text-xs text-[var(--color-text-tertiary)]">Look for <span className="font-mono">{handle.verify_code}</span> in the bio.</span> : null}
+        {canAct && rejected ? <span className="text-xs text-[var(--color-text-tertiary)]">Stays rejected until you reopen it. Reopening sends it back to review and lets the creator get a new code.</span> : null}
       </div>
     </li>
   );
 }
 
-function SocialAccounts({ detail, onApprove, onReject }) {
+function SocialAccounts({ detail, onApprove, onReject, onReopen }) {
   const handles = Array.isArray(detail.handles) ? detail.handles : [];
   const canAct = !["declined", "suspended"].includes(detail.verification);
   return (
     <SectionCard title="Social accounts" subtitle={`${handles.length} added`}>
       {handles.length ? (
         <ul className="divide-y divide-[var(--gray-200)]">
-          {handles.map((h) => <HandleRow key={h.id} handle={h} canAct={canAct} onApprove={onApprove} onReject={onReject} />)}
+          {handles.map((h) => <HandleRow key={h.id} handle={h} canAct={canAct} onApprove={onApprove} onReject={onReject} onReopen={onReopen} />)}
         </ul>
       ) : <p className="text-sm text-[var(--color-text-secondary)]">No social account added yet. The creator adds one in Creator setup.</p>}
     </SectionCard>
@@ -822,15 +821,26 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
     setApproving(null);
     addToast({
       variant: "success",
-      title: result?.verification === "verified" ? "Handle approved. All six steps pass, so the creator is now verified." : "Handle approved. The social account step passes.",
+      title: Array.isArray(result?.missing) && result.missing.length === 0 && result?.verification !== "verified"
+        ? "Handle approved. All six steps pass, so you can verify the creator now."
+        : "Handle approved. The social account step passes.",
     });
     refresh();
   };
   const reject = async ({ note }) => {
     await decideCreatorHandle(rejecting.id, "reject", { note });
     setRejecting(null);
-    addToast({ variant: "success", title: "Handle rejected. The creator sees why and can add it again." });
+    addToast({ variant: "success", title: "Handle rejected. The creator sees why. It stays rejected until you reopen it." });
     refresh();
+  };
+  const reopen = async (handle) => {
+    try {
+      await decideCreatorHandle(handle.id, "reopen");
+      addToast({ variant: "success", title: `@${handle.handle} reopened. It's back in review, and the creator can get a new code.` });
+      refresh();
+    } catch (cause) {
+      addToast({ variant: "error", title: programErrorMessage(cause) });
+    }
   };
 
   return (
@@ -870,7 +880,7 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
               title="Showcase video"
               badge={detail.showcase?.[0] ? <Badge variant={detail.showcase[0].status === "ready" ? "success" : detail.showcase[0].status === "failed" ? "error" : "default"}>{detail.showcase[0].status === "ready" ? "Ready" : detail.showcase[0].status === "failed" ? "Failed" : "Processing"}</Badge> : null}
             >
-              <CreatorShowcasePlayer key={detail.showcase?.[0]?.job_id ?? "none"} job={detail.showcase?.[0] ?? null} />
+              <CreatorShowcasePlayer key={detail.showcase?.[0]?.job_id ?? "none"} job={detail.showcase?.[0] ?? null} onRefresh={record.reload} refreshing={record.loading} />
             </SectionCard>
           </div>
           <div className="min-w-0 space-y-4">
@@ -883,7 +893,7 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
               </AlertCard>
             ) : null}
             <SetupSteps detail={detail} />
-            <SocialAccounts detail={detail} onApprove={setApproving} onReject={setRejecting} />
+            <SocialAccounts detail={detail} onApprove={setApproving} onReject={setRejecting} onReopen={(h) => void reopen(h)} />
             <Rates detail={detail} />
             <About detail={detail} />
             <LocalAndPerson detail={detail} />

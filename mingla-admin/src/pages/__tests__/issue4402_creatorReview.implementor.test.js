@@ -10,7 +10,6 @@ import {
   CREATOR_COLUMNS,
   STEP_WORDS,
   audienceCompare,
-  bandForCount,
   creatorCardLine,
   creatorColumnFor,
   creatorFlagGroups,
@@ -45,7 +44,7 @@ test("#4402 A1: missing steps read as missing, never as achievements", () => {
   for (const line of lines) assert.doesNotMatch(line, /^(Verified handle|Age 18 plus|Active payout|Processed showcase|Signed agreement)$/);
   const groups = creatorFlagGroups(["verified_handle", "handle_review:instagram"]);
   assert.deepEqual(groups.missing, ["No verified social account"]);
-  assert.deepEqual(groups.needsPerson, ["Instagram couldn't be checked automatically"]);
+  assert.deepEqual(groups.needsPerson, ["Instagram waiting for your review"]);
 });
 
 test("#4402 the card line puts a person first, then what is missing", () => {
@@ -54,7 +53,7 @@ test("#4402 the card line puts a person first, then what is missing", () => {
     { key: "socials", done: false }, { key: "payout", done: false }, { key: "agreement", done: false },
   ];
   assert.equal(creatorCardLine({ verification: "incomplete", checks, flags: ["verified_handle"] }), "Missing: social account, payout, agreement");
-  assert.equal(creatorCardLine({ verification: "review", checks, flags: ["handle_review:instagram"] }), "Instagram couldn't be checked automatically");
+  assert.equal(creatorCardLine({ verification: "review", checks, flags: ["handle_review:instagram"] }), "Instagram waiting for your review");
   assert.equal(creatorCardLine({ verification: "verified", checks, flags: [] }), "All six steps pass");
 });
 
@@ -117,19 +116,28 @@ test("#4402 handle decisions: one handle at a time, reject needs a reason, appro
   assert.deepEqual(handleRejectNote("Something else", "  "), { error: "Say why, in a few words the creator will see." });
   assert.deepEqual(handleRejectNote("Not their account", ""), { note: "Not their account" });
   assert.deepEqual(handleRejectNote("Code not in the bio", "Add it again"), { note: "Code not in the bio. Add it again" });
-  assert.match(page, /disabled=\{!seen\}/, "Approve needs the reviewer to confirm they saw the code");
-  assert.equal(bandForCount(2337), "1k_10k");
+  assert.match(page, /disabled=\{!seen \|\| !band\}/, "Approve needs the reviewer to confirm the code and record the band they saw");
+  assert.match(page, /useState\(""\);/, "no band is preselected: it comes only from the admin");
+  assert.match(page, /decideCreatorHandle\(handle\.id, "reopen"\)/, "a rejected handle is reopened only by an admin");
   assert.equal(historyLine({ action: "handle_approve", platform: "instagram", follower_band: "1k_10k" }), "Approved handle · Instagram · band 1k–10k");
+  assert.equal(historyLine({ action: "handle_reopen", platform: "instagram" }), "Reopened handle · Instagram");
 });
 
 test("#4402 handle states and audience comparison are words, from server fields", () => {
-  assert.equal(handleState({ platform: "instagram", review_required: true, review_reason: "provider_unreadable" }).text,
-    "Needs a person: Instagram couldn't read the profile from our server");
+  assert.equal(handleState({ platform: "instagram", review_required: true, review_reason: "awaiting_admin" }).text,
+    "Waiting for your review · not checked yet");
+  assert.equal(handleState({ platform: "instagram", review_required: true, review_reason: "code_seen", last_check_status: "code_seen" }).text,
+    "Waiting for your review · our check saw the bio code");
+  assert.equal(handleState({ platform: "instagram", review_required: true, review_reason: "provider_unreadable", last_check_status: "unreadable" }).text,
+    "Waiting for your review · our check couldn't read the profile");
   assert.equal(handleState({ platform: "instagram", last_check_status: "rejected", rejected_note: "Not their account" }).text, "Rejected: Not their account");
   assert.equal(handleState({ platform: "instagram", verified_at: "x", follower_source: "admin" }).text, "Approved by Mingla");
-  const compare = audienceCompare({ platform: "instagram", follower_band: "1k_10k", follower_source: "provider", self_reported_band: "lt1k", provider_follower_count: 2337 });
+  // Only an admin-recorded band counts as checked; a page-derived one never does.
+  const compare = audienceCompare({ platform: "instagram", follower_band: "1k_10k", follower_source: "admin", self_reported_band: "lt1k" });
   assert.equal(compare.mismatch, true);
-  assert.equal(compare.count, 2337);
+  assert.equal(compare.source, "Checked by Mingla");
+  assert.equal(audienceCompare({ platform: "youtube", follower_band: "gt1m", follower_source: "provider", self_reported_band: "lt1k" }).checked, null);
+  assert.equal("count" in compare, false);
 });
 
 test("#4402 setup steps say who acts next", () => {
@@ -159,4 +167,7 @@ test("#4402 the showcase player uses admin-signed playback, no download, no auto
   assert.doesNotMatch(player, /autoplay;/);
   assert.doesNotMatch(player, /\/render\/image/);
   for (const words of ["No showcase video yet", "Processing", "Couldn't process this video", "Try again"]) assert.ok(player.includes(words), words);
+  // P3-2: Processing has a working control that refetches the record.
+  assert.match(player, /onClick=\{onRefresh\}/);
+  assert.match(page, /<CreatorShowcasePlayer[^>]*onRefresh=\{record\.reload\}/);
 });

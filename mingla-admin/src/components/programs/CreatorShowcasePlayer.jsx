@@ -16,7 +16,7 @@ function seconds(value) {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 
-export function CreatorShowcasePlayer({ job }) {
+export function CreatorShowcasePlayer({ job, onRefresh = null, refreshing = false }) {
   const ready = job?.status === "ready";
   const jobId = job?.job_id ?? null;
   // The parent keys this player by job id, so a new job starts clean.
@@ -49,13 +49,21 @@ export function CreatorShowcasePlayer({ job }) {
     );
   }
   if (job.status === "processing" || job.status === "awaiting_upload") {
+    // #4402 P3-2: a real control refetches the record (the job status lives there).
     return (
-      <div className={FRAME} role="img" aria-label="Showcase video still processing">
-        <span className="px-6 text-sm">
-          <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-          <b className="block">Processing</b>
-          Usually under 2 minutes. Refresh to check again.
-        </span>
+      <div className="space-y-2">
+        <div className={FRAME} role="img" aria-label="Showcase video still processing">
+          <span className="px-6 text-sm">
+            <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            <b className="block">Processing</b>
+            {onRefresh ? "Usually under 2 minutes." : "Usually under 2 minutes. Reload the page to check again."}
+          </span>
+        </div>
+        {onRefresh ? (
+          <Button className="w-full" size="sm" variant="secondary" icon={RefreshCw} loading={refreshing} onClick={onRefresh}>
+            Check again
+          </Button>
+        ) : null}
       </div>
     );
   }
