@@ -7,9 +7,12 @@
   "env": {
     "migration_fallback_top_level": [],
     "optional_top_level": [
+      "BUSINESS_WEB_ORIGIN",
+      "CRON_SECRET",
       "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
       "PAYSTACK_SECRET_KEY_LIVE",
       "PAYSTACK_SECRET_KEY_TEST",
+      "RESEND_API_KEY",
       "SENTRY_DSN",
       "SENTRY_ENVIRONMENT",
       "STRIPE_PUBLISHABLE_KEY",

@@ -33,6 +33,9 @@ const machineBranches = new Set<RefundBranch>([
   "declined_or_expired",
   "upload_missed",
   "counter_lower",
+  // #4402: a payment that landed after its offer was retired as unpaid is
+  // refunded in full, by the webhook, gig-hire or reconcile only.
+  "payment_late",
 ]);
 
 type RefundSource = {

@@ -4,6 +4,16 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isAuthorizedCronCaller } from "../_shared/cronCallerAuth.ts";
 import { gigTimerDecision, timerDedupeKey } from "../_shared/gigTimers.ts";
+import {
+  applyGigOutcomeEffects,
+  isGigPaymentKind,
+  notifyGigPaymentMismatch,
+  probeGigPayment,
+  requestGigLateRefund,
+  supabaseGigCaptureStore,
+} from "../_shared/gigPaymentCapture.ts";
+import { paystackVerifyTransactionOutcome } from "../_shared/paystack.ts";
+import { stripeTicketCheckout } from "../_shared/stripe.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -25,12 +35,69 @@ serve(async (req: Request) => {
     "gig_notification_tick",
     { p_now: now.toISOString() },
   );
-  // Offers whose payment never completed are retired first (no money moved),
-  // so the refund worker below never sees them.
-  const { data: pendingSweep, error: pendingSweepError } = await db.rpc(
-    "gig_pending_offer_sweep",
-    { p_now: now.toISOString() },
-  );
+  // Offers whose payment never completed are retired first, so the refund
+  // worker below never sees them. #4402: each one is checked with the
+  // provider first; only the ones proven unpaid are retired, and a paid one
+  // is recorded instead (I-4402-C). A provider error leaves the offer alone.
+  const proveUnpaid = async () => {
+    const { data: candidates, error: candidatesError } = await db.rpc(
+      "gig_pending_offer_candidates",
+      { p_now: now.toISOString() },
+    );
+    if (candidatesError) {
+      // Old SQL (migration not applied): never retire without proof.
+      return { ids: [] as string[], checks: [], error: candidatesError.message };
+    }
+    const probeDeps = {
+      store: supabaseGigCaptureStore(db),
+      paystackVerifyOutcome: (reference: string) =>
+        paystackVerifyTransactionOutcome(reference),
+      stripeRetrieve: (id: string) =>
+        stripeTicketCheckout().paymentIntents.retrieve(id),
+    };
+    const ids: string[] = [];
+    const checks: Array<Record<string, unknown>> = [];
+    for (const row of (candidates ?? []) as Array<Record<string, unknown>>) {
+      const kind = row.kind;
+      if (!isGigPaymentKind(kind)) continue;
+      const target = {
+        kind,
+        contractId: String(row.contract_id),
+        termsVersion: Number(row.terms_version),
+        rail: row.rail === "stripe" ? "stripe" as const : "paystack" as const,
+        reference: typeof row.reference === "string" ? row.reference : null,
+      };
+      try {
+        const outcome = await probeGigPayment(probeDeps, target);
+        await applyGigOutcomeEffects(db, outcome, {
+          source: "gig-timers",
+          rail: target.rail,
+          reference: target.reference ?? target.contractId,
+          notifyMismatch: (input) => notifyGigPaymentMismatch(input),
+          requestLateRefund: (contractId: string) =>
+            requestGigLateRefund(contractId, {
+              supabaseUrl: Deno.env.get("SUPABASE_URL") ?? "",
+              serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+            }),
+        });
+        if (outcome.status === "not_paid") ids.push(target.contractId);
+        checks.push({ id: target.contractId, outcome: outcome.status });
+      } catch (probeError) {
+        checks.push({
+          id: target.contractId,
+          error: probeError instanceof Error ? probeError.message : String(probeError),
+        });
+      }
+    }
+    return { ids, checks, error: null as string | null };
+  };
+  const proven = await proveUnpaid();
+  const { data: pendingSweep, error: pendingSweepError } = proven.ids.length
+    ? await db.rpc("gig_pending_offer_sweep", {
+      p_now: now.toISOString(),
+      p_contract_ids: proven.ids,
+    })
+    : { data: { ok: true, retired: 0 }, error: proven.error ? { message: proven.error } : null };
   const callWorker = async (name: string, payload: Record<string, unknown>) => {
     const response = await fetch(
       `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/${name}`,
@@ -124,6 +191,7 @@ serve(async (req: Request) => {
     notifications: notificationTick ?? null,
     pendingOffers: pendingSweep ?? null,
     pendingOfferError: pendingSweepError?.message ?? null,
+    pendingOfferChecks: proven.checks,
     counterRefunds,
     notificationError: notificationError?.message ?? null,
   });
