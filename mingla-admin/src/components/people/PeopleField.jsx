@@ -12,6 +12,7 @@ import {
   addPerson,
   avatarTone,
   canPick,
+  changePerson,
   fieldKey,
   initialOf,
   invitedWords,
@@ -116,9 +117,10 @@ export function PeopleField({
   const tell = (words, person = null) => { setMessage(words || ""); setResendFor(person); };
   const add = (email) => {
     if (single) {
-      if (emails.length === 1 && emails[0] === email) return;
+      const r = changePerson(emails, email);
+      if (!r) return;
       tell("");
-      onChange?.([email], { added: email, removed: emails[0] || null, changed: emails.length > 0 });
+      onChange?.(r.value, r.change);
       setOpen(false);
       return;
     }
