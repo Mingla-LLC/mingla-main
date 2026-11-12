@@ -1194,7 +1194,11 @@
         "mingla-business/src/hooks/useTapToPayTodoRow.ts",
         "mingla-business/src/hooks/useTapToPayTodoRow.web.ts",
         "mingla-business/src/hooks/useTapToPayWarmHint.ts",
-        "mingla-business/src/hooks/useTapToPayWarmHint.web.ts"
+        "mingla-business/src/hooks/useTapToPayWarmHint.web.ts",
+        "mingla-business/src/components/ui/LazyCoverPickerSheet.tsx",
+        "mingla-business/src/components/ui/LazyCoverPickerSheet.web.tsx",
+        "mingla-business/src/hooks/useBrandSetupFlowWrites.ts",
+        "mingla-business/src/hooks/useSetTapLocationAddress.ts"
       ]
     },
     {
@@ -1942,7 +1946,9 @@
         "mingla-business/src/components/experience/experienceWizardTypes.ts",
         "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
         "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
-        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql"
+        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.tsx",
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.web.tsx"
       ]
     },
     {
@@ -1954,7 +1960,9 @@
         "mingla-business/src/components/trip/tripLocationValidated.ts",
         "mingla-business/src/services/tripsService.ts",
         "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
-        "mingla-business/src/services/tripPinCommands.ts"
+        "mingla-business/src/services/tripPinCommands.ts",
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.tsx",
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.web.tsx"
       ]
     },
     {
@@ -2453,7 +2461,9 @@
         "packages/offering-rendering/EventDatePicker.tsx",
         "packages/offering-rendering/GuestAvatarCluster.tsx",
         "packages/offering-rendering/OfferingMomentum.tsx",
-        "packages/offering-rendering/PublicEventPage.tsx"
+        "packages/offering-rendering/PublicEventPage.tsx",
+        "mingla-business/src/components/ui/LazyCoverPickerSheet.tsx",
+        "mingla-business/src/components/ui/LazyCoverPickerSheet.web.tsx"
       ]
     },
     {
@@ -3499,7 +3509,9 @@
     {
       "capability_key": "payouts-paystack-nigeria",
       "paths": [
-        "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx"
+        "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx",
+        "mingla-business/src/components/brand/LazyBrandPaystackOnboardView.tsx",
+        "mingla-business/src/components/brand/LazyBrandPaystackOnboardView.web.tsx"
       ]
     }
   ]
