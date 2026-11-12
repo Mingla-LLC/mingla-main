@@ -122,8 +122,14 @@ DECLARE
   v_sca_country text;
   v_new text;
 BEGIN
-  v_new := NULLIF(upper(btrim(COALESCE(NEW.payout_country, ''))), '');
-  NEW.payout_country := v_new;
+  -- #3645 A-01: the column takes a two-letter upper-case code or nothing; a
+  -- malformed value is left for the brands_payout_country check to refuse
+  -- (never quietly repaired here). biz_set_brand_payout_country normalises
+  -- its own input before it writes.
+  IF NEW.payout_country IS NOT NULL AND NEW.payout_country !~ '^[A-Z]{2}$' THEN
+    RETURN NEW;
+  END IF;
+  v_new := NEW.payout_country;
 
   IF TG_OP = 'UPDATE' AND v_new IS NOT DISTINCT FROM OLD.payout_country THEN
     RETURN NEW;
