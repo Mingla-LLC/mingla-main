@@ -22,13 +22,14 @@ import {
   wholeToMinor,
 } from "../creatorPrograms.js";
 
-test("creators sit in the four approved columns", () => {
+// #4402: five columns; "Asked for more" waits on the creator in its own column.
+test("creators sit in the five approved columns", () => {
   assert.equal(creatorColumnFor("incomplete"), "setting_up");
-  assert.equal(creatorColumnFor("needs_more"), "setting_up");
+  assert.equal(creatorColumnFor("needs_more"), "waiting");
   assert.equal(creatorColumnFor("review"), "needs_person");
   assert.equal(creatorColumnFor("verified"), "verified");
-  assert.equal(creatorColumnFor("suspended"), "suspended");
-  assert.equal(creatorColumnFor("declined"), "declined");
+  assert.equal(creatorColumnFor("suspended"), "stopped");
+  assert.equal(creatorColumnFor("declined"), "stopped");
 });
 
 test("Ask for more needs a note; Decline and Suspend need a reason; Verify needs nothing", () => {

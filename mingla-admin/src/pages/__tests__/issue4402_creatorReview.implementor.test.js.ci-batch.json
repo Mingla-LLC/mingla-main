@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4402",
+  "suite": {
+    "id": "issue-4402-admin-creator-review",
+    "class": "admin-node20-install",
+    "originPaths": ["mingla-admin/src/**"],
+    "steps": [{
+      "name": "Admin creator review contract",
+      "cwd": "mingla-admin",
+      "run": "node --test src/pages/__tests__/issue4402_creatorReview.implementor.test.js",
+      "commandId": "assert:issue-4402-admin-creator-review:01",
+      "invocation": {
+        "kind": "raw-shell",
+        "command": "bash",
+        "argv": ["-c", "node --test src/pages/__tests__/issue4402_creatorReview.implementor.test.js"]
+      },
+      "exceptionRationale": "Self-registering targeted Admin regression suite replaces a legacy workflow edit."
+    }],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4402",
+    "runtime": {"name": "node", "version": "20"},
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": ["mingla-admin/src/pages/__tests__/issue4402_creatorReview.implementor.test.js"],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {"p50": 1, "p95": 2, "evidence": "Local targeted run 2026-11-12"},
+    "generatedPaths": ["suite-results.json"],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion in the self-registering suite.",
+    "timeoutSeconds": 60
+  }
+}

@@ -20,21 +20,26 @@ export function sentenceFromKey(key) {
 
 // ── Creators ────────────────────────────────────────────────────────────────
 
+// #4402: five board columns. "Asked for more" has its own column (it used to
+// sit in Setting up while the needs-a-person filter included it).
 export const CREATOR_COLUMNS = [
-  { id: "setting_up", label: "Setting up" },
-  { id: "needs_person", label: "Needs a person" },
-  { id: "verified", label: "Verified" },
-  { id: "suspended", label: "Suspended" },
+  { id: "needs_person", label: "Needs a person", why: "A handle to check, or all six steps pass" },
+  { id: "setting_up", label: "Setting up", why: "Creator is still finishing steps" },
+  { id: "waiting", label: "Waiting on creator", why: "You asked for more" },
+  { id: "verified", label: "Verified", why: "Hosts can find and hire them" },
+  { id: "stopped", label: "Declined or suspended", why: "Hidden from hosts" },
 ];
 
 /** Which board column a creator's verification state sits in. */
 export function creatorColumnFor(verification) {
   switch (verification) {
     case "review": return "needs_person";
+    case "needs_more": return "waiting";
     case "verified": return "verified";
-    case "suspended": return "suspended";
-    case "declined": return "declined";
-    default: return "setting_up"; // incomplete, needs_more, anything new
+    case "suspended":
+    case "declined":
+      return "stopped";
+    default: return "setting_up"; // incomplete, anything new
   }
 }
 
@@ -47,16 +52,24 @@ export const VERIFICATION_WORDS = {
   suspended: "Suspended",
 };
 
+export const VERIFICATION_TONE = {
+  incomplete: "default",
+  review: "warning",
+  needs_more: "info",
+  verified: "success",
+  declined: "default",
+  suspended: "error",
+};
+
 export function verificationWord(value) {
   return VERIFICATION_WORDS[value] ?? sentenceFromKey(value);
 }
 
-// Filter tabs: the value is what admin_creator_queue receives as p_status.
+// Board tabs. The board reads admin_creator_queue('all') once and filters here,
+// so every tab shows a count.
 export const CREATOR_FILTERS = [
-  { id: "needs_person", label: "Needs a person" },
+  ...CREATOR_COLUMNS.map(({ id, label }) => ({ id, label })),
   { id: "all", label: "All" },
-  { id: "verified", label: "Verified" },
-  { id: "suspended", label: "Suspended" },
 ];
 
 export const CREATOR_DECISIONS = {
@@ -76,6 +89,19 @@ export function decisionsFor(verification) {
   }
 }
 
+/** "Verify", or what Verify means from a stopped state. */
+export function verifyLabel(verification) {
+  if (verification === "suspended") return "Lift suspension";
+  if (verification === "declined") return "Reconsider and verify";
+  return "Verify";
+}
+
+/** The toast after Verify: only a verified answer says hosts can see them. */
+export function verifyResultMessage(verification) {
+  if (verification === "verified") return CREATOR_DECISIONS.verify.done;
+  return "Saved, but the creator is not verified yet. Refresh to see what is missing.";
+}
+
 /** A blank or whitespace note is missing; returns the trimmed note or null. */
 export function decisionNoteError(decision, note) {
   const rule = CREATOR_DECISIONS[decision];
@@ -86,11 +112,106 @@ export function decisionNoteError(decision, note) {
   return null;
 }
 
+// #4402 A4: the six steps in the admin's words (the shared SQL labels are
+// written for the creator: "Your profile", "Your rates").
+export const STEP_KEYS = ["profile", "rates", "showcase", "socials", "payout", "agreement"];
+export const STEP_WORDS = {
+  profile: "Profile",
+  rates: "Rates",
+  showcase: "Showcase video",
+  socials: "Verified social account",
+  payout: "Payout account",
+  agreement: "Creator agreement (18+)",
+};
+const STEP_SHORT = {
+  profile: "profile",
+  rates: "rates",
+  showcase: "video",
+  socials: "social account",
+  payout: "payout",
+  agreement: "agreement",
+  handle_review: "handle review",
+};
+
+export function stepWord(key) {
+  return STEP_WORDS[key] ?? sentenceFromKey(key);
+}
+
 /** "3 of 6 checks done" from the checks array. */
 export function checksProgress(checks) {
   const list = Array.isArray(checks) ? checks : [];
   const done = list.filter((c) => c && c.done).length;
   return { done, total: list.length, text: `${done} of ${list.length || 6} done` };
+}
+
+/** Keys of the checks that are not done, in step order. */
+export function missingSteps(checks) {
+  const list = Array.isArray(checks) ? checks : [];
+  return list.filter((c) => c && !c.done && c.key).map((c) => c.key);
+}
+
+/** "social account, payout, agreement" for a list of step keys. */
+export function shortStepList(keys) {
+  return (Array.isArray(keys) ? keys : []).map((k) => STEP_SHORT[k] ?? stepWord(k).toLowerCase()).join(", ");
+}
+
+/** The reason beside a locked Verify. */
+export function verifyLockedLine(verification, missing) {
+  const list = Array.isArray(missing) ? missing : [];
+  const review = list.includes("handle_review");
+  // A handle waiting for review is the reason socials is missing: say it once.
+  const keys = list.filter((k) => k !== "handle_review" && !(review && k === "socials"));
+  const parts = keys.map((k) => stepWord(k).toLowerCase());
+  if (review) parts.push("a social account waiting for your review");
+  return `${verifyLabel(verification)} unlocks when all six checks pass. Missing: ${parts.join(", ") || "nothing reported yet"}.`;
+}
+
+// #4402 A1: the server's flags are a list of MISSING steps
+// (verification_reasons) plus handle_review:<platform>. They are worded as
+// what is missing, never as achievements ("Verified handle").
+export const MISSING_WORDS = {
+  verified_handle: "No verified social account",
+  age_18_plus: "Age 18+ not confirmed",
+  active_payout: "No payout account",
+  processed_showcase: "No showcase video",
+  signed_agreement: "Creator agreement not signed",
+  active_package: "No rates set",
+  package: "No rates set",
+};
+
+/** Flags split into what is still missing and what needs a person. */
+export function creatorFlagGroups(flags) {
+  const missing = [];
+  const needsPerson = [];
+  for (const flag of Array.isArray(flags) ? flags : []) {
+    if (typeof flag !== "string") {
+      const line = flagLines([flag])[0];
+      if (line) missing.push(line);
+      continue;
+    }
+    if (flag.startsWith("handle_review:")) {
+      needsPerson.push(`${platformWord(flag.slice("handle_review:".length))} couldn't be checked automatically`);
+    } else {
+      missing.push(MISSING_WORDS[flag] ?? FLAG_WORDS[flag] ?? sentenceFromKey(flag));
+    }
+  }
+  return { missing, needsPerson };
+}
+
+/** The card's one honest line: a person first, then what is missing. */
+export function creatorCardLine(creator) {
+  if (!creator) return "";
+  if (creator.verification === "verified") return "All six steps pass";
+  if (creator.verification === "declined" || creator.verification === "suspended") {
+    const reason = creator.declined_reason || creator.review_note || "";
+    return reason ? (reason.length > 60 ? `${reason.slice(0, 57)}…` : reason) : verificationWord(creator.verification);
+  }
+  const groups = creatorFlagGroups(creator.flags);
+  if (groups.needsPerson[0]) return groups.needsPerson[0];
+  const missing = missingSteps(creator.checks);
+  if (missing.length) return `Missing: ${shortStepList(missing)}`;
+  if (groups.missing[0]) return groups.missing[0];
+  return checksProgress(creator.checks).text;
 }
 
 /** Flags come back as strings or objects; always return readable lines. */
@@ -99,7 +220,7 @@ export function flagLines(flags) {
   return flags
     .map((flag) => {
       if (flag == null) return null;
-      if (typeof flag === "string") return FLAG_WORDS[flag] ?? sentenceFromKey(flag);
+      if (typeof flag === "string") return MISSING_WORDS[flag] ?? FLAG_WORDS[flag] ?? sentenceFromKey(flag);
       if (typeof flag === "object") {
         const label = flag.label ?? flag.text ?? (flag.key ? FLAG_WORDS[flag.key] ?? sentenceFromKey(flag.key) : null);
         return label ? String(label) : null;
@@ -117,6 +238,265 @@ const FLAG_WORDS = {
   duplicate_account: "May be a second account",
   payout_missing: "Payout not connected",
 };
+
+// ── Creator social accounts (#4402) ─────────────────────────────────────────
+
+const PLATFORM_WORDS = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", snapchat: "Snapchat", x: "X" };
+const PLATFORM_PROFILE_URL = {
+  instagram: (h) => `https://www.instagram.com/${encodeURIComponent(h)}/`,
+  tiktok: (h) => `https://www.tiktok.com/@${encodeURIComponent(h)}`,
+  youtube: (h) => `https://www.youtube.com/@${encodeURIComponent(h)}`,
+  snapchat: (h) => `https://www.snapchat.com/add/${encodeURIComponent(h)}`,
+  x: (h) => `https://x.com/${encodeURIComponent(h)}`,
+};
+
+export function platformWord(platform) {
+  return PLATFORM_WORDS[platform] ?? sentenceFromKey(platform);
+}
+
+/** The public profile a reviewer opens to see the bio code themselves. */
+export function profileUrl(platform, handle) {
+  const build = PLATFORM_PROFILE_URL[platform];
+  return build && handle ? build(handle) : null;
+}
+
+export const FOLLOWER_BANDS = ["lt1k", "1k_10k", "10k_50k", "50k_250k", "250k_1m", "gt1m"];
+const BAND_WORDS = {
+  lt1k: "Under 1k",
+  "1k_10k": "1k–10k",
+  "10k_50k": "10k–50k",
+  "50k_250k": "50k–250k",
+  "250k_1m": "250k–1m",
+  gt1m: "Over 1m",
+};
+
+export function bandWord(band) {
+  return band ? (BAND_WORDS[band] ?? sentenceFromKey(band)) : "Not given";
+}
+
+/** The band a follower count falls in (same boundaries as the edge function). */
+export function bandForCount(count) {
+  const n = Number(count);
+  if (!Number.isFinite(n) || n < 0) return null;
+  if (n < 1_000) return "lt1k";
+  if (n < 10_000) return "1k_10k";
+  if (n < 50_000) return "10k_50k";
+  if (n < 250_000) return "50k_250k";
+  if (n < 1_000_000) return "250k_1m";
+  return "gt1m";
+}
+
+const REVIEW_REASON_WORDS = {
+  provider_unreadable: "couldn't read the profile from our server",
+  provider_fetch_blocked: "blocked our check",
+  handle_conflict: "this handle is claimed by another creator",
+};
+
+/** One state for a handle row: { tone, text }. Words as well as colour. */
+export function handleState(handle) {
+  if (!handle) return { tone: "default", text: "Not added" };
+  const platform = platformWord(handle.platform);
+  if (handle.review_required) {
+    const why = REVIEW_REASON_WORDS[handle.review_reason] ?? "couldn't be checked automatically";
+    return { tone: "warning", text: `Needs a person: ${platform} ${why}` };
+  }
+  if (handle.last_check_status === "rejected") {
+    return { tone: "error", text: `Rejected${handle.rejected_note ? `: ${handle.rejected_note}` : ""}` };
+  }
+  if (handle.verified_at) {
+    return handle.follower_source === "admin"
+      ? { tone: "success", text: "Approved by Mingla" }
+      : { tone: "success", text: `Confirmed by ${platform}` };
+  }
+  const expiresAt = handle.verify_expires_at ? new Date(handle.verify_expires_at).getTime() : null;
+  if (handle.last_check_status === "expired" || (expiresAt !== null && expiresAt <= Date.now())) {
+    return { tone: "default", text: "Bio code expired · creator needs a new code" };
+  }
+  if (handle.last_check_status === "pending") return { tone: "default", text: "Bio code not found yet" };
+  return { tone: "default", text: "Bio code added · not checked yet" };
+}
+
+/** Audience: what the creator said and what was checked, and whether they differ. */
+export function audienceCompare(handle) {
+  const self = handle?.self_reported_band ?? (handle?.follower_source === "self_reported" ? handle?.follower_band : null) ?? null;
+  const checked = handle && handle.follower_source !== "self_reported" ? handle.follower_band ?? null : null;
+  const source = handle?.follower_source === "admin" ? "Checked by Mingla" : handle?.follower_source === "provider" ? `${platformWord(handle.platform)} shows` : null;
+  return {
+    selfReported: self,
+    checked,
+    source,
+    count: handle?.provider_follower_count ?? null,
+    mismatch: Boolean(self && checked && self !== checked),
+  };
+}
+
+/** Reject reasons the reviewer picks from; the creator sees the chosen line. */
+export const HANDLE_REJECT_REASONS = [
+  "Not their account",
+  "Code not in the bio",
+  "Audience doesn't match what they said",
+  "Something else",
+];
+
+/** The note sent with a rejection, or an error to show. */
+export function handleRejectNote(reason, extra) {
+  const r = String(reason ?? "").trim();
+  const e = String(extra ?? "").trim();
+  if (!r) return { error: "Choose a reason." };
+  if (r === "Something else" && !e) return { error: "Say why, in a few words the creator will see." };
+  const note = r === "Something else" ? e : e ? `${r}. ${e}` : r;
+  if (note.length > 500) return { error: "Keep the note under 500 characters." };
+  return { note };
+}
+
+// ── Creator history (#4402) ─────────────────────────────────────────────────
+
+const HISTORY_WORDS = {
+  verify: "Verified",
+  ask_more: "Asked for more",
+  decline: "Declined",
+  suspend: "Suspended",
+  handle_approve: "Approved handle",
+  handle_reject: "Rejected handle",
+};
+
+export function historyLine(event) {
+  if (!event) return "";
+  const base = HISTORY_WORDS[event.action] ?? sentenceFromKey(event.action);
+  if (event.action === "handle_approve" || event.action === "handle_reject") {
+    const band = event.follower_band ? ` · band ${bandWord(event.follower_band)}` : "";
+    return `${base} · ${platformWord(event.platform)}${band}`;
+  }
+  return base;
+}
+
+// ── Creator detail helpers (#4402) ──────────────────────────────────────────
+
+const PAYOUT_WORDS = {
+  "paystack:verified": "Paystack account verified",
+  "stripe:active": "Stripe account active",
+  "stripe:onboarding": "Stripe setup started, not finished",
+  "stripe:restricted": "Stripe account restricted",
+  "paystack:failed": "Paystack account failed to verify",
+};
+
+export function payoutWord(payout) {
+  if (!payout || !payout.provider) return "No payout account connected";
+  return PAYOUT_WORDS[`${payout.provider}:${payout.status}`] ?? `${sentenceFromKey(payout.provider)} · ${sentenceFromKey(payout.status)}`;
+}
+
+const LOCAL_SEAT_WORDS = {
+  none: "No Mingla Local application",
+  applied: "Applied to be a Local",
+  invited: "Invited to sign the Local agreement",
+  active: "Active Local",
+  paused: "Local seat paused",
+  ended: "Local seat ended",
+};
+
+export function localSeatWord(local) {
+  const status = local?.status ?? "none";
+  const word = LOCAL_SEAT_WORDS[status] ?? sentenceFromKey(status);
+  return local?.city_name && status !== "none" ? `${word} · ${local.city_name}` : word;
+}
+
+/** Meter tones for a board card, from the queue row's checks and flags. */
+export function cardStepTones(creator) {
+  const checks = Array.isArray(creator?.checks) ? creator.checks : [];
+  const review = (Array.isArray(creator?.flags) ? creator.flags : []).some((f) => typeof f === "string" && f.startsWith("handle_review:"));
+  return STEP_KEYS.map((key) => {
+    const check = checks.find((c) => c && c.key === key);
+    if (check?.done) return "done";
+    if (key === "socials" && review) return "you";
+    return "creator";
+  });
+}
+
+function seconds(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+/**
+ * The six steps on the record, each with who acts next.
+ * tone: done | you (needs a Mingla person) | bad (failed) | creator.
+ */
+export function creatorStepRows(detail) {
+  const checks = Array.isArray(detail?.checks) ? detail.checks : [];
+  const done = (key) => Boolean(checks.find((c) => c && c.key === key)?.done);
+  const handles = Array.isArray(detail?.handles) ? detail.handles : [];
+  const packages = (Array.isArray(detail?.packages) ? detail.packages : []).filter((p) => p.active);
+  const job = Array.isArray(detail?.showcase) ? detail.showcase[0] : null;
+  const rows = [];
+
+  rows.push(done("profile")
+    ? { key: "profile", tone: "done", text: `Saved as ${detail?.display_name ?? "this creator"}` }
+    : { key: "profile", tone: "creator", tag: "Creator's turn", text: "Profile not saved yet" });
+
+  rows.push(done("rates")
+    ? { key: "rates", tone: "done", text: `${packages.length} active rate${packages.length === 1 ? "" : "s"}${packages[0]?.format_label ? ` · ${packages[0].format_label}` : ""}` }
+    : { key: "rates", tone: "creator", tag: "Creator's turn", text: "No active rate yet" });
+
+  if (done("showcase")) {
+    const ready = (Array.isArray(detail?.showcase) ? detail.showcase : []).find((m) => m.status === "ready") ?? job;
+    const length = seconds(ready?.duration_s);
+    const size = ready?.width && ready?.height ? ` · ${ready.width} × ${ready.height}` : "";
+    rows.push({ key: "showcase", tone: "done", text: `Processed${length ? ` · ${length} s` : ""}${size}` });
+  } else if (job?.status === "processing" || job?.status === "awaiting_upload") {
+    rows.push({ key: "showcase", tone: "creator", tag: "Processing", text: "Uploaded and still processing. No action needed." });
+  } else if (job?.status === "failed") {
+    rows.push({ key: "showcase", tone: "bad", tag: "Creator's turn", text: "Processing failed. The creator needs to upload a new video." });
+  } else {
+    rows.push({ key: "showcase", tone: "creator", tag: "Creator's turn", text: "No showcase video yet" });
+  }
+
+  const confirmed = handles.find((h) => h.verified_at && !h.review_required);
+  const review = handles.find((h) => h.review_required);
+  const rejected = handles.find((h) => h.last_check_status === "rejected");
+  const pending = handles.find((h) => !h.verified_at && !h.review_required && h.last_check_status !== "rejected");
+  if (done("socials") && confirmed) {
+    rows.push({ key: "socials", tone: "done", text: `${platformWord(confirmed.platform)} @${confirmed.handle} ${confirmed.follower_source === "admin" ? "approved by Mingla" : "confirmed (bio code found)"}` });
+  } else if (review) {
+    rows.push({ key: "socials", tone: "you", tag: "Needs you", text: `${platformWord(review.platform)} couldn't be checked automatically. Open the profile and approve or reject the handle.` });
+  } else if (pending) {
+    rows.push({ key: "socials", tone: "you", tag: "You can check", text: `${platformWord(pending.platform)} bio code not found yet. Open the profile and check it yourself.` });
+  } else if (rejected) {
+    rows.push({ key: "socials", tone: "bad", tag: "Creator's turn", text: `Handle rejected${rejected.rejected_note ? `: ${rejected.rejected_note}` : ""}. Waiting for a new code.` });
+  } else {
+    rows.push({ key: "socials", tone: "creator", tag: "Creator's turn", text: "No social account added yet" });
+  }
+
+  rows.push(done("payout")
+    ? { key: "payout", tone: "done", text: payoutWord(detail?.payout) }
+    : { key: "payout", tone: "creator", tag: "Creator's turn", text: payoutWord(detail?.payout) });
+
+  if (done("agreement")) {
+    const when = detail?.agreement?.signed_at ? ` on ${shortDateTime(detail.agreement.signed_at)}` : "";
+    rows.push({ key: "agreement", tone: "done", text: `Signed creator agreement${detail?.agreement?.version ? ` ${detail.agreement.version}` : ""}${when} · 18 or over` });
+  } else {
+    const signed = detail?.agreement?.signed;
+    rows.push({ key: "agreement", tone: "creator", tag: "Creator's turn", text: signed ? "Agreement signed, but 18+ not confirmed" : "Agreement not signed yet" });
+  }
+  return rows;
+}
+
+/** Ask-for-more lines built from what is missing. */
+export function askMoreSuggestions(missing, handles) {
+  const keys = Array.isArray(missing) ? missing : [];
+  const out = [];
+  const pendingHandle = (Array.isArray(handles) ? handles : []).find((h) => !h.verified_at);
+  if (keys.includes("socials")) {
+    out.push(pendingHandle
+      ? `Add ${pendingHandle.verify_code} to your ${platformWord(pendingHandle.platform)} bio so we can confirm the account.`
+      : "Add a social account in Creator setup so we can confirm it is yours.");
+  }
+  if (keys.includes("payout")) out.push("Connect a payout account in Creator setup.");
+  if (keys.includes("agreement")) out.push("Sign the creator agreement.");
+  if (keys.includes("showcase")) out.push("Upload a new showcase video (vertical, under 90 seconds).");
+  if (keys.includes("rates")) out.push("Add at least one rate in Creator setup.");
+  out.push("Send a showcase video filmed by you, not a repost.");
+  return out;
+}
 
 // ── Gigs ────────────────────────────────────────────────────────────────────
 
@@ -427,6 +807,11 @@ const ERROR_WORDS = {
   reason_required: "Add a reason before you continue.",
   invalid_decision: "That decision isn't allowed for this creator.",
   creator_not_found: "This creator no longer exists. Refresh the list.",
+  creator_profile_not_found: "This creator no longer exists. Refresh the list.",
+  checks_incomplete: "This creator still has steps missing.",
+  handle_not_found: "This social account was removed. Refresh the creator.",
+  invalid_band: "Choose an audience band from the list.",
+  note_too_long: "Keep the note shorter.",
   creator_not_reviewable: "This creator's state changed. Refresh the list.",
   dispute_not_escalated: "This dispute was already settled or withdrawn. Refresh the list.",
   invalid_outcome: "Choose release, partial refund or full refund.",
@@ -461,6 +846,12 @@ const ERROR_WORDS = {
 /** Any thrown error or {ok:false,error} -> one plain sentence. Never raw server text. */
 export function programErrorMessage(cause, fallback = "That didn't work. Try again.") {
   const code = errorCode(cause);
+  // #4402: Verify refused on the server names the steps still missing.
+  if (code === "checks_incomplete") {
+    const missing = cause?.result?.missing ?? cause?.missing;
+    const list = Array.isArray(missing) ? shortStepList(missing) : "";
+    if (list) return `This creator still has steps missing: ${list}.`;
+  }
   return (code && ERROR_WORDS[code]) || fallback;
 }
 

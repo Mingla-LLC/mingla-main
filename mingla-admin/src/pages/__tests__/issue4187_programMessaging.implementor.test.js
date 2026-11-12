@@ -17,7 +17,8 @@ const locals = read("pages/locals/LocalsPanel.jsx");
 
 test("#4187 both program surfaces use the shared conversation panel", () => {
   assert.match(creators, /programKind="creator"/);
-  assert.match(creators, /targetUserId=\{creator\.creator_id\}/);
+  // #4402: the creator record is a full page; the panel sits in its Conversation tab.
+  assert.match(creators, /targetUserId=\{detail\.creator_id\}/);
   assert.match(locals, /id: "messages"/);
   assert.match(locals, /programKind="local"/);
   assert.match(locals, /targetUserId=\{selected\.target_user_id\}/);
