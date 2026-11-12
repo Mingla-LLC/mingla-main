@@ -506,3 +506,15 @@ Deno.test("#4402 F2: reconcile records every check and stops before its time bud
   assertEquals(stopped.stopped_for_time, true);
   assertEquals(stopped.checked < 5, true);
 });
+
+Deno.test("#4402 N5: one hanging provider call cannot push reconcile past its budget", async () => {
+  let calls = 0;
+  const w = world({
+    verify: () => new Promise(() => {}), // never answers
+  });
+  const answer = await (await createGigHireHandler(
+    deps(w, true, () => (calls++ === 0 ? 0 : 39_990)),
+  )(post({ action: "reconcile" }))).json();
+  assertEquals(answer.stopped_for_time, true);
+  assertEquals(answer.rows[0].outcome, "budget");
+});

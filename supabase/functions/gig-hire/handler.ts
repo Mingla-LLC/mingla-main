@@ -323,18 +323,43 @@ export function createGigHireHandler(
           ? "stripe"
           : "paystack";
         try {
-          const { outcome, effects } = await probe({
-            kind,
-            contractId,
-            termsVersion: Number(candidate.terms_version),
-            rail,
-            reference: typeof candidate.reference === "string"
-              ? candidate.reference
-              : null,
-            createdAt: typeof candidate.created_at === "string"
-              ? candidate.created_at
-              : null,
-          }, "gig-hire-reconcile");
+          // #4402 N5: one slow provider call cannot push the run past the
+          // budget either; it is abandoned (its write still lands) and the
+          // run stops.
+          const remaining = RECONCILE_TIME_BUDGET_MS -
+            ((deps.now?.() ?? Date.now()) - startedAt);
+          let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+          const raced = await Promise.race([
+            probe({
+              kind,
+              contractId,
+              termsVersion: Number(candidate.terms_version),
+              rail,
+              reference: typeof candidate.reference === "string"
+                ? candidate.reference
+                : null,
+              createdAt: typeof candidate.created_at === "string"
+                ? candidate.created_at
+                : null,
+            }, "gig-hire-reconcile"),
+            new Promise<"budget">((resolve) => {
+              budgetTimer = setTimeout(
+                () => resolve("budget"),
+                Math.max(0, remaining),
+              );
+            }),
+          ]).finally(() => clearTimeout(budgetTimer));
+          if (raced === "budget") {
+            summary.stopped_for_time = true;
+            rows.push({
+              contract_id: contractId,
+              reason: candidate.reason,
+              kind,
+              outcome: "budget",
+            });
+            break;
+          }
+          const { outcome, effects } = raced;
           // Remember the check (#4402 F2): rotation, and a terminal mark with
           // the provider's answer once a row has been unpaid long enough.
           const providerStatus =

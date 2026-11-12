@@ -578,6 +578,10 @@ BEGIN
   -- #4402 F1: an unpaid offer for this creator is never retired here (the
   -- impl's retire branch ran without any provider check). The edge proves it
   -- unpaid and retires it through gig_offer_retire_unpaid first.
+  -- N1: lock the interest first, so a second offer sent at the same moment
+  -- waits for the first to commit and then sees it (the impl takes the same
+  -- lock, so the order is unchanged).
+  PERFORM 1 FROM public.gig_interest WHERE id = p_interest_id FOR UPDATE;
   SELECT c.id INTO v_live
     FROM public.gig_interest i
     JOIN public.gig_contracts c ON c.gig_id = i.gig_id AND c.creator_account_id = i.creator_account_id
