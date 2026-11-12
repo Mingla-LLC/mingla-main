@@ -16,6 +16,7 @@ import React, {
   useState,
 } from "react";
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   Share,
@@ -88,9 +89,14 @@ import {
   sectionLines,
   shootInstant,
   contractNoticeKey,
+  hostPaymentCard,
+  nextPaymentCheckDelay,
+  paymentCheckState,
   shootWindowWords,
   workspaceShootWindow,
+  type HostPaymentCheckState,
 } from "../../../components/programs/contractCopy";
+import { confirmGigReference } from "../../../services/gigHireService";
 import {
   creatorGigsService,
   approvedDeliveryDownload,
@@ -140,11 +146,23 @@ const STEP_CAPTION: Record<number, string> = {
 
 export default function HostGigContract(): React.ReactElement {
   const router = useRouter();
-  const { brandId, params } = useProgramParams("contractId");
+  const { brandId, params } = useProgramParams(
+    "contractId",
+    "reference",
+    "trxref",
+  );
   const contractId = params.contractId ?? "";
+  // #4402 — Paystack sends the host back here with ?reference=…; the page
+  // asks the server, which checks the provider and records the payment.
+  const returnReference = params.reference ?? params.trxref ?? null;
   const [workspace, setWorkspace] = useState<GigWorkspace | null>(null);
   const [creatorName, setCreatorName] = useState("Creator");
   const [paymentPending, setPaymentPending] = useState(false);
+  const [payCheck, setPayCheck] = useState<HostPaymentCheckState | null>(
+    null,
+  );
+  const payCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
   const [gigIdForRetry, setGigIdForRetry] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -211,6 +229,53 @@ export default function HostGigContract(): React.ReactElement {
   // The creator acts on their side: refetch on refocus and when the app
   // returns to the foreground, not only on pull-to-refresh.
   useRefreshOnFocus(refresh);
+
+  // #4402 — check the payment with the server: on a Paystack return, and
+  // whenever the offer still shows no captured hold. A pending answer is
+  // polled every 3 s for up to 30 s; only `not_paid` may say nothing was
+  // charged.
+  const checkPayment = useCallback(
+    async (startedAt: number) => {
+      if (!contractId) return;
+      if (payCheckTimer.current) clearTimeout(payCheckTimer.current);
+      setPayCheck("checking");
+      let state: HostPaymentCheckState;
+      try {
+        state = paymentCheckState(
+          await confirmGigReference({
+            contractId,
+            reference: returnReference,
+          }),
+        );
+      } catch {
+        state = "error";
+      }
+      if (!mounted.current) return;
+      const delay = nextPaymentCheckDelay(state, Date.now() - startedAt);
+      if (delay !== null) {
+        payCheckTimer.current = setTimeout(() => {
+          void checkPayment(startedAt);
+        }, delay);
+        return;
+      }
+      setPayCheck(state);
+      if (state === "paid") await refresh();
+    },
+    [contractId, refresh, returnReference],
+  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (payCheckTimer.current) clearTimeout(payCheckTimer.current);
+    };
+  }, []);
+  const needsPayCheck =
+    returnReference !== null ||
+    (paymentPending && workspace?.contract.state === "offered");
+  useEffect(() => {
+    if (needsPayCheck && payCheck === null) void checkPayment(Date.now());
+  }, [checkPayment, needsPayCheck, payCheck]);
   const contractState = workspace?.contract.state ?? "";
   useEffect(() => {
     setChecklist([false, false, false]);
@@ -914,22 +979,45 @@ export default function HostGigContract(): React.ReactElement {
           ) : null}
           {sheet === null ? <FieldError message={error} /> : null}
 
-          {paymentPending ? (
-            <Card>
-              <Text style={programStyles.title}>Payment not completed</Text>
-              <Muted>{`${creatorName} hasn't received this offer because the payment didn't go through. Nothing was charged.`}</Muted>
-              <Button
-                label="Retry payment"
-                onPress={() =>
-                  router.push(
-                    (gigIdForRetry
-                      ? `/brand/${brandId}/creators/${gigIdForRetry}/interest`
-                      : `/brand/${brandId}/creators`) as never,
-                  )
-                }
-              />
-            </Card>
-          ) : null}
+          {(() => {
+            // #4402: no "nothing charged" copy and no Retry until the server
+            // has checked the provider and said not_paid.
+            if (!needsPayCheck && payCheck === null) return null;
+            const payCard = hostPaymentCard(payCheck ?? "checking", {
+              creatorName,
+              fromReturn: returnReference !== null,
+            });
+            if (!payCard) return null;
+            return (
+              <Card>
+                <View style={styles.rowBetween}>
+                  <Text style={programStyles.title}>{payCard.title}</Text>
+                  {payCard.busy ? (
+                    <ActivityIndicator
+                      accessibilityLabel="Checking your payment"
+                    />
+                  ) : null}
+                </View>
+                <Muted>{payCard.body}</Muted>
+                {payCard.action && payCard.actionLabel ? (
+                  <Button
+                    label={payCard.actionLabel}
+                    onPress={() => {
+                      if (payCard.action === "check") {
+                        void checkPayment(Date.now());
+                        return;
+                      }
+                      router.push(
+                        (gigIdForRetry
+                          ? `/brand/${brandId}/creators/${gigIdForRetry}/interest`
+                          : `/brand/${brandId}/creators`) as never,
+                      );
+                    }}
+                  />
+                ) : null}
+              </Card>
+            );
+          })()}
 
           {owedTopup && currentTerms && !topup ? (
             <Card>

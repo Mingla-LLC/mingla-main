@@ -34,6 +34,7 @@ import {
   verifyPaystackSignature,
 } from "../_shared/paystack.ts";
 import { handlePaystackChargeSuccess } from "../_shared/paystackWebhookRouter.ts";
+import { requestGigLateRefund } from "../_shared/gigPaymentCapture.ts";
 import { handlePaystackRefundEvent } from "../_shared/paystackRefundRouter.ts";
 import { handlePaystackDisputeEvent } from "../_shared/paystackDisputeRouter.ts";
 // ORCH-1331 — partner Paystack payout rail: fail-soft split fan-out on
@@ -216,7 +217,27 @@ serve(async (req) => {
           supabase,
           data,
           paystackVerifyTransaction,
+          {},
+          {
+            // Issue #4402 — a late payment on a retired offer is refunded in
+            // full; reconcile retries it if this call does not land.
+            requestLateRefund: (contractId: string) =>
+              requestGigLateRefund(contractId, {
+                supabaseUrl: Deno.env.get("SUPABASE_URL") ?? "",
+                serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+              }),
+          },
         );
+        // Issue #4402 — a gig payment that does not match the ledger is
+        // flagged on the inbox row (and alerted by the router), never silent.
+        if (result.status === "gig_mismatch") {
+          await supabase.from("payment_webhook_events").update({
+            match_status: "mismatched",
+            match_reason_code: `gig_${result.gigMismatchReason ?? "mismatch"}`,
+            first_response_due_at: new Date(Date.now() + 4 * 60 * 60 * 1000)
+              .toISOString(),
+          }).eq("id", eventRowId);
+        }
         // Issue #3645: installment_collected / _refund_due / _replayed are
         // processed money events with no order to confirm (no ticket email,
         // no partner-split fan-out); they fall through to processed.

@@ -76,7 +76,9 @@ export type RefundBranch =
   | "creator_decline"
   | "declined_or_expired"
   | "resolved_partial"
-  | "resolved_refund";
+  | "resolved_refund"
+  // #4402: a payment that landed after its offer was retired as unpaid.
+  | "payment_late";
 export function gigRefund(
   input: {
     branch: RefundBranch;
@@ -113,6 +115,7 @@ export function gigRefund(
       "creator_decline",
       "declined_or_expired",
       "resolved_refund",
+      "payment_late",
     ].includes(input.branch)
   ) return { hostRefundMinor: total, creatorFeeMinor: 0 };
   throw new Error("refund_branch_invalid");
@@ -189,4 +192,26 @@ export function gigTopupPaystackInitialize(
     }_v${input.termsVersion}`,
     metadata: { ...init.metadata, mingla_kind: "gig_topup" },
   };
+}
+
+/**
+ * #4402 — where Paystack sends the host after paying: their own contract page
+ * on Host web. Built by the server only; a client-sent return_url is ignored
+ * (it went straight to Paystack before, an open redirect).
+ *
+ * Invariant I-4402-B (declared in its #4402 test): a gig payment return URL is built by the server from the business web origin; client return_url is ignored
+ */
+export function gigPaymentReturnUrl(
+  input: {
+    origin: string | null | undefined;
+    brandId: string;
+    contractId: string;
+    kind: "hold" | "topup";
+  },
+): string {
+  const origin = (input.origin ?? "").trim().replace(/\/+$/, "") ||
+    "https://host.usemingla.com";
+  return `${origin}/brand/${encodeURIComponent(input.brandId)}/creators/contract/${
+    encodeURIComponent(input.contractId)
+  }?gig_pay=${input.kind}`;
 }

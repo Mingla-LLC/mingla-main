@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/paystack-webhook/__tests__/issue_4402_gig_charge_arm.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4402-gig-paystack-charge-arm",
+  "profile": "deno-1.46-stripe"
+}

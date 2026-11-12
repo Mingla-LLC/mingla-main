@@ -22,7 +22,7 @@ import {
   contractNeedsHost,
   hostContractPill,
 } from "../../utils/creatorProgramFormat";
-import { confirmGigHire, startGigHire, startGigTopup } from "../gigHireService";
+import { confirmGigReference, startGigHire, startGigTopup } from "../gigHireService";
 import { interestedApplicants } from "../../components/programs/applicantFilters";
 import {
   fixesLeft,
@@ -155,13 +155,9 @@ describe("hire and pay", () => {
       data: { ok: false, error: "payment_not_proven" },
       error: null,
     });
+    // #4402: the sheet confirms through confirm_reference.
     await expect(
-      confirmGigHire({
-        contractId: "c",
-        termsVersion: 1,
-        rail: "stripe",
-        providerRef: "pi_1",
-      }),
+      confirmGigReference({ contractId: "c", reference: "pi_1" }),
     ).resolves.toEqual({ ok: false, error: "payment_not_proven" });
   });
 
@@ -186,7 +182,7 @@ describe("hire and pay", () => {
         action: "topup",
         contract_id: "c",
         terms_version: 2,
-        return_url: null,
+        // #4402: the server builds the return page; no client return_url.
       },
     });
   });

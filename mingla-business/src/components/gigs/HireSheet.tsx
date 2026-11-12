@@ -3,6 +3,9 @@
  * as checkboxes and one "Agree and pay $X" button. Also used for a counter
  * offer top-up (pay the difference) and for a host counter before hiring.
  * Provider errors become words; a payment is only "done" after confirm.
+ * #4402: confirm goes through `confirm_reference` (the server checks the
+ * provider and records the payment), and a retry on an offer that is already
+ * paid opens that offer instead of charging again.
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
@@ -12,7 +15,7 @@ import { Input } from "../ui/Input";
 import { StripeProviderWrapper } from "../../payments/StripeProviderWrapper";
 import { useGigHirePay } from "../../payments/useGigHirePay";
 import {
-  confirmGigHire,
+  confirmGigReference,
   startGigHire,
   startGigTopup,
   type GigHireStart,
@@ -129,11 +132,9 @@ function HireSheetBody({
   const allChecked = mode.kind === "topup" || checked.every(Boolean);
 
   const confirm = async (start: GigHireStart) => {
-    const result = await confirmGigHire({
+    const result = await confirmGigReference({
       contractId: start.contract_id,
-      termsVersion: start.terms_version,
-      rail: start.rail,
-      providerRef: start.provider_ref,
+      reference: start.provider_ref,
     });
     if (!result.ok) {
       setError(
@@ -172,6 +173,12 @@ function HireSheetBody({
               idempotencyKey: `gig-${mode.interestId}-${feeMinor}-${attemptKey.slice(0, 8)}`,
             });
       if (!start.ok) {
+        // #4402: the earlier payment for this creator went through. Open that
+        // offer; never charge twice.
+        if (start.error === "already_paid" && start.contract_id) {
+          onPaid(start.contract_id);
+          return;
+        }
         setError(
           programErrorMessage(
             start.error,

@@ -286,7 +286,27 @@
         "supabase/migrations/20280702004402_issue_4402_creator_review_and_handle_proof.sql",
         "supabase/migrations/20280702104402_issue_4402_admin_change_handle_band.sql",
         "mingla-marketing/app/creators/page.tsx",
-        "mingla-marketing/app/locals/page.tsx"
+        "mingla-marketing/app/locals/page.tsx",
+        "mingla-business/app/pay/callback.tsx",
+        "mingla-business/src/components/programs/contractCopy.ts",
+        "mingla-business/src/services/gigHireService.ts",
+        "mingla-business/src/utils/auditActionLabels.ts",
+        "mingla-business/src/utils/creatorProgramFormat.ts",
+        "supabase/functions/_shared/gigMoney.ts",
+        "supabase/functions/_shared/gigPaymentCapture.ts",
+        "supabase/functions/_shared/paystackWebhookRouter.ts",
+        "supabase/functions/_shared/stripeWebhookRouter.ts",
+        "supabase/functions/gig-hire/function-policy.json",
+        "supabase/functions/gig-hire/handler.ts",
+        "supabase/functions/gig-hire/index.ts",
+        "supabase/functions/gig-refund/index.ts",
+        "supabase/functions/gig-timers/function-policy.json",
+        "supabase/functions/gig-timers/index.ts",
+        "supabase/functions/paystack-webhook/index.ts",
+        "supabase/functions/stripe-webhook/index.ts",
+        "supabase/migrations/20280702204402_issue_4402_gig_payment_capture.sql",
+        "supabase/functions/gig-refund/function-policy.json",
+        "supabase/functions/gig-refund/handler.ts"
       ]
     },
     {

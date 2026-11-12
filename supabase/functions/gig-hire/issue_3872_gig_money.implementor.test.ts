@@ -165,8 +165,13 @@ Deno.test("#3872 a missed upload is a full host refund", () => {
   );
 });
 Deno.test("#3872 gig-hire never starts a payment for an {ok:false} offer and supports top-ups", async () => {
+  // #4402 moved the actions into handler.ts and the recorders into the
+  // shared capture core; the same three guarantees are checked there.
   const source = await Deno.readTextFile(
-    new URL("./index.ts", import.meta.url),
+    new URL("./handler.ts", import.meta.url),
+  );
+  const capture = await Deno.readTextFile(
+    new URL("../_shared/gigPaymentCapture.ts", import.meta.url),
   );
   if (!source.includes("prepared.ok === false")) {
     throw new Error("ok:false ignored");
@@ -174,7 +179,7 @@ Deno.test("#3872 gig-hire never starts a payment for an {ok:false} offer and sup
   if (!source.includes('"gig_topup_prepare"')) {
     throw new Error("topup action missing");
   }
-  if (!source.includes('"gig_topup_mark_captured"')) {
+  if (!capture.includes('"gig_topup_mark_captured"')) {
     throw new Error("topup confirm missing");
   }
 });

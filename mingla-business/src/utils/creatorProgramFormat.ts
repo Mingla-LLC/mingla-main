@@ -546,6 +546,20 @@ const ERROR_WORDS: Record<string, string> = {
     "We couldn't confirm the payment yet. If you paid, wait a minute and check again.",
   validation_error:
     "Something in this offer isn't valid. Check the fee and try again.",
+  // #4402 — creator-hire payment checks.
+  already_paid: "This offer is already paid. Opening it now.",
+  payment_pending:
+    "Your last payment for this creator is still being confirmed. You won't be charged twice. Open the offer to check it.",
+  payment_failed: "The payment didn't go through. Nothing was charged.",
+  payment_unfinished:
+    "This payment wasn't finished. You can start again; you won't be charged twice.",
+  refund_in_progress: "A refund for this offer is already on its way.",
+  payment_mismatch:
+    "We couldn't match this payment. Our team has been alerted.",
+  payment_check_failed:
+    "We couldn't check the payment right now. Try again in a minute.",
+  payment_late_refunded:
+    "This payment arrived after the offer closed, so it is being refunded in full.",
   invalid_quote: "Enter a fee above zero.",
   unauthorized: "Sign in again to continue.",
   counter_not_open: "This counter-offer is no longer open.",
