@@ -4518,6 +4518,7 @@ ${boundedAgentContext}
           userId,
           conversationId,
           brandId: activeBrand?.id ?? null,
+          brandRole: activeBrand?.role ?? null,
           intent: intentResult.read,
           observations: loopResult.observations,
           turnStartedAt,
@@ -4923,6 +4924,7 @@ ${boundedAgentContext}
               userId,
               conversationId,
               brandId: activeBrand?.id ?? null,
+              brandRole: activeBrand?.role ?? null,
               intent: intentResult.read,
               observations: [{
                 tool: tool.name,
@@ -5346,6 +5348,7 @@ ${boundedAgentContext}
       userId,
       conversationId,
       brandId: activeBrand?.id ?? null,
+      brandRole: activeBrand?.role ?? null,
       intent: intentResult.read,
       turnStartedAt,
     });
@@ -5479,6 +5482,8 @@ async function guardReplyClaims(args: {
   conversationId: string;
   /** The conversation's active brand (R4-2: records are read for it only). */
   brandId: string | null;
+  /** #3355 rework 6: the caller's role on that brand. */
+  brandRole?: string | null;
   intent: { intent: string; target: string | null } | null;
   observations?: readonly AgentLoopObservation[];
   turnStartedAt: number;
@@ -5586,6 +5591,10 @@ async function guardReplyClaims(args: {
       brandId: args.brandId,
       text: args.text,
       cards: states,
+      // #3355 rework 6: the host's own words name what they ask about, and
+      // the caller's role says which kinds RLS hides from them.
+      hostMessage: args.current,
+      brandRole: args.brandRole ?? null,
     }),
     askedWriteThisTurn,
     // The tool the host asked for names what "nothing saved" may be about.

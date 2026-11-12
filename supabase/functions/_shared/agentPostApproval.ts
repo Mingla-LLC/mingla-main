@@ -488,6 +488,8 @@ export async function checkPostApprovalClaims(args: {
         args: args.toolArgs,
         object: objects[0] ?? null,
       }],
+      // #3355 rework 6: the request the host just approved.
+      hostMessage: args.hostMessage,
     }),
     askedWriteThisTurn: false,
     // The host's message is the request they just approved, not a new one.

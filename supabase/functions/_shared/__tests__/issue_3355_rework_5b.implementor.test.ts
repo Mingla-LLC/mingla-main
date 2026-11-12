@@ -202,10 +202,9 @@ Deno.test("5b: 'Your event is published' when the event is a draft (older publis
     client: fake.client,
   });
   assertEquals(out.statusRead, "ok");
-  assertEquals(
-    out.text,
-    "Your records show Lagos Night Out as a draft. Guests can buy tickets now.",
-  );
+  // Rework 6 (R6-8): the follow-on sentence that leaned on the false status
+  // goes with it.
+  assertEquals(out.text, "Your records show Lagos Night Out as a draft.");
   // Brand-scoped: every events read is filtered to the active brand.
   const reads = fake.calls.filter((call) => call.table === "events");
   assert(reads.length > 0);
@@ -601,7 +600,8 @@ Deno.test("5b: venues, stays, tiers, sold out, refunds and payouts are each read
     host: "can I get paid out?",
     reply: "Your payouts are ready.",
     claims: [claim("Your payouts are ready.", "completed", "payout")],
-    client: fakeClient({ rpc: { pg_brand_can_payout: false } }).client,
+    client:
+      fakeClient({ rpc: { pg_brand_can_payout_for_caller: false } }).client,
   });
   assertEquals(payout.text, "Your records show your payouts as not ready yet.");
 });
@@ -624,7 +624,7 @@ Deno.test("5b: one batched read; each kind fails on its own; RLS-denied kinds ar
   assertEquals(out.statusRead, "partial");
   assertEquals(
     out.text,
-    "Your records show Lagos Night Out as a draft. I couldn't check your venue's current status just now. You can see it on its page in Mingla Host.",
+    "Your records show Lagos Night Out as a draft. I couldn't check your venue's current status just now. You can see it in Venues.",
   );
   // Every read targets the active brand only, never another one.
   const result = await readObjectStatuses({
@@ -652,13 +652,16 @@ Deno.test("5b: one batched read; each kind fails on its own; RLS-denied kinds ar
     kinds: new Set(["event"] as AriClaimKind[]),
     cards: [],
   });
-  assertEquals(noBrand.failedKinds, ["event"]);
+  // Rework 6: one events read answers events, trips and experiences.
+  assertEquals(noBrand.failedKinds, ["event", "trip", "experience"]);
 });
 
 Deno.test("5b: the read covers only the kinds the reply speaks about", () => {
+  // Rework 6 (rule 3): this is the prefetch beside the judge, never a gate;
+  // one events read answers events, trips and experiences.
   assertEquals(
     [...statusKindsWanted({ text: "Your event is published.", cards: [] })],
-    ["event"],
+    ["event", "trip", "experience"],
   );
   assertEquals(
     [...statusKindsWanted({
@@ -674,8 +677,8 @@ Deno.test("5b: the read covers only the kinds the reply speaks about", () => {
         text: "It's live!",
         cards: [card("publish_trip", "Zanzibar Escape")],
       }),
-    ],
-    ["trip"],
+    ].sort(),
+    ["event", "experience", "trip"],
   );
 });
 

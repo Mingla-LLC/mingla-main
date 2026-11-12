@@ -171,7 +171,7 @@ Deno.test("retest6 1: the reply's title matches the row whatever its case and pu
 Deno.test("retest6 2: a payout read without a boolean is a failed kind, never 'ready'", async () => {
   for (const data of [null, "true", 1, { ok: true }]) {
     const read = await readObjectStatuses({
-      client: client({}, { pg_brand_can_payout: data }),
+      client: client({}, { pg_brand_can_payout_for_caller: data }),
       brandId: BRAND,
       kinds: new Set<AriClaimKind>(["payout"]),
       cards: [],
@@ -183,7 +183,7 @@ Deno.test("retest6 2: a payout read without a boolean is a failed kind, never 'r
   const out = await check({
     reply,
     claims: [claim(reply, "live", "payout", "your payouts")],
-    db: client({}, { pg_brand_can_payout: "true" }),
+    db: client({}, { pg_brand_can_payout_for_caller: "true" }),
   });
   assertEquals(out.statusRead, "failed");
   assertMatch(out.text, /couldn't check your payouts' current status/);
@@ -284,7 +284,14 @@ Deno.test("retest6 5: a malformed brand id reads nothing and asserts nothing", a
       cards: [],
     });
     assertEquals(read.records, []);
-    assertEquals(read.failedKinds.sort(), ["event", "payout", "website"]);
+    // Rework 6: one events read answers events, trips and experiences.
+    assertEquals(read.failedKinds.sort(), [
+      "event",
+      "experience",
+      "payout",
+      "trip",
+      "website",
+    ]);
   }
   assertEquals(touched, 0);
   const reply = "Your payouts are ready.";

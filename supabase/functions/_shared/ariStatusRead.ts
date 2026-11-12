@@ -24,12 +24,13 @@ import {
   identityKey,
   type ReadState,
   STATUS_READ_KINDS,
+  statusKindOfTool,
   statusKindsInText,
   type StatusReadPlan,
   type StatusReadResult,
 } from "./ariClaimCheck.ts";
 
-export { STATUS_READ_KINDS, statusKindsInText };
+export { STATUS_READ_KINDS, statusKindOfTool, statusKindsInText };
 export type { StatusReadResult };
 
 /** A card the chat holds (a WriteState is one). */
@@ -50,59 +51,68 @@ export interface StatusClient {
 const UUID_SHAPE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// ── Which kinds a reply speaks about ────────────────────────────────────────
-
-/** Status words that make a reply worth this read. */
-export const STATUS_HINT =
-  /\b(?:live|published|unpublished|draft|active|on\s+sale|sold\s+out|went\s+out|gone\s+out|sent|scheduled|cancell?ed|ended|approved|verified|pending|review|refunded|processed|went\s+through|ready|set\s+up|enabled|provisioned|up\s+and\s+running|good\s+to\s+go|paused|open)\b|[✅✔]/i;
+// ── Which kinds a turn mentions ─────────────────────────────────────────────
 
 /** Two or more capitalised words in a row, not at a sentence start alone. */
 const TITLE_RUN =
   /(?:^|[^.!?]\s)(?:[A-Z][\p{L}\p{N}'’&-]+\s+){1,5}[A-Z][\p{L}\p{N}'’&-]+/u;
 
-/** The status kind a card's tool is about, or null. */
-export function statusKindOfTool(toolName: string): AriClaimKind | null {
-  const name = toolName.toLowerCase();
-  if (/refund/.test(name)) return "refund";
-  if (/payout|bank/.test(name)) return "payout";
-  if (/campaign|blast/.test(name)) return "message";
-  if (/tier|ticket_type|pricing/.test(name)) return "ticket";
-  if (/trip/.test(name)) return "trip";
-  if (/experience/.test(name)) return "experience";
-  if (/stay/.test(name)) return "stay";
-  if (/venue/.test(name)) return "venue";
-  if (/site/.test(name)) return "website";
-  if (/event|rsvp/.test(name)) return "event";
-  return null;
-}
+const OFFERINGS: readonly AriClaimKind[] = ["event", "trip", "experience"];
 
 /**
- * The kinds this turn's read covers: those the reply names (with a status
- * word), plus the kinds of the chat's cards when the reply speaks of a
- * status without naming a kind ("It's live!").
+ * #3355 rework 6 (Seth's rule 3): the kinds read BESIDE the judge call —
+ * what the turn mentions: the kinds the reply and the host's message name,
+ * the kinds of the chat's cards, and the brand's offerings when a title is
+ * said with no kind word. It is a prefetch, never a gate: the claims decide,
+ * and checkReplyClaims reads any kind a status claim names that is not here
+ * (the rework 5b status-word hint list is gone).
  */
 export function statusKindsWanted(args: {
   text: string;
   cards: readonly StatusCard[];
+  hostMessage?: string;
 }): Set<AriClaimKind> {
-  if (!STATUS_HINT.test(args.text)) return new Set();
-  const out = statusKindsInText(args.text);
-  const named = out.size;
+  const out = new Set<AriClaimKind>([
+    ...statusKindsInText(args.text),
+    ...statusKindsInText(args.hostMessage ?? ""),
+  ]);
   for (const card of args.cards) {
     const kind = statusKindOfTool(card.toolName);
-    if (!kind) continue;
-    const titled = card.object &&
-      identityKey(args.text).includes(identityKey(card.object));
-    if (titled || named === 0) out.add(kind);
+    if (kind) out.add(kind);
   }
-  // "Lagos Night Out is sold out!": a title said with a status and no kind
-  // word or card is most likely an offering; read the brand's offerings.
-  if (out.size === 0 && TITLE_RUN.test(args.text)) {
-    out.add("event");
-    out.add("trip");
-    out.add("experience");
+  if (
+    TITLE_RUN.test(args.text) || TITLE_RUN.test(args.hostMessage ?? "")
+  ) {
+    for (const kind of OFFERINGS) out.add(kind);
   }
-  return out;
+  // One `events` read answers all three offering kinds.
+  if (OFFERINGS.some((kind) => out.has(kind))) {
+    for (const kind of OFFERINGS) out.add(kind);
+  }
+  return new Set([...out].filter((kind) => STATUS_READ_KINDS.has(kind)));
+}
+
+/**
+ * #3355 rework 6 (R6-6 / R6-7 / R6-10): kinds a brand role cannot read. RLS
+ * returns NO ROWS (never an error) for these, so an empty answer would read
+ * as "not set up" or let an older card speak: they are never read for the
+ * role, and the reply says Ari can't check them for this host. From the
+ * policies: brand_sites needs marketing manager or above
+ * (brand_sites_marketing_read); stay_settings is hidden from scanners and
+ * marketing managers; refunds need payment rights
+ * (biz_can_manage_payments_for_brand: brand admin and above, or finance
+ * manager).
+ */
+const ROLE_HIDDEN_KINDS: Readonly<Record<string, readonly AriClaimKind[]>> = {
+  scanner: ["website", "stay", "refund"],
+  marketing_manager: ["stay", "refund"],
+  event_manager: ["refund"],
+};
+
+export function hiddenKindsForRole(
+  role: string | null | undefined,
+): Set<AriClaimKind> {
+  return new Set(ROLE_HIDDEN_KINDS[String(role ?? "").trim().toLowerCase()]);
 }
 
 // ── Row states ──────────────────────────────────────────────────────────────
@@ -265,6 +275,7 @@ function idsOf(cards: readonly StatusCard[], group: string): string[] {
   return [...out].slice(0, 20);
 }
 
+/** Titles the chat's cards give objects of these kinds. */
 function cardNames(
   cards: readonly StatusCard[],
   kinds: ReadonlySet<AriClaimKind>,
@@ -298,11 +309,17 @@ interface KindRead {
   run: () => Promise<ClaimEvidence[]>;
 }
 
+/**
+ * One row of this turn's read. Rework 6: `objectId` is the row's own id and
+ * `onCard` says a chat card names it (by id or title); a row is never "this
+ * turn's object" just because the chat has no card of its kind (R6-1).
+ */
 function row(
   kind: AriClaimKind,
   tool: string,
   names: string[],
   readState: ReadState,
+  identity: { id?: unknown; onCard: boolean },
 ): ClaimEvidence {
   return {
     status: "read",
@@ -310,26 +327,32 @@ function row(
     toolName: tool,
     objects: names.filter((name) => name.trim().length > 0),
     state: null,
-    thisTurn: true,
+    thisTurn: identity.onCard,
     readState,
     fresh: true,
     statusRow: true,
+    ...(typeof identity.id === "string" && identity.id
+      ? { objectId: identity.id }
+      : {}),
+    onCard: identity.onCard,
   };
 }
 
 /**
  * One batched status read for the active brand, as the caller. Each kind
  * reads on its own; a failed kind is reported in `failedKinds` and its
- * status is never asserted. A row the chat's cards name (by id or title)
- * is this turn's object; the brand's other rows of a kind are this turn's
- * objects only when no card of that kind is in the chat (so "your event is
- * published" with one event in the chat is held to that event).
+ * status is never asserted. Kinds the caller's role cannot read are not
+ * read at all and come back in `hiddenKinds`. Every row carries its id and
+ * whether a chat card names it; which row a claim is about is decided by
+ * ariClaimCheck.ts (resolveStatusTarget), never here.
  */
 export async function readObjectStatuses(args: {
   client: StatusClient;
   brandId: string | null;
   kinds: ReadonlySet<AriClaimKind>;
   cards: readonly StatusCard[];
+  /** The caller's role on the brand (rework 6: hidden kinds), when known. */
+  brandRole?: string | null;
   /** The reply mentions "sold out" (reads remaining inventory). */
   soldOut?: boolean;
   now?: Date;
@@ -338,36 +361,31 @@ export async function readObjectStatuses(args: {
   const brandId = args.brandId && UUID_SHAPE.test(args.brandId)
     ? args.brandId
     : null;
-  const wanted = [...args.kinds].filter((kind) => STATUS_READ_KINDS.has(kind));
+  const hidden = hiddenKindsForRole(args.brandRole);
+  const asked = [...args.kinds].filter((kind) => STATUS_READ_KINDS.has(kind));
+  const hiddenKinds = asked.filter((kind) => hidden.has(kind));
+  let wanted = asked.filter((kind) => !hidden.has(kind));
+  if (wanted.some((kind) => OFFERINGS.includes(kind))) {
+    wanted = [...new Set([...wanted, ...OFFERINGS])];
+  }
   if (!brandId || wanted.length === 0) {
     return {
       records: [],
       okKinds: [],
       failedKinds: brandId ? [] : wanted,
+      hiddenKinds,
     };
   }
   const has = (kind: AriClaimKind) => wanted.includes(kind);
-  const cardKinds = new Set(
-    args.cards.flatMap((card) => {
-      const kind = statusKindOfTool(card.toolName);
-      return kind ? [kind] : [];
-    }),
-  );
-  const named = cardNames(args.cards, args.kinds);
+  const named = cardNames(args.cards, new Set(wanted));
   const offeringIds = idsOf(args.cards, "offering");
-  const inChat = (
-    kind: AriClaimKind,
-    id: unknown,
-    names: string[],
-    ids: readonly string[],
-  ) =>
-    !cardKinds.has(kind) || ids.includes(String(id)) ||
-    names.some((name) => named.has(identityKey(name)));
+  const onCard = (id: unknown, names: string[], ids: readonly string[]) =>
+    ids.includes(String(id)) ||
+    names.some((name) => name.trim() && named.has(identityKey(name)));
   const client = args.client;
   const reads: KindRead[] = [];
 
-  const offeringKinds = (["event", "trip", "experience"] as AriClaimKind[])
-    .filter(has);
+  const offeringKinds = OFFERINGS.filter(has);
   const tiersWanted = has("ticket");
   if (offeringKinds.length > 0 || tiersWanted) {
     reads.push({
@@ -389,11 +407,10 @@ export async function readObjectStatuses(args: {
         }
         const offerings = [...seen.values()];
         const chatOfferings = offerings.filter((item) =>
-          offeringIds.includes(String(item.id)) ||
-          named.has(identityKey(String(item.title ?? "")))
+          onCard(item.id, [String(item.title ?? "")], offeringIds)
         );
-        // Sold out: the public remaining-inventory reader, for the chat's
-        // published offerings (at most 3), only when the reply says so.
+        // Sold out: the public remaining-inventory reader, for published
+        // offerings (the chat's first, at most 3), only when the reply says so.
         const soldOut = new Map<string, boolean | undefined>();
         if (args.soldOut) {
           const targets = (chatOfferings.length > 0 ? chatOfferings : offerings)
@@ -417,36 +434,39 @@ export async function readObjectStatuses(args: {
           const title = String(item.title ?? "");
           const state = offeringReadState(item);
           const sold = soldOut.get(String(item.id));
-          out.push({
-            ...row(kind, "status_read_offering", [title], {
+          out.push(
+            row(kind, "status_read_offering", [title], {
               ...state,
               ...(sold !== undefined ? { soldOut: sold } : {}),
-            }),
-            thisTurn: inChat(kind, item.id, [title], offeringIds),
-          });
+            }, { id: item.id, onCard: onCard(item.id, [title], offeringIds) }),
+          );
         }
         if (tiersWanted) {
+          // R6-16: tiers only of this brand's offerings, also when read by id.
+          const brandEvents = offerings.map((item) => String(item.id));
           const eventIds =
             (chatOfferings.length > 0 ? chatOfferings : offerings.slice(0, 5))
               .map((item) => String(item.id));
           const tierIds = idsOf(args.cards, "tier");
-          if (eventIds.length > 0 || tierIds.length > 0) {
+          if (
+            brandEvents.length > 0 &&
+            (eventIds.length > 0 || tierIds.length > 0)
+          ) {
             const query = client.from("ticket_types").select(
               "id,name,event_id,is_disabled,sale_end_at",
             ).is("deleted_at", null).limit(40);
             const tiers = rowsOf(
               await (tierIds.length > 0
-                ? query.in("id", tierIds)
+                ? query.in("id", tierIds).in("event_id", brandEvents)
                 : query.in("event_id", eventIds)),
             );
             for (const tier of tiers) {
               const name = String(tier.name ?? "");
-              out.push({
-                ...row("ticket", "status_read_tier", [name], {
+              out.push(
+                row("ticket", "status_read_tier", [name], {
                   ...tierReadState(tier, now),
-                }),
-                thisTurn: inChat("ticket", tier.id, [name], tierIds),
-              });
+                }, { id: tier.id, onCard: onCard(tier.id, [name], tierIds) }),
+              );
             }
           }
         }
@@ -476,22 +496,23 @@ export async function readObjectStatuses(args: {
         if (has("venue")) {
           for (const item of venueRows) {
             const name = String(item.name ?? "");
-            out.push({
-              ...row("venue", "status_read_venue", [name], {
+            out.push(
+              row("venue", "status_read_venue", [name], {
                 ...venueReadState(item),
-              }),
-              thisTurn: inChat("venue", item.id, [name], venueIds),
-            });
+              }, { id: item.id, onCard: onCard(item.id, [name], venueIds) }),
+            );
           }
         }
         for (const item of rowsOf(stays)) {
           const name = nameOf.get(String(item.venue_id)) ?? "";
-          out.push({
-            ...row("stay", "status_read_stay", [name], {
+          out.push(
+            row("stay", "status_read_stay", [name], {
               ...stayReadState(item),
+            }, {
+              id: item.venue_id,
+              onCard: onCard(item.venue_id, [name], venueIds),
             }),
-            thisTurn: inChat("stay", item.venue_id, [name], venueIds),
-          });
+          );
         }
         return out;
       },
@@ -519,12 +540,9 @@ export async function readObjectStatuses(args: {
         }
         return [...seen.values()].map((item) => {
           const name = String(item.name ?? "");
-          return {
-            ...row("message", "status_read_campaign", [name], {
-              ...campaignReadState(item),
-            }),
-            thisTurn: inChat("message", item.id, [name], ids),
-          };
+          return row("message", "status_read_campaign", [name], {
+            ...campaignReadState(item),
+          }, { id: item.id, onCard: onCard(item.id, [name], ids) });
         });
       },
     });
@@ -538,11 +556,17 @@ export async function readObjectStatuses(args: {
           .eq("brand_id", brandId).limit(1);
         const site = rowsOf(result)[0] ?? null;
         return [
-          row("website", "status_read_site", [
-            "your website",
+          row(
             "website",
-            "your site",
-          ], siteReadState(site)),
+            "status_read_site",
+            [
+              "your website",
+              "website",
+              "your site",
+            ],
+            siteReadState(site),
+            { id: `site:${brandId}`, onCard: false },
+          ),
         ];
       },
     });
@@ -566,7 +590,7 @@ export async function readObjectStatuses(args: {
         return [...latest.values()].map((item) =>
           row("refund", "status_read_refund", ["the refund", "refund"], {
             ...refundReadState(item),
-          })
+          }, { id: item.order_id, onCard: true })
         );
       },
     });
@@ -577,8 +601,9 @@ export async function readObjectStatuses(args: {
       kinds: ["payout"],
       run: async () => {
         // The canonical payout predicate (the same one get_payout_status
-        // reads through brand_readiness): never re-derived here.
-        const result = await client.rpc("pg_brand_can_payout", {
+        // reads through brand_readiness), answered only for brand members
+        // (rework 6: pg_brand_can_payout_for_caller); never re-derived here.
+        const result = await client.rpc("pg_brand_can_payout_for_caller", {
           p_brand_id: brandId,
         });
         if (result.error || typeof result.data !== "boolean") {
@@ -595,6 +620,7 @@ export async function readObjectStatuses(args: {
             result.data
               ? { live: true, label: "ready" }
               : { live: false, label: "not ready yet" },
+            { id: `payout:${brandId}`, onCard: false },
           ),
         ];
       },
@@ -619,31 +645,38 @@ export async function readObjectStatuses(args: {
       JSON.stringify({ kinds: failedKinds }),
     );
   }
-  return { records, okKinds, failedKinds };
+  return { records, okKinds, failedKinds, hiddenKinds };
 }
 
 /**
- * The status read a caller wires into checkReplyClaims: the kinds this reply
- * speaks about (reply words, plus the chat's cards when the reply names no
- * kind), read as the caller for the active brand. Undefined when the reply
- * speaks about no status kind.
+ * The status read a caller wires into checkReplyClaims. Rework 6: always a
+ * plan (never undefined): `kinds` is what the turn mentions (read beside the
+ * judge), and `read(kinds)` reads whatever else a status claim names. As the
+ * caller, for the active brand; kinds the caller's role cannot read are
+ * reported, never read.
  */
 export function objectStatusReadPlan(args: {
   client: StatusClient;
   brandId: string | null;
   text: string;
   cards: readonly StatusCard[];
-}): StatusReadPlan | undefined {
-  const kinds = statusKindsWanted({ text: args.text, cards: args.cards });
-  if (kinds.size === 0) return undefined;
+  hostMessage?: string;
+  brandRole?: string | null;
+}): StatusReadPlan {
+  const kinds = statusKindsWanted({
+    text: args.text,
+    cards: args.cards,
+    hostMessage: args.hostMessage,
+  });
   return {
     kinds,
-    read: () =>
+    read: (wanted?: ReadonlySet<AriClaimKind>) =>
       readObjectStatuses({
         client: args.client,
         brandId: args.brandId,
-        kinds,
+        kinds: wanted ?? kinds,
         cards: args.cards,
+        brandRole: args.brandRole,
         soldOut: /\bsold\s+out\b/i.test(args.text),
       }),
   };
