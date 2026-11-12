@@ -187,6 +187,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                       >
                       <Pressable
                         onPress={() => handlePick(brand)}
+                        onLongPress={canDiscard ? () => openDiscard(brand) : undefined}
                         style={styles.rowPick}
                         accessibilityRole="button"
                         accessibilityLabel={`Switch to ${brand.displayName}`}
@@ -235,7 +236,10 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           </Pressable>
                         ) : null}
                         {/* The row menu on a true draft: "Discard draft" (the
-                            N1 confirm on its own route). Inline, after Continue. */}
+                            N1 confirm on its own route). Inline, after Continue.
+                            #4389 (device r4): no per-row trash on unfinished
+                            rows — check + Continue + trash left the name
+                            "B…"; delete stays on the brand's profile. */}
                         {canDiscard ? (
                           <Pressable
                             onPress={() => openDiscard(brand)}
@@ -246,23 +250,6 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                             testID={`brand-switcher-discard-${brand.id}`}
                           >
                             <Icon name="moreH" size={16} color={textTokens.tertiary} />
-                          </Pressable>
-                        ) : setupRest !== null &&
-                        onRequestDeleteBrand !== undefined &&
-                        canDeleteBrand(brand, user?.id ?? null) ? (
-                          // Not a draft (free-only or published): the usual
-                          // owner-only delete, inline so it never covers Continue.
-                          <Pressable
-                            onPress={() => {
-                              onRequestDeleteBrand(brand);
-                              onClose();
-                            }}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Delete ${brand.displayName}`}
-                            hitSlop={8}
-                            style={styles.rowMenuBtn}
-                          >
-                            <Icon name="trash" size={16} color={textTokens.tertiary} />
                           </Pressable>
                         ) : null}
                       </View>

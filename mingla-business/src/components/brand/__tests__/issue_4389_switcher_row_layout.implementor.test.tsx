@@ -147,4 +147,20 @@ describe("#4389 N3 — unfinished brand row", () => {
     expect(isInside(check[0]!, row)).toBe(true);
     tree.unmount();
   });
+
+  // #4389 (device r4): check + Continue + a trash icon left the name "B…".
+  // Unfinished rows carry no trash; a draft's discard lives in "…" and the
+  // row's long-press.
+  test("R4: no per-row trash on unfinished rows; a draft discards from its menu or long-press", () => {
+    mockCurrentBrandId = "b-free";
+    const tree = render();
+    for (const name of ["Tester US Brand", "Free Brand"]) {
+      expect(tree.root.findAll((n) => typeof n.type === "string" && n.props.accessibilityLabel === `Delete ${name}`)).toHaveLength(0);
+    }
+    const row = rowOf(tree, "Tester US Brand");
+    TestRenderer.act(() => (row.props.onLongPress as (() => void) | undefined)?.());
+    expect(mockPush).toHaveBeenCalledWith(expect.stringContaining("discard=1"));
+    expect(rowOf(tree, "Free Brand").props.onLongPress).toBeUndefined();
+    tree.unmount();
+  });
 });
