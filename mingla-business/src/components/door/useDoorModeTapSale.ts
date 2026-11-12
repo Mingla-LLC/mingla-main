@@ -103,7 +103,10 @@ export const useDoorModeTapSale = (input: {
   const basketRef = useRef<string | null>(null);
   const draftRef = useRef<TapToPayDraft | null>(null);
   // A Charge pressed while the Terminal session was still starting.
-  const pendingRef = useRef<{ draft: TapToPayDraft; basketKey: string } | null>(null);
+  // #4389 — `restarted`: Terminal had failed to start (e.g. the app opened with
+  // the server unreachable), so this Charge restarted it; `sawStart` turns true
+  // once that restart is under way, so the old failure is not read as the new one.
+  const pendingRef = useRef<{ draft: TapToPayDraft; basketKey: string; restarted?: boolean; sawStart?: boolean } | null>(null);
   const handOffRef = useRef(handOff);
   handOffRef.current = handOff;
 
@@ -181,8 +184,17 @@ export const useDoorModeTapSale = (input: {
       }
       markDoorTapPress(getTapToPaySession().readerReady);
       const session = getTapToPaySession();
-      if (session.status === "error" || session.status === "unavailable") {
+      if (session.status === "unavailable") {
         handOffRef.current(draft);
+        return;
+      }
+      // #4389 — a phone already set up for this brand whose Terminal start
+      // failed earlier: start it again and carry on with this Charge ("Getting
+      // ready…" in place), instead of sending the host to the setup screen.
+      if (session.status === "error") {
+        pendingRef.current = { draft, basketKey, restarted: true, sawStart: false };
+        setState({ kind: "starting" });
+        session.retryInitialize();
         return;
       }
       if (session.status !== "ready" || session.client === null) {
@@ -202,6 +214,11 @@ export const useDoorModeTapSale = (input: {
     if (terminal.status === "ready" && terminal.client !== null) {
       pendingRef.current = null;
       begin(pending.draft, pending.basketKey);
+    } else if (terminal.status === "initializing") {
+      pending.sawStart = true;
+    } else if (terminal.status === "error" && pending.restarted === true && pending.sawStart !== true) {
+      // Still the earlier failure: the restart has not begun yet.
+      return;
     } else if (terminal.status === "error" || terminal.status === "unavailable") {
       pendingRef.current = null;
       setState({ kind: "idle" });
