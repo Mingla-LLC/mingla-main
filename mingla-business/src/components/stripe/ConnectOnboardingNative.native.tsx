@@ -18,7 +18,6 @@
  * Copy here never names the payment partner and never says "business".
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Constants from "expo-constants";
 import { TurboModuleRegistry } from "react-native";
 
 import { accent, radius, semantic } from "../../constants/designSystem";
@@ -81,8 +80,17 @@ const loadStripeConnectModule = (): StripeConnectModule | null => {
 };
 
 const readPublishableKey = (): string | null => {
-  const fromExtra = (Constants.expoConfig?.extra as Record<string, unknown> | undefined)
-    ?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+  // expo-constants is read lazily: a module-scope expo import breaks every
+  // render suite that reaches this file through BrandOnboardView.
+  let extra: Record<string, unknown> | undefined;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    extra = (require("expo-constants") as { default?: { expoConfig?: { extra?: Record<string, unknown> } } })
+      .default?.expoConfig?.extra;
+  } catch (error) {
+    console.warn("[ConnectOnboardingNative] could not read app config for the publishable key", error);
+  }
+  const fromExtra = extra?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   if (typeof fromExtra === "string" && fromExtra.length > 0) return fromExtra;
   const fromEnv = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   return typeof fromEnv === "string" && fromEnv.length > 0 ? fromEnv : null;
