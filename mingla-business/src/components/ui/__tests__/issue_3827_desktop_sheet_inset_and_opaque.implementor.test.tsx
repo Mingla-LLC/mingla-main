@@ -83,6 +83,21 @@ describe("#3827 wide-desktop Sheet card", () => {
     expect(body[0].findAll((n) => n.type === "Text")).toHaveLength(1);
   });
 
+  test("#3355 the body keeps breathing room under its content (pinned footers never sit on the border)", async () => {
+    mockWide = true;
+    const { spacing } = jest.requireActual<{ spacing: { lg: number } }>("../../../constants/designSystem");
+    const root = await mount();
+    const pad = flat(byTestID(root, "probe-desktop-body")[0].props.style).paddingBottom;
+    expect(pad).toBe(spacing.lg);
+    expect(pad).toBeGreaterThanOrEqual(16);
+  });
+
+  test("#3355 a Competition panel still lays out its own bottom inset", async () => {
+    mockWide = true;
+    const root = await mount({ presentation: "competition", panelBackground: "#101010" });
+    expect(flat(byTestID(root, "probe-desktop-body")[0].props.style).paddingBottom).toBeUndefined();
+  });
+
   test("a default card has an opaque base under its content", async () => {
     mockWide = true;
     const root = await mount();

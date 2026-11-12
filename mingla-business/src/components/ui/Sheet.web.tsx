@@ -56,6 +56,7 @@ import {
   glass,
   radius as radiusTokens,
   shadows,
+  spacing,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useEscapeLayer } from "./escapeLayerStack";
@@ -359,7 +360,11 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
                 border on desktop while it had room on a phone. The
                 Competition panel lays out its own insets edge-to-edge. */}
             <View
-              style={[styles.cardBody, competition ? null : styles.cardBodyInset]}
+              style={[
+                styles.cardBody,
+                competition ? null : styles.cardBodyInset,
+                competition ? null : styles.cardBodyBreathing,
+              ]}
               testID={testID !== undefined ? `${testID}-desktop-body` : undefined}
             >
               {children}
@@ -400,8 +405,18 @@ const styles = StyleSheet.create({
   opaqueBase: {
     backgroundColor: WEB_OPAQUE_BACKGROUND,
   },
+  // #3355 (Seth's UI vet, 12 Nov) — breathing room at all times: the card
+  // also keeps room UNDER its content, the same spacing.lg a phone sheet keeps
+  // below its body (SheetMobile `body` paddingBottom). Without it a pinned
+  // footer (SheetScrollLayout) sat flush on the card's bottom border.
+  // Invariant I-SHEET-BREATHING-ROOM | issue #3355 | Every default wide-web
+  // sheet card reserves spacing.lg below its content. Enforced by
+  // issue_3827_desktop_sheet_inset_and_opaque.implementor.test.tsx.
   cardBodyInset: {
     paddingTop: SHEET_TOP_INSET,
+  },
+  cardBodyBreathing: {
+    paddingBottom: spacing.lg,
   },
 });
 
