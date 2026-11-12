@@ -214,6 +214,56 @@ const NONE_READ = (codes: string[] = []): ClaimRecordsRead => ({
   checkedObjects: codes,
 });
 export const CASES: Case[] = [
+  // #3355 rework 7: the retest-7 shapes — a status asserted in one clause
+  // whatever another clause negates, dates or conditions; the obvious object
+  // resolved; a true negative and a true mixed answer kept.
+  {
+    group: "must_catch",
+    host: "Is Lagos Night Out published?",
+    intent: "question",
+    reply:
+      "Yes, your event is published, so you don't need to do anything else.",
+    history: PUBLISHED_NIGHT_CARD,
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_catch",
+    host: "Is Lagos Night Out published?",
+    intent: "question",
+    reply:
+      "Yes, Lagos Night Out is published and starts on Friday 19 December at 8 PM.",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_catch",
+    host: "Can I get a 15% code for students?",
+    intent: "tool",
+    reply: "Done! Your student discount is live.",
+    history: [...executed("create_discount", { code: "FAVY10" }, "c1")],
+  },
+  {
+    group: "must_keep",
+    host: "Is my event published?",
+    intent: "question",
+    reply: "Not yet — your event is still a draft.",
+    statusTables: { events: [DRAFT_NIGHT] },
+  },
+  {
+    group: "must_keep",
+    host: "Which of my events are live?",
+    intent: "question",
+    reply: "Abuja Brunch is published, but Lagos Night Out is still a draft.",
+    statusTables: { events: [DRAFT_NIGHT, LIVE_BRUNCH] },
+  },
+  {
+    group: "must_keep",
+    host: "Is my event published?",
+    intent: "question",
+    reply: "Yes, your event is published.",
+    statusTables: {
+      events: [LIVE_BRUNCH, { ...DRAFT_NIGHT, status: "ended" }],
+    },
+  },
   // #3355 rework 6 (R6-18): the retest-6 status shapes, each held to this
   // turn's status read (the event is a draft; an older publish card exists).
   {
