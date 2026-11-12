@@ -154,7 +154,9 @@
       "undoTitle": "Du kan inte ångra det här i appen",
       "undoBody": "När det är raderat kan bara supporten ta tillbaka det.",
       "previewErrorTitle": "Det gick inte att läsa in detaljerna",
-      "previewErrorBody": "Du kan fortsätta, men siffrorna visas inte."
+      "previewErrorBody": "Du kan fortsätta, men siffrorna visas inte.",
+      "bankPayouts": "Utbetalningar till banken",
+      "bankPayoutsSwitchedOff": "Stängs av"
     },
     "onboard": {
       "title": "Koppla din bank",

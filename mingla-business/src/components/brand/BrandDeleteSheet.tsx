@@ -435,6 +435,9 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                   </Text>
                 </View>
                 <PaymentAccountPreviewRow hasAccount={counts.hasStripeConnect} />
+                {counts.isPaystackBrand ? (
+                  <BankPayoutsPreviewRow hasBankPayouts={counts.hasBankPayouts} />
+                ) : null}
                 {counts.upcomingEventCount > 0 || counts.liveEventCount > 0 ? (
                   <View style={[styles.warnCard, styles.warnCardDanger]}>
                     <Icon name="flag" size={18} color={semantic.error} />
@@ -559,6 +562,20 @@ export const PaymentAccountPreviewRow: React.FC<{ hasAccount: boolean }> = ({ ha
     <Text style={styles.previewLabel}>Payment account</Text>
     <Text style={[styles.previewValue, styles.previewValueWrap]}>
       {hasAccount ? BRAND_SETUP_COPY.delete.closedOnDelete : BRAND_SETUP_COPY.delete.none}
+    </Text>
+  </View>
+);
+
+/**
+ * #4389 D1 — a Nigerian-bank (Paystack) brand's preview: "Bank payouts ·
+ * Will be switched off", or "None" when no bank is connected. Same stacked
+ * layout as the payment account row.
+ */
+export const BankPayoutsPreviewRow: React.FC<{ hasBankPayouts: boolean }> = ({ hasBankPayouts }) => (
+  <View style={[styles.previewRow, styles.previewRowStacked]} testID="brand-delete-bank-payouts-row">
+    <Text style={styles.previewLabel}>{BRAND_SETUP_COPY.delete.bankPayouts}</Text>
+    <Text style={[styles.previewValue, styles.previewValueWrap]}>
+      {hasBankPayouts ? BRAND_SETUP_COPY.delete.bankPayoutsSwitchedOff : BRAND_SETUP_COPY.delete.none}
     </Text>
   </View>
 );

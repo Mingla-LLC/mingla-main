@@ -154,7 +154,9 @@
       "undoTitle": "Nu poți anula asta în aplicație",
       "undoBody": "După ștergere, doar asistența îl poate readuce.",
       "previewErrorTitle": "Detaliile nu s-au putut încărca",
-      "previewErrorBody": "Poți continua, dar numerele nu sunt afișate."
+      "previewErrorBody": "Poți continua, dar numerele nu sunt afișate.",
+      "bankPayouts": "Plăți în bancă",
+      "bankPayoutsSwitchedOff": "Vor fi oprite"
     },
     "onboard": {
       "title": "Conectează-ți banca",

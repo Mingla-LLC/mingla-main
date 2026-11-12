@@ -154,7 +154,9 @@
       "undoTitle": "You can't undo this in the app",
       "undoBody": "Once it's deleted, only support can bring it back.",
       "previewErrorTitle": "Couldn't load the details",
-      "previewErrorBody": "You can still continue, but the numbers aren't shown."
+      "previewErrorBody": "You can still continue, but the numbers aren't shown.",
+      "bankPayouts": "Bank payouts",
+      "bankPayoutsSwitchedOff": "Will be switched off"
     },
     "onboard": {
       "title": "Connect your bank",

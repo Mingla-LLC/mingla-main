@@ -154,7 +154,9 @@
       "undoTitle": "Du kannst das in der App nicht rückgängig machen",
       "undoBody": "Nach dem Löschen kann nur der Support sie wiederherstellen.",
       "previewErrorTitle": "Details konnten nicht geladen werden",
-      "previewErrorBody": "Du kannst trotzdem fortfahren, aber die Zahlen werden nicht angezeigt."
+      "previewErrorBody": "Du kannst trotzdem fortfahren, aber die Zahlen werden nicht angezeigt.",
+      "bankPayouts": "Bankauszahlungen",
+      "bankPayoutsSwitchedOff": "Werden abgeschaltet"
     },
     "onboard": {
       "title": "Bank verbinden",

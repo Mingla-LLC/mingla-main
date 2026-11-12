@@ -154,7 +154,9 @@
       "undoTitle": "Bạn không thể hoàn tác điều này trong ứng dụng",
       "undoBody": "Sau khi xóa, chỉ bộ phận hỗ trợ mới có thể khôi phục.",
       "previewErrorTitle": "Không tải được chi tiết",
-      "previewErrorBody": "Bạn vẫn có thể tiếp tục, nhưng các con số sẽ không hiển thị."
+      "previewErrorBody": "Bạn vẫn có thể tiếp tục, nhưng các con số sẽ không hiển thị.",
+      "bankPayouts": "Chi trả về ngân hàng",
+      "bankPayoutsSwitchedOff": "Sẽ bị tắt"
     },
     "onboard": {
       "title": "Kết nối ngân hàng",

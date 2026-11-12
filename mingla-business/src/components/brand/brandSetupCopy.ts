@@ -185,6 +185,8 @@ export const BRAND_SETUP_COPY = {
     get undoBody(): string { return t("delete.undoBody"); },
     get previewErrorTitle(): string { return t("delete.previewErrorTitle"); },
     get previewErrorBody(): string { return t("delete.previewErrorBody"); },
+    get bankPayouts(): string { return t("delete.bankPayouts"); },
+    get bankPayoutsSwitchedOff(): string { return t("delete.bankPayoutsSwitchedOff"); },
   },
 };
 

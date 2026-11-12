@@ -154,7 +154,9 @@
       "undoTitle": "Je kunt dit niet ongedaan maken in de app",
       "undoBody": "Na het verwijderen kan alleen support het terughalen.",
       "previewErrorTitle": "Details konden niet worden geladen",
-      "previewErrorBody": "Je kunt doorgaan, maar de aantallen worden niet getoond."
+      "previewErrorBody": "Je kunt doorgaan, maar de aantallen worden niet getoond.",
+      "bankPayouts": "Uitbetalingen naar de bank",
+      "bankPayoutsSwitchedOff": "Worden uitgeschakeld"
     },
     "onboard": {
       "title": "Koppel je bank",

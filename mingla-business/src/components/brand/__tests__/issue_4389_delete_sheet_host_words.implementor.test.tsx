@@ -106,4 +106,38 @@ describe("#4389 — the delete sheet speaks in host words", () => {
     expect(row).toContain("cascade.data.hasStripeConnect");
     expect(C.delete.closedOnDelete).toBe("Will be closed when you delete");
   });
+
+  // #4389 D1 — a Nigerian-bank brand's preview, on the sheet and on Ari's card.
+  test("T5: the delete sheet shows 'Bank payouts · Will be switched off' (or None) for a Paystack brand", () => {
+    const brand = { id: "b", displayName: "Lagos Nights", accountId: "u", role: "owner" } as unknown as Brand;
+    for (const [has, value] of [[true, C.delete.bankPayoutsSwitchedOff], [false, C.delete.none]] as const) {
+      mockPreview = {
+        data: { pastEventCount: 0, upcomingEventCount: 0, liveEventCount: 0, teamMemberCount: 1, hasStripeConnect: false, isPaystackBrand: true, hasBankPayouts: has },
+        isLoading: false,
+        isError: false,
+      };
+      TestRenderer.act(() => {
+        tree = TestRenderer.create(<BrandDeleteSheet visible brand={brand} accountId="u" onClose={() => undefined} />);
+      });
+      const root = (tree as unknown as { root: Node }).root;
+      const next = root.findAll((n) => typeof n.type === "string" && n.props.accessibilityLabel === "Continue")[0] as Node;
+      TestRenderer.act(() => (next.props.onPress as () => void)());
+      const row = root.findAll((n) => typeof n.type === "string" && n.props.testID === "brand-delete-bank-payouts-row")[0] as Node;
+      expect(textOf(row)).toContain(C.delete.bankPayouts);
+      expect(textOf(row)).toContain(value);
+      TestRenderer.act(() => tree?.unmount());
+      tree = null;
+    }
+  });
+
+  test("T6: Ari's delete card shows the same Bank payouts line from the same preview", () => {
+    const card = fs.readFileSync(path.join(__dirname, "../../ari/ToolProposalCard.tsx"), "utf8");
+    const at = card.indexOf('testID="ari-delete-bank-payouts"');
+    expect(at).toBeGreaterThan(0);
+    const block = card.slice(card.lastIndexOf("cascade.data.isPaystackBrand", at), at + 500);
+    expect(block).toContain("BRAND_SETUP_COPY.delete.bankPayouts");
+    expect(block).toContain("cascade.data.hasBankPayouts");
+    expect(block).toContain("BRAND_SETUP_COPY.delete.bankPayoutsSwitchedOff");
+    expect(block).toContain("BRAND_SETUP_COPY.delete.none");
+  });
 });

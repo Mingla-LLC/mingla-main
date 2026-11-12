@@ -154,7 +154,9 @@
       "undoTitle": "无法在应用内撤销",
       "undoBody": "删除后只有支持团队可以恢复。",
       "previewErrorTitle": "无法加载详情",
-      "previewErrorBody": "你仍可继续，但不会显示数量。"
+      "previewErrorBody": "你仍可继续，但不会显示数量。",
+      "bankPayouts": "银行打款",
+      "bankPayoutsSwitchedOff": "将被关闭"
     },
     "onboard": {
       "title": "连接你的银行",

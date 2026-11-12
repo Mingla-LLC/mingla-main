@@ -154,7 +154,9 @@
       "undoTitle": "Non puoi annullare questa azione nell'app",
       "undoBody": "Una volta eliminato, solo l'assistenza può recuperarlo.",
       "previewErrorTitle": "Impossibile caricare i dettagli",
-      "previewErrorBody": "Puoi continuare, ma i numeri non vengono mostrati."
+      "previewErrorBody": "Puoi continuare, ma i numeri non vengono mostrati.",
+      "bankPayouts": "Pagamenti in banca",
+      "bankPayoutsSwitchedOff": "Verranno disattivati"
     },
     "onboard": {
       "title": "Collega la tua banca",

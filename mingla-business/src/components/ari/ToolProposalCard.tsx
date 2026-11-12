@@ -1444,6 +1444,16 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                       : BRAND_SETUP_COPY.delete.none}
                   </Text>
                 </View>
+                {cascade.data.isPaystackBrand ? (
+                  <View style={styles.fieldRow} testID="ari-delete-bank-payouts">
+                    <Text style={styles.fieldLabel}>{BRAND_SETUP_COPY.delete.bankPayouts}</Text>
+                    <Text style={styles.fieldValue}>
+                      {cascade.data.hasBankPayouts
+                        ? BRAND_SETUP_COPY.delete.bankPayoutsSwitchedOff
+                        : BRAND_SETUP_COPY.delete.none}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             ) : (
               <Text style={styles.coverSubLabel}>

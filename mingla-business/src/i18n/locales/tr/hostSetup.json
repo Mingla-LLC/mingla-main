@@ -154,7 +154,9 @@
       "undoTitle": "Bunu uygulamada geri alamazsın",
       "undoBody": "Silindikten sonra yalnızca destek geri getirebilir.",
       "previewErrorTitle": "Ayrıntılar yüklenemedi",
-      "previewErrorBody": "Devam edebilirsin ama sayılar gösterilmez."
+      "previewErrorBody": "Devam edebilirsin ama sayılar gösterilmez.",
+      "bankPayouts": "Bankaya ödemeler",
+      "bankPayoutsSwitchedOff": "Kapatılacak"
     },
     "onboard": {
       "title": "Bankanı bağla",

@@ -13,25 +13,32 @@ import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 let mockDerived = "restricted";
+let mockBrandRow: { payment_provider: string; paystack_subaccount_code: string | null } | null = null;
+let mockRecipient = false;
 jest.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "acct-4389" }, isAuthReady: true }),
 }));
 jest.mock("../../diagnostics/sentry", () => ({ captureException: jest.fn() }));
 jest.mock("../../services/supabase", () => {
-  const chain = (): unknown =>
+  const chain = (table: string): unknown =>
     new Proxy(
       {},
       {
         get: (_t, key) =>
           key === "then"
-            ? (resolve: (v: unknown) => void) => resolve({ count: 0, error: null })
-            : () => chain(),
+            ? (resolve: (v: unknown) => void) =>
+                resolve(table === "brands" ? { data: mockBrandRow, error: null } : { count: 0, error: null })
+            : () => chain(table),
       },
     );
   return {
     supabase: {
-      from: () => chain(),
-      rpc: () => Promise.resolve({ data: mockDerived, error: null }),
+      from: (table: string) => chain(table),
+      rpc: (name: string) =>
+        Promise.resolve({
+          data: name === "biz_brand_has_active_paystack_recipient" ? mockRecipient : mockDerived,
+          error: null,
+        }),
       channel: jest.fn(),
       removeChannel: jest.fn(),
     },
@@ -79,5 +86,28 @@ describe("#4389 P2 — the delete preview names every undetached payment account
   });
   test("not_connected (none, or detached) → None", async () => {
     expect((await preview("not_connected"))?.hasStripeConnect).toBe(false);
+  });
+
+  // #4389 D1 — the Nigerian bank rail: a boolean only, never the code.
+  test("Paystack brand with a subaccount → bank payouts will be switched off (boolean only)", async () => {
+    mockBrandRow = { payment_provider: "paystack", paystack_subaccount_code: "ACCT_secret" };
+    mockRecipient = false;
+    const p = await preview("not_connected");
+    expect(p?.isPaystackBrand).toBe(true);
+    expect(p?.hasBankPayouts).toBe(true);
+    expect(JSON.stringify(p)).not.toContain("ACCT_");
+  });
+  test("Paystack brand with only an active recipient → switched off; with neither → none", async () => {
+    mockBrandRow = { payment_provider: "paystack", paystack_subaccount_code: null };
+    mockRecipient = true;
+    expect((await preview("not_connected"))?.hasBankPayouts).toBe(true);
+    mockRecipient = false;
+    expect((await preview("not_connected"))?.hasBankPayouts).toBe(false);
+  });
+  test("a card-rail brand is not a Paystack brand", async () => {
+    mockBrandRow = { payment_provider: "stripe", paystack_subaccount_code: null };
+    mockRecipient = false;
+    expect((await preview("active"))?.isPaystackBrand).toBe(false);
+    mockBrandRow = null;
   });
 });

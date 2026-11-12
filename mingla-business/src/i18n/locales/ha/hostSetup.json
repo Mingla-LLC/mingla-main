@@ -154,7 +154,9 @@
       "undoTitle": "Ba za ka iya soke wannan a cikin app ba",
       "undoBody": "Bayan an goge shi, tallafi ne kawai zai iya dawo da shi.",
       "previewErrorTitle": "An kasa loda bayanai",
-      "previewErrorBody": "Za ka iya ci gaba, amma ba za a nuna lambobin ba."
+      "previewErrorBody": "Za ka iya ci gaba, amma ba za a nuna lambobin ba.",
+      "bankPayouts": "Biyan kuɗi zuwa banki",
+      "bankPayoutsSwitchedOff": "Za a kashe su"
     },
     "onboard": {
       "title": "Haɗa bankinka",

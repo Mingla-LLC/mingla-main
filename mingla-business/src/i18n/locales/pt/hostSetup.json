@@ -154,7 +154,9 @@
       "undoTitle": "Você não pode desfazer isso no app",
       "undoBody": "Depois de excluída, só o suporte pode trazê-la de volta.",
       "previewErrorTitle": "Não foi possível carregar os detalhes",
-      "previewErrorBody": "Você pode continuar, mas os números não aparecem."
+      "previewErrorBody": "Você pode continuar, mas os números não aparecem.",
+      "bankPayouts": "Repasses ao banco",
+      "bankPayoutsSwitchedOff": "Serão desativados"
     },
     "onboard": {
       "title": "Conecte seu banco",

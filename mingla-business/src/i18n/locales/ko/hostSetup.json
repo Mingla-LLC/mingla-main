@@ -154,7 +154,9 @@
       "undoTitle": "앱에서는 되돌릴 수 없어요",
       "undoBody": "삭제한 뒤에는 지원팀만 복원할 수 있어요.",
       "previewErrorTitle": "세부 정보를 불러오지 못했어요",
-      "previewErrorBody": "계속할 수 있지만 숫자는 표시되지 않아요."
+      "previewErrorBody": "계속할 수 있지만 숫자는 표시되지 않아요.",
+      "bankPayouts": "은행 지급",
+      "bankPayoutsSwitchedOff": "중지돼요"
     },
     "onboard": {
       "title": "은행 연결하기",

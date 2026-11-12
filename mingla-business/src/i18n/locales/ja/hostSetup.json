@@ -154,7 +154,9 @@
       "undoTitle": "アプリ内では元に戻せません",
       "undoBody": "削除後はサポートのみが復元できます。",
       "previewErrorTitle": "詳細を読み込めませんでした",
-      "previewErrorBody": "このまま続けられますが、件数は表示されません。"
+      "previewErrorBody": "このまま続けられますが、件数は表示されません。",
+      "bankPayouts": "銀行への入金",
+      "bankPayoutsSwitchedOff": "停止されます"
     },
     "onboard": {
       "title": "銀行を連携する",

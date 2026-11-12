@@ -154,7 +154,9 @@
       "undoTitle": "Kamu tidak bisa membatalkan ini di aplikasi",
       "undoBody": "Setelah dihapus, hanya dukungan yang bisa mengembalikannya.",
       "previewErrorTitle": "Detail tidak dapat dimuat",
-      "previewErrorBody": "Kamu tetap bisa lanjut, tetapi angkanya tidak ditampilkan."
+      "previewErrorBody": "Kamu tetap bisa lanjut, tetapi angkanya tidak ditampilkan.",
+      "bankPayouts": "Pencairan ke bank",
+      "bankPayoutsSwitchedOff": "Akan dinonaktifkan"
     },
     "onboard": {
       "title": "Hubungkan bank Anda",

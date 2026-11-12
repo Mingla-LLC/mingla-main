@@ -154,7 +154,9 @@
       "undoTitle": "Ọ i sẹtin rre ẹre gbe dee vbe app",
       "undoBody": "Vbe ọ ghi deli, support ọkpa ọ sẹtin rre ẹre gbe dee.",
       "previewErrorTitle": "Ma i sẹtin ya ẹmwẹ na rre",
-      "previewErrorBody": "Ọ sẹtin kpa iyẹn ọ, sokpan ima i rhie ọnrẹn mu."
+      "previewErrorBody": "Ọ sẹtin kpa iyẹn ọ, sokpan ima i rhie ọnrẹn mu.",
+      "bankPayouts": "Ugho banki",
+      "bankPayoutsSwitchedOff": "Ima gha rhie ẹre ladian"
     },
     "onboard": {
       "title": "Gu banki ruẹ ye ọ",

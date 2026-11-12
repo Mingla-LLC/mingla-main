@@ -154,7 +154,9 @@
       "undoTitle": "Ị nweghị ike ịtụgharị nke a n'ime app",
       "undoBody": "Ozugbo ehichapụrụ ya, ọ bụ naanị nkwado nwere ike iweghachi ya.",
       "previewErrorTitle": "Enweghị ike ibunye nkọwa",
-      "previewErrorBody": "Ị ka nwere ike ịga n'ihu, mana agaghị egosi ọnụọgụ."
+      "previewErrorBody": "Ị ka nwere ike ịga n'ihu, mana agaghị egosi ọnụọgụ.",
+      "bankPayouts": "Ịkwụ ụgwọ n'ụlọ akụ",
+      "bankPayoutsSwitchedOff": "A ga-agbanyụ ya"
     },
     "onboard": {
       "title": "Jikọọ akụ gị",

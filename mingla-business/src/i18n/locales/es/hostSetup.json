@@ -154,7 +154,9 @@
       "undoTitle": "No puedes deshacer esto en la app",
       "undoBody": "Una vez eliminada, solo soporte puede recuperarla.",
       "previewErrorTitle": "No se pudieron cargar los detalles",
-      "previewErrorBody": "Puedes continuar, pero no se muestran las cifras."
+      "previewErrorBody": "Puedes continuar, pero no se muestran las cifras.",
+      "bankPayouts": "Pagos al banco",
+      "bankPayoutsSwitchedOff": "Se desactivarán"
     },
     "onboard": {
       "title": "Conecta tu banco",

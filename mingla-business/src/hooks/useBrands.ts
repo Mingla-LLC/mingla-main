@@ -690,6 +690,17 @@ export interface BrandCascadePreviewCounts {
   liveEventCount: number;
   teamMemberCount: number;
   hasStripeConnect: boolean;
+  /**
+   * #4389 D1 — the brand is on the Nigerian bank rail (payment_provider
+   * "paystack"): the preview shows a "Bank payouts" line.
+   */
+  isPaystackBrand: boolean;
+  /**
+   * #4389 D1 — a Paystack subaccount or an active bank recipient exists, so
+   * the delete switches bank payouts off. A boolean only: the codes never
+   * leave the query function.
+   */
+  hasBankPayouts: boolean;
 }
 
 const CASCADE_PREVIEW_STALE_TIME_MS = 30 * 1000; // 30s
@@ -719,7 +730,7 @@ export const useBrandCascadePreview = (
       // stays status-only because cancelled/ended lifecycle is already
       // authoritative regardless of date.
       const nowIso = new Date().toISOString();
-      const [pastResult, upcomingResult, liveResult, teamResult, stripeStatusResult] =
+      const [pastResult, upcomingResult, liveResult, teamResult, stripeStatusResult, paystackRowResult, recipientResult] =
         await Promise.all([
           // ORCH-0859 REWORK 3 (events-type-filter audit): brand-stats
           // counters must exclude trips so the "X scheduled events" badge
@@ -755,6 +766,17 @@ export const useBrandCascadePreview = (
           supabase.rpc("pg_derive_brand_stripe_status", {
             p_brand_id: brandId,
           }),
+          // #4389 D1 — the Nigerian bank rail (read to a boolean below).
+          supabase
+            .from("brands")
+            .select("payment_provider, paystack_subaccount_code")
+            .eq("id", brandId)
+            .maybeSingle(),
+          // Authorized SECURITY DEFINER helper (#3645): the recipients table
+          // is RLS-blocked below payments managers.
+          supabase.rpc("biz_brand_has_active_paystack_recipient", {
+            p_brand_id: brandId,
+          }),
         ]);
 
       if (pastResult.error) throw pastResult.error;
@@ -762,6 +784,16 @@ export const useBrandCascadePreview = (
       if (liveResult.error) throw liveResult.error;
       if (teamResult.error) throw teamResult.error;
       if (stripeStatusResult.error) throw stripeStatusResult.error;
+      if (paystackRowResult.error) throw paystackRowResult.error;
+      if (recipientResult.error) throw recipientResult.error;
+      const paystackRow = (paystackRowResult.data ?? null) as {
+        payment_provider: string | null;
+        paystack_subaccount_code: string | null;
+      } | null;
+      const isPaystackBrand = paystackRow?.payment_provider === "paystack";
+      const hasBankPayouts =
+        (paystackRow?.paystack_subaccount_code ?? null) !== null ||
+        recipientResult.data === true;
 
       const derivedStatus = stripeStatusResult.data ?? "not_connected";
 
@@ -775,6 +807,8 @@ export const useBrandCascadePreview = (
         // account) used to read "Payment account: None". The derivation maps
         // a detached account to not_connected.
         hasStripeConnect: derivedStatus !== "not_connected",
+        isPaystackBrand,
+        hasBankPayouts,
       };
     },
   });

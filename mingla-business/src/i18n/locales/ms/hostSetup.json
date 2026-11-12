@@ -154,7 +154,9 @@
       "undoTitle": "Anda tidak boleh membatalkan ini dalam aplikasi",
       "undoBody": "Selepas dipadam, hanya sokongan yang boleh memulihkannya.",
       "previewErrorTitle": "Butiran tidak dapat dimuatkan",
-      "previewErrorBody": "Anda masih boleh teruskan, tetapi angka tidak ditunjukkan."
+      "previewErrorBody": "Anda masih boleh teruskan, tetapi angka tidak ditunjukkan.",
+      "bankPayouts": "Bayaran ke bank",
+      "bankPayoutsSwitchedOff": "Akan dimatikan"
     },
     "onboard": {
       "title": "Sambungkan bank anda",

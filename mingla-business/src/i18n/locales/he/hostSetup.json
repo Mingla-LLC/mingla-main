@@ -154,7 +154,9 @@
       "undoTitle": "אי אפשר לבטל את זה באפליקציה",
       "undoBody": "אחרי המחיקה, רק התמיכה יכולה להחזיר אותו.",
       "previewErrorTitle": "לא ניתן לטעון את הפרטים",
-      "previewErrorBody": "אפשר להמשיך, אבל המספרים לא מוצגים."
+      "previewErrorBody": "אפשר להמשיך, אבל המספרים לא מוצגים.",
+      "bankPayouts": "תשלומים לבנק",
+      "bankPayoutsSwitchedOff": "יושבתו"
     },
     "onboard": {
       "title": "חבר את הבנק שלך",

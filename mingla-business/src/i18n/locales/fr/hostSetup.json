@@ -154,7 +154,9 @@
       "undoTitle": "Tu ne peux pas annuler cela dans l'app",
       "undoBody": "Une fois supprimée, seul le support peut la récupérer.",
       "previewErrorTitle": "Impossible de charger les détails",
-      "previewErrorBody": "Tu peux continuer, mais les chiffres ne s'affichent pas."
+      "previewErrorBody": "Tu peux continuer, mais les chiffres ne s'affichent pas.",
+      "bankPayouts": "Versements bancaires",
+      "bankPayoutsSwitchedOff": "Seront désactivés"
     },
     "onboard": {
       "title": "Connectez votre banque",

@@ -154,7 +154,9 @@
       "undoTitle": "Nie możesz tego cofnąć w aplikacji",
       "undoBody": "Po usunięciu przywrócić ją może tylko pomoc.",
       "previewErrorTitle": "Nie udało się wczytać szczegółów",
-      "previewErrorBody": "Możesz kontynuować, ale liczby nie będą widoczne."
+      "previewErrorBody": "Możesz kontynuować, ale liczby nie będą widoczne.",
+      "bankPayouts": "Wypłaty na konto",
+      "bankPayoutsSwitchedOff": "Zostaną wyłączone"
     },
     "onboard": {
       "title": "Połącz swój bank",

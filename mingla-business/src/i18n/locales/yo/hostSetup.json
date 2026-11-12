@@ -154,7 +154,9 @@
       "undoTitle": "O kò lè yí èyí padà nínú app",
       "undoBody": "Lẹ́yìn tí a bá pa á rẹ́, ìrànlọ́wọ́ nìkan ló lè dá a padà.",
       "previewErrorTitle": "A kò lè ṣí àwọn àlàyé",
-      "previewErrorBody": "O ṣì lè tẹ̀síwájú, ṣùgbọ́n a kò ní fi àwọn nọ́ńbà hàn."
+      "previewErrorBody": "O ṣì lè tẹ̀síwájú, ṣùgbọ́n a kò ní fi àwọn nọ́ńbà hàn.",
+      "bankPayouts": "Owó sí ilé ìfowópamọ́",
+      "bankPayoutsSwitchedOff": "A ó pa á"
     },
     "onboard": {
       "title": "So báǹkì rẹ pọ̀",
