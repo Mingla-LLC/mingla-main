@@ -5,6 +5,7 @@ import {
   secureSetItem,
 } from "../lib/secureStoreSafe";
 import { supabase } from "../services/supabase";
+import { CHECKOUT_PAYMENT_MISMATCH_MESSAGE } from "./checkoutErrorMessages";
 import { extractFunctionError } from "../utils/edgeFunctionError";
 import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
 
@@ -470,6 +471,21 @@ export const reconcileNativeCheckout = async (
       message:
         "This payment needs attention. Don’t try again. Contact support if it does not update.",
       token: "checkout_unavailable",
+      recovered,
+      retryable: false,
+    };
+  }
+
+  // issue #3281 (bundle 6e) — Paystack took a different amount or currency
+  // than this order: money moved and the server failed the session. Never
+  // "try again": that invites a second payment.
+  if (data.error === "paystack_payment_mismatch") {
+    if (recovered) captureRecoveryOnce(pointer, "failed");
+    await clearNativeCheckoutRecoveryFor(pointer.checkoutSessionId);
+    return {
+      outcome: "failed",
+      message: CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
+      token: "paystack_payment_mismatch",
       recovered,
       retryable: false,
     };

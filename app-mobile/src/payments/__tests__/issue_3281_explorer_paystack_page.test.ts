@@ -86,6 +86,7 @@ import {
 import {
   clearNativeCheckoutRecoveryFor,
   purgeNativeCheckoutRecovery,
+  reconcileNativeCheckout,
 } from "../nativeCheckoutRecovery";
 import {
   CHECKOUT_ABANDONED_MESSAGE,
@@ -898,4 +899,45 @@ describe("#3281 6d — the shared modules load under Explorer's babel without ru
       expect(out.code).not.toMatch(/@babel\/runtime/);
     },
   );
+});
+
+describe("#3281 6e — restart recovery never invites a second payment after a mismatch", () => {
+  it("a recovered Paystack session that came back with the wrong amount says so, and is not retryable", async () => {
+    statusAnswers = [mismatch];
+    const recoveryPointer = {
+      version: 1,
+      checkoutSessionId: "sess-mismatch",
+      buyerStatusToken: "tok",
+      accountId: ACCOUNT,
+      eventId: EVENT,
+      provider: "paystack",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    };
+    mockSecureValue = JSON.stringify(recoveryPointer);
+    const outcome = await reconcileNativeCheckout(recoveryPointer, "recovery");
+    expect(outcome).toMatchObject({
+      outcome: "failed",
+      message: CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
+      token: "paystack_payment_mismatch",
+      retryable: false,
+    });
+    expect(outcome.message).not.toMatch(/try again/i);
+    expect(pointer()).toBeNull();
+  });
+
+  it("an ordinary failed charge is still retryable", async () => {
+    statusAnswers = [
+      { data: { status: "failed", order: null, error: "paystack_charge_failed" }, error: null },
+    ];
+    const outcome = await reconcileNativeCheckout(
+      {
+        version: 1, checkoutSessionId: "sess-failed", buyerStatusToken: "tok",
+        accountId: ACCOUNT, eventId: EVENT, provider: "paystack",
+        createdAt: Date.now(), expiresAt: Date.now() + 60_000,
+      },
+      "recovery",
+    );
+    expect(outcome).toMatchObject({ outcome: "failed", retryable: true });
+  });
 });

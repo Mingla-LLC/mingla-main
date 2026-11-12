@@ -53,6 +53,7 @@ import {
   paidCheckoutErrorMessage,
 } from "../services/ticketCheckoutService";
 import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview";
+import { registerSignOutCleanup } from "../utils/signOutCleanups";
 // issue #3281 (bundle 6b) — the Paystack page this purchase was already sent to.
 import { waitForPaymentPageClosed } from "@mingla/payments-native/paymentPageReturn";
 import {
@@ -688,6 +689,15 @@ const normalizedEventDateIds = (input: NativeCheckoutInput): string[] =>
     (id) => typeof id === "string" && id.length > 0,
   );
 
+/**
+ * issue #3281 (bundle 6e) — the checkout in flight in this app instance, if
+ * any. Released on every path by its own checkout, and on sign-out.
+ */
+let activeCheckoutClaim: object | null = null;
+registerSignOutCleanup(() => {
+  activeCheckoutClaim = null;
+});
+
 export const useNativeCheckoutFlow = (): ((
   input: NativeCheckoutInput,
 ) => Promise<NativeCheckoutOutcome>) => {
@@ -695,6 +705,24 @@ export const useNativeCheckoutFlow = (): ((
     useStripePaymentSheet();
 
   return async (input: NativeCheckoutInput): Promise<NativeCheckoutOutcome> => {
+    // issue #3281 (bundle 6e) — SINGLE FLIGHT, mirror of Explorer's #2253. A
+    // second concurrent checkout (any cart, any event) is refused here, before
+    // any edge function is called, as `canceled`, which every pay screen
+    // already treats as a silent no-op. The claim is unique to this checkout,
+    // so one that outlived a sign-out never releases a newer one's claim.
+    if (activeCheckoutClaim !== null) return { outcome: "canceled" };
+    const claim = {};
+    activeCheckoutClaim = claim;
+    try {
+      return await runCheckout(input);
+    } finally {
+      if (activeCheckoutClaim === claim) activeCheckoutClaim = null;
+    }
+  };
+
+  async function runCheckout(
+    input: NativeCheckoutInput,
+  ): Promise<NativeCheckoutOutcome> {
     if (!isPaymentSheetSupported) {
       return {
         outcome: "failed",
@@ -1019,5 +1047,5 @@ export const useNativeCheckoutFlow = (): ((
       outcome: "failed",
       message: "Unexpected web checkout response on native client.",
     };
-  };
+  }
 };
