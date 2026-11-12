@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4398",
+  "suite": {
+    "id": "issue-4398-host-work-updates",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/jest.config.cjs"
+    ],
+    "steps": [
+      {
+        "name": "Host app Work updates (due labels, All / Needs you / Mentions, Mark all read, read-only card sheet, every language)",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/components/minglaTeam/__tests__/jest.issue4398.cjs --runInBand",
+        "commandId": "assert:issue-4398-host-work-updates:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/components/minglaTeam/__tests__/jest.issue4398.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4398",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/minglaTeam/__tests__/issue_4398_work_updates.implementor.test.ts",
+      "mingla-business/src/components/minglaTeam/__tests__/jest.issue4398.cjs"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 20,
+      "p95": 90,
+      "evidence": "Local targeted run 2026-11-11"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 300
+  }
+}

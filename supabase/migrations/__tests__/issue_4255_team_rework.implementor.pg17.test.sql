@@ -123,7 +123,10 @@ declare v text;
 begin
   v := pg_temp.person(p_who, format('select public.ops_work_add(%L::jsonb, %L)::text',
     jsonb_build_array(jsonb_build_object('title', p_title, 'instructions', 'Do the work carefully and say what changed.',
-      'done_means', 'It is done and checked.', 'owners', jsonb_build_array(p_owner), 'due_on', (now() at time zone 'UTC')::date + 3)),
+      'done_means', 'It is done and checked.', 'owners', jsonb_build_array(p_owner),
+      -- [TEST-MOD-APPROVED #4398] every card has one watcher, who is not the owner.
+      'watchers', jsonb_build_array(CASE WHEN p_owner = 'oz.r4255@test.local' THEN 'gem.r4255@test.local' ELSE 'oz.r4255@test.local' END),
+      'due_on', (now() at time zone 'UTC')::date + 3)),
     pg_temp.rk()));
   if v not like 'ERR:%' and (v::jsonb)->'results'->0->>'status' = 'added' then
     perform pg_temp.keep(p_k, ((v::jsonb)->'results'->0->'card'->>'id')::uuid);
@@ -237,6 +240,8 @@ begin
   update public.ops_work_cards set due_on = v_day - 5 where id = pg_temp.id('T4');
   v := pg_temp.person('gem', format($q$select public.ops_work_move(%L, %L, %s, '[{"kind":"text","text":"Done and checked by hand."}]'::jsonb, null, false)::text$q$,
     pg_temp.id('T4'), (select id from public.ops_work_statuses where grp = 'done' and archived_at is null order by position limit 1), pg_temp.rev('T4')));
+  -- [TEST-MOD-APPROVED #4398] Done needs the watcher: the card's watcher (the owner, oz) confirms it.
+  v := pg_temp.person('owner', format('select public.ops_work_confirm(%L, %s)::text', pg_temp.id('T4'), pg_temp.rev('T4')));
   perform pg_temp.chk('R-DUE', 'the old card is closed', (select status from public.ops_work_cards where id = pg_temp.id('T4')), 'done');
   update public.ops_work_cards set due_on = v_day - 1 where id = pg_temp.id('T5');
   delete from public.notification_outbox where category_key = 'business.team_due';

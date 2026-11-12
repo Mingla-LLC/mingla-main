@@ -8,7 +8,7 @@ import { PAYOUT_COUNTRIES } from "../payoutCountries.ts";
 
 async function sqlRail(): Promise<Record<string, string>> {
   const src = await Deno.readTextFile(
-    new URL("../../../migrations/20280625004389_issue_4389_brand_setup.sql", import.meta.url),
+    new URL("../../../migrations/20280629004389_issue_4389_brand_setup.sql", import.meta.url),
   );
   // The rail is the seeded payout_country_rails table read by payout_country_rail().
   const start = src.indexOf("INSERT INTO public.payout_country_rails");

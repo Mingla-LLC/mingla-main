@@ -28,10 +28,11 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, MessageSquare, MoreHorizontal, Paperclip, Plus } from "lucide-react";
+import { CalendarDays, GripVertical, MessageSquare, MoreHorizontal, Paperclip, Plus } from "lucide-react";
 import { Avatars } from "./OpsChip";
 import { MenuItem, Popover } from "./Popover";
-import { cardReasons, dayLabel, isTagged, personReasonLabel, sortColumn } from "../../lib/opsModel";
+import { cardReasons, isTagged, personReasonLabel, sortColumn } from "../../lib/opsModel";
+import { DUE_TONE, dueLabel, waitingWords } from "../../lib/dueLabel";
 import {
   COLUMN_COLORS,
   GROUP_LABELS,
@@ -47,11 +48,21 @@ import { draftItemTitle } from "../../lib/workViews";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:anywhere] hyphens-none";
 
-/** Days late, from the card's due date. */
-function lateDays(card, today) {
-  if (!card?.due_on || card.status === "done") return 0;
-  const d = Math.round((new Date(`${today}T00:00:00Z`) - new Date(`${String(card.due_on).slice(0, 10)}T00:00:00Z`)) / 86_400_000);
-  return d > 0 ? d : 0;
+/** #4398: the due pill every card shows ("Overdue 4 days", "Due today", "Due Fri 14 Nov"). */
+export function DuePill({ card, today, className = "" }) {
+  const due = dueLabel(card, today);
+  return (
+    <span data-due={due.tone} title={due.full || undefined} className={`inline-flex shrink-0 items-center gap-1 self-start rounded-full px-2 py-0.5 text-[11.5px] tabular-nums ${DUE_TONE[due.tone]} ${className}`}>
+      <CalendarDays aria-hidden="true" className="h-3.5 w-3.5" />{due.text}
+    </span>
+  );
+}
+
+/** #4398: "Waiting on Seth" on a card in review, "Sent back: …" after a send back. */
+export function ReviewLine({ card }) {
+  if (card?.review) return <span data-review-wait="" className={`text-[12px] font-semibold text-[var(--color-info-700)] ${WORDS}`}>{waitingWords(card)}</span>;
+  if (card?.sent_back && card.status !== "done") return <span data-sent-back="" className={`text-[12px] font-semibold text-[var(--color-error-700)] ${WORDS}`}>Sent back: {card.sent_back.reason}</span>;
+  return null;
 }
 
 /** The small progress ring: done of total. */
@@ -69,18 +80,20 @@ function Ring({ done, total }) {
 
 /** The card face: title, tags, owners, due, subtasks, thread and files, agent on it. */
 export function BoardCardFace({ card, today, columns = [], onMove = null, showPill = false, draftsReady = 0 }) {
-  const late = lateDays(card, today);
   const sub = subtaskProgress(card.subtasks);
+  const left = Array.isArray(card.release_items) ? card.release_items.filter((i) => !i.done).length : null;
   const reasons = cardReasons(card).filter((r) => r === "No owner");
   return (
     <span className="flex min-w-0 flex-col gap-1.5">
       {card.parent && <span className={`text-[11px] text-[var(--color-text-tertiary)] ${WORDS}`}>↳ #{card.parent.number} {card.parent.title}</span>}
       <span className={`line-clamp-2 text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</span>
-      {(isTagged(card) || late > 0 || card.goal) && (
+      <DuePill card={card} today={today} />
+      {(isTagged(card) || card.goal || left !== null || card.auto) && (
         <span className="flex min-w-0 flex-wrap items-center gap-1">
           {isTagged(card) && <span className="rounded-full bg-[var(--color-brand-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-brand-700)]">{personReasonLabel(card)}</span>}
           {isTagged(card) && draftsReady > 0 && <span data-draft-ready="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">Draft ready</span>}
-          {late > 0 && <span className="rounded-full bg-[var(--color-error-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-error-700)]">{late}d late</span>}
+          {left !== null && <span data-release-left="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">{left} of {card.release_items.length} left</span>}
+          {card.auto && <span className="rounded-full bg-[var(--gray-100)] px-2 py-px text-[11px] font-semibold text-[var(--color-text-secondary)]">Made by Mingla</span>}
           {card.goal && <span className="inline-flex min-w-0 items-center gap-1 rounded-full bg-[var(--gray-100)] px-2 py-px text-[11px] text-[var(--color-text-secondary)]"><span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-success-600)]" /><span className="truncate">{card.goal.title}</span></span>}
         </span>
       )}
@@ -88,13 +101,16 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
         {(card.owners || []).length
           ? <Avatars people={card.owners} />
           : <span aria-label={reasons.length ? "No owner" : "Nobody yet"} className="inline-grid h-6 w-6 place-items-center rounded-full border border-dashed border-[var(--color-error-500)] text-[10px] text-[var(--color-error-700)]">?</span>}
-        {card.due_on && <span className={`tabular-nums ${late > 0 ? "font-semibold text-[var(--color-error-700)]" : ""}`}>{dayLabel(card.due_on)}</span>}
         {sub.total > 0 && <span className="inline-flex items-center gap-1 tabular-nums" aria-label={`${sub.done} of ${sub.total} subtasks done`}><Ring done={sub.done} total={sub.total} />{sub.done}/{sub.total}</span>}
         {Number(card.thread_count) > 0 && <span className="inline-flex items-center gap-0.5 tabular-nums" aria-label={`${card.thread_count} messages`}><MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />{card.thread_count}</span>}
         {Number(card.files_count) > 0 && <span className="inline-flex items-center gap-0.5 tabular-nums" aria-label={`${card.files_count} files`}><Paperclip aria-hidden="true" className="h-3.5 w-3.5" />{card.files_count}</span>}
         {card.estimate_minutes ? <span className="tabular-nums">{hoursLabel(card.estimate_minutes)}</span> : null}
         {card.working && card.status !== "done" && <span className="font-semibold text-[var(--color-brand-700)]"><span aria-hidden="true">● </span>{card.working.name || "An agent"} on it</span>}
       </span>
+      {(card.owners?.[0] || card.watchers?.[0]) && (
+        <span className={`text-[11.5px] text-[var(--color-text-secondary)] ${WORDS}`}>{card.owners?.[0]?.name || "Nobody"} owns · {card.watchers?.[0]?.name || "nobody"} watches</span>
+      )}
+      <ReviewLine card={card} />
       {showPill && onMove && (
         <StatusPill card={card} columns={columns} onMove={onMove} />
       )}

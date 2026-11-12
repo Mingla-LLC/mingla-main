@@ -84,7 +84,8 @@ Deno.test("#3980 W2 rework 2: the Work board card shows the draft link and Close
   // #4270: the Next step box calls it "Done with proof". #4255 W3: the status line's one primary
   // button is the card's action when it has one, else Done with proof (tagged or In progress).
   assertMatch(d, /else if \(tagged && action\) primary = <Button[^\n]*>\{action\.label\}<\/Button>;/);
-  assertMatch(d, /else primary = <Button[^\n]*onClick=\{startClose\}>Done with proof<\/Button>;/);
+  // #4398: the close button says Mark done (Close as done for the watcher); it still opens the proof form.
+  assertMatch(d, /else primary = <Button[^\n]*onClick=\{startClose\}>\{role\.isWatcher \? "Close as done" : "Mark done"\}<\/Button>;/);
 });
 
 Deno.test("#3980 W2 rework 2: Community, Roadmap opens the linked draft in the editor", () => {

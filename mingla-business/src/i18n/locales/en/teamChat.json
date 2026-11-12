@@ -96,6 +96,20 @@
     "reply": "Reply",
     "edit": "Edit",
     "delete": "Delete",
-    "delete_confirm": "Delete this message for everyone?"
+    "delete_confirm": "Delete this message for everyone?",
+    "tab_updates": "Work updates",
+    "filter_all": "All",
+    "filter_needs": "Needs you",
+    "mark_all_read": "Mark all read",
+    "due_overdue_one": "Overdue 1 day",
+    "due_overdue": "Overdue {{n}} days",
+    "due_today": "Due today",
+    "due_tomorrow": "Due tomorrow",
+    "due_on": "Due {{date}}",
+    "done_on": "Done {{date}}",
+    "card_people": "{{owner}} owns · {{watcher}} watches",
+    "what_changed": "What changed",
+    "sheet_read_only": "Read-only here. Confirm and send back in Mingla Admin.",
+    "empty_filter": "Nothing here."
   }
 }

@@ -10,18 +10,20 @@ import { Modal, ModalBody } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { ProofForm } from "./ProofForm";
 import { GROUP_LABELS, archiveTargets, subtaskProgress } from "../../lib/workBoardModel";
+import { closeFormWords } from "../../lib/workReview";
 
-export function CloseCardDialog({ card, column, busy, onCancel, onClose }) {
+export function CloseCardDialog({ card, column, me, busy, onCancel, onClose }) {
   const sub = subtaskProgress(card?.subtasks);
   const open = sub.total - sub.done;
   const [children, setChildren] = useState(false);
   if (!card) return null;
+  const words = closeFormWords(card, me, column?.name || "a Closed column");  // #4398 retest (P3)
   return (
-    <Modal open onClose={onCancel} title={`Close #${card.number}`} size="sm">
+    <Modal open onClose={onCancel} title={`${words.submit} #${card.number}`} size="sm">
       <ModalBody>
         <div data-close-sheet={card.id} className="flex min-w-0 flex-col gap-2">
           <p className="text-[13px] text-[var(--color-text-secondary)]">
-            Moving <span className="font-semibold text-[var(--color-text-primary)]">{card.title}</span> to {column?.name || "a Closed column"} closes it. Add what shows it is done.
+            <span className="font-semibold text-[var(--color-text-primary)]">{card.title}</span>: {words.line} Add what shows it is done.
           </p>
           {open > 0 && (
             <label className="flex min-h-11 items-start gap-2 text-[13px] text-[var(--color-text-primary)]">
@@ -29,7 +31,7 @@ export function CloseCardDialog({ card, column, busy, onCancel, onClose }) {
               <span>Close the {open} open {open === 1 ? "subtask" : "subtasks"} too</span>
             </label>
           )}
-          <ProofForm busy={busy} onCancel={onCancel} onSubmit={(proof, result) => onClose(proof, result, children)} />
+          <ProofForm busy={busy} submitLabel={words.submit} busyLabel={words.busy} onCancel={onCancel} onSubmit={(proof, result) => onClose(proof, result, children)} />
         </div>
       </ModalBody>
     </Modal>

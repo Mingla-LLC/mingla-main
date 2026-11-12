@@ -37,6 +37,30 @@
 
 \set ON_ERROR_STOP on
 begin;
+
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
 -- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
 \ir issue_4270_promised_event_before_d16.fixture.sql
 
@@ -172,6 +196,9 @@ end;
 $fn$;
 
 -- The open automatic card of a key, as "<count>/<title>/<due offset>/<owners>".
+-- [TEST-MOD-APPROVED #4398] A3: every automatic card takes its route's owner and watcher (this suite's
+-- fallback main task, owned by route-owner), whoever owns the host or the marketing; the owner part of
+-- each W3-AUTO / W3-REPEAT expectation below is that route owner.
 create function pg_temp.w3_card(p_key text) returns text
 language sql as $fn$
   select count(*)::text || '/' || coalesce(min(w.title), '') || '/' || coalesce(min(w.due_on - (now() AT TIME ZONE 'UTC')::date)::text, '') || '/'
@@ -315,17 +342,17 @@ begin
 
   v_res := public.ops_reconcile();
   perform pg_temp.w3_check('W3-AUTO', 'the housekeeping run makes the steps', ((v_res->'auto_steps'->>'added')::integer > 0)::text, 'true');
-  perform pg_temp.w3_check('W3-AUTO', 'a draft gets one go-live card, owned by the host owner, due 28 days before',
+  perform pg_temp.w3_check('W3-AUTO', 'a draft gets one go-live card, owned by its route''s owner, due 28 days before',
     pg_temp.w3_card('golive:event:' || pg_temp.w3_id('e_draft')),
-    '1/Get W33980 Draft Night live by ' || to_char(v_today + 12, 'FMDD Mon') || '/12/ada.w33980@test.local');
+    '1/Get W33980 Draft Night live by ' || to_char(v_today + 12, 'FMDD Mon') || '/12/route-owner.r4398@test.local');
   perform pg_temp.w3_check('W3-AUTO', 'the go-live card is a gate counted from the event',
     (select kind || '/' || kit_step || '/' || due_source || '/' || anchor_kind from public.ops_work_cards where auto_key = 'golive:event:' || pg_temp.w3_id('e_draft')),
     'gate_live/-28/kit/event');
   perform pg_temp.w3_like('W3-AUTO', 'with the brief in the artifact''s words',
     (select instructions from public.ops_work_cards where auto_key = 'golive:event:' || pg_temp.w3_id('e_draft')),
     'Host owner. Steps before it: get the flyer, logo, prices and date (%), build the listing with the host (%).');
-  perform pg_temp.w3_check('W3-AUTO', 'an event live 30 days ahead gets giveaway and ads, owned by the marketing owner',
-    pg_temp.w3_card('promo:event:' || pg_temp.w3_id('e_ready')), '1/Giveaway and ads for W33980 Ready Night/14/bo.w33980@test.local');
+  perform pg_temp.w3_check('W3-AUTO', 'an event live 30 days ahead gets giveaway and ads, owned by its route''s owner',
+    pg_temp.w3_card('promo:event:' || pg_temp.w3_id('e_ready')), '1/Giveaway and ads for W33980 Ready Night/14/route-owner.r4398@test.local');
   perform pg_temp.w3_check('W3-AUTO', 'an event live 24 days ahead too',
     split_part(pg_temp.w3_card('promo:event:' || pg_temp.w3_id('e_short')), '/', 1), '1');
   perform pg_temp.w3_check('W3-AUTO', 'an event live 10 days ahead gets no giveaway card',
@@ -333,9 +360,9 @@ begin
   perform pg_temp.w3_check('W3-AUTO', 'nor a go-live card', split_part(pg_temp.w3_card('golive:event:' || pg_temp.w3_id('e_late')), '/', 1), '0');
   perform pg_temp.w3_check('W3-AUTO', 'a host whose event was 3 days ago gets a recap card',
     pg_temp.w3_card('recap:' || pg_temp.w3_id('e_past')),
-    '1/Recap W33980 Past Party and ask W33980 Recap Host for their next event/0/ada.w33980@test.local');
-  perform pg_temp.w3_check('W3-AUTO', 'a Replied host with nothing coming up gets an ask card with no owner',
-    pg_temp.w3_card('ask:39830000-0000-4000-c100-000000000002'), '1/Ask W33980 Replied Host for their first event and date/3/');
+    '1/Recap W33980 Past Party and ask W33980 Recap Host for their next event/0/route-owner.r4398@test.local');
+  perform pg_temp.w3_check('W3-AUTO', 'a Replied host with nothing coming up gets an ask card with its route''s owner',
+    pg_temp.w3_card('ask:39830000-0000-4000-c100-000000000002'), '1/Ask W33980 Replied Host for their first event and date/3/route-owner.r4398@test.local');
   perform pg_temp.w3_check('W3-AUTO', 'Mingla made it, from the timeline',
     (select created_by || '/' || created_via from public.ops_work_cards where auto_key = 'ask:39830000-0000-4000-c100-000000000002'),
     'system@usemingla.com/system');
@@ -351,7 +378,7 @@ begin
   v_res := public.ops_reconcile();
   perform pg_temp.w3_check('W3-AUTO', 'a moved event re-dates its card and its title',
     pg_temp.w3_card('golive:event:' || pg_temp.w3_id('e_move')),
-    '1/Get W33980 Move Night live by ' || to_char(v_today + 29, 'FMDD Mon') || '/29/ada.w33980@test.local');
+    '1/Get W33980 Move Night live by ' || to_char(v_today + 29, 'FMDD Mon') || '/29/route-owner.r4398@test.local');
   perform pg_temp.w3_like('W3-AUTO', 'the card''s history says why',
     (select e.body from public.ops_work_events e join public.ops_work_cards w on w.id = e.card_id
       where w.auto_key = 'golive:event:' || pg_temp.w3_id('e_move') and e.action = 'redated' order by e.at desc limit 1),
@@ -376,7 +403,7 @@ begin
   perform pg_temp.w3_keep('x_roof', pg_temp.w3_j(v)->'expected'->>'id');
   perform pg_temp.w3_check('W3-AUTO', 'saving a promise makes its go-live card at once',
     pg_temp.w3_card('golive:expected:' || pg_temp.w3_id('x_roof')),
-    '1/Get W33980 Rooftop Sundowner live by ' || to_char(v_today + 32, 'FMDD Mon') || '/32/');
+    '1/Get W33980 Rooftop Sundowner live by ' || to_char(v_today + 32, 'FMDD Mon') || '/32/route-owner.r4398@test.local');
   perform pg_temp.w3_check('W3-AUTO', 'and closes the ask card with what was set',
     (select status || '/' || close_reason from public.ops_work_cards where auto_key = 'ask:39830000-0000-4000-c100-000000000002'),
     'done/Next event set: W33980 Rooftop Sundowner on ' || to_char(v_today + 60, 'FMDD Mon') || '.');
@@ -384,7 +411,7 @@ begin
     jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'id', pg_temp.w3_id('x_roof'), 'expected_on', v_today + 70), 'w3-auto-2'));
   perform pg_temp.w3_check('W3-AUTO', 'a new date re-dates the card at once',
     pg_temp.w3_card('golive:expected:' || pg_temp.w3_id('x_roof')),
-    '1/Get W33980 Rooftop Sundowner live by ' || to_char(v_today + 42, 'FMDD Mon') || '/42/');
+    '1/Get W33980 Rooftop Sundowner live by ' || to_char(v_today + 42, 'FMDD Mon') || '/42/route-owner.r4398@test.local');
   v := pg_temp.w3_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39830000-0000-4000-c100-000000000002', 'id', pg_temp.w3_id('x_roof'), 'status', 'cancelled',
                        'cancel_reason', 'The host called it off'), 'w3-auto-3'));
@@ -425,7 +452,7 @@ begin
     (select string_agg((e->>'on'), ',' order by (e->>'on')::date) from jsonb_array_elements(public.ops_expected_occurrences(x, v_today, 4)) e),
     (select string_agg(((v_today + 9) + make_interval(months => k))::date::text, ',' order by k) from generate_series(0, 3) k));
   perform pg_temp.w3_check('W3-REPEAT', 'the weekly host gets one rolling card, due today',
-    pg_temp.w3_card('series:39830000-0000-4000-d100-000000000001'), '1/Keep 4 weeks of W33980 Weekly Host dates live/0/ada.w33980@test.local');
+    pg_temp.w3_card('series:39830000-0000-4000-d100-000000000001'), '1/Keep 4 weeks of W33980 Weekly Host dates live/0/route-owner.r4398@test.local');
   perform pg_temp.w3_like('W3-REPEAT', 'naming the next date to publish',
     (select instructions from public.ops_work_cards where auto_key = 'series:39830000-0000-4000-d100-000000000001'),
     'Repeats every week. Next date to publish: ' || to_char(v_today + 5, 'Dy FMDD Mon') || '.');
@@ -603,9 +630,9 @@ begin
           repeat('b', 40), 'nobody', '[]', false, '{no_issue}', '{}');
   perform public.ops_engineering_cards_sync();
   perform pg_temp.w3_check('W3-X3', 'a merge from before switch-on makes no follow-through card',
-    (select count(*) from public.ops_work_cards where auto_key = 'eng_no_issue:pr-990101')::text, '0');
+    (select count(*) from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-990101')::text, '0'); -- [TEST-MOD-APPROVED #4398] any eng card
   perform pg_temp.w3_check('W3-X3', 'a merge after switch-on does',
-    (select count(*) from public.ops_work_cards where auto_key = 'eng_no_issue:pr-990102' and status <> 'done')::text, '1');
+    (select count(*) from public.ops_work_cards where auto_key = 'eng_release:pr-990102' and status <> 'done')::text, '1'); -- [TEST-MOD-APPROVED #4398] S2: the release card
 
   -- Issues: one already Done the first time Mingla read it, one seen moving.
   insert into public.ops_github_items (number, kind) values (990201, 'issue'), (990202, 'issue');

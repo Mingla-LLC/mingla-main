@@ -338,6 +338,9 @@ const RPC_ERROR_COPY: Record<string, string> = {
   experience_not_found:
     "We couldn't find this experience. It may have been deleted.",
   event_not_an_experience: "That isn't an editable experience.",
+  // #3281 bundle 6 — publishing again would delete dates that hold bookings.
+  experience_dates_have_sales:
+    "This experience already has bookings, so it can't be published again from scratch. Edit it from its page instead; your bookings stay as they are.",
   // META-ORCH-1059 Sub-E — live-edit refund-gate + lifecycle copy.
   experience_not_editable_status:
     "This experience can't be edited in its current state.",

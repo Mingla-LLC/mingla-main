@@ -489,7 +489,8 @@ declare v text; v_card uuid; v_ev uuid; v_mention uuid;
 begin
   v := pg_temp.person('gem', format('select public.ops_work_add(%L::jsonb, %L)::text',
     jsonb_build_array(jsonb_build_object('title', 'C4255 chat card', 'instructions', 'Do the work carefully and say what changed.',
-      'done_means', 'It is done and checked.', 'owners', jsonb_build_array('gem.c4255@test.local'), 'due_on', (now() at time zone 'UTC')::date + 3)), pg_temp.rk()));
+      'done_means', 'It is done and checked.', 'owners', jsonb_build_array('gem.c4255@test.local'),
+      'watchers', jsonb_build_array('oz.c4255@test.local'), 'due_on', (now() at time zone 'UTC')::date + 3)), pg_temp.rk()));  -- [TEST-MOD-APPROVED #4398] one watcher
   v_card := ((v::jsonb)->'results'->0->'card'->>'id')::uuid;
   v := pg_temp.person('gem', format($q$select public.ops_message_post(%L, 'Ray, the run sheet please', array['ray.c4255@test.local'], null, null, false, %L)::text$q$, v_card, pg_temp.rk()));
   v_ev := ((v::jsonb)->>'event_id')::uuid;

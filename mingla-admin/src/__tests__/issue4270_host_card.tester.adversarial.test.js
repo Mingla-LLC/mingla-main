@@ -75,7 +75,8 @@ const fields = (list) => list.map((p) => p.field).sort();
 
 describe("Q-1 Add work item at the edges", () => {
   const today = "2026-11-04";
-  const ok = { title: "Chase the contract", owners: ["kemi@test.local"], due: today, filesUrl: "" };
+  // #4398: one owner and one watcher.
+  const ok = { title: "Chase the contract", owners: ["kemi@test.local"], watchers: ["bola@test.local"], due: today, filesUrl: "" };
   it("the title counts after trimming: 2 and 161 are refused, 3 and 160 pass, spaces only is empty", () => {
     assert.deepEqual(fields(quickAddProblems({ ...ok, title: "  ab  " }, today)), ["title"]);
     assert.deepEqual(fields(quickAddProblems({ ...ok, title: "  abc  " }, today)), []);
@@ -91,11 +92,11 @@ describe("Q-1 Add work item at the edges", () => {
     assert.deepEqual(fields(odd), ["due_on"]);
     assert.notEqual(past[0].message, odd[0].message);
   });
-  it("assignees: none, or not a list, is refused with the form's words", () => {
+  it("owner: none, or not a list, is refused with the form's words (#4398: one owner)", () => {
     for (const owners of [[], null, "kemi@test.local", undefined]) {
       const p = quickAddProblems({ ...ok, owners }, today);
       assert.deepEqual(fields(p), ["owners"], String(owners));
-      assert.equal(p[0].message, "Pick at least one assignee");
+      assert.equal(p[0].message, "A card has one owner. Pick one person.");  // #4398: one owner
     }
   });
   it("Files link: http, javascript and a bare word are refused; https passes", () => {

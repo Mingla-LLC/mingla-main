@@ -243,8 +243,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
 // #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
 // #4255: re-sealed after renumbering the seven Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280622004382).
-// #4389: re-sealed after registering the four #4389 migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes, skipping the brand setup migration in the #1931 template replay, and merging origin/main 3dc6c44093.
-export const BOOTSTRAP_SHA256 = "cf1c9e223fc208e8e9e3df3051a87c176b2d8087345a6236f08d4f09603b6952";
+// #4389: re-sealed after registering the four #4389 migrations (renumbered 20280629*4389, above main's 20280626*4398) and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes, skipping the brand setup migration in the #1931 template replay, and merging origin/main 811c033211.
+export const BOOTSTRAP_SHA256 = "93b29490b950511bbbde385125ab1fc374a89a36a3fd252fe74bf3b5cfc62127";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

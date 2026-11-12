@@ -528,7 +528,9 @@
         "supabase/migrations/20280402004265_issue_3281_discover_card_price_and_experience_bookable.sql",
         "app-mobile/src/hooks/useConsumerEventFoundation.ts",
         "app-mobile/src/hooks/usePublicRsvpBySlug.ts",
-        "packages/offering-rendering/normalizeCityCountry.ts"
+        "packages/offering-rendering/normalizeCityCountry.ts",
+        "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
+        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql"
       ]
     },
     {
@@ -956,7 +958,9 @@
         "mingla-business/src/utils/publishedEventEditGuards.ts",
         "mingla-business/src/store/liveEventStore.ts",
         "mingla-business/src/utils/liveEventAdapter.ts",
-        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
+        "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
+        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql"
       ]
     },
     {
@@ -1165,14 +1169,14 @@
         "supabase/functions/_shared/agentBrandSetupTools.ts",
         "supabase/functions/_shared/ariFlows/brandSetup.ts",
         "supabase/functions/_shared/vatCountryGuard.ts",
-        "supabase/migrations/20280625004389_issue_4389_brand_setup.sql",
-        "supabase/migrations/20280625104389_issue_4389_ari_brand_operation.sql",
-        "supabase/migrations/20280625304389_issue_4389_retire_bgn.sql",
+        "supabase/migrations/20280629004389_issue_4389_brand_setup.sql",
+        "supabase/migrations/20280629104389_issue_4389_ari_brand_operation.sql",
+        "supabase/migrations/20280629304389_issue_4389_retire_bgn.sql",
         "mingla-business/src/components/stripe/ConnectOnboardingNative.native.tsx",
         "mingla-business/src/components/stripe/ConnectOnboardingNative.tsx",
         "mingla-business/src/components/stripe/nativeConnectOnboarding.ts",
         "mingla-business/src/hooks/useNativeConnectOnboardingRelease.ts",
-        "supabase/migrations/20280625204389_issue_4389_native_connect_flag.sql"
+        "supabase/migrations/20280629204389_issue_4389_native_connect_flag.sql"
       ]
     },
     {
@@ -1321,7 +1325,21 @@
         "supabase/migrations/20280624034255_issue_4255_team_chat_functions.sql",
         "supabase/migrations/20280624044255_issue_4255_team_chat_fixups.sql",
         "supabase/migrations/20280624054255_issue_4255_team_rework.sql",
-        "supabase/migrations/20280624064255_issue_4255_team_rework2.sql"
+        "supabase/migrations/20280624064255_issue_4255_team_rework2.sql",
+        "mingla-admin/src/components/messages/MessagesActivity.jsx",
+        "mingla-admin/src/components/ops/ProofForm.jsx",
+        "mingla-admin/src/components/ops/TeamSettingsPanels.jsx",
+        "mingla-admin/src/components/people/PeopleField.jsx",
+        "mingla-admin/src/hooks/useActivity.js",
+        "mingla-admin/src/lib/activityModel.js",
+        "mingla-admin/src/lib/dueLabel.js",
+        "mingla-admin/src/lib/peopleField.js",
+        "mingla-admin/src/lib/workReview.js",
+        "mingla-business/src/components/minglaTeam/workUpdates.ts",
+        "supabase/migrations/20280626004398_issue_4398_routes_and_people.sql",
+        "supabase/migrations/20280626014398_issue_4398_review_and_notices.sql",
+        "supabase/migrations/20280626034398_issue_4398_people_invariant.sql",
+        "supabase/migrations/20280626044398_issue_4398_mark_work_updates_read.sql"
       ]
     },
     {
@@ -1902,7 +1920,9 @@
         "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
         "mingla-business/src/components/experience/ExperienceStopCard.tsx",
         "mingla-business/src/components/experience/experienceWizardTypes.ts",
-        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql"
+        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
+        "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
+        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql"
       ]
     },
     {
@@ -2371,8 +2391,8 @@
         "supabase/functions/_shared/agentBrandSetupTools.ts",
         "supabase/functions/_shared/ariFlows/brandSetup.ts",
         "supabase/functions/_shared/vatCountryGuard.ts",
-        "supabase/migrations/20280625004389_issue_4389_brand_setup.sql",
-        "supabase/migrations/20280625104389_issue_4389_ari_brand_operation.sql"
+        "supabase/migrations/20280629004389_issue_4389_brand_setup.sql",
+        "supabase/migrations/20280629104389_issue_4389_ari_brand_operation.sql"
       ]
     },
     {

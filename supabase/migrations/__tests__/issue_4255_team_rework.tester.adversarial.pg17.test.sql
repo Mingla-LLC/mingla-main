@@ -140,7 +140,9 @@ declare v text; v_item jsonb;
 begin
   v_item := jsonb_build_object('title', p_title, 'instructions', 'Do the work carefully and say what changed.',
     'done_means', 'It is done and checked.', 'owners', jsonb_build_array(p_owner), 'due_on', (now() at time zone 'UTC')::date + 3);
-  if p_watcher is not null then v_item := v_item || jsonb_build_object('watchers', jsonb_build_array(p_watcher)); end if;
+  -- [TEST-MOD-APPROVED #4398] every card has one watcher, who is not the owner (oz by default, gem on oz's own cards).
+  v_item := v_item || jsonb_build_object('watchers', jsonb_build_array(coalesce(p_watcher,
+    CASE WHEN p_owner = 'oz.x4255@test.local' THEN 'gem.x4255@test.local' ELSE 'oz.x4255@test.local' END)));
   v := pg_temp.person('owner', format('select public.ops_work_add(%L::jsonb, %L)::text', jsonb_build_array(v_item), pg_temp.rk()));
   if v not like 'ERR:%' and (v::jsonb)->'results'->0->>'status' = 'added' then
     perform pg_temp.keep(p_k, ((v::jsonb)->'results'->0->'card'->>'id')::uuid);
@@ -234,12 +236,13 @@ begin
   -- A card owned by Ray and the unconfirmed teammate (confirmed staff only gets the push).
   v := pg_temp.person('owner', format('select public.ops_work_add(%L::jsonb, %L)::text',
     jsonb_build_array(jsonb_build_object('title', 'X4255 Decide card', 'instructions', 'Do the work carefully and say what changed.',
-      'done_means', 'It is done and checked.', 'owners', jsonb_build_array(pg_temp.email('ray'), pg_temp.email('unc')),
+      -- [TEST-MOD-APPROVED #4398] one owner (Ray) and one watcher (the unconfirmed teammate), not two owners.
+      'done_means', 'It is done and checked.', 'owners', jsonb_build_array(pg_temp.email('ray')), 'watchers', jsonb_build_array(pg_temp.email('unc')),
       'due_on', (now() at time zone 'UTC')::date + 3)), pg_temp.rk()));
   perform pg_temp.keep('DC', ((v::jsonb)->'results'->0->'card'->>'id')::uuid);
   delete from public.notification_outbox where payload->>'card_id' = pg_temp.id('DC')::text;
   v := pg_temp.tag('DC', 'send');
-  perform pg_temp.chk('X-DECIDE', 'the unconfirmed owner gets no Host app decision push',
+  perform pg_temp.chk('X-DECIDE', 'the unconfirmed watcher gets no Host app push',
     (select count(*)::text from public.notification_outbox o where o.user_id = pg_temp.uid('unc') and o.category_key like 'business.team_%'
       and o.payload->>'card_id' = pg_temp.id('DC')::text), '0');
   perform pg_temp.chk('X-DECIDE', 'Ray gets exactly one decision push',

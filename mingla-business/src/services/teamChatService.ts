@@ -247,6 +247,12 @@ export async function listTeamMentions(): Promise<TeamMention[]> {
   return (data?.mentions ?? []).filter((m) => m.source_kind !== "team_message");
 }
 
+/** #4398: Work updates > Mark all read (mentions and work updates; support alerts stay as they are). */
+export async function markAllWorkUpdatesRead(): Promise<void> {
+  await rpc<unknown>("team_inbox_mark_read", { p_scope: "mentions", p_alert_types: null }, "Couldn't mark them read.");
+  await rpc<unknown>("team_inbox_mark_read", { p_scope: "work_updates", p_alert_types: null }, "Couldn't mark them read.");
+}
+
 export async function markTeamMentionRead(mentionId: string): Promise<void> {
   await rpc<unknown>("issue_3720_mark_team_mention_read", { p_mention_id: mentionId }, "Couldn't mark it read.");
 }

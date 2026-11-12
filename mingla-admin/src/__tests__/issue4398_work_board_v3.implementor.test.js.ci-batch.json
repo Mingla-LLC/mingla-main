@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4398",
+  "suite": {
+    "id": "issue-4398-work-board-v3",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**"
+    ],
+    "steps": [
+      {
+        "name": "Work board v3: due labels, waiting on the watcher, Confirm and Send back for the watcher only, one owner and one watcher pickers, Automatic cards routes, Mingla activity",
+        "cwd": "mingla-admin",
+        "run": "node --test src/__tests__/issue4398_work_board_v3.implementor.test.js",
+        "commandId": "assert:issue-4398-work-board-v3:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/__tests__/issue4398_work_board_v3.implementor.test.js"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4398",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/__tests__/issue4398_work_board_v3.implementor.test.js"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 3,
+      "p95": 6,
+      "evidence": "Local targeted run 2026-11-11"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

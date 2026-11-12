@@ -93,6 +93,9 @@ create function pg_temp.ty_card(p_title text, p_status text, p_owner text, p_due
 language plpgsql as $fn$
 declare v_id uuid; v_today date := (now() AT TIME ZONE 'UTC')::date;
 begin
+  -- [TEST-MOD-APPROVED #4398 fixture] loaded as a fixture (replica mode), past the review and people checks.
+  perform set_config('ops.fx_srr', current_setting('session_replication_role'), true);
+  perform set_config('session_replication_role', 'replica', true);
   insert into public.ops_work_cards (title, instructions, done_means, status, due_on, due_source, sprint_id,
     created_by, created_via, updated_by, closed_at, closed_by, close_kind)
   values (p_title, 'Do the work and write what changed.', 'Checked and done.', p_status,
@@ -102,6 +105,7 @@ begin
     case when p_status = 'done' then 'done' end)
   returning id into v_id;
   insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, p_owner, 'owner', p_owner);
+  insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'week.y4270@test.local', 'watcher', p_owner) on conflict do nothing;  -- #4398: one watcher
 end;
 $fn$;
 

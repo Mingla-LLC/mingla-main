@@ -12,6 +12,8 @@ import { alertIsNew, inAppRoute } from "./notificationsInbox.js";
 
 export const MESSAGES_TABS = Object.freeze([
   { id: "notifications", label: "Notifications" },
+  // #4398: what Mingla's bots did, edits and system alerts: Admin only.
+  { id: "activity", label: "Mingla activity" },
   { id: "chats", label: "Team chats" },
   { id: "settings", label: "Settings" },
 ]);

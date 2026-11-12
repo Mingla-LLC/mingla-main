@@ -616,7 +616,7 @@ Deno.test("#3355 P2: edge item labels equal the migration catalogue (one home)",
     ),
   ) + await Deno.readTextFile(
     new URL(
-      "supabase/migrations/20280625004389_issue_4389_brand_setup.sql",
+      "supabase/migrations/20280629004389_issue_4389_brand_setup.sql",
       ROOT,
     ),
   );

@@ -32,6 +32,30 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
 alter table auth.users add column if not exists banned_until timestamptz;
@@ -443,9 +467,10 @@ begin
   select w.id into v_card from public.ops_work_cards w where w.auto_key = 'roadmap_shipped:issue-5301';
   perform pg_temp.t3980w2_check('B4', 'and a person card asks the owner to approve it',
     (select title || ' | ' || status || ':' || person_reason from public.ops_work_cards where id = v_card)
-      || ' | ' || (select string_agg(email || ':' || role, ',') from public.ops_work_people where card_id = v_card)
+      || ' | ' || (select string_agg(email || ':' || role, ',' order by role) from public.ops_work_people where card_id = v_card)
       || ' | ' || (select string_agg(kind || ':' || label, ',') from public.ops_work_links where card_id = v_card),
-    'Approve "Recently shipped": W2 Better host payouts | todo:publish | ed.w23980@test.local:owner | roadmap_card:W2 Better host payouts');
+    -- [TEST-MOD-APPROVED #4398] A3: an automatic card takes its route's owner and watcher.
+    'Approve "Recently shipped": W2 Better host payouts | todo:publish | route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher | roadmap_card:W2 Better host payouts');
   v := pg_temp.t3980w2_as('service', 'select public.ops_reconcile()::text');
   perform pg_temp.t3980w2_check('B4', 'never twice, across runs',
     (select count(*)::text from public.community_audit_log where action = 'draft_roadmap_card' and metadata->>'issue' = '5301')
@@ -514,15 +539,15 @@ begin
   perform pg_temp.t3980w2_check('B2', 'the log says both, in words',
     (select string_agg(summary, ' | ' order by id) from public.ops_agent_log where action in ('guide_live', 'guide_incomplete') and detail->>'pr' = '97001'),
     'W2 proven entry is Live in the Feature Guide (PR #97001). | W2 entry needing a route stays Planned: no route evidence (PR #97001).');
-  select count(*) into v_told from public.team_mentions m join auth.users u on u.id = m.target_user_id
-   where m.source_kind = 'work_card' and m.body_excerpt like 'Mingla added: Feature Guide: W2 proven entry is Live%';
-  perform pg_temp.t3980w2_check('B2', 'Support teammates watch the closed card, and they and the owner are told',
-    (select string_agg(p.email, ',' order by p.email) from public.ops_work_people p join public.ops_work_cards w on w.id = p.card_id
-      where w.auto_key = 'guide_live:w2-guide-proven:pr-97001' and p.role = 'watcher')
-      || '/' || (select status || ':' || close_kind from public.ops_work_cards where auto_key = 'guide_live:w2-guide-proven:pr-97001')
-      || '/' || v_told::text,
+  -- [TEST-MOD-APPROVED #4398] S2: an entry turning Live makes no Work card; the owner and Support are told by
+  -- one Admin activity notice each.
+  perform pg_temp.t3980w2_check('B2', 'no Work card; Support teammates and the owner each get one activity notice',
+    (select count(*)::text from public.ops_work_cards where auto_key like 'guide\_live:w2-guide-proven:%')
+      || '/' || (select string_agg(u.email, ',' order by u.email) from public.team_mentions m join auth.users u on u.id = m.target_user_id
+                  where m.source_kind = 'ops_activity' and m.event_kind = 'guide' and m.body_excerpt = 'Feature Guide: W2 proven entry is Live (PR #97001).'
+                    and u.email not like '%.r4398@test.local'),  -- the #4398 route fixture's two admins are told too
     -- #4255 (D3): the Founding partner (cy) is a full admin, so it is included like di.
-    'cy.w23980@test.local,di.w23980@test.local,sue.w23980@test.local/done:system/4');
+    '0/cy.w23980@test.local,di.w23980@test.local,ed.w23980@test.local,sue.w23980@test.local');
   perform pg_temp.t3980w2_as('service', 'select public.ops_reconcile()::text');
   perform pg_temp.t3980w2_check('B2', 'a record is applied once',
     (select count(*)::text from public.product_truth_audit a join public.product_capabilities c on c.id = a.capability_id

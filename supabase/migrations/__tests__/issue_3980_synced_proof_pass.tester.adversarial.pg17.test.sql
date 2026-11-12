@@ -21,6 +21,30 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 create schema if not exists supabase_migrations;
 create table if not exists supabase_migrations.schema_migrations (version text primary key);
@@ -171,7 +195,7 @@ begin
   -- Gus's card waits for #9701; the owner links the roadmap card to #9701.
   v := pg_temp.tpp_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text', jsonb_build_array(jsonb_build_object(
     'title', 'PP relaunch the trip once #9701 is Live', 'instructions', 'Relaunch the trip when trips publish again.',
-    'done_means', 'The trip is published again.', 'owners', jsonb_build_array('gus.pp3980@test.local'),
+    'done_means', 'The trip is published again.', 'owners', jsonb_build_array('gus.pp3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */,
     'due_on', ((now() AT TIME ZONE 'UTC')::date + 5)::text, 'github', jsonb_build_array('#9701'))), 'pp1-card-0001'));
   v_card := pg_temp.tpp_get(v, 'results', '0', 'card', 'id');
   select revision into v_rev from public.ops_work_cards where id = v_card::uuid;
@@ -255,16 +279,18 @@ begin
   v := pg_temp.tpp_as('service', 'select public.ops_engineering_cards_sync()::text');
   perform pg_temp.tpp_check('PP-2', 'merged before switch-on: no engineering card',
     (select count(*)::text from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-97022(:|$)'), '0');
-  perform pg_temp.tpp_check('PP-2', 'merged after switch-on: no issue, guide line and not deployed each make one card',
+  -- [TEST-MOD-APPROVED #4398] one eng_release:pr-N card per PR holds every problem as a checklist item,
+  -- and it takes its route's owner (this suite's fallback main task), not the merger.
+  perform pg_temp.tpp_check('PP-2', 'merged after switch-on: the problems make one release card',
     (select string_agg(split_part(auto_key, ':', 1), ',' order by auto_key) from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-97023(:|$)'),
-    'eng_guide_missing,eng_no_issue,eng_not_deployed');
-  perform pg_temp.tpp_check('PP-2', 'the card for whoever merged has the owner as owner (no GitHub login match)',
+    'eng_release');
+  perform pg_temp.tpp_check('PP-2', 'the release card has its route''s owner',
     (select string_agg(distinct p.email, ',') from public.ops_work_people p join public.ops_work_cards c on c.id = p.card_id
-      where c.auto_key ~ '^eng_[a-z_]+:pr-97023(:|$)' and p.role = 'owner'), 'oona.pp3980@test.local');
+      where c.auto_key ~ '^eng_[a-z_]+:pr-97023(:|$)' and p.role = 'owner'), 'route-owner.r4398@test.local');
   v := pg_temp.tpp_as('service', 'select public.ops_engineering_cards_sync()::text');
   v := pg_temp.tpp_reconcile();
   perform pg_temp.tpp_check('PP-2', 'a second sync and a run make no duplicate',
-    (select count(*)::text from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-9702[0-3](:|$)'), '3');
+    (select count(*)::text from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-9702[0-3](:|$)'), '1'); -- [TEST-MOD-APPROVED #4398] one card
   perform pg_temp.tpp_check('PP-2', 'the record switched off earlier still makes nothing (merged before switch-on)',
     (select count(*)::text from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-97020(:|$)'), '0');
 end;

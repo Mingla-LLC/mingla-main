@@ -451,8 +451,8 @@ export function phase3dContractDigest(manifest) {
 // #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes.
 // #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
 // #4255: renumber the seven Work board v2 and Mingla team migrations to 20280624004255 to 20280624064255 (above production's applied 20280622004382) in the replay lanes.
-// #4389: register the brand setup, Ari brand operation, native connect flag and BGN retirement migrations (20280625004389, 20280625104389, 20280625204389, 20280625304389) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280625004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog). Re-sealed after merging origin/main 3dc6c44093 (#4396 rows kept beside the #4389 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "76b2a319ead4ff817252723d16d04ea99e8912e502564b6bd3a9c0ae11d42569";
+// #4389: register the brand setup, Ari brand operation, native connect flag and BGN retirement migrations (20280629004389, 20280629104389, 20280629204389, 20280629304389; renumbered above main's 20280626*4398) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280629004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog). Re-sealed after merging origin/main 811c033211 (#3281 and #4398 rows kept beside the #4389 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "889c7f7fc56d2db6acfc1ad830e6a4e000b276184b9ee8e7e201a181c6175d4e";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

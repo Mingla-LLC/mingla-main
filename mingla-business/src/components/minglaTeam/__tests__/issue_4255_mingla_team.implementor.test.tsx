@@ -77,6 +77,9 @@ jest.mock("../../brand/BrandMark", () => ({ BrandMark: () => null, brandMarkPhot
 jest.mock("../../../services/mixpanelService", () => ({ mixpanelService: { track: jest.fn() } }));
 // The team screens load from the Brand group route's lazy chunk; that route
 // module is heavy, so stand in with just what it re-exports.
+// #4398: TeamScreens now opens a read-only card in the shared Sheet, which pulls in
+// expo-blur (untransformed ESM in this config). This suite never opens the sheet.
+jest.mock("../../ui/Sheet", () => ({ Sheet: () => null }));
 jest.mock("../../../../app/messages/[conversationId]", () => ({
   TeamNotificationPrefs: (jest.requireActual("../TeamScreens") as typeof import("../TeamScreens")).TeamNotificationPrefs,
 }));

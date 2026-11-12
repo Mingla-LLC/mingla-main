@@ -18,6 +18,8 @@ const mockRouter = { back: jest.fn(), push: jest.fn(), setParams: jest.fn(), rep
 const mockGroups = [{ conversation_id: "conversation-a", brand_id: "brand-a", brand_name: "Launch team", brand_photo_url: null, member_count: 3, access_kind: "brand", muted: false }];
 
 jest.mock("react-native", () => jest.requireActual("react-native"));
+// #4398: the Team screen now imports the shared Sheet (expo-blur, untransformed ESM here).
+jest.mock("../../ui/Sheet", () => ({ Sheet: () => null }));
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ conversationId: "conversation-a" }),
   useRouter: () => mockRouter,

@@ -176,7 +176,8 @@ declare v text; v_d date := (now() at time zone 'UTC')::date;
 begin
   v := pg_temp.person('owner', format('select public.ops_work_add(%L::jsonb, %L)::text',
     jsonb_build_array(jsonb_build_object('title', 'Z4255 Ray late card', 'instructions', 'Do the work carefully and say what changed.',
-      'done_means', 'It is done and checked.', 'owners', jsonb_build_array(pg_temp.email('ray')), 'due_on', v_d + 3)), pg_temp.rk()));
+      'done_means', 'It is done and checked.', 'owners', jsonb_build_array(pg_temp.email('ray')),
+      'watchers', jsonb_build_array(pg_temp.email('gem')), 'due_on', v_d + 3)), pg_temp.rk()));  -- [TEST-MOD-APPROVED #4398] one watcher
   perform pg_temp.keep('LATE', ((v::jsonb)->'results'->0->'card'->>'id')::uuid);
   update public.ops_work_cards set due_on = v_d - 3 where id = pg_temp.id('LATE');
   delete from public.team_mentions where source_kind = 'work_due';

@@ -1,5 +1,5 @@
 -- Issue #4389 S-9 — BGN is switched off for new use, with a safety stop
--- (20280625304389_issue_4389_retire_bgn.sql), on the fully replayed PG17 schema.
+-- (20280629304389_issue_4389_retire_bgn.sql), on the fully replayed PG17 schema.
 --
 -- MINGLA-INVARIANT: I-4389-BGN-RETIRED-SAFELY | issue #4389 | BGN is switched off in supported_brand_currencies only when no live brand, scheduled/live event or live ticket type uses it; otherwise issue_4389_retire_bgn raises PT409 with the counts and changes nothing.
 --
