@@ -303,3 +303,22 @@ describe("R-4 the Mark done form and Undo after a review (retest P3, P1)", () =>
     assert.match(sql, /'review','confirmed','sent_back'\) THEN/);
   });
 });
+
+describe("F-1 every #4398 product path has a Feature Guide owner (retest P1, PR links)", () => {
+  it("the new Work board files map to staff-work-board in the impact contract, and each exists", () => {
+    const root = path.resolve(SRC, "../..");
+    const contract = JSON.parse(fs.readFileSync(path.join(root, "docs/contracts/feature-guide-impact.json"), "utf8"));
+    const board = contract.mappings.find((m) => m.capability_key === "staff-work-board");
+    for (const p of [
+      "mingla-admin/src/components/messages/MessagesActivity.jsx", "mingla-admin/src/components/ops/ProofForm.jsx",
+      "mingla-admin/src/components/ops/TeamSettingsPanels.jsx", "mingla-admin/src/components/people/PeopleField.jsx",
+      "mingla-admin/src/hooks/useActivity.js", "mingla-admin/src/lib/activityModel.js", "mingla-admin/src/lib/dueLabel.js",
+      "mingla-admin/src/lib/peopleField.js", "mingla-admin/src/lib/workReview.js", "mingla-business/src/components/minglaTeam/workUpdates.ts",
+      "supabase/migrations/20280626004398_issue_4398_routes_and_people.sql", "supabase/migrations/20280626014398_issue_4398_review_and_notices.sql",
+      "supabase/migrations/20280626034398_issue_4398_people_invariant.sql", "supabase/migrations/20280626044398_issue_4398_mark_work_updates_read.sql",
+    ]) {
+      assert.ok(board.paths.includes(p), `${p} is owned by staff-work-board`);
+      assert.ok(fs.existsSync(path.join(root, p)), `${p} exists`);
+    }
+  });
+});
