@@ -1,11 +1,12 @@
-// #4402 — checking a bio code is a state, never a crash.
+// #4402 — checking a bio code records evidence for an admin; it never
+// verifies, never sets an audience, and is never a crash.
 //
-// MINGLA-INVARIANT: I-4402-HANDLE-CHECK-NEVER-500 | issue #4402 | creator-handle-verify answers 200 with verified, pending, review or expired for every provider outcome, saves a review reason only on a flagged handle, never downgrades a verified handle, and turns an internal failure into 500 {error:"internal"} with no unhandled throw.
+// MINGLA-INVARIANT: I-4402-HANDLE-CHECK-NEVER-500 | issue #4402 | creator-handle-verify answers 200 with review, expired, rejected or verified for every provider outcome, every saved row keeps the handle flagged for a person (creator_handles_review_shape), and an internal failure is 500 {error:"internal"} with no unhandled throw.
+// MINGLA-INVARIANT: I-4402-HANDLE-CHECK-NEVER-VERIFIES | issue #4402 | creator-handle-verify never writes verified_at, follower_band, follower_source or a follower count, and never fetches or writes a handle an admin rejected (Seth, 12 Nov 2026: an admin verifies every handle).
 //
 // Fails on origin/main @ 7ace80fa0a: save() wrote review_reason with
-// review_required=false (Postgres 23514, HTTP 500 for every "not found"), a
-// 200 page without the profile was a clean "pending", and a re-check could
-// null verified_at.
+// review_required=false (Postgres 23514, HTTP 500 for every "not found"), and
+// the code on the page set verified_at and a provider audience band.
 import {
   assert,
   assertEquals,
@@ -16,8 +17,6 @@ import {
   handleUpdateFor,
   type HandleVerifyDeps,
   pageShowsProfile,
-  parseFollowerText,
-  providerFollowerCount,
   type VerifyDecision,
 } from "./index.ts";
 
@@ -30,13 +29,25 @@ const IG_PROFILE_WITH_CODE = IG_PROFILE.replace(
   "</head>",
   '<meta name="description" content="bio MINGLA-3367"></head>',
 );
+const FORBIDDEN = [
+  "verified_at",
+  "follower_band",
+  "follower_source",
+  "provider_follower_count",
+];
 
 /** Mirrors creator_handles_review_shape: CHECK (review_required OR review_reason IS NULL). */
 function satisfiesReviewShape(update: Record<string, unknown>): boolean {
   return update.review_required === true || update.review_reason === null;
 }
 
-type Saved = { decision: VerifyDecision; count: number | null };
+function assertEvidenceOnly(update: Record<string, unknown>) {
+  for (const key of FORBIDDEN) {
+    assertEquals(key in update, false, `a check must never write ${key}`);
+  }
+  assertEquals(update.review_required, true, "the handle stays with a person");
+  assert(satisfiesReviewShape(update));
+}
 
 function handler(
   options: {
@@ -46,11 +57,13 @@ function handler(
     finalUrl?: string | null;
     verifiedAt?: string | null;
     reviewRequired?: boolean;
+    lastCheckStatus?: string | null;
+    followerSource?: string;
     expiresAt?: string;
     saveThrows?: boolean;
   } = {},
 ) {
-  const saved: Saved[] = [];
+  const saved: VerifyDecision[] = [];
   const reported: unknown[] = [];
   let fetched = 0;
   const deps: HandleVerifyDeps = {
@@ -65,9 +78,10 @@ function handler(
         verify_started_at: "2026-11-12T09:20:00Z",
         verify_expires_at: options.expiresAt ?? future,
         verified_at: options.verifiedAt ?? null,
-        review_required: options.reviewRequired ?? false,
+        review_required: options.reviewRequired ?? true,
         follower_band: "lt1k",
-        follower_source: "self_reported",
+        follower_source: options.followerSource ?? "self_reported",
+        last_check_status: options.lastCheckStatus ?? null,
       }),
     fetchPublic: () => {
       fetched += 1;
@@ -78,17 +92,17 @@ function handler(
         finalUrl: options.finalUrl ?? "https://www.instagram.com/uncledelena/",
       });
     },
-    save: (_id, decision, count) => {
+    save: (_id, decision) => {
       if (options.saveThrows) {
         return Promise.reject({
           code: "23514",
           message: 'violates check constraint "creator_handles_review_shape"',
         });
       }
-      saved.push({ decision, count });
+      saved.push(decision);
       return Promise.resolve();
     },
-    recompute: () => Promise.resolve({ verification: "incomplete" }),
+    recompute: () => Promise.resolve({ verification: "review" }),
     report: (error) => {
       reported.push(error);
     },
@@ -108,29 +122,39 @@ function handler(
   };
 }
 
-Deno.test("#4402 code not seen on a readable page: 200 pending, saved with no review reason", async () => {
+Deno.test("#4402 the code on a readable page is evidence only: 200 review/code_seen, never verified", async () => {
+  const h = handler({ body: IG_PROFILE_WITH_CODE });
+  const res = await h.run();
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.status, "review");
+  assertEquals(body.check, "code_seen");
+  assertEquals(
+    body.followerBand,
+    "lt1k",
+    "the band is the saved one, untouched",
+  );
+  assertEquals(body.followerSource, "self_reported");
+  const update = handleUpdateFor(h.saved[0], "2026-11-12T10:00:00.000Z");
+  assertEvidenceOnly(update);
+  assertEquals(update.last_check_status, "code_seen");
+  assertEquals(update.review_reason, "code_seen");
+});
+
+Deno.test("#4402 code not seen on a readable page: 200 review/code_not_seen, CHECK-valid", async () => {
   const h = handler({ body: IG_PROFILE });
   const res = await h.run();
   assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body.status, "pending");
-  assertEquals(h.saved.length, 1);
-  const update = handleUpdateFor(h.saved[0].decision, h.saved[0].count);
-  assertEquals(update.review_reason, null);
-  assertEquals(update.review_required, false);
-  assertEquals(update.last_check_status, "pending");
-  assert(
-    satisfiesReviewShape(update),
-    "the update would violate creator_handles_review_shape",
-  );
-  assertEquals(
-    "verified_at" in update,
-    false,
-    "a check must never clear verified_at",
-  );
+  assertEquals(body.status, "review");
+  assertEquals(body.check, "code_not_seen");
+  assertEquals(body.reason, "verification_code_not_found");
+  const update = handleUpdateFor(h.saved[0]);
+  assertEvidenceOnly(update);
+  assertEquals(update.last_check_status, "code_not_seen");
 });
 
-Deno.test("#4402 an expired code: 200 expired, saved with no review reason", async () => {
+Deno.test("#4402 an expired code: 200 expired, still with a person", async () => {
   const h = handler({
     body: IG_PROFILE_WITH_CODE,
     expiresAt: "2020-01-01T00:00:00Z",
@@ -138,26 +162,21 @@ Deno.test("#4402 an expired code: 200 expired, saved with no review reason", asy
   const res = await h.run();
   assertEquals(res.status, 200);
   assertEquals((await res.json()).status, "expired");
-  const update = handleUpdateFor(h.saved[0].decision, h.saved[0].count);
-  assertEquals(update.review_reason, null);
+  const update = handleUpdateFor(h.saved[0]);
+  assertEvidenceOnly(update);
   assertEquals(update.last_check_status, "expired");
-  assert(satisfiesReviewShape(update));
 });
 
-Deno.test("#4402 a 200 page without the profile goes to a person, never 'not found'", async () => {
+Deno.test("#4402 a 200 page without the profile is unreadable, never 'not found'", async () => {
   const shell =
     "<html><head><title>Instagram</title></head><body><script>window.__x=1</script></body></html>";
   const h = handler({ body: shell });
-  const res = await h.run();
-  assertEquals(res.status, 200);
-  const body = await res.json();
+  const body = await (await h.run()).json();
   assertEquals(body.status, "review");
   assertEquals(body.reason, "provider_unreadable");
-  const update = handleUpdateFor(h.saved[0].decision, h.saved[0].count);
-  assertEquals(update.review_required, true);
-  assertEquals(update.review_reason, "provider_unreadable");
+  const update = handleUpdateFor(h.saved[0]);
+  assertEvidenceOnly(update);
   assertEquals(update.last_check_status, "unreadable");
-  assert(satisfiesReviewShape(update));
 });
 
 Deno.test("#4402 a login page after redirects is unreadable, even if it mentions the code", async () => {
@@ -170,84 +189,59 @@ Deno.test("#4402 a login page after redirects is unreadable, even if it mentions
   assertEquals(body.reason, "provider_unreadable");
 });
 
-Deno.test("#4402 blocked status codes keep provider_fetch_blocked and go to review", async () => {
+Deno.test("#4402 blocked status codes record provider_fetch_blocked", async () => {
   const h = handler({ ok: false, blocked: true });
   const body = await (await h.run()).json();
   assertEquals(body.status, "review");
   assertEquals(body.reason, "provider_fetch_blocked");
-  assert(satisfiesReviewShape(handleUpdateFor(h.saved[0].decision, null)));
+  assertEvidenceOnly(handleUpdateFor(h.saved[0]));
 });
 
-Deno.test("#4402 an already-verified handle is never fetched or downgraded", async () => {
-  const h = handler({ verifiedAt: "2026-11-12T09:30:00Z", body: "" });
+Deno.test("#4402 a handle an admin approved is never fetched or rewritten, and reports 'admin'", async () => {
+  const h = handler({
+    verifiedAt: "2026-11-12T09:30:00Z",
+    reviewRequired: false,
+    lastCheckStatus: "verified",
+    followerSource: "admin",
+  });
   const res = await h.run();
   assertEquals(res.status, 200);
-  assertEquals((await res.json()).status, "verified");
+  const body = await res.json();
+  assertEquals(body.status, "verified");
+  assertEquals(body.followerSource, "admin");
   assertEquals(h.fetchedCount(), 0);
   assertEquals(h.saved.length, 0);
 });
 
-Deno.test("#4402 a handle flagged for a person can still be re-checked and pass", async () => {
+Deno.test("#4402 a rejected handle is never fetched or written", async () => {
   const h = handler({
-    verifiedAt: "2026-11-12T09:30:00Z",
-    reviewRequired: true,
+    reviewRequired: false,
+    lastCheckStatus: "rejected",
     body: IG_PROFILE_WITH_CODE,
   });
-  const body = await (await h.run()).json();
-  assertEquals(body.status, "verified");
-  assertEquals(h.fetchedCount(), 1);
+  const res = await h.run();
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.status, "rejected");
+  assertEquals(h.fetchedCount(), 0);
+  assertEquals(h.saved.length, 0);
 });
 
-Deno.test("#4402 the code on a readable page verifies and takes Instagram's follower line", async () => {
-  const h = handler({ body: IG_PROFILE_WITH_CODE });
-  const body = await (await h.run()).json();
-  assertEquals(body.status, "verified");
-  assertEquals(body.followerBand, "1k_10k");
-  assertEquals(body.followerSource, "provider");
-  const update = handleUpdateFor(
-    h.saved[0].decision,
-    h.saved[0].count,
-    "2026-11-12T10:00:00.000Z",
-  );
-  assertEquals(update.verified_at, "2026-11-12T10:00:00.000Z");
-  assertEquals(update.provider_follower_count, 2337);
-  assertEquals(update.review_reason, null);
-});
-
-Deno.test("#4402 og:description follower counts: 2,337 / 12.5K / 1.2M", () => {
-  assertEquals(parseFollowerText("2,337 Followers, 410 Following"), 2337);
-  assertEquals(parseFollowerText("12.5K Followers, 3 Following"), 12500);
-  assertEquals(parseFollowerText("1.2M Followers, 9 Following"), 1200000);
-  assertEquals(parseFollowerText("No followers line here"), null);
-  const og = (text: string) =>
-    `<meta content="${text}" property="og:description">`;
-  assertEquals(providerFollowerCount(og("2,337 Followers, 1 Following")), 2337);
-  assertEquals(
-    providerFollowerCount(og("12.5K Followers, 1 Following")),
-    12500,
-  );
-  assertEquals(
-    providerFollowerCount(og("1.2M Followers, 1 Following")),
-    1200000,
-  );
-  assertEquals(providerFollowerCount("<html></html>"), null);
+Deno.test("#4402 no follower text sets an audience, on any platform", () => {
   for (
-    const [text, band] of [["2,337", "1k_10k"], ["12.5K", "10k_50k"], [
-      "1.2M",
-      "gt1m",
-    ]]
+    const platform of ["instagram", "youtube", "tiktok", "snapchat"] as const
   ) {
     const decision = decideHandleVerification(
+      { verify_code: "MINGLA-3367", verify_expires_at: future, platform },
       {
-        verify_code: "MINGLA-3367",
-        verify_expires_at: future,
-        platform: "instagram",
+        ok: true,
+        blocked: false,
+        body:
+          '<meta property="og:description" content="5M Followers MINGLA-3367"><script>{"followerCount":5000000}</script>',
       },
-      { ok: true, blocked: false, body: og(`${text} Followers, 1 Following`) },
     );
-    assertEquals(decision.status, "pending");
-    assertEquals(decision.followerBand, band);
-    assertEquals(decision.followerSource, "provider");
+    assertEquals(Object.keys(decision).sort(), ["check", "reason"]);
+    assertEvidenceOnly(handleUpdateFor(decision));
   }
 });
 
