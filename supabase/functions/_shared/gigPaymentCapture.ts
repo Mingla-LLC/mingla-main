@@ -7,7 +7,7 @@
  * webhooks. Before #4402 the only recorder was the Host sheet's in-memory
  * button, so a closed tab left a real charge unrecorded.
  *
- * MINGLA-INVARIANT: I-4402-D | issue #4402 | a gig capture verifies amount, currency, contract and terms version against the ledger row before marking captured
+ * Invariant I-4402-D (declared in its #4402 test): a gig capture verifies amount, currency, contract and terms version against the ledger row before marking captured
  *
  * The store is injected so the decision logic is tested without a database.
  * Provider calls are never made here: callers pass the verified provider

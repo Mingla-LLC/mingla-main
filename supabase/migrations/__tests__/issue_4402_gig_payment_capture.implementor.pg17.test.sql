@@ -5,7 +5,7 @@
 -- Every fixture rolls back.
 --
 -- MINGLA-INVARIANT: I-4402-C | issue #4402 | no code path retires a pending gig hold to failed without a provider check proving it unpaid
--- MINGLA-INVARIANT: I-4402-D | issue #4402 | a gig capture verifies amount, currency, contract and terms version against the ledger row before marking captured
+-- I-4402-D (capture checks the ledger row) is declared in the Deno capture-core suite.
 
 BEGIN;
 

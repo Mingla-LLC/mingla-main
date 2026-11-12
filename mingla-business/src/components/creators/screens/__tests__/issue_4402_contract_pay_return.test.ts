@@ -1,7 +1,6 @@
+// MINGLA-INVARIANT: I-4402-E | issue #4402 | the host UI never says "Nothing was charged" while the server's payment_check is not not_paid
 /**
  * #4402 — the host contract page after a creator-hire payment.
- *
- * MINGLA-INVARIANT: I-4402-E | issue #4402 | the host UI never says "Nothing was charged" while the server's payment_check is not not_paid
  *
  * fails-on-revert: restoring the old "Payment not completed … Nothing was
  * charged" card (shown whenever the offer had no captured hold) puts the

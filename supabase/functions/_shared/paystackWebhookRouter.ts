@@ -140,7 +140,7 @@ export interface GigPaystackWebhookDeps {
 /**
  * Issue #4402 — a verified Paystack charge for a creator hire.
  *
- * MINGLA-INVARIANT: I-4402-A | issue #4402 | every Paystack charge.success whose reference matches ^(ghold|gtop)_ is captured or flagged mismatched; it never reaches charge_orphan_reference
+ * Invariant I-4402-A (declared in its #4402 test): every Paystack charge.success whose reference matches ^(ghold|gtop)_ is captured or flagged mismatched; it never reaches charge_orphan_reference
  */
 export async function handleGigPaystackCharge(
   supabase: SupabaseClient,

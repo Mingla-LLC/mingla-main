@@ -25,9 +25,9 @@
 --      server builds the Host return URL from it).
 --   7. pg_cron runs gig-hire `reconcile` every 15 minutes.
 --
--- MINGLA-INVARIANT: I-4402-C | issue #4402 | no code path retires a pending gig hold to failed without a provider check proving it unpaid
--- (enforced here for the sweep; asserted in
--- supabase/migrations/__tests__/issue_4402_gig_payment_capture.implementor.pg17.test.sql)
+-- Invariant I-4402-C (no pending gig hold is retired to failed without a
+-- provider check proving it unpaid) is enforced here for the sweep and
+-- declared in supabase/migrations/__tests__/issue_4402_gig_payment_capture.implementor.pg17.test.sql.
 --
 -- Static SQL only. Conflicts raise 55000 (never 40001). No backfill: the one
 -- stranded TEST hold is captured by the first reconcile run after deploy.

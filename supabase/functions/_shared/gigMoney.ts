@@ -199,7 +199,7 @@ export function gigTopupPaystackInitialize(
  * on Host web. Built by the server only; a client-sent return_url is ignored
  * (it went straight to Paystack before, an open redirect).
  *
- * MINGLA-INVARIANT: I-4402-B | issue #4402 | a gig payment return URL is built by the server from the business web origin; client return_url is ignored
+ * Invariant I-4402-B (declared in its #4402 test): a gig payment return URL is built by the server from the business web origin; client return_url is ignored
  */
 export function gigPaymentReturnUrl(
   input: {

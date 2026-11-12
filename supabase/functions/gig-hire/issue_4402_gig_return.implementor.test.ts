@@ -3,7 +3,8 @@
 // is machine-only and records stranded payments.
 //
 // MINGLA-INVARIANT: I-4402-B | issue #4402 | a gig payment return URL is built by the server from the business web origin; client return_url is ignored
-// MINGLA-INVARIANT: I-4402-C | issue #4402 | no code path retires a pending gig hold to failed without a provider check proving it unpaid
+// I-4402-C (no unproven retire) is declared in the #4402 pg17 suite; the start
+// probe below is one of its enforcers.
 //
 // fails-on-revert: restoring `callbackUrl: body.return_url` sends the
 // client's URL to Paystack (the return-URL test fails); deleting the start

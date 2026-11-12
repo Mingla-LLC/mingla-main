@@ -336,8 +336,9 @@ export function contractNoticeKey(
 // ---------------------------------------------------------------------------
 // #4402 — what the host sees while a creator-hire payment is checked.
 //
-// MINGLA-INVARIANT: I-4402-E | issue #4402 | the host UI never says "Nothing was charged" while the server's payment_check is not not_paid
-// (asserted in src/components/creators/screens/__tests__/issue_4402_contract_pay_return.test.ts)
+// Invariant I-4402-E: the host UI never says nothing was charged until the
+// server's payment_check is not_paid (declared in
+// src/components/creators/screens/__tests__/issue_4402_contract_pay_return.test.ts).
 // ---------------------------------------------------------------------------
 
 /** The server's answer (`payment_check`) plus the two client-only states. */

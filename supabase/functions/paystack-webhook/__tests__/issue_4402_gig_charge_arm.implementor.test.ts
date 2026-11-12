@@ -2,7 +2,7 @@
 // webhook, never filed as an orphan reference (the live TEST hire on 12 Nov
 // was charged ₦115 and dropped as `paystack.charge_orphan_reference`).
 //
-// MINGLA-INVARIANT: I-4402-A | issue #4402 | every Paystack charge.success whose reference matches ^(ghold|gtop)_ is captured or flagged mismatched; it never reaches charge_orphan_reference
+// MINGLA-INVARIANT: I-4402-A | issue #4402 | every Paystack charge.success whose reference starts with ghold_ or gtop_ is captured or flagged mismatched and never reaches charge_orphan_reference
 //
 // fails-on-revert: deleting the gig arm in handlePaystackChargeSuccess sends a
 // `ghold_` reference down the contribution / session lookups to the orphan
