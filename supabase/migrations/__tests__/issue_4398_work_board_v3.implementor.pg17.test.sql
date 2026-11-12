@@ -646,6 +646,50 @@ begin
 end;
 $t$;
 
+-- ───────────────────────────── UNDO and SECURITY ─────────────────────────────
+-- Undo of a Confirm and of a Send back puts the card back In review with its
+-- request (the same 60-second undo window and event record). The trigger
+-- functions that read ops tables run as SECURITY DEFINER and no client can
+-- call them.
+do $t$
+declare v text; v_ev text;
+begin
+  v := pg_temp.add('U', 'V34398 Undo card', 'tao', 'seth');
+  v := pg_temp.person('tao', format('select public.ops_work_close(%L, %L::jsonb, null, %s)::text', pg_temp.id('U'),
+         '[{"kind":"text","text":"Posted it."}]', pg_temp.rev('U')));
+  v := pg_temp.person('seth', format('select public.ops_work_confirm(%L, %s)::text', pg_temp.id('U'), pg_temp.rev('U')));
+  v_ev := (v::jsonb)->>'event_id';
+  perform pg_temp.chk('UNDO', 'the watcher confirms it', (select status from public.ops_work_cards where id = pg_temp.id('U')), 'done');
+  v := pg_temp.person('tao', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.lk('UNDO', 'only the watcher who confirmed can undo it', v, 'ERR:22023:undo_expired:%');
+  v := pg_temp.person('seth', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.chk('UNDO', 'undoing Confirm puts it back In review, asked by the owner, not confirmed',
+    (select status || '/' || (status_id = public.ops_review_status_id())::text || '/' || coalesce(review_requested_by, '-') || '/'
+            || coalesce(confirmed_by, '-') || '/' || coalesce(closed_by, '-') from public.ops_work_cards where id = pg_temp.id('U')),
+    'doing/true/' || pg_temp.email('tao') || '/-/-');
+  v := pg_temp.person('seth', format('select public.ops_work_send_back(%L, %L, %s)::text', pg_temp.id('U'), 'Add the second link too.', pg_temp.rev('U')));
+  v_ev := (v::jsonb)->>'event_id';
+  perform pg_temp.chk('UNDO', 'then the watcher sends it back', (select (status_id = public.ops_status_in_progress())::text || '/' || coalesce(sent_back_reason, '-')
+    from public.ops_work_cards where id = pg_temp.id('U')), 'true/Add the second link too.');
+  v := pg_temp.person('seth', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.chk('UNDO', 'undoing Send back puts it back In review with its request',
+    (select status || '/' || (status_id = public.ops_review_status_id())::text || '/' || coalesce(review_requested_by, '-') || '/' || coalesce(sent_back_reason, '-')
+       from public.ops_work_cards where id = pg_temp.id('U')), 'doing/true/' || pg_temp.email('tao') || '/-');
+  v := pg_temp.person('seth', format('select public.ops_work_confirm(%L, %s)::text', pg_temp.id('U'), pg_temp.rev('U')));
+  perform pg_temp.chk('UNDO', 'and the watcher can confirm it again', (select status || '/' || coalesce(confirmed_by, '-') from public.ops_work_cards where id = pg_temp.id('U')),
+    'done/' || pg_temp.email('seth'));
+
+  perform pg_temp.chk('SECURITY', 'the people check and the review guards run as their owner',
+    (select string_agg(proname || ':' || prosecdef, ',' order by proname) from pg_proc
+      where pronamespace = 'public'::regnamespace and proname in ('ops_4398_card_people_check', 'ops_4398_review_guard', 'ops_4398_review_column_guard')),
+    'ops_4398_card_people_check:true,ops_4398_review_column_guard:true,ops_4398_review_guard:true');
+  perform pg_temp.chk('SECURITY', 'no client role can call them',
+    (select bool_or(has_function_privilege(r, f, 'EXECUTE'))::text from unnest(array['anon', 'authenticated']) r,
+      unnest(array['public.ops_4398_card_people_check()', 'public.ops_4398_review_guard()', 'public.ops_4398_review_column_guard()',
+                   'public.ops_default_watcher(text,text[])']) f), 'false');
+end;
+$t$;
+
 -- ───────────────────────────── report ─────────────────────────────
 do $r$
 declare r record; v_fail integer := 0; v_all integer := 0;

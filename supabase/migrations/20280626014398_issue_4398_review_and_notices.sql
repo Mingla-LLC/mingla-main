@@ -2968,7 +2968,8 @@ CREATE OR REPLACE FUNCTION public.ops_host_adopt_cards(p_record_id uuid, p_actor
 LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $function$ SELECT 0 $function$;
 
--- From 20280624014255 (#4255 functions). #4398 (C): undo of a review ask; undo of a reopen.
+-- From 20280624014255 (#4255 functions). #4398 (C): undo of a review ask; undo of a reopen; undo of a
+-- Confirm or a Send back puts the card back In review with its request.
 CREATE OR REPLACE FUNCTION public.ops_work_undo(p_event_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -2985,7 +2986,7 @@ BEGIN
   SELECT * INTO c FROM public.ops_work_cards w WHERE w.id = e.card_id AND w.archived_at IS NULL FOR UPDATE;
   IF NOT FOUND OR e.actor_email <> v.actor_email OR e.via IS NOT NULL OR e.undone_at IS NOT NULL
      OR e.at <= clock_timestamp() - interval '60 seconds' OR c.revision IS DISTINCT FROM e.to_revision OR e.before IS NULL
-     OR e.action NOT IN ('updated','started','status','closed','pushed_back','reopened','people','links','plan','blocked','unblocked','review') THEN
+     OR e.action NOT IN ('updated','started','status','closed','pushed_back','reopened','people','links','plan','blocked','unblocked','review','confirmed','sent_back') THEN
     RAISE EXCEPTION 'undo_expired: That change can no longer be undone.' USING ERRCODE = '22023';
   END IF;
   v_now_snap := public.ops_card_snapshot(c.id);
@@ -3016,6 +3017,12 @@ BEGIN
                        ELSE public.ops_status_default(CASE WHEN r.status = 'person' THEN 'todo' ELSE r.status END) END,
       parent_id = r.parent_id, description_md = r.description_md, start_on = r.start_on, estimate_minutes = r.estimate_minutes,
       goal_id = r.goal_id, in_backlog = r.in_backlog,
+      -- #4398 (C): the review request, the send back and the confirm go back as they were.
+      review_requested_at = r.review_requested_at, review_requested_by = r.review_requested_by,
+      review_requested_via = r.review_requested_via, review_kind = r.review_kind, review_reason = r.review_reason,
+      review_close_children = r.review_close_children, review_close_status_id = r.review_close_status_id,
+      sent_back_reason = r.sent_back_reason, sent_back_by = r.sent_back_by, sent_back_at = r.sent_back_at,
+      confirmed_by = r.confirmed_by, confirmed_at = r.confirmed_at,
       revision = revision + 1, updated_by = v.actor_email, updated_via = NULL, updated_at = now()
      WHERE id = c.id RETURNING * INTO n;
   EXCEPTION WHEN unique_violation THEN
