@@ -404,28 +404,30 @@ select (select val from trt_ids where k = 'manual')::uuid, 'host', '39940000-000
 do $p24$
 declare v text; id_of text;
 begin
-  perform pg_temp.trt_check('P2-4', 'before: the person-made card is linked to the host and the fixtures are ownerless',
+  -- [TEST-MOD-APPROVED #4398] automatic cards are made with their route's owner and watcher, so none is ever
+  -- ownerless and a host's first owner adopts nothing (ops_host_adopt_cards is a no-op); only the raw
+  -- person-made fixture card has no owner.
+  perform pg_temp.trt_check('P2-4', 'before: the person-made card is linked to the host and the automatic cards have their route''s owner',
     pg_temp.trt_owners((select val from trt_ids where k = 'ask')::uuid) || '|' || pg_temp.trt_owners((select val from trt_ids where k = 'evanchor')::uuid)
       || '|' || pg_temp.trt_owners((select val from trt_ids where k = 'manual')::uuid) || '|' || pg_temp.trt_owners((select val from trt_ids where k = 'watch')::uuid),
-    '-|-|-|-');
+    'route-owner.r4398@test.local|route-owner.r4398@test.local|-|route-owner.r4398@test.local');
   v := pg_temp.trt_gw('team_agent_call', 'ada.claude', 'set_owners', jsonb_build_object('items', jsonb_build_array(
          jsonb_build_object('id', '39940000-0000-4000-c100-000000000001', 'owner_emails', jsonb_build_array('ada.rt3980@test.local')))));
   perform pg_temp.trt_check('P2-4', 'the agent''s set_owners saves the host''s first owner', pg_temp.trt_j(v) #>> '{result,results,0,status}', 'updated');
-  perform pg_temp.trt_check('P2-4', 'its ownerless Ask card is Ada''s now', pg_temp.trt_owners((select val from trt_ids where k = 'ask')::uuid), 'ada.rt3980@test.local');
-  perform pg_temp.trt_check('P2-4', 'a card anchored to the host brand''s event is Ada''s too', pg_temp.trt_owners((select val from trt_ids where k = 'evanchor')::uuid), 'ada.rt3980@test.local');
-  perform pg_temp.trt_check('P2-4', 'where Ada only watched, she owns it now and the other watcher stays a watcher',
+  perform pg_temp.trt_check('P2-4', 'its Ask card keeps its owner', pg_temp.trt_owners((select val from trt_ids where k = 'ask')::uuid), 'route-owner.r4398@test.local');
+  perform pg_temp.trt_check('P2-4', 'a card anchored to the host brand''s event keeps its owner', pg_temp.trt_owners((select val from trt_ids where k = 'evanchor')::uuid), 'route-owner.r4398@test.local');
+  perform pg_temp.trt_check('P2-4', 'a card with a watcher keeps its owner and its one watcher',
     pg_temp.trt_owners((select val from trt_ids where k = 'watch')::uuid) || '|' || pg_temp.trt_watchers((select val from trt_ids where k = 'watch')::uuid),
-    'ada.rt3980@test.local|bo.rt3980@test.local');
-  perform pg_temp.trt_check('P2-4', 'a card Bo owns is never taken', pg_temp.trt_owners((select val from trt_ids where k = 'owned')::uuid), 'bo.rt3980@test.local');
-  perform pg_temp.trt_check('P2-4', 'a closed card is left alone', pg_temp.trt_owners((select val from trt_ids where k = 'closed')::uuid), '-');
+    'route-owner.r4398@test.local|route-watch.r4398@test.local');
+  perform pg_temp.trt_check('P2-4', 'a card with an owner is never taken', pg_temp.trt_owners((select val from trt_ids where k = 'owned')::uuid), 'route-owner.r4398@test.local');
+  perform pg_temp.trt_check('P2-4', 'a closed card is left alone', pg_temp.trt_owners((select val from trt_ids where k = 'closed')::uuid), 'route-owner.r4398@test.local');
   perform pg_temp.trt_check('P2-4', 'a person-made card is left alone (automatic cards only)', pg_temp.trt_owners((select val from trt_ids where k = 'manual')::uuid), '-');
-  perform pg_temp.trt_check('P2-4', 'another brand''s card is left alone', pg_temp.trt_owners((select val from trt_ids where k = 'otherbrand')::uuid), '-');
-  perform pg_temp.trt_check('P2-4', 'the change is Ada''s, via her agent, in the card''s history',
-    (select e.actor_email || '/' || coalesce(e.via, '-') from public.ops_work_events e
-      where e.card_id = (select val from trt_ids where k = 'ask')::uuid and e.action = 'people' order by e.at desc limit 1),
-    'ada.rt3980@test.local/claude');
-  perform pg_temp.trt_check('P2-4', 'exactly three cards were adopted, each once',
-    (select count(*) from public.ops_work_events e where e.action = 'people' and e.body like 'Owned by % with the host card RT Palm Host.')::text, '3');
+  perform pg_temp.trt_check('P2-4', 'another brand''s card is left alone', pg_temp.trt_owners((select val from trt_ids where k = 'otherbrand')::uuid), 'route-owner.r4398@test.local');
+  perform pg_temp.trt_check('P2-4', 'no people change is written on the Ask card',
+    (select count(*) from public.ops_work_events e
+      where e.card_id = (select val from trt_ids where k = 'ask')::uuid and e.action = 'people')::text, '0');
+  perform pg_temp.trt_check('P2-4', 'no card was adopted',
+    (select count(*) from public.ops_work_events e where e.action = 'people' and e.body like 'Owned by % with the host card RT Palm Host.')::text, '0');
 end;
 $p24$;
 

@@ -279,16 +279,18 @@ begin
   v := pg_temp.tpp_as('service', 'select public.ops_engineering_cards_sync()::text');
   perform pg_temp.tpp_check('PP-2', 'merged before switch-on: no engineering card',
     (select count(*)::text from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-97022(:|$)'), '0');
-  perform pg_temp.tpp_check('PP-2', 'merged after switch-on: no issue, guide line and not deployed each make one card',
+  -- [TEST-MOD-APPROVED #4398] one eng_release:pr-N card per PR holds every problem as a checklist item,
+  -- and it takes its route's owner (this suite's fallback main task), not the merger.
+  perform pg_temp.tpp_check('PP-2', 'merged after switch-on: the problems make one release card',
     (select string_agg(split_part(auto_key, ':', 1), ',' order by auto_key) from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-97023(:|$)'),
-    'eng_guide_missing,eng_no_issue,eng_not_deployed');
-  perform pg_temp.tpp_check('PP-2', 'the card for whoever merged has the owner as owner (no GitHub login match)',
+    'eng_release');
+  perform pg_temp.tpp_check('PP-2', 'the release card has its route''s owner',
     (select string_agg(distinct p.email, ',') from public.ops_work_people p join public.ops_work_cards c on c.id = p.card_id
-      where c.auto_key ~ '^eng_[a-z_]+:pr-97023(:|$)' and p.role = 'owner'), 'oona.pp3980@test.local');
+      where c.auto_key ~ '^eng_[a-z_]+:pr-97023(:|$)' and p.role = 'owner'), 'route-owner.r4398@test.local');
   v := pg_temp.tpp_as('service', 'select public.ops_engineering_cards_sync()::text');
   v := pg_temp.tpp_reconcile();
   perform pg_temp.tpp_check('PP-2', 'a second sync and a run make no duplicate',
-    (select count(*)::text from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-9702[0-3](:|$)'), '3');
+    (select count(*)::text from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-9702[0-3](:|$)'), '1'); -- [TEST-MOD-APPROVED #4398] one card
   perform pg_temp.tpp_check('PP-2', 'the record switched off earlier still makes nothing (merged before switch-on)',
     (select count(*)::text from public.ops_work_cards where auto_key ~ '^eng_[a-z_]+:pr-97020(:|$)'), '0');
 end;

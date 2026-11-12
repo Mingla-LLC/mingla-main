@@ -654,21 +654,28 @@ begin
   perform pg_temp.t3980s_ingest(pg_temp.t3980s_record(92003));
   update public.ops_release_records set merged_at = now() - interval '3 days' where pr = 92003;
   v := pg_temp.t3980s_as('service', 'select public.ops_engineering_cards_sync()::text');
+  -- [TEST-MOD-APPROVED #4398] S2: each pull request's open release items are ONE eng_release:pr-N card (its
+  -- checklist read live from the record); it takes its route's owner and watcher, not the merger.
   perform pg_temp.t3980s_check('G5', 'engineering cards are made for a PR with no issue, a web change without [deploy] and a live check pending 48 hours',
     (select string_agg(auto_key, ',' order by auto_key) from public.ops_work_cards where auto_key like 'eng\_%' and status <> 'done'),
-    'eng_live_check:pr-92003,eng_no_issue:pr-92001,eng_no_pr_push:cccccc' || 'c,eng_not_deployed:pr-92002:mingla-admin');
-  perform pg_temp.t3980s_check('G5', 'owned by whoever merged (by GitHub username), watched by the owner, made by Mingla',
-    (select string_agg(p.email || ':' || p.role, ',' order by p.role, p.email) from public.ops_work_people p join public.ops_work_cards w on w.id = p.card_id where w.auto_key = 'eng_no_issue:pr-92001')
-      || '/' || (select created_via || ':' || created_by from public.ops_work_cards where auto_key = 'eng_no_issue:pr-92001'),
-    'ada.s3980@test.local:owner,ed.s3980@test.local:watcher/system:system@usemingla.com');
+    'eng_no_pr_push:cccccc' || 'c,eng_release:pr-92001,eng_release:pr-92002,eng_release:pr-92003');
+  perform pg_temp.t3980s_check('G5', 'each release card lists what is open',
+    (select string_agg(i->>'key', ',' order by i->>'key') from jsonb_array_elements(public.ops_release_items(92001)) i where not (i->>'done')::boolean) || '/' ||
+    (select string_agg(i->>'key', ',' order by i->>'key') from jsonb_array_elements(public.ops_release_items(92002)) i where not (i->>'done')::boolean) || '/' ||
+    (select string_agg(i->>'key', ',' order by i->>'key') from jsonb_array_elements(public.ops_release_items(92003)) i where not (i->>'done')::boolean),
+    'issue,live_check/deploy:mingla-admin,live_check/live_check');
+  perform pg_temp.t3980s_check('G5', 'owned and watched by its route''s people, made by Mingla',
+    (select string_agg(p.email || ':' || p.role, ',' order by p.role, p.email) from public.ops_work_people p join public.ops_work_cards w on w.id = p.card_id where w.auto_key = 'eng_release:pr-92001')
+      || '/' || (select created_via || ':' || created_by from public.ops_work_cards where auto_key = 'eng_release:pr-92001'),
+    'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher/system:system@usemingla.com');
   perform pg_temp.t3980s_check('G5', 'the card names the pull request in words and links it',
-    (select title || ' | ' || (select string_agg(kind || ':' || number, ',' order by number) from public.ops_work_github g where g.card_id = w.id) from public.ops_work_cards w where auto_key = 'eng_not_deployed:pr-92002:mingla-admin'),
-    'Deploy mingla-admin: PR #92002 merged without [deploy] | issue:3980,pull:92002');
+    (select title || ' | ' || (select string_agg(kind || ':' || number, ',' order by number) from public.ops_work_github g where g.card_id = w.id) from public.ops_work_cards w where auto_key = 'eng_release:pr-92002'),
+    'Finish the release of PR #92002 | issue:3980,pull:92002');
   v := pg_temp.t3980s_as('service', 'select public.ops_engineering_cards_sync()::text');
   perform pg_temp.t3980s_check('G5', 'a second run makes no duplicate', pg_temp.t3980s_get(v, 'added'), '0');
   perform pg_temp.t3980s_ingest(pg_temp.t3980s_record(92003, '{"problems":[],"live_check":{"text":"Looked at it live","by_login":"ada-gh","url":"https://github.com/Mingla-LLC/mingla-main/issues/3980#issuecomment-3","at":"2026-10-20T11:00:00Z"}}'));
   v := pg_temp.t3980s_as('service', 'select public.ops_engineering_cards_sync()::text');
-  select id into v_card from public.ops_work_cards where auto_key = 'eng_live_check:pr-92003';
+  select id into v_card from public.ops_work_cards where auto_key = 'eng_release:pr-92003'; -- [TEST-MOD-APPROVED #4398] the release card
   perform pg_temp.t3980s_check('G5', 'the card closes itself once the live check is there',
     (select status || ':' || close_kind || ':' || closed_via from public.ops_work_cards where id = v_card)
       || '/' || (select count(*) from public.ops_work_events where card_id = v_card and action = 'auto_closed')::text, 'done:system:system/1');

@@ -173,7 +173,8 @@ begin
   perform pg_temp.pf_check('P1-2', 'exactly one open "The sync token cannot post commit statuses" card, for the owner',
     (select count(*) from public.ops_work_cards w where w.auto_key like 'eng\_status\_token%' and w.status <> 'done')::text
       || '/' || coalesce(c.title, '-') || '/' || pg_temp.pf_owners(c.id),
-    '1/The sync token cannot post commit statuses/ed.pf3980@test.local');
+    -- [TEST-MOD-APPROVED #4398] an automatic card takes its route's owner (this suite's fallback main task).
+    '1/The sync token cannot post commit statuses/route-owner.r4398@test.local');
   perform pg_temp.pf_check('P1-2', 'its key has the automatic-card shape', (c.auto_key ~ '^[a-z_]+:[A-Za-z0-9:_-]{1,120}$')::text, 'true');
   v := pg_temp.pf_as('service', 'select public.ops_engineering_cards_sync()::text');
   perform pg_temp.pf_check('P1-2', 'a second run makes no second card',
@@ -264,8 +265,10 @@ begin
   -- (no owner, nothing upcoming) has an ownerless "Ask ..." card.
   c_go := pg_temp.pf_card('golive:expected:39930000-0000-4000-d100-000000000002');
   c_other := pg_temp.pf_card('ask:39930000-0000-4000-c100-000000000003');
-  perform pg_temp.pf_check('P2-4', 'before: both automatic cards have no owner',
-    pg_temp.pf_owners(c_go.id) || '|' || pg_temp.pf_owners(c_other.id), '-|-');
+  -- [TEST-MOD-APPROVED #4398] an automatic card is made with its route's owner and watcher, so no card is
+  -- ever ownerless and the host card's owner adopts nothing (ops_host_adopt_cards is a no-op).
+  perform pg_temp.pf_check('P2-4', 'before: both automatic cards have their route''s owner',
+    pg_temp.pf_owners(c_go.id) || '|' || pg_temp.pf_owners(c_other.id), 'route-owner.r4398@test.local|route-owner.r4398@test.local');
   -- A second automatic card for PF New Host already owned by someone.
   perform public.ops_auto_card_upsert('ask:39930000-0000-4000-c100-000000000002', jsonb_build_object(
     'title', 'Ask PF New Host for their next event and date', 'instructions', 'Set it on their host card.',
@@ -273,18 +276,18 @@ begin
     'due_on', pg_temp.pf_today() + 3, 'links', jsonb_build_array(jsonb_build_object('kind', 'host', 'id', '39930000-0000-4000-c100-000000000002'))),
     'task', null);
   c_ask := pg_temp.pf_card('ask:39930000-0000-4000-c100-000000000002');
-  perform pg_temp.pf_check('P2-4', 'before: the go-live card shows under Needs attention > No owner',
+  perform pg_temp.pf_check('P2-4', 'before: the go-live card is not under Needs attention > No owner',
     (select count(*) from jsonb_array_elements(pg_temp.pf_j(pg_temp.pf_person('growth', 'select public.ops_attention(null)::text'))->'groups'->'noowner') i
-      where i->>'id' = c_go.id::text)::text, '1');
+      where i->>'id' = c_go.id::text)::text, '0');
   -- Ada takes the host card (Assign to me).
   v := pg_temp.pf_person('growth', format('select public.crm_record_set_owners(%L, %L::text[])::text',
          '39930000-0000-4000-c100-000000000002', array['ada.pf3980@test.local']));
   perform pg_temp.pf_check('P2-4', 'Assign to me on the host card saves', pg_temp.pf_j(v)->>'changed', 'true');
-  perform pg_temp.pf_check('P2-4', 'the ownerless go-live card for that host is now Ada''s too', pg_temp.pf_owners(c_go.id), 'ada.pf3980@test.local');
-  perform pg_temp.pf_check('P2-4', 'a card someone already owns is never taken from them', pg_temp.pf_owners(c_ask.id), 'bo.pf3980@test.local');
-  perform pg_temp.pf_check('P2-4', 'another host''s ownerless card is left alone', pg_temp.pf_owners(c_other.id), '-');
-  perform pg_temp.pf_check('P2-4', 'the card''s history says who owns it and why',
-    (select count(*) from public.ops_work_events e where e.card_id = c_go.id and e.action = 'people' and e.body like 'Owned by % with the host card PF New Host.')::text, '1');
+  perform pg_temp.pf_check('P2-4', 'the go-live card for that host keeps its owner', pg_temp.pf_owners(c_go.id), 'route-owner.r4398@test.local');
+  perform pg_temp.pf_check('P2-4', 'a card someone already owns is never taken from them', pg_temp.pf_owners(c_ask.id), 'route-owner.r4398@test.local');
+  perform pg_temp.pf_check('P2-4', 'another host''s card is left alone', pg_temp.pf_owners(c_other.id), 'route-owner.r4398@test.local');
+  perform pg_temp.pf_check('P2-4', 'no card''s history says it was adopted',
+    (select count(*) from public.ops_work_events e where e.card_id = c_go.id and e.action = 'people' and e.body like 'Owned by % with the host card PF New Host.')::text, '0');
   perform pg_temp.pf_check('P2-4', 'it shows no longer under Needs attention > No owner',
     (select count(*) from jsonb_array_elements(pg_temp.pf_j(pg_temp.pf_person('growth', 'select public.ops_attention(null)::text'))->'groups'->'noowner') i
       where i->>'id' = c_go.id::text)::text, '0');
@@ -368,7 +371,8 @@ begin
   perform pg_temp.pf_check('P3-5', 'Support is told once that an entry is Live: added yes, closed never',
     (select count(*) filter (where m.body_excerpt like 'Mingla added:%')::text || '/' || count(*) filter (where m.body_excerpt like 'Mingla closed:%')::text
        from public.team_mentions m join public.ops_work_events e on e.id = m.source_id
-      where m.source_kind = 'work_card' and e.card_id = (v_res->>'id')::uuid and m.target_user_id = '39930000-0000-4000-a000-000000000003'),
+      -- [TEST-MOD-APPROVED #4398] the card takes its route's watcher (route-watch), who is the one told.
+      where m.source_kind = 'work_card' and e.card_id = (v_res->>'id')::uuid and m.target_user_id = '43980000-0000-4000-afff-0000000000a2'),
     '1/0');
 end;
 $p3$;

@@ -733,15 +733,17 @@ begin
   perform pg_temp.t3980a_ingest(pg_temp.t3980a_record(93002, '{"merged_by":"stranger-gh","edge_functions":["team-agent"],"deploy":{"web":{},"edge":"failed"},"problems":["edge_deploy_failed","live_check_missing"]}'));
   perform pg_temp.t3980a_ingest(pg_temp.t3980a_record(93003, '{"merged_by":"stranger-gh","author":"another-gh","feature_guide":null,"problems":["feature_guide_missing","live_check_missing"]}'));
   for r in 1..3 loop v := pg_temp.t3980a_sync(); end loop;
+  -- [TEST-MOD-APPROVED #4398] S2: a PR's guide line, issue, deploy, migrations and live check items are its ONE
+  -- eng_release:pr-N card; A3: every bot card takes its route's owner and watcher, whoever merged or wrote it.
   perform pg_temp.t3980a_check('G5', 'three runs make each card once',
     (select string_agg(auto_key || '=' || n, ',' order by auto_key) from (select auto_key, count(*) n from public.ops_work_cards where auto_key like 'eng\_%' group by auto_key) x
       where auto_key like '%9300%'),
-    'eng_deploy_failed:pr-93001:mingla-admin=1,eng_deploy_failed:pr-93002:edge=1,eng_guide_missing:pr-93003=1');
-  perform pg_temp.t3980a_check('G5', 'the card goes to whoever merged, watched by the owner', pg_temp.t3980a_owner_of('eng_deploy_failed:pr-93001:mingla-admin'),
-    'lou.a3980@test.local:owner,oz.a3980@test.local:watcher');
-  perform pg_temp.t3980a_check('G5', 'a merger who is not a teammate hands it to the author', pg_temp.t3980a_owner_of('eng_deploy_failed:pr-93002:edge'),
-    'kim.a3980@test.local:owner,oz.a3980@test.local:watcher');
-  perform pg_temp.t3980a_check('G5', 'neither a teammate: the owner owns it, with no watcher', pg_temp.t3980a_owner_of('eng_guide_missing:pr-93003'), 'oz.a3980@test.local:owner');
+    'eng_deploy_failed:pr-93001:mingla-admin=1,eng_deploy_failed:pr-93002:edge=1,eng_release:pr-93003=1');
+  perform pg_temp.t3980a_check('G5', 'a teammate merged: the card is the route''s owner''s, watched by its watcher', pg_temp.t3980a_owner_of('eng_deploy_failed:pr-93001:mingla-admin'),
+    'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
+  perform pg_temp.t3980a_check('G5', 'a merger who is not a teammate: the same', pg_temp.t3980a_owner_of('eng_deploy_failed:pr-93002:edge'),
+    'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
+  perform pg_temp.t3980a_check('G5', 'neither a teammate: the same, always with one watcher', pg_temp.t3980a_owner_of('eng_release:pr-93003'), 'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
   perform pg_temp.t3980a_check('G5', 'the failed edge deploy card says edge function',
     (select instructions from public.ops_work_cards where auto_key = 'eng_deploy_failed:pr-93002:edge' and status <> 'done'),
     'The edge function deploy for PR #93002 failed. Read the run, fix it and redeploy through the reviewed path.');
@@ -753,31 +755,33 @@ begin
   perform pg_temp.t3980a_check('G5', 'a fixed deploy closes its card by itself, with its reason',
     (select status || ':' || close_kind || ':' || close_reason from public.ops_work_cards where id = v_card), 'done:system:The deploy no longer shows as failed.');
   perform pg_temp.t3980a_check('G5', 'the other two stay open',
-    (select count(*)::text from public.ops_work_cards where auto_key in ('eng_deploy_failed:pr-93002:edge', 'eng_guide_missing:pr-93003') and status <> 'done'), '2');
+    (select count(*)::text from public.ops_work_cards where auto_key in ('eng_deploy_failed:pr-93002:edge', 'eng_release:pr-93003') and status <> 'done'), '2');
 
   -- A person closes one; Mingla does not make it again within 14 days.
-  select id into v_card from public.ops_work_cards where auto_key = 'eng_guide_missing:pr-93003' and status <> 'done';
+  select id into v_card from public.ops_work_cards where auto_key = 'eng_release:pr-93003' and status <> 'done';
   update public.ops_work_cards set status = 'done', close_kind = 'declined', close_reason = 'Not needed for this PR', closed_at = now(),
          closed_by = 'oz.a3980@test.local', proof = '[]'::jsonb where id = v_card;
   v := pg_temp.t3980a_sync();
   perform pg_temp.t3980a_check('G5', 'a card a person closed is not made again',
-    (select count(*)::text from public.ops_work_cards where auto_key = 'eng_guide_missing:pr-93003'), '1');
+    (select count(*)::text from public.ops_work_cards where auto_key = 'eng_release:pr-93003'), '1');
 
   -- Migrations pending past a day; then applied.
   perform pg_temp.t3980a_ingest(pg_temp.t3980a_record(93004, '{"migrations_added":["29990202000001","29990202000002"],"migrations_applied_state":"pending"}'));
   update public.ops_release_records set merged_at = now() - interval '25 hours' where pr = 93004;
   v := pg_temp.t3980a_sync();
-  perform pg_temp.t3980a_check('G5', 'migrations still missing a day after the merge make a card naming them',
-    (select instructions from public.ops_work_cards where auto_key = 'eng_migrations:pr-93004' and status <> 'done'),
-    'PR #93004 merged with migrations 29990202000001, 29990202000002 that the production ledger does not show yet. Apply them through the reviewed path with Seth''s go.');
+  perform pg_temp.t3980a_check('G5', 'migrations still missing a day after the merge open the release card with the migrations item',
+    (select status from public.ops_work_cards where auto_key = 'eng_release:pr-93004' and status <> 'done') || '/' ||
+    (select (i->>'done') from jsonb_array_elements(public.ops_release_items(93004)) i where i->>'key' = 'migrations'), 'todo/false');
   insert into supabase_migrations.schema_migrations (version) values ('29990202000001');
   perform pg_temp.t3980a_as('service', 'select public.ops_release_status_due()::text');
   v := pg_temp.t3980a_sync();
-  perform pg_temp.t3980a_check('G5', 'one of two applied keeps the card open', (select status from public.ops_work_cards where auto_key = 'eng_migrations:pr-93004'), 'todo');
+  perform pg_temp.t3980a_check('G5', 'one of two applied keeps the card open', (select status from public.ops_work_cards where auto_key = 'eng_release:pr-93004'), 'todo');
   insert into supabase_migrations.schema_migrations (version) values ('29990202000002');
   perform pg_temp.t3980a_as('service', 'select public.ops_release_status_due()::text');
   v := pg_temp.t3980a_sync();
-  perform pg_temp.t3980a_check('G5', 'both applied closes it', (select status || ':' || close_kind from public.ops_work_cards where auto_key = 'eng_migrations:pr-93004'), 'done:system');
+  perform pg_temp.t3980a_check('G5', 'both applied ticks the migrations item; the card stays for its live check',
+    (select (i->>'done') from jsonb_array_elements(public.ops_release_items(93004)) i where i->>'key' = 'migrations') || '/' ||
+    (select status from public.ops_work_cards where auto_key = 'eng_release:pr-93004'), 'true/todo');
 
   -- A merged PR seen on main with no record after 30 minutes; a direct push.
   perform pg_temp.t3980a_as('service', format('select public.ops_main_commits_ingest(%L::jsonb)::text', jsonb_build_array(
@@ -788,7 +792,7 @@ begin
   perform pg_temp.t3980a_check('G5', 'a merged PR with no record after 30 minutes makes a card; a direct push makes one for its author',
     (select string_agg(auto_key || '>' || coalesce(pg_temp.t3980a_owner_of(auto_key), '-'), ' ' order by auto_key) from public.ops_work_cards
       where status <> 'done' and (auto_key = 'eng_bot_missing:pr-93005' or auto_key = 'eng_no_pr_push:' || left(md5('push'), 7))),
-    'eng_bot_missing:pr-93005>lou.a3980@test.local:owner,oz.a3980@test.local:watcher eng_no_pr_push:' || left(md5('push'), 7) || '>kim.a3980@test.local:owner,oz.a3980@test.local:watcher');
+    'eng_bot_missing:pr-93005>route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher eng_no_pr_push:' || left(md5('push'), 7) || '>route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
   perform pg_temp.t3980a_ingest(pg_temp.t3980a_record(93005));
   for r in 1..2 loop v := pg_temp.t3980a_sync(); end loop;
   perform pg_temp.t3980a_check('G5', 'the record arriving closes the missing-record card; the direct push stays for a person',

@@ -298,8 +298,9 @@ begin
   perform pg_temp.t3980w_check('D4', 'after two hours each pending target is a "Deploy still pending" card for whoever merged',
     (select string_agg(auto_key || '=' || title, ' | ' order by auto_key) from public.ops_work_cards where auto_key like 'eng\_deploy\_pending:pr-95001%' and status <> 'done'),
     'eng_deploy_pending:pr-95001:edge=Deploy still pending: edge function for PR #95001 | eng_deploy_pending:pr-95001:mingla-admin=Deploy still pending: mingla-admin web for PR #95001');
-  perform pg_temp.t3980w_check('D4', 'the card belongs to whoever merged, watched by the owner',
-    pg_temp.t3980w_owner_of('eng_deploy_pending:pr-95001:mingla-admin'), 'lou.w3980@test.local:owner,oz.w3980@test.local:watcher');
+  -- [TEST-MOD-APPROVED #4398] A3: a bot card takes its route's owner and watcher, not the merger.
+  perform pg_temp.t3980w_check('D4', 'the card belongs to its route''s owner and watcher',
+    pg_temp.t3980w_owner_of('eng_deploy_pending:pr-95001:mingla-admin'), 'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
   v := pg_temp.t3980w_sync();
   perform pg_temp.t3980w_check('D4', 'a second run makes no second card',
     (select count(*)::text from public.ops_work_cards where auto_key like 'eng\_deploy\_pending:pr-95001%'), '2');
@@ -314,8 +315,10 @@ begin
   perform pg_temp.t3980w_ingest(pg_temp.t3980w_record(95002, '{"merged_by":"lou-w3980","migrations_added":["29990404000001"],"migrations_applied_state":"pending"}'));
   update public.ops_release_records set merged_at = now() - interval '59 days' where pr = 95002;
   v := pg_temp.t3980w_sync();
-  perform pg_temp.t3980w_check('D5', 'day 59: the migrations card is open',
-    (select status from public.ops_work_cards where auto_key = 'eng_migrations:pr-95002'), 'todo');
+  -- [TEST-MOD-APPROVED #4398] S2: the migrations item is on the PR's one release card.
+  perform pg_temp.t3980w_check('D5', 'day 59: the release card is open with migrations to apply',
+    (select status from public.ops_work_cards where auto_key = 'eng_release:pr-95002') || '/' ||
+    (select (i->>'done') from jsonb_array_elements(public.ops_release_items(95002)) i where i->>'key' = 'migrations'), 'todo/false');
   -- [TEST-MOD-APPROVED #4179] A release record's Feature Guide
   -- classification is immutable once present. The engineering-card fixture
   -- needs only the recorded problem; it must not erase the classification.
@@ -325,13 +328,15 @@ begin
    where pr = 95002;
   for v_n in 1..2 loop v := pg_temp.t3980w_sync(); end loop;
   perform pg_temp.t3980w_check('D5', 'day 61 with the version still not in the ledger: the card stays open, never closed as applied',
-    (select status || '/' || coalesce(close_reason, 'none') from public.ops_work_cards where auto_key = 'eng_migrations:pr-95002'), 'todo/none');
+    (select status || '/' || coalesce(close_reason, 'none') from public.ops_work_cards where auto_key = 'eng_release:pr-95002'), 'todo/none');
   perform pg_temp.t3980w_check('D5', 'an aged record makes no new card for a problem it had no card for',
     (select count(*)::text from public.ops_work_cards where auto_key = 'eng_guide_missing:pr-95002'), '0');
   insert into supabase_migrations.schema_migrations (version) values ('29990404000001');
   v := pg_temp.t3980w_sync();
-  perform pg_temp.t3980w_check('D5', 'once the ledger has every version the card closes, with the true reason',
-    (select status || '/' || close_reason from public.ops_work_cards where auto_key = 'eng_migrations:pr-95002'), 'done/Every migration is in the production ledger.');
+  -- [TEST-MOD-APPROVED #4398] the migrations item ticks; the card stays open for its Feature Guide line.
+  perform pg_temp.t3980w_check('D5', 'once the ledger has every version the migrations item is done; the guide line keeps the card open',
+    (select (i->>'done') from jsonb_array_elements(public.ops_release_items(95002)) i where i->>'key' = 'migrations') || '/' ||
+    (select status from public.ops_work_cards where auto_key = 'eng_release:pr-95002'), 'true/todo');
   perform pg_temp.t3980w_ingest(pg_temp.t3980w_record(95003, '{"merged_by":"lou-w3980","migrations_added":["29990404000003"],"migrations_applied_state":"pending"}'));
   update public.ops_release_records set merged_at = now() - interval '61 days' where pr = 95003;
   v := pg_temp.t3980w_sync();
