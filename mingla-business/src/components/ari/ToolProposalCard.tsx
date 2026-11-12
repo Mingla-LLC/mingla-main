@@ -1434,12 +1434,14 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                     {cascade.data.teamMemberCount}
                   </Text>
                 </View>
-                <View style={styles.fieldRow}>
-                  <Text style={styles.fieldLabel}>Payout account</Text>
+                {/* #4389 — the same row as the delete sheet: any undetached
+                    payment account is closed by the delete. */}
+                <View style={styles.fieldRow} testID="ari-delete-payment-account">
+                  <Text style={styles.fieldLabel}>Payment account</Text>
                   <Text style={styles.fieldValue}>
                     {cascade.data.hasStripeConnect
-                      ? "Linked (will unlink)"
-                      : "Not linked"}
+                      ? BRAND_SETUP_COPY.delete.closedOnDelete
+                      : BRAND_SETUP_COPY.delete.none}
                   </Text>
                 </View>
               </View>

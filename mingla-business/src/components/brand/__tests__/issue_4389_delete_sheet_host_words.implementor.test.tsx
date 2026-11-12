@@ -92,4 +92,18 @@ describe("#4389 — the delete sheet speaks in host words", () => {
       expect({ rel, key: src.includes("BRAND_SETUP_COPY.delete.restoreBody") }).toEqual({ rel, key: true });
     }
   });
+
+  // #4389 (retest): Ari's delete card said "Payout account: Linked (will
+  // unlink)". It reads the same cascade preview and shows the delete sheet's
+  // row: "Payment account · Will be closed when you delete" / "None".
+  test("T4: Ari's delete card shows the delete sheet's payment account row", () => {
+    const card = fs.readFileSync(path.join(__dirname, "../../ari/ToolProposalCard.tsx"), "utf8");
+    expect(card).not.toMatch(/will unlink|Not linked|Payout account<\/Text>/);
+    const row = card.slice(card.indexOf('testID="ari-delete-payment-account"'), card.indexOf('testID="ari-delete-payment-account"') + 500);
+    expect(row).toContain("Payment account");
+    expect(row).toContain("BRAND_SETUP_COPY.delete.closedOnDelete");
+    expect(row).toContain("BRAND_SETUP_COPY.delete.none");
+    expect(row).toContain("cascade.data.hasStripeConnect");
+    expect(C.delete.closedOnDelete).toBe("Will be closed when you delete");
+  });
 });
