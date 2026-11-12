@@ -725,3 +725,27 @@ export function resultsSince(period: ResultsPeriod, now: Date = new Date()): str
   since.setDate(since.getDate() - (period === "7d" ? 7 : 30));
   return since.toISOString();
 }
+
+/**
+ * #4402 — creator videos play through Bunny's signed EMBED page
+ * (player.mediadelivery.net/embed/...), not a media file. Fed to a raw video
+ * element it never loads (MediaError 4, a frozen 0:00 player). Explorer and
+ * Admin show it in a WebView / iframe; Host does the same. Anything else is an
+ * error state, never a silent player.
+ */
+export type CreatorVideoSurface = "iframe" | "webview" | "error";
+
+export function isCreatorEmbedUrl(url: string | null | undefined): boolean {
+  if (typeof url !== "string") return false;
+  return /^https:\/\/(player|iframe)\.mediadelivery\.net\/(embed|play)\/[^\s]+$/.test(url);
+}
+
+export function creatorVideoSurface(
+  url: string | null | undefined,
+  platformOS: string,
+): CreatorVideoSurface {
+  if (!isCreatorEmbedUrl(url)) return "error";
+  return platformOS === "web" ? "iframe" : "webview";
+}
+
+export const CREATOR_VIDEO_ERROR = "This video couldn't play. Close it and try again in a moment.";

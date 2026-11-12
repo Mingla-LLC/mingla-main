@@ -41,7 +41,7 @@ import {
   proposalChangeWords,
   type DueChangeErrors,
 } from "../../../components/programs/dueChange";
-import { FullScreenVideoViewer } from "../../../components/ui/FullScreenVideoViewer";
+import { CreatorVideoPlayer } from "../../../components/programs/ShowcaseStrip";
 import {
   HireSheet,
   type HireSheetMode,
@@ -542,8 +542,8 @@ export default function HostGigContract(): React.ReactElement {
               }}
             />
           ) : null}
-          <FullScreenVideoViewer
-            uri={videoUri}
+          <CreatorVideoPlayer
+            url={videoUri}
             title={`${creatorName}'s video`}
             onClose={() => setVideoUri(null)}
           />
