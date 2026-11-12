@@ -57,9 +57,11 @@ import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview"
 import { waitForPaymentPageClosed } from "@mingla/payments-native/paymentPageReturn";
 import {
   clearHeldHandoff,
-  handoffExpiresBy,
   handoffGeneration,
+  handoffLifetimeMs,
   holdHandoff,
+  isHandoffLive,
+  monotonicNow,
   readHeldHandoff,
   type HeldPaystackHandoff,
 } from "./paystackHeldHandoff";
@@ -270,6 +272,11 @@ const CHECKOUT_IN_PROGRESS_NATIVE_MESSAGE =
 // before reopening it, so it was not opened.
 const CHECKOUT_RECHECK_FAILED_MESSAGE =
   "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
+
+// issue #3281 (bundle 6c) — Host-app only: the held or new page's session had
+// run out before the page could be opened.
+const CHECKOUT_PAGE_EXPIRED_MESSAGE =
+  "This payment page expired before it opened. You have not been charged — please try again.";
 
 const CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE =
   "We couldn't issue your tickets for this sale. If your payment went through, we're sorting it out and will email you — please don't pay again. Contact support@usemingla.com and we'll pick it up from there.";
@@ -506,6 +513,13 @@ async function followPaystackHandoff(
   handoff: HeldPaystackHandoff,
   generation: number,
 ): Promise<NativeCheckoutOutcome> {
+  // issue #3281 (bundle 6c) — re-checked right before opening: the deadline
+  // can pass during the re-check's network calls, and a fresh session can
+  // arrive with no time left. An expired page is never opened.
+  if (!isHandoffLive(handoff)) {
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
+  }
   let opened: WebBrowser.WebBrowserResult;
   try {
     // #2227 — openBrowserAsync, NOT openAuthSessionAsync. The redirect
@@ -792,6 +806,7 @@ export const useNativeCheckoutFlow = (): ((
     // Taken BEFORE the create: the server starts the session's 15 minutes when
     // it writes the row, so the hold must never outlive it.
     const requestedAt = Date.now();
+    const requestedAtMono = monotonicNow();
     const { data, error } =
       await supabase.functions.invoke<CheckoutCreateResponse>(
         "ticket-checkout-create",
@@ -962,7 +977,8 @@ export const useNativeCheckoutFlow = (): ((
         checkoutSessionId: data.checkoutSessionId,
         buyerStatusToken: data.buyerStatusToken,
         cachedAt: requestedAt,
-        expiresBy: handoffExpiresBy(requestedAt, data.expiresInSeconds),
+        cachedAtMono: requestedAtMono,
+        lifetimeMs: handoffLifetimeMs(data.expiresInSeconds),
       };
       holdHandoff(input.eventId, handoff);
       return await followPaystackHandoff(input.eventId, handoff, generation);

@@ -512,6 +512,8 @@ describe("#3281 6b — when the held page is dropped", () => {
   });
 });
 
+const PAGE_EXPIRED =
+  "This payment page expired before it opened. You have not been charged — please try again.";
 const RECHECK_FAILED =
   "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
 const UNAVAILABLE =
@@ -949,10 +951,49 @@ describe("#3281 6c — the hold never outlives the server session", () => {
     },
   );
 
-  it("zero seconds left is never held", async () => {
+  it("a session that arrives with no time left is never opened", async () => {
     jest.useFakeTimers({ now: T0 });
     createAnswer = withSecondsLeft(0);
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: PAGE_EXPIRED,
+    });
+    expect(openBrowserAsync).not.toHaveBeenCalled();
     await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it("a deadline that passes during the re-check is caught before the page opens", async () => {
+    jest.useFakeTimers({ now: T0 });
+    createAnswer = withSecondsLeft(300); // reopenable for 240 s
+    await pay(v2Input());
+    jest.setSystemTime(T0 + 200_000);
+    preflightAnswer = () => {
+      jest.setSystemTime(T0 + 245_000); // the re-check took a while
+      return { data: { status: "present_allowed" }, error: null };
+    };
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: PAGE_EXPIRED,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("a phone clock moved back during the hold cannot stretch it", async () => {
+    jest.useFakeTimers({ now: T0 });
+    createAnswer = withSecondsLeft(300); // reopenable for 240 s
+    await pay(v2Input());
+    jest.setSystemTime(T0 - 3600_000); // clock corrected back an hour
+    jest.advanceTimersByTime(240_000); // 4 real minutes pass
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it("the default 14-minute bound also holds when the clock moves back", async () => {
+    jest.useFakeTimers({ now: T0 });
+    await pay(v2Input());
+    jest.setSystemTime(T0 - 3600_000);
+    jest.advanceTimersByTime(PAYSTACK_HANDOFF_TTL_MS);
     await pay(v2Input());
     expect(calls("ticket-checkout-create")).toHaveLength(2);
   });
