@@ -127,7 +127,9 @@ describe("D-1 due labels anyone can read at a glance", () => {
       { id: "s1", title: "Cut the first video", status: "todo", status_id: "x", due_on: "2026-11-09", owners: [TAO], subtasks: { total: 0, done: 0 } },
       { id: "s2", title: "Post it", status: "done", closed_at: "2026-11-10T12:00:00Z", status_id: "y", due_on: "2026-11-09", owners: [TAO], subtasks: { total: 0, done: 0 } },
     ] });
-    assert.match(html, /data-due="over"[^>]*>Overdue 2 days/);
+    // The rows use the real clock (todayIso), so only the overdue shape is fixed here;
+    // the exact day counts are pinned against TODAY in the first test.
+    assert.match(html, /data-due="over"[^>]*>Overdue \d+ days?</);
     assert.match(html, /data-due="done"[^>]*>Done 10 Nov/);
   });
   it("the card detail's Due chip uses the label too", () => {
