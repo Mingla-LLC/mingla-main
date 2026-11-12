@@ -1,7 +1,7 @@
 // Issue #3355 Wave A (A4) — every readiness handoff opens a screen that can
 // fix the item.
 //
-// MINGLA-INVARIANT: I-ARI-HANDOFF-FIXABLE | issue #3355 | Every readiness item whose fix is a handoff (a route in public.brand_readiness_catalog) names a Host route that exists in mingla-business/app, and every field item names the control and the write that actually change its column; the Time zone item opens Brand profile's Time zone section, which writes brands.default_timezone. Routes are validated against the generated App Map (supabase/functions/_shared/generated/ariAppMap.json), and at runtime a route outside the map is dropped (ariAppMap.ts guardAriReplyRoutes).
+// MINGLA-INVARIANT: I-ARI-HANDOFF-FIXABLE | issue #3355 | Every readiness item whose fix is a handoff (a route in public.brand_readiness_catalog) names a Host route that exists in mingla-business/app and is in the generated App Map, and every field item names the control and write that change its column; the Time zone item opens Brand profile's Time zone section, which writes brands.default_timezone; at runtime a route outside the map is dropped.
 //
 // Production 2026-11-10: the Time zone item handed a Lagos host to Brand
 // profile, which had no time zone field, so "It's done, check now" could

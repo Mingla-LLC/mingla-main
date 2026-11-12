@@ -9,7 +9,7 @@
 // [TRANSITIONAL] legacy prompt for the off path — exit: rollout
 // ari-understand-first-3355 active at 100% for every brand.
 //
-// MINGLA-INVARIANT: I-ARI-ROLLOUT-OFF-IS-MAIN | issue #3355 | With the rollout switch off, agent-chat's system prompt is byte-identical to origin/main's builder (PROMPT_VERSION v30) for the same inputs, and the turn offers origin/main's tool declarations without search_mingla_guide (enforced by supabase/functions/_shared/__tests__/issue_3355_ship_prep_gating.implementor.test.ts).
+// Invariant I-ARI-ROLLOUT-OFF-IS-MAIN (declared beside its enforcing test): With the rollout switch off, agent-chat's system prompt is byte-identical to origin/main's builder (PROMPT_VERSION v30) for the same inputs, and the turn offers origin/main's tool declarations without search_mingla_guide (enforced by supabase/functions/_shared/__tests__/issue_3355_ship_prep_gating.implementor.test.ts).
 
 import {
   type AgentUserProfile,

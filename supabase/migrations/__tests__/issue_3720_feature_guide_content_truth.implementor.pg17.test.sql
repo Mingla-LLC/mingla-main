@@ -57,7 +57,10 @@ BEGIN
        WHERE claimed_status = 'live'
          AND public.issue_3720_feature_guide_effective_status(id) = 'Live'
          -- [TEST-MOD-APPROVED #3980] #3980 F1 turns the Work board and Agent log Live with their 20 Oct release evidence
-         AND capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers', 'staff-work-board', 'staff-agent-log')) <> 0 THEN
+         -- [TEST-MOD-APPROVED #3355] 20280702103355 records PR #4099's complete release record
+         -- (issue #3872 comment 6389131230, Feature Guide: events-discount-codes) and its
+         -- live check, matching production; it is a release promotion, not a content correction
+         AND capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers', 'staff-work-board', 'staff-agent-log', 'events-discount-codes')) <> 0 THEN
     RAISE EXCEPTION 'content_correction_promoted_an_entry';
   END IF;
 

@@ -6,7 +6,7 @@
 // database with a fake caller client; each case pins the server, never the
 // model.
 //
-// MINGLA-INVARIANT: I-ARI-STATUS-FROM-FRESH-READ-ALL-OBJECTS | issue #3355 | (rework 5b, Seth 2026-11-11 "check all"; extends I-ARI-STATUS-FROM-FRESH-READ beyond discount codes) A status answer about an event, RSVP, trip, experience, stay, venue, ticket tier, blast, the brand website, a refund or payout readiness ("Your event is published", "The blast went out", "Your website is published", said by the judge's claim or found by the deterministic pass) is decided by ONE batched, brand-scoped read done in THIS turn as the caller (ariStatusRead.ts readObjectStatuses; it starts beside the judge call and is cut at 1.5 s; each kind fails on its own): its row beats any older receipt or card; a contradicted status is replaced in place by the true state ("Your records show X as a draft."); when that kind's read failed or ran past its cap, the status is replaced by "I couldn't check X's current status just now" and is never asserted, unless a write saved in this very turn backs it (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_5b.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-STATUS-FROM-FRESH-READ-ALL-OBJECTS | issue #3355 | A status answer about an event, RSVP, trip, experience, stay, venue, ticket tier, blast, the brand website, a refund or payout readiness is decided by one batched, brand-scoped read done in this turn as the caller (readObjectStatuses, cut at 1.5 s, each kind failing on its own): its row beats any older receipt or card; a contradicted status is replaced by the true state; a failed or late read means "I couldn't check X's current status just now", unless this turn's own write backs it.
 
 import {
   assert,

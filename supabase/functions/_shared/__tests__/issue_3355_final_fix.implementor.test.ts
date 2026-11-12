@@ -14,7 +14,7 @@
 //        question step title asked again, "Type: Code".
 // The judge and the database are stubbed.
 //
-// MINGLA-INVARIANT: I-ARI-WRITE-REQUEST-DONE-NEEDS-WRITE | issue #3355 | (final fix, supersedes the rework 8 wording) When the host's message is a write request (a write verb in an action position, or a valid intent read naming a write for a message that does not ask about an existing object) and the reply claims a write is done ("I've updated…", "Your party has been published", "now saved", "Published!", "Done", "is live now"), and nothing was written or proposed in this turn, every such sentence is replaced by the true state ("I haven't changed it yet — want me to prepare the update?") deterministically, whatever the claim-check judge returned; a status follow-up with no write verb, a how-to and a read answer are never touched (enforced by supabase/functions/_shared/__tests__/issue_3355_final_fix.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-WRITE-REQUEST-DONE-NEEDS-WRITE | issue #3355 | When the host's message is a write request and the reply claims a write is done ("I've updated…", "Published!", "Done", "is live now") while nothing was written or proposed this turn, every such sentence is replaced deterministically by the true state, whatever the claim-check judge returned; a status follow-up with no write verb, a how-to and a read answer are never touched.
 // MINGLA-INVARIANT: I-ARI-ROLLOUT-COMPLETE-STAYS-ON | issue #3355 | A rollout of 'ari-understand-first-3355' with status completed keeps its audience on (completed at 100 % covers every brand); only paused or rolled_back switch it off (enforced by supabase/functions/_shared/__tests__/issue_3355_final_fix.implementor.test.ts).
 
 import {

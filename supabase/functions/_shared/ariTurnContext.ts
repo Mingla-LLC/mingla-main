@@ -15,7 +15,7 @@
 // inside the existing <user_data> delimiters (I-ARI-USER-DATA-WRAP), and every
 // stored string is stripped of angle brackets and newlines before it is used.
 //
-// MINGLA-INVARIANT: I-ARI-SNAPSHOT-CAPPED | issue #3355 | The per-turn brand snapshot is read with the caller's client, never exceeds ARI_BRAND_SNAPSHOT_MAX_CHARS, truncates lists with counts, omits a failed section with a marker instead of failing the turn, and is rebuilt after a write receipt. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_c_turn_context.implementor.test.ts
+// Invariant I-ARI-SNAPSHOT-CAPPED (declared beside its enforcing test): The per-turn brand snapshot is read with the caller's client, never exceeds ARI_BRAND_SNAPSHOT_MAX_CHARS, truncates lists with counts, omits a failed section with a marker instead of failing the turn, and is rebuilt after a write receipt. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_c_turn_context.implementor.test.ts
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
@@ -81,7 +81,7 @@ function isoOrNull(value: unknown): string | null {
 class SectionUnavailable extends Error {}
 
 async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       work,

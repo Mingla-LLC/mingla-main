@@ -21,7 +21,7 @@
 //   R4-12 a "### heading" in the continuation is softened, not dropped;
 //   R4-13 "till Easter" and "until the end of next month" are read.
 //
-// MINGLA-INVARIANT: I-ARI-CLAIM-EVIDENCE-EXACT | issue #3355 | (rework 4) A completion claim is backed only by a record of the SAME object by exact identity (normalised code, record title, note text, ticket subject), scoped to the active brand and this conversation; a claim naming several objects is backed only when every one is; a described claim ("your new discount") is matched to the codes the host named this turn, else only to this turn's records or (when the host asked for no new write) the latest card it follows; a read backs only the state its row shows; "Nothing has been saved or sent for X" is said only after a read proved X absent (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_4.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-CLAIM-EVIDENCE-EXACT | issue #3355 | A completion claim is backed only by a record of the same object by exact identity (normalised code, title, note text, ticket subject) in the current brand and this conversation; a claim naming several objects needs every one backed; a described claim is matched to the codes the host named this turn, else this turn's records; a read backs only the state its row shows; "Nothing has been saved or sent for X" is said only after a read proved X absent.
 
 import {
   assert,

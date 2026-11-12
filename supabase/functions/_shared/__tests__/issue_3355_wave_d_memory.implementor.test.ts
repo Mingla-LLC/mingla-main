@@ -1,6 +1,6 @@
 // Issue #3355 Wave D (D1) — Ari remembers.
 //
-// MINGLA-INVARIANT: I-ARI-MEMORY-IN-USER-DATA | issue #3355 | Each Ari turn reads the caller's own readable memory notes (ari_memory_list with the caller's JWT and the active brand), keeps at most 8 within a fixed character budget ranked by keyword overlap, correction and recency, and hands them to the model only inside the turn's <user_data> context part — never in the system prompt.
+// MINGLA-INVARIANT: I-ARI-MEMORY-IN-USER-DATA | issue #3355 | Each Ari turn reads the caller's own readable memory notes (ari_memory_list with the caller's JWT and the current brand), keeps at most 8 within a fixed character budget ranked by keyword overlap, correction and recency, and hands them to the model only inside the turn's <user_data> context part, never in the system prompt.
 // MINGLA-INVARIANT: I-ARI-REMEMBER-NOTE-SAFE | issue #3355 | remember_note is Ari-owned reversible state (no confirmation card) that writes only through public.ari_remember_note with the caller's client; payment, ID and contact details are refused before the call, in plain words, and by the server.
 //
 // The SQL half (RLS: a cross-brand note is never readable; forget; hourly

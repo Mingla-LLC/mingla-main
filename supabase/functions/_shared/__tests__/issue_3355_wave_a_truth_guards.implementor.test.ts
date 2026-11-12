@@ -1,7 +1,7 @@
 // Issue #3355 Wave A (A6) — the claim and stated-slot guards (implementor
-// happy path). Invariants are declared beside the guards in
-// supabase/functions/_shared/ariTruthGuards.ts:
-//   I-ARI-CLAIM-MATCHES-RECEIPT, I-ARI-STATED-SLOTS-PRESERVED.
+// happy path).
+// MINGLA-INVARIANT: I-ARI-CLAIM-MATCHES-RECEIPT | issue #3355 | On every model-text path, a turn where the host asked for an action, a write card or receipt is near, or the reply names one of the chat's objects runs one structured claim extraction; each completion claim is kept only when the chat's records back it, otherwise its sentence is replaced in place by the server's true state; when the check fails, only first-person past-tense completion claims about an unbacked write are replaced.
+// MINGLA-INVARIANT: I-ARI-STATED-SLOTS-PRESERVED | issue #3355 | Codes, percentages, fixed amounts off, start and end dates and use limits the host stated (last 6 owner messages since the previous proposal of the same tool) are compared with the proposal args on both agent paths; the latest statement per code and field wins; a stated end day binds to 23:59:59 local and a future start day to 00:00 local; anything missing, different or in conflict makes Ari ask instead of proposing.
 //
 // Replays production 2026-11-10: "I proposed creating the discount code
 // FFBTSCOM10" with no proposal for it, and FAVY10's "until 19th of December

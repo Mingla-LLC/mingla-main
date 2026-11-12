@@ -1,6 +1,6 @@
 // Issue #3355 Wave B (B2) — the Host App Map, its drift check and the route gate.
 //
-// MINGLA-INVARIANT: I-ARI-HANDOFF-FIXABLE | issue #3355 | supabase/functions/_shared/generated/ariAppMap.json is exactly what scripts/ari/build-app-map.mjs writes from mingla-business/app/** and the checked-in Feature Guide seeds; every route Ari can hand a host (open_handoff destinations, flow routes, the readiness catalogue) matches an App Map pattern; and a route outside the map is dropped from the reply, which says how to get there instead.
+// Invariant I-ARI-HANDOFF-FIXABLE (App Map half; declared in issue_3355_wave_a_handoff_fixable.implementor.test.ts): supabase/functions/_shared/generated/ariAppMap.json is exactly what scripts/ari/build-app-map.mjs writes from mingla-business/app/** and the checked-in Feature Guide seeds; every route Ari can hand a host (open_handoff destinations, flow routes, the readiness catalogue) matches an App Map pattern; and a route outside the map is dropped from the reply, which says how to get there instead.
 //
 // Regenerate after changing a Host screen: node scripts/ari/build-app-map.mjs
 // Run: deno test --no-check --allow-read --allow-env \

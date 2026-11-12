@@ -18,7 +18,7 @@
 //         setup is a side question, never a park.
 //
 // MINGLA-INVARIANT: I-ARI-FOLLOW-UP-NEVER-CANCELS | issue #3355 | A follow-up run (answers.follow_up_of: "Yes" on a completed setup's card) never cancels or replaces another setup open in the chat, live or parked: the edge offers that setup's own card (Resume for a parked one) and ari_flow_run_start refuses the follow-up with flow_run_open (enforced here and by supabase/migrations/__tests__/issue_3355_rework_3.implementor.pg17.test.sql).
-// MINGLA-INVARIANT: I-ARI-SIDE-READ-NEVER-PARKS | issue #3355 | During a live setup, a question or a read-only tool request (is FAVY10 active? how many tickets sold?) is answered as a side question; only a new task to do parks the setup.
+// MINGLA-INVARIANT: I-ARI-SIDE-READ-NEVER-PARKS | issue #3355 | During a live setup, a question or a read-only tool request (is FAVY10 on? how many tickets sold?) is answered as a side question; only a new task to do parks the setup.
 
 import {
   assert,

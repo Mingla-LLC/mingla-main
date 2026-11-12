@@ -21,6 +21,8 @@
 // FAILS-ON-REVERT: delete `cardBodyInset` from Sheet.web.tsx and the inset
 // tests go red; delete the opaque base View and the opacity tests go red.
 
+// MINGLA-INVARIANT: I-SHEET-BREATHING-ROOM | issue #3355 | Every default wide-web sheet card reserves spacing.lg below its content, so a pinned footer never sits flush on the card's bottom border.
+
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
 

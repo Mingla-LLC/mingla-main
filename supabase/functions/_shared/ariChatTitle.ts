@@ -14,7 +14,7 @@
 // never given: the next words of the message tell them apart, else " (2)",
 // " (3)". The off path keeps the taxonomy title as it is.
 //
-// MINGLA-INVARIANT: I-ARI-CHAT-TITLE-SPECIFIC | issue #3355 | On the "Ari understands first" path a new chat (and a regenerated title) is titled from the host's first message, never with a generic taxonomy phrase and never with a title the host's other recent chats already have; contact and card details are scrubbed out (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts).
+// Invariant I-ARI-CHAT-TITLE-SPECIFIC (declared beside its enforcing test): On the "Ari understands first" path a new chat (and a regenerated title) is titled from the host's first message, never with a generic taxonomy phrase and never with a title the host's other recent chats already have; contact and card details are scrubbed out (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts).
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { scrubAriExcerpt } from "./ariPii.ts";

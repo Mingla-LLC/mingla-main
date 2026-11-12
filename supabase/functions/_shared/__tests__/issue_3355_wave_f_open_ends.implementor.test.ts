@@ -21,6 +21,11 @@
 // Run: deno test --no-check --allow-read --allow-env \
 //   supabase/functions/_shared/__tests__/issue_3355_wave_f_open_ends.implementor.test.ts
 
+// MINGLA-INVARIANT: I-ARI-ANNOUNCED-WRITE-IS-MADE | issue #3355 | A final reply that announces Ari is about to propose or create something, with no proposal in the turn, is returned to the model once to make the proposal as a tool call.
+// MINGLA-INVARIANT: I-ARI-NO-OFFERING-DETOUR | issue #3355 | When the turn's model intent read names a tool, a proposal to create an offering (event, trip, experience, venue) the read did not name is returned to the model once.
+// MINGLA-INVARIANT: I-ARI-SETUP-NOT-SKIPPED | issue #3355 | When the turn's intent read names a guided setup and start_flow is offered, a proposal of that setup's own create tool is returned to the model once with the instruction to call start_flow.
+// MINGLA-INVARIANT: I-ARI-NO-PSEUDO-TOOL-TEXT | issue #3355 | A final reply that imitates the repaired tool-call marker is sent back to the model once and never shown to the host.
+
 import {
   assert,
   assertEquals,

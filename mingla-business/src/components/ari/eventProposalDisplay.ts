@@ -112,12 +112,23 @@ export function formatProposalInstant(
       year: "numeric",
       timeZone: zone,
     }).format(instant).replace(/,/g, "");
-    const time = new Intl.DateTimeFormat("en-GB", {
-      hour: "numeric",
+    // The 12-hour clock is built from 24-hour parts: en-GB with
+    // `hour12: true` resolves to the h11 cycle on some ICU builds (Node 20
+    // in CI), which prints midnight as "0:00 am" instead of "12:00 am".
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
+      hour12: false,
+      hourCycle: "h23",
       timeZone: zone,
-    }).format(instant).toLowerCase();
+    }).formatToParts(instant);
+    const hour24 = Number(parts.find((part) => part.type === "hour")?.value) %
+      24;
+    const minute = parts.find((part) => part.type === "minute")?.value;
+    if (!Number.isInteger(hour24) || !minute) return null;
+    const time = `${hour24 % 12 === 0 ? 12 : hour24 % 12}:${minute} ${
+      hour24 < 12 ? "am" : "pm"
+    }`;
     return `${day}, ${time} ${zone === "UTC" ? "UTC" : zoneCity(zone)}`;
   } catch {
     return null;

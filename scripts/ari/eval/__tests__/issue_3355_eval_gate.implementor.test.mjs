@@ -2,6 +2,8 @@
 // on a drop of 2+ points (any suite or overall) against the stored
 // baseline, exit 0 otherwise. Files only, no network.
 
+// MINGLA-INVARIANT: I-ARI-EVAL-NO-REGRESSION | issue #3355 | A live Ari eval run that drops 2+ points on any suite or overall against docs/contracts/ari-live-eval-baseline.json fails the release gate.
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

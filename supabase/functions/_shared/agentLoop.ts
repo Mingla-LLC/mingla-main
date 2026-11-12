@@ -88,7 +88,7 @@ export const DEFAULT_AGENT_LOOP_BUDGET: AgentLoopBudget = Object.freeze({
 // (D2b). Before this, production fell through to DEFAULT_AGENT_LOOP_BUDGET
 // (12 tool calls) and only the local lane had an explicit budget.
 //
-// MINGLA-INVARIANT: I-ARI-PRODUCTION-LOOP-BUDGET | issue #3355 | With the local-model lane off, agent-chat runs at most 6 steps, 7 model calls and 5 model-chosen tool calls (plus the turn's required deterministic pre-reads) inside the 55 s deadline, and the deadline still stops the loop first. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_c_loop_budget.implementor.test.ts
+// Invariant I-ARI-PRODUCTION-LOOP-BUDGET (declared beside its enforcing test): With the local-model lane off, agent-chat runs at most 6 steps, 7 model calls and 5 model-chosen tool calls (plus the turn's required deterministic pre-reads) inside the 55 s deadline, and the deadline still stops the loop first. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_c_loop_budget.implementor.test.ts
 export const ARI_PRODUCTION_LOOP_BUDGET: AgentLoopBudget = Object.freeze({
   maxSteps: 6,
   maxModelCalls: 7,

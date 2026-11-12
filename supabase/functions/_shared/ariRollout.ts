@@ -46,10 +46,24 @@ export interface AriRolloutRow {
   rollout_percent: unknown;
 }
 
-/** The explicit override: true / false, or null when it is not set. */
-export function ariUnderstandFirstOverride(
-  value: string | undefined = Deno.env.get("ARI_UNDERSTAND_FIRST"),
-  supabaseUrl: string | undefined = Deno.env.get("SUPABASE_URL"),
+/** The explicit override from this function's environment. */
+export function ariUnderstandFirstOverride(): boolean | null {
+  return ariUnderstandFirstOverrideFrom(
+    Deno.env.get("ARI_UNDERSTAND_FIRST"),
+    Deno.env.get("SUPABASE_URL"),
+  );
+}
+
+/**
+ * The explicit override for given values: true / false, or null when it is
+ * not set. Pure: an `undefined` argument means "not set", never "read the
+ * environment" (a default parameter would read the process env whenever a
+ * caller passes undefined, so a test asserting the no-URL case flipped with
+ * whatever SUPABASE_URL another suite in the same Deno process had set).
+ */
+export function ariUnderstandFirstOverrideFrom(
+  value: string | undefined,
+  supabaseUrl: string | undefined,
 ): boolean | null {
   const flag = (value ?? "").trim().toLowerCase();
   if (flag === "on" || flag === "true" || flag === "1") return true;

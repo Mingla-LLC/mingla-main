@@ -2,7 +2,7 @@
 // is going on.
 //
 // MINGLA-INVARIANT: I-ARI-SNAPSHOT-CAPPED | issue #3355 | The per-turn brand snapshot is read with the caller's client, never exceeds ARI_BRAND_SNAPSHOT_MAX_CHARS, truncates lists with counts, omits a failed section with a marker instead of failing the turn, and is rebuilt after a write receipt.
-// MINGLA-INVARIANT: I-ARI-SCREEN-CONTEXT-VALIDATED | issue #3355 | The Host's client_context reaches the model only when its route matches an App Map screen; an entity reaches it only when it is a uuid named in that route and the caller can read it under the active brand; anything else is dropped without failing the turn.
+// MINGLA-INVARIANT: I-ARI-SCREEN-CONTEXT-VALIDATED | issue #3355 | The Host's client_context reaches the model only when its route matches an App Map screen; an entity reaches it only when it is a uuid named in that route and the caller can read it under the current brand; anything else is dropped without failing the turn.
 //
 // Run: deno test --no-check --allow-read --allow-env \
 //   supabase/functions/_shared/__tests__/issue_3355_wave_c_turn_context.implementor.test.ts

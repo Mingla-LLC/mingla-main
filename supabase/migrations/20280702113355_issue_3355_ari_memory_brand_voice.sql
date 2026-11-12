@@ -10,7 +10,7 @@
 -- table's own read policy. The rows are kept: re-promoting the author brings
 -- the note back; the author still sees their own note.
 --
--- MINGLA-INVARIANT: I-ARI-MEMORY-BRAND-VOICE-AT-READ | issue #3355 | A brand-scoped Ari memory note reaches another member (ari_memory_list and the table's RLS read) only while its author is on the brand's team at marketing manager rank or above; demoting or removing the author hides it without deleting it (enforced by supabase/migrations/__tests__/issue_3355_rework_2.implementor.pg17.test.sql and supabase/functions/_shared/__tests__/issue_3355_rework_2.implementor.test.ts).
+-- Invariant I-ARI-MEMORY-BRAND-VOICE-AT-READ (declared beside its enforcing test): A brand-scoped Ari memory note reaches another member (ari_memory_list and the table's RLS read) only while its author is on the brand's team at marketing manager rank or above; demoting or removing the author hides it without deleting it (enforced by supabase/migrations/__tests__/issue_3355_rework_2.implementor.pg17.test.sql and supabase/functions/_shared/__tests__/issue_3355_rework_2.implementor.test.ts).
 
 -- The author may speak for the brand: on its team, at marketing manager or above.
 CREATE OR REPLACE FUNCTION public.ari_memory_brand_voice(

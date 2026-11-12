@@ -1,5 +1,5 @@
--- Issue #3355 rework 2 (tester P3-21) — I-ARI-MEMORY-BRAND-VOICE-AT-READ
--- (declared in supabase/migrations/20280702113355_issue_3355_ari_memory_brand_voice.sql).
+-- Issue #3355 rework 2 (tester P3-21).
+-- MINGLA-INVARIANT: I-ARI-MEMORY-BRAND-VOICE-AT-READ | issue #3355 | A brand-scoped Ari memory note reaches another member (ari_memory_list and the table's RLS read) only while its author is on the brand's team at marketing manager rank or above; demoting or removing the author hides it without deleting it.
 --
 --   M1  a marketing manager's brand note reaches the owner; after the author
 --       is demoted to scanner it no longer does (ari_memory_list and a direct

@@ -17,7 +17,9 @@
 // The judge is stubbed with the claim shapes it returns; each case pins the
 // server, never the model.
 //
-// MINGLA-INVARIANT: I-ARI-STATUS-FROM-FRESH-READ | issue #3355 | (rework 5, Seth 2026-11-11) A status answer about a discount code ("FAVY10 is live / still active / on again", said by the judge's claim or found by the deterministic pass) is decided by a brand-scoped read done in THIS turn (the loop's own read or the records read, which starts beside the judge call and is cut at 1.5 s): its row beats any older receipt or the 60 s brand snapshot; a contradicted status is replaced in place by "Your records show X as <state>"; when the read could not run, a status only an older receipt would back is replaced by "I couldn't check X's current status just now" and is never asserted (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_5.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-STATUS-FROM-FRESH-READ | issue #3355 | A discount code status answer ("FAVY10 is live", "is on again") is decided by a brand-scoped read done in this turn (the loop's read or the records read, cut at 1.5 s): its row beats any older receipt or the 60 s brand snapshot; a contradicted status is replaced by "Your records show X as <state>"; when the read could not run, a status only an older receipt would back is replaced by "I couldn't check X's current status just now".
+
+// MINGLA-INVARIANT: I-ARI-CLAIM-CHECK-EVERY-REPLY | issue #3355 | Every model reply with text runs the claim check, question, chat and how-to turns included, so a false "Yes, your support ticket has been opened" or "I'll remember that" on a turn with no write is caught; read and how-to answers are never blanked, because the deterministic pass matches only completion, remember, checklist and status-as-fact sentences.
 
 import {
   assert,

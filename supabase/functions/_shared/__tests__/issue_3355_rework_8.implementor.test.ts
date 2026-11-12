@@ -9,8 +9,8 @@
 // Folds the retest-8 repro (R8-1 … R8-8) and pins R8-10, R8-11, R8-12 and the
 // staged rollout switch. The judge and the database are stubbed.
 //
-// MINGLA-INVARIANT: I-ARI-STATUS-NEVER-TO-CARD-RULES | issue #3355 | (rework 8, extends I-ARI-STATUS-PER-ASSERTED-CLAUSE) A claim about the status of an event, trip, experience, stay, venue, tier, blast, website, refund or payout readiness is decided only by this turn's brand-scoped status read: a hedged or modal clause with a present-time word, a guest affordance said as now, a negated non-live publication state ("no longer a draft") and a list or table label line are positive assertions; a plan, condition or how-to with no present-time word is kept as said; none of them is ever backed by an older card (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_8.implementor.test.ts).
-// MINGLA-INVARIANT: I-ARI-WRITE-REQUEST-DONE-NEEDS-WRITE | issue #3355 | (rework 8, Seth's tie-break) When the host's message asks for a write (a write verb in an action position) and the reply claims completion ("Done", "All set", "I've created", "it's live"), and nothing was written or proposed in this turn, the completion claim is corrected to the true state whatever the intent read said, unless it names one specific object a record of this chat matches; a status follow-up with no write verb is never touched (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_8.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-STATUS-NEVER-TO-CARD-RULES | issue #3355 | A claim about the status of an event, trip, experience, stay, venue, tier, blast, website, refund or payout readiness is decided only by this turn's brand-scoped status read: a hedged clause with a present-time word, a guest affordance said as now, a negated unpublished state and a list label line are positive assertions; a plan, condition or how-to with no present-time word is kept as said; none is ever backed by an older card.
+// Invariant I-ARI-WRITE-REQUEST-DONE-NEEDS-WRITE is declared in issue_3355_final_fix.implementor.test.ts; this suite pins its rework 8 cases.
 // MINGLA-INVARIANT: I-ARI-UNDERSTAND-FIRST-ROLLOUT | issue #3355 | (rework 8) The understand-first behaviour (intent read and start_flow, the reply claim check and its status reads, memory lines, the ask-the-team offer, the brand snapshot and the screen context) runs only when the ari_rollouts row for runtime version 'ari-understand-first-3355' covers the brand (allow-list, percent bucket, or global) or ARI_UNDERSTAND_FIRST=on; with no row the turn runs as before #3355 (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_8.implementor.test.ts).
 
 import {
@@ -44,6 +44,7 @@ import {
   ariRolloutBucket,
   ariRolloutCovers,
   ariUnderstandFirstOverride,
+  ariUnderstandFirstOverrideFrom,
   readAriUnderstandFirst,
   resetAriRolloutCache,
 } from "../ariRollout.ts";
@@ -914,22 +915,54 @@ Deno.test("rollout: off with no row; per brand, percent bucket and global on; pa
     }], other),
     false,
   );
-  assertEquals(ariUnderstandFirstOverride("on", "https://x.supabase.co"), true);
-  assertEquals(ariUnderstandFirstOverride("off", undefined), false);
   assertEquals(
-    ariUnderstandFirstOverride(undefined, "http://127.0.0.1:54321"),
+    ariUnderstandFirstOverrideFrom("on", "https://x.supabase.co"),
     true,
   );
-  assertEquals(ariUnderstandFirstOverride(undefined, "http://kong:8000"), true);
+  assertEquals(ariUnderstandFirstOverrideFrom("off", undefined), false);
   assertEquals(
-    ariUnderstandFirstOverride(undefined, "https://abc.supabase.co"),
+    ariUnderstandFirstOverrideFrom(undefined, "http://127.0.0.1:54321"),
+    true,
+  );
+  assertEquals(
+    ariUnderstandFirstOverrideFrom(undefined, "http://kong:8000"),
+    true,
+  );
+  assertEquals(
+    ariUnderstandFirstOverrideFrom(undefined, "https://abc.supabase.co"),
     null,
   );
   assertEquals(
-    ariUnderstandFirstOverride(undefined, undefined),
+    ariUnderstandFirstOverrideFrom(undefined, undefined),
     true,
     "unit tests",
   );
+});
+
+Deno.test("rollout: the env override reads ARI_UNDERSTAND_FIRST and SUPABASE_URL from the process, whatever another suite set", () => {
+  const saved = {
+    flag: Deno.env.get("ARI_UNDERSTAND_FIRST"),
+    url: Deno.env.get("SUPABASE_URL"),
+  };
+  const put = (key: string, value: string | undefined) =>
+    value === undefined ? Deno.env.delete(key) : Deno.env.set(key, value);
+  try {
+    put("ARI_UNDERSTAND_FIRST", undefined);
+    put("SUPABASE_URL", "https://abc.supabase.co");
+    assertEquals(ariUnderstandFirstOverride(), null, "deployed, no flag");
+    put("SUPABASE_URL", "http://127.0.0.1:54321");
+    assertEquals(ariUnderstandFirstOverride(), true, "local stack");
+    put("SUPABASE_URL", undefined);
+    assertEquals(ariUnderstandFirstOverride(), true, "no URL: a unit test");
+    put("SUPABASE_URL", "https://abc.supabase.co");
+    put("ARI_UNDERSTAND_FIRST", "off");
+    assertEquals(ariUnderstandFirstOverride(), false, "flag off");
+    put("ARI_UNDERSTAND_FIRST", "on");
+    assertEquals(ariUnderstandFirstOverride(), true, "flag on");
+  } finally {
+    put("ARI_UNDERSTAND_FIRST", saved.flag);
+    put("SUPABASE_URL", saved.url);
+  }
 });
 
 Deno.test("rollout: agent-chat and the post-approval continuation gate every new step on the switch", async () => {

@@ -5,6 +5,9 @@
 //
 // MINGLA-INVARIANT: I-ARI-TRUTH-GUARDS-ON-EVERY-PATH | issue #3355 | Both Ari reply paths (the agent loop and the single-call path) run the one stated-values stage before a proposal card and the one write-claim check (rework 3: the claim check against the records) before a text reply.
 
+// MINGLA-INVARIANT: I-ARI-PLANNED-GUIDE-STAYS-PLANNED | issue #3355 | A Feature Guide entry whose effective status is Planned reads as planned / not_available_yet to Ari, whatever tools Ari has.
+// MINGLA-INVARIANT: I-ARI-NO-INVENTED-CODE | issue #3355 | A create_discount proposal whose code does not appear in the host's own recent words is replaced by a question asking for the code.
+
 import {
   assert,
   assertEquals,

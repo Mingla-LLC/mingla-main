@@ -16,6 +16,13 @@
 // issue_3355_flow_runs_close_on_chat_delete.implementor.pg17.test.sql.)
 // The judge and the database are stubbed.
 
+// MINGLA-INVARIANT: I-ARI-CHAT-TITLE-SPECIFIC | issue #3355 | On the "Ari understands first" path a new chat (and a regenerated title) is titled from the host's first message, never with a generic taxonomy phrase and never with a title the host's other recent chats already have; contact and card details are scrubbed out.
+// MINGLA-INVARIANT: I-ARI-SOLD-COUNT-FROM-TICKETS | issue #3355 | On the "Ari understands first" path, list_events never hands the model a bare tickets.count: each row carries ticket_type_count and tickets_sold (the event's tickets that are not void or refunded, read as the caller), and a sold count in Ari's reply must match a sold count a read returned this turn.
+// MINGLA-INVARIANT: I-ARI-NOW-MEANS-ON-CONFIRM | issue #3355 | On a create_discount or create_referral_offer proposal, a starts_at already past, a bare date of the current day, or any start when the host's words say now, immediately or from today (with no start day stated) is removed, so the card says "Starts: As soon as you confirm"; a future start the host stated is kept exactly.
+// MINGLA-INVARIANT: I-ARI-PATHS-FROM-APP-MAP | issue #3355 | A navigation path in Ari's reply ("Manage > Scanners") is kept only when every step is a screen title of the generated App Map, a label the Feature Guide how_to names, or an object of this chat; otherwise that step and the steps after it are replaced by an honest pointer; correct paths, prose, numbers and comparisons are never touched.
+// MINGLA-INVARIANT: I-ARI-HOST-IS-YOU | issue #3355 | Ari's reply never sends the host to "the host": a step such as "confirm with the host that the discount is live" or "let the host know" is dropped, because the reader is the host; "As the host, you…" is kept.
+// MINGLA-INVARIANT: I-ARI-MEMORY-CLAIM-NEEDS-SAVE | issue #3355 | A reply that says Ari saved, noted or will remember something ("I remember that…", "I've saved that", "Noted!") with no successful remember_note or save_memory_note in the same turn is corrected to "I haven't saved that yet — want me to remember it?", whatever the AI judge did; the agent loop first sends it back once so the model can call the tool.
+
 import {
   assert,
   assertEquals,

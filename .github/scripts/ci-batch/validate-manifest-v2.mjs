@@ -475,7 +475,8 @@ export function phase3dContractDigest(manifest) {
 // #4389: renumber the four #4389 migrations to 20280701004389 to 20280701304389 (above main's 20280630004402) in the replay lanes; re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows).
 // #3355 merge of #4404 (origin/main 7ace80fa0a; #4389 and #4402 rows kept beside the #3355 rows): renumbered the fifteen #3355 migrations to 20280702013355 … 20280702153355 (above main's 20280701304389), in order; re-sealed.
 // #3355 rework 9: register 20280702163355 (deleting a chat closes its Ari flow runs) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "853477333d18d1961b035649bf3750e024a54e482ac15a5e75ed5e8464f73bfe";
+// #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "71d9193886adc143fccbb3c8d5972d9168f88b311a077992ac735b1771ef3f5c";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

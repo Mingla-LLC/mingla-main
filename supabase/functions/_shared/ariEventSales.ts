@@ -13,7 +13,7 @@
 // `tickets_sold_known: false`, never a guess. The off path keeps origin/main's
 // row as it is (ariRolloutTurn.ts).
 //
-// MINGLA-INVARIANT: I-ARI-SOLD-COUNT-FROM-TICKETS | issue #3355 | On the "Ari understands first" path, list_events never hands the model a bare tickets.count: each row carries ticket_type_count and tickets_sold (the event's tickets that are not void or refunded, read as the caller), and a sold count in Ari's reply must match a sold count a read returned this turn (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts).
+// Invariant I-ARI-SOLD-COUNT-FROM-TICKETS (declared beside its enforcing test): On the "Ari understands first" path, list_events never hands the model a bare tickets.count: each row carries ticket_type_count and tickets_sold (the event's tickets that are not void or refunded, read as the caller), and a sold count in Ari's reply must match a sold count a read returned this turn (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts).
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 

@@ -2395,7 +2395,7 @@ export async function preserveStatedSlots(args: {
   // #3355 Wave F (live eval): Flash proposed "VIP10, 10% off" for a host who
   // had named no code at all. A code is the host's to choose: one the
   // host's words never contain is asked for, never proposed.
-  // MINGLA-INVARIANT: I-ARI-NO-INVENTED-CODE | issue #3355 | A create_discount proposal whose code does not appear in the host's own recent words is replaced by a question asking for the code.
+  // Invariant I-ARI-NO-INVENTED-CODE (declared beside its enforcing test): A create_discount proposal whose code does not appear in the host's own recent words is replaced by a question asking for the code.
   if (
     args.toolName === "create_discount" && args.toolArgs.kind !== "automatic"
   ) {

@@ -625,7 +625,7 @@ export async function readAriIntent(args: {
   if (args.skip) return fallback(args.skip, 0);
   const timeoutMs = args.timeoutMs ?? ARI_INTENT_READ_TIMEOUT_MS;
   const controller = new AbortController();
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let raw: unknown;
   try {
     const request = buildAriIntentReadRequest(args.input);
@@ -870,7 +870,7 @@ export async function ariIntentSnapshotText(
   snapshot: Promise<{ text: string } | null>,
   timeoutMs = 2_500,
 ): Promise<string | null> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const value = await Promise.race([
       snapshot,

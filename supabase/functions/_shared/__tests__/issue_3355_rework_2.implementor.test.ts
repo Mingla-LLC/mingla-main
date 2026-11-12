@@ -13,9 +13,9 @@
 //   P2-11 a guided setup completes when its draft is saved and verified; the
 //         "get it ready" step is a follow-up that never blocks completion.
 //
-// (I-ARI-NO-MODEL-STATUS-WORDS was retired in rework 3: status words the records back are kept; see I-ARI-CLAIM-MATCHES-RECEIPT in ariClaimCheck.ts.)
+// (The rework 2 rule against model status words was dropped in rework 3: status words the records back are kept; see I-ARI-CLAIM-MATCHES-RECEIPT in ariClaimCheck.ts.)
 // MINGLA-INVARIANT: I-ARI-STATED-LATEST-PER-OBJECT | issue #3355 | Per code and field the host's latest stated value wins (a percent replaces an amount and the reverse; a correction inside one message keeps the newer value); values bind to the code in their own clause in either word order; two values with no correction, or an intent read that disagrees with the words, make Ari ask one question naming both.
-// MINGLA-INVARIANT: I-ARI-FLOW-COMPLETES-ON-DRAFT | issue #3355 | An offering setup run completes, with the draft step's evidence, as soon as its draft is saved and verified; the optional next step (get it ready / publish / cover) is offered once on the completion card and continues in a new run, never holding the first run open.
+// MINGLA-INVARIANT: I-ARI-FLOW-COMPLETES-ON-DRAFT | issue #3355 | An offering setup run completes, with the save step's evidence, as soon as its unpublished offering is saved and verified; the optional next step (get it ready / publish / cover) is offered once on the completion card and continues in a new run, never holding the first run open.
 
 import {
   assertEquals,

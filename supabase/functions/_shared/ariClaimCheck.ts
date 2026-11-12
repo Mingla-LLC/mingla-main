@@ -4171,7 +4171,7 @@ export function dedupeReplySentences(text: string): string {
 /**
  * Whether this turn's reply is checked: every model reply with text.
  *
- * MINGLA-INVARIANT: I-ARI-CLAIM-CHECK-EVERY-REPLY | issue #3355 | (rework 5, Seth 2026-11-11 "check all"; replaces I-ARI-CLAIM-CHECK-GATE of rework 4 / R4-10) Every model reply with text runs the claim check — question, chat and how-to turns included — so a false "Yes, your support ticket has been opened" or "I'll remember that" on a turn with no write is caught (R5-16). Read and how-to answers are never blanked: the judge lists no claim for them, and the deterministic pass matches only completion, remember, checklist and status-as-fact forms (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_5.implementor.test.ts and issue_3355_rework_3.implementor.test.ts R3-2).
+ * MINGLA-INVARIANT: I-ARI-CLAIM-CHECK-EVERY-REPLY | issue #3355 | (rework 5, Seth 2026-11-11 "check all"; replaces the rework 4 claim-check gate, R4-10) Every model reply with text runs the claim check — question, chat and how-to turns included — so a false "Yes, your support ticket has been opened" or "I'll remember that" on a turn with no write is caught (R5-16). Read and how-to answers are never blanked: the judge lists no claim for them, and the deterministic pass matches only completion, remember, checklist and status-as-fact forms (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_5.implementor.test.ts and issue_3355_rework_3.implementor.test.ts R3-2).
  */
 export function claimCheckWanted(args: {
   intent: string | null;
@@ -4255,7 +4255,7 @@ async function timedRecordsRead(
   objects: readonly string[],
   budget: number,
 ): Promise<TimedRead> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const result = await Promise.race([
       read(kinds, objects),
@@ -4306,7 +4306,7 @@ async function timedStatusRead(
   if (budget <= 0) {
     return { records: [], okKinds: [], failedKinds: [...kinds] };
   }
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const result = await Promise.race([
       plan.read(kinds),
@@ -4816,7 +4816,7 @@ export async function checkReplyClaims(args: {
   };
   if (timeoutMs < ARI_CLAIM_CHECK_MIN_MS) return await fallback("deadline", 0);
   const controller = new AbortController();
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let raw: unknown;
   try {
     raw = await Promise.race([

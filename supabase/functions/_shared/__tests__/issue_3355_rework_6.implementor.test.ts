@@ -4,7 +4,9 @@
 // returns (or fails), the database with a fake caller client; each case pins
 // the server, never the model. Folds the retest-6 repro (R6-1 … R6-8).
 //
-// MINGLA-INVARIANT: I-ARI-STATUS-FROM-NAMED-FRESH-ROW | issue #3355 | (rework 6, replaces the rework 5b "any live row of the kind" pool) A status claim about an event, RSVP, trip, experience, stay, venue, ticket tier, blast, the brand website, a refund or payout readiness is backed ONLY by a row read in THIS turn for the specific object the claim or the host names — by id from the chat's cards, or by exact normalised title in the active brand — never by another row of the kind, an older card or receipt, or a fuzzy title; every object a list names is backed on its own; an unresolvable object ("which one?"), an unread or failed kind, or a card's object with no row ("couldn't check"), and a kind the caller's role cannot read ("can't check it for you") never keep a positive status; the reads are triggered by the claim list (the judge's, or the deterministic pass's when the judge is down) and by the host asking about a state, never by the reply's words (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_6.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-STATUS-FROM-NAMED-FRESH-ROW | issue #3355 | A status claim about an event, RSVP, trip, experience, stay, venue, ticket tier, blast, website, refund or payout readiness is backed only by a row read this turn for the object the claim or the host names (by card id, or exact normalised title in the current brand), never by another row of the kind, an older card or a fuzzy title; an unresolvable object, an unread or failed kind, or a kind the caller cannot read never keeps a positive status.
+
+// MINGLA-INVARIANT: I-ARI-NO-MODEL-INSTRUCTION-IN-HOST-COPY | issue #3355 | No host-visible rendition text (plan card titles, timeline rows, blocker callouts, labels) carries a model instruction, an internal tool name or a snake_case key: model-steer observations are never rendered, and any other error message that fails the owner-copy lint or reads as an instruction is replaced by a plain sentence.
 
 import {
   assert,

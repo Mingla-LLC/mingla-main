@@ -107,7 +107,21 @@ describe("#3355 Wave F — Admin Ari quality (render and service)", () => {
   let service;
   let supabaseModule;
 
+  // Node 20 (the CI lane) has no native WebSocket, and supabase-js builds its
+  // realtime client when src/lib/supabase.js loads. These tests never open a
+  // socket, so a stand-in that refuses to connect is enough (the same guard
+  // the #4270 admin render tests use). Removed again after the suite.
+  let stubbedWebSocket = false;
+
   before(async () => {
+    if (typeof globalThis.WebSocket === "undefined") {
+      stubbedWebSocket = true;
+      globalThis.WebSocket = class {
+        constructor() {
+          throw new Error("#3355 Ari quality render test: no network");
+        }
+      };
+    }
     vite = await createServer({
       root: ADMIN_ROOT,
       appType: "custom",
@@ -121,7 +135,10 @@ describe("#3355 Wave F — Admin Ari quality (render and service)", () => {
     service = await vite.ssrLoadModule("/src/services/ariImprovementService.js");
     supabaseModule = await vite.ssrLoadModule("/src/lib/supabase.js");
   });
-  after(async () => { await vite?.close(); });
+  after(async () => {
+    await vite?.close();
+    if (stubbedWebSocket) delete globalThis.WebSocket;
+  });
 
   const noop = () => {};
   const render = (state, days = 30) =>

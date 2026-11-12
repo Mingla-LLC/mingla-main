@@ -6,7 +6,7 @@
 // shapes it returns (or fails), the database with a fake caller client. Folds
 // the retest-7 repro (R7-1 … R7-9, R7-14).
 //
-// MINGLA-INVARIANT: I-ARI-STATUS-PER-ASSERTED-CLAUSE | issue #3355 | (rework 7, extends I-ARI-STATUS-FROM-NAMED-FRESH-ROW) A reply sentence is cut into clauses; a clause that asserts a current or past positive status of an event, RSVP, trip, experience, stay, venue, tier, blast, website, refund or payout readiness is held to this turn's brand-scoped status read (never a loop read) whatever another clause negates, dates or conditions; plans, conditions and negations ("will be", "once published", "isn't yet", "if you publish") are not positive assertions, and a true negative ("still a draft") stands; once a claim is a status claim it is never decided by the older card rules; when the read fails only THIS turn's write for the same object (by id, else title), and only for the state that write produced, backs it; a valid intent read decides write vs status and the grammar rule only applies when it failed (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_7.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-STATUS-PER-ASSERTED-CLAUSE | issue #3355 | A reply sentence is cut into clauses; a clause asserting a current or past positive status of an event, RSVP, trip, experience, stay, venue, tier, blast, website, refund or payout readiness is held to this turn's brand-scoped status read whatever another clause says; plans, conditions and negations ("will be", "once published", "isn't yet") are not positive assertions; when the read fails, only this turn's write for the same object, for the state it produced, backs the claim.
 
 import {
   assert,
