@@ -2,7 +2,13 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Shield, UserPlus, UserX, Mail, AlertCircle, Crown, Clock, Send, Undo2, Loader2,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeWithRefresh } from "../lib/supabase";
+import {
+  INVITE_FAILED_MESSAGE,
+  SESSION_ENDED_MESSAGE,
+  TEAM_INVITE_FUNCTION,
+  readTeamInviteResult,
+} from "../lib/teamInvite";
 import { AlertCard, SectionCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -93,7 +99,7 @@ function shortDate(value) {
 
 export function AdminPage() {
   const { addToast } = useToast();
-  const { access } = useAuth();
+  const { access, endSession } = useAuth();
   const canTeam = canOpenOwnPage(access, "admin");
   // Names and GitHub usernames stay the owner's to set (ops_profile_set).
   const canEditNames = canTeam && access?.role === "owner";
@@ -272,18 +278,18 @@ export function AdminPage() {
   /**
    * Sends (or re-sends) an invitation. Nothing else on this page sends one.
    * Returns { outcome }: "sent" | "not_sent" (invited, email failed) |
-   * "refused" (with the server's code) | "unreachable".
+   * "refused" (with the server's code) | "session" | "failed" | "unreachable".
+   * #4400: invokeWithRefresh retries a 401 once after a refresh; the shared
+   * readTeamInviteResult decides what the answer means.
    */
   const sendInvite = async (email, role) => {
     try {
-      const { data, error: fnError } = await supabase.functions.invoke("admin-team-invite", {
+      const answer = await invokeWithRefresh(TEAM_INVITE_FUNCTION, {
         body: { email, role },
       });
-      if (fnError || !data) return { outcome: "unreachable" };
-      if (!data.ok) return { outcome: "refused", code: data.code };
-      return { outcome: data.email_sent ? "sent" : "not_sent", data };
+      return await readTeamInviteResult(answer || {});
     } catch {
-      return { outcome: "unreachable" };
+      return readTeamInviteResult({ thrown: true });
     }
   };
 
@@ -298,8 +304,14 @@ export function AdminPage() {
 
   /** The toast for an invitation that could not be sent at all. */
   const toastInviteFailure = (result) => {
-    if (result.outcome === "refused") {
+    if (result.outcome === "session") {
+      // #4400: the sign-in really ended; say so and go to the sign-in screen.
+      addToast({ variant: "error", title: SESSION_ENDED_MESSAGE });
+      endSession(SESSION_ENDED_MESSAGE);
+    } else if (result.outcome === "refused") {
       addToast({ variant: "error", ...teamError(result.code) });
+    } else if (result.outcome === "failed") {
+      addToast({ variant: "error", title: INVITE_FAILED_MESSAGE });
     } else {
       addToast({
         variant: "error",
@@ -393,6 +405,9 @@ export function AdminPage() {
             title: isUndo ? "Role change undone" : "Role changed",
             description: `${email} is now invited as ${label}. A new link is on its way; the old one no longer works.`,
           });
+        } else if (sent.outcome === "session") {
+          // #4400: the role changed, but the sign-in ended before the new invite went.
+          toastInviteFailure(sent);
         } else {
           addToast({
             variant: "warning",

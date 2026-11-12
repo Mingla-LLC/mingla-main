@@ -45,9 +45,58 @@ export function teamInviteErrorMessage(result) {
   return "Couldn't send the invite. Check your connection and try again.";
 }
 
+/** #4400: shown when the server no longer accepts this sign-in (HTTP 401). */
+export const SESSION_ENDED_MESSAGE = "Your sign-in ended. Sign in again.";
+
+/** #4400: a non-2xx answer with no readable reason. */
+export const INVITE_FAILED_MESSAGE = "Couldn't send the invite. Something went wrong. Try again.";
+
+async function readErrorCode(error) {
+  const ctx = error?.context;
+  if (!ctx || typeof ctx.text !== "function") return "";
+  try {
+    // Text first, then parse: a Response body can be read only once.
+    const raw = await ctx.text();
+    const body = JSON.parse(raw);
+    return typeof body?.code === "string" ? body.code : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * #4400 — the one reading of an admin-team-invite answer, shared by Admin →
+ * Team and Community & Support. Pass the { data, error } the invoker returned,
+ * or { thrown: true } when the call threw. Returns { outcome, code? }:
+ *   "session"     — HTTP 401 or code not_authenticated (sign in again)
+ *   "unreachable" — the request never reached the server (FunctionsFetchError, a throw)
+ *   "refused"     — the server said no, with its code
+ *   "failed"      — a non-2xx with no readable code (FunctionsRelayError included)
+ *   "sent" / "not_sent" — invited; the email went, or did not
+ * Never throws.
+ */
+export async function readTeamInviteResult({ data, error, thrown } = {}) {
+  if (thrown) return { outcome: "unreachable" };
+  if (error) {
+    if (error.name === "FunctionsFetchError") return { outcome: "unreachable" };
+    const status = error?.context?.status ?? error?.status;
+    const code = await readErrorCode(error);
+    if (status === 401 || code === "not_authenticated") return { outcome: "session" };
+    if (code) return { outcome: "refused", code };
+    return { outcome: "failed" };
+  }
+  if (!data || typeof data !== "object") return { outcome: "failed" };
+  if (!data.ok) {
+    if (data.code === "not_authenticated") return { outcome: "session" };
+    return { outcome: "refused", code: data.code };
+  }
+  return { outcome: data.email_sent ? "sent" : "not_sent", data };
+}
+
 /**
  * Returns { outcome }: "sent" | "not_sent" (invited, email failed) |
- * "refused" (with the server code) | "session" | "unreachable". Never throws.
+ * "refused" (with the server code) | "session" | "unreachable" | "failed".
+ * Never throws.
  */
 export async function sendTeamInvite(invoke, { email, role }) {
   const normalized = String(email || "").trim().toLowerCase();
@@ -55,16 +104,17 @@ export async function sendTeamInvite(invoke, { email, role }) {
   if (!TEAM_INVITE_ROLE_OPTIONS.some((option) => option.id === role)) {
     return { outcome: "refused", code: "invalid_role" };
   }
+  let answer;
   try {
-    const { data, error } = await invoke(TEAM_INVITE_FUNCTION, {
+    answer = await invoke(TEAM_INVITE_FUNCTION, {
       body: { email: normalized, role },
     });
-    const status = error?.context?.status ?? error?.status;
-    if (status === 401) return { outcome: "session" };
-    if (error || !data) return { outcome: "unreachable" };
-    if (!data.ok) return { outcome: "refused", code: data.code };
-    return { outcome: data.email_sent ? "sent" : "not_sent", email: normalized };
   } catch {
     return { outcome: "unreachable" };
   }
+  const result = await readTeamInviteResult(answer || {});
+  if (result.outcome === "sent" || result.outcome === "not_sent") {
+    return { outcome: result.outcome, email: normalized };
+  }
+  return result;
 }
