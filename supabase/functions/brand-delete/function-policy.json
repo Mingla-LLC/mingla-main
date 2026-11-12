@@ -8,6 +8,8 @@
     "migration_fallback_top_level": [],
     "optional_top_level": [
       "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
       "STRIPE_PUBLISHABLE_KEY"
     ],
     "required_bundle_fields": {},

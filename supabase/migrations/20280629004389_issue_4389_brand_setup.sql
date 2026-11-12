@@ -4,10 +4,10 @@
 -- payments-setup lock window, the Tap to Pay fallback address, draft brands,
 -- a delete that closes payment accounts, and a fail-closed VAT country.
 --
--- MINGLA-INVARIANT: I-4389-COUNTRY-ONE-TRUTH | issue #4389 | brands.payout_country is the money country; default_currency, payment_provider and payment_country are derived from it by issue_4389_brand_country_derive and it locks once a payment account exists or a payments setup started in the last 15 minutes.
--- MINGLA-INVARIANT: I-4389-SETUP-DONE-IS-SERVER | issue #4389 | "setup finished" is only brand_readiness(brand_setup) with no blocking items (exactly 4 items: brand.name, money.market, money.terms_member, money.details_submitted).
--- MINGLA-INVARIANT: I-4389-DELETE-CLOSES-PROVIDERS | issue #4389 | a brand with an attached payment account reaches deleted_at only through issue_4389_finish_brand_delete (guard issue_4389_guard_brand_delete_providers).
--- MINGLA-INVARIANT: I-4389-NO-ZERO-VAT-FALLBACK | issue #4389 | resolve_event_pricing_inputs reports vat_country_missing for a Paystack brand with no payment_country; checkout refuses instead of computing 0% VAT.
+-- Invariant (owned by tests): I-4389-COUNTRY-ONE-TRUTH | issue #4389 | brands.payout_country is the money country; default_currency, payment_provider and payment_country are derived from it by issue_4389_brand_country_derive and it locks once a payment account exists or a payments setup started in the last 15 minutes.
+-- Invariant (owned by tests): I-4389-SETUP-DONE-IS-SERVER | issue #4389 | "setup finished" is only brand_readiness(brand_setup) with no blocking items (exactly 4 items: brand.name, money.market, money.terms_member, money.details_submitted).
+-- Invariant (owned by tests): I-4389-DELETE-CLOSES-PROVIDERS | issue #4389 | a brand with an attached payment account reaches deleted_at only through issue_4389_finish_brand_delete (guard issue_4389_guard_brand_delete_providers).
+-- Invariant (owned by tests): I-4389-NO-ZERO-VAT-FALLBACK | issue #4389 | resolve_event_pricing_inputs reports vat_country_missing for a Paystack brand with no payment_country; checkout refuses instead of computing 0% VAT.
 --
 -- Static SQL only. Conflicts raise PT409 (never 40001). Every replaced function
 -- is copied from its latest definition. Ends in a self-assert block.

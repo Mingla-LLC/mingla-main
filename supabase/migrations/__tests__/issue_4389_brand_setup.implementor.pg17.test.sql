@@ -4,8 +4,6 @@
 -- PG17 schema.
 -- MINGLA-INVARIANT: I-4389-COUNTRY-ONE-TRUTH | issue #4389 | default_currency, payment_provider and payment_country follow brands.payout_country (rail map, BG->EUR); the country locks once a payment account exists or a payments setup started in the last 15 minutes.
 -- MINGLA-INVARIANT: I-4389-SETUP-DONE-IS-SERVER | issue #4389 | brand_readiness(brand_setup) is exactly brand.name, money.market, money.terms_member, money.details_submitted, routed to /brand/{id}/setup?step=.
--- MINGLA-INVARIANT: I-4389-DELETE-CLOSES-PROVIDERS | issue #4389 | a brand with an attached payment account cannot be soft-deleted except through issue_4389_finish_brand_delete.
--- MINGLA-INVARIANT: I-4389-NO-ZERO-VAT-FALLBACK | issue #4389 | resolve_event_pricing_inputs.vat_country_missing is true for a Paystack brand with no payment_country.
 --
 --   T1  derive: DE -> EUR/stripe, BG -> EUR, NG -> NGN/paystack/payment_country NG,
 --       NG -> GB clears payment_country; an unknown country is refused (22023)

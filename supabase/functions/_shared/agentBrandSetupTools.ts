@@ -13,7 +13,7 @@
 // - pendingActionBrandMismatch: a confirmation card is bound to its brand
 //   (AR-13).
 //
-// MINGLA-INVARIANT: I-4389-ARI-NO-SENSITIVE-DATA | issue #4389 | no Ari brand setup tool accepts a bank, ID or tax number; payments are entered only on the secure screen returned by start_payments_onboarding.
+// Invariant (owned by tests): I-4389-ARI-NO-SENSITIVE-DATA | issue #4389 | no Ari brand setup tool accepts a bank, ID or tax number; payments are entered only on the secure screen returned by start_payments_onboarding.
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import type { AgentTool, AgentToolDefinition } from "./agentToolHelpers.ts";
