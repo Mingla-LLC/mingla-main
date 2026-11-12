@@ -44,7 +44,13 @@ LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp
 AS $function$
 DECLARE v_card uuid; v_open boolean; v_owners integer; v_watchers integer;
 BEGIN
-  v_card := CASE WHEN TG_TABLE_NAME = 'ops_work_people' THEN (CASE WHEN TG_OP = 'DELETE' THEN OLD.card_id ELSE NEW.card_id END) ELSE NEW.id END;
+  IF TG_TABLE_NAME = 'ops_work_cards' THEN
+    v_card := NEW.id;
+  ELSIF TG_OP = 'DELETE' THEN
+    v_card := OLD.card_id;
+  ELSE
+    v_card := NEW.card_id;
+  END IF;
   SELECT w.status <> 'done' AND w.archived_at IS NULL INTO v_open FROM public.ops_work_cards w WHERE w.id = v_card;
   IF NOT COALESCE(v_open, false) THEN RETURN NULL; END IF;
   SELECT count(*) FILTER (WHERE p.role = 'owner'), count(*) FILTER (WHERE p.role = 'watcher') INTO v_owners, v_watchers
@@ -54,12 +60,14 @@ BEGIN
       USING ERRCODE = '23514', DETAIL = format('card %s has %s owners and %s watchers', v_card, v_owners, v_watchers);
   END IF;
   -- An UPDATE that moves people from one card to another checks the old one too.
-  IF TG_TABLE_NAME = 'ops_work_people' AND TG_OP = 'UPDATE' AND OLD.card_id IS DISTINCT FROM NEW.card_id THEN
+  IF TG_TABLE_NAME = 'ops_work_people' AND TG_OP = 'UPDATE' THEN
+   IF OLD.card_id IS DISTINCT FROM NEW.card_id THEN
     SELECT w.status <> 'done' AND w.archived_at IS NULL INTO v_open FROM public.ops_work_cards w WHERE w.id = OLD.card_id;
     IF COALESCE(v_open, false) AND ((SELECT count(*) FROM public.ops_work_people p WHERE p.card_id = OLD.card_id AND p.role = 'owner') <> 1
                                     OR (SELECT count(*) FROM public.ops_work_people p WHERE p.card_id = OLD.card_id AND p.role = 'watcher') <> 1) THEN
       RAISE EXCEPTION 'card_people: A card needs exactly one owner and one watcher, and they must be different people.' USING ERRCODE = '23514';
     END IF;
+   END IF;
   END IF;
   RETURN NULL;
 END;
