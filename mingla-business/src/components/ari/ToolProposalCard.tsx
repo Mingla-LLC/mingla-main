@@ -68,6 +68,7 @@ import {
   readServerPresentation,
   toolProposalOwnerCopy,
 } from "./toolProposalCopy";
+import { BRAND_SETUP_COPY } from "../brand/brandSetupCopy";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -1409,10 +1410,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         {isBrandDelete ? (
           <>
             <View style={styles.assuranceRow}>
+              {/* #4389 — the delete sheet's host words (i18n). */}
               <Text style={styles.assuranceText}>
-                Recoverable for 30 days. Your data stays — events, orders,
-                refunds, audit logs are preserved. Recovery needs support after
-                that.
+                {`${BRAND_SETUP_COPY.delete.restoreTitle}. ${BRAND_SETUP_COPY.delete.restoreBody}`}
               </Text>
             </View>
             {cascade.isLoading ? (

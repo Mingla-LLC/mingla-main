@@ -82,4 +82,14 @@ describe("#4389 — the delete sheet speaks in host words", () => {
       }
     }
   });
+
+  // #4389 — Ari's delete card and the brand profile's delete entry use the
+  // same host words and the same i18n keys.
+  test("T3: Ari's delete card and the profile delete entry read the same keys, no developer wording", () => {
+    for (const rel of ["../../ari/ToolProposalCard.tsx", "../BrandProfileView.tsx"]) {
+      const src = fs.readFileSync(path.join(__dirname, rel), "utf8");
+      expect({ rel, old: /Recoverable for 30 days|audit logs are preserved|Recovery needs support|via support\./.test(src) }).toEqual({ rel, old: false });
+      expect({ rel, key: src.includes("BRAND_SETUP_COPY.delete.restoreBody") }).toEqual({ rel, key: true });
+    }
+  });
 });

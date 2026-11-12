@@ -93,6 +93,7 @@ import { brandPhoneTelHref } from "@mingla/brand-rendering/brandPhoneHref";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
+import { BRAND_SETUP_COPY } from "./brandSetupCopy";
 
 const loadMeasuredTextDisclosure = () => {
   // Jest's Node 22 VM does not enable native dynamic imports. Keep the
@@ -1169,10 +1170,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         canDeleteBrand(brand, authUser?.id ?? null) ? (
           <View style={styles.dangerZone}>
             <Text style={styles.dangerLabel}>Danger zone</Text>
-            <Text style={styles.dangerHelper}>
-              Deleting hides this brand from your list. Recoverable for 30 days
-              via support.
-            </Text>
+            {/* #4389 — the delete sheet's host words (i18n). */}
+            <Text style={styles.dangerHelper}>{BRAND_SETUP_COPY.delete.restoreBody}</Text>
             <View style={styles.dangerCta}>
               <Button
                 label="Delete brand"

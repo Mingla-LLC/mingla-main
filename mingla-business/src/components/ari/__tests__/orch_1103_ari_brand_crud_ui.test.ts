@@ -149,7 +149,8 @@ describe("ORCH-1103 Surface 2 — delete-variant card", () => {
 
   it("shows the type-to-confirm helper + assurance + recovery window", () => {
     expect(proposalCard).toContain("to confirm");
-    expect(proposalCard).toContain("Recoverable for 30 days");
+    // #4389 — the recovery window now comes from the delete sheet's i18n words.
+    expect(proposalCard).toContain("BRAND_SETUP_COPY.delete.restoreTitle");
   });
 
   it("Delete button wears semantic.error (destructive), NOT userBubble", () => {
