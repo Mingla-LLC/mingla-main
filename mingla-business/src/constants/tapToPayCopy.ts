@@ -71,7 +71,7 @@ export const TAP_LOCATION_DENIED_COPY = {
 
 export const TAP_ADMIN_ONLY_COPY = {
   title: "Ask an admin to turn this on",
-  body: "A brand owner or admin needs to accept Apple's terms for Tap to Pay on iPhone. Ask them to open Account, then Tap to Pay on iPhone, in Mingla Host.",
+  body: "A brand owner or admin needs to accept Apple's terms for Tap to Pay on iPhone. Ask them to turn it on from Home in Mingla Host.",
   usePayCode: "Use a pay code",
 } as const;
 
