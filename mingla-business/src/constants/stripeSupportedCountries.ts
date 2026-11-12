@@ -33,7 +33,7 @@ export const STRIPE_SUPPORTED_COUNTRIES: readonly StripeSupportedCountry[] = [
   { country: "CH", displayName: "Switzerland", defaultCurrency: "CHF", bankAccountLabel: "IBAN" },
   { country: "AT", displayName: "Austria", defaultCurrency: "EUR", bankAccountLabel: "IBAN" },
   { country: "BE", displayName: "Belgium", defaultCurrency: "EUR", bankAccountLabel: "IBAN" },
-  { country: "BG", displayName: "Bulgaria", defaultCurrency: "BGN", bankAccountLabel: "IBAN" },
+  { country: "BG", displayName: "Bulgaria", defaultCurrency: "EUR", bankAccountLabel: "IBAN" },
   { country: "CY", displayName: "Cyprus", defaultCurrency: "EUR", bankAccountLabel: "IBAN" },
   { country: "CZ", displayName: "Czechia", defaultCurrency: "CZK", bankAccountLabel: "IBAN" },
   { country: "DE", displayName: "Germany", defaultCurrency: "EUR", bankAccountLabel: "IBAN" },

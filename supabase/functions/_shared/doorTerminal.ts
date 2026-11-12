@@ -134,31 +134,51 @@ export function parseBrandAddress(
   return null;
 }
 
+/** A structured address object as a complete Terminal address in `country`, or null. */
+export function structuredTerminalAddress(
+  raw: Record<string, unknown> | null | undefined,
+  country: string,
+): TerminalAddress | null {
+  const v = raw ?? {};
+  const str = (k: string): string =>
+    typeof v[k] === "string" ? (v[k] as string).trim() : "";
+  if (!str("line1") || !str("city")) return null;
+  const c = country.trim().toUpperCase();
+  const own = (str("country") || c).toUpperCase();
+  // #4389: an address in another country can never be this brand's Location.
+  if (c && own !== c) return null;
+  const line2 = str("line2");
+  const out: TerminalAddress = {
+    line1: line2 ? `${str("line1")}, ${line2}` : str("line1"),
+    city: str("city"),
+    country: own,
+  };
+  if (str("postal_code")) out.postal_code = str("postal_code");
+  if (str("state")) out.state = str("state");
+  return terminalAddressComplete(out) ? out : null;
+}
+
 /**
- * The Location's address: the event's structured tax address first (the same
- * one Stripe Tax uses) when it has every field Stripe needs, else the brand's
- * own address line read for its state and ZIP / postcode. Null means
- * "address_missing": nothing partial is ever sent to Stripe.
+ * The Location's address, in this order (#4389 §4.2):
+ *   1. the connected account's own address (Stripe already collected and
+ *      verified it in onboarding: identity.business_details / individual);
+ *   2. `brands.tap_location_address` (the T1 fallback screen);
+ *   3. the event's structured tax address (the one Stripe Tax uses);
+ *   4. the brand's own address line read for its state and ZIP / postcode.
+ * Null means "address_missing": nothing partial is ever sent to Stripe.
  */
 export function terminalAddressFor(input: {
+  accountAddress?: Record<string, unknown> | null;
+  tapLocationAddress?: Record<string, unknown> | null;
   venueTaxAddress: Record<string, unknown> | null;
   brandAddress: string | null;
   brandCity: string | null;
   country: string;
 }): TerminalAddress | null {
   const country = input.country.trim().toUpperCase();
-  const v = input.venueTaxAddress ?? {};
-  const str = (k: string): string =>
-    typeof v[k] === "string" ? (v[k] as string).trim() : "";
-  if (str("line1") && str("city")) {
-    const out: TerminalAddress = {
-      line1: str("line1"),
-      city: str("city"),
-      country: (str("country") || country).toUpperCase(),
-    };
-    if (str("postal_code")) out.postal_code = str("postal_code");
-    if (str("state")) out.state = str("state");
-    if (terminalAddressComplete(out)) return out;
+  for (const source of [input.accountAddress, input.tapLocationAddress, input.venueTaxAddress]) {
+    const out = structuredTerminalAddress(source ?? null, country);
+    if (out !== null) return out;
   }
   const parsed = parseBrandAddress(input.brandAddress, input.brandCity, country);
   return parsed !== null && terminalAddressComplete(parsed) ? parsed : null;
@@ -173,7 +193,12 @@ export function isStripeAddressError(error: unknown): boolean {
   return String(e.param ?? "").startsWith("address") || /address/i.test(String(e.message ?? ""));
 }
 
-/** ISO-2 country each supported Tap to Pay currency settles in (the app's own map). */
+/**
+ * ISO-2 country each supported Tap to Pay currency settles in (the app's own map).
+ * [TRANSITIONAL] #4389 — only for a brand with no payout_country; the
+ * migration backfills it for every GBP/USD brand. Exit: delete once a
+ * production probe shows no live Stripe brand with a NULL payout_country.
+ */
 const TAP_COUNTRY_BY_CURRENCY: Readonly<Record<string, string>> = { GBP: "GB", USD: "US" };
 
 // deno-lint-ignore no-explicit-any
@@ -258,6 +283,8 @@ export type TapContext =
     brandName: string;
     brandAddress: string | null;
     brandCity: string | null;
+    /** #4389 — the T1 fallback address, when the host gave one. */
+    tapLocationAddress: Record<string, unknown> | null;
     country: string;
     stripeAccountId: string;
   }
@@ -269,7 +296,7 @@ export function tapContextStatus(error: "tap_not_available" | "stripe_account_no
 }
 
 const TAP_BRAND_COLUMNS =
-  "id, name, address, city, country_code, payment_country, default_currency, payment_provider, stripe_connect_id, stripe_charges_enabled";
+  "id, name, address, city, country_code, payment_country, payout_country, tap_location_address, default_currency, payment_provider, stripe_connect_id, stripe_charges_enabled";
 
 /** Brand row + readiness for a Tap to Pay door sale, or the refusal. */
 export async function loadTapContext(
@@ -314,7 +341,10 @@ function tapContextFromBrand(brand: Record<string, unknown>): TapContext {
   // No country on the brand: its currency, which is synced from the Stripe
   // connected account (brands.default_currency, see tg_sync_brand_stripe_cache),
   // decides, the same way the app reads USD as US and GBP as GB.
-  const named = String(brand?.payment_country ?? brand?.country_code ?? "").trim().toUpperCase();
+  // #4389 I-4389-COUNTRY-ONE-TRUTH: the bank country decides.
+  const named = String(
+    brand?.payout_country ?? brand?.payment_country ?? brand?.country_code ?? "",
+  ).trim().toUpperCase();
   const country = named ||
     (TAP_COUNTRY_BY_CURRENCY[String(brand?.default_currency ?? "").trim().toUpperCase()] ?? "");
   if (!tapToPayCountrySupported(country)) {
@@ -329,6 +359,10 @@ function tapContextFromBrand(brand: Record<string, unknown>): TapContext {
     brandName: String(brand.name ?? ""),
     brandAddress: typeof brand.address === "string" ? brand.address : null,
     brandCity: typeof brand.city === "string" ? brand.city : null,
+    tapLocationAddress: brand.tap_location_address !== null &&
+        typeof brand.tap_location_address === "object"
+      ? brand.tap_location_address as Record<string, unknown>
+      : null,
     country,
     stripeAccountId: String(brand.stripe_connect_id),
   };
@@ -343,6 +377,7 @@ export async function ensureBrandTerminalLocation(
   supabase: Client,
   stripe: StripeLike,
   tap: Extract<TapContext, { ok: true }>,
+  accountAddress: () => Promise<Record<string, unknown> | null> = () => Promise.resolve(null),
 ): Promise<string | null> {
   const { data: existing, error } = await supabase
     .from("brand_terminal_locations")
@@ -354,6 +389,8 @@ export async function ensureBrandTerminalLocation(
   if (error) throw new Error(`terminal_location_lookup_failed:${error.message}`);
   if (existing?.stripe_location_id) return existing.stripe_location_id;
   const address = terminalAddressFor({
+    accountAddress: await accountAddress(),
+    tapLocationAddress: tap.tapLocationAddress,
     venueTaxAddress: null,
     brandAddress: tap.brandAddress,
     brandCity: tap.brandCity,
@@ -367,4 +404,27 @@ export async function ensureBrandTerminalLocation(
     country: tap.country,
     address,
   });
+}
+
+/** #4389 — where the host adds the Tap to Pay address when none is usable (T1). */
+export function tapAddressRoute(brandId: string): string {
+  return `/brand/${brandId}/tap-to-pay/address`;
+}
+
+/** Looks up a stored Location without creating one (skips the account read). */
+export async function existingTerminalLocation(
+  supabase: Client,
+  brandId: string,
+  country: string,
+  stripeAccountId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("brand_terminal_locations")
+    .select("stripe_location_id")
+    .eq("brand_id", brandId)
+    .eq("country_code", country.trim().toUpperCase())
+    .eq("stripe_account_id", stripeAccountId)
+    .maybeSingle();
+  if (error) throw new Error(`terminal_location_lookup_failed:${error.message}`);
+  return data?.stripe_location_id ?? null;
 }

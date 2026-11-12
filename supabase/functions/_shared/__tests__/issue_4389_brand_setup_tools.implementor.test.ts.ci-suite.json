@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4389_brand_setup_tools.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4389-brand-setup-tools-implementor",
+  "profile": "deno-2-unit"
+}

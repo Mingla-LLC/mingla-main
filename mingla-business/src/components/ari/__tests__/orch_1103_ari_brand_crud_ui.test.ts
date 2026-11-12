@@ -44,7 +44,8 @@ describe("ORCH-1103 token", () => {
 
 describe("ORCH-1103 Surface 1 — cover band (create + update brand)", () => {
   it("ToolProposalCard imports the existing CoverPickerSheet (no new sheet)", () => {
-    expect(proposalCard).toMatch(/import\s*\{\s*CoverPickerSheet\s*\}\s*from\s*"\.\.\/ui\/CoverPickerSheet"/);
+    // #4389 — the same sheet, through its one mount point (on-intent on web).
+    expect(proposalCard).toMatch(/import\s*\{\s*CoverPickerSheet\s*\}\s*from\s*"\.\.\/ui\/LazyCoverPickerSheet"/);
   });
 
   it("renders an Add-cover affordance with the empty / busy / error states", () => {
@@ -149,7 +150,8 @@ describe("ORCH-1103 Surface 2 — delete-variant card", () => {
 
   it("shows the type-to-confirm helper + assurance + recovery window", () => {
     expect(proposalCard).toContain("to confirm");
-    expect(proposalCard).toContain("Recoverable for 30 days");
+    // #4389 — the recovery window now comes from the delete sheet's i18n words.
+    expect(proposalCard).toContain("BRAND_DELETE_SHARED_COPY.delete.restoreTitle");
   });
 
   it("Delete button wears semantic.error (destructive), NOT userBubble", () => {

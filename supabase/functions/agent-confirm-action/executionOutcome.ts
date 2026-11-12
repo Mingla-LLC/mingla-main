@@ -81,6 +81,23 @@ export function toolErrorHttpStatus(code: string): number {
       "PAYOUT_COUNTRY_NOT_SAVED",
     ].includes(code)
   ) return 409;
+  // issue #4389 — brand setup and delete refusals (bank country locked or
+  // not allowed, one brand in setup at a time, money still owed, the payment
+  // partner refused to close the account). Nothing was saved; never a 500.
+  if (
+    [
+      "PAYOUT_COUNTRY_LOCKED",
+      "FORBIDDEN",
+      "BRAND_NOT_FOUND",
+      "COUNTRY_AMBIGUOUS",
+      "DRAFT_EXISTS",
+      "EXISTING_INCOMPLETE_BRAND",
+      "DELETE_BLOCKED",
+      "PAYMENT_ACCOUNT_CLOSE_REFUSED",
+      "CONFIRM_NAME_MISMATCH",
+      "NOT_A_DRAFT",
+    ].includes(code)
+  ) return 409;
   // issue #3355 P1 (D-9) — a deterministic publish/money refusal from the
   // database (ariRefusalCopy.ts). Nothing was saved; the owner clears it by
   // fixing the named thing, so it is a conflict, never a 500 or a 202.

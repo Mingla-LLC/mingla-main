@@ -98,7 +98,7 @@ import { LazyBrandAvatarPickerSheet } from "./LazyBrandAvatarPickerSheet";
 const LazyBrandEditAddressField = React.lazy(() =>
   import("./BrandEditAddressField").then((m) => ({ default: m.BrandEditAddressField })),
 );
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { ThemeControlRow } from "../theme/ThemeControlRow";

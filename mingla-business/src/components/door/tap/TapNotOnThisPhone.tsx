@@ -8,13 +8,19 @@
 import React from "react";
 import { Platform } from "react-native";
 
-import { tapToPayName } from "../../../constants/tapToPayName";
 import { TapStatusView } from "./TapStatusView";
 
-// iPhone says the full name (Apple); Android never says "iPhone".
-export const TAP_NOT_ON_THIS_PHONE_BODY_IOS = `${tapToPayName("ios")} needs an iPhone XS or newer on the latest iOS. Use a pay code instead. It works on any phone.`;
-export const TAP_NOT_ON_THIS_PHONE_BODY_ANDROID =
-  "Tap to Pay needs an Android phone with NFC turned on and no developer options. Use a pay code instead. It works on any phone.";
+import { DOOR_MODE_COPY } from "../doorModeCopy";
+
+/**
+ * #4389 — says why this phone can't take Tap to Pay (model and iOS on
+ * iPhone, NFC on Android), with the pay code as the way on. i18n; the
+ * device-facing name always comes from tapToPayName (Apple naming).
+ */
+export const tapNotOnThisPhoneCopy = (os: string): { title: string; body: string } => ({
+  title: DOOR_MODE_COPY.ttpDeviceTitle(os),
+  body: DOOR_MODE_COPY.ttpDeviceBody(os),
+});
 
 export interface TapNotOnThisPhoneProps {
   onUsePayCode: () => void;
@@ -23,14 +29,17 @@ export interface TapNotOnThisPhoneProps {
   onHelp?: () => void;
 }
 
-export const TapNotOnThisPhone = ({ onUsePayCode, loading = false, onHelp }: TapNotOnThisPhoneProps): React.ReactElement => (
-  <TapStatusView
-    tone="neutral"
-    icon={Platform.OS === "ios" ? "settings" : "phone"}
-    title="This phone can't take taps"
-    body={Platform.OS === "ios" ? TAP_NOT_ON_THIS_PHONE_BODY_IOS : TAP_NOT_ON_THIS_PHONE_BODY_ANDROID}
-    primary={{ label: "Use a pay code", onPress: onUsePayCode, loading, testID: "tap-use-pay-code" }}
-    onHelp={onHelp}
-    testID="tap-not-on-this-phone"
-  />
-);
+export const TapNotOnThisPhone = ({ onUsePayCode, loading = false, onHelp }: TapNotOnThisPhoneProps): React.ReactElement => {
+  const copy = tapNotOnThisPhoneCopy(Platform.OS);
+  return (
+    <TapStatusView
+      tone="neutral"
+      icon={Platform.OS === "ios" ? "settings" : "phone"}
+      title={copy.title}
+      body={copy.body}
+      primary={{ label: DOOR_MODE_COPY.ttpUsePayCode, onPress: onUsePayCode, loading, testID: "tap-use-pay-code" }}
+      onHelp={onHelp}
+      testID="tap-not-on-this-phone"
+    />
+  );
+};

@@ -1,0 +1,468 @@
+/**
+ * #4389 (iPhone 15 recording 23:04, F4 → Set up Tap to Pay on iPhone) — the
+ * setup screen showed "Couldn't start Tap to Pay on iPhone. Check your
+ * connection and try again." the moment it opened, before any tap. The cause:
+ * Stripe Terminal starts in the background for the current brand; for a brand
+ * just created (no payment account yet) terminal-connection-token refuses
+ * (stripe_account_not_ready) and that background failure stayed in the shared
+ * session. The host then needed two taps: one restarted Terminal, the next ran
+ * setup.
+ *
+ *   Q1 a background start failure is retried quietly on arrival, with no red text;
+ *   Q2 one tap on "Accept Apple's terms and set up" restarts Terminal AND carries
+ *      on into setup once it is ready;
+ *   Q3 a failure after the host's own tap is shown, with Get help;
+ *   Q4 "On for this brand" (Settings) has a primary Done back to where the host came from.
+ *
+ * FAILS ON REVERT: the quiet retry / hostAttempted gate removed → Q1; the
+ * pending-setup carry-on removed → Q2; the Done bar removed → Q4.
+ */
+import React from "react";
+import { Platform } from "react-native";
+
+// react-test-renderer ships no types in this app.
+interface ReactTestInstance {
+  type: unknown;
+  props: Record<string, any>;
+  children: (ReactTestInstance | string)[];
+  findAll: (predicate: (node: ReactTestInstance) => boolean) => ReactTestInstance[];
+}
+interface ReactTestRenderer {
+  root: ReactTestInstance;
+  unmount: () => void;
+  toJSON: () => unknown;
+}
+const renderer = require("react-test-renderer") as {
+  create: (element: React.ReactElement) => ReactTestRenderer;
+  act: (callback: () => void | Promise<void>) => void | Promise<void>;
+};
+const { act } = renderer;
+
+// Every tree a test mounts is unmounted after it, so no screen keeps polling or
+// ticking once Jest tears the environment down (the lane must exit 0).
+const mountedTrees: ReactTestRenderer[] = [];
+const createTree = renderer.create;
+renderer.create = (element: React.ReactElement): ReactTestRenderer => {
+  const created = createTree(element);
+  mountedTrees.push(created);
+  return created;
+};
+afterEach(() => {
+  act(() => {
+    for (let tree = mountedTrees.pop(); tree; tree = mountedTrees.pop()) tree.unmount();
+  });
+});
+
+const mockIconNames: string[] = [];
+jest.mock("../../ui/Icon", () => ({
+  Icon: ({ name }: { name: string }) => {
+    mockIconNames.push(name);
+    return null;
+  },
+}));
+jest.mock("../../ui/Button", () => {
+  const { Pressable, Text } = jest.requireActual("react-native");
+  const ReactLocal = jest.requireActual("react");
+  return {
+    Button: (props: { label: string; onPress: () => void; disabled?: boolean; testID?: string }) =>
+      ReactLocal.createElement(
+        Pressable,
+        { onPress: props.onPress, disabled: props.disabled, testID: props.testID },
+        ReactLocal.createElement(Text, null, props.label),
+      ),
+  };
+});
+
+let mockLive = false;
+let mockBrandId: string | null = "brand-1";
+const mockInitialize = jest.fn(async () => ({}));
+const mockEasyConnect = jest.fn(async (_params: Record<string, unknown>) => ({}));
+const mockProviderMounts = jest.fn();
+const mockSdk = {
+  StripeTerminalProvider: ({ children }: { children: React.ReactNode }) => {
+    mockProviderMounts();
+    return children;
+  },
+  useStripeTerminal: () => ({
+    initialize: mockInitialize,
+    disconnectReader: jest.fn(async () => ({})),
+    clearCachedCredentials: jest.fn(async () => ({})),
+    getConnectedReader: jest.fn(async () => null),
+    easyConnect: mockEasyConnect,
+    supportsReadersOfType: jest.fn(async () => ({ readerSupportResult: true })),
+  }),
+  requestNeededAndroidPermissions: jest.fn(async () => ({})),
+};
+jest.mock("../../../services/terminal/terminalSdk", () => ({
+  loadTerminalSdk: () => mockSdk,
+  isTerminalNativeModulePresent: () => true,
+}));
+jest.mock("../../../hooks/useTapToPayRelease", () => ({
+  useTapToPayRelease: () => ({ live: mockLive }),
+  tapToPayLive: () => mockLive,
+}));
+// #4389 — a brand whose payments are set up (Get started opens Tap to Pay
+// setup); the #4389 case below flips it to a brand still in setup.
+let mockBrandData: Record<string, unknown> = { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP", stripeStatus: "active", chargesEnabled: true };
+jest.mock("../../../hooks/useBrands", () => ({
+  useBrand: () => ({ data: mockBrandData }),
+}));
+jest.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "user-1" }, isAuthReady: true }),
+}));
+jest.mock("../../../store/currentBrandStore", () => ({
+  useCurrentBrandId: () => mockBrandId,
+}));
+let mockRole: { rank: number; isLoading: boolean } = { rank: 60, isLoading: false };
+jest.mock("../../../hooks/useCurrentBrandRole", () => ({
+  useCurrentBrandRole: () => mockRole,
+}));
+const mockReplace = jest.fn();
+const mockPush = jest.fn();
+let mockAvailability: Record<string, unknown> = { available: true, needsSetup: true, reason: "ok" };
+jest.mock("../../../hooks/useTapToPayAvailability", () => ({
+  ...jest.requireActual("../../../hooks/useTapToPayAvailability"),
+  useTapToPayAvailability: () => mockAvailability,
+}));
+jest.mock("../../../hooks/useManagedEventRoute", () => ({
+  useManagedEventRoute: () => ({
+    brand: { id: "brand-1", displayName: "Door Brand", defaultCurrency: "GBP" },
+    event: { id: "event-1", brandId: "brand-1", currency: "GBP", tickets: [] },
+  }),
+}));
+// #4389 — the splash auto-shows only on Home with brand setup complete.
+let mockPathname = "/home";
+let mockSetupComplete = true;
+jest.mock("../../../hooks/useBrandSetupChecklist", () => ({
+  useBrandSetupChecklist: () => ({ data: { facts: { complete: mockSetupComplete } } }),
+}));
+const mockBack = jest.fn();
+jest.mock("expo-router", () => ({
+  usePathname: () => mockPathname,
+  useRouter: () => ({ replace: mockReplace, push: mockPush, back: mockBack, canGoBack: () => true }),
+  useLocalSearchParams: () => ({}),
+  Stack: () => null,
+}));
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+jest.mock("../../ui/GlassCard", () => ({
+  GlassCard: ({ children }: { children: React.ReactNode }) => children,
+}));
+jest.mock("../../ui/IconChrome", () => {
+  const mocked: { lastOnPress?: () => void; IconChrome?: unknown } = {};
+  mocked.IconChrome = ({ onPress }: { onPress: () => void }) => {
+    mocked.lastOnPress = onPress;
+    return null;
+  };
+  return mocked;
+});
+jest.mock("../../ui/Spinner", () => ({ Spinner: () => null }));
+jest.mock("@tanstack/react-query", () => ({
+  ...jest.requireActual("@tanstack/react-query"),
+  useQueryClient: () => ({ invalidateQueries: jest.fn() }),
+}));
+jest.mock("../../../hooks/useEventDoorSales", () => ({
+  doorSaleKeys: { byEvent: () => ["door-sales"] },
+}));
+jest.mock("../../../utils/hapticFeedback", () => ({ HapticFeedback: { success: jest.fn() } }));
+jest.mock("../../../services/postHogService", () => ({ postHogService: { capture: jest.fn() } }));
+jest.mock("../../../services/terminal/doorTapEdge", () => ({
+  fetchDoorTapLocation: jest.fn(async () => "tml_1"),
+  fetchTerminalConnectionToken: jest.fn(async () => "pst"),
+  createDoorPayCodeForLines: jest.fn(async () => ({ codeId: "code-1" })),
+  createDoorTapIntent: jest.fn(async () => ({
+    paymentIntentId: "pi_1",
+    clientSecret: "pi_1_secret",
+    totalCents: 3135,
+    currency: "GBP",
+    stripeAccountId: "acct_1",
+    locationId: "tml_1",
+    feeCents: 135,
+    subtotalCents: 3000,
+  })),
+  completeDoorTapIntent: jest.fn(async () => ({ orderId: "o1", ticketIds: ["t1"], receiptQueued: false, replayed: false })),
+  cancelDoorTapIntent: jest.fn(async () => undefined),
+  markDoorTapOutcomeSeen: jest.fn(async () => undefined),
+  DoorTapError: class DoorTapError extends Error {
+    code: string;
+    detail: string | null;
+    constructor(code: string, detail: string | null = null) {
+      super(code);
+      this.code = code;
+      this.detail = detail;
+    }
+  },
+}));
+jest.mock("../../../diagnostics/reportNonFatal", () => ({ reportNonFatal: jest.fn() }));
+jest.mock("../../../services/supabase", () => ({
+  supabase: { functions: { invoke: jest.fn() }, rpc: jest.fn() },
+}));
+let mockLocation: "granted" | "denied" | "not_determined" | "unavailable" = "unavailable";
+const mockRequestLocation = jest.fn(async () => mockLocation);
+jest.mock("../../../services/terminal/tapToPayIosLocation", () => ({
+  tapLocationStatus: () => mockLocation,
+  requestTapLocation: () => mockRequestLocation(),
+  tapLocationReadyForSale: (status?: string) => {
+    const st = status ?? mockLocation;
+    return st === "granted" || st === "unavailable";
+  },
+}));
+jest.mock("../tap/tapSetupTakePayment", () => ({
+  loadHasDoorSaleEvent: jest.fn(async () => false),
+  openDoorSaleFromTapSetup: jest.fn(async () => undefined),
+}));
+jest.mock("../../../services/terminal/howToTap", () => ({
+  isTapToPayIphoneEntitled: () => true,
+  showHowToTapEducation: jest.fn(async () => "shown"),
+}));
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async () => null),
+    setItem: jest.fn(async () => undefined),
+    removeItem: jest.fn(async () => undefined),
+  },
+}));
+
+
+// eslint-disable-next-line import/first
+import { TapToPaySetupScreen } from "../tap/TapToPaySetupScreen";
+// eslint-disable-next-line import/first
+import { resetTapToPaySessionForTests, updateTapToPaySession } from "../../../services/terminal/tapToPaySession";
+
+jest.setTimeout(60_000);
+
+const flush = async (): Promise<void> => {
+  await act(async () => {
+    await Promise.resolve();
+  });
+};
+const settle = async (): Promise<void> => {
+  for (let i = 0; i < 8; i += 1) await flush();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+};
+const textOf = (node: ReactTestInstance | string): string =>
+  typeof node === "string" ? node : node.children.map(textOf).join(" ");
+const pressables = (root: ReactTestInstance, id: string): ReactTestInstance[] =>
+  root.findAll((n) => n.props.testID === id && typeof n.props.onPress === "function");
+
+const START_FAILED = "Couldn't start Tap to Pay on iPhone. Check your connection and try again.";
+const client = () => ({
+  ensureReaderConnected: jest.fn(async () => ({})),
+  checkDeviceSupport: async () => ({ supported: true }),
+  retrievePaymentIntent: async () => ({}),
+  collectPaymentMethod: async () => ({}),
+  confirmPaymentIntent: async () => ({}),
+  cancelCollectPaymentMethod: async () => ({}),
+});
+
+const mountSetup = async (eventId: string | null): Promise<ReactTestRenderer> => {
+  let tree: ReactTestRenderer | undefined;
+  act(() => {
+    tree = renderer.create(<TapToPaySetupScreen brandId="brand-1" eventId={eventId} rawDraft={null} />);
+  });
+  await settle();
+  return tree as ReactTestRenderer;
+};
+
+beforeEach(() => {
+  Object.defineProperty(Platform, "OS", { value: "ios", configurable: true });
+  Object.defineProperty(Platform, "Version", { value: "18.1", configurable: true });
+  mockRole = { rank: 60, isLoading: false };
+  mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+  mockLocation = "unavailable";
+  mockRequestLocation.mockClear();
+  mockReplace.mockClear();
+  resetTapToPaySessionForTests();
+});
+
+describe("#4389 — Tap to Pay setup never shows a background start failure", () => {
+  test("Q1: a stale background failure is retried quietly; no red text on arrival", async () => {
+    const retry = jest.fn();
+    updateTapToPaySession({ status: "error", client: null, errorMessage: START_FAILED, retryInitialize: retry } as never);
+    const tree = await mountSetup("event-1");
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(textOf(tree.root)).not.toContain("Couldn't start");
+    expect(pressables(tree.root, "tap-get-help")).toHaveLength(0);
+  });
+
+  test("Q2: one tap restarts Terminal and carries on into setup when it is ready", async () => {
+    const c = client();
+    const retry = jest.fn();
+    updateTapToPaySession({ status: "error", client: null, errorMessage: START_FAILED, retryInitialize: retry } as never);
+    const tree = await mountSetup("event-1");
+    const start = pressables(tree.root, "tap-setup-start")[0] as ReactTestInstance;
+    act(() => {
+      start.props.onPress();
+    });
+    expect(retry).toHaveBeenCalledTimes(2);
+    expect(c.ensureReaderConnected).not.toHaveBeenCalled();
+    act(() => {
+      updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    });
+    await settle();
+    expect(c.ensureReaderConnected).toHaveBeenCalledTimes(1);
+    expect(c.ensureReaderConnected).toHaveBeenCalledWith("tml_1", { mayAcceptTerms: true });
+  });
+
+  test("Q3: a failure after the host's own tap is shown, with Get help", async () => {
+    updateTapToPaySession({ status: "error", client: null, errorMessage: START_FAILED, retryInitialize: jest.fn() } as never);
+    const tree = await mountSetup("event-1");
+    act(() => {
+      (pressables(tree.root, "tap-setup-start")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(textOf(tree.root)).toContain(START_FAILED);
+    expect(pressables(tree.root, "tap-get-help")).toHaveLength(1);
+  });
+
+  test("Q4: On for this brand (from Settings / F4) has a Done back to where the host came from", async () => {
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    updateTapToPaySession({ status: "ready", client: client(), errorMessage: null } as never);
+    const tree = await mountSetup(null);
+    expect(textOf(tree.root)).toContain("On for this brand");
+    const done = pressables(tree.root, "tap-on-done");
+    expect(done.length).toBeGreaterThan(0);
+    expect(textOf(done[0] as ReactTestInstance)).toContain("Done");
+    act(() => {
+      (done[0] as ReactTestInstance).props.onPress();
+    });
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#4389 — How to Tap shows before 'On for this brand' and its Done", () => {
+  test("Q5: while How to Tap is open the screen stays on 'Getting ready'; Done only after it closes", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const howToTap = require("../../../services/terminal/howToTap") as { showHowToTapEducation: jest.Mock };
+    let closeGuide: (v: string) => void = () => undefined;
+    howToTap.showHowToTapEducation.mockImplementationOnce(() => new Promise<string>((r) => { closeGuide = r; }));
+    const c = client();
+    // Apple's answer turns "accepted" the moment the reader connects.
+    c.ensureReaderConnected.mockImplementation(async () => {
+      mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+      return {};
+    });
+    updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    const tree = await mountSetup(null);
+    act(() => {
+      (pressables(tree.root, "tap-setup-start")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    act(() => updateTapToPaySession({ readerReady: true } as never));
+    await settle();
+    expect(pressables(tree.root, "tap-on-done")).toHaveLength(0);
+    expect(textOf(tree.root)).not.toContain("On for this brand");
+    await act(async () => closeGuide("shown"));
+    await settle();
+    expect(pressables(tree.root, "tap-on-done").length).toBeGreaterThan(0);
+  });
+});
+
+describe("#4389 — 'On for this brand' offers Take a payment when an event is on now", () => {
+  test("Q6: an event to sell → Take a payment opens the door sale; none → no button", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const door = require("../tap/tapSetupTakePayment") as { loadHasDoorSaleEvent: jest.Mock; openDoorSaleFromTapSetup: jest.Mock };
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    updateTapToPaySession({ status: "ready", client: client(), errorMessage: null } as never);
+    door.loadHasDoorSaleEvent.mockImplementation(async () => false);
+    const none = await mountSetup(null);
+    expect(pressables(none.root, "tap-on-take-payment")).toHaveLength(0);
+    door.loadHasDoorSaleEvent.mockImplementation(async () => true);
+    const some = await mountSetup(null);
+    const btn = pressables(some.root, "tap-on-take-payment");
+    expect(btn.length).toBeGreaterThan(0);
+    await act(async () => {
+      (btn[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(door.openDoorSaleFromTapSetup).toHaveBeenCalledWith(expect.anything(), "brand-1");
+  });
+});
+
+describe("#4389 — Apple: location is asked in setup behind a pre-alert, never at checkout", () => {
+  test("L1: not asked yet → pre-alert before Apple's terms / the reader; Continue asks, then setup runs", async () => {
+    mockLocation = "not_determined";
+    const c = client();
+    updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    const tree = await mountSetup("event-1");
+    act(() => {
+      (pressables(tree.root, "tap-setup-start")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(textOf(tree.root)).toContain("Allow location for card payments");
+    expect(textOf(tree.root)).toContain(
+      "Tap to Pay on iPhone uses your location to confirm where payments are taken. We only check it when you take a payment.",
+    );
+    expect(c.ensureReaderConnected).not.toHaveBeenCalled();
+    expect(mockRequestLocation).not.toHaveBeenCalled();
+    mockRequestLocation.mockImplementationOnce(async () => {
+      mockLocation = "granted";
+      return "granted";
+    });
+    await act(async () => {
+      (pressables(tree.root, "tap-location-continue")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(mockRequestLocation).toHaveBeenCalledTimes(1);
+    expect(c.ensureReaderConnected).toHaveBeenCalledTimes(1);
+  });
+
+  test("L2: refused → setup explains and opens Settings; the reader never connects", async () => {
+    mockLocation = "not_determined";
+    const c = client();
+    updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    const tree = await mountSetup("event-1");
+    act(() => {
+      (pressables(tree.root, "tap-setup-start")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    mockRequestLocation.mockImplementationOnce(async () => "denied");
+    await act(async () => {
+      (pressables(tree.root, "tap-location-continue")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(textOf(tree.root)).toContain("Location is off for Mingla Host");
+    const { Linking } = jest.requireActual("react-native") as typeof import("react-native");
+    const open = jest.spyOn(Linking, "openSettings").mockResolvedValue(undefined);
+    act(() => {
+      (pressables(tree.root, "tap-location-open-settings")[0] as ReactTestInstance).props.onPress();
+    });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(c.ensureReaderConnected).not.toHaveBeenCalled();
+  });
+
+  test("L3: a sale with location not answered goes to setup and never starts (no prompt mid-checkout)", async () => {
+    mockLocation = "not_determined";
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    const c = client();
+    updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { TapToPaySaleScreen } = require("../tap/TapToPaySaleScreen") as typeof import("../tap/TapToPaySaleScreen");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { encodeTapToPayDraft } = require("../../../services/terminal/tapToPayDraft") as typeof import("../../../services/terminal/tapToPayDraft");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const edge = require("../../../services/terminal/doorTapEdge") as { createDoorTapIntent: jest.Mock };
+    edge.createDoorTapIntent.mockClear();
+    const draft = encodeTapToPayDraft({ lines: [{ ticketTypeId: "tier-1", quantity: 1 }], eventDateId: null, buyerPhone: null, phoneCountryIso: null } as never);
+    act(() => {
+      renderer.create(<TapToPaySaleScreen eventId="event-1" saleId="new" rawDraft={draft} />);
+    });
+    await settle();
+    expect(String(mockReplace.mock.calls[0]?.[0] ?? "")).toContain("/door/tap/setup");
+    expect(edge.createDoorTapIntent).not.toHaveBeenCalled();
+    expect(c.ensureReaderConnected).not.toHaveBeenCalled();
+  });
+
+  test("L4: Door mode's Charge and the warm-up are gated the same way", () => {
+    const fs = jest.requireActual("fs") as typeof import("fs");
+    const path = jest.requireActual("path") as typeof import("path");
+    const door = fs.readFileSync(path.join(__dirname, "../DoorModeScreen.tsx"), "utf8");
+    expect(door).toMatch(/!tapLocationReadyForSale\(\)\) handOff\(draft\)/);
+    const host = fs.readFileSync(path.join(__dirname, "../tap/TapToPayTerminalHost.tsx"), "utf8");
+    expect(host).toMatch(/Platform\.OS === "ios" && options\?\.warm === true && !tapLocationReadyForSale\(\)/);
+  });
+});

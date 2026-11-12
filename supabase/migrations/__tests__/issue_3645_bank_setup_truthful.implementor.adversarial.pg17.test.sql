@@ -131,41 +131,11 @@ BEGIN
 END $a01$;
 ROLLBACK;
 
--- ─── A-02: no database routine decides anything from the column ──────────────
--- #3355 P2 shows the payout country on the brand readiness list (the
--- 'money.market' item's state and preview) and clears that item's stale
--- finding when the column changes. Those two display readers are the only
--- ones allowed, and only while 'money.market' blocks no action.
-BEGIN;
-DO $a02$
-DECLARE v_name text;
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM public.brand_readiness_catalog
-     WHERE key = 'money.market' AND cardinality(blocking_for) > 0
-  ) THEN
-    RAISE EXCEPTION 'A-02 FAIL: the payout-country readiness item now blocks an action';
-  END IF;
-  SELECT n.nspname || '.' || p.proname INTO v_name
-    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND p.prokind = 'f'
-     AND p.prosrc ~ '\mpayout_country\M'
-     AND (n.nspname, p.proname) NOT IN (
-       ('public', 'brand_readiness_internal'),
-       ('public', 'brands_readiness_evidence_on_write'))
-   LIMIT 1;
-  IF v_name IS NOT NULL THEN
-    RAISE EXCEPTION 'A-02 FAIL: % reads brands.payout_country; it is display-only', v_name;
-  END IF;
-  SELECT c.relname INTO v_name FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-   WHERE c.relkind IN ('v', 'm') AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-     AND pg_get_viewdef(c.oid) ~ '\mpayout_country\M' LIMIT 1;
-  IF v_name IS NOT NULL THEN
-    RAISE EXCEPTION 'A-02 FAIL: view % reads brands.payout_country; it is display-only', v_name;
-  END IF;
-  RAISE NOTICE 'A-02 PASS: nothing in the database decides anything from the payout country';
-END $a02$;
-ROLLBACK;
+-- ─── A-02 (retired by #4389) ────────────────────────────────────────────────
+-- A-02 pinned the payout country as display-only. #4389 made the bank country
+-- the one truth for a brand's currency and payment rail (it decides both, and
+-- brand setup's 'money.market' step blocks selling until it is set); those
+-- rules are proved in issue_4389_brand_setup.implementor.pg17.test.sql.
 
 -- ─── A-03: deleted and foreign RSVPs are not counted; visitors are refused ───
 BEGIN;

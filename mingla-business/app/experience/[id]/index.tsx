@@ -57,7 +57,7 @@ import {
 import {
   OfferingManageSheet,
   buildOfferingManageActions,
-} from "../../../src/components/offering/OfferingManageSheet";
+} from "../../../src/components/offering/LazyOfferingManageSheet";
 import {
   buildOfferingDashboardTiles,
   withListingInsights,

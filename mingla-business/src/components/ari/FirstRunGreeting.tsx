@@ -13,7 +13,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -38,6 +38,8 @@ export interface FirstRunGreetingProps {
   /** Phone keyboard up: keep the headline and chips, drop the orb and body. */
   compact?: boolean;
   disabled?: boolean;
+  /** #4389 A1 — the setup card under the chips (no-brand first landing). */
+  footer?: React.ReactNode;
   testID?: string;
 }
 
@@ -48,6 +50,7 @@ export function FirstRunGreeting({
   composer,
   compact = false,
   disabled = false,
+  footer,
   testID = "ari-first-run-greeting",
 }: FirstRunGreetingProps): React.ReactElement {
   const chips = (
@@ -98,13 +101,26 @@ export function FirstRunGreeting({
           <Text style={[styles.body, styles.bodyDesktop]}>{copy.body}</Text>
           {composer ? <View style={styles.desktopComposer}>{composer}</View> : null}
           {chips}
+          {footer}
         </View>
       </View>
     );
   }
 
+  // #4389 P2 — the phone greeting scrolls inside its own box. It used to be a
+  // bottom-anchored View: with the A1 setup card it grew taller than the space
+  // under Ari's top bar and drew over it (17pt overlap; the orb over the brand
+  // chip). The ScrollView clips to that box, keeps short content anchored at
+  // the bottom (flexGrow + flex-end) and lets tall content scroll under the bar.
   return (
-    <View style={styles.phoneHost} testID={testID}>
+    <ScrollView
+      style={styles.phoneScroll}
+      contentContainerStyle={styles.phoneHost}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+      testID={testID}
+    >
       {compact ? null : (
         <View style={styles.orbWrap}>
           <AriOrb size="md" decorative={false} accessibilityLabel="Ari" />
@@ -115,14 +131,20 @@ export function FirstRunGreeting({
       </Text>
       {compact ? null : <Text style={styles.body}>{copy.body}</Text>}
       {chips}
-    </View>
+      {compact ? null : footer}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  phoneHost: {
+  phoneScroll: {
     flex: 1,
+  },
+  phoneHost: {
+    flexGrow: 1,
     justifyContent: "flex-end",
+    // Top inset: the first line (or the orb) never touches the bar's edge.
+    paddingTop: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     gap: spacing.sm,

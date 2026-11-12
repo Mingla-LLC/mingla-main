@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4389-TTP-SPLASH-HOME-ONLY | issue #4389 | TapToPayAwarenessModal shows by itself only on Home once brand setup is complete; a host request still opens it anywhere.
 /**
  * #4271 — Tap to Pay on iPhone review gaps, against Apple's Human Interface
  * Guidelines, before the publishing-review videos:
@@ -99,8 +100,11 @@ jest.mock("../../../hooks/useTapToPayRelease", () => ({
   useTapToPayRelease: () => ({ live: mockLive }),
   tapToPayLive: () => mockLive,
 }));
+// #4389 — a brand whose payments are set up (Get started opens Tap to Pay
+// setup); the #4389 case below flips it to a brand still in setup.
+let mockBrandData: Record<string, unknown> = { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP", stripeStatus: "active", chargesEnabled: true };
 jest.mock("../../../hooks/useBrands", () => ({
-  useBrand: () => ({ data: { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP" } }),
+  useBrand: () => ({ data: mockBrandData }),
 }));
 jest.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "user-1" }, isAuthReady: true }),
@@ -125,7 +129,14 @@ jest.mock("../../../hooks/useManagedEventRoute", () => ({
     event: { id: "event-1", brandId: "brand-1", currency: "GBP", tickets: [] },
   }),
 }));
+// #4389 — the splash auto-shows only on Home with brand setup complete.
+let mockPathname = "/home";
+let mockSetupComplete = true;
+jest.mock("../../../hooks/useBrandSetupChecklist", () => ({
+  useBrandSetupChecklist: () => ({ data: { facts: { complete: mockSetupComplete } } }),
+}));
 jest.mock("expo-router", () => ({
+  usePathname: () => mockPathname,
   useRouter: () => ({ replace: mockReplace, push: mockPush, back: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => ({}),
   Stack: () => null,
@@ -202,7 +213,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 // eslint-disable-next-line import/first
 import AsyncStorage from "@react-native-async-storage/async-storage";
 // eslint-disable-next-line import/first
-import { TapToPayAwarenessModal } from "../tap/TapToPayAwarenessModal";
+import { TapToPayAwarenessModal, openTapToPayAwareness, tapAwarenessAutoShowAllowed } from "../tap/TapToPayAwarenessModal";
 // eslint-disable-next-line import/first
 import { TapNotOnThisPhone } from "../tap/TapNotOnThisPhone";
 // eslint-disable-next-line import/first
@@ -508,8 +519,8 @@ describe("G3 iPhone says the full name, Android never says iPhone", () => {
     expect(text.setupNotAvailable).toContain("Tap to Pay on iPhone isn't available here");
     expect(text.saleNotAvailable).toContain("Tap to Pay on iPhone isn't available here");
     expect(text.saleDidNotStart).toContain("Tap to Pay on iPhone didn't start");
-    expect(text.notOnThisPhone).toContain("Tap to Pay on iPhone needs an iPhone XS or newer");
-    expect(text.setupNotOnThisPhone).toContain("Tap to Pay on iPhone needs an iPhone XS or newer");
+    expect(text.notOnThisPhone).toContain("Tap to Pay on iPhone needs iPhone XS or newer"); // #4389 wording
+    expect(text.setupNotOnThisPhone).toContain("Tap to Pay on iPhone needs iPhone XS or newer");
     for (const [name, value] of Object.entries(text)) expect([name, BARE_NAME.test(value)]).toEqual([name, false]);
   });
 
@@ -555,9 +566,11 @@ describe("G4 every failed state offers Get help, and it opens Help & Support", (
       expect(textOf(root)).toContain("Ask an admin");
       expectHelpOpensSupport(root);
     });
-    test("This phone can't take taps", async () => {
+    // #4389 — the device state says why, never "can't take taps".
+    test("not on this phone: says why", async () => {
       const { root } = await setup({ available: false, needsSetup: false, reason: "unsupported_device" });
-      expect(textOf(root)).toContain("This phone can't take taps");
+      expect(textOf(root)).toContain("Tap to Pay on iPhone needs iPhone XS or newer with the latest iOS.");
+      expect(textOf(root)).not.toContain("can't take taps");
       expectHelpOpensSupport(root);
     });
     test("Update iOS", async () => {
@@ -686,13 +699,19 @@ describe("G4 every failed state offers Get help, and it opens Help & Support", (
   });
 });
 
-describe("G5 Settings shows Apple's Tap to Pay symbol on iPhone", () => {
-  test("the Tap to Pay row uses TapToPayIcon on iOS only; Android keeps its generic icon", () => {
+describe("G5 Tap to Pay's entry lives on Home, with Apple's symbol", () => {
+  // #4389 HT (Seth approved): the Tap to Pay row moved from Account to the
+  // Home card. Account carries no Tap to Pay row; the Home card carries the
+  // Tap to Pay symbol (Apple's SF Symbol on iPhone, via TapToPayIcon), and
+  // "Get started" opens Apple's awareness splash before setup.
+  test("Account has no Tap to Pay row; the Home card uses TapToPayIcon", () => {
     const account = read("app/(tabs)/account.tsx");
-    expect(account).toContain('import { TapToPayIcon } from "../../src/components/door/tap/TapToPayIcon";');
-    expect(account).toContain('leading={Platform.OS === "ios" ? <TapToPayIcon size={18} /> : undefined}');
-    expect(account).toContain("{leading ?? (");
-    expect(account).not.toMatch(/name="tap"|icon="tap"/);
+    expect(account).not.toMatch(/TapToPayIcon|\/account\/tap-to-pay|label="Tap to Pay/);
+    const card = read("src/components/home/HomeTapToPayCard.tsx");
+    expect(card).toContain('import { TapToPayIcon } from "../door/tap/TapToPayIcon";');
+    expect(card).toContain("<TapToPayIcon size={22} />");
+    const home = read("app/(tabs)/home.tsx");
+    expect(home).toContain("if (openTapToPayAwareness(currentBrand.id)) return;");
   });
   test("TapToPayIcon on iPhone is Apple's wave.3.right.circle.fill SF Symbol", () => {
     jest.isolateModules(() => {
@@ -706,5 +725,100 @@ describe("G5 Settings shows Apple's Tap to Pay symbol on iPhone", () => {
       const { root } = mount(<TapToPayIcon size={18} />);
       expect(textOf(root)).toContain("wave.3.right.circle.fill");
     });
+  });
+});
+
+// #4389 (Seth, device: the splash "just opened from nowhere" during brand
+// setup). The automatic once-only showing happens only on the Home tab with
+// brand setup complete; a host's own request opens it anywhere; the seen flag
+// is written only after it was shown.
+describe("#4389 the awareness splash never opens by itself outside Home", () => {
+  const shownAt = async (pathname: string, complete: boolean): Promise<boolean> => {
+    mockPathname = pathname;
+    mockSetupComplete = complete;
+    mockRole = { rank: BRAND_ROLE_RANK.brand_owner, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockReset();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    const tree = mount(<TapToPayAwarenessModal />);
+    await settle();
+    const shown = tree.root.findAll((n) => n.props.testID === "tap-awareness-modal").length > 0;
+    act(() => tree.unmount());
+    return shown;
+  };
+  afterEach(() => {
+    mockPathname = "/home";
+    mockSetupComplete = true;
+  });
+
+  test("no auto-show on any setup, bank-setup, door or checkout route (setup complete or not)", async () => {
+    for (const path of [
+      "/brand/new",
+      "/brand/brand-1/setup",
+      "/brand/brand-1/connect",
+      "/brand/brand-1/payments/onboard",
+      "/event/event-1/door/sell",
+      "/checkout/event-1",
+      "/ari",
+    ]) {
+      expect([path, await shownAt(path, true)]).toEqual([path, false]);
+    }
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  test("no auto-show on Home while brand setup is incomplete", async () => {
+    expect(await shownAt("/home", false)).toBe(false);
+  });
+
+  test("auto-shows once on Home when brand setup is complete", async () => {
+    expect(await shownAt("/home", true)).toBe(true);
+  });
+
+  test("a host's own request opens it anywhere (setup route, setup incomplete)", async () => {
+    mockPathname = "/brand/brand-1/setup";
+    mockSetupComplete = false;
+    mockRole = { rank: BRAND_ROLE_RANK.brand_owner, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue("1");
+    const tree = mount(<TapToPayAwarenessModal />);
+    await settle();
+    expect(tree.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+    act(() => {
+      expect(openTapToPayAwareness("brand-1")).toBe(true);
+    });
+    await settle();
+    expect(tree.root.findAll((n) => n.props.testID === "tap-awareness-modal").length).toBeGreaterThan(0);
+    act(() => tree.unmount());
+  });
+
+  test("the rule: Home only, and only with setup complete", () => {
+    expect(tapAwarenessAutoShowAllowed({ pathname: "/home", setupComplete: true })).toBe(true);
+    expect(tapAwarenessAutoShowAllowed({ pathname: "/home/", setupComplete: true })).toBe(true);
+    expect(tapAwarenessAutoShowAllowed({ pathname: "/home", setupComplete: false })).toBe(false);
+    expect(tapAwarenessAutoShowAllowed({ pathname: "/brand/b/setup", setupComplete: true })).toBe(false);
+    expect(tapAwarenessAutoShowAllowed({ pathname: null, setupComplete: true })).toBe(false);
+  });
+});
+
+// #4389 (iPhone 15 recording): Get started for a US brand still in setup led
+// to "isn't available here … can't take taps". It now finishes setup first.
+describe("#4389 Get started for a brand without a payment account", () => {
+  afterEach(() => {
+    mockBrandData = { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "GBP", stripeStatus: "active", chargesEnabled: true };
+  });
+  test("opens brand setup at Get paid, not Tap to Pay setup", async () => {
+    mockBrandData = { id: "brand-1", displayName: "Door Brand", paymentProvider: "stripe", defaultCurrency: "USD", payoutCountry: "US", stripeStatus: "not_connected" };
+    mockPathname = "/home";
+    mockSetupComplete = true;
+    mockRole = { rank: BRAND_ROLE_RANK.brand_owner, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    mockPush.mockClear();
+    const tree = mount(<TapToPayAwarenessModal />);
+    await settle();
+    const cta = tree.root.findAll((n) => n.props.testID === "tap-awareness-get-started" && typeof n.type !== "string")[0];
+    act(() => {
+      cta?.props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledWith("/brand/brand-1/setup?step=pay");
+    act(() => tree.unmount());
   });
 });

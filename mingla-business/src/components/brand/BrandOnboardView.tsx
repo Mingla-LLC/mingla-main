@@ -6,6 +6,11 @@
  * Replaces the Cycle 2 simulated state machine with the real flow:
  *  - Calls brand-stripe-onboard edge fn → Mingla-hosted onboarding URL
  *  - Opens URL via expo-web-browser.openAuthSessionAsync (system browser modal)
+ *  - #4389 S-11: on iPhone/Android, when the server switch
+ *    biz_native_connect_onboarding is on and the native module is linked, the
+ *    secure setup opens as the NATIVE full-screen component instead
+ *    (ConnectOnboardingNative). Flag off, module missing or a load error fall
+ *    back to the browser sheet automatically.
  *  - On dismiss: refreshes status from server; transitions state machine
  *  - DELETED: long-press dev gesture (R-NEW-6 production back-door mitigation)
  *  - DELETED: 1.5s simulated delay (was fake)
@@ -102,6 +107,8 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Spinner } from "../ui/Spinner";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
+import { BRAND_ONBOARD_COPY } from "./brandOnboardCopy";
+import { flagEmoji, payoutCountryOption } from "./payoutCountryOptions";
 import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -130,7 +137,7 @@ import {
   BRAND_PAYMENTS_DENIED_BODY,
   BRAND_PAYMENTS_DENIED_TITLE,
 } from "../../utils/brandPaymentsPermission";
-import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import { BrandPaystackOnboardView } from "./LazyBrandPaystackOnboardView";
 import {
   resolveBankConnectRail,
   resolveBankConnectRailForCountry,
@@ -158,6 +165,18 @@ import {
   isSafeAccountManagementTargetUrl,
 } from "../../utils/accountManagementOpen";
 import { refreshBrandPaymentState } from "../../hooks/brandPaymentStateRefresh";
+// #4389 S-11 — native secure setup behind the server kill switch.
+import {
+  ConnectOnboardingNative,
+  isNativeConnectModuleAvailable,
+} from "../stripe/ConnectOnboardingNative";
+import {
+  decideBrandSetupExit,
+  decideConnectOnboardingSurface,
+  nativeConnectLoadErrorMessage,
+  type NativeConnectExit,
+} from "../stripe/nativeConnectOnboarding";
+import { useNativeConnectOnboardingRelease } from "../../hooks/useNativeConnectOnboardingRelease";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 // #3645 — there is NO default country. Bank setup opens on the country the
@@ -258,6 +277,18 @@ export interface BrandOnboardViewProps {
    * route owns navigation; without it the Tap to Pay card is not shown.
    */
   onOpenTapToPay?: () => void;
+  /**
+   * #4389 S-11 — where leaving the NATIVE secure setup goes. "finished" (the
+   * account reports progress) and "closed-early" (no progress). Without it the
+   * screen shows its own outcome states, exactly as after the browser sheet.
+   */
+  onNativeExit?: (exit: NativeConnectExit) => void;
+  /**
+   * #4389 — the host came from brand setup's "Get paid" step, which already
+   * chose the bank country and took the Organiser Terms. The intro is skipped:
+   * the secure setup opens by itself behind a short "Opening secure setup…".
+   */
+  fromSetup?: boolean;
 }
 
 /** Best-effort haptic — silently swallowed if unavailable. */
@@ -301,6 +332,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   returnPath = null,
   countryChoiceRequested = false,
   onOpenTapToPay,
+  onNativeExit,
+  fromSetup = false,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -318,6 +351,16 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     [brandIdForRefresh, queryClient],
   );
   const startInProgressRef = useRef(false);
+  // #4389 S-11 — the native secure setup session, when that surface is open.
+  const nativeConnect = useNativeConnectOnboardingRelease(brand?.id ?? null);
+  const [nativeSession, setNativeSession] = useState<{
+    brandId: string;
+    clientSecret: string;
+    onboardingUrl: string;
+  } | null>(null);
+  // Set once the native screen reported a load error: this screen then uses the
+  // browser sheet until it is left.
+  const nativeLoadFailedRef = useRef(false);
   const initialCountryRail = resolveBankConnectRailForCountry(initialCountry);
   const chosenCountryHint =
     initialCountryRail !== null && initialCountryRail.provider === "stripe"
@@ -397,6 +440,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const { user } = useAuth();
   const [tosPassed, setTosPassed] = useState(false);
   const handleTosPassed = useCallback((): void => setTosPassed(true), []);
+  // #4389 — the terms sheet is up (not accepted): from setup it shows alone.
+  const [tosAsking, setTosAsking] = useState(false);
+  const handleTosShown = useCallback((): void => setTosAsking(true), []);
   // META-ORCH-1076 — picking Nigeria switches to the inline Paystack bank-details
   // form instantly (no network call — the form's "Connect bank" step commits the
   // provider). The Stripe onboarding path below is never entered for NG, and the
@@ -539,6 +585,25 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     : null;
   const isCountryLockedError =
     errorMessage?.includes("create a new brand") === true;
+  // #4389 — the bank country is the brand's payout_country (chosen in brand
+  // setup, locked once a payment account exists). With one saved, the row is a
+  // read-only summary, never the picker — unless the host came here to choose
+  // a different country.
+  const countryFixed =
+    brand?.payoutCountry != null && !countryChoiceRequested && selectedCountry !== null;
+  const fixedCountryOption = countryFixed ? payoutCountryOption(selectedCountry) : null;
+  // #4389 — from setup the intro is skipped once: the secure setup starts by
+  // itself when the country is known and the terms are accepted.
+  const [autoStartDone, setAutoStartDone] = useState(false);
+  const autoStartPending =
+    fromSetup &&
+    !autoStartDone &&
+    viewState === "idle" &&
+    countryFixed &&
+    selectedCountry !== NIGERIA_COUNTRY;
+  // Started once the account's status is read (its country wins over a stale
+  // remembered one) and the terms are accepted.
+  const statusSettledForStart = !statusQuery.isLoading;
 
   useEffect(() => {
     if (countryTouched || countryTouchedRef.current) return;
@@ -714,6 +779,92 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   // ----- Action handlers ------------------------------------------------
 
+  // Refresh status to determine the outcome. The account can lag the return
+  // from setup, so settle briefly before deciding what the user sees.
+  const settleOutcome = useCallback(
+    async (brandId: string): Promise<StripeOnboardingOutcome> => {
+      setViewState("settling-status");
+      announceForAccessibility("Confirming your payout status.");
+      await queryClient.invalidateQueries({
+        queryKey: brandStripeStatusKeys.detail(brandId),
+      });
+      const refreshed = await settleStripeStatus(() => statusQuery.refetch());
+      return classifyStripeOnboardingOutcome({
+        status: refreshed?.status,
+        requirements: coerceRequirements(refreshed?.requirements),
+      });
+    },
+    [queryClient, statusQuery],
+  );
+
+  // #4389 P2 — leaving the secure setup from brand setup: refresh_status (the
+  // live read F4 uses) decides. Submitted or verifying → F4; anything still
+  // due or not started → Get paid with K1. #4389 — no long settle first: one
+  // bounded live read, then (if it fails) one status read.
+  const decideSetupExit = useCallback(
+    async (brandId: string): Promise<NativeConnectExit> => {
+      setViewState("settling-status");
+      announceForAccessibility(BRAND_ONBOARD_COPY.onboard.checking);
+      return decideBrandSetupExit({
+        readLive: async () => {
+          const { refreshStripeSetupStatus } = await import("../../services/brandSetupService");
+          return (await refreshStripeSetupStatus(brandId)).state;
+        },
+        readStatusOnce: async () => {
+          await queryClient.invalidateQueries({
+            queryKey: brandStripeStatusKeys.detail(brandId),
+          });
+          const refreshed = await settleStripeStatus(() => statusQuery.refetch(), { maxAttempts: 1 });
+          return classifyStripeOnboardingOutcome({
+            status: refreshed?.status,
+            requirements: coerceRequirements(refreshed?.requirements),
+          });
+        },
+        onFallback: (reason) =>
+          console.warn("[BrandOnboardView] refresh_status after secure setup failed; using one status read", reason),
+      });
+    },
+    [queryClient, statusQuery],
+  );
+
+  const openBrowserSheetAndSettle = useCallback(
+    async (brandId: string, onboardingUrl: string): Promise<void> => {
+      const browserResult = await WebBrowser.openAuthSessionAsync(
+        onboardingUrl,
+        RETURN_DEEP_LINK,
+      );
+      // Brand setup owns the way out of the browser sheet too (same rule as
+      // the native screen).
+      if (onNativeExit !== undefined) {
+        onNativeExit(await decideSetupExit(brandId));
+        return;
+      }
+      const outcome = await settleOutcome(brandId);
+
+      if (browserResult.type === "success") {
+        applyOnboardingOutcome(outcome);
+      } else if (
+        browserResult.type === "cancel" ||
+        browserResult.type === "dismiss"
+      ) {
+        // Dismissed browser windows can still complete Stripe steps. Trust the
+        // bounded settlement if Stripe now reports a real account state.
+        if (outcome !== "session-expired") {
+          applyOnboardingOutcome(outcome);
+        } else {
+          setViewState("cancelled");
+          fireHaptic("warning");
+          announceForAccessibility(
+            "Onboarding cancelled. Your progress is saved.",
+          );
+        }
+      } else {
+        applyOnboardingOutcome("session-expired");
+      }
+    },
+    [applyOnboardingOutcome, decideSetupExit, onNativeExit, settleOutcome],
+  );
+
   const handleStart = useCallback(async (): Promise<void> => {
     if (brand === null || selectedCountry === null || startInProgressRef.current) {
       return;
@@ -763,45 +914,25 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         return;
       }
 
-      const browserResult = await WebBrowser.openAuthSessionAsync(
-        result.onboarding_url,
-        RETURN_DEEP_LINK,
-      );
-
-      setViewState("settling-status");
-      announceForAccessibility("Confirming your payout status.");
-
-      // Refresh status to determine outcome. Stripe can lag the browser
-      // return, so settle briefly before deciding what the user sees.
-      await queryClient.invalidateQueries({
-        queryKey: brandStripeStatusKeys.detail(brand.id),
+      // #4389 S-11 — native secure setup when the server switch is on, the
+      // native module is linked and it has not failed to load on this screen.
+      const surface = decideConnectOnboardingSurface({
+        os: Platform.OS,
+        flagLive: nativeConnect.flagLive,
+        devForce: nativeConnect.devForce,
+        moduleAvailable: isNativeConnectModuleAvailable(),
+        loadFailed: nativeLoadFailedRef.current,
       });
-      const refreshed = await settleStripeStatus(() => statusQuery.refetch());
-      const outcome = classifyStripeOnboardingOutcome({
-        status: refreshed?.status,
-        requirements: coerceRequirements(refreshed?.requirements),
-      });
-
-      if (browserResult.type === "success") {
-        applyOnboardingOutcome(outcome);
-      } else if (
-        browserResult.type === "cancel" ||
-        browserResult.type === "dismiss"
-      ) {
-        // Dismissed browser windows can still complete Stripe steps. Trust the
-        // bounded settlement if Stripe now reports a real account state.
-        if (outcome !== "session-expired") {
-          applyOnboardingOutcome(outcome);
-        } else {
-          setViewState("cancelled");
-          fireHaptic("warning");
-          announceForAccessibility(
-            "Onboarding cancelled. Your progress is saved.",
-          );
-        }
-      } else {
-        applyOnboardingOutcome("session-expired");
+      if (surface === "native") {
+        setNativeSession({
+          brandId: brand.id,
+          clientSecret: result.client_secret,
+          onboardingUrl: result.onboarding_url,
+        });
+        return;
       }
+
+      await openBrowserSheetAndSettle(brand.id, result.onboarding_url);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // #3208 — the decision lives in `classifyBrandOnboardingStartError` so it
@@ -857,12 +988,79 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   }, [
     applyOnboardingOutcome,
     brand,
+    nativeConnect.devForce,
+    nativeConnect.flagLive,
     onboardMutation,
-    queryClient,
+    openBrowserSheetAndSettle,
     returnPath,
     selectedCountry,
-    statusQuery,
   ]);
+
+  useEffect(() => {
+    if (!autoStartPending || !tosPassed || !statusSettledForStart) return;
+    setAutoStartDone(true);
+    void handleStart();
+  }, [autoStartPending, handleStart, statusSettledForStart, tosPassed]);
+
+  // #4389 S-11 — leaving the native secure setup. The account is read the same
+  // bounded way as after the browser sheet; progress goes on (F4 in brand
+  // setup), no progress is an early close (K1 in brand setup).
+  const handleNativeExit = useCallback(async (): Promise<void> => {
+    const session = nativeSession;
+    setNativeSession(null);
+    if (session === null) return;
+    if (onNativeExit !== undefined) {
+      onNativeExit(await decideSetupExit(session.brandId));
+      return;
+    }
+    try {
+      const outcome = await settleOutcome(session.brandId);
+      // Outside brand setup the screen shows its own outcome states, exactly
+      // as after the browser sheet (needs information included).
+      if (outcome !== "session-expired") {
+        applyOnboardingOutcome(outcome);
+      } else {
+        setViewState("cancelled");
+        fireHaptic("warning");
+        announceForAccessibility("Onboarding cancelled. Your progress is saved.");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setViewState("failed-network");
+      setErrorMessage(message);
+      fireHaptic("error");
+      announceForAccessibility("We couldn't confirm your payout status.");
+    }
+  }, [applyOnboardingOutcome, decideSetupExit, nativeSession, onNativeExit, settleOutcome]);
+
+  // #4389 S-11 — the native screen failed to load: fall back to the browser
+  // sheet with the same setup link, automatically.
+  const handleNativeLoadError = useCallback((event: unknown): void => {
+    const session = nativeSession;
+    console.warn("[BrandOnboardView] native secure setup failed to load; using the browser sheet", {
+      brandId: session?.brandId ?? null,
+      reason: nativeConnectLoadErrorMessage(event),
+    });
+    nativeLoadFailedRef.current = true;
+    setNativeSession(null);
+    if (session === null) return;
+    void openBrowserSheetAndSettle(session.brandId, session.onboardingUrl).catch(
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        setViewState("failed-network");
+        setErrorMessage(message);
+        fireHaptic("error");
+        announceForAccessibility("Onboarding failed. Tap try again.");
+      },
+    );
+  }, [nativeSession, openBrowserSheetAndSettle]);
+
+  const handleNativeStepChange = useCallback((step: string): void => {
+    console.info("[BrandOnboardView] native secure setup step", {
+      brandId: nativeSession?.brandId ?? null,
+      step,
+    });
+  }, [nativeSession?.brandId]);
 
   const handleTryAgain = useCallback((): void => {
     setViewState("idle");
@@ -1137,6 +1335,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               mode="create"
               onConnected={onAfterDone}
               onCancel={chooseDifferentCountry}
+              // #4389 — from setup: the form alone (the country was chosen at
+              // its own step, so no "Choose a different country" either).
+              hideIntro={fromSetup}
             />
           )}
         </ScrollView>
@@ -1147,6 +1348,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   return (
     <View style={styles.host}>
       {renderTopBar()}
+
+      {/* #4389 S-11 — the native secure setup, full screen over this route. */}
+      {nativeSession !== null ? (
+        <ConnectOnboardingNative
+          key={nativeSession.clientSecret}
+          brandId={nativeSession.brandId}
+          clientSecret={nativeSession.clientSecret}
+          onExit={(): void => void handleNativeExit()}
+          onLoadError={handleNativeLoadError}
+          onStepChange={handleNativeStepChange}
+        />
+      ) : null}
 
       {/* ORCH-1403 [connect-bank-heading-collision] — the state content is
           wrapped in a ScrollView, NOT a plain flex:1 View. contentContainerStyle
@@ -1279,7 +1492,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </>
         ) : null}
 
-        {viewState === "checking-status" || viewState === "settling-status" ? (
+        {viewState === "checking-status" ? (
           <View style={styles.stateBlock}>
             <Spinner size={48} color={accent.warm} />
             <Text style={styles.stateTitle}>Checking your payout status…</Text>
@@ -1290,6 +1503,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </View>
         ) : null}
 
+        {/* #4389 — after the secure setup: say what is happening and for how long. */}
+        {viewState === "settling-status" ? (
+          <View style={styles.stateBlock} testID="onboard-settling">
+            <Spinner size={48} color={accent.warm} />
+            <Text style={styles.stateTitle} accessibilityRole="header">
+              {BRAND_ONBOARD_COPY.onboard.checking}
+            </Text>
+            <Text style={styles.stateSub}>{BRAND_ONBOARD_COPY.onboard.checkingSub}</Text>
+          </View>
+        ) : null}
+
         {/* V3 ToS gate — Stripe idle path only. Paystack terms live inside
             BrandPaystackOnboardView (#3645 PR11c shared boundary). */}
         {viewState === "idle" && brand !== null && user !== null ? (
@@ -1297,8 +1521,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             brandId={brand.id}
             userId={user.id}
             onPassed={handleTosPassed}
+            onShown={handleTosShown}
             subtitle="A quick read before you sell or connect payouts."
           />
+        ) : null}
+
+        {/* #4389 — from setup: only a short loading line while the secure
+            setup opens (the terms sheet alone if they are not accepted). */}
+        {autoStartPending && !tosAsking ? (
+          <View style={styles.stateBlock} testID="onboard-opening-secure-setup">
+            <Spinner size={48} color={accent.warm} />
+            <Text style={styles.stateTitle}>{BRAND_ONBOARD_COPY.onboard.opening}</Text>
+          </View>
         ) : null}
 
         {viewState === "idle" && awaitingLockState ? (
@@ -1308,45 +1542,57 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </View>
         ) : null}
 
-        {viewState === "idle" && !awaitingLockState ? (
+        {viewState === "idle" && !awaitingLockState && !autoStartPending ? (
           <>
             <View style={styles.stateBlock}>
-              <Text style={styles.stateTitle}>
-                Connect your bank to start getting paid
+              <Text style={styles.stateTitle} accessibilityRole="header">
+                {BRAND_ONBOARD_COPY.onboard.title}
               </Text>
-              <Text style={styles.stateSub}>
-                Set up payments to publish your offerings and get paid.{"\n\n"}
-                <Text style={styles.bold}>
-                  Your bank details go straight to our payment partner —
-                  Mingla never sees them.
-                </Text>
-                {"\n\n"}Takes about 5 minutes.
-              </Text>
+              <Text style={styles.stateSub}>{BRAND_ONBOARD_COPY.onboard.body}</Text>
 
               <View style={styles.prereqCard}>
-                <BrandStripeCountryPicker
-                  value={selectedCountry}
-                  onChange={handleCountryChange}
-                  disabled={countryPickerLocked}
-                  helperText={countryPickerHelper}
-                  warningText={countryPickerWarning}
-                  extraOptions={PAYSTACK_PICKER_OPTIONS}
-                  // Never opened over a locked row (a brand with a payment
-                  // account keeps its country).
-                  defaultOpen={reopenPickerOnReturn && !countryPickerLocked}
-                />
+                {fixedCountryOption !== null ? (
+                  // #4389 — the saved bank country, read-only.
+                  <GlassCard variant="base" padding={spacing.md}>
+                    <Text style={styles.countrySummary} testID="onboard-country-summary">
+                      {`${flagEmoji(fixedCountryOption.country)} ${fixedCountryOption.name} · ${fixedCountryOption.currency}`}
+                    </Text>
+                  </GlassCard>
+                ) : (
+                  <BrandStripeCountryPicker
+                    value={selectedCountry}
+                    onChange={handleCountryChange}
+                    disabled={countryPickerLocked}
+                    helperText={countryPickerHelper}
+                    warningText={countryPickerWarning}
+                    extraOptions={PAYSTACK_PICKER_OPTIONS}
+                    // Never opened over a locked row (a brand with a payment
+                    // account keeps its country).
+                    defaultOpen={reopenPickerOnReturn && !countryPickerLocked}
+                  />
+                )}
               </View>
 
-              <GlassCard variant="base" padding={spacing.md} style={styles.prereqCard}>
-                <Text style={styles.prereqHeader}>BEFORE YOU START, HAVE READY</Text>
-                <Text style={styles.prereqItem}>{"•"} Business name and tax ID</Text>
-                <Text style={styles.prereqItem}>
-                  {"•"} Bank account for your country
-                </Text>
-                <Text style={styles.prereqItem}>
-                  {"•"} Photo of government ID
-                </Text>
-              </GlassCard>
+              {/* #4389 — setup already listed what to have ready. */}
+              {!fromSetup ? (
+                <GlassCard
+                  variant="base"
+                  padding={spacing.md}
+                  style={styles.prereqCard}
+                  testID="onboard-have-ready"
+                >
+                  <Text style={styles.prereqHeader}>{BRAND_ONBOARD_COPY.onboard.haveReady}</Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_ONBOARD_COPY.onboard.readyId}`}</Text>
+                  <Text style={styles.prereqItem}>
+                    {`• ${BRAND_ONBOARD_COPY.onboard.readyBank(
+                      selectedCountry === null
+                        ? null
+                        : payoutCountryOption(selectedCountry)?.name ?? null,
+                    )}`}
+                  </Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_ONBOARD_COPY.onboard.readyTax}`}</Text>
+                </GlassCard>
+              ) : null}
             </View>
 
             <View style={styles.actionsCol}>
@@ -1404,7 +1650,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             <View style={styles.stateBlock}>
               <Spinner size={48} color={accent.warm} />
               <Text style={styles.stateTitle}>
-                Complete onboarding in the browser
+                {nativeSession !== null
+                  ? "Finish secure setup"
+                  : "Complete onboarding in the browser"}
               </Text>
               <Text style={styles.stateSub}>
                 We{"’"}ll know automatically when you{"’"}re done. If the
@@ -1817,6 +2065,12 @@ const styles = StyleSheet.create({
   prereqCard: {
     marginTop: spacing.md,
     width: "100%",
+  },
+  countrySummary: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
   prereqHeader: {
     fontSize: typography.caption.fontSize,

@@ -110,7 +110,7 @@ Deno.test("ORCH-1103: PROMPT_VERSION bumped (v6 keeps the earlier tools)", () =>
   // [TEST-MOD-APPROVED #1971] issue #1971 bumps v5 → v6 (trip lifecycle rebuilt
   // on the canonical command boundary). ONE assertion is invalidated — the
   // version literal. No brand-tool assertion changes.
-  assertEquals(PROMPT_VERSION, "v29"); // #2829 W11 completes the website journey entrances
+  assertEquals(PROMPT_VERSION, "v30"); // #2829 W11 completes the website journey entrances
 });
 
 Deno.test("ORCH-1103: prompt scopes currency and deletion guidance to the active brand", () => {
@@ -163,12 +163,17 @@ Deno.test("ORCH-1103 brand mutations share the confirmed operation boundary", ()
     const [name, marker] of [
       ["create_brand", "const createBrand: AgentTool = {"],
       ["update_brand", "const updateBrand: AgentTool = {"],
-      ["delete_brand", "const deleteBrand: AgentTool = {"],
     ] as const
   ) {
     const toolSource = sliceTool(TOOLS_SRC, marker);
     assertStringIncludes(toolSource, `executeBrandOperation("${name}"`);
   }
+  // #4389: delete_brand runs the app's delete core (brand-delete), which
+  // closes payment accounts first; no direct table writer either way.
+  assertStringIncludes(
+    sliceTool(TOOLS_SRC, "const deleteBrand: AgentTool = {"),
+    "executeDeleteBrandViaCore(args, client)",
+  );
   assertStringIncludes(TOOLS_SRC, "requireAgentOperationId(context)");
   assertStringIncludes(TOOLS_SRC, 'client.rpc("ari_execute_brand_operation"');
 });

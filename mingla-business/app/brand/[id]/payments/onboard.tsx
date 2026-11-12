@@ -24,6 +24,7 @@ import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/Br
 import { canvas } from "../../../../src/constants/designSystem";
 import { useBrand } from "../../../../src/hooks/useBrands";
 import { sanitizeBankSetupReturnPath } from "../../../../src/utils/bankSetupReturn";
+import { setupFlowHop } from "../../../../src/services/brandSetupCore";
 
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -59,7 +60,8 @@ export default function BrandOnboardRoute(): React.ReactElement {
   const handleBack = (): void => {
     if (isBrandCreateFunnel && brandId !== null) {
       router.replace(
-        `/brand/new?resume_brand=${encodeURIComponent(brandId)}` as never,
+        // #4389 — back to setup; F4 reads the account live (refresh_status).
+        setupFlowHop(`/brand/${encodeURIComponent(brandId)}/setup?step=done`) as never,
       );
     } else if (router.canGoBack()) {
       // The creator that pushed this route is still mounted underneath, on the
@@ -95,6 +97,19 @@ export default function BrandOnboardRoute(): React.ReactElement {
     );
   };
 
+  // #4389 S-11 — leaving the NATIVE secure setup from brand setup: progress
+  // goes to F4 (which reads the account live through refresh_status); an early
+  // close returns to F3 with K1 "Only free events for now?" open.
+  const handleNativeExit = (exit: "finished" | "closed-early"): void => {
+    if (brandId === null) return;
+    const id = encodeURIComponent(brandId);
+    router.replace(
+      setupFlowHop(exit === "finished"
+        ? `/brand/${id}/setup?step=done`
+        : `/brand/${id}/setup?step=pay&k1=1`) as never,
+    );
+  };
+
   // #4271 — Tap to Pay setup for this brand, from the "all set" states.
   const handleOpenTapToPay = (): void => {
     if (brandId === null) return;
@@ -123,6 +138,8 @@ export default function BrandOnboardRoute(): React.ReactElement {
           returnPath={isBrandCreateFunnel ? null : resumePath}
           countryChoiceRequested={countryChoiceRequested}
           onOpenTapToPay={brandId !== null ? handleOpenTapToPay : undefined}
+          onNativeExit={isBrandCreateFunnel ? handleNativeExit : undefined}
+          fromSetup={isBrandCreateFunnel}
         />
       </BrandPaymentsPermissionGate>
     </View>

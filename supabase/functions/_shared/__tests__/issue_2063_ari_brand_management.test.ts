@@ -112,10 +112,8 @@ Deno.test("#2063 every brand write forwards the immutable pending-action operati
       tool: "update_brand",
       args: { brand_id: BRAND_ID, description: "Fresh description" },
     },
-    {
-      tool: "delete_brand",
-      args: { brand_id: BRAND_ID, confirm_phrase: "North Star" },
-    },
+    // #4389: delete_brand runs the app's delete core (brand-delete) so it
+    // closes payment accounts first; it no longer goes through this wrapper.
     {
       tool: "manage_brand_hours",
       args: { brand_id: BRAND_ID, venue_id: VENUE_ID, hours: sevenDayHours() },
@@ -148,6 +146,28 @@ Deno.test("#2063 every brand write forwards the immutable pending-action operati
     assertEquals(call.params.p_tool_name, sample.tool);
     assertEquals(call.params.p_args, sample.args);
   }
+});
+
+Deno.test("#4389 delete_brand runs the brand-delete core with the typed name", async () => {
+  const tool = findTool("delete_brand");
+  assert(tool);
+  const invoked: Array<{ name: string; body: unknown }> = [];
+  const client = Object.assign(clientFixture().client, {
+    functions: {
+      invoke: (name: string, opts: { body: unknown }) => {
+        invoked.push({ name, body: opts.body });
+        return Promise.resolve({ data: { ok: true, stripe: "closed", paystack: "none" }, error: null });
+      },
+    },
+  });
+  const result = await tool.executor(
+    { brand_id: BRAND_ID, confirm_phrase: "North Star" },
+    client as never,
+    USER_ID,
+    { operationId: OPERATION_ID },
+  ) as Record<string, unknown>;
+  assertEquals(invoked, [{ name: "brand-delete", body: { brand_id: BRAND_ID, confirm_name: "North Star" } }]);
+  assertEquals(result.payment_account, "closed");
 });
 
 Deno.test("#2063 writes fail closed without a confirmation operation id", async () => {

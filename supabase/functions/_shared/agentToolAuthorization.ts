@@ -292,6 +292,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // brand currency (RLS: account owner or brand admin) and, for Nigeria,
   // brand-paystack-onboard select_provider (which re-checks owner payouts).
   set_brand_payout_country: role("brand_admin", "brand"),
+  // #4389 — no writes: the secure-screen handoff (owner check inside, any
+  // member gets the honest requires_owner) and the door sale handoff.
+  start_payments_onboarding: role("scanner", "brand"),
+  start_door_sale: role("scanner", "optional_brand"),
   get_listing_type_capabilities: role("self", "none"),
   build_host_onboarding_blueprint: role("self", "none"),
   get_capability_inventory: role("self", "none"),

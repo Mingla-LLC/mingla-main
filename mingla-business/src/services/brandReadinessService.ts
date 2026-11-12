@@ -29,6 +29,8 @@ export const BRAND_READINESS_ACTIONS = [
   "website_publish",
   "refund",
   "bank_setup",
+  // #4389 — the 4-item brand setup checklist.
+  "brand_setup",
 ] as const;
 
 export type BrandReadinessAction = (typeof BRAND_READINESS_ACTIONS)[number];

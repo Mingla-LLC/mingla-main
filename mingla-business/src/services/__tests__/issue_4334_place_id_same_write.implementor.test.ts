@@ -213,7 +213,7 @@ describe("brand location (direct table write)", () => {
   });
 
   test("B-3 brand creation sends the picked and the typed id", () => {
-    const flow = src("src/components/brand/BrandCreationFlow.tsx");
+    const flow = src("src/components/brand/PartnerClientBrandCreationFlow.tsx");
     expect(flow).toContain("locationProviderPlaceId: p.placeId,");
     expect(flow).toContain("locationProviderPlaceId: approx.placeId,");
     expect(flow).toContain("patch.locationProviderPlaceId = geo.locationProviderPlaceId;");

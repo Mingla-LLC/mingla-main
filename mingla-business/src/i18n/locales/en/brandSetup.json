@@ -1,0 +1,96 @@
+{
+  "brandSetup": {
+    "f1": {
+      "title": "Name your brand",
+      "label": "Brand name",
+      "helper": "This is what guests see on tickets and your page.",
+      "cta": "Continue",
+      "tooLong": "Use 60 characters or fewer.",
+      "counterLabel": "{{n}} of 60 characters",
+      "authWarming": "Getting things ready…",
+      "discardTitle": "Discard this brand name?",
+      "discardBody": "It hasn't been saved yet.",
+      "discard": "Discard",
+      "keepEditing": "Keep editing",
+      "sessionTitle": "Sign in again to keep going",
+      "sessionBody": "Your brand name is kept.",
+      "signIn": "Sign in"
+    },
+    "f2": {
+      "title": "Where will you collect funds?",
+      "body": "Pick the country your bank account is in. Prices and payouts use its currency.",
+      "search": "Search bank countries",
+      "suggested": "Suggested",
+      "footnote": "Payouts go to a bank in {{country}}, in {{currency}}.",
+      "noMatch": "No bank country matches '{{query}}'.",
+      "cantPayOut": "Mingla can't pay out there yet",
+      "locked": "Payouts are already set up for a bank in {{country}}. To use another country, disconnect payments first.",
+      "forbidden": "Only the brand owner or an admin can change the bank country.",
+      "conflict": "This was changed on another device to {{country}}.",
+      "keep": "Keep",
+      "change": "Change",
+      "cta": "Continue"
+    },
+    "f3": {
+      "title": "Get paid",
+      "change": "Change",
+      "terms": "I agree to the Mingla Organiser Terms",
+      "readTerms": "Read terms",
+      "termsHint": "Tick the Organiser Terms to continue.",
+      "stripeBody": "On the next screen you'll add your ID and bank details. Have them ready.",
+      "stripeCta": "Continue to secure setup",
+      "continueSetup": "Continue setup",
+      "returnedIncomplete": "You left before finishing. Pick up where you stopped.",
+      "notOwner": "Only {{owner}} can set up payments. We've added it to their Home.",
+      "waitingClient": "Waiting for {{client}} to accept and add bank details",
+      "otherDevice": "Finishing on your other device…",
+      "refresh": "Refresh",
+      "ownerFallback": "the owner",
+      "trust": "Your bank details go straight to our payment partner. Mingla never sees them.",
+      "ngCardLabel": "Bank details"
+    },
+    "f4": {
+      "checkingTitle": "Details sent.",
+      "checkingBody": "We're checking them. This usually takes a few minutes. You can keep going.",
+      "actionNeeded": "One more thing is needed before you can take payments:",
+      "ngDone": "Bank connected. You're ready to sell.",
+      "done": "You're all set.",
+      "refreshErrorTitle": "Couldn't check right now.",
+      "refreshErrorBody": "We'll update you.",
+      "retry": "Try again",
+      "makeFirst": "What do you want to make first?",
+      "coverBio": "Add a cover and bio"
+    },
+    "common": {
+      "later": "Save and finish later",
+      "tryAgain": "Try again",
+      "back": "Back",
+      "goHome": "Go to Home",
+      "resume": "Welcome back. You stopped at {{step}}.",
+      "deleted": "{{brand}} was deleted on another device.",
+      "thisBrandDeleted": "This brand was deleted on another device.",
+      "noAccess": "You no longer have access to set up {{brand}}.",
+      "thisBrandNoAccess": "You no longer have access to set up this brand.",
+      "progress": "Step {{step}} of 4"
+    },
+    "n1": {
+      "title": "You have a brand in progress",
+      "body": "{{brand}} isn't finished yet. Pick up where you stopped, or discard it and start a new one.",
+      "oneAtATime": "You can have one brand in progress at a time.",
+      "continue": "Continue {{brand}}",
+      "discardNew": "Discard and start new",
+      "confirmTitle": "Discard {{brand}}?",
+      "confirmBody": "Its name and setup progress will be deleted. This can't be undone.",
+      "confirmBodyPayments": " Its payment setup will be closed too.",
+      "discard": "Discard",
+      "keep": "Keep it",
+      "discardError": "We couldn't discard {{brand}}. Try again."
+    },
+    "stepNames": {
+      "name": "Name your brand",
+      "country": "Bank country",
+      "pay": "Get paid",
+      "done": "You're all set"
+    }
+  }
+}

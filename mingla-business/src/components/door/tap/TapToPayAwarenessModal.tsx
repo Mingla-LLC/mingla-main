@@ -5,7 +5,7 @@
  * whole and untouched (tapToPayMarketing.ts), with native "Get started", "Not
  * now" and a "Terms apply." target laid over the free areas of Apple's template.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Image,
   Modal,
@@ -19,7 +19,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { radius as radiusTokens, spacing } from "../../../constants/designSystem";
@@ -31,6 +31,8 @@ import {
 } from "../../../constants/tapToPayMarketing";
 import { useAuth } from "../../../context/AuthContext";
 import { useBrand } from "../../../hooks/useBrands";
+import { useBrandSetupChecklist } from "../../../hooks/useBrandSetupChecklist";
+import { isBrandChargeReady } from "../../../utils/brandPayout";
 import { useCurrentBrandRole } from "../../../hooks/useCurrentBrandRole";
 import { tapToPayBrandEligible, useTapToPaySettingsEntry } from "../../../hooks/useTapToPaySettingsEntry";
 import { useCurrentBrandId } from "../../../store/currentBrandStore";
@@ -38,6 +40,40 @@ import { tapToPayMayAcceptTerms } from "../../../utils/brandRole";
 
 export const tapAwarenessSeenKey = (userId: string): string =>
   `mingla.tapToPay.awarenessSeen.v1.${userId}`;
+
+const tapSetupRoute = (brandId: string): string => `/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}`;
+
+/**
+ * #4389 HT — Home's "Get started" opens this splash first, then setup. The
+ * mounted splash listens; with no splash mounted (no art, not iPhone) the
+ * caller opens setup itself (returns false). A host the splash would not
+ * show for (not eligible, may not accept the terms) goes straight to setup.
+ */
+const openListeners = new Set<(brandId: string) => void>();
+export function openTapToPayAwareness(brandId: string): boolean {
+  if (Platform.OS !== "ios" || openListeners.size === 0) return false;
+  openListeners.forEach((listener) => listener(brandId));
+  return true;
+}
+
+/**
+ * #4389 (Seth, device: "just opened from nowhere") — the automatic once-only
+ * showing (Apple 3.3) happens ONLY on the Home tab, once the brand's setup is
+ * complete. Never over brand setup (/brand/new, /brand/{id}/setup), bank
+ * setup (/brand/{id}/connect, /brand/{id}/payments/onboard, the native
+ * secure screen and the browser sheet run from those routes), Door mode,
+ * checkout or Ari's first-run lock (no Home tab then). A host's own request
+ * (Home "Get started", F4 "Set up Tap to Pay on iPhone") opens it anywhere.
+ *
+ * Invariant I-4389-TTP-SPLASH-HOME-ONLY | issue #4389 | TapToPayAwarenessModal auto-shows only when the focused route is the Home tab and brand_setup is complete; openTapToPayAwareness works anywhere; the seen flag is written only after the splash was shown. Enforced by issue_4389_ttp_splash_home_only.implementor.test.tsx.
+ */
+export function tapAwarenessAutoShowAllowed(input: {
+  pathname: string | null;
+  setupComplete: boolean;
+}): boolean {
+  const path = (input.pathname ?? "").replace(/\/+$/, "");
+  return input.setupComplete && (path === "/home" || path === "/(tabs)/home");
+}
 
 export interface TapToPayAwarenessModalProps {
   /** Test seam: the toolkit assets. */
@@ -59,6 +95,27 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
   const entry = useTapToPaySettingsEntry(brandId);
   const role = useCurrentBrandRole(brandId);
   const [seen, setSeen] = useState<boolean | null>(null);
+  const [requested, setRequested] = useState<string | null>(null);
+  const pathname = usePathname();
+  const eligible =
+    Platform.OS === "ios" &&
+    entry !== null &&
+    brandId !== null &&
+    tapToPayBrandEligible(brandQuery.data) &&
+    tapToPayMayAcceptTerms(role.rank);
+  const eligibleRef = useRef<{ eligible: boolean; brandId: string | null }>({ eligible, brandId });
+  eligibleRef.current = { eligible, brandId };
+  useEffect(() => {
+    const listener = (id: string): void => {
+      const now = eligibleRef.current;
+      if (now.eligible && now.brandId === id) setRequested(id);
+      else router.push(tapSetupRoute(id) as never);
+    };
+    openListeners.add(listener);
+    return () => {
+      openListeners.delete(listener);
+    };
+  }, [router]);
 
   useEffect(() => {
     setSeen(null);
@@ -78,6 +135,13 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
     };
   }, [userId]);
 
+  // Read only while an automatic showing is possible (eligible, not seen).
+  const setupChecklist = useBrandSetupChecklist(eligible && seen === false ? brandId : null);
+  const autoAllowed = tapAwarenessAutoShowAllowed({
+    pathname,
+    setupComplete: setupChecklist.data?.facts.complete === true,
+  });
+
   const markSeen = useCallback((): void => {
     setSeen(true);
     if (userId === null) return;
@@ -86,27 +150,31 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
     });
   }, [userId]);
 
-  if (
-    // Apple's Tap to Pay on iPhone toolkit art and copy: never on Android.
-    Platform.OS !== "ios" ||
-    seen !== false ||
-    entry === null ||
-    brandId === null ||
-    !tapToPayBrandEligible(brandQuery.data) ||
-    // The splash leads to Apple's terms, so only someone who may accept them sees it.
-    !tapToPayMayAcceptTerms(role.rank)
-  ) {
-    return null;
-  }
+  // Apple's Tap to Pay on iPhone toolkit art and copy: never on Android. The
+  // splash leads to Apple's terms, so only someone who may accept them sees it.
+  // It shows once per user and device, or when Home's "Get started" asks.
+  if (!eligible || brandId === null) return null;
+  const onRequest = requested === brandId;
+  if (!onRequest && !(seen === false && autoAllowed)) return null;
+  const close = (): void => {
+    setRequested(null);
+    markSeen();
+  };
   return (
-    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={markSeen}>
+    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
       <AwarenessBanner
         assets={assets}
         onGetStarted={() => {
-          markSeen();
-          router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}` as never);
+          close();
+          // #4389 — a brand still without a payment account finishes setup
+          // first (Get paid), instead of landing on a Tap to Pay dead end.
+          router.push(
+            (isBrandChargeReady(brandQuery.data ?? null)
+              ? tapSetupRoute(brandId)
+              : `/brand/${encodeURIComponent(brandId)}/setup?step=pay`) as never,
+          );
         }}
-        onNotNow={markSeen}
+        onNotNow={close}
       />
     </Modal>
   );

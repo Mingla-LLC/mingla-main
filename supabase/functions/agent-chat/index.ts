@@ -11,6 +11,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import { prepareBrandResearch } from "../_shared/ariBrandResearch.ts";
+import { withBrandSetupTools } from "../_shared/agentBrandSetupTools.ts";
 import {
   createClient,
   SupabaseClient,
@@ -2995,6 +2996,8 @@ ${boundedAgentContext}
           websiteSetupBoundary ? 16 : 12,
           semanticMessage,
         );
+      // #4389 — no brand, or no bank country yet: the setup tools are always there.
+      selectedTools = withBrandSetupTools(selectedTools, AGENT_TOOLS, activeBrand);
       try {
         compileGeminiToolDeclarations(selectedTools.map((tool) => ({
           name: tool.name,

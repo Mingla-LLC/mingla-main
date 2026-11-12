@@ -82,7 +82,7 @@ describe("#3645 — the Payouts step follows the country just picked", () => {
 
   test("the step asks with the country it was just told about, and shows the approved line", () => {
     const flow = readFileSync(
-      join(__dirname, "..", "..", "components", "brand", "BrandCreationFlow.tsx"),
+      join(__dirname, "..", "..", "components", "brand", "PartnerClientBrandCreationFlow.tsx"),
       "utf8",
     );
     // The country field reports the pick only after the server accepted it.

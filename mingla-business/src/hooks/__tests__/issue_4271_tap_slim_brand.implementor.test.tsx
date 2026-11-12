@@ -34,6 +34,7 @@ jest.mock("../../services/brandsService", () => ({ getBrand: (id: string) => moc
 jest.mock("../useTapToPayRelease", () => ({ useTapToPayRelease: () => ({ live: true }) }));
 jest.mock("../../services/terminal/tapToPaySetupStore", () => ({
   readTapToPayWarmHint: async () => true,
+  peekTapToPayWarmHint: () => undefined,
   subscribeTapToPayWarmHint: () => () => undefined,
 }));
 jest.mock("../../services/terminal/tapToPaySession", () => ({

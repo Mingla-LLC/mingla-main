@@ -60,6 +60,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // member rank check) behind Home's brand/money rows. Folds isAuthReady into
   // enabled.
   "useBrandReadiness.ts",
+  // #4389 — brand_readiness(brand_setup) reads auth.uid(); folds isAuthReady.
+  "useBrandSetupChecklist.ts",
   // #4111 — brand_enquiry_my_plans reads auth.uid(); folds isAuthReady.
   "useMyBrandPlans.ts",
   // #3988 — brand-group media/list metadata RPCs are membership-gated.
@@ -108,6 +110,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useBrandTeamMemberDirectory.ts",
   // #4271 — biz_tap_to_pay_release, authenticated only. Folds isAuthReady into enabled.
   "useTapToPayRelease.ts",
+  // #4389 S-11 — biz_native_connect_onboarding, authenticated only. Folds isAuthReady into enabled.
+  "useNativeConnectOnboardingRelease.ts",
   // #4271 — the brand's own record (brands, via getBrand) when an event detail
   // hands the door a slim brand. Folds isAuthReady into enabled.
   "useTapToPayBrandFacts.ts",

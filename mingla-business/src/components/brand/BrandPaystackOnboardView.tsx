@@ -71,7 +71,7 @@ import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 import { DONE_BAR_PRESENT_IN_RAW_MODAL } from "../../wrappers/keyboardClearance";
 import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 
-interface Props {
+export interface BrandPaystackOnboardViewProps {
   brandId: string;
   brandName: string;
   /** "create" = first-time onboarding; "update" = change the settlement bank. */
@@ -86,6 +86,12 @@ interface Props {
    * the form into view. 0 / undefined = do nothing.
    */
   focusFirstFieldSignal?: number;
+  /**
+   * #4389 — brand setup already said what this step is: show the bank form
+   * straight away, without this view's own heading, paragraph or "Choose a
+   * different country" row (the country was chosen at its own step).
+   */
+  hideIntro?: boolean;
 }
 
 const ACCOUNT_LEN = 10;
@@ -95,13 +101,14 @@ const BANK_PICKER_MAX_HEIGHT = 720;
 const BANK_PICKER_ROW_MIN_HEIGHT = 56;
 const BANK_PICKER_SCRIM = "rgba(0, 0, 0, 0.50)";
 
-export const BrandPaystackOnboardView: React.FC<Props> = ({
+export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> = ({
   brandId,
   brandName,
   mode = "create",
   onConnected,
   onCancel,
   focusFirstFieldSignal = 0,
+  hideIntro = false,
 }) => {
   const isUpdate = mode === "update";
   const { isAuthReady, user } = useAuth();
@@ -255,8 +262,19 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       maxWidth: regular ? BANK_PICKER_MAX_WIDTH : undefined,
       paddingHorizontal: windowWidth < bpCompact ? spacing.md : spacing.lg,
       paddingBottom: Math.max(safeArea.bottom, spacing.md),
+      // #4389 (device r4) — with the keyboard up the avoiding view pads the
+      // root by the keyboard height; the fixed height is only the preferred
+      // size, so the sheet shrinks to the room left under the top safe area
+      // instead of pushing "Search banks" into the status bar.
+      flexShrink: 1,
+      minHeight: 0,
     };
   }, [safeArea.bottom, windowHeight, windowWidth]);
+  /** The picker's root never reaches above the top safe area (plus a gap). */
+  const modalRootInsetStyle = useMemo<ViewStyle>(
+    () => ({ paddingTop: safeArea.top + spacing.sm }),
+    [safeArea.top],
+  );
 
   const bankRowStyle = useCallback(
     (
@@ -429,7 +447,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         </>
       ) : (
         <>
-      {onCancel != null && !isUpdate ? (
+      {onCancel != null && !isUpdate && !hideIntro ? (
         <View style={styles.backRow}>
           <Button
             label="‹ Choose a different country"
@@ -439,14 +457,18 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
           />
         </View>
       ) : null}
-      <Text style={styles.title}>
-        {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}
-      </Text>
-      <Text style={styles.subtitle}>
-        {isUpdate
-          ? "Enter the new bank account that should receive your payouts."
-          : "Connect your bank account to receive payouts. Ticket sales are released to this account about a day after each payment and typically arrive within 1–2 business days."}
-      </Text>
+      {!hideIntro ? (
+        <>
+          <Text style={styles.title}>
+            {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}
+          </Text>
+          <Text style={styles.subtitle}>
+            {isUpdate
+              ? "Enter the new bank account that should receive your payouts."
+              : "Connect your bank account to receive payouts. Ticket sales are released to this account about a day after each payment and typically arrive within 1–2 business days."}
+          </Text>
+        </>
+      ) : null}
 
       {/* Bank picker */}
       <Text style={styles.label}>Bank</Text>
@@ -566,7 +588,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             `behavior` undefined — the difference is that the code now SAYS so,
             so the next reader cannot mistake an inert 42 for a real budget. */}
         <KeyboardAvoidingView
-          style={styles.modalRoot}
+          style={[styles.modalRoot, modalRootInsetStyle]}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={
             DONE_BAR_PRESENT_IN_RAW_MODAL ? DONE_BAR_OCCUPIED : 0

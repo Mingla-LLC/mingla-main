@@ -235,7 +235,8 @@ describe("Tap setup runs Apple's terms and How to Tap before the first sale", ()
       },
     });
     const result = await runTapToPaySetup(h.deps);
-    expect(result).toEqual({ kind: "failed", message: expect.stringContaining("brand's full address") });
+    // #4389 S-i — the T1 words (the address comes from the payment account first).
+    expect(result).toEqual({ kind: "failed", message: expect.stringContaining("where you'll take card payments") });
     expect(h.calls).toEqual(["support"]);
   });
 

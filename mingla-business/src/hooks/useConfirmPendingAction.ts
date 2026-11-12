@@ -42,6 +42,8 @@ export interface UseConfirmPendingActionResult {
 
 export function useConfirmPendingAction(
   conversationId: string | null,
+  /** #4389 AR-13 — the brand the confirmation is shown under. */
+  brandId: string | null = null,
 ): UseConfirmPendingActionResult {
   const qc = useQueryClient();
   const online = useShareNetworkState();
@@ -52,6 +54,7 @@ export function useConfirmPendingAction(
       pending_action_id: string;
       edited_args?: Record<string, unknown>;
       workflow_context?: "website_setup";
+      brand_id?: string;
     }) =>
       confirmAgentAction({ ...args, ari_ui: currentAriUiCapabilities() }),
     onSuccess: (response) => {
@@ -167,6 +170,7 @@ export function useConfirmPendingAction(
         pending_action_id,
         edited_args,
         ...(workflow_context ? { workflow_context } : {}),
+        ...(brandId ? { brand_id: brandId } : {}),
       });
       if (intentRef.current?.stableId === pending_action_id) {
         intentRef.current = {
@@ -177,7 +181,7 @@ export function useConfirmPendingAction(
       }
       return response;
     },
-    [confirmMutation, conversationId, online],
+    [brandId, confirmMutation, conversationId, online],
   );
 
   const cancel = useCallback(

@@ -57,6 +57,9 @@ import { canViewBrandPayments } from "../utils/brandPaymentsPermission";
 import { useWebsiteTodo } from "./useWebsiteTodo";
 import { useBrandEnquiries } from "./useBrandEnquiries";
 import { brandEnquiryTodos } from "../utils/brandEnquiryWaiting";
+// #4389 — the setup checklist and the Tap to Pay "Not now" row (native only).
+import { useBrandSetupChecklist } from "./useBrandSetupChecklist";
+import { useTapToPayTodoRow } from "./useTapToPayTodoRow";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user, isAuthReady } = useAuth();
@@ -351,6 +354,32 @@ export function useBusinessTodos(): BusinessTodo[] {
     [enquiryItems],
   );
 
+  // #4389 — server checklist for the selected brand (one row while incomplete).
+  const setupBrandId = currentBrand !== null && !isBrandResolving ? currentBrand.id : null;
+  const setupChecklist = useBrandSetupChecklist(setupBrandId);
+  const setupData = setupChecklist.data;
+  const brandSetup = useMemo(
+    () =>
+      setupData === undefined || currentBrand === null
+        ? undefined
+        : {
+            brandName: currentBrand.displayName,
+            doneCount: setupData.doneCount,
+            complete: setupData.facts.complete,
+            waitingFor: setupData.facts.waitingFor,
+            route: `/brand/${currentBrand.id}/setup`,
+          },
+    [currentBrand, setupData],
+  );
+  // #4389 HT — "Not now" on the Home Tap to Pay card becomes a row here,
+  // until Tap to Pay is set up on this phone. Web: never (no Tap to Pay).
+  const tapToPayTodo = useTapToPayTodoRow({
+    userId: user?.id ?? null,
+    brandId: setupBrandId,
+    setupComplete: setupData?.facts.complete === true,
+    brand: currentBrand,
+  });
+
   return useMemo(
     () =>
       buildBusinessTodos({
@@ -396,8 +425,13 @@ export function useBusinessTodos(): BusinessTodo[] {
         insightsNudges,
         venueOrderCompleteness,
         website,
+        brandSetup,
+        tapToPayTodo,
       }),
     [
+      brandSetup,
+      tapToPayTodo?.route,
+      tapToPayTodo?.label,
       website,
       brandReadiness,
       canSell,

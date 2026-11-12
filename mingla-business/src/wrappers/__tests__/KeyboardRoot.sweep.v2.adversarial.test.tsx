@@ -114,7 +114,7 @@ const EXPECTED_ALLOWLISTED_FILES = [
   // substring grep rather than the gate's own regex, so it counted a decorative
   // one. Dropping the registration removes paperwork, not an exemption; if that
   // file ever does trip a pattern, CI will say so instead of waving it through.
-  "mingla-business/src/components/brand/BrandCreationFlow.tsx",
+  "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
   "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
   "mingla-business/src/components/waitlist/JoinWaitlistSheet.tsx",
   // #1841 — the ONE new entry, granted because no keyboard-aware virtualised

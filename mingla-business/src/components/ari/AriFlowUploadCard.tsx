@@ -30,7 +30,7 @@ import { joinBrandDescription } from "../../services/brandMapping";
 import { LazyBrandAvatarPickerSheet } from "../brand/LazyBrandAvatarPickerSheet";
 import { Button } from "../ui/Button";
 import type { CoverPatch } from "../ui/CoverPicker";
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import type { AriFlowUploadCopy, AriFlowUploadKind } from "./ariFlowCards";
 
 export interface AriFlowUploadCardProps {

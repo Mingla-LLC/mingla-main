@@ -1,7 +1,7 @@
 /**
  * issue #4271 — writes the door sale draft (shape and reader in doorTapDraft.ts).
  *
- * The sheet navigates to `/event/<id>/door/tap/new?draft=<base64 json>` with
+ * Door mode hands off to `/event/<id>/door/tap/new?draft=<base64 json>` with
  * `{lines, eventDateId, buyerPhone?, buyerName?}`. The tap route decodes it
  * with `parseTapToPayDraft`. A typed buyer name can be any script, so the
  * payload is encoded as UTF-8 base64 (encodeBase64Utf8), never `btoa`, which
@@ -29,13 +29,13 @@ export const encodeDoorTapDraft = (draft: DoorTapDraft): string =>
     }),
   );
 
-/** "Sell another": reopen the door sale sheet with the same tickets. */
+/** "Sell another": back to Door mode (#4389) with the same tickets. */
 export const doorSellAnotherHref = (
   eventId: string,
   draft: DoorTapDraft,
   method?: "pay_code" | "cash",
 ): string =>
-  `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeDoorTapDraft(draft))}${
+  `/event/${eventId}/door/sell?source=sell_another&draft=${encodeURIComponent(encodeDoorTapDraft(draft))}${
     method !== undefined ? `&method=${method}` : ""
   }`;
 

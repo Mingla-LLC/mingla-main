@@ -107,7 +107,7 @@ import {
   HOST_AD_UNAVAILABLE_TITLE,
   hostAdSetupErrorCopy,
 } from "../../components/marketing/ads/hostAdSetupCopy";
-import { CoverPickerSheet } from "../../components/ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../../components/ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../../components/ui/CoverPicker";
 import { adCreativeCoverTarget } from "../../components/ui/coverTarget";
 import {

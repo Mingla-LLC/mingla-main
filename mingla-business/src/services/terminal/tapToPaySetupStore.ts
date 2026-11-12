@@ -43,6 +43,9 @@ export const readTapToPayWarmHint = async (brandId: string): Promise<boolean> =>
   return hint;
 };
 
+/** #4389 — the hint if this JS runtime already read it (no storage read). */
+export const peekTapToPayWarmHint = (brandId: string): boolean | undefined => cached.get(brandId);
+
 export const markTapToPayWarmHint = async (brandId: string): Promise<void> => {
   cached.set(brandId, true);
   listeners.forEach((listener) => listener(brandId, true));

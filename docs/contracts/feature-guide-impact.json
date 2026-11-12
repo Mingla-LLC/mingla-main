@@ -771,7 +771,13 @@
         "supabase/functions/site-prompt-draft/function-policy.json",
         "supabase/functions/site-prompt-draft/index.ts",
         "supabase/migrations/20280512004339_issue_4339_site_prompt_drafts.sql",
-        "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql"
+        "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql",
+        "mingla-business/src/components/ari/AriSetupCard.tsx",
+        "mingla-business/src/components/ari/ariSetupCopy.ts",
+        "mingla-business/src/components/ari/ariRedaction.ts",
+        "mingla-business/src/components/ari/AriBrandSwitchConfirmSheet.tsx",
+        "mingla-business/src/components/ari/ariBrandBarCopy.ts",
+        "mingla-business/src/screens/ari/ariBrandSwitch.ts"
       ]
     },
     {
@@ -1130,7 +1136,69 @@
         "packages/offering-rendering/GlassBlur.tsx",
         "mingla-business/src/services/brandsService.ts",
         "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
-        "mingla-business/src/services/brandPinWrite.ts"
+        "mingla-business/src/services/brandPinWrite.ts",
+        "mingla-business/app/brand/[id]/setup.tsx",
+        "mingla-business/app/brand/[id]/tap-to-pay/address.tsx",
+        "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
+        "mingla-business/src/components/brand/PayoutCountryList.tsx",
+        "mingla-business/src/components/brand/brandSetupCopy.ts",
+        "mingla-business/src/components/brand/brandSetupAnalytics.ts",
+        "mingla-business/src/components/brand/tapLocationAddress.ts",
+        "mingla-business/src/services/brandSetupService.ts",
+        "mingla-business/src/hooks/useBrandSetupChecklist.ts",
+        "mingla-business/src/components/ui/BrandChip.tsx",
+        "mingla-business/src/hooks/usePickBrand.ts",
+        "mingla-business/src/hooks/useBrandSetupStates.ts",
+        "mingla-business/src/components/brand/OfferingClip.tsx",
+        "mingla-business/src/components/brand/OfferingClip.native.tsx",
+        "mingla-business/src/components/brand/offeringMedia.ts",
+        "mingla-business/src/components/home/HomeSetupCard.tsx",
+        "mingla-business/src/components/home/HomeSetupPromptSheet.tsx",
+        "mingla-business/src/components/home/homeSetupCopy.ts",
+        "mingla-business/src/store/homeSetupPromptStore.ts",
+        "mingla-business/src/components/home/HomeTapToPayCard.tsx",
+        "mingla-business/src/components/home/HomeTakePayment.tsx",
+        "mingla-business/src/hooks/useHomeTakePayment.ts",
+        "mingla-business/src/utils/homeTakePayment.ts",
+        "mingla-business/app/brand/new.tsx",
+        "mingla-business/src/components/brand/OfferingChooser.tsx",
+        "mingla-business/src/components/home/BusinessPulsePanel.tsx",
+        "mingla-business/src/utils/clearAllStores.ts",
+        "supabase/functions/brand-delete/index.ts",
+        "supabase/functions/_shared/brandDelete.ts",
+        "supabase/functions/_shared/brandDeleteLive.ts",
+        "supabase/functions/_shared/brandSetupStripe.ts",
+        "supabase/functions/_shared/agentBrandSetupTools.ts",
+        "supabase/functions/_shared/ariFlows/brandSetup.ts",
+        "supabase/functions/_shared/vatCountryGuard.ts",
+        "supabase/migrations/20280701004389_issue_4389_brand_setup.sql",
+        "supabase/migrations/20280701104389_issue_4389_ari_brand_operation.sql",
+        "supabase/migrations/20280701304389_issue_4389_retire_bgn.sql",
+        "mingla-business/src/components/stripe/ConnectOnboardingNative.native.tsx",
+        "mingla-business/src/components/stripe/ConnectOnboardingNative.tsx",
+        "mingla-business/src/components/stripe/nativeConnectOnboarding.ts",
+        "mingla-business/src/hooks/useNativeConnectOnboardingRelease.ts",
+        "supabase/migrations/20280701204389_issue_4389_native_connect_flag.sql",
+        "mingla-business/src/components/brand/BrandProfileView.tsx",
+        "mingla-business/src/components/brand/brandDeleteCopy.ts",
+        "mingla-business/src/components/brand/brandDeleteSharedCopy.ts",
+        "mingla-business/src/components/brand/brandNewCopy.ts",
+        "mingla-business/src/components/brand/brandOfferingsCopy.ts",
+        "mingla-business/src/components/brand/brandOnboardCopy.ts",
+        "mingla-business/src/components/brand/brandSetupAddressCopy.ts",
+        "mingla-business/src/components/brand/brandSetupSharedCopy.ts",
+        "mingla-business/src/components/brand/brandSwitcherCopy.ts",
+        "mingla-business/src/components/door/tap/f4TapToPayCopy.ts",
+        "mingla-business/src/components/home/homeSetupPromptCopy.ts",
+        "mingla-business/src/components/home/homeSetupTapCopy.ts",
+        "mingla-business/src/hooks/useTapToPayTodoRow.ts",
+        "mingla-business/src/hooks/useTapToPayTodoRow.web.ts",
+        "mingla-business/src/hooks/useTapToPayWarmHint.ts",
+        "mingla-business/src/hooks/useTapToPayWarmHint.web.ts",
+        "mingla-business/src/components/ui/LazyCoverPickerSheet.tsx",
+        "mingla-business/src/components/ui/LazyCoverPickerSheet.web.tsx",
+        "mingla-business/src/hooks/useBrandSetupFlowWrites.ts",
+        "mingla-business/src/hooks/useSetTapLocationAddress.ts"
       ]
     },
     {
@@ -1878,7 +1946,11 @@
         "mingla-business/src/components/experience/experienceWizardTypes.ts",
         "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
         "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
-        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql"
+        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.tsx",
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.web.tsx",
+        "mingla-business/app/(tabs)/hub/experiences.tsx",
+        "mingla-business/app/experience/[id]/index.tsx"
       ]
     },
     {
@@ -1890,7 +1962,9 @@
         "mingla-business/src/components/trip/tripLocationValidated.ts",
         "mingla-business/src/services/tripsService.ts",
         "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
-        "mingla-business/src/services/tripPinCommands.ts"
+        "mingla-business/src/services/tripPinCommands.ts",
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.tsx",
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.web.tsx"
       ]
     },
     {
@@ -2015,7 +2089,22 @@
         "supabase/migrations/20280429004271_issue_4271_tap_buyer_name.sql",
         "mingla-business/assets/tap-to-pay/awareness-hero.jpg",
         "mingla-business/assets/tap-to-pay/awareness-hero@2x.jpg",
-        "mingla-business/assets/tap-to-pay/awareness-hero@3x.jpg"
+        "mingla-business/assets/tap-to-pay/awareness-hero@3x.jpg",
+        "mingla-business/app/event/[id]/door/sell.tsx",
+        "mingla-business/src/components/door/DoorModeScreen.tsx",
+        "mingla-business/src/components/door/DoorModePayCodeSheet.tsx",
+        "mingla-business/src/components/door/DoorModeBuyerSheet.tsx",
+        "mingla-business/src/components/door/doorModeCopy.ts",
+        "mingla-business/src/components/door/doorModeState.ts",
+        "mingla-business/src/components/door/doorModeMethodMemory.ts",
+        "mingla-business/src/components/door/useDoorModeTapSale.ts",
+        "mingla-business/src/utils/openDoorSale.ts",
+        "mingla-business/src/components/door/tap/tapSetupTakePayment.ts",
+        "mingla-business/src/services/terminal/tapToPayIosLocation.ts",
+        "mingla-business/src/components/door/doorSaleCandidates.ts",
+        "mingla-business/src/components/door/tap/F4TapToPayCard.tsx",
+        "mingla-business/src/utils/doorSaleHref.ts",
+        "mingla-business/src/components/door/tap/f4TapToPayCopy.ts"
       ]
     },
     {
@@ -2321,7 +2410,26 @@
         "supabase/functions/_shared/googleFontFamilies.json",
         "supabase/functions/_shared/themeFontValidation.ts",
         "supabase/migrations/20280430001023_issue_1023_widen_theme_animation_slugs.sql",
-        "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql"
+        "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql",
+        "mingla-business/app/brand/[id]/setup.tsx",
+        "mingla-business/app/brand/[id]/tap-to-pay/address.tsx",
+        "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
+        "mingla-business/src/components/brand/PayoutCountryList.tsx",
+        "mingla-business/src/components/brand/brandSetupCopy.ts",
+        "mingla-business/src/components/brand/brandSetupAnalytics.ts",
+        "mingla-business/src/components/brand/tapLocationAddress.ts",
+        "mingla-business/src/services/brandSetupService.ts",
+        "mingla-business/src/hooks/useBrandSetupChecklist.ts",
+        "supabase/functions/brand-delete/index.ts",
+        "supabase/functions/_shared/brandDelete.ts",
+        "supabase/functions/_shared/brandDeleteLive.ts",
+        "supabase/functions/_shared/brandSetupStripe.ts",
+        "supabase/functions/_shared/agentBrandSetupTools.ts",
+        "supabase/functions/_shared/ariFlows/brandSetup.ts",
+        "supabase/functions/_shared/vatCountryGuard.ts",
+        "supabase/migrations/20280701004389_issue_4389_brand_setup.sql",
+        "supabase/migrations/20280701104389_issue_4389_ari_brand_operation.sql",
+        "mingla-business/src/components/brand/BrandProfileView.tsx"
       ]
     },
     {
@@ -2355,7 +2463,9 @@
         "packages/offering-rendering/EventDatePicker.tsx",
         "packages/offering-rendering/GuestAvatarCluster.tsx",
         "packages/offering-rendering/OfferingMomentum.tsx",
-        "packages/offering-rendering/PublicEventPage.tsx"
+        "packages/offering-rendering/PublicEventPage.tsx",
+        "mingla-business/src/components/ui/LazyCoverPickerSheet.tsx",
+        "mingla-business/src/components/ui/LazyCoverPickerSheet.web.tsx"
       ]
     },
     {
@@ -2472,7 +2582,8 @@
         "mingla-business/src/components/venue/VenueCoverStep.tsx",
         "mingla-business/src/components/venue/VenueStep7Review.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepCover.tsx",
-        "mingla-business/src/components/venue/claim/ClaimStepReview.tsx"
+        "mingla-business/src/components/venue/claim/ClaimStepReview.tsx",
+        "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx"
       ]
     },
     {
@@ -3149,6 +3260,102 @@
       ]
     },
     {
+      "capability_key": "brand-create",
+      "paths": [
+        "mingla-business/assets/offerings/offer-event.jpg",
+        "mingla-business/assets/offerings/offer-event.mp4",
+        "mingla-business/assets/offerings/offer-experience.jpg",
+        "mingla-business/assets/offerings/offer-experience.mp4",
+        "mingla-business/assets/offerings/offer-rsvp.jpg",
+        "mingla-business/assets/offerings/offer-rsvp.mp4",
+        "mingla-business/assets/offerings/offer-trip.jpg",
+        "mingla-business/assets/offerings/offer-trip.mp4",
+        "mingla-business/assets/offerings/offer-venue.jpg",
+        "mingla-business/assets/offerings/offer-venue.mp4",
+        "mingla-business/assets/tap-to-pay/ttp-visual.png",
+        "mingla-business/src/components/brand/BrandSetupInterruptions.tsx",
+        "mingla-business/src/components/brand/brandNewEntry.ts",
+        "mingla-business/src/components/brand/LazyBrandCreationFlow.tsx",
+        "mingla-business/src/components/brand/offeringRowVisibility.tsx",
+        "mingla-business/src/constants/stripeSupportedCountries.ts",
+        "mingla-business/src/i18n/locales/ar/hostSetup.json",
+        "mingla-business/src/i18n/locales/bin/hostSetup.json",
+        "mingla-business/src/i18n/locales/bn/hostSetup.json",
+        "mingla-business/src/i18n/locales/de/hostSetup.json",
+        "mingla-business/src/i18n/locales/el/hostSetup.json",
+        "mingla-business/src/i18n/locales/es/hostSetup.json",
+        "mingla-business/src/i18n/locales/fr/hostSetup.json",
+        "mingla-business/src/i18n/locales/ha/hostSetup.json",
+        "mingla-business/src/i18n/locales/he/hostSetup.json",
+        "mingla-business/src/i18n/locales/hi/hostSetup.json",
+        "mingla-business/src/i18n/locales/id/hostSetup.json",
+        "mingla-business/src/i18n/locales/ig/hostSetup.json",
+        "mingla-business/src/i18n/locales/it/hostSetup.json",
+        "mingla-business/src/i18n/locales/ja/hostSetup.json",
+        "mingla-business/src/i18n/locales/ko/hostSetup.json",
+        "mingla-business/src/i18n/locales/ms/hostSetup.json",
+        "mingla-business/src/i18n/locales/nl/hostSetup.json",
+        "mingla-business/src/i18n/locales/pl/hostSetup.json",
+        "mingla-business/src/i18n/locales/pt/hostSetup.json",
+        "mingla-business/src/i18n/locales/ro/hostSetup.json",
+        "mingla-business/src/i18n/locales/ru/hostSetup.json",
+        "mingla-business/src/i18n/locales/sv/hostSetup.json",
+        "mingla-business/src/i18n/locales/th/hostSetup.json",
+        "mingla-business/src/i18n/locales/tr/hostSetup.json",
+        "mingla-business/src/i18n/locales/uk/hostSetup.json",
+        "mingla-business/src/i18n/locales/vi/hostSetup.json",
+        "mingla-business/src/i18n/locales/yo/hostSetup.json",
+        "mingla-business/src/i18n/locales/zh/hostSetup.json",
+        "mingla-business/src/i18n/locales/en/ariSetup.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.json",
+        "mingla-business/src/i18n/locales/en/doorMode.json",
+        "mingla-business/src/i18n/locales/en/homeSetup.json",
+        "mingla-business/src/i18n/brandGroupMediaLocalesA.ts",
+        "mingla-business/src/i18n/brandGroupMediaLocalesB.ts",
+        "mingla-business/src/i18n/brandGroupMediaLocalesC.ts",
+        "mingla-business/src/components/onboarding/MinglaToSAcceptanceGate.tsx",
+        "mingla-business/src/components/ui/CenteredState.tsx",
+        "mingla-business/src/components/ui/SheetScrollLayout.tsx",
+        "mingla-business/src/services/brandSetupCore.ts",
+        "mingla-business/src/components/brand/payoutCountryOptions.ts",
+        "mingla-business/src/i18n/locales/en/brandSetup.address.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.delete.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.deleteShared.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.f4card.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.new.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.offerings.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.onboard.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.shared.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.switcher.json",
+        "mingla-business/src/i18n/locales/en/homeSetup.prompt.json",
+        "mingla-business/src/i18n/locales/en/homeSetup.tap.json"
+      ]
+    },
+    {
+      "capability_key": "brand-profile",
+      "paths": [
+        "mingla-business/src/components/brand/BrandDeleteSheet.tsx",
+        "mingla-business/src/components/brand/BrandProfileView.tsx",
+        "supabase/functions/brand-delete/function-policy.json"
+      ]
+    },
+    {
+      "capability_key": "ari-host-assistant",
+      "paths": [
+        "mingla-business/src/components/ari/ariCreateBrandOutcome.ts"
+      ]
+    },
+    {
+      "capability_key": "payouts-stripe",
+      "paths": [
+        "mingla-business/patches/@stripe+stripe-react-native+0.65.1.patch",
+        "mingla-business/src/components/brand/BrandBankConnectBody.web.tsx",
+        "supabase/functions/_shared/stripeAccountIdentity.ts",
+        "supabase/functions/_shared/stripeBlueprintClient.ts",
+        "supabase/functions/_shared/stripeSupportedCountries.ts"
+      ]
+    },
+    {
       "capability_key": "staff-support-desk",
       "paths": [
         "mingla-admin/README.md",
@@ -3300,6 +3507,14 @@
         "app-mobile/src/utils/mediaLibraryPermission.ts",
         "app-mobile/src/utils/supportRequestModel.ts",
         "supabase/functions/submit-feedback/index.ts"
+      ]
+    },
+    {
+      "capability_key": "payouts-paystack-nigeria",
+      "paths": [
+        "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx",
+        "mingla-business/src/components/brand/LazyBrandPaystackOnboardView.tsx",
+        "mingla-business/src/components/brand/LazyBrandPaystackOnboardView.web.tsx"
       ]
     }
   ]

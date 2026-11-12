@@ -112,6 +112,28 @@ jest.mock("../../../src/hooks/useCurrentBrandRecovery", () => ({
 jest.mock("../../../src/hooks/useBusinessTodos", () => ({
   useBusinessTodos: () => [],
 }));
+// #4389 — Home's setup card, Tap to Pay card and Take a payment read these;
+// this suite proves the analytics surfaces, so they answer "nothing to show".
+jest.mock("../../../src/hooks/useBrandSetupChecklist", () => ({
+  useBrandSetupChecklist: () => ({ data: undefined }),
+}));
+jest.mock("../../../src/hooks/useTapToPaySettingsEntry", () => ({
+  useTapToPaySettingsEntry: () => null,
+}));
+jest.mock("../../../src/hooks/useTapToPayWarmHint", () => ({
+  useTapToPayWarmHint: () => null,
+}));
+jest.mock("../../../src/components/door/tap/TapToPayAwarenessModal", () => ({
+  openTapToPayAwareness: () => false,
+}));
+jest.mock("../../../src/store/homeSetupPromptStore", () => ({
+  homeSetupPromptKey: (userId: string, brandId: string) => `${userId}:${brandId}`,
+  useHomeSetupPromptStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({ hasHydrated: true, promptSeen: {}, tapNotNow: {}, markPromptSeen: jest.fn(), markTapNotNow: jest.fn() }),
+}));
+jest.mock("../../../src/hooks/useHomeTakePayment", () => ({
+  useDoorTodaySummary: () => ({ count: 0, totalMajor: 0, currency: null, isLoading: false }),
+}));
 jest.mock("../../../src/hooks/useResponsiveLayout", () => ({
   useResponsiveLayout: () => ({ isWideDesktop: mockIsWideDesktop }),
 }));

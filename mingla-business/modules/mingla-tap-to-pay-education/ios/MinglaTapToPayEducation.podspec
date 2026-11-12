@@ -16,5 +16,6 @@ Pod::Spec.new do |s|
   s.swift_version  = '5.9'
   s.dependency 'ExpoModulesCore'
   s.weak_frameworks = 'ProximityReader'
+  s.frameworks     = 'CoreLocation'
   s.source_files   = '**/*.swift'
 end

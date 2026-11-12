@@ -19,7 +19,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 
 const PATHS = Object.freeze({
-  flow: "mingla-business/src/components/brand/BrandCreationFlow.tsx",
+  // #4389: the step wizard these FLOW / CURRENCY legs pin moved verbatim to
+  // PartnerClientBrandCreationFlow.tsx (partner Step 0 + client mode). Self
+  // brands use the 4-step setup, whose payout readiness is the server's
+  // brand_readiness(brand_setup) (I-4389-SETUP-DONE-IS-SERVER).
+  flow: "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
   chooser: "mingla-business/src/components/brand/OfferingChooser.tsx",
   mapper: "mingla-business/src/services/brandMapping.ts",
   state: "mingla-business/src/utils/brandCreationPayoutState.ts",

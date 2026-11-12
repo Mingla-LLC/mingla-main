@@ -23,7 +23,7 @@
 import React from "react";
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
-import { BrandCreationFlow } from "../BrandCreationFlow";
+import { BrandCreationFlow } from "../PartnerClientBrandCreationFlow";
 import {
   PARTIAL_CONNECT_MESSAGE,
   describePaystackConnectError,

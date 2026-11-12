@@ -19,7 +19,7 @@
  * red is kept for Apple's hard blocks (device banned, merchant blocked).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,9 +34,15 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
+import { loadHasDoorSaleEvent, openDoorSaleFromTapSetup } from "./tapSetupTakePayment";
+import { requestTapLocation, tapLocationStatus } from "../../../services/terminal/tapToPayIosLocation";
 import {
   TAP_GET_HELP,
   TAP_ON_FOR_BRAND,
+  TAP_DONE,
+  TAP_LOCATION_DENIED_COPY,
+  TAP_LOCATION_PREALERT_COPY,
+  TAP_TAKE_PAYMENT,
   TAP_ADMIN_ONLY_COPY,
   TAP_APPLE_TERMS_ROW,
   tapToPayName,
@@ -55,7 +61,7 @@ import { createDoorPayCodeForLines, DoorTapError, fetchDoorTapLocation } from ".
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { markTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
 import { encodeTapToPayDraft, parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
-import { runTapToPaySetup } from "../../../services/terminal/tapToPaySetup";
+import { runTapToPaySetup, TAP_ADDRESS_MISSING_COPY, tapAddressRoute } from "../../../services/terminal/tapToPaySetup";
 import { Button } from "../../ui/Button";
 import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
@@ -63,7 +69,7 @@ import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
 import { TapConfiguringView } from "./TapConfiguringView";
 import { TapFactList } from "./TapFactList";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
-import { TapStatusView } from "./TapStatusView";
+import { TapAddressMissing, TapNotReady, TapStatusView } from "./TapStatusView";
 import { TapToPayEducation } from "./TapToPayEducation";
 import { TapUpdateIos } from "./TapUpdateIos";
 import { tapToPayAcceptanceFor, useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
@@ -129,6 +135,14 @@ export const TapToPaySetupScreen = ({
   const [brandNotAvailable, setBrandNotAvailable] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [payCodeBusy, setPayCodeBusy] = useState<boolean>(false);
+  // #4389 — Stripe Terminal starts in the background (TapToPayTerminalHost), e.g.
+  // the instant a brand is created, before it can take cards; that start fails
+  // and the failure used to stay on screen here before the host tapped anything.
+  // A background failure is retried quietly on arrival; an error shows only
+  // after the host's own attempt, and that one tap carries on into setup.
+  const [hostAttempted, setHostAttempted] = useState<boolean>(false);
+  const quietRetryRef = useRef<boolean>(false);
+  const pendingSetupRef = useRef<boolean | null>(null);
 
   const goToDoor = useCallback((): void => {
     if (eventId === null) {
@@ -177,6 +191,8 @@ export const TapToPaySetupScreen = ({
   const runSetup = useCallback(
     async (allowTerms: boolean, probe = false): Promise<void> => {
       if (terminal.status === "error") {
+        // Start Terminal again, then carry on with this same attempt.
+        pendingSetupRef.current = allowTerms;
         terminal.retryInitialize();
         return;
       }
@@ -214,7 +230,8 @@ export const TapToPaySetupScreen = ({
           return;
         }
         if (result.kind === "failed") {
-          if (!probe) setError(result.message);
+          // The server's address_missing answer always shows its T1 entry.
+          if (!probe || result.message === TAP_ADDRESS_MISSING_COPY) setError(result.message);
           return;
         }
         // From Settings the screen stays and now reads "On for this brand".
@@ -236,6 +253,96 @@ export const TapToPaySetupScreen = ({
     },
     [terminal, draft, router, eventId, goToDoor, brandId],
   );
+
+  useEffect(() => {
+    if (terminal.status !== "error" || quietRetryRef.current) return;
+    quietRetryRef.current = true;
+    terminal.retryInitialize();
+  }, [terminal]);
+
+  useEffect(() => {
+    if (terminal.client === null || pendingSetupRef.current === null) return;
+    const allowTerms = pendingSetupRef.current;
+    pendingSetupRef.current = null;
+    void runSetup(allowTerms);
+  }, [terminal.client, runSetup]);
+
+  // #4389 — "On for this brand" offers Take a payment when there is an event to
+  // sell for now (same rule as Home's Take a payment).
+  const [canTakePayment, setCanTakePayment] = useState<boolean>(false);
+  const onForBrandShown = eventId === null && brandId !== null && availability.available && !availability.needsSetup;
+  useEffect(() => {
+    if (!onForBrandShown || brandId === null) return undefined;
+    let alive = true;
+    void loadHasDoorSaleEvent(brandId)
+      .then((has) => {
+        if (alive) setCanTakePayment(has);
+      })
+      .catch((readError: unknown) => reportNonFatal("door-tap.setup-events", readError));
+    return () => {
+      alive = false;
+    };
+  }, [onForBrandShown, brandId]);
+  const takePayment = useCallback((): void => {
+    if (brandId === null) return;
+    void openDoorSaleFromTapSetup(router, brandId)
+      .catch((openError: unknown) => reportNonFatal("door-tap.setup-take-payment", openError));
+  }, [brandId, router]);
+
+  // #4389 — Apple: location is asked here, behind our pre-alert, before Apple's
+  // terms and the reader connect; never in the checkout flow.
+  const [locationStep, setLocationStep] = useState<"ask" | "denied" | null>(null);
+  const locationGate = useCallback((): boolean => {
+    if (Platform.OS !== "ios") return true;
+    const status = tapLocationStatus();
+    if (status === "not_determined") {
+      setLocationStep("ask");
+      return false;
+    }
+    if (status === "denied") {
+      setLocationStep("denied");
+      return false;
+    }
+    return true;
+  }, []);
+
+  const startHostSetup = useCallback((): void => {
+    setHostAttempted(true);
+    if (!locationGate()) return;
+    void runSetup(mayAcceptTerms);
+  }, [runSetup, mayAcceptTerms, locationGate]);
+
+  const continueFromLocation = useCallback(async (): Promise<void> => {
+    const status = await requestTapLocation().catch((locationError: unknown) => {
+      reportNonFatal("door-tap.setup-location", locationError);
+      return "unavailable" as const;
+    });
+    if (status === "denied") {
+      setLocationStep("denied");
+      return;
+    }
+    setLocationStep(null);
+    if (availability.available && !availability.needsSetup) {
+      // Already set up here: only location was missing. A waiting sale carries on.
+      if (draft !== null && eventId !== null) {
+        // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
+        router.replace(
+          `/event/${eventId}/door/tap/new?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
+        );
+      }
+      return;
+    }
+    void runSetup(mayAcceptTerms);
+  }, [runSetup, mayAcceptTerms, availability.available, availability.needsSetup, draft, eventId, router]);
+
+  // A phone already set up (a sale sent here because location was never
+  // answered): the pre-alert comes first, without the setup button.
+  const locationCheckedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (locationCheckedRef.current || !availability.available || availability.needsSetup) return;
+    locationCheckedRef.current = true;
+    locationGate();
+  }, [availability.available, availability.needsSetup, locationGate]);
 
   // Someone who may not accept the terms never gets a setup button, but an admin
   // may already have accepted them. Apple only answers when asked, so ask once,
@@ -269,34 +376,78 @@ export const TapToPaySetupScreen = ({
     availability.reason === "ios_update_required" ||
     (deviceRejected && isIosBelowTapFloor(device.os, device.version));
 
+  const terminalFailedForHost =
+    hostAttempted && terminal.status === "error" && terminal.errorMessage !== null && terminal.errorMessage !== "";
+
   const pinRow = (currency ?? "").trim().toUpperCase() === "GBP";
   // Settings: nothing to set up (or no brand to set up): say so and keep the guide.
   const settingsGuideOnly = eventId === null && (brandId === null || (availability.available && !availability.needsSetup));
 
   let body: React.ReactElement;
-  if (settingsGuideOnly) {
+  // #4389 — while setup runs (Apple's terms, account linking, then How to Tap)
+  // the screen stays on "Getting ready": Apple's answer flips to accepted the
+  // moment the reader connects, and "On for this brand" + Done used to show
+  // before How to Tap, so Done left first and the guide then opened over F4.
+  if (settingsGuideOnly && !busy && locationStep === null) {
+    // #4389 — "On for this brand" ends with a clear way out (back to F4, Home
+    // or Settings, wherever the host came from), not only the back arrow.
     body = (
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {brandId !== null ? (
-          <Text style={styles.heroTitle} accessibilityRole="header" testID="tap-on-for-brand">
-            {TAP_ON_FOR_BRAND}
-          </Text>
-        ) : null}
-        <TapToPayEducation pinRow={pinRow} />
-      </ScrollView>
+      <View style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {brandId !== null ? (
+            <Text style={styles.heroTitle} accessibilityRole="header" testID="tap-on-for-brand">
+              {TAP_ON_FOR_BRAND}
+            </Text>
+          ) : null}
+          <TapToPayEducation pinRow={pinRow} />
+        </ScrollView>
+        <View style={styles.bar}>
+          <Button
+            label={TAP_DONE}
+            onPress={handleBack}
+            variant="primary"
+            size="lg"
+            fullWidth
+            accessibilityLabel={TAP_DONE}
+            testID="tap-on-done"
+          />
+          {canTakePayment ? (
+            <Button
+              label={TAP_TAKE_PAYMENT}
+              onPress={takePayment}
+              variant="secondary"
+              size="lg"
+              fullWidth
+              accessibilityLabel={TAP_TAKE_PAYMENT}
+              testID="tap-on-take-payment"
+            />
+          ) : null}
+        </View>
+      </View>
     );
   } else if (showIosUpdate) {
     body = <TapUpdateIos onUsePayCode={() => void startPayCode()} loading={payCodeBusy} onHelp={openHelp} />;
   } else if (deviceBlocked) {
     body = <TapNotOnThisPhone onUsePayCode={() => void startPayCode()} loading={payCodeBusy} onHelp={openHelp} />;
   } else if (!availability.available || brandNotAvailable) {
+    // #4389 — a US / UK brand without a payment account is told to finish
+    // setup; "isn't available here" says why, for brands that truly can't.
     body = (
-      <TapStatusView
-        tone="neutral"
-        icon={Platform.OS === "ios" ? "globe" : "tap"}
-        title={`${tapToPayName(Platform.OS)} isn't available here`}
-        body="This brand can't take taps. Use a pay code instead. It works on any phone."
-        primary={{ label: "Use a pay code", onPress: () => void startPayCode(), loading: payCodeBusy }}
+      <TapNotReady
+        reason={
+          !availability.available &&
+          (availability.reason === "no_card_payments" ||
+            availability.reason === "unsupported_country" ||
+            availability.reason === "paystack" ||
+            availability.reason === "not_released" ||
+            availability.reason === "no_brand")
+            ? availability.reason
+            : "server_not_available"
+        }
+        os={Platform.OS}
+        onFinishSetup={brandId !== null ? () => router.push(`/brand/${brandId}/setup?step=pay` as never) : null}
+        onUsePayCode={() => void startPayCode()}
+        payCodeBusy={payCodeBusy}
         onHelp={openHelp}
         testID="tap-setup-not-available"
       />
@@ -324,8 +475,48 @@ export const TapToPaySetupScreen = ({
         testID="tap-setup-admin-only"
       />
     );
+  } else if (locationStep === "ask") {
+    body = (
+      <TapStatusView
+        tone="neutral"
+        icon="location"
+        title={TAP_LOCATION_PREALERT_COPY.title}
+        body={TAP_LOCATION_PREALERT_COPY.body}
+        primary={{ label: TAP_LOCATION_PREALERT_COPY.cta, onPress: () => void continueFromLocation(), testID: "tap-location-continue" }}
+        testID="tap-location-prealert"
+      />
+    );
+  } else if (locationStep === "denied") {
+    body = (
+      <TapStatusView
+        tone="neutral"
+        icon="location"
+        title={TAP_LOCATION_DENIED_COPY.title}
+        body={TAP_LOCATION_DENIED_COPY.body}
+        primary={{
+          label: TAP_LOCATION_DENIED_COPY.cta,
+          onPress: () => {
+            void Linking.openSettings().catch((settingsError: unknown) => reportNonFatal("door-tap.open-settings", settingsError));
+          },
+          testID: "tap-location-open-settings",
+        }}
+        onHelp={openHelp}
+        testID="tap-location-denied"
+      />
+    );
   } else if (busy || terminal.config.installing) {
     body = <TapConfiguringView progress={terminal.config.progress} />;
+  } else if (error === TAP_ADDRESS_MISSING_COPY && brandId !== null) {
+    // #4389 S-i — no usable card-payment address: open T1, then set up again.
+    body = (
+      <TapAddressMissing
+        onAddAddress={() => {
+          setError(null);
+          router.push(tapAddressRoute(brandId) as never);
+        }}
+        onHelp={openHelp}
+      />
+    );
   } else {
     const rows = setupRowsFor(Platform.OS);
     body = (
@@ -341,18 +532,18 @@ export const TapToPaySetupScreen = ({
             {Platform.OS === "ios" ? "Take cards on this iPhone" : "Take cards on this phone"}
           </Text>
           <TapFactList facts={rows} testID="tap-setup-facts" />
-          {terminal.status === "error" && terminal.errorMessage ? (
+          {terminalFailedForHost ? (
             <Text style={styles.error}>{terminal.errorMessage}</Text>
           ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          {error || (terminal.status === "error" && terminal.errorMessage) ? (
+          {error || terminalFailedForHost ? (
             <HelpLink onPress={openHelp} />
           ) : null}
         </ScrollView>
         <View style={styles.bar}>
           <Button
             label={tapToPaySetupButtonLabel(Platform.OS)}
-            onPress={() => void runSetup(mayAcceptTerms)}
+            onPress={startHostSetup}
             loading={busy || terminal.status === "initializing"}
             disabled={busy || terminal.status === "initializing"}
             variant="primary"
@@ -427,6 +618,7 @@ const styles = StyleSheet.create({
   bar: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+    gap: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: glass.border.profileBase,
   },

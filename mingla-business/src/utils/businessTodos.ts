@@ -323,7 +323,39 @@ export interface BusinessTodoInput {
   insightsNudges?: InsightsNudgeTodo[];
   /** #1795 — successful, authorized order-metrics completeness actions only. */
   venueOrderCompleteness?: VenueOrderCompletenessTodo[];
+  /**
+   * #4389 — the brand_setup checklist (server truth). WHEN PRESENT (the live
+   * hook passes it once the checklist has loaded) it REPLACES the old
+   * client-derived "Connect bank to take payments", "Add your address" and
+   * "Add your city and country" rows with ONE "Finish setting up {brand}"
+   * row while setup is incomplete. Absent → legacy rows (pinned fixtures).
+   */
+  brandSetup?: BusinessTodoBrandSetup;
+  /**
+   * #4389 HT — "Not now" on Home's Tap to Pay card moves it here, at the top
+   * of the brand's rows. Null/absent → no row (web never passes one).
+   */
+  tapToPayTodo?: TapToPayTodoRow | null;
 }
+
+/** #4389 HT — the Tap to Pay row Home's "Not now" leaves behind. */
+export interface TapToPayTodoRow {
+  label: string;
+  sublabel: string;
+  route: string;
+}
+
+/** #4389 — the setup checklist as the to-do list needs it. */
+export interface BusinessTodoBrandSetup {
+  brandName: string;
+  doneCount: number;
+  complete: boolean;
+  waitingFor: string | null;
+  route: string;
+}
+
+/** Readiness keys the setup checklist replaces on Home (#4389). */
+const SETUP_REPLACED_PROFILE_KEYS = new Set(["address", "city_country"]);
 
 function venueLiveSublabel(
   status: Exclude<BrandPlacePipelineState["status"], "draft" | "deck_eligible">,
@@ -399,6 +431,16 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
   }
 
   const todos: BusinessTodo[] = [...leadingTodos];
+
+  // #4389 HT — Tap to Pay after "Not now" on its Home card: top of the list.
+  if (input.tapToPayTodo) {
+    todos.push({
+      id: "set_up_tap_to_pay",
+      label: input.tapToPayTodo.label,
+      sublabel: input.tapToPayTodo.sublabel,
+      action: { kind: "route", route: input.tapToPayTodo.route },
+    });
+  }
 
   // 2 — Venue. META-ORCH-1255: PER-VENUE rows when the caller passes the
   // venue arrays (the live hook always does). `add_venue` is GONE on this
@@ -575,8 +617,25 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
       readinessKey: item.key,
     };
   };
-  if (!moneyKnown || moneyHidden) {
+  const setup = input.brandSetup;
+  if (setup !== undefined && !setup.complete) {
+    // #4389 — one checklist-driven row replaces the bank/address literals.
+    todos.push({
+      id: "finish_brand_setup",
+      label: `Finish setting up ${setup.brandName}`,
+      sublabel:
+        setup.waitingFor !== null
+          ? `Waiting for ${setup.waitingFor}`
+          : `${Math.max(0, Math.min(4, setup.doneCount))} of 4 done`,
+      action:
+        setup.waitingFor !== null ? { kind: "info" } : { kind: "route", route: setup.route },
+    });
+  } else if (!moneyKnown || moneyHidden) {
     // No money row until the canonical answer exists; none for scanners.
+  } else if (setup !== undefined && !input.stripeActive) {
+    // #4389 — setup is complete but charges are not on yet (verification
+    // pending): no "Connect bank" literal; the payout rows below cover later
+    // asks once charging is on.
   } else if (!input.stripeActive) {
     todos.push(
       moneyRow(
@@ -700,6 +759,7 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     });
   } else if (readiness?.status === "ready" && !readiness.hideBrandRows) {
     for (const row of HOME_READINESS_ROWS) {
+      if (setup !== undefined && SETUP_REPLACED_PROFILE_KEYS.has(row.key)) continue;
       const item = readiness.items.find((candidate) => candidate.key === row.key);
       if (item === undefined || isReadinessDone(item.state)) continue;
       todos.push({

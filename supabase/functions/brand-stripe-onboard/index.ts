@@ -53,6 +53,14 @@ import {
 } from "../_shared/organiserContactEmail.ts";
 import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
 import { evaluateBusinessNativeVersion } from "../_shared/appVersionPolicy.ts";
+import {
+  beginErrorCode,
+  decideOnboardCountry,
+  deriveStripeSetupState,
+  deterministicCreateIdempotencyKey,
+  dueRequirementCodes,
+  stripeDueLabels,
+} from "../_shared/brandSetupStripe.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -108,8 +116,15 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 interface OnboardRequestBody {
   brand_id: string;
-  return_url: string;
-  country: string;
+  return_url?: string;
+  /**
+   * #4389 — informational only. The account country is read from
+   * `brands.payout_country`; a different body country is a 409. Old builds
+   * still send it, and a legacy brand with no stored country adopts it.
+   */
+  country?: string;
+  /** #4389 — `refresh_status` reads the account live from Stripe (F4, R-5). */
+  action?: "onboard" | "refresh_status";
   business_web_origin_override?: string;
 }
 
@@ -149,6 +164,8 @@ interface ExistingScaRow {
 
 interface BrandRow {
   name: unknown;
+  /** #4389 — the one money-country truth. */
+  payout_country?: unknown;
   contact_email: unknown;
   default_currency?: unknown;
   /**
@@ -260,6 +277,112 @@ async function deleteReplaceableStripeAccount(
 }
 
 /**
+ * #4389 — resolve the account country from `brands.payout_country`.
+ * Returns the country, or the error Response to send.
+ */
+async function resolveOnboardCountry(
+  supabase: any,
+  brandId: string,
+  storedValue: unknown,
+  bodyCountry: string | null,
+): Promise<string | Response> {
+  const storedRaw = typeof storedValue === "string" && storedValue.trim().length > 0
+    ? storedValue.trim().toUpperCase()
+    : null;
+  const decision = decideOnboardCountry(
+    storedRaw,
+    normalizeStripeCountry(storedRaw),
+    bodyCountry,
+  );
+  if (decision.kind === "mismatch") {
+    return jsonResponse(
+      { error: "country_mismatch", expected: decision.expected },
+      409,
+    );
+  }
+  if (decision.kind === "required") {
+    return jsonResponse(
+      { error: "validation_error", detail: "country_required" },
+      400,
+    );
+  }
+  if (decision.persist) {
+    // The derive trigger validates the country and refuses a locked change.
+    const { error } = await supabase
+      .from("brands")
+      .update({
+        payout_country: decision.country,
+        default_currency: defaultCurrencyForCountry(decision.country),
+        payment_provider: "stripe",
+        payment_country: null,
+      })
+      .eq("id", brandId)
+      .is("payout_country", null);
+    if (error) {
+      const locked = String(error.message ?? "").includes("payout_country_locked");
+      console.error("[brand-stripe-onboard] legacy country write failed:", error.message);
+      return jsonResponse(
+        { error: locked ? "payout_country_locked" : "internal_error" },
+        locked ? 409 : 500,
+      );
+    }
+  }
+  return decision.country;
+}
+
+/**
+ * #4389 R-5 / R-6 — F4 reads the account live (requirements included) and
+ * writes it back keyed on the account row, so the webhook and this read are
+ * both "the Stripe truth" and last-writer-safe.
+ */
+async function refreshStripeSetupStatus(
+  supabase: any,
+  brandId: string,
+): Promise<Response> {
+  const { data: sca, error } = await supabase
+    .from("stripe_connect_accounts")
+    .select("id, stripe_account_id")
+    .eq("brand_id", brandId)
+    .is("detached_at", null)
+    .maybeSingle();
+  if (error) {
+    console.error("[brand-stripe-onboard] refresh read failed:", error);
+    return jsonResponse({ error: "internal_error" }, 500);
+  }
+  if (!sca?.stripe_account_id) {
+    return jsonResponse({ state: "not_started", due: [] });
+  }
+  let account: StripeAccountState;
+  try {
+    account = await retrieveStripeAccountState(sca.stripe_account_id);
+  } catch (err) {
+    console.error(
+      "[brand-stripe-onboard] refresh retrieve failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return jsonResponse({ error: "stripe_unavailable" }, 502);
+  }
+  const { error: writeError } = await supabase
+    .from("stripe_connect_accounts")
+    .update({
+      charges_enabled: account.charges_enabled === true,
+      payouts_enabled: account.payouts_enabled === true,
+      requirements: account.requirements ?? {},
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", sca.id);
+  if (writeError) {
+    console.error("[brand-stripe-onboard] refresh write failed:", writeError);
+    return jsonResponse({ error: "internal_error" }, 500);
+  }
+  return jsonResponse({
+    state: deriveStripeSetupState(account),
+    due: stripeDueLabels(dueRequirementCodes(account)),
+    charges_enabled: account.charges_enabled === true,
+  });
+}
+
+/**
  * Exported so the #3258 regression suite can drive the REAL request path
  * end-to-end (a source-text pin cannot prove which origin reaches the
  * wire). `import.meta.main` keeps `serve()` off the import path — the same
@@ -312,20 +435,25 @@ export const handler = async (req: Request): Promise<Response> => {
     }
     const businessWebOrigin = businessWebOriginResult.origin;
 
-    if (!isValidReturnUrl(body?.return_url, businessWebOrigin)) {
+    const isRefresh = body?.action === "refresh_status";
+    if (!isRefresh && !isValidReturnUrl(body?.return_url, businessWebOrigin)) {
       return jsonResponse(
         { error: "validation_error", detail: "return_url_invalid_scheme" },
         400,
       );
     }
-    const country = normalizeStripeCountry(body?.country);
-    if (!country) {
+    // #4389 — the body country is only checked against the stored one.
+    const bodyCountry = body?.country === undefined || body?.country === null
+      ? null
+      : normalizeStripeCountry(body.country);
+    if (!isRefresh && body?.country != null && bodyCountry === null) {
       return jsonResponse(
         { error: "validation_error", detail: "country_unsupported" },
         400,
       );
     }
-    const { brand_id, return_url } = body;
+    const brand_id = body.brand_id;
+    const return_url = String(body.return_url ?? "");
 
     // Authenticate caller.
     const authHeader = req.headers.get("authorization") ?? "";
@@ -356,6 +484,11 @@ export const handler = async (req: Request): Promise<Response> => {
         { error: "forbidden", detail: "permission_denied" },
         403,
       );
+    }
+
+    // #4389 R-5 — F4 never waits on the webhook: read the account live.
+    if (isRefresh) {
+      return await refreshStripeSetupStatus(supabase, brand_id);
     }
 
     // #3645 PR11c — version-aware Organiser Terms (parity with Paystack edge /
@@ -403,7 +536,7 @@ export const handler = async (req: Request): Promise<Response> => {
     // Read brand details for replacement/fresh creation.
     const { data: brandRow, error: brandReadError } = await supabase
       .from("brands")
-      .select("name, contact_email, default_currency, slug")
+      .select("name, contact_email, default_currency, slug, payout_country")
       .eq("id", brand_id)
       .is("deleted_at", null)
       .maybeSingle<BrandRow>();
@@ -418,6 +551,34 @@ export const handler = async (req: Request): Promise<Response> => {
       return jsonResponse(
         { error: "validation_error", detail: "brand_not_found" },
         400,
+      );
+    }
+
+    // #4389 I-4389-COUNTRY-ONE-TRUTH — the account country comes from the
+    // brand row, never from the request body. Reading body.country here again
+    // is the bug this guards (two devices / a stale screen opening an account
+    // in the wrong country).
+    const resolvedCountry = await resolveOnboardCountry(
+      supabase,
+      brand_id,
+      brandRow.payout_country,
+      bodyCountry,
+    );
+    if (resolvedCountry instanceof Response) return resolvedCountry;
+    const country: string = resolvedCountry;
+
+    // #4389 R-2 — lock the row and stamp the setup window before any partner
+    // call, so the country cannot change while the account is being created.
+    const { error: beginError } = await supabase.rpc(
+      "issue_4389_begin_payments_setup_internal",
+      { p_brand_id: brand_id, p_user_id: userId },
+    );
+    if (beginError) {
+      const code = beginErrorCode(beginError.message);
+      console.error("[brand-stripe-onboard] begin setup refused:", code);
+      return jsonResponse(
+        { error: code },
+        code === "requires_owner" ? 403 : code === "internal_error" ? 500 : 409,
       );
     }
 
@@ -530,7 +691,12 @@ export const handler = async (req: Request): Promise<Response> => {
           productDescription: brandPublicPageUrl === null
             ? BRAND_STRIPE_FALLBACK_PRODUCT_DESCRIPTION
             : null,
-          idempotencyKey: generateIdempotencyKey(
+          // #4389 R-4 — a deterministic key seeded by brand + country (+ the
+          // replaced account): two devices tapping "Continue to secure
+          // setup" at once get the SAME Stripe account (Stripe replays the
+          // first response for 24h). The old epoch-suffixed key gave each
+          // request its own account.
+          idempotencyKey: deterministicCreateIdempotencyKey(
             brand_id,
             buildStripeOnboardCreateOperation(country, oldStripeAccountId),
           ),

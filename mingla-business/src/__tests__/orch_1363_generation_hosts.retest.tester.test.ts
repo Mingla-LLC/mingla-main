@@ -53,7 +53,7 @@ const hosts: HostContract[] = [
   },
   {
     name: "brand",
-    file: "mingla-business/src/components/brand/BrandCreationFlow.tsx",
+    file: "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
     fieldStart: "value={address}",
     fieldEnd: "placeholder={BRAND_CREATION_COPY.step2.addressPlaceholder}",
     generationRef: "addressRequestGenerationRef",
@@ -181,7 +181,7 @@ describe("Issue #1363 RETEST — every free-text host invalidates stale work", (
 
   test("brand Skip also invalidates an unresolved address request", () => {
     const source = compact(
-      sourceFor("mingla-business/src/components/brand/BrandCreationFlow.tsx"),
+      sourceFor("mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx"),
     );
     const skip = between(
       source,

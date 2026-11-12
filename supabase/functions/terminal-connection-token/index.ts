@@ -25,11 +25,17 @@ import {
 import {
   ensureBrandTerminalLocation,
   ensureTerminalLocation,
+  existingTerminalLocation,
   loadBrandTapContext,
   loadTapContext,
+  tapAddressRoute,
   tapContextStatus,
   terminalAddressFor,
 } from "../_shared/doorTerminal.ts";
+import {
+  identityAddressOf,
+  retrieveAccountIdentity,
+} from "../_shared/stripeAccountIdentity.ts";
 import { isUuid } from "../_shared/doorPay.ts";
 
 export interface TerminalConnectionTokenDeps {
@@ -38,13 +44,44 @@ export interface TerminalConnectionTokenDeps {
   userIdFromAuthHeader: (req: Request) => Promise<string | null>;
   // deno-lint-ignore no-explicit-any
   stripe: () => any;
+  /**
+   * #4389 — the connected account's own (Stripe-verified) address, or null.
+   * Never throws: a failed read falls through to the next address source.
+   */
+  accountAddress?: (stripeAccountId: string) => Promise<Record<string, unknown> | null>;
+}
+
+/** #4389 — GET /v2/core/accounts/{id}?include=identity, fail-soft. */
+export async function stripeAccountAddress(
+  stripeAccountId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const address = identityAddressOf(await retrieveAccountIdentity(stripeAccountId));
+    return address as Record<string, unknown> | null;
+  } catch (error) {
+    console.warn(
+      "[terminal-connection-token] account address read failed",
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
 }
 
 const defaultDeps: TerminalConnectionTokenDeps = {
   serviceClient,
   userIdFromAuthHeader,
   stripe: stripeTicketCheckout,
+  accountAddress: stripeAccountAddress,
 };
+
+/** #4389 S-i — never a dead end: name the screen that fixes it. */
+function addressMissing(brandId: string): Response {
+  return jsonResponse({
+    error: "tap_not_available",
+    reason: "address_missing",
+    route: tapAddressRoute(brandId),
+  }, 400);
+}
 
 export const createTerminalConnectionTokenHandler = (
   deps: TerminalConnectionTokenDeps = defaultDeps,
@@ -75,10 +112,14 @@ export const createTerminalConnectionTokenHandler = (
         return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
       }
       const brandStripe = deps.stripe();
-      const brandLocationId = await ensureBrandTerminalLocation(supabase, brandStripe, brandTap);
-      if (brandLocationId === null) {
-        return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
-      }
+      const readAccountAddress = deps.accountAddress ?? stripeAccountAddress;
+      const brandLocationId = await ensureBrandTerminalLocation(
+        supabase,
+        brandStripe,
+        brandTap,
+        () => readAccountAddress(brandTap.stripeAccountId),
+      );
+      if (brandLocationId === null) return addressMissing(brandTap.brandId);
       // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
       const brandToken = await brandStripe.terminal.connectionTokens.create(
         { location: brandLocationId },
@@ -100,16 +141,31 @@ export const createTerminalConnectionTokenHandler = (
     if (pricing === null || pricing.stripeAccountId === null) {
       return jsonResponse({ error: "stripe_account_not_ready" }, 400);
     }
+    const stripe = deps.stripe();
+    // #4389 — a stored Location needs no address (and no account read).
+    const stored = await existingTerminalLocation(
+      supabase,
+      tap.brandId,
+      tap.country,
+      pricing.stripeAccountId,
+    );
+    if (stored !== null) {
+      // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      const storedToken = await stripe.terminal.connectionTokens.create(
+        { location: stored },
+        { stripeAccount: pricing.stripeAccountId },
+      );
+      return jsonResponse({ secret: storedToken.secret, locationId: stored });
+    }
     const address = terminalAddressFor({
+      accountAddress: await (deps.accountAddress ?? stripeAccountAddress)(pricing.stripeAccountId),
+      tapLocationAddress: tap.tapLocationAddress,
       venueTaxAddress: pricing.venueTaxAddress,
       brandAddress: tap.brandAddress,
       brandCity: tap.brandCity,
       country: tap.country,
     });
-    if (address === null) {
-      return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
-    }
-    const stripe = deps.stripe();
+    if (address === null) return addressMissing(tap.brandId);
     const locationId = await ensureTerminalLocation(supabase, stripe, {
       brandId: tap.brandId,
       brandName: tap.brandName,
@@ -117,9 +173,7 @@ export const createTerminalConnectionTokenHandler = (
       country: tap.country,
       address,
     });
-    if (locationId === null) {
-      return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
-    }
+    if (locationId === null) return addressMissing(tap.brandId);
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
     const token = await stripe.terminal.connectionTokens.create(
       { location: locationId },

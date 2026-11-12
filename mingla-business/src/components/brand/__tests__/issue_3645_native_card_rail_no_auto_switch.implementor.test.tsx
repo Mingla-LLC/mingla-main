@@ -555,7 +555,18 @@ describe("#3645 native — the country row opens on the brand's choice, and a ho
     tree = await mount(
       brandOf({ countryCode: "DE", defaultCurrency: "EUR", payoutCountry: "IE" }),
     );
-    expect(pickerText(tree)).toBe("IE");
+    // #4389 — a saved bank country is a read-only summary, not the picker.
+    expect(count(tree, "country-picker")).toBe(0);
+    expect(textOf(only(tree, "onboard-country-summary"))).toContain("Ireland · EUR");
+  });
+
+  test("N3b: a host who asked to choose a different country still gets the picker over a saved one", async () => {
+    tree = await mount(
+      brandOf({ countryCode: "DE", defaultCurrency: "EUR", payoutCountry: "IE" }),
+      { countryChoiceRequested: true },
+    );
+    expect(count(tree, "onboard-country-summary")).toBe(0);
+    expect(count(tree, "country-picker")).toBe(1);
   });
 
   test("N4: a Nigerian address does NOT move a brand that already chose a country and currency", async () => {
@@ -605,9 +616,12 @@ describe("#3645 native — the country row opens on the brand's choice, and a ho
   test("N9: no host-facing sentence on the setup screen names the payment provider", async () => {
     tree = await mount(brandOf({ countryCode: undefined }));
     const text = allText(tree);
-    expect(text).toContain("Connect your bank to start getting paid");
+    // #4389 — the trimmed intro (one-line title, one-line body).
+    expect(text).toContain("Connect your bank");
     expect(text).toContain("our payment partner");
     expect(text).not.toMatch(/stripe|paystack/i);
+    expect(text).not.toMatch(/publish your offerings/i);
+    expect(text).not.toMatch(/\bbusiness\b/i);
   });
 
   test("N10: a brand that can sell but has no bank yet is asked to ADD ONE, not told it is all set", async () => {

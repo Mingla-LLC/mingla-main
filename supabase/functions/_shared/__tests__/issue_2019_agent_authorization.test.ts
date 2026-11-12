@@ -72,16 +72,17 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // #3355 P7: set_brand_payout_country (brand admin); 181→182.
   // #4238 wave 2: list_ad_audiences (Host Ads read); 182→183.
   // #4304: end_discount + resume_discount; 183→185.
+  // #4389: start_payments_onboarding + start_door_sale; 185→187.
   assert(
-    AGENT_TOOLS.length === 185,
-    `expected 185 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 187,
+    `expected 187 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 185,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 187,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 185,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 187,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -150,7 +151,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // #3355 P7: set_brand_payout_country; 181→182.
   // #4238 wave 2: list_ad_audiences; 182→183.
   // #4304: end_discount + resume_discount; 183→185.
-  assert(rows.length === 185, `expected 185 ledger rows, got ${rows.length}`);
+  // #4389: start_payments_onboarding + start_door_sale; 185→187.
+  assert(rows.length === 187, `expected 185 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

@@ -126,6 +126,7 @@ function boundaryFor(os: "web" | "ios"): Record<string, () => unknown> {
     }),
     tripLocationValidated: () => jest.requireActual("../tripLocationValidated"),
     CoverPickerSheet: () => ({ CoverPickerSheet: nothing }),
+    LazyCoverPickerSheet: () => ({ CoverPickerSheet: nothing }),
     EventCoverMedia: () => ({ EventCoverMedia: nothing }),
   };
 }

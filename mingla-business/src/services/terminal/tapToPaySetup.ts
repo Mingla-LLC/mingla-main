@@ -13,7 +13,7 @@
  * Nothing here charges anyone. Each failure says what to do next.
  */
 import { DoorTapError } from "./doorTapEdge";
-import { tapReaderProblemCopy, tapToPayName } from "../../constants/tapToPayCopy";
+import { TAP_ADDRESS_MISSING_COPY, tapReaderProblemCopy, tapToPayName } from "../../constants/tapToPayCopy";
 import { classifyTerminalError, isTapReaderProblem, type TerminalErrorLike } from "./tapToPayFlow";
 
 export interface TapToPaySetupDeps {
@@ -34,9 +34,16 @@ export type TapToPaySetupResult =
   | { kind: "not_available" }
   | { kind: "failed"; message: string };
 
-/** Stripe needs the full address for the brand's Tap to Pay Location (#4271). */
-export const TAP_ADDRESS_MISSING_COPY =
-  "Add your brand's full address (street, city, state and ZIP) in brand settings, then run setup again.";
+/**
+ * Tap to Pay needs an address for the brand's card-payment location (#4271).
+ * #4389 S-i: the payment account's verified address is used first; only when
+ * it has none does setup ask, once, on the T1 screen (never a dead end).
+ */
+export { TAP_ADDRESS_MISSING_COPY } from "../../constants/tapToPayCopy";
+
+/** #4389 T1 — the one screen that takes the card-payment address. */
+export const tapAddressRoute = (brandId: string): string =>
+  `/brand/${encodeURIComponent(brandId)}/tap-to-pay/address`;
 
 const locationFailure = (error: unknown): TapToPaySetupResult => {
   if (error instanceof DoorTapError) {

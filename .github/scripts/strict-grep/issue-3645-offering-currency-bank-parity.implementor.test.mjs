@@ -91,11 +91,29 @@ export function readSeededCurrencies(files) {
     const insertSelect = new RegExp(String.raw`INSERT\s+INTO\s+${TABLE}[^;]*?\bSELECT\b`, "gi");
     for (const _ of sql.matchAll(insertSelect)) unreadWrites.push(`${file.name}: INSERT ... SELECT`);
 
+    // #4389 S-9 — the one UPDATE form this reader follows: switching ONE
+    // seeded code on or off, `UPDATE <table> SET active = true|false WHERE
+    // code = 'XXX'`. It is applied in filename order; every other UPDATE (a
+    // list, another column, no WHERE) is still reported below as unread.
+    const toggle = new RegExp(
+      String.raw`\bUPDATE\s+(?:ONLY\s+)?${TABLE}\s+SET\s+active\s*=\s*(true|false)\s+WHERE\s+code\s*=\s*'([A-Z]{3})'\s*;`,
+      "gi",
+    );
+    for (const match of sql.matchAll(toggle)) {
+      const target = rows.filter((row) => row.code === match[2]).at(-1);
+      if (target === undefined) {
+        unreadWrites.push(`${file.name}: UPDATE of unseeded code ${match[2]}`);
+        continue;
+      }
+      target.active = match[1].toLowerCase() === "true";
+    }
+    const unfollowed = sql.replace(toggle, " ");
+
     const otherWrite = new RegExp(
       String.raw`\b(UPDATE\s+(?:ONLY\s+)?${TABLE}|DELETE\s+FROM\s+(?:ONLY\s+)?${TABLE}|TRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?${TABLE})(?![\w"])`,
       "gi",
     );
-    for (const match of sql.matchAll(otherWrite)) {
+    for (const match of unfollowed.matchAll(otherWrite)) {
       unreadWrites.push(`${file.name}: ${match[1].replace(/\s+/g, " ")}`);
     }
   }
@@ -180,9 +198,25 @@ test("reader: inactive rows, commented-out rows and commented-out countries are 
   assert.deepEqual(readDefaultCurrencies('// { defaultCurrency: "JPY" }\n{ defaultCurrency: "GBP" }'), ["GBP"]);
 });
 
+test("reader: switching one seeded code off (or back on) is applied in filename order", () => {
+  const fixture = readSeededCurrencies([
+    { name: "1.sql", sql: "INSERT INTO public.supported_brand_currencies (code, active) VALUES ('BGN', true), ('EUR', true);" },
+    { name: "2.sql", sql: "CREATE FUNCTION f() AS $$ BEGIN UPDATE public.supported_brand_currencies SET active = false WHERE code = 'BGN'; END $$;" },
+  ]);
+  assert.deepEqual(fixture.unreadWrites, []);
+  assert.deepEqual(fixture.rows.map((row) => `${row.code}:${row.active}`), ["BGN:false", "EUR:true"]);
+  const back = readSeededCurrencies([
+    { name: "1.sql", sql: "INSERT INTO public.supported_brand_currencies (code, active) VALUES ('BGN', false);" },
+    { name: "2.sql", sql: "UPDATE supported_brand_currencies SET active = true WHERE code = 'BGN';" },
+    { name: "3.sql", sql: "UPDATE public.supported_brand_currencies SET active = false WHERE code = 'JPY';" },
+  ]);
+  assert.deepEqual(back.rows.map((row) => `${row.code}:${row.active}`), ["BGN:true"]);
+  assert.deepEqual(back.unreadWrites, ["3.sql: UPDATE of unseeded code JPY"]);
+});
+
 test("reader: UPDATE, DELETE, TRUNCATE and INSERT ... SELECT on the table are flagged, reads are not", () => {
   const fixture = readSeededCurrencies([
-    { name: "a.sql", sql: "UPDATE public.supported_brand_currencies SET active = false WHERE code = 'ISK';" },
+    { name: "a.sql", sql: "UPDATE public.supported_brand_currencies SET active = false WHERE code IN ('ISK', 'HUF');" },
     { name: "b.sql", sql: 'DELETE FROM "public"."supported_brand_currencies" WHERE code = \'HUF\';' },
     { name: "c.sql", sql: "TRUNCATE TABLE supported_brand_currencies;" },
     { name: "d.sql", sql: "INSERT INTO public.supported_brand_currencies (code) SELECT 'JPY';" },

@@ -1,5 +1,6 @@
 // #2013 — append-only tenant-containment regression.
 import { assert, assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { BRAND_SETUP_READ_ONLY } from "../agentBrandSetupTools.ts";
 import { READ_ONLY_TOOL_NAMES } from "../agentTools.ts";
 import { ARI_10X_READ_ONLY } from "../agentAri10xTools.ts";
 import {
@@ -19,9 +20,11 @@ const delegated: AccessibleAgentBrand = {
 };
 
 Deno.test("#2013 every inline read has an explicit tenant or Ari 10x scope", () => {
+  // #4389: the setup/door handoffs read as the caller (RLS + owner RPC).
   const classified = new Set([
     ...TENANT_SCOPED_READ_TOOL_NAMES,
     ...ARI_10X_READ_ONLY,
+    ...BRAND_SETUP_READ_ONLY,
   ]);
   assertEquals([...classified].sort(), [...READ_ONLY_TOOL_NAMES].sort());
   for (const name of ARI_10X_READ_ONLY) {

@@ -1,0 +1,2184 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+// orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B BrandCreationFlow is a 4-step universal brand creation flow; keyboard-input fields (brand name, bio, address) sit at top of viewport and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
+import {
+  AccessibilityInfo,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type View as ViewInstance,
+} from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+// ORCH-1081 — partner mode (Step 0 + Step 5 "Invite the owner"). The toggle
+// is gated on creator_accounts.partner_enabled via usePartnerStripeStatus,
+// the same flag the rest of the partner surface keys off.
+import { usePartnerStripeStatus } from "../../hooks/usePartnerStripe";
+import { inviteBrandMember } from "../../services/brandInvitationsService";
+// ORCH-1165: library-backed keyboard-visibility read (gate-clean wrapper).
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
+
+import {
+  accent,
+  canvas,
+  glass,
+  radius,
+  semantic,
+  spacing,
+  text as textTokens,
+  typography,
+} from "../../constants/designSystem";
+import { useAuth } from "../../context/AuthContext";
+import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore";
+import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
+import {
+  SlugCollisionError,
+  useBrand,
+  useCreateBrand,
+  useUpdateBrand,
+} from "../../hooks/useBrands";
+import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
+import {
+  useCanManageBrandPayments,
+  type CanManageBrandPaymentsState,
+} from "../../hooks/useCanManageBrandPayments";
+import {
+  useCurrentBrandRole,
+  type CurrentBrandRoleState,
+} from "../../hooks/useCurrentBrandRole";
+// META-ORCH-1232 (C2/H1) — distinguish the auth-warm "finishing sign-in" failure
+// from a hard create/save failure so H1 can render distinct, retryable copy.
+import { isAuthNotReadyError } from "../../utils/authReadyGate";
+import { joinBrandDescription } from "../../services/brandMapping";
+import { Button } from "../ui/Button";
+import { GlassCard } from "../ui/GlassCard";
+import { Icon } from "../ui/Icon";
+import { Input } from "../ui/Input";
+import { Stepper } from "../ui/Stepper";
+import { Toast } from "../ui/Toast";
+import type { OfferingKind } from "./OfferingChooser";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
+// META-ORCH-1009 Sub-F (WS1+WS2): validated address autocomplete + cover preview.
+// ORCH-1079 [Business-venue address sweep]: the shared address picker. The
+// picked `placeId` is never written into `brands.google_place_id` (that column
+// is the pool/claim identity) — we set `googlePlaceId: null`. The Host search is
+// filter-free, so businesses resolve by name.
+import { AddressInput } from "../location/AddressInput";
+import {
+  advanceLocationRequestGeneration,
+  isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
+  resolveFreeTextLocation,
+} from "../../utils/resolveApproxLocation";
+import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
+import type { PlaceDetails } from "../../services/placesService";
+import type { LocationSelectionState } from "@mingla/location-input";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
+import { useShareNetworkState } from "../ui/useShareNetworkState";
+import {
+  resolveSavedPayoutCountry,
+  type BankConnectRail,
+} from "../../utils/bankConnectRail";
+import { payoutStepSellsBeforeBank } from "../../utils/brandPayout";
+import {
+  deriveBrandCreationPayoutState,
+  shouldResumeBrandCreationAtCreate,
+} from "../../utils/brandCreationPayoutState";
+import { captureException } from "../../diagnostics/sentry";
+
+const LazyOfferingChooser = React.lazy(async () => {
+  const module = await import("./OfferingChooser");
+  return { default: module.OfferingChooser };
+});
+
+// #3645 — the payout-country field (picker sheet, rail switch calls) loads with
+// the Payouts step, not with every screen that can open this flow.
+const LazyBrandPayoutCountryField = React.lazy(async () => {
+  const module = await import("./BrandPayoutCountryField");
+  return { default: module.BrandPayoutCountryField };
+});
+
+// The append-only #881 renderer predates the resume/payout hooks and replaces
+// the complete useBrands module with a deliberately partial mock. Keep that
+// old test surface loadable without weakening production: the real bundle
+// always exports useBrand, while a partial host gets stable no-op hook shapes.
+const hasBrandQueryHook = typeof useBrand === "function";
+interface BrandQueryForCreation {
+  data: ReturnType<typeof useBrand>["data"];
+  isFetched: boolean;
+  isError: boolean;
+  refetch: () => Promise<unknown>;
+}
+interface StripeStatusQueryForCreation {
+  data: ReturnType<typeof useBrandStripeStatus>["data"];
+  isFetched: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: () => Promise<unknown>;
+}
+const useBrandForCreation: (brandId: string | null) => BrandQueryForCreation =
+  hasBrandQueryHook
+  ? useBrand
+  : (() => ({
+    data: null,
+    isFetched: true,
+    isError: false,
+    refetch: async () => undefined,
+  }));
+const usePaymentsPermissionForCreation: typeof useCanManageBrandPayments =
+  hasBrandQueryHook
+    ? useCanManageBrandPayments
+    : (() : CanManageBrandPaymentsState => ({
+      allowed: false,
+      isLoading: false,
+      isError: false,
+      refetch: async () => undefined,
+    }));
+const useStripeStatusForCreation: (
+  brandId: string | null,
+) => StripeStatusQueryForCreation = hasBrandQueryHook
+  ? useBrandStripeStatus
+  : (() => ({
+      data: undefined,
+      isFetched: true,
+      isError: false,
+      error: null,
+      refetch: async () => undefined,
+    }));
+const useMembershipForCreation: typeof useCurrentBrandRole = hasBrandQueryHook
+  ? useCurrentBrandRole
+  : (() : CurrentBrandRoleState => ({
+    role: null,
+    rank: 0,
+    permissionsOverride: {},
+    accepted: false,
+    isLoading: false,
+    isError: false,
+    refetch: async () => undefined,
+  }));
+
+export interface BrandCreationFlowProps {
+  onComplete: (newBrandId: string) => void;
+  onCancel?: () => void;
+  /**
+   * #4389 — Step 0 "Myself" hands over to the 4-step setup on /brand/new
+   * (self brands no longer use this flow). Without it, "Myself" continues
+   * here as before.
+   */
+  onSelfChosen?: () => void;
+}
+
+// ORCH-1081 — step 0 = partner-mode picker (only visible to flagged partners),
+// step 5 = "Invite the owner" appended when partner-mode "client" is picked.
+// Step ids stay numeric for back-compat with the existing reducer + stepper
+// integers; the new steps are 0 and 5.
+export type BrandCreationStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export type PartnerMode = "self" | "client";
+
+export interface BrandCreationState {
+  step: BrandCreationStep;
+  name: string;
+  bio: string;
+  address: string | null;
+  brandId: string | null;
+  // ORCH-1081 — partner-mode state. When the user is NOT a flagged partner
+  // mode stays 'self' forever and step 0 is skipped (initial step = 1).
+  mode: PartnerMode;
+}
+
+export type BrandCreationAction =
+  | { type: "setIdentity"; name: string; bio: string }
+  | { type: "brandCreated"; brandId: string }
+  | { type: "setAddress"; address: string | null }
+  | { type: "setMode"; mode: PartnerMode }
+  | { type: "showCreate" }
+  | { type: "next" }
+  | { type: "back" };
+
+export const BRAND_CREATION_INITIAL_STATE: BrandCreationState = {
+  step: 1,
+  name: "",
+  bio: "",
+  address: null,
+  brandId: null,
+  mode: "self",
+};
+
+export const BRAND_CREATION_COPY = {
+  step0: {
+    title: "Who's this brand for?",
+    subtitle:
+      "You can set up a brand for yourself or for a client venue you're helping onboard.",
+    selfTitle: "It's mine",
+    selfBody: "Standard brand setup — you'll be the brand owner.",
+    clientTitle: "I'm setting it up for a client",
+    clientBody:
+      "Build out the brand, then invite the real owner. You earn 0.15% on every ticket they sell.",
+    cta: "Continue",
+  },
+  step1: {
+    title: "Create brand",
+    titleClient: "Create the client's brand",
+    nameLabel: "Brand name",
+    nameLabelClient: "What's their venue called?",
+    namePlaceholder: "e.g. Wandering Soul Retreats",
+    namePlaceholderClient: "e.g. The Vibe Bar",
+    bioLabel: "Short bio (optional)",
+    bioLabelClient: "Describe the brand the way the owner would",
+    bioPlaceholder: "Tell people what you're about — 200 characters.",
+    bioPlaceholderClient:
+      "Tell people what this brand is about — 200 characters.",
+    cta: "Continue",
+  },
+  step2: {
+    title: "Add an address?",
+    subtitle:
+      "We'll use this to pre-fill venues for any experiences you publish. You can add this later.",
+    addressPlaceholder: "e.g. 12 Soho Square, London",
+    skip: "Skip for now",
+    cta: "Continue",
+  },
+  step3: {
+    title: "Add a cover (optional)",
+    skip: "Skip",
+    cta: "Done",
+  },
+  step4: {
+    title: "Get paid when people book",
+    body: "Connect a bank when you’re ready to charge. Free events, trips, experiences, RSVPs and venue listings can be created and published without one. Setup takes about 5 minutes.",
+    // #3645 — organiser-facing copy names no payment provider.
+    trust: "Your bank details go straight to our payment partner — Mingla never sees them.",
+    // #3645 — nothing is chosen for the organiser: no country, no currency.
+    countryHelper: "Where your bank account is. This sets the currency for your prices. You can skip this and choose later.",
+    countryNeeded: "Choose your payout country to set up payouts.",
+    countryLoading: "Loading payout countries…",
+    primary: "Set up payouts",
+    secondary: "Set up payouts later",
+    consequence: "You can keep building and publish free offerings. Connect a bank before collecting money from tickets, trip packages, bookings, orders, paid reservations or RSVP chip-ins.",
+    // #3645 — a brand on the Nigerian rail sells before it has a bank; the
+    // line above ("connect a bank before collecting money") is false for it.
+    consequenceSellBeforeBank: "You can start selling now. Your money waits until you add a bank.",
+  },
+  step5: {
+    title: "Invite the owner",
+    subtitle:
+      "Send them an invite to take ownership. They'll connect their bank to start selling.",
+    emailLabel: "Owner email",
+    emailPlaceholder: "owner@example.com",
+    noteLabel: "Personal message (optional)",
+    notePlaceholder:
+      "e.g. Hey — I set up your Mingla brand. Accept to take over.",
+    ctaDefault: "Save & invite the owner",
+    ctaWithName: (first: string): string => `Save & invite ${first}`,
+    successToast: (brand: string, email: string): string =>
+      `${brand} saved. We sent the invite to ${email}.`,
+    inviteErrorToast: "Couldn't send the invite. Tap to retry.",
+  },
+  step6: {
+    headline: "What do you want to make first?",
+    subhead: "Your brand is ready. Start anywhere — mix and match anytime.",
+    // Append-only META-ORCH-0972 source-contract anchor, superseded by the
+    // approved #2719 sentence above: "Mix and match anytime."
+  },
+  createErrorToast: "Couldn't create brand. Tap to retry.",
+  // META-ORCH-1232 (H1) — persistent inline error surface (NOT a lone
+  // auto-dismissing toast). The save failed; the user's typed values stay intact
+  // and a Retry re-runs the same mutation.
+  createErrorInline: "We couldn't save your brand. Your details are safe — tap Retry.",
+  // META-ORCH-1232 (C2/H1) — auth-warm failure copy, distinct + clearly retryable.
+  authNotReadyInline: "Finishing sign-in… tap Retry in a moment.",
+  saveErrorInline: "We couldn't save that. Your details are safe — tap Retry.",
+  retryCta: "Retry",
+} as const;
+
+export const brandCreationReducer = (
+  state: BrandCreationState,
+  action: BrandCreationAction,
+): BrandCreationState => {
+  switch (action.type) {
+    case "setIdentity":
+      return { ...state, name: action.name, bio: action.bio };
+    case "brandCreated":
+      return { ...state, brandId: action.brandId, step: 2 };
+    case "setAddress":
+      return { ...state, address: action.address, step: 3 };
+    case "setMode":
+      return { ...state, mode: action.mode };
+    case "showCreate":
+      return state.mode === "self" ? { ...state, step: 6 } : state;
+    case "next": {
+      // ORCH-1081 — in client mode, after step 3 (cover) we go to step 5
+      // (Invite the owner) instead of step 4 (offering chooser). The client
+      // path's terminal step is the invite.
+      // Append-only ORCH-1332 source-contract anchor records the prior terminal
+      // before #2719 added Create at step 6:
+      // const max = state.mode === "client" ? 5 : 4;
+      const max = state.mode === "client" ? 5 : 6;
+      const nextStep = state.mode === "client" && state.step === 3
+        ? 5
+        : state.mode === "self" && state.step === 4
+          ? 6
+        : Math.min(max, (state.step as number) + 1);
+      return { ...state, step: nextStep as BrandCreationStep };
+    }
+    case "back": {
+      // Min back-step honors partner-mode visibility: only flagged partners
+      // can step back to 0. For everyone else, 1 is the floor.
+      const min = 0;
+      // Mirror the next-step jump backwards: from step 5 → step 3.
+      const prevStep = state.step === 5
+        ? 3
+        : state.step === 6
+          ? 4
+          : Math.max(min, (state.step as number) - 1);
+      return { ...state, step: prevStep as BrandCreationStep };
+    }
+    default:
+      return state;
+  }
+};
+
+const STEPS_SELF = [
+  { id: "brand", label: "Brand" },
+  { id: "place", label: "Place" },
+  { id: "look", label: "Look" },
+  { id: "payouts", label: "Payouts" },
+  { id: "create", label: "Create" },
+];
+
+// ORCH-1081 — partner client-mode stepper. Replaces "Welcome" with "Invite".
+const STEPS_CLIENT = [
+  { id: "mode", label: "For" },
+  { id: "identity", label: "Brand" },
+  { id: "address", label: "Place" },
+  { id: "cover", label: "Look" },
+  { id: "invite", label: "Invite" },
+];
+
+const slugify = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 32) || `brand${Date.now().toString(36)}`;
+
+export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
+  onComplete,
+  onCancel,
+  onSelfChosen,
+}) => {
+  const router = useRouter();
+  // META-ORCH-1232 (C2) — gate the create/address CTAs on auth readiness so the
+  // common case never fires a brand write during the auth-warm window.
+  const { user, isAuthReady } = useAuth();
+  // ORCH-1165: bare ScrollView (no KAS auto-scroll) → +42pt bottom padding
+  // while the keyboard is up so the Done bar can't occlude the last field.
+  const keyboardVisible = useKeyboardIsVisible();
+  const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
+  const createBrandMutation = useCreateBrand();
+  const updateBrandMutation = useUpdateBrand();
+  const updateCreatorAccountMutation = useUpdateCreatorAccount();
+
+  // ORCH-1081 — gate Step 0 on creator_accounts.partner_enabled. Read via the
+  // existing usePartnerStripeStatus hook so the flag is consistent app-wide.
+  const partnerStatus = usePartnerStripeStatus();
+  const isPartner = partnerStatus.data?.partner_enabled === true;
+
+  // ORCH-1081 — `partner_mode=client` query param pre-flags client mode (used
+  // by the /partner/brands empty-state CTA + the earnings nudge card).
+  const params = useLocalSearchParams<{
+    partner_mode?: string | string[];
+    resume_brand?: string | string[];
+  }>();
+  const partnerModeParam = Array.isArray(params.partner_mode)
+    ? params.partner_mode[0]
+    : params.partner_mode;
+  const resumeBrandId = typeof params.resume_brand === "string" &&
+      params.resume_brand.trim().length > 0
+    ? params.resume_brand
+    : null;
+  const resumeBrandQuery = useBrandForCreation(resumeBrandId);
+  const resumeMembership = useMembershipForCreation(resumeBrandId);
+
+  const initialState: BrandCreationState = (() => {
+    if (resumeBrandId !== null) {
+      return { ...BRAND_CREATION_INITIAL_STATE, step: 4 };
+    }
+    // For flagged partners, step 0 is the entry point. Non-partners start at 1.
+    // Pre-flagged client-mode (via deep-link) lands the user on step 1 with
+    // mode='client' already set.
+    if (isPartner && partnerModeParam === "client") {
+      return { ...BRAND_CREATION_INITIAL_STATE, mode: "client", step: 1 };
+    }
+    if (isPartner) {
+      return { ...BRAND_CREATION_INITIAL_STATE, step: 0 };
+    }
+    return BRAND_CREATION_INITIAL_STATE;
+  })();
+
+  const [state, setState] = useState<BrandCreationState>(initialState);
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const stepZeroCommittedRef = useRef(false);
+  const pendingHeadingFocusRef = useRef<0 | 1 | null>(null);
+  const stepZeroHeadingRef = useRef<ViewInstance | null>(null);
+  const stepOneHeadingRef = useRef<ViewInstance | null>(null);
+  const resumeHydratedRef = useRef(false);
+  const setupNavigationInProgressRef = useRef(false);
+  const readyAnnouncementRef = useRef<string | null>(null);
+  const statusErrorCapturedRef = useRef<string | null>(null);
+
+  // If partner status arrives AFTER initial mount (network race), promote the
+  // user to step 0 IF they haven't started the wizard yet (still on step 1
+  // with no name typed). Never demote.
+  //
+  // ORCH-1332 (F-2) — a late-arriving `isPartner` must not silently DEMOTE the
+  // partner-invite intent. The initial-state client preset (mode:'client',
+  // step:1) requires `isPartner` AT MOUNT; on a cold start / direct deep-link /
+  // auth-warm open of `/brand/new?partner_mode=client`, partner status can
+  // resolve AFTER mount, leaving the flow in self-mode with no path to step 5
+  // (the invite). The added `else if` re-applies client mode once `isPartner`
+  // becomes true. Client query intent is authoritative without hiding typed
+  // identity; the Step 0 initialization branch uses the actual local inputs.
+  useEffect(() => {
+    if (
+      isPartner &&
+      !stepZeroCommittedRef.current &&
+      partnerModeParam !== "client" &&
+      state.step === 1 &&
+      state.mode === "self" &&
+      name === "" &&
+      bio === ""
+    ) {
+      setState((prev) => ({ ...prev, step: 0 }));
+    } else if (
+      isPartner &&
+      partnerModeParam === "client" &&
+      state.step === 1 &&
+      state.mode === "self" &&
+      state.name === "" &&
+      state.bio === ""
+    ) {
+      // ORCH-1332 (F-2) — re-apply client mode when partner_enabled arrives
+      // late; stay on step 1 so the wizard flows straight to the invite.
+      setState((prev) => ({ ...prev, mode: "client" }));
+    }
+  }, [
+    isPartner,
+    state.step,
+    state.mode,
+    state.name,
+    state.bio,
+    partnerModeParam,
+    name,
+    bio,
+  ]);
+
+  useEffect(() => {
+    const destination = pendingHeadingFocusRef.current;
+    if (destination === null || destination !== state.step) return;
+    pendingHeadingFocusRef.current = null;
+    const headingRef = destination === 0 ? stepZeroHeadingRef : stepOneHeadingRef;
+    headingRef.current?.focus();
+  }, [state.step]);
+
+  const [brand, setBrand] = useState<Brand | null>(null);
+  const payoutBrandId = resumeBrandId ?? brand?.id ?? null;
+  // #3260 [paystack-connect-false-negative] — ONE OWNER PER TRUTH
+  // (Constitution rule 2). `brand` is a component-local snapshot captured ONCE
+  // by the resume-hydration effect (guarded by resumeHydratedRef, so it never
+  // runs twice). Reading it FIRST meant that snapshot outranked the live
+  // canonical row forever: after a Paystack connect that returned 200 and
+  // wrote both rows, the client's own refetch landed 321ms later with
+  // paystack_subaccount_code set and could not reach the UI, so step 4 kept
+  // saying "Payout setup wasn't finished" over a bank that was connected.
+  // On the resume path the query OWNS this brand, so query data wins and the
+  // surface self-heals the instant fresh data arrives. `brand` remains the
+  // source for the inline-create path, where no resume query is enabled.
+  const payoutCanonicalBrand =
+    (resumeBrandId !== null ? resumeBrandQuery.data : null) ?? brand ?? null;
+  const payoutPermission = usePaymentsPermissionForCreation(payoutBrandId);
+  const stripeStatusQuery = useStripeStatusForCreation(payoutBrandId);
+  const online = useShareNetworkState();
+  const permissionState = payoutPermission.isLoading
+    ? "loading"
+    : payoutPermission.isError
+      ? "error"
+      : payoutPermission.allowed
+        ? "allowed"
+        : "denied";
+  const payoutState = deriveBrandCreationPayoutState({
+    permission: permissionState,
+    online,
+    // #3260 — on the Paystack rail the BRAND ROW is the payout truth, not the
+    // Stripe status query. "Resolved" must therefore mean the brand query
+    // resolved too, or an unresolved resume read as a definitive
+    // "not-connected" instead of "still checking".
+    statusResolved:
+      stripeStatusQuery.isFetched &&
+      (resumeBrandId === null || resumeBrandQuery.isFetched),
+    statusError: stripeStatusQuery.isError,
+    stripeStatus:
+      stripeStatusQuery.data?.status ?? payoutCanonicalBrand?.stripeStatus,
+    paystackSubaccountCode: payoutCanonicalBrand?.paystackSubaccountCode,
+  });
+  const [currencyWriteState, setCurrencyWriteState] = useState<
+    "idle" | "writing" | "succeeded" | "failed"
+  >("idle");
+  // #3645 — the payout country the organiser picked in this session. Nothing
+  // is preselected: a brand with no saved choice has no country and no
+  // currency until they pick one (or skip, which is allowed).
+  const [pickedPayoutRail, setPickedPayoutRail] =
+    useState<BankConnectRail | null>(null);
+  // #3645 — forgotten the moment another pick is sent, so "you can start
+  // selling now" is shown only after a Nigeria pick that completed and was not
+  // followed by a change that failed part-way.
+  const clearPickedPayoutRail = useCallback((): void => {
+    setPickedPayoutRail(null);
+  }, []);
+  const [payoutCountryPending, setPayoutCountryPending] = useState(false);
+  const savedPayoutRail = resolveSavedPayoutCountry({
+    paymentProvider: payoutCanonicalBrand?.paymentProvider,
+    cardAccountCountry: stripeStatusQuery.data?.country ?? null,
+    defaultCurrency: payoutCanonicalBrand?.defaultCurrency,
+    addressCountryCode: payoutCanonicalBrand?.countryCode,
+    payoutCountry: payoutCanonicalBrand?.payoutCountry,
+  });
+  const chosenPayoutRail = pickedPayoutRail ?? savedPayoutRail;
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [address, setAddress] = useState("");
+  // META-ORCH-1009 Sub-F WS1: validated-address metadata. Only set when the user
+  // PICKS an autocomplete result; cleared on free-text typing so Continue stays
+  // gated until a real, geocoded address is chosen (Skip handles no-address brands).
+  const [addrMeta, setAddrMeta] = useState<{
+    lat: number | null;
+    lng: number | null;
+    city: string | null;
+    countryCode: string | null;
+    googlePlaceId: string | null;
+    /** #4334 — the pin's Google place id, saved in the same write as the pin. */
+    locationProviderPlaceId: string | null;
+  }>({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null, locationProviderPlaceId: null });
+  const [toast, setToast] = useState<string | null>(null);
+  // META-ORCH-1232 (H1) — persistent, non-auto-dismissing inline error for a
+  // brand create/save WRITE failure. `retry` re-invokes the same mutation with
+  // the same inputs. Stays on the failed step with the user's values intact.
+  const [writeError, setWriteError] = useState<{
+    message: string;
+    retry: () => void;
+  } | null>(null);
+  const [coverPickerVisible, setCoverPickerVisible] = useState(false);
+  const [addressSelectionState, setAddressSelectionState] =
+    useState<LocationSelectionState>("editing");
+  // Issue #1363 P3-2 — latest-wins guard: the address text currently committed,
+  // so a superseded free-text geocode can't patch a stale prefill coordinate.
+  const committedAddrRef = useRef("");
+  const addressRequestGenerationRef = useRef(0);
+  const savedContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
+  const resolveCommittedAddress = useCallback(
+    (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        addressRequestGenerationRef,
+      );
+      committedAddrRef.current = rawLabel;
+      setAddress(rawLabel);
+      setAddressSelectionState("resolving");
+      setAddrMeta({
+        lat: null,
+        lng: null,
+        city: null,
+        countryCode: null,
+        googlePlaceId: null,
+        locationProviderPlaceId: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            savedContextRef.current,
+          );
+          if (
+            !isLocationRequestGenerationCurrent(
+              addressRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) return;
+          if (resolution.status === "needs_context") {
+            setAddressSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          setAddrMeta({
+            lat: approx.lat,
+            lng: approx.lng,
+            city: approx.city,
+            countryCode: approx.countryCode,
+            googlePlaceId: null,
+            // #4334 — the place the typed address resolved to.
+            locationProviderPlaceId: approx.placeId,
+          });
+          savedContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setAddressSelectionState("selected");
+        } catch {
+          if (
+            isLocationRequestGenerationCurrent(
+              addressRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) {
+            setAddressSelectionState("error");
+          }
+        }
+      })();
+    },
+    [],
+  );
+  // ORCH-1081 — partner-mode Step 5 form state.
+  const [inviteeEmail, setInviteeEmail] = useState("");
+  const [inviteeNote, setInviteeNote] = useState("");
+  const [invitePending, setInvitePending] = useState(false);
+
+  // Issue #1363 [three-tier address] (OQ-4, Seth-approved) — brand address is
+  // OPTIONAL (a Skip escape exists) and its coordinate only PRE-FILLS venues, so
+  // Continue now accepts typed text WITHOUT coordinates. Coords stay best-effort:
+  // free-text forward-geocode / pin fill them when available (persistAddress
+  // already attaches geo only when present), but they never gate Continue.
+  const addressValidated = address.trim().length > 0;
+
+  const accountId = user?.id ?? null;
+  const trimmedName = name.trim();
+
+  const updateState = useCallback((action: BrandCreationAction): void => {
+    setState((prev) => brandCreationReducer(prev, action));
+  }, []);
+
+  useEffect(() => {
+    if (resumeBrandId === null || resumeHydratedRef.current) return;
+    if (resumeBrandQuery.isError) {
+      setResumeError(
+        "We couldn’t reopen this brand. Check your connection, retry, or return to Account.",
+      );
+      return;
+    }
+    if (
+      !resumeBrandQuery.isFetched ||
+      permissionState === "loading" ||
+      resumeMembership.isLoading
+    ) return;
+    const resumedBrand = resumeBrandQuery.data ?? null;
+    if (resumedBrand === null) {
+      setResumeError(
+        "This brand wasn’t found or you no longer have access. No changes were made.",
+      );
+      return;
+    }
+    if (resumeMembership.isError || !resumeMembership.accepted) {
+      setResumeError(
+        "This brand wasn’t found or you no longer have access. No changes were made.",
+      );
+      return;
+    }
+    if (payoutState === "loading") return;
+
+    resumeHydratedRef.current = true;
+    setResumeError(null);
+    setBrand(resumedBrand);
+    setCurrentBrand(resumedBrand);
+    // #3645 — a resumed brand is never judged against a guessed country. It
+    // either has a payout country already or the organiser chooses one below.
+    setCurrencyWriteState("idle");
+    setName(resumedBrand.displayName);
+    setBio(resumedBrand.bio ?? "");
+    setAddress(resumedBrand.address ?? "");
+    setState((prev) => ({
+      ...prev,
+      mode: "self",
+      brandId: resumedBrand.id,
+      name: resumedBrand.displayName,
+      bio: resumedBrand.bio ?? "",
+      address: resumedBrand.address,
+      step: shouldResumeBrandCreationAtCreate(payoutState) ? 6 : 4,
+    }));
+    if (payoutState === "ready") {
+      const message = "Payout setup complete. Choose what you want to make first.";
+      readyAnnouncementRef.current = resumedBrand.id;
+      AccessibilityInfo.announceForAccessibility(message);
+    }
+  }, [
+    payoutState,
+    permissionState,
+    resumeBrandId,
+    resumeBrandQuery.data,
+    resumeBrandQuery.isError,
+    resumeBrandQuery.isFetched,
+    resumeMembership.accepted,
+    resumeMembership.isError,
+    resumeMembership.isLoading,
+    setCurrentBrand,
+  ]);
+
+  useEffect(() => {
+    if (
+      state.step !== 4 ||
+      payoutState !== "ready" ||
+      brand === null ||
+      readyAnnouncementRef.current === brand.id
+    ) {
+      return;
+    }
+    readyAnnouncementRef.current = brand.id;
+    AccessibilityInfo.announceForAccessibility(
+      "Payout setup complete. Choose what you want to make first.",
+    );
+    updateState({ type: "showCreate" });
+  }, [brand, payoutState, state.step, updateState]);
+
+  useEffect(() => {
+    if (
+      !stripeStatusQuery.isError ||
+      !online ||
+      !payoutPermission.allowed ||
+      payoutBrandId === null ||
+      statusErrorCapturedRef.current === payoutBrandId
+    ) {
+      return;
+    }
+    statusErrorCapturedRef.current = payoutBrandId;
+    captureException(stripeStatusQuery.error, {
+      tags: { feature: "brand-creation-payout-status", issue: "2719" },
+      extra: { brandId: payoutBrandId },
+    });
+  }, [
+    online,
+    payoutBrandId,
+    payoutPermission.allowed,
+    stripeStatusQuery.error,
+    stripeStatusQuery.isError,
+  ]);
+
+  const handleModeContinue = useCallback((): void => {
+    if (stepZeroCommittedRef.current) return;
+    stepZeroCommittedRef.current = true;
+    if (state.mode === "self" && onSelfChosen !== undefined) {
+      onSelfChosen();
+      return;
+    }
+    pendingHeadingFocusRef.current = 1;
+    updateState({ type: "next" });
+  }, [updateState, state.mode, onSelfChosen]);
+
+  const commitDefaultBrand = useCallback(
+    (newBrand: Brand): void => {
+      setCurrentBrand(newBrand);
+      void updateCreatorAccountMutation
+        .mutateAsync({ default_brand_id: newBrand.id })
+        .catch(() => undefined);
+    },
+    [setCurrentBrand, updateCreatorAccountMutation],
+  );
+
+  const handleCreateIdentity = useCallback(async (): Promise<void> => {
+    if (trimmedName.length === 0 || accountId === null) return;
+    // META-ORCH-1232 (H1) — clear any prior persistent error on a fresh attempt.
+    setWriteError(null);
+    try {
+      updateState({ type: "setIdentity", name: trimmedName, bio });
+      // #3645 — this flow already created its brand and the organiser stepped
+      // back to this step. Continue must EDIT that brand, never insert a
+      // second one. The slug is immutable server-side, so it stays as created.
+      if (brand !== null) {
+        const nextBio = bio.trim();
+        if (
+          trimmedName !== brand.displayName ||
+          nextBio !== (brand.bio ?? "").trim()
+        ) {
+          const updatedBrand = await updateBrandMutation.mutateAsync({
+            brandId: brand.id,
+            accountId,
+            patch: { displayName: trimmedName, bio: nextBio },
+            existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+          });
+          setBrand(updatedBrand);
+          setCurrentBrand(updatedBrand);
+        }
+        updateState({ type: "brandCreated", brandId: brand.id });
+        return;
+      }
+      const newBrand = await createBrandMutation.mutateAsync({
+        accountId,
+        name: trimmedName,
+        slug: slugify(trimmedName),
+        address: null,
+        coverHue: 25,
+        bio: bio.trim().length > 0 ? bio.trim() : undefined,
+        // ORCH-1081 — partner client mode flags brand at insert.
+        partnerSetup: state.mode === "client",
+      });
+      setBrand(newBrand);
+      commitDefaultBrand(newBrand);
+      updateState({ type: "brandCreated", brandId: newBrand.id });
+    } catch (error) {
+      if (error instanceof SlugCollisionError) {
+        // Slug collision is a USER-correctable input error → inline form toast.
+        setToast(
+          `This brand name is taken. Try a small variation (e.g. "${trimmedName} Events").`,
+        );
+      } else {
+        // META-ORCH-1232 (H1) — any other write failure surfaces as a PERSISTENT
+        // inline error + Retry (NOT a lone auto-dismiss toast). Retry re-invokes
+        // the same mutation with the same inputs. The wizard does not advance on
+        // throw (it stays on step 1) and the typed name/bio are intact.
+        // AuthNotReadyError (C2) gets distinct, clearly-retryable copy.
+        setWriteError({
+          message: isAuthNotReadyError(error)
+            ? BRAND_CREATION_COPY.authNotReadyInline
+            : BRAND_CREATION_COPY.createErrorInline,
+          retry: () => {
+            void handleCreateIdentity();
+          },
+        });
+      }
+    }
+  }, [
+    accountId,
+    bio,
+    brand,
+    commitDefaultBrand,
+    createBrandMutation,
+    setCurrentBrand,
+    state.mode,
+    trimmedName,
+    updateBrandMutation,
+    updateState,
+  ]);
+
+  const persistAddress = useCallback(
+    async (
+      nextAddress: string | null,
+      geo: typeof addrMeta,
+    ): Promise<void> => {
+      if (brand === null || accountId === null) return;
+      // WS1: only attach the validated geo when a real address was picked
+      // (Continue is gated on that). Skip leaves the brand's geo untouched.
+      const patch: Partial<Brand> = { address: nextAddress };
+      if (nextAddress !== null && geo.lat !== null && geo.lng !== null) {
+        patch.lat = geo.lat;
+        patch.lng = geo.lng;
+        if (geo.city !== null) patch.city = geo.city;
+        if (geo.countryCode !== null) patch.countryCode = geo.countryCode;
+        if (geo.googlePlaceId !== null) patch.googlePlaceId = geo.googlePlaceId;
+        // #4334 — same write as the pin; null clears a stale id.
+        patch.locationProviderPlaceId = geo.locationProviderPlaceId;
+      }
+      const nextBrand = await updateBrandMutation.mutateAsync({
+        brandId: brand.id,
+        accountId,
+        patch,
+        existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+      });
+      setBrand(nextBrand);
+      setCurrentBrand(nextBrand);
+    },
+    [accountId, brand, setCurrentBrand, updateBrandMutation],
+  );
+
+  const handleContinueAddress = useCallback(async (): Promise<void> => {
+    // WS1: Continue only fires for a validated pick; Skip uses address=null.
+    const nextAddress = address.trim().length > 0 ? address.trim() : null;
+    // META-ORCH-1232 (H1) — clear any prior persistent error on a fresh attempt.
+    setWriteError(null);
+    try {
+      await persistAddress(nextAddress, addrMeta);
+      updateState({ type: "setAddress", address: nextAddress });
+    } catch (error) {
+      // META-ORCH-1232 (H1) — persistent inline error + Retry on the address-save
+      // write failure (was a lone auto-dismiss toast). AuthNotReadyError (C2) gets
+      // distinct, clearly-retryable copy. Stays on step 2 with values intact.
+      setWriteError({
+        message: isAuthNotReadyError(error)
+          ? BRAND_CREATION_COPY.authNotReadyInline
+          : BRAND_CREATION_COPY.saveErrorInline,
+        retry: () => {
+          void handleContinueAddress();
+        },
+      });
+    }
+  }, [address, addrMeta, persistAddress, updateState]);
+
+  const handleSkipAddress = useCallback((): void => {
+    advanceLocationRequestGeneration(addressRequestGenerationRef);
+    savedContextRef.current = { city: null, countryCode: null };
+    setAddress("");
+    committedAddrRef.current = "";
+    setAddressSelectionState("editing");
+    setAddrMeta({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null, locationProviderPlaceId: null });
+    updateState({ type: "setAddress", address: null });
+  }, [updateState]);
+
+  // #3645 — NO currency is written until a payout country has been chosen.
+  // This only ever aligns the currency of a brand that ALREADY carries a
+  // choice (it is on the Nigerian rail, or has a card payment account in a
+  // country). A brand with nothing chosen, whatever its address says, is left
+  // with no currency; the country field on the Payouts step is where the
+  // organiser chooses, and skipping it is allowed.
+  const persistRailCurrency = useCallback(async (): Promise<void> => {
+    if (brand === null || accountId === null || resumeBrandId !== null) return;
+    const rail = resolveSavedPayoutCountry({
+      paymentProvider: brand.paymentProvider,
+      cardAccountCountry: stripeStatusQuery.data?.country ?? null,
+      defaultCurrency: brand.defaultCurrency,
+      addressCountryCode: brand.countryCode,
+    });
+    if (rail === null) {
+      setCurrencyWriteState("idle");
+      return;
+    }
+    if (brand.defaultCurrency === rail.currency) {
+      setCurrencyWriteState("succeeded");
+      return;
+    }
+
+    setCurrencyWriteState("writing");
+    try {
+      // Currency selects pricing context; it never proves a bank can collect.
+      // Free creators stay open in every payout state.
+      const nextBrand = await updateBrandMutation.mutateAsync({
+        brandId: brand.id,
+        accountId,
+        patch: { defaultCurrency: rail.currency },
+        existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+      });
+      setBrand(nextBrand);
+      setCurrentBrand(nextBrand);
+      setCurrencyWriteState("succeeded");
+    } catch (error) {
+      setCurrencyWriteState("failed");
+      captureException(error, {
+        tags: { feature: "brand-creation-payouts", issue: "2719" },
+        extra: { brandId: brand.id },
+      });
+    }
+  }, [
+    accountId,
+    brand,
+    resumeBrandId,
+    setCurrentBrand,
+    stripeStatusQuery.data?.country,
+    updateBrandMutation,
+  ]);
+
+  const handleFinishLook = useCallback((): void => {
+    updateState({ type: "next" });
+    if (state.mode === "self") {
+      void persistRailCurrency();
+    }
+  }, [persistRailCurrency, state.mode, updateState]);
+
+  const handleStartPayoutSetup = useCallback((): void => {
+    if (
+      brand === null ||
+      payoutPermission.isLoading ||
+      payoutPermission.isError ||
+      !payoutPermission.allowed ||
+      !online ||
+      chosenPayoutRail === null ||
+      payoutCountryPending ||
+      currencyWriteState === "writing" ||
+      currencyWriteState === "failed" ||
+      setupNavigationInProgressRef.current
+    ) {
+      return;
+    }
+    setupNavigationInProgressRef.current = true;
+    // #3645 — a card-rail country chosen here is carried to the bank screen,
+    // which would otherwise seed its own picker from the address. (A brand on
+    // the Nigerian rail needs no hint: the saved brand row already says so.)
+    const countryHint = chosenPayoutRail.provider === "stripe"
+      ? `&country=${encodeURIComponent(chosenPayoutRail.countryCode)}`
+      : "";
+    router.push(
+      `/brand/${encodeURIComponent(brand.id)}/connect?from=brand-create${countryHint}` as never,
+    );
+    setTimeout(() => {
+      setupNavigationInProgressRef.current = false;
+    }, 750);
+  }, [
+    brand,
+    chosenPayoutRail,
+    currencyWriteState,
+    online,
+    payoutCountryPending,
+    payoutPermission.allowed,
+    payoutPermission.isError,
+    payoutPermission.isLoading,
+    router,
+  ]);
+
+  const handleSkipPayoutSetup = useCallback((): void => {
+    updateState({ type: "showCreate" });
+  }, [updateState]);
+
+  const handleOfferingSelect = useCallback(
+    (offering: OfferingKind): void => {
+      if (brand === null) return;
+      onComplete(brand.id);
+      void import("./OfferingChooser").then(({ routeForOffering }) => {
+        router.push(routeForOffering(offering) as never);
+      });
+    },
+    [brand, onComplete, router],
+  );
+
+  // ORCH-1081 — Step 5: invite the owner. Uses inviteBrandMember with
+  // role=brand_owner + partner_setup=true. Same edge fn the team-invite UI
+  // calls, so we inherit auth/permission gating.
+  const trimmedInviteeEmail = inviteeEmail.trim().toLowerCase();
+  const inviteeEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    trimmedInviteeEmail,
+  );
+
+  const handleInviteOwner = useCallback(async (): Promise<void> => {
+    if (brand === null) return;
+    if (!inviteeEmailValid) return;
+    setInvitePending(true);
+    try {
+      // The edge fn requires a non-empty invitee_name; derive a sensible default
+      // from the email local-part. The owner can edit their display_name later.
+      const localPart = trimmedInviteeEmail.split("@")[0] ?? "owner";
+      const inviteeName = localPart.length > 0 ? localPart : "owner";
+      await inviteBrandMember({
+        brandId: brand.id,
+        inviteeEmail: trimmedInviteeEmail,
+        inviteeName,
+        role: "brand_owner",
+        personalNote: inviteeNote.trim().length > 0
+          ? inviteeNote.trim()
+          : undefined,
+        partnerSetup: true,
+      });
+      // Brand row already inserted (with partner_setup=true) at step 1. We
+      // commit the optimistic complete + surface the success toast on the
+      // landing surface. The post-create caller renders its own success UX.
+      setToast(
+        BRAND_CREATION_COPY.step5.successToast(
+          brand.displayName,
+          trimmedInviteeEmail,
+        ),
+      );
+      onComplete(brand.id);
+    } catch (err) {
+      console.error("[BrandCreationFlow] partner invite failed", err);
+      setToast(BRAND_CREATION_COPY.step5.inviteErrorToast);
+    } finally {
+      setInvitePending(false);
+    }
+  }, [
+    brand,
+    inviteeEmailValid,
+    inviteeNote,
+    onComplete,
+    trimmedInviteeEmail,
+  ]);
+
+  // CTA label varies with whether email-local-part is fillable.
+  const inviteCtaLabel = trimmedInviteeEmail.length > 0
+    ? BRAND_CREATION_COPY.step5.ctaWithName(
+      capitalize(trimmedInviteeEmail.split("@")[0] ?? "the owner"),
+    )
+    : BRAND_CREATION_COPY.step5.ctaDefault;
+
+  // ORCH-1081 — pick the stepper variant + compute the active-index based on
+  // partner mode. Self is Brand → Place → Look → Payouts → Create; client is
+  // For → Brand → Place → Look → Invite and never enters payout setup.
+  const stepperVariant = state.mode === "client" ? STEPS_CLIENT : STEPS_SELF;
+  const currentIndex = state.mode === "client"
+    ? (state.step === 0 ? 0
+      : state.step === 1 ? 1
+      : state.step === 2 ? 2
+      : state.step === 3 ? 3
+      : state.step === 5 ? 4 : 0)
+    : (state.step === 1 ? 0
+      : state.step === 2 ? 1
+      : state.step === 3 ? 2
+      : state.step === 4 ? 3
+      : state.step === 6 ? 4 : 0);
+
+  const isAtEntry = state.step === 0 || (state.step === 1 && !isPartner);
+
+  // #3260 — same stale-snapshot hazard as payoutState: a brand that flipped to
+  // the Paystack rail during the connect round trip must not be labelled from
+  // the pre-connect local copy.
+  const handlePayoutBrandChanged = useCallback(
+    (nextBrand: Brand): void => {
+      setBrand(nextBrand);
+      setCurrentBrand(nextBrand);
+      setCurrencyWriteState("idle");
+      // On the resume path the query owns this brand; bring it up to date.
+      if (resumeBrandId !== null) void resumeBrandQuery.refetch();
+    },
+    [resumeBrandId, resumeBrandQuery, setCurrentBrand],
+  );
+  const payoutStateMessage = currencyWriteState === "failed"
+    ? "Couldn’t save the payout currency yet. Free publishing still works."
+    : payoutState === "loading"
+      ? "Checking payout setup…"
+      : payoutState === "pending"
+        ? "Payout setup submitted. Paid features are still pending."
+        : payoutState === "restricted"
+          ? "Payout setup needs attention. Free publishing still works."
+          : payoutState === "unknown-error"
+            ? "We couldn't check payout status. Free publishing still works."
+            : payoutState === "offline"
+              ? "You're offline. Free publishing still works; secure bank setup needs a connection."
+              : payoutState === "permission-denied"
+                ? "Ask a payments manager before paid sales."
+                : resumeBrandId !== null && payoutState === "not-connected"
+                  ? "Payout setup wasn't finished. Your brand is safe."
+                  : null;
+  const payoutPrimaryLabel = payoutState === "pending"
+    ? "Continue payout setup"
+    : payoutState === "restricted"
+      ? "Fix payout setup"
+      : BRAND_CREATION_COPY.step4.primary;
+  const showPayoutPrimary = payoutState !== "ready" &&
+    payoutState !== "permission-denied";
+  const payoutPrimaryDisabled =
+    // #3645 — payout setup starts from a chosen country, never a guessed one.
+    chosenPayoutRail === null ||
+    payoutCountryPending ||
+    currencyWriteState === "writing" ||
+    currencyWriteState === "failed" ||
+    payoutState === "loading" ||
+    payoutState === "unknown-error" ||
+    payoutState === "offline" ||
+    payoutPermission.isLoading ||
+    payoutPermission.isError ||
+    !payoutPermission.allowed;
+
+  return (
+    <View style={styles.host}>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => {
+            if (isAtEntry) onCancel?.();
+            else {
+              if (isPartner && state.step === 1) {
+                stepZeroCommittedRef.current = false;
+                pendingHeadingFocusRef.current = 0;
+              }
+              updateState({ type: "back" });
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={isAtEntry ? "Cancel brand creation" : "Back"}
+          style={styles.backTouch}
+        >
+          <Icon name={isAtEntry ? "close" : "chevL"} size={18} color={textTokens.secondary} />
+        </Pressable>
+        <Stepper steps={stepperVariant} currentIndex={currentIndex} />
+      </View>
+
+      {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
+          from the file head to the occurrence it was always meant to cover.
+          Allowlisting is per-occurrence since #1841 — one marker no longer
+          immunises a whole file. */}
+      {/* orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B BrandCreationFlow is a 4-step universal brand creation flow; keyboard-input fields (brand name, bio, address) sit at top of viewport and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH. */}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          // ORCH-1165: +42pt clearance for the Done bar while the keyboard is up.
+          keyboardVisible ? { paddingBottom: spacing.lg + 42 } : null,
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {state.step === 0 ? (
+          <View style={styles.stepBody}>
+            <View
+              ref={stepZeroHeadingRef}
+              accessible
+              focusable
+              tabIndex={-1}
+              accessibilityRole="header"
+              accessibilityLabel={BRAND_CREATION_COPY.step0.title}
+            >
+              <Text style={styles.title}>{BRAND_CREATION_COPY.step0.title}</Text>
+            </View>
+            <Text style={styles.body}>
+              {BRAND_CREATION_COPY.step0.subtitle}
+            </Text>
+            <View
+              accessibilityRole="radiogroup"
+              accessibilityLabel={BRAND_CREATION_COPY.step0.title}
+              style={styles.modeGroup}
+            >
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected: state.mode === "self" }}
+                accessibilityLabel={BRAND_CREATION_COPY.step0.selfTitle}
+                onPress={() => updateState({ type: "setMode", mode: "self" })}
+                style={styles.modeCardWrap}
+              >
+                <GlassCard
+                  variant="elevated"
+                  padding={spacing.lg}
+                  style={state.mode === "self" ? styles.modeCardActive : undefined}
+                >
+                  <View style={styles.modeCardRow}>
+                    <View style={styles.modeCardCol}>
+                      <Text style={styles.modeCardTitle}>
+                        {BRAND_CREATION_COPY.step0.selfTitle}
+                      </Text>
+                      <Text style={styles.modeCardBody}>
+                        {BRAND_CREATION_COPY.step0.selfBody}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.radioDot,
+                        state.mode === "self" && styles.radioDotActive,
+                      ]}
+                    />
+                  </View>
+                </GlassCard>
+              </Pressable>
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected: state.mode === "client" }}
+                accessibilityLabel={BRAND_CREATION_COPY.step0.clientTitle}
+                onPress={() => updateState({ type: "setMode", mode: "client" })}
+                style={styles.modeCardWrap}
+              >
+                <GlassCard
+                  variant="elevated"
+                  padding={spacing.lg}
+                  style={
+                    state.mode === "client" ? styles.modeCardActive : undefined
+                  }
+                >
+                  <View style={styles.modeCardRow}>
+                    <View style={styles.modeCardCol}>
+                      <Text style={styles.modeCardTitle}>
+                        🤝 {BRAND_CREATION_COPY.step0.clientTitle}
+                      </Text>
+                      <Text style={styles.modeCardBody}>
+                        {BRAND_CREATION_COPY.step0.clientBody}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.radioDot,
+                        state.mode === "client" && styles.radioDotActive,
+                      ]}
+                    />
+                  </View>
+                </GlassCard>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {state.step === 1 ? (
+          <View style={styles.stepBody}>
+            <View style={styles.titleRow}>
+              <View
+                ref={stepOneHeadingRef}
+                accessible
+                focusable
+                tabIndex={-1}
+                accessibilityRole="header"
+                accessibilityLabel={
+                  state.mode === "client"
+                    ? BRAND_CREATION_COPY.step1.titleClient
+                    : BRAND_CREATION_COPY.step1.title
+                }
+                style={styles.titleFlex}
+              >
+                <Text style={styles.title}>
+                  {state.mode === "client"
+                    ? BRAND_CREATION_COPY.step1.titleClient
+                    : BRAND_CREATION_COPY.step1.title}
+                </Text>
+              </View>
+              {state.mode === "client" ? (
+                <Text style={styles.partnerChip}>🤝 Client setup</Text>
+              ) : null}
+            </View>
+            <Text style={styles.label}>
+              {state.mode === "client"
+                ? BRAND_CREATION_COPY.step1.nameLabelClient
+                : BRAND_CREATION_COPY.step1.nameLabel}
+            </Text>
+            <Input
+              variant="text"
+              value={name}
+              onChangeText={setName}
+              placeholder={
+                state.mode === "client"
+                  ? BRAND_CREATION_COPY.step1.namePlaceholderClient
+                  : BRAND_CREATION_COPY.step1.namePlaceholder
+              }
+              accessibilityLabel={BRAND_CREATION_COPY.step1.nameLabel}
+              clearable
+            />
+            <Text style={styles.label}>
+              {state.mode === "client"
+                ? BRAND_CREATION_COPY.step1.bioLabelClient
+                : BRAND_CREATION_COPY.step1.bioLabel}
+            </Text>
+            <TextInput
+              value={bio}
+              onChangeText={(value) => setBio(value.slice(0, 200))}
+              placeholder={
+                state.mode === "client"
+                  ? BRAND_CREATION_COPY.step1.bioPlaceholderClient
+                  : BRAND_CREATION_COPY.step1.bioPlaceholder
+              }
+              placeholderTextColor={textTokens.quaternary}
+              accessibilityLabel={BRAND_CREATION_COPY.step1.bioLabel}
+              multiline
+              style={styles.textArea}
+            />
+            {/* META-ORCH-1232 (H1) — persistent inline error + Retry on a brand
+                create write failure (NOT a lone auto-dismiss toast). */}
+            {writeError !== null ? (
+              <View
+                style={styles.inlineError}
+                accessibilityRole="alert"
+                accessibilityLabel={writeError.message}
+              >
+                <Text style={styles.inlineErrorText}>{writeError.message}</Text>
+                <Button
+                  label={BRAND_CREATION_COPY.retryCta}
+                  onPress={writeError.retry}
+                  variant="secondary"
+                  size="sm"
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {state.step === 2 ? (
+          <View style={styles.stepBody}>
+            <Text style={styles.title}>{BRAND_CREATION_COPY.step2.title}</Text>
+            <Text style={styles.body}>{BRAND_CREATION_COPY.step2.subtitle}</Text>
+            {/* WS1: validated autocomplete. Free-text typing clears the geo meta so
+                Continue stays gated until a real result is picked; Skip handles
+                brands with no fixed address. */}
+            <AddressInput
+              value={address}
+              allowFreeText
+              selectionState={addressSelectionState}
+              selectedLabel={address}
+              // Issue #3291 — rank-only: a resumed brand's point → the point
+              // picked here → the resumed brand's country (#3355) → the
+              // device's time zone (no zone of its own).
+              proximitySources={{
+                brandPoint: resumeBrandQuery.data,
+                draftPoint: addrMeta,
+              }}
+              onChangeText={(t) => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
+                committedAddrRef.current = t;
+                setAddress(t);
+                setAddrMeta({
+                  lat: null,
+                  lng: null,
+                  city: null,
+                  countryCode: null,
+                  googlePlaceId: null,
+                  locationProviderPlaceId: null,
+                });
+              }}
+              onFreeText={resolveCommittedAddress}
+              onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
+                const p = parseVenuePlaceResult(details);
+                const label = selectedLabel ?? p.formattedAddress;
+                committedAddrRef.current = label;
+                setAddress(label);
+                // ORCH-1079 LOCKED (§3.B): write geo identically but set
+                // googlePlaceId: null — the picked id (`p.placeId`) never
+                // pollutes `brands.google_place_id` (the pool identity).
+                setAddrMeta({
+                  lat: p.lat,
+                  lng: p.lng,
+                  city: p.city,
+                  countryCode: p.countryCode,
+                  googlePlaceId: null,
+                  // #4334 — the picked Google place id lives in its own column.
+                  locationProviderPlaceId: p.placeId,
+                });
+                savedContextRef.current = {
+                  city: p.city,
+                  countryCode: p.countryCode,
+                };
+                setAddressSelectionState("selected");
+              }}
+              onChangeSelected={() => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
+                committedAddrRef.current = address;
+                setAddressSelectionState("editing");
+                setAddrMeta({
+                  lat: null,
+                  lng: null,
+                  city: null,
+                  countryCode: null,
+                  googlePlaceId: null,
+                  locationProviderPlaceId: null,
+                });
+              }}
+              onClear={(): void => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
+                committedAddrRef.current = "";
+                setAddressSelectionState("editing");
+                setAddress("");
+                setAddrMeta({
+                  lat: null,
+                  lng: null,
+                  city: null,
+                  countryCode: null,
+                  googlePlaceId: null,
+                  locationProviderPlaceId: null,
+                });
+              }}
+              placeholder={BRAND_CREATION_COPY.step2.addressPlaceholder}
+            />
+            {/* META-ORCH-1232 (H1) — persistent inline error + Retry on an
+                address-save write failure (NOT a lone auto-dismiss toast). */}
+            {writeError !== null ? (
+              <View
+                style={styles.inlineError}
+                accessibilityRole="alert"
+                accessibilityLabel={writeError.message}
+              >
+                <Text style={styles.inlineErrorText}>{writeError.message}</Text>
+                <Button
+                  label={BRAND_CREATION_COPY.retryCta}
+                  onPress={writeError.retry}
+                  variant="secondary"
+                  size="sm"
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {state.step === 3 ? (
+          <View style={styles.stepBody}>
+            <Text style={styles.title}>{BRAND_CREATION_COPY.step3.title}</Text>
+            <GlassCard variant="elevated" padding={spacing.lg}>
+              <View style={styles.coverPrompt}>
+                {/* WS2: render the chosen cover so the user sees it saved. */}
+                {brand?.coverMediaUrl != null ? (
+                  <View style={styles.coverPreview}>
+                    <EventCoverMedia
+                      hue={25}
+                      mediaUrl={brand.coverMediaUrl}
+                      mediaType={brand.coverMediaType ?? "image"}
+                      radius={radius.md}
+                      label="Brand cover preview"
+                      height={170}
+                      muted
+                    />
+                  </View>
+                ) : (
+                  <>
+                    <Icon name="upload" size={24} color={accent.warm} />
+                    <Text style={styles.body}>
+                      Use your existing cover picker to add a photo or GIF, or skip it for now.
+                    </Text>
+                  </>
+                )}
+                <Button
+                  label={brand?.coverMediaUrl != null ? "Change cover" : "Add cover"}
+                  onPress={() => setCoverPickerVisible(true)}
+                  variant="secondary"
+                  size="md"
+                  disabled={brand === null || accountId === null}
+                />
+              </View>
+            </GlassCard>
+          </View>
+        ) : null}
+
+        {state.step === 4 ? (
+          resumeError !== null ? (
+            <View style={styles.stepBody}>
+              <Text style={styles.title}>Couldn’t reopen brand setup</Text>
+              <View style={styles.inlineError} accessibilityRole="alert">
+                <Text style={styles.inlineErrorText}>{resumeError}</Text>
+                <View style={styles.footerRow}>
+                  <Button
+                    label="Retry"
+                    onPress={() => {
+                      setResumeError(null);
+                      resumeHydratedRef.current = false;
+                      void resumeBrandQuery.refetch();
+                    }}
+                    variant="secondary"
+                    size="sm"
+                  />
+                  <Button
+                    label="Exit to Account"
+                    onPress={() => router.replace("/(tabs)/account" as never)}
+                    variant="ghost"
+                    size="sm"
+                  />
+                </View>
+              </View>
+            </View>
+          ) : resumeBrandId !== null && !resumeHydratedRef.current ? (
+            <View style={styles.stepBody}>
+              <Text style={styles.title}>Reopening brand setup…</Text>
+              <Text style={styles.body}>
+                We’re checking this brand and its payout status.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.stepBody}>
+              <Text style={styles.title}>{BRAND_CREATION_COPY.step4.title}</Text>
+              <Text style={styles.body}>{BRAND_CREATION_COPY.step4.body}</Text>
+              <GlassCard variant="elevated" padding={spacing.lg}>
+                <View style={styles.payoutCard}>
+                  <View style={styles.payoutRailRow}>
+                    <Icon name="bank" size={24} color={accent.warm} />
+                    <Text style={styles.payoutRail}>
+                      {chosenPayoutRail !== null
+                        ? `${chosenPayoutRail.displayName} · ${chosenPayoutRail.currency}`
+                        : BRAND_CREATION_COPY.step4.countryNeeded}
+                    </Text>
+                  </View>
+                  {payoutCanonicalBrand !== null ? (
+                    <React.Suspense
+                      fallback={(
+                        <Text style={styles.payoutTrust} accessibilityRole="text">
+                          {BRAND_CREATION_COPY.step4.countryLoading}
+                        </Text>
+                      )}
+                    >
+                      <LazyBrandPayoutCountryField
+                        brand={payoutCanonicalBrand}
+                        cardAccountCountry={
+                          stripeStatusQuery.data?.country ?? null
+                        }
+                        cardAccountExists={
+                          (stripeStatusQuery.data?.stripe_account_id ?? null) !==
+                            null
+                        }
+                        helperText={BRAND_CREATION_COPY.step4.countryHelper}
+                        onBrandChanged={handlePayoutBrandChanged}
+                        onCountryChosen={setPickedPayoutRail}
+                        onCountryPickStarted={clearPickedPayoutRail}
+                        onPendingChange={setPayoutCountryPending}
+                      />
+                    </React.Suspense>
+                  ) : null}
+                  <Text style={styles.payoutTrust}>
+                    {BRAND_CREATION_COPY.step4.trust}
+                  </Text>
+                  {payoutStateMessage !== null ? (
+                    <View
+                      style={styles.payoutStatus}
+                      accessibilityRole={
+                        currencyWriteState === "failed" ||
+                            payoutState === "unknown-error" ||
+                            payoutState === "offline"
+                          ? "alert"
+                          : "text"
+                      }
+                    >
+                      <Text style={styles.payoutStatusText}>
+                        {payoutStateMessage}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {currencyWriteState === "failed" && resumeBrandId === null ? (
+                    <Button
+                      label="Retry saving currency"
+                      onPress={() => void persistRailCurrency()}
+                      variant="secondary"
+                      size="sm"
+                    />
+                  ) : null}
+                  {payoutState === "unknown-error" ? (
+                    <Button
+                      label="Retry payout check"
+                      onPress={() => {
+                        statusErrorCapturedRef.current = null;
+                        void stripeStatusQuery.refetch();
+                      }}
+                      variant="secondary"
+                      size="sm"
+                    />
+                  ) : null}
+                  <Text style={styles.payoutConsequence}>
+                    {payoutStepSellsBeforeBank(
+                        pickedPayoutRail,
+                        payoutCanonicalBrand,
+                      )
+                      ? BRAND_CREATION_COPY.step4.consequenceSellBeforeBank
+                      : BRAND_CREATION_COPY.step4.consequence}
+                  </Text>
+                </View>
+              </GlassCard>
+            </View>
+          )
+        ) : null}
+
+        {state.step === 5 ? (
+          <View style={styles.stepBody}>
+            <View style={styles.titleRow}>
+              <Text style={[styles.title, styles.titleFlex]}>
+                {BRAND_CREATION_COPY.step5.title}
+              </Text>
+              <Text style={styles.partnerChip}>🤝 Client setup</Text>
+            </View>
+            <Text style={styles.body}>
+              {BRAND_CREATION_COPY.step5.subtitle}
+            </Text>
+            <Text style={styles.label}>
+              {BRAND_CREATION_COPY.step5.emailLabel}
+            </Text>
+            <Input
+              variant="text"
+              value={inviteeEmail}
+              onChangeText={setInviteeEmail}
+              placeholder={BRAND_CREATION_COPY.step5.emailPlaceholder}
+              accessibilityLabel={BRAND_CREATION_COPY.step5.emailLabel}
+              clearable
+            />
+            <Text style={styles.label}>
+              {BRAND_CREATION_COPY.step5.noteLabel}
+            </Text>
+            <TextInput
+              value={inviteeNote}
+              onChangeText={(v) => setInviteeNote(v.slice(0, 280))}
+              placeholder={BRAND_CREATION_COPY.step5.notePlaceholder}
+              placeholderTextColor={textTokens.quaternary}
+              accessibilityLabel={BRAND_CREATION_COPY.step5.noteLabel}
+              multiline
+              style={styles.textArea}
+            />
+            {/* Preview card — minimal hero/title/CTA mirror of the email. */}
+            <GlassCard variant="elevated" padding={spacing.lg}>
+              <Text style={styles.previewEyebrow}>EMAIL PREVIEW</Text>
+              {brand?.coverMediaUrl != null ? (
+                <View style={styles.coverPreview}>
+                  <EventCoverMedia
+                    hue={25}
+                    mediaUrl={brand.coverMediaUrl}
+                    mediaType={brand.coverMediaType ?? "image"}
+                    radius={radius.md}
+                    label="Brand cover preview"
+                    height={120}
+                    muted
+                  />
+                </View>
+              ) : (
+                <View style={styles.previewHeroFallback}>
+                  <Text style={styles.previewHeroFallbackText}>
+                    {(brand?.displayName ?? name).slice(0, 1).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.previewAttribution}>
+                🤝 Set up for you on Mingla
+              </Text>
+              <Text style={styles.previewTitle}>
+                {brand?.displayName ?? name}
+              </Text>
+              <Text style={styles.previewBody}>
+                Built out for you — events, cover, description. Accept to
+                become the owner.
+              </Text>
+              <View style={styles.previewCta}>
+                <Text style={styles.previewCtaText}>
+                  Accept &amp; set up{" "}
+                  {brand?.displayName ?? name}
+                </Text>
+              </View>
+            </GlassCard>
+          </View>
+        ) : null}
+
+        {state.step === 6 ? (
+          <React.Suspense
+            fallback={(
+              <Text accessibilityRole="text">Loading creation options…</Text>
+            )}
+          >
+            <LazyOfferingChooser
+              variant="brand-create-welcome"
+              headline={BRAND_CREATION_COPY.step6.headline}
+              subhead={BRAND_CREATION_COPY.step6.subhead}
+              payoutState={payoutState}
+              onSelect={handleOfferingSelect}
+            />
+          </React.Suspense>
+        ) : null}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        {state.step === 0 ? (
+          <Button
+            label={BRAND_CREATION_COPY.step0.cta}
+            onPress={handleModeContinue}
+            variant="primary"
+            size="lg"
+          />
+        ) : null}
+        {state.step === 1 ? (
+          <Button
+            label={BRAND_CREATION_COPY.step1.cta}
+            onPress={() => void handleCreateIdentity()}
+            variant="primary"
+            size="lg"
+            // META-ORCH-1232 (C2) — also gate on auth readiness so the brand
+            // INSERT can't fire during the auth-warm window (mirrors useBrands).
+            disabled={
+              trimmedName.length === 0 ||
+              createBrandMutation.isPending ||
+              !isAuthReady
+            }
+            loading={createBrandMutation.isPending}
+          />
+        ) : null}
+        {state.step === 2 ? (
+          <View style={styles.footerRow}>
+            <Button
+              label={BRAND_CREATION_COPY.step2.skip}
+              onPress={handleSkipAddress}
+              variant="secondary"
+              size="lg"
+              style={styles.footerButton}
+            />
+            <Button
+              label={BRAND_CREATION_COPY.step2.cta}
+              onPress={() => void handleContinueAddress()}
+              variant="primary"
+              size="lg"
+              loading={updateBrandMutation.isPending}
+              // META-ORCH-1232 (C2) — gate the address-save CTA on auth readiness.
+              disabled={
+                !addressValidated ||
+                updateBrandMutation.isPending ||
+                !isAuthReady
+              }
+              style={styles.footerButton}
+            />
+          </View>
+        ) : null}
+        {state.step === 3 ? (
+          <View style={styles.footerRow}>
+            <Button
+              label={BRAND_CREATION_COPY.step3.skip}
+              onPress={handleFinishLook}
+              variant="secondary"
+              size="lg"
+              style={styles.footerButton}
+            />
+            <Button
+              label={BRAND_CREATION_COPY.step3.cta}
+              onPress={handleFinishLook}
+              variant="primary"
+              size="lg"
+              style={styles.footerButton}
+            />
+          </View>
+        ) : null}
+        {state.step === 4 && resumeError === null &&
+            (resumeBrandId === null || resumeHydratedRef.current) ? (
+          <View style={styles.payoutFooter}>
+            {showPayoutPrimary ? (
+              <Button
+                label={payoutPrimaryLabel}
+                onPress={handleStartPayoutSetup}
+                variant="primary"
+                size="lg"
+                fullWidth
+                disabled={payoutPrimaryDisabled}
+                loading={currencyWriteState === "writing"}
+              />
+            ) : null}
+            {payoutState !== "ready" ? (
+              <Button
+                label={
+                  payoutState === "pending" || payoutState === "restricted"
+                    ? "Choose what to make"
+                    : BRAND_CREATION_COPY.step4.secondary
+                }
+                onPress={handleSkipPayoutSetup}
+                variant="secondary"
+                size="lg"
+                fullWidth
+              />
+            ) : null}
+          </View>
+        ) : null}
+        {state.step === 5 ? (
+          <Button
+            label={inviteCtaLabel}
+            onPress={() => void handleInviteOwner()}
+            variant="primary"
+            size="lg"
+            disabled={!inviteeEmailValid || invitePending}
+            loading={invitePending}
+          />
+        ) : null}
+      </View>
+
+      {/* ORCH-0989 — unified cover picker sheet (replaces BrandCoverPickerSheet);
+          brand video enabled. JSX child of host (I-SUB-SHEET-INSIDE-PARENT). */}
+      {brand !== null && accountId !== null ? (
+        <CoverPickerSheet
+          visible={coverPickerVisible}
+          onClose={() => setCoverPickerVisible(false)}
+          target={{
+            kind: "brand",
+            brandId: brand.id,
+            accountId,
+            existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+          }}
+          initial={{
+            coverMediaUrl: brand.coverMediaUrl ?? null,
+            coverMediaPosterUrl: brand.coverMediaPosterUrl ?? null,
+            coverMediaType: brand.coverMediaType ?? null,
+            coverMediaProvider: null,
+            coverMediaSourceUrl: null,
+            coverMediaCredit: null,
+            coverMediaCreditUrl: null,
+            coverMediaAlt: null,
+          }}
+          onCoverChange={(patch) =>
+            setBrand((prev) =>
+              prev === null
+                ? prev
+                : {
+                    ...prev,
+                    coverMediaUrl: patch.coverMediaUrl ?? undefined,
+                    coverMediaPosterUrl: patch.coverMediaPosterUrl ?? undefined,
+                    coverMediaType:
+                      patch.coverMediaUrl === null
+                        ? undefined
+                        : patch.coverMediaType === "video"
+                          ? "video"
+                          : patch.coverMediaType === "gif"
+                            ? "gif"
+                            : "image",
+                  },
+            )
+          }
+          onShowToast={(msg) => {
+            // BrandCreationFlow's Toast is error-styled; only surface genuine
+            // failures, not the picker's selection-success confirmations.
+            if (/fail|could not|couldn't|isn't|not available|try again|permission/i.test(msg)) {
+              setToast(msg);
+            }
+          }}
+        />
+      ) : null}
+      <Toast
+        visible={toast !== null}
+        kind="error"
+        message={toast ?? ""}
+        onDismiss={() => setToast(null)}
+      />
+    </View>
+  );
+};
+
+// ORCH-1081 — utility used by step-5 CTA copy ("Save & invite Sarah").
+function capitalize(s: string): string {
+  if (s.length === 0) return s;
+  return s.slice(0, 1).toUpperCase() + s.slice(1);
+}
+
+const styles = StyleSheet.create({
+  host: {
+    flex: 1,
+    backgroundColor: canvas.discover,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  backTouch: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.full,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  stepBody: {
+    gap: spacing.md,
+  },
+  modeGroup: {
+    gap: spacing.md,
+  },
+  title: {
+    fontSize: typography.h2.fontSize,
+    lineHeight: typography.h2.lineHeight,
+    fontWeight: typography.h2.fontWeight,
+    color: textTokens.primary,
+  },
+  body: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    color: textTokens.secondary,
+  },
+  // Issue #1363 — inline hint under the address field (best-effort coords).
+  addressHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.warning,
+    marginTop: spacing.xs,
+  },
+  label: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: textTokens.secondary,
+  },
+  textArea: {
+    minHeight: 112,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+    color: textTokens.primary,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    textAlignVertical: "top",
+  },
+  // META-ORCH-1232 (H1) — persistent inline error surface (non-auto-dismissing).
+  inlineError: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    backgroundColor: "rgba(220, 38, 38, 0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(220, 38, 38, 0.45)",
+    alignItems: "flex-start",
+  },
+  inlineErrorText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: "#B91C1C",
+  },
+  coverPrompt: {
+    gap: spacing.md,
+    alignItems: "flex-start",
+  },
+  coverPreview: {
+    width: "100%",
+    borderRadius: radius.md,
+    overflow: "hidden",
+  },
+  footer: {
+    padding: spacing.lg,
+  },
+  footerRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  footerButton: {
+    flex: 1,
+  },
+  payoutFooter: {
+    gap: spacing.sm,
+  },
+  payoutCard: {
+    gap: spacing.md,
+  },
+  payoutRailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  payoutRail: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  payoutTrust: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  payoutStatus: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: accent.tint,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.border,
+  },
+  payoutStatusText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  payoutConsequence: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  // ORCH-1081 — Step 0 + Step 5 + partner chip styles.
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    // ORCH-1081 hotfix: title can be long (e.g. "Create the client's brand")
+    // and was pushing the partner chip past the sheet edge. Allow wrap so the
+    // chip falls to a second line on narrow screens instead of clipping.
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  partnerChip: {
+    // ORCH-1081 hotfix: caption-size was too small to read at-a-glance and the
+    // tint-on-tint contrast made "Client setup" look like a placeholder. Bump
+    // to bodySm with a solid Mingla-orange tint background + white text so it
+    // reads as an unambiguous status pill, not decoration.
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    backgroundColor: accent.warm,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    overflow: "hidden",
+  },
+  // ORCH-1081 hotfix: title shrinks first so it never pushes the chip out of
+  // the sheet boundary. flexShrink:1 + flexBasis:auto = wrap-then-shrink.
+  titleFlex: {
+    flexShrink: 1,
+    flexBasis: "auto",
+  },
+  modeCardWrap: {
+    // Pressable wrapping a GlassCard so the entire surface is tappable.
+  },
+  modeCardActive: {
+    borderColor: accent.warm,
+    borderWidth: 2,
+  },
+  modeCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  modeCardCol: {
+    flex: 1,
+    gap: 4,
+  },
+  modeCardTitle: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  modeCardBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  radioDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: glass.border.profileBase,
+    backgroundColor: "transparent",
+  },
+  radioDotActive: {
+    borderColor: accent.warm,
+    backgroundColor: accent.warm,
+  },
+  previewEyebrow: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    color: textTokens.tertiary,
+    marginBottom: spacing.sm,
+  },
+  previewHeroFallback: {
+    width: "100%",
+    height: 120,
+    borderRadius: radius.md,
+    backgroundColor: accent.warm,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.sm,
+  },
+  previewHeroFallbackText: {
+    fontSize: 36,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  previewAttribution: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    color: accent.warm,
+    marginTop: spacing.sm,
+    marginBottom: 4,
+  },
+  previewTitle: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    color: textTokens.primary,
+  },
+  previewBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+    marginTop: 4,
+  },
+  previewCta: {
+    marginTop: spacing.sm + 2,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    backgroundColor: accent.warm,
+    borderRadius: radius.md,
+    alignItems: "center",
+  },
+  previewCtaText: {
+    color: "#FFFFFF",
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+  },
+});
+
+export default BrandCreationFlow;

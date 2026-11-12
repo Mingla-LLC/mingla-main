@@ -32,7 +32,10 @@ const repoRoot = path.resolve(__dirname, "../..");
 const read = (rel: string): string =>
   fs.readFileSync(path.join(repoRoot, rel), "utf8");
 
-const FLOW = "src/components/brand/BrandCreationFlow.tsx";
+// #4389: the partner wizard (Step 0, client mode, invite step) moved verbatim
+// to PartnerClientBrandCreationFlow.tsx; /brand/new mounts it for
+// ?partner_mode=client (and for partner Step 0, see brandNewEntry.ts).
+const FLOW = "src/components/brand/PartnerClientBrandCreationFlow.tsx";
 
 describe("ORCH-1332 partner-mode guard — adversarial", () => {
   test("F-2 re-apply branch is fully guarded (cannot clobber committed / non-self state)", () => {

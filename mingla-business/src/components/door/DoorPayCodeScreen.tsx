@@ -69,6 +69,7 @@ import { IconChrome } from "../ui/IconChrome";
 import { Icon } from "../ui/Icon";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import {
   useCancelDoorPayCode,
   useCreatedDoorPayCode,
@@ -230,7 +231,7 @@ export const DoorPayCodeScreen = (): React.ReactElement => {
   );
 
   // "Sell another" / "Take cash instead": same contract as the Tap to Pay
-  // route — `/door?sellAnother=1&draft=<base64 json>` reopens the sheet.
+  // route — `/door/sell?draft=<base64 json>` reopens Door mode (#4389).
   const openSheet = useCallback(
     (method: "pay_code" | "cash"): void => {
       if (eventId === null) return;
@@ -578,8 +579,30 @@ const TextLinkSheet: React.FC<TextLinkSheetProps> = ({ visible, codeId, currency
   }, [phone.countryIso, phone.e164, sendLink]);
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
-      <View style={styles.sheetBody}>
+    // full: with the keyboard up a half sheet has no room left for Send.
+    <Sheet visible={visible} onClose={onClose} snapPoint="full">
+      {/* #4389 — scrolls inside the sheet; Send stays pinned above the keyboard. */}
+      <SheetScrollLayout
+        keyboardAware
+        testID="door-pay-text-link"
+        footer={
+          sentLast4 !== null ? (
+            <View style={[styles.card, styles.sentCard]}>
+              <Text style={styles.kvValueOk}>Sent to the number ending {sentLast4}</Text>
+            </View>
+          ) : (
+            <Button
+              label="Send link"
+              onPress={() => void handleSend()}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={sendLink.isPending}
+              disabled={phone.isEmpty}
+            />
+          )
+        }
+      >
         <Text style={styles.sheetTitle}>Text them the link</Text>
         <Text style={styles.muted}>They tap it and pay on their phone. This screen updates when they do.</Text>
         <Text style={styles.fieldLabel}>Their mobile</Text>
@@ -595,22 +618,7 @@ const TextLinkSheet: React.FC<TextLinkSheetProps> = ({ visible, codeId, currency
             {error}
           </Text>
         ) : null}
-        {sentLast4 !== null ? (
-          <View style={[styles.card, styles.sentCard]}>
-            <Text style={styles.kvValueOk}>Sent to the number ending {sentLast4}</Text>
-          </View>
-        ) : (
-          <Button
-            label="Send link"
-            onPress={() => void handleSend()}
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={sendLink.isPending}
-            disabled={phone.isEmpty}
-          />
-        )}
-      </View>
+      </SheetScrollLayout>
     </Sheet>
   );
 };

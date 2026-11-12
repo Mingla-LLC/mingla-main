@@ -95,7 +95,7 @@ import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Toast } from "../ui/Toast";
 import { type CoverPatch } from "../ui/CoverPicker";
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 
 import { ChangeSummaryModal } from "../event/ChangeSummaryModal";

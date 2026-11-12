@@ -11,7 +11,7 @@
  *
  * REQUIRE: each of
  *   - mingla-business/src/components/venue/VenueStep1Address.tsx
- *   - mingla-business/src/components/brand/BrandCreationFlow.tsx
+ *   - mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx (#4389)
  *   - mingla-business/src/components/trip/TripCreatorStep1Basics.tsx
  *   imports `AddressInput` from a `components/location/AddressInput` path.
  *
@@ -40,7 +40,8 @@ const TARGETS = [
   ),
   path.join(
     REPO_ROOT,
-    "mingla-business/src/components/brand/BrandCreationFlow.tsx",
+    // #4389: the brand address step lives on only in the partner flow (self setup asks no address).
+    "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
   ),
   path.join(
     REPO_ROOT,

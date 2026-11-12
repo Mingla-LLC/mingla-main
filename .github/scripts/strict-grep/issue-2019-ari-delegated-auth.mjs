@@ -158,7 +158,7 @@ function check(s, manifest) {
   // #3355 P7: set_brand_payout_country (brand admin); 181→182.
   // #4238 wave 2: list_ad_audiences (Host Ads read); 182→183.
   // #4304: end_discount + resume_discount (brand marketing); 183→185.
-  if (declarationCount !== 185) failures.push(`expected 185 declarations, got ${declarationCount}`);
+  if (declarationCount !== 187) failures.push(`expected 187 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

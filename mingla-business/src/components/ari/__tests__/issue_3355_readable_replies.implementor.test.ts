@@ -46,7 +46,10 @@ describe("#3355 readable Ari replies", () => {
     expect(screen).not.toContain("setLocalError(result.message)");
     // #2830: the one server sentence the chat shows is FLOW_TAKEN_OVER's, and
     // only through the registry-bound helper.
-    expect(screen.match(/result\.message/g)?.length).toBe(2);
+    // #4389 A3: the third read only pulls the brand id out of a duplicate
+    // refusal (a3NoticeFor); the card shows its own words, never the text.
+    expect(screen.match(/result\.message/g)?.length).toBe(3);
+    expect(screen).toContain("message: result.message,");
     expect(screen).toContain("flowTakenOverCopy(result.message)");
     expect(screen).toContain("isAlreadyResolvedError(result.message)");
     expect(screen).not.toMatch(/setLocalError\([\s\S]{0,100}error\.message/);

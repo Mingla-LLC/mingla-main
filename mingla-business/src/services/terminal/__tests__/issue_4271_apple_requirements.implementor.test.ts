@@ -546,11 +546,18 @@ describe("B9 every Android string stays clear of the iPhone", () => {
     expect(android).not.toContain("iPhone");
     expect(android).not.toContain("Apple's terms");
   });
-  test("Settings and Payments each have the entry, and the route exists", () => {
+  // #4389 HT (Seth approved) — the Account row moved to Home: a Tap to Pay
+  // card, then a To do item after "Not now". Brand › Payments keeps its entry.
+  test("Home and Payments each have the entry, Account no longer does, and the route exists", () => {
     const read = (rel: string): string => fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
-    expect(read("app/(tabs)/account.tsx")).toContain("const tapToPayEntry = useTapToPaySettingsEntry(useCurrentBrandId());");
-    expect(read("app/(tabs)/account.tsx")).toContain("{tapToPayEntry !== null ? (");
-    expect(read("app/(tabs)/account.tsx")).toContain('"/account/tap-to-pay"');
+    expect(read("app/(tabs)/account.tsx")).not.toContain("useTapToPaySettingsEntry");
+    expect(read("app/(tabs)/account.tsx")).not.toContain('"/account/tap-to-pay"');
+    const home = read("app/(tabs)/home.tsx");
+    expect(home).toContain("const tapEntry = useTapToPaySettingsEntry(homeBrandId);");
+    expect(home).toContain("`/account/tap-to-pay?brandId=${encodeURIComponent(currentBrand.id)}`");
+    // #4389 — the To do row is native only (the web has no Tap to Pay).
+    expect(read("src/hooks/useBusinessTodos.ts")).toContain("useTapToPayTodoRow({");
+    expect(read("src/hooks/useTapToPayTodoRow.ts")).toContain("`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}`");
     expect(read("src/components/brand/BrandPaymentsView.tsx")).toContain("tapToPayBrandEligible(brand)");
     expect(fs.existsSync(path.join(BIZ_ROOT, "app/account/tap-to-pay.tsx"))).toBe(true);
   });

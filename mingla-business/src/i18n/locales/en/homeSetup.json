@@ -1,0 +1,20 @@
+{
+  "homeSetup": {
+    "h1": {
+      "title": "Finish setting up {{brand}}",
+      "count": "{{done}} of 4",
+      "waiting": "Waiting for {{client}}",
+      "moreNeeded": "One more thing",
+      "cta": "Continue",
+      "todoSub": "{{done}} of 4 done",
+      "progressLabel": "Setup progress"
+    },
+    "takePayment": {
+      "pill": "Take a payment",
+      "atDoorToday_one": "At the door today · {{count}} sale · {{amount}}",
+      "atDoorToday_other": "At the door today · {{count}} sales · {{amount}}",
+      "noEventToday": "Nothing on today to sell for. Take payments on the day of an event.",
+      "openFailed": "Couldn't open the door sale. Try again."
+    }
+  }
+}
