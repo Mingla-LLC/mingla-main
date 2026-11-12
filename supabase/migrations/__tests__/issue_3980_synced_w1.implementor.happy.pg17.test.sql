@@ -34,6 +34,30 @@
 
 \set ON_ERROR_STOP on
 begin;
+
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
 -- [TEST-MOD-APPROVED #3980] X3: follow-through counts from the switch-on time; these G5 checks run as if it was switched on long ago.
 update public.ops_settings set value = to_jsonb(now() - interval '400 days') where key = 'follow_through_since';
 
@@ -264,7 +288,7 @@ select pg_temp.t3980s_keep('h1', pg_temp.t3980s_rec('S3980 Chat Host')::text),
 do $x1$
 declare v text; v_items text; v_rev bigint; v_id text;
 begin
-  v_items := format($j$[{"title":"S3980 plan with person steps","instructions":"Walk through the steps with the host and mark each one.","done_means":"Every step is marked.","owners":["ada.s3980@test.local"],"due_on":"%s",
+  v_items := format($j$[{"title":"S3980 plan with person steps","instructions":"Walk through the steps with the host and mark each one.","done_means":"Every step is marked.","owners":["ada.s3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s",
     "plan":[{"n":1,"text":"Call the host","tool":"person"},{"n":2,"text":"Write the recap","tool":"person"},{"n":3,"text":"Log the reply","tool":"record_reply"}]}]$j$,
     (now() AT TIME ZONE 'UTC')::date + 3);
   v := pg_temp.t3980s_work('A', 'aaaaaaaaaaaaaaaa', 'add_work', format('{"cards":%s,"request_key":"s3980-x1-add-01"}', v_items));
@@ -384,7 +408,7 @@ $f2$;
 do $d4$
 declare v text; v_id text; v_rev bigint; v_items text;
 begin
-  v_items := format($j$[{"title":"S3980 long build card","instructions":"A build that takes several days; post each step.","done_means":"The build is merged.","owners":["ada.s3980@test.local"],"due_on":"%s"}]$j$,
+  v_items := format($j$[{"title":"S3980 long build card","instructions":"A build that takes several days; post each step.","done_means":"The build is merged.","owners":["ada.s3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}]$j$,
     (now() AT TIME ZONE 'UTC')::date + 4);
   v := pg_temp.t3980s_work('A', 'aaaaaaaaaaaaaaaa', 'add_work', format('{"cards":%s,"request_key":"s3980-d4-add-01"}', v_items));
   v_id := pg_temp.t3980s_get(v, 'result', 'results', '0', 'card', 'id');
@@ -436,7 +460,7 @@ $d4$;
 do $d3$
 declare v text; v_id text; v_rev bigint; v_items text; v_far date := (now() AT TIME ZONE 'UTC')::date + 17; v_next uuid; v_card uuid;
 begin
-  v_items := format($j$[{"title":"S3980 due in two and a half weeks","instructions":"Prepare the launch pack well ahead.","done_means":"The launch pack is ready.","owners":["ada.s3980@test.local"],"due_on":"%s"}]$j$, v_far);
+  v_items := format($j$[{"title":"S3980 due in two and a half weeks","instructions":"Prepare the launch pack well ahead.","done_means":"The launch pack is ready.","owners":["ada.s3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}]$j$, v_far);
   v := pg_temp.t3980s_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text', v_items, 's3980-d3-add-01'));
   v_id := pg_temp.t3980s_get(v, 'results', '0', 'card', 'id');
   perform pg_temp.t3980s_check('D3', 'a card due in 17 days lands in this week''s sprint',
@@ -486,7 +510,7 @@ begin
       coalesce((public.ops_github_parse(r.input)->>'kind') || ':' || (public.ops_github_parse(r.input)->>'number'),
                case when public.ops_github_parse(r.input)->>'error' = v_words then 'error' end), r.want);
   end loop;
-  v_items := format($j$[{"title":"S3980 card with GitHub links","instructions":"Track the engineering issue and its pull request.","done_means":"Both are Live.","owners":["ada.s3980@test.local"],"due_on":"%s","github":["#3980","https://github.com/Mingla-LLC/mingla-main/pull/3991"]}]$j$,
+  v_items := format($j$[{"title":"S3980 card with GitHub links","instructions":"Track the engineering issue and its pull request.","done_means":"Both are Live.","owners":["ada.s3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s","github":["#3980","https://github.com/Mingla-LLC/mingla-main/pull/3991"]}]$j$,
     (now() AT TIME ZONE 'UTC')::date + 2);
   v := pg_temp.t3980s_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text', v_items, 's3980-f3-add-01'));
   v_id := pg_temp.t3980s_get(v, 'results', '0', 'card', 'id');
@@ -630,21 +654,28 @@ begin
   perform pg_temp.t3980s_ingest(pg_temp.t3980s_record(92003));
   update public.ops_release_records set merged_at = now() - interval '3 days' where pr = 92003;
   v := pg_temp.t3980s_as('service', 'select public.ops_engineering_cards_sync()::text');
+  -- [TEST-MOD-APPROVED #4398] S2: each pull request's open release items are ONE eng_release:pr-N card (its
+  -- checklist read live from the record); it takes its route's owner and watcher, not the merger.
   perform pg_temp.t3980s_check('G5', 'engineering cards are made for a PR with no issue, a web change without [deploy] and a live check pending 48 hours',
     (select string_agg(auto_key, ',' order by auto_key) from public.ops_work_cards where auto_key like 'eng\_%' and status <> 'done'),
-    'eng_live_check:pr-92003,eng_no_issue:pr-92001,eng_no_pr_push:cccccc' || 'c,eng_not_deployed:pr-92002:mingla-admin');
-  perform pg_temp.t3980s_check('G5', 'owned by whoever merged (by GitHub username), watched by the owner, made by Mingla',
-    (select string_agg(p.email || ':' || p.role, ',' order by p.role, p.email) from public.ops_work_people p join public.ops_work_cards w on w.id = p.card_id where w.auto_key = 'eng_no_issue:pr-92001')
-      || '/' || (select created_via || ':' || created_by from public.ops_work_cards where auto_key = 'eng_no_issue:pr-92001'),
-    'ada.s3980@test.local:owner,ed.s3980@test.local:watcher/system:system@usemingla.com');
+    'eng_no_pr_push:cccccc' || 'c,eng_release:pr-92001,eng_release:pr-92002,eng_release:pr-92003');
+  perform pg_temp.t3980s_check('G5', 'each release card lists what is open',
+    (select string_agg(i->>'key', ',' order by i->>'key') from jsonb_array_elements(public.ops_release_items(92001)) i where not (i->>'done')::boolean) || '/' ||
+    (select string_agg(i->>'key', ',' order by i->>'key') from jsonb_array_elements(public.ops_release_items(92002)) i where not (i->>'done')::boolean) || '/' ||
+    (select string_agg(i->>'key', ',' order by i->>'key') from jsonb_array_elements(public.ops_release_items(92003)) i where not (i->>'done')::boolean),
+    'issue,live_check/deploy:mingla-admin,live_check/live_check');
+  perform pg_temp.t3980s_check('G5', 'owned and watched by its route''s people, made by Mingla',
+    (select string_agg(p.email || ':' || p.role, ',' order by p.role, p.email) from public.ops_work_people p join public.ops_work_cards w on w.id = p.card_id where w.auto_key = 'eng_release:pr-92001')
+      || '/' || (select created_via || ':' || created_by from public.ops_work_cards where auto_key = 'eng_release:pr-92001'),
+    'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher/system:system@usemingla.com');
   perform pg_temp.t3980s_check('G5', 'the card names the pull request in words and links it',
-    (select title || ' | ' || (select string_agg(kind || ':' || number, ',' order by number) from public.ops_work_github g where g.card_id = w.id) from public.ops_work_cards w where auto_key = 'eng_not_deployed:pr-92002:mingla-admin'),
-    'Deploy mingla-admin: PR #92002 merged without [deploy] | issue:3980,pull:92002');
+    (select title || ' | ' || (select string_agg(kind || ':' || number, ',' order by number) from public.ops_work_github g where g.card_id = w.id) from public.ops_work_cards w where auto_key = 'eng_release:pr-92002'),
+    'Finish the release of PR #92002 | issue:3980,pull:92002');
   v := pg_temp.t3980s_as('service', 'select public.ops_engineering_cards_sync()::text');
   perform pg_temp.t3980s_check('G5', 'a second run makes no duplicate', pg_temp.t3980s_get(v, 'added'), '0');
   perform pg_temp.t3980s_ingest(pg_temp.t3980s_record(92003, '{"problems":[],"live_check":{"text":"Looked at it live","by_login":"ada-gh","url":"https://github.com/Mingla-LLC/mingla-main/issues/3980#issuecomment-3","at":"2026-10-20T11:00:00Z"}}'));
   v := pg_temp.t3980s_as('service', 'select public.ops_engineering_cards_sync()::text');
-  select id into v_card from public.ops_work_cards where auto_key = 'eng_live_check:pr-92003';
+  select id into v_card from public.ops_work_cards where auto_key = 'eng_release:pr-92003'; -- [TEST-MOD-APPROVED #4398] the release card
   perform pg_temp.t3980s_check('G5', 'the card closes itself once the live check is there',
     (select status || ':' || close_kind || ':' || closed_via from public.ops_work_cards where id = v_card)
       || '/' || (select count(*) from public.ops_work_events where card_id = v_card and action = 'auto_closed')::text, 'done:system:system/1');

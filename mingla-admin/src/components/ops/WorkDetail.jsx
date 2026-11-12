@@ -55,6 +55,8 @@ import {
   showsHostSees,
 } from "../../lib/opsModel";
 import { GROUP_LABELS, hoursLabel, liveColumns, parseEstimate, writeShowChanges } from "../../lib/workBoardModel";
+import { DUE_TONE, dueLabel, waitingWords } from "../../lib/dueLabel";
+import { closeFormWords, reviewRole, SEND_BACK_MAX, SEND_BACK_MIN } from "../../lib/workReview";
 import { OpsChip } from "./OpsChip";
 import { PeopleField, PersonAvatar } from "../people/PeopleField";
 import { suggestedPeople } from "../../lib/peopleField";
@@ -161,6 +163,11 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const savedDescription = card ? (card.description ?? card.instructions ?? "") : "";
   const [description, setDescription, descriptionDraft] = usePanelDraft(`work:${cardId}:description`, savedDescription);
   const [blockReason, setBlockReason] = useState("");
+  const [backReason, setBackReason] = useState("");  // #4398: Send back
+  // #4398: a closed card without one owner and one watcher reopens with the people picked here.
+  const [reopenNeed, setReopenNeed] = useState("");
+  const [reopenOwner, setReopenOwner] = useState([]);
+  const [reopenWatcher, setReopenWatcher] = useState([]);
   // The title and Done when grow with their text and never clip it.
   const titleGrow = useAutoGrow(title);
   const doneMeansGrow = useAutoGrow(doneMeans);
@@ -301,6 +308,12 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const openSubs = subtasks.filter((s) => s.status !== "done").length;
   const myName = directory.people.find((p) => p.me)?.name || me.name || "";
   const canEdit = !locked && !closed;
+  // #4398: who this person is on the card, and what the review step lets them do.
+  const role = reviewRole(card, directory.me);
+  const closeWords = closeFormWords(card, directory.me, closeTo?.name);  // #4398 retest (P3)
+  const due = dueLabel(card, today);
+  const releaseItems = Array.isArray(card.release_items) ? card.release_items : null;
+  const closedWords = (a) => (a?.review ? `Sent to ${a.review.watcher_name} to confirm` : "Card closed");
 
   // The status pill and the ⋯ menu's Move to: a Closed column asks for proof first.
   const moveTo = (to) => {
@@ -312,20 +325,49 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const submitClose = async (proof, res) => {
     const to = closeTo || doneColumn;
     const a = to
-      ? await run("close", () => ops.moveWork(card.id, to.id, card.revision, { proof, result: res || null, closeChildren }), "Card closed")
-      : await run("close", () => ops.closeWork(card.id, proof, res || null, card.revision), "Card closed");
+      ? await run("close", () => ops.moveWork(card.id, to.id, card.revision, { proof, result: res || null, closeChildren }), closedWords)
+      : await run("close", () => ops.closeWork(card.id, proof, res || null, card.revision), closedWords);
     if (a) { setForm(""); setCloseTo(null); setCloseChildren(false); }
+  };
+
+  // #4398: reopening is never a dead end. The server fills missing people from
+  // the parent; with no parent it says who to add, and the pickers below
+  // send them with the reopen.
+  const reopen = async () => {
+    setBusy("reopen");
+    try {
+      const answer = await ops.reopenWork(card.id, null, card.revision, reopenNeed ? { owner: reopenOwner[0], watcher: reopenWatcher[0] } : {});
+      setReopenNeed("");
+      await refresh();
+      offerUndo(answer, "Reopened");
+    } catch (error) {
+      if (error?.token === "card_people") {
+        setReopenNeed(opsErrorWords(error));
+        setReopenOwner(ownerEmails.length === 1 ? ownerEmails : []);
+        setReopenWatcher(watcherEmails.length === 1 ? watcherEmails : []);
+      } else await failed(error);
+    } finally { setBusy(""); }
   };
 
   let primary = null;
   if (!card.archived) {
-    if (closed) primary = <Button className="h-9" disabled={locked || !!busy} onClick={() => run("reopen", () => ops.reopenWork(card.id, null, card.revision), "Reopened")}>Reopen</Button>;
+    if (closed) primary = <Button className="h-9" data-reopen="" disabled={locked || !!busy} onClick={reopen}>Reopen</Button>;
+    else if (card.review && role.canConfirm) primary = (
+      // #4398 retest (P2): Send back sits beside Confirm done, as in design v3.
+      <>
+        <Button className="h-9" data-confirm="" disabled={locked || !!busy} onClick={() => run("confirm", () => ops.confirmWork(card.id, card.revision), "Confirmed. Done.")}>Confirm done</Button>
+        <Button variant="secondary" className="h-9" data-send-back="" aria-expanded={form === "reviewback"} disabled={locked || !!busy} onClick={() => setForm(form === "reviewback" ? "" : "reviewback")}>Send back</Button>
+      </>
+    );
+    else if (card.review) primary = null;
+    else if (releaseItems) primary = null;
     else if (tagged && action) primary = <Button className="h-9" disabled={locked || !!busy} onClick={() => setForm(form === action.action ? "" : action.action)}>{action.label}</Button>;
     else if (card.status === "todo" && !tagged) primary = <Button className="h-9" disabled={locked || !!busy || card.blocked} onClick={() => run("start", () => ops.startWork(card.id, card.revision), "Started")}>Start</Button>;
-    else primary = <Button className="h-9" disabled={locked || !!busy} onClick={startClose}>Done with proof</Button>;
+    else primary = <Button className="h-9" data-mark-done="" disabled={locked || !!busy} onClick={startClose}>{role.isWatcher ? "Close as done" : "Mark done"}</Button>;
   }
   const more = [];
-  if (!card.archived && !closed) {
+  if (!card.archived && !closed && !card.review) {
+    if (card.status === "todo" && !tagged && !releaseItems) more.push({ id: "close", label: role.isWatcher ? "Close as done" : "Mark done", run: startClose });
     if (tagged) more.push({ id: "sendback", label: "Send back", run: () => setForm("sendback") });
     if (tagged && card.status === "todo") more.push({ id: "start", label: "Start", run: () => run("start", () => ops.startWork(card.id, card.revision), "Started"), disabled: card.blocked });
     if (tagged && action) more.push({ id: "close", label: "Done with proof", run: startClose });
@@ -445,16 +487,68 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 <span className="min-w-0 break-words">{trouble}</span>
               </p>
             )}
+            {/* #4398: where the card is in the Done flow, in words. */}
+            {!card.archived && !closed && (
+              <div data-review-state="" className="flex min-w-0 flex-col gap-1 rounded-xl bg-[var(--color-background-secondary)] px-3 py-2">
+                <span className="text-[12px] font-bold text-[var(--color-text-primary)]">{card.review ? "In review" : column?.name || "To do"}</span>
+                <span className="break-words text-[12.5px] text-[var(--color-text-secondary)]">{role.words}</span>
+                {card.review && <span data-review-wait="" className="text-[12px] font-semibold text-[var(--color-info-700)]">{waitingWords(card)}</span>}
+                {card.sent_back && !card.review && <span data-sent-back="" className="break-words text-[12px] font-semibold text-[var(--color-error-700)]">Sent back by {card.sent_back.by_name}: {card.sent_back.reason}</span>}
+              </div>
+            )}
+            {closed && reopenNeed && (
+              <div data-reopen-people="" className="flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--color-warning-100)] bg-[var(--color-warning-50)] p-3">
+                <p role="alert" className="break-words text-[13px] font-semibold text-[var(--color-warning-700)]">{reopenNeed}</p>
+                <PeopleField id={`card-${card.id}-reopen-owner`} label="Owner" single min={0} value={reopenOwner} team={team} me={directory.me}
+                  exclude={reopenWatcher} disabled={locked} busy={!!busy} onChange={(next) => setReopenOwner(next)} />
+                <PeopleField id={`card-${card.id}-reopen-watcher`} label="Watcher" single min={0} value={reopenWatcher} team={team} me={directory.me}
+                  exclude={reopenOwner} disabled={locked} busy={!!busy} onChange={(next) => setReopenWatcher(next)} />
+                <div className="flex flex-wrap gap-2">
+                  <Button className="min-h-11" data-reopen-with-people="" disabled={locked || !!busy || reopenOwner.length !== 1 || reopenWatcher.length !== 1} onClick={reopen}>Reopen with these people</Button>
+                  <Button variant="ghost" className="min-h-11" onClick={() => setReopenNeed("")}>Cancel</Button>
+                </div>
+              </div>
+            )}
+            {closed && card.confirmed_by_name && <p className="text-[12.5px] text-[var(--color-text-secondary)]">Closed by {card.closed_by_name}, confirmed by {card.confirmed_by_name}.</p>}
+            {form === "reviewback" && card.review && (
+              <div data-send-back-form="" className="flex min-w-0 flex-col gap-1.5">
+                <label htmlFor={`card-${card.id}-backwhy`} className="text-[12px] font-semibold text-[var(--color-text-primary)]">What is missing? {owners[0]?.name || "The owner"} sees this.</label>
+                <textarea id={`card-${card.id}-backwhy`} value={backReason} maxLength={SEND_BACK_MAX} rows={3} onChange={(e) => setBackReason(e.target.value)}
+                  placeholder="For example: post the link to the published video" className={`${INPUT} min-h-16`} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button className="min-h-11" disabled={locked || !!busy || backReason.trim().length < SEND_BACK_MIN} onClick={async () => {
+                    const a = await run("reviewback", () => ops.sendBackWork(card.id, backReason.trim(), card.revision), `Sent back to ${owners[0]?.name || "the owner"}`);
+                    if (a) { setForm(""); setBackReason(""); }
+                  }}>Send back</Button>
+                  <Button variant="ghost" className="min-h-11" onClick={() => { setForm(""); setBackReason(""); }}>Cancel</Button>
+                  <span className="text-[11.5px] text-[var(--color-text-tertiary)]">{backReason.trim().length < SEND_BACK_MIN ? `At least ${SEND_BACK_MIN} characters` : `${backReason.trim().length} of ${SEND_BACK_MAX}`}</span>
+                </div>
+              </div>
+            )}
+            {releaseItems && (
+              <div data-release-items="" className="flex min-w-0 flex-col gap-1.5">
+                <span className="text-[12px] font-bold text-[var(--color-text-primary)]">One card for this pull request. It ticks itself.</span>
+                <ul className="flex flex-col gap-1">
+                  {releaseItems.map((i) => (
+                    <li key={i.key} data-release-item={i.key} data-done={i.done ? "true" : "false"} className="flex min-w-0 items-start gap-2 text-[13px] text-[var(--color-text-primary)]">
+                      <span aria-hidden="true" className={`mt-0.5 inline-grid h-4 w-4 shrink-0 place-items-center rounded border text-[11px] font-bold ${i.done ? "border-[var(--color-success-600)] bg-[var(--color-success-600)] text-white" : "border-[var(--gray-400)]"}`}>{i.done ? "✓" : ""}</span>
+                      <span className="min-w-0 break-words">{i.text}<span className="sr-only">{i.done ? ", done" : ", still to do"}</span></span>
+                    </li>
+                  ))}
+                </ul>
+                <span className="text-[11.5px] text-[var(--color-text-tertiary)]">Read from the release record. The card closes by itself when nothing is left.</span>
+              </div>
+            )}
             {form === "close" && (
               <div className="flex min-w-0 flex-col gap-2">
-                {closeTo && <p className="text-[12.5px] text-[var(--color-text-secondary)]">Moving to {closeTo.name} closes this card.</p>}
+                <p data-close-line="" className="text-[12.5px] text-[var(--color-text-secondary)]">{closeWords.line}</p>
                 {openSubs > 0 && (
                   <label className="flex min-h-10 items-start gap-2 text-[13px] text-[var(--color-text-primary)]">
                     <input type="checkbox" checked={closeChildren} onChange={(e) => setCloseChildren(e.target.checked)} className="mt-0.5 h-5 w-5 accent-[var(--color-brand-700)]" />
                     <span>Close the {openSubs} open {openSubs === 1 ? "subtask" : "subtasks"} too</span>
                   </label>
                 )}
-                <ProofForm busy={busy === "close"} disabled={locked} onCancel={() => { setForm(""); setCloseTo(null); }} onSubmit={submitClose} />
+                <ProofForm busy={busy === "close"} disabled={locked} submitLabel={closeWords.submit} busyLabel={closeWords.busy} onCancel={() => { setForm(""); setCloseTo(null); }} onSubmit={submitClose} />
               </div>
             )}
             {form === "push" && <PushBackForm busy={busy === "push"} disabled={locked} onCancel={() => setForm("")} onSubmit={async (kind, reason, proof) => { const a = await run("push", () => ops.pushBackWork(card.id, kind, reason, proof, card.revision), kind === "declined" ? "Pushed back: not needed" : "Closed: already done"); if (a) setForm(""); }} />}
@@ -526,19 +620,19 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           <section aria-label="People and dates" className="flex min-w-0 flex-col gap-1">
             <div data-people-line="" className="flex min-w-0 flex-wrap items-center gap-1">
               <PeopleChip id={`card-${card.id}-owners-pop`} label="Owners" people={owners} field={
-                <PeopleField id={`card-${card.id}-owners`} label="Owners" value={ownerEmails} team={team} me={directory.me}
-                  suggested={suggestedPeople(directory.me, ownerEmails)} exclude={watcherEmails} min={ownerEmails.length ? 1 : 0}
-                  minWords={card.auto ? "This card keeps one owner once it has one. Add someone else first, then remove this one." : undefined}
+                <PeopleField id={`card-${card.id}-owners`} label="Owner" single value={ownerEmails} team={team} me={directory.me}
+                  suggested={suggestedPeople(directory.me, ownerEmails)} exclude={watcherEmails} min={1}
                   disabled={!canEdit} busy={!!busy}
-                  onChange={(next, change) => update({ owners: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)} />
+                  onChange={(next, change) => update({ owners: next }, change.added ? `${nameOf(change.added)} owns it now and was told.` : `${nameOf(change.removed)} removed.`)} />
               } />
               <PeopleChip id={`card-${card.id}-watchers-pop`} label="Watching" people={watchers} field={
-                <PeopleField id={`card-${card.id}-watchers`} label="Watching" value={watcherEmails} team={team} me={directory.me}
-                  suggested={[directory.me].filter(Boolean)} exclude={ownerEmails} disabled={!canEdit} busy={!!busy}
-                  onChange={(next, change) => update({ watchers: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)} />
+                <PeopleField id={`card-${card.id}-watchers`} label="Watcher" single value={watcherEmails} team={team} me={directory.me}
+                  suggested={[directory.me].filter(Boolean)} exclude={ownerEmails} min={1} disabled={!canEdit} busy={!!busy}
+                  minWords="A card has one watcher, who is not the owner. Pick someone else to change it."
+                  onChange={(next, change) => update({ watchers: next }, change.added ? `${nameOf(change.added)} watches it now and was told.` : `${nameOf(change.removed)} removed.`)} />
               } />
-              {directory.me && !ownerEmails.includes(directory.me) && canEdit && (
-                <button type="button" data-assign-me="" disabled={!!busy} onClick={() => update({ owners: [...ownerEmails, directory.me] }, "Assigned to you.")} className={`${CHIP} font-semibold text-[var(--color-text-secondary)]`}>Assign to me</button>
+              {directory.me && !ownerEmails.includes(directory.me) && !watcherEmails.includes(directory.me) && canEdit && (
+                <button type="button" data-assign-me="" disabled={!!busy} onClick={() => update({ owners: [directory.me] }, "You own it now.")} className={`${CHIP} font-semibold text-[var(--color-text-secondary)]`}>Assign to me</button>
               )}
             </div>
             <div data-dates-line="" className="flex min-w-0 flex-wrap items-center gap-1">
@@ -552,7 +646,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                   </>
                 )}
               </PropChip>
-              <PropChip label={`Due${card.kit_step !== null && card.kit_step !== undefined ? ` · T${card.kit_step > 0 ? "+" : ""}${card.kit_step}` : ""}`} empty="Due" value={card.due_on ? dayLabel(card.due_on) : ""} danger={!!card.overdue} disabled={!canEdit} width="w-56">
+              <PropChip label={`Due${card.kit_step !== null && card.kit_step !== undefined ? ` · T${card.kit_step > 0 ? "+" : ""}${card.kit_step}` : ""}`} empty="Due" value={card.due_on || closed ? <span data-due={due.tone} title={due.full || undefined} className={`rounded-full px-1.5 py-px ${DUE_TONE[due.tone]}`}>{due.text}</span> : ""} danger={!!card.overdue} disabled={!canEdit} width="w-56">
                 {(closeIt) => (
                   <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">Due date
                     <input type="date" defaultValue={card.due_on || ""} onChange={(e) => { if (e.target.value) { update({ due_on: e.target.value }, "Due date changed"); closeIt(); } }} className={INPUT} />

@@ -169,6 +169,9 @@ create function pg_temp.tw_card(p_key text, p_title text, p_status text, p_owner
 language plpgsql as $fn$
 declare v_id uuid; v_today date := (now() AT TIME ZONE 'UTC')::date;
 begin
+  -- [TEST-MOD-APPROVED #4398 fixture] loaded as a fixture (replica mode), past the review and people checks.
+  perform set_config('ops.fx_srr', current_setting('session_replication_role'), true);
+  perform set_config('session_replication_role', 'replica', true);
   insert into public.ops_work_cards (title, instructions, done_means, status, due_on, due_source, sprint_id,
     created_by, created_via, updated_by, closed_at, closed_by, close_kind, archived_at, archived_by, archive_reason)
   values (p_title, 'Do the work and write what changed.', 'Checked and done.', p_status,
@@ -178,6 +181,9 @@ begin
     case when p_archived then now() end, case when p_archived then p_owner end, case when p_archived then 'No longer needed.' end)
   returning id into v_id;
   insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, p_owner, 'owner', p_owner);
+  if p_watcher is null and p_owner <> 'bola.w4270@test.local' then  -- #4398: one watcher (Bola) when none is given
+    insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'bola.w4270@test.local', 'watcher', p_owner);
+  end if;
   if p_watcher is not null then
     insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, p_watcher, 'watcher', p_owner);
   end if;
@@ -185,6 +191,7 @@ begin
     insert into public.ops_work_links (card_id, kind, target_id, label, added_by) values (v_id, 'host', p_host, 'host', p_owner);
   end if;
   insert into tw_ids (k, id) values (p_key, v_id);
+  perform set_config('session_replication_role', current_setting('ops.fx_srr'), true);
   return v_id;
 end;
 $fn$;
@@ -482,7 +489,7 @@ declare v jsonb; v_t text; v_due text := ((now() AT TIME ZONE 'UTC')::date + 2):
 begin
   v := pg_temp.tw_j(pg_temp.tw_person('ops', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick', true,
     'title', 'W4270 Typed instructions kept', 'instructions', 'Ring the venue and confirm the date.', 'done_means', '   ',
-    'owners', jsonb_build_array('kemi.w4270@test.local'), 'due_on', %L, 'on_brand_plan', true,
+    'owners', jsonb_build_array('kemi.w4270@test.local'), 'watchers', jsonb_build_array('bola.w4270@test.local'), 'due_on', %L, 'on_brand_plan', true,
     'links', jsonb_build_array(jsonb_build_object('kind', 'host', 'id', '42710000-0000-4000-c0f0-000000000002')))), 'w4270-quick-0001')::text$q$, v_due)));
   v_id := (v #>> '{results,0,card,id}')::uuid;
   perform pg_temp.tw_check('X-QUICK', 'typed instructions are kept, a blank done means is filled for a shown card',
@@ -490,21 +497,21 @@ begin
     'Ring the venue and confirm the date. | Done and the host is told in the Brand group. | host_card');
 
   v := pg_temp.tw_j(pg_temp.tw_person('ops', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick', true,
-    'title', 'W4270 Quick without a host', 'owners', jsonb_build_array('kemi.w4270@test.local'), 'due_on', %L)), 'w4270-quick-0002')::text$q$, v_due)));
+    'title', 'W4270 Quick without a host', 'owners', jsonb_build_array('kemi.w4270@test.local'), 'watchers', jsonb_build_array('bola.w4270@test.local'), 'due_on', %L)), 'w4270-quick-0002')::text$q$, v_due)));
   v_id := (v #>> '{results,0,card,id}')::uuid;
   perform pg_temp.tw_check('X-QUICK', 'without a host link the words say a host; hidden by default',
     (select instructions || ' | ' || done_means || ' | ' || on_brand_plan::text from public.ops_work_cards where id = v_id),
     format('Added by %s from a host''s host card. | Done with proof on this card. | false', public.ops_actor_label('kemi.w4270@test.local', NULL)));
 
   v := pg_temp.tw_j(pg_temp.tw_person('ops', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick', 'true',
-    'title', 'W4270 String quick', 'owners', jsonb_build_array('kemi.w4270@test.local'), 'due_on', %L)), 'w4270-quick-0003')::text$q$, v_due)));
+    'title', 'W4270 String quick', 'owners', jsonb_build_array('kemi.w4270@test.local'), 'watchers', jsonb_build_array('bola.w4270@test.local'), 'due_on', %L)), 'w4270-quick-0003')::text$q$, v_due)));
   perform pg_temp.tw_check('X-QUICK', 'quick "true" (a string) is not quick: instructions and done means are fixes, quick is not',
     (v #>> '{results,0,status}') || ' ' ||
     (select string_agg(f->>'field', ',' order by f->>'field') from jsonb_array_elements(v #> '{results,0,fixes}') f), 'refused done_means,instructions');
 
   v := pg_temp.tw_j(pg_temp.tw_person('ops', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick', false,
     'title', 'W4270 Full person add', 'instructions', 'Do the work and write what changed.', 'done_means', 'Checked and done.',
-    'owners', jsonb_build_array('kemi.w4270@test.local'), 'due_on', %L)), 'w4270-quick-0004')::text$q$, v_due)));
+    'owners', jsonb_build_array('kemi.w4270@test.local'), 'watchers', jsonb_build_array('bola.w4270@test.local'), 'due_on', %L)), 'w4270-quick-0004')::text$q$, v_due)));
   v_id := (v #>> '{results,0,card,id}')::uuid;
   perform pg_temp.tw_check('X-QUICK', 'a plain add (quick false) is added with no source',
     (v #>> '{results,0,status}') || ' ' || (select coalesce(brand_plan_source, '-') from public.ops_work_cards where id = v_id), 'added -');
@@ -512,7 +519,7 @@ begin
     (select count(*) from public.ops_work_cards w where w.title like 'W4270 %' and (to_jsonb(w) ? 'quick' or w.plan::text like '%quick%'))::text, '0');
 
   v_t := pg_temp.tw_agent('ops', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick', true,
-    'title', 'W4270 Agent quick hidden', 'owners', jsonb_build_array('kemi.w4270@test.local'), 'due_on', %L,
+    'title', 'W4270 Agent quick hidden', 'owners', jsonb_build_array('kemi.w4270@test.local'), 'watchers', jsonb_build_array('bola.w4270@test.local'), 'due_on', %L,
     'links', jsonb_build_array(jsonb_build_object('kind', 'host', 'id', '42710000-0000-4000-c0f0-000000000001')))), 'w4270-quick-0005')::text$q$, v_due), 'add_work');
   v_id := (pg_temp.tw_j(v_t) #>> '{results,0,card,id}')::uuid;
   perform pg_temp.tw_check('X-QUICK', 'an agent''s quick add names the agent and stays hidden',

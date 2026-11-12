@@ -41,6 +41,34 @@
 
 \set ON_ERROR_STOP on
 begin;
+
+-- [TEST-MOD-APPROVED #4398] cards this suite closes by writing the table straight away (fixtures for past
+-- decisions) count as confirmed by their watcher; every close through a function still goes through review.
+set local ops.review_confirmed = on;
+
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
 -- [TEST-MOD-APPROVED #3980] X3: follow-through counts from the switch-on time; these G5 checks run as if it was switched on long ago.
 update public.ops_settings set value = to_jsonb(now() - interval '400 days') where key = 'follow_through_since';
 
@@ -222,7 +250,7 @@ language plpgsql as $fn$
 declare v text;
 begin
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'add_work', format(
-    $j${"cards":[{"title":"%s","instructions":"Adversarial fixture card; follow the steps.","done_means":"Every step is marked.","owners":["kim.a3980@test.local"],"due_on":"%s"%s}],"request_key":"%s"}$j$,
+    $j${"cards":[{"title":"%s","instructions":"Adversarial fixture card; follow the steps.","done_means":"Every step is marked.","owners":["kim.a3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"%s}],"request_key":"%s"}$j$,
     p_title, (now() AT TIME ZONE 'UTC')::date + 3, p_extra, 'a3980-' || md5(p_title)));
   return pg_temp.t3980a_get(v, 'result', 'results', '0', 'card', 'id');
 end;
@@ -507,7 +535,7 @@ begin
   returning id into v_e;
   -- A card a person planned for a later week by hand (sprint changed, due date not).
   v := pg_temp.t3980a_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text',
-    format('[{"title":"A3980 planned ahead by hand","instructions":"Kim chose the week herself.","done_means":"It stays in that week.","owners":["kim.a3980@test.local"],"due_on":"%s"}]', v_mon + 16), 'a3980-d3-hand-1'));
+    format('[{"title":"A3980 planned ahead by hand","instructions":"Kim chose the week herself.","done_means":"It stays in that week.","owners":["kim.a3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}]', v_mon + 16), 'a3980-d3-hand-1'));
   v_f := (pg_temp.t3980a_get(v, 'results', '0', 'card', 'id'))::uuid;
   v := pg_temp.t3980a_person('growth', format($q$select public.ops_work_update(%L, '{"week":"%s"}'::jsonb, 1)::text$q$, v_f, v_mon + 14));
   perform pg_temp.t3980a_check('D3', 'the hand-planned card is in the later week before the correction',
@@ -577,7 +605,7 @@ begin
   perform pg_temp.t3980a_check('F3', 'links that are not a list are refused in words',
     pg_temp.t3980a_get(v, 'error', 'message'), 'GitHub links must be a list, like ["#3980"].');
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'add_work', format(
-    $j${"cards":[{"title":"A3980 refused card with a fork link","instructions":"This card must not be written.","done_means":"Nothing is written.","owners":["kim.a3980@test.local"],"due_on":"%s","github":["https://github.com/Mingla-LLC/mingla-main-fork/pull/1"]}],"request_key":"a3980-f3-refused-1"}$j$,
+    $j${"cards":[{"title":"A3980 refused card with a fork link","instructions":"This card must not be written.","done_means":"Nothing is written.","owners":["kim.a3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s","github":["https://github.com/Mingla-LLC/mingla-main-fork/pull/1"]}],"request_key":"a3980-f3-refused-1"}$j$,
     (now() AT TIME ZONE 'UTC')::date + 3));
   perform pg_temp.t3980a_check('F3', 'a card refused for its link writes no card and no link',
     pg_temp.t3980a_get(v, 'result', 'refused') || '/' || (select count(*)::text from public.ops_work_cards where title = 'A3980 refused card with a fork link'), '1/0');
@@ -633,7 +661,7 @@ begin
   perform pg_temp.t3980a_check('F5', 'a shared name is ambiguous as an owner, while each address still works',
     coalesce(public.ops_team_email('Debrah'), '<ambiguous>') || '/' || public.ops_team_email('lou.a3980@test.local'), '<ambiguous>/lou.a3980@test.local');
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'add_work', format(
-    $j${"cards":[{"title":"A3980 card for Debrah","instructions":"Assign it by the shared name.","done_means":"Debrah has it.","owners":["Debrah"],"due_on":"%s"}],"request_key":"a3980-f5-debrah-1"}$j$,
+    $j${"cards":[{"title":"A3980 card for Debrah","instructions":"Assign it by the shared name.","done_means":"Debrah has it.","owners":["Debrah"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}],"request_key":"a3980-f5-debrah-1"}$j$,
     (now() AT TIME ZONE 'UTC')::date + 3));
   perform pg_temp.t3980a_check('F5', 'a card owned by a shared name is refused, never given to the wrong Debrah',
     pg_temp.t3980a_get(v, 'result', 'refused') || '/' || pg_temp.t3980a_get(v, 'result', 'results', '0', 'fixes', '0', 'field'), '1/owners');
@@ -705,15 +733,17 @@ begin
   perform pg_temp.t3980a_ingest(pg_temp.t3980a_record(93002, '{"merged_by":"stranger-gh","edge_functions":["team-agent"],"deploy":{"web":{},"edge":"failed"},"problems":["edge_deploy_failed","live_check_missing"]}'));
   perform pg_temp.t3980a_ingest(pg_temp.t3980a_record(93003, '{"merged_by":"stranger-gh","author":"another-gh","feature_guide":null,"problems":["feature_guide_missing","live_check_missing"]}'));
   for r in 1..3 loop v := pg_temp.t3980a_sync(); end loop;
+  -- [TEST-MOD-APPROVED #4398] S2: a PR's guide line, issue, deploy, migrations and live check items are its ONE
+  -- eng_release:pr-N card; A3: every bot card takes its route's owner and watcher, whoever merged or wrote it.
   perform pg_temp.t3980a_check('G5', 'three runs make each card once',
     (select string_agg(auto_key || '=' || n, ',' order by auto_key) from (select auto_key, count(*) n from public.ops_work_cards where auto_key like 'eng\_%' group by auto_key) x
       where auto_key like '%9300%'),
-    'eng_deploy_failed:pr-93001:mingla-admin=1,eng_deploy_failed:pr-93002:edge=1,eng_guide_missing:pr-93003=1');
-  perform pg_temp.t3980a_check('G5', 'the card goes to whoever merged, watched by the owner', pg_temp.t3980a_owner_of('eng_deploy_failed:pr-93001:mingla-admin'),
-    'lou.a3980@test.local:owner,oz.a3980@test.local:watcher');
-  perform pg_temp.t3980a_check('G5', 'a merger who is not a teammate hands it to the author', pg_temp.t3980a_owner_of('eng_deploy_failed:pr-93002:edge'),
-    'kim.a3980@test.local:owner,oz.a3980@test.local:watcher');
-  perform pg_temp.t3980a_check('G5', 'neither a teammate: the owner owns it, with no watcher', pg_temp.t3980a_owner_of('eng_guide_missing:pr-93003'), 'oz.a3980@test.local:owner');
+    'eng_deploy_failed:pr-93001:mingla-admin=1,eng_deploy_failed:pr-93002:edge=1,eng_release:pr-93003=1');
+  perform pg_temp.t3980a_check('G5', 'a teammate merged: the card is the route''s owner''s, watched by its watcher', pg_temp.t3980a_owner_of('eng_deploy_failed:pr-93001:mingla-admin'),
+    'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
+  perform pg_temp.t3980a_check('G5', 'a merger who is not a teammate: the same', pg_temp.t3980a_owner_of('eng_deploy_failed:pr-93002:edge'),
+    'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
+  perform pg_temp.t3980a_check('G5', 'neither a teammate: the same, always with one watcher', pg_temp.t3980a_owner_of('eng_release:pr-93003'), 'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
   perform pg_temp.t3980a_check('G5', 'the failed edge deploy card says edge function',
     (select instructions from public.ops_work_cards where auto_key = 'eng_deploy_failed:pr-93002:edge' and status <> 'done'),
     'The edge function deploy for PR #93002 failed. Read the run, fix it and redeploy through the reviewed path.');
@@ -725,31 +755,33 @@ begin
   perform pg_temp.t3980a_check('G5', 'a fixed deploy closes its card by itself, with its reason',
     (select status || ':' || close_kind || ':' || close_reason from public.ops_work_cards where id = v_card), 'done:system:The deploy no longer shows as failed.');
   perform pg_temp.t3980a_check('G5', 'the other two stay open',
-    (select count(*)::text from public.ops_work_cards where auto_key in ('eng_deploy_failed:pr-93002:edge', 'eng_guide_missing:pr-93003') and status <> 'done'), '2');
+    (select count(*)::text from public.ops_work_cards where auto_key in ('eng_deploy_failed:pr-93002:edge', 'eng_release:pr-93003') and status <> 'done'), '2');
 
   -- A person closes one; Mingla does not make it again within 14 days.
-  select id into v_card from public.ops_work_cards where auto_key = 'eng_guide_missing:pr-93003' and status <> 'done';
+  select id into v_card from public.ops_work_cards where auto_key = 'eng_release:pr-93003' and status <> 'done';
   update public.ops_work_cards set status = 'done', close_kind = 'declined', close_reason = 'Not needed for this PR', closed_at = now(),
          closed_by = 'oz.a3980@test.local', proof = '[]'::jsonb where id = v_card;
   v := pg_temp.t3980a_sync();
   perform pg_temp.t3980a_check('G5', 'a card a person closed is not made again',
-    (select count(*)::text from public.ops_work_cards where auto_key = 'eng_guide_missing:pr-93003'), '1');
+    (select count(*)::text from public.ops_work_cards where auto_key = 'eng_release:pr-93003'), '1');
 
   -- Migrations pending past a day; then applied.
   perform pg_temp.t3980a_ingest(pg_temp.t3980a_record(93004, '{"migrations_added":["29990202000001","29990202000002"],"migrations_applied_state":"pending"}'));
   update public.ops_release_records set merged_at = now() - interval '25 hours' where pr = 93004;
   v := pg_temp.t3980a_sync();
-  perform pg_temp.t3980a_check('G5', 'migrations still missing a day after the merge make a card naming them',
-    (select instructions from public.ops_work_cards where auto_key = 'eng_migrations:pr-93004' and status <> 'done'),
-    'PR #93004 merged with migrations 29990202000001, 29990202000002 that the production ledger does not show yet. Apply them through the reviewed path with Seth''s go.');
+  perform pg_temp.t3980a_check('G5', 'migrations still missing a day after the merge open the release card with the migrations item',
+    (select status from public.ops_work_cards where auto_key = 'eng_release:pr-93004' and status <> 'done') || '/' ||
+    (select (i->>'done') from jsonb_array_elements(public.ops_release_items(93004)) i where i->>'key' = 'migrations'), 'todo/false');
   insert into supabase_migrations.schema_migrations (version) values ('29990202000001');
   perform pg_temp.t3980a_as('service', 'select public.ops_release_status_due()::text');
   v := pg_temp.t3980a_sync();
-  perform pg_temp.t3980a_check('G5', 'one of two applied keeps the card open', (select status from public.ops_work_cards where auto_key = 'eng_migrations:pr-93004'), 'todo');
+  perform pg_temp.t3980a_check('G5', 'one of two applied keeps the card open', (select status from public.ops_work_cards where auto_key = 'eng_release:pr-93004'), 'todo');
   insert into supabase_migrations.schema_migrations (version) values ('29990202000002');
   perform pg_temp.t3980a_as('service', 'select public.ops_release_status_due()::text');
   v := pg_temp.t3980a_sync();
-  perform pg_temp.t3980a_check('G5', 'both applied closes it', (select status || ':' || close_kind from public.ops_work_cards where auto_key = 'eng_migrations:pr-93004'), 'done:system');
+  perform pg_temp.t3980a_check('G5', 'both applied ticks the migrations item; the card stays for its live check',
+    (select (i->>'done') from jsonb_array_elements(public.ops_release_items(93004)) i where i->>'key' = 'migrations') || '/' ||
+    (select status from public.ops_work_cards where auto_key = 'eng_release:pr-93004'), 'true/todo');
 
   -- A merged PR seen on main with no record after 30 minutes; a direct push.
   perform pg_temp.t3980a_as('service', format('select public.ops_main_commits_ingest(%L::jsonb)::text', jsonb_build_array(
@@ -760,7 +792,7 @@ begin
   perform pg_temp.t3980a_check('G5', 'a merged PR with no record after 30 minutes makes a card; a direct push makes one for its author',
     (select string_agg(auto_key || '>' || coalesce(pg_temp.t3980a_owner_of(auto_key), '-'), ' ' order by auto_key) from public.ops_work_cards
       where status <> 'done' and (auto_key = 'eng_bot_missing:pr-93005' or auto_key = 'eng_no_pr_push:' || left(md5('push'), 7))),
-    'eng_bot_missing:pr-93005>lou.a3980@test.local:owner,oz.a3980@test.local:watcher eng_no_pr_push:' || left(md5('push'), 7) || '>kim.a3980@test.local:owner,oz.a3980@test.local:watcher');
+    'eng_bot_missing:pr-93005>route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher eng_no_pr_push:' || left(md5('push'), 7) || '>route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
   perform pg_temp.t3980a_ingest(pg_temp.t3980a_record(93005));
   for r in 1..2 loop v := pg_temp.t3980a_sync(); end loop;
   perform pg_temp.t3980a_check('G5', 'the record arriving closes the missing-record card; the direct push stays for a person',

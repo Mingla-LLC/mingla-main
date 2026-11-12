@@ -14,7 +14,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { ChevronRight, GripVertical, MessageSquare, Plus } from "lucide-react";
 import { PersonAvatar } from "../people/PeopleField";
 import * as ops from "../../services/opsService";
-import { dayLabel, opsErrorWords, requestKey, todayIso } from "../../lib/opsModel";
+import { opsErrorWords, requestKey, todayIso } from "../../lib/opsModel";
+import { DUE_TONE, dueLabel } from "../../lib/dueLabel";
 import { canHaveSubtasks, liveColumns, makeSubtaskAdder, reorderIds, subtaskProgress, tickProof } from "../../lib/workBoardModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -28,7 +29,7 @@ function SubtaskRow({ sub, columns, depth, disabled, onTick, onOpen, canReorder,
   const done = sub.status === "done";
   const n = subtaskProgress(sub.subtasks);
   const owner = (sub.owners || [])[0];
-  const late = !done && sub.due_on && String(sub.due_on).slice(0, 10) < todayIso();
+  const due = dueLabel(sub, todayIso());  // #4398
   const expand = async () => {
     const next = !open;
     setOpen(next);
@@ -51,7 +52,8 @@ function SubtaskRow({ sub, columns, depth, disabled, onTick, onOpen, canReorder,
         {n.total > 0 && <span className="shrink-0 text-[11.5px] tabular-nums text-[var(--color-text-tertiary)]">{n.done}/{n.total}</span>}
         {Number(sub.thread_count) > 0 && <span className="inline-flex shrink-0 items-center gap-0.5 text-[11.5px] text-[var(--color-text-tertiary)]" aria-label={`${sub.thread_count} messages`}><MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />{sub.thread_count}</span>}
         {col && <span className="hidden shrink-0 items-center gap-1 rounded-full bg-[var(--gray-100)] px-2 py-0.5 text-[11px] text-[var(--color-text-secondary)] sm:inline-flex"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: col.color }} />{col.name}</span>}
-        {sub.due_on && <span className={`shrink-0 text-[11.5px] tabular-nums ${late ? "font-semibold text-[var(--color-error-700)]" : "text-[var(--color-text-tertiary)]"}`}>{dayLabel(sub.due_on)}</span>}
+        {due.tone !== "none" && <span data-due={due.tone} title={due.full || undefined} className={`shrink-0 rounded-full px-1.5 py-px text-[11px] tabular-nums ${DUE_TONE[due.tone]}`}>{due.text}</span>}
+        {sub.review && <span data-review-wait="" className="hidden shrink-0 text-[11px] font-semibold text-[var(--color-info-700)] sm:inline">In review</span>}
         {owner ? <span title={owner.name}><PersonAvatar person={owner} size="sm" /></span> : <span className="w-5 shrink-0" />}
         {canReorder && (
           <span className="sr-only">
@@ -68,7 +70,7 @@ function SubtaskRow({ sub, columns, depth, disabled, onTick, onOpen, canReorder,
               <li key={k.id} data-subtask={k.id} data-depth={depth + 1} className="flex min-h-9 min-w-0 items-center gap-1.5 px-1">
                 <input type="checkbox" checked={k.status === "done"} disabled={disabled} onChange={async () => { await onTick(k); try { const r = await ops.getWork(sub.id, todayIso()); setKids(r?.subtasks || []); } catch { setKids(null); } }} aria-label={k.status === "done" ? `Reopen ${k.title}` : `Tick ${k.title} done`} className="h-4 w-4 shrink-0 accent-[var(--color-success-600)]" />
                 <button type="button" onClick={() => onOpen(k.id)} className={`min-w-0 flex-1 truncate text-left text-[12.5px] ${k.status === "done" ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]"} hover:underline ${FOCUS}`}>{k.title}</button>
-                {k.due_on && <span className="shrink-0 text-[11px] tabular-nums text-[var(--color-text-tertiary)]">{dayLabel(k.due_on)}</span>}
+                {(() => { const d = dueLabel(k, todayIso()); return d.tone !== "none" ? <span data-due={d.tone} className={`shrink-0 rounded-full px-1.5 py-px text-[11px] tabular-nums ${DUE_TONE[d.tone]}`}>{d.text}</span> : null; })()}
                 {(k.owners || [])[0] && <PersonAvatar person={k.owners[0]} size="sm" />}
               </li>
             ))}
@@ -119,7 +121,9 @@ export function CardSubtasks({ card, subtasks = [], columns = [], disabled, myNa
         ? await ops.reopenWork(sub.id, null, sub.revision)
         : await ops.moveWork(sub.id, doneColumn?.id, sub.revision, { proof: tickProof(myName), closeChildren: true });
       await onChanged?.();
-      offerUndo(answer, sub.status === "done" ? `Reopened “${sub.title}”` : `Ticked “${sub.title}” done`);
+      // #4398: a tick by anyone but the subtask's watcher asks the watcher to confirm.
+      offerUndo(answer, sub.status === "done" ? `Reopened “${sub.title}”`
+        : answer?.review ? `“${sub.title}” sent to ${answer.review.watcher_name} to confirm` : `Ticked “${sub.title}” done`);
     } catch (error) { onError(error); }
   };
   const reorder = async (ids) => {

@@ -38,6 +38,30 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
 alter table auth.users add column if not exists banned_until timestamptz;
@@ -251,18 +275,19 @@ select pg_temp.t3980_keep('h1', pg_temp.t3980_rec('W3980 Claimed Host')::text),
 do $add$
 declare v text; v_cards bigint; v_due date := (now() AT TIME ZONE 'UTC')::date + 5; v_items text;
 begin
-  v_items := format($j$[{"title":"Collect the W3980 menu","instructions":"Ask the host for the new menu and put it on the host card.","done_means":"The menu is on the host card.","owners":["ada.w3980@test.local","cy.w3980@test.local"],"watchers":["di.w3980@test.local"],"links":[{"kind":"host","id":"%s"}],"due_on":"%s"}]$j$,
+  v_items := format($j$[{"title":"Collect the W3980 menu","instructions":"Ask the host for the new menu and put it on the host card.","done_means":"The menu is on the host card.","owners":["ada.w3980@test.local"],"watchers":["di.w3980@test.local"],"links":[{"kind":"host","id":"%s"}],"due_on":"%s"}]$j$,
     pg_temp.t3980_id('h1'), v_due);
   v := pg_temp.t3980_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text', v_items, 'w3980-add-0001'));
   perform pg_temp.t3980_check('W1-ADD', 'a valid card is added',
     pg_temp.t3980_get(v, 'results', '0', 'status') || '/' || pg_temp.t3980_get(v, 'added'), 'added/1');
   perform pg_temp.t3980_keep('c1', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));
   -- #3980 D-3: a card is filed under this week's sprint, never its due week.
-  perform pg_temp.t3980_check('W1-ADD', 'with two owners, one watcher, the host link, this week''s sprint and To do',
+  -- [TEST-MOD-APPROVED #4398] a card has one owner and one watcher.
+  perform pg_temp.t3980_check('W1-ADD', 'with one owner, one watcher, the host link, this week''s sprint and To do',
     jsonb_array_length(pg_temp.t3980_j(v) #> '{results,0,card,owners}') || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{results,0,card,watchers}')
       || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,links,0,label}') || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,sprint,starts_on}')
       || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,status}'),
-    '2/1/W3980 Claimed Host/' || public.ops_monday((now() AT TIME ZONE 'UTC')::date)::text || '/todo');
+    '1/1/W3980 Claimed Host/' || public.ops_monday((now() AT TIME ZONE 'UTC')::date)::text || '/todo');
 
   select count(*) into v_cards from public.ops_work_cards;
   v := pg_temp.t3980_person('growth', $q$select public.ops_work_add('[{"links":[]}]'::jsonb, 'w3980-add-0002')::text$q$);
@@ -277,16 +302,17 @@ begin
   perform pg_temp.t3980_check('W1-ADD', 'missing done means: the exact fix',
     (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'done_means'),
     'Done means is empty. Add one line the work is checked against.');
-  perform pg_temp.t3980_like('W1-ADD', 'no owner: the exact fix, naming current teammates',
+  -- [TEST-MOD-APPROVED #4398] the approved one-owner fix text.
+  perform pg_temp.t3980_like('W1-ADD', 'no owner: the exact fix',
     (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'owners'),
-    'No owner. Pick at least one current teammate: %Ada%');
+    'A card has one owner. Pick one person.');
   perform pg_temp.t3980_check('W1-ADD', 'no due date: the exact fix',
     (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'due_on'),
     'No due date. Add one, or link an event and it is counted back from the start.');
   perform pg_temp.t3980_check('W1-ADD', 'the refusal is in the agent log as stopped',
     (select outcome from public.ops_agent_log where action = 'card_refused' and actor_email = 'ada.w3980@test.local' order by id desc limit 1), 'stopped');
 
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 owner check","instructions":"Check the owner rule here.","done_means":"Owner rule checked.","owners":["gus.w3980@test.local","fay.w3980@test.local"],"due_on":"%s","links":[{"kind":"host","id":"39800000-0000-4000-9999-000000000001"}]}]'::jsonb, 'w3980-add-0003')::text$q$, v_due));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 owner check","instructions":"Check the owner rule here.","done_means":"Owner rule checked.","owners":["gus.w3980@test.local","fay.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s","links":[{"kind":"host","id":"39800000-0000-4000-9999-000000000001"}]}]'::jsonb, 'w3980-add-0003')::text$q$, v_due));
   perform pg_temp.t3980_like('W1-ADD', 'an owner who is not on the team is refused',
     (select string_agg(f->>'message', ' | ') from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'owners'),
     'Owner "gus.w3980@test.local" is not on the team. Pick from %');
@@ -297,7 +323,7 @@ begin
     (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'links'),
     'Linked host 39800000-0000-4000-9999-000000000001 does not exist or was removed. Pick it again from live data.');
 
-  v := pg_temp.t3980_person('growth2', format($q$select public.ops_work_add('[{"title":"collect the  W3980 MENU","instructions":"Same work again, typed differently.","done_means":"Menu collected.","owners":["bo.w3980@test.local"],"due_on":"%s"}]'::jsonb, 'w3980-add-0004')::text$q$, v_due));
+  v := pg_temp.t3980_person('growth2', format($q$select public.ops_work_add('[{"title":"collect the  W3980 MENU","instructions":"Same work again, typed differently.","done_means":"Menu collected.","owners":["bo.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}]'::jsonb, 'w3980-add-0004')::text$q$, v_due));
   perform pg_temp.t3980_check('W1-ADD', 'a duplicate of an open card returns that card',
     pg_temp.t3980_get(v, 'results', '0', 'status') || '/' || pg_temp.t3980_get(v, 'results', '0', 'existing', 'id'),
     'duplicate/' || pg_temp.t3980_id('c1'));
@@ -311,7 +337,7 @@ begin
   v := pg_temp.t3980_person('growth', $q$select public.ops_work_add('[{"title":"Another thing"}]'::jsonb, 'w3980-add-0001')::text$q$);
   perform pg_temp.t3980_like('W1-ADD', 'the same key with other cards is refused', v, 'ERR:22023:request_key_reused:%');
 
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 counted from the event","instructions":"Share the event with the creators list.","done_means":"Creators have the event.","owners":["ada.w3980@test.local"],"links":[{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}]},{"title":"W3980 content brief","instructions":"Write the content brief for the night.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"},"kit_step":-26}]'::jsonb, 'w3980-add-0005')::text$q$));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 counted from the event","instructions":"Share the event with the creators list.","done_means":"Creators have the event.","owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"links":[{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}]},{"title":"W3980 content brief","instructions":"Write the content brief for the night.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"},"kit_step":-26}]'::jsonb, 'w3980-add-0005')::text$q$));
   perform pg_temp.t3980_check('W1-ADD', 'with only an event linked, the due date is the day before it starts',
     pg_temp.t3980_get(v, 'results', '0', 'card', 'due_on') || '/' || pg_temp.t3980_get(v, 'results', '0', 'card', 'due_source'),
     ((pg_temp.t3980_id('start_on'))::date - 1)::text || '/event');
@@ -320,7 +346,7 @@ begin
     ((pg_temp.t3980_id('start_on'))::date - 26)::text || '/kit');
 
   -- cards used further down: C2 (agent A's person owns it), C3 (needs a person to spend), C4 (go-live gate)
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 write the first message","instructions":"Write the first message to the quiet host with save_drafts.","done_means":"A draft is waiting in To review.","owners":["ada.w3980@test.local","cy.w3980@test.local"],"watchers":["di.w3980@test.local"],"due_on":"%s"},{"title":"W3980 approve the boost","instructions":"Approve a small boost for the night.","done_means":"Spend approved by a person.","owners":["ada.w3980@test.local"],"due_on":"%s","person_reason":"spend"},{"title":"W3980 gate","instructions":"The event must be public 28 days before it starts.","done_means":"The event is public on Mingla.","owners":["ada.w3980@test.local"],"kind":"gate_live","kit_step":-28,"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}}]'::jsonb, 'w3980-add-0006')::text$q$, v_due, v_due));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 write the first message","instructions":"Write the first message to the quiet host with save_drafts.","done_means":"A draft is waiting in To review.","owners":["ada.w3980@test.local"],"watchers":["di.w3980@test.local"],"due_on":"%s"},{"title":"W3980 approve the boost","instructions":"Approve a small boost for the night.","done_means":"Spend approved by a person.","owners":["ada.w3980@test.local"],"watchers":["di.w3980@test.local"],"due_on":"%s","person_reason":"spend"},{"title":"W3980 gate","instructions":"The event must be public 28 days before it starts.","done_means":"The event is public on Mingla.","owners":["ada.w3980@test.local"],"watchers":["di.w3980@test.local"],"kind":"gate_live","kit_step":-28,"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}}]'::jsonb, 'w3980-add-0006')::text$q$, v_due, v_due));
   perform pg_temp.t3980_check('W1-ADD', 'three more cards are added, one waiting for a person',
     pg_temp.t3980_get(v, 'added') || '/' || pg_temp.t3980_get(v, 'results', '1', 'card', 'status') || ':' || pg_temp.t3980_get(v, 'results', '1', 'card', 'tag'), '3/todo:spend'); -- #4270: tagged in To do
   perform pg_temp.t3980_keep('c2', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));
@@ -328,10 +354,10 @@ begin
   perform pg_temp.t3980_keep('c4', pg_temp.t3980_get(v, 'results', '2', 'card', 'id'));
 
   -- through the connector: one valid card, one refused with every fix
-  v := pg_temp.t3980_work('A', 'add_work', $j${"cards":[{"title":"W3980 agent card","instructions":"Agent adds this card for its person.","done_means":"The card is on the board.","owners":["Ada"],"due_on":"2099-01-01"},{"title":"x"}],"request_key":"w3980-agent-add-01"}$j$);
+  v := pg_temp.t3980_work('A', 'add_work', $j${"cards":[{"title":"W3980 agent card","instructions":"Agent adds this card for its person.","done_means":"The card is on the board.","owners":["Ada"],"watchers":["route-watch.r4398@test.local"],"due_on":"2099-01-01"},{"title":"x"}],"request_key":"w3980-agent-add-01"}$j$);
   perform pg_temp.t3980_check('W1-ADD', 'an agent adds through the connector: one added, one refused',
     pg_temp.t3980_get(v, 'ok') || '/' || pg_temp.t3980_get(v, 'result', 'added') || '/' || pg_temp.t3980_get(v, 'result', 'refused'), 'true/0/2');
-  v := pg_temp.t3980_work('A', 'add_work', format($j${"cards":[{"title":"W3980 agent card","instructions":"Agent adds this card for its person.","done_means":"The card is on the board.","owners":["Ada"],"due_on":"%s"}],"request_key":"w3980-agent-add-02"}$j$, v_due));
+  v := pg_temp.t3980_work('A', 'add_work', format($j${"cards":[{"title":"W3980 agent card","instructions":"Agent adds this card for its person.","done_means":"The card is on the board.","owners":["Ada"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}],"request_key":"w3980-agent-add-02"}$j$, v_due));
   perform pg_temp.t3980_check('W1-ADD', 'the agent card is added as made by its agent',
     pg_temp.t3980_get(v, 'result', 'results', '0', 'card', 'created_via') || '/' || pg_temp.t3980_get(v, 'result', 'results', '0', 'card', 'owners', '0', 'email'),
     'claude/ada.w3980@test.local');
@@ -458,6 +484,12 @@ begin
   v := pg_temp.t3980_work('A', 'close_work', format('{"id":"%s","expected_revision":%s,"proof":[{"kind":"draft","text":"Draft saved for the quiet host","id":"39800000-0000-4000-9999-000000000002"}]}', pg_temp.t3980_id('c2'), v_rev));
   perform pg_temp.t3980_check('W1-CLOSE', 'proof that points to a missing draft is refused', pg_temp.t3980_get(v, 'error', 'token'), 'proof_not_found');
   v := pg_temp.t3980_work('A', 'close_work', format('{"id":"%s","expected_revision":%s,"proof":[{"kind":"draft","text":"Draft saved and sent for the quiet host","id":"%s"}],"result":"The first message went out."}', pg_temp.t3980_id('c2'), v_rev, pg_temp.t3980_id('draft6')));
+  -- [TEST-MOD-APPROVED #4398] the close waits In review until the watcher, Di, confirms it.
+  perform pg_temp.t3980_check('W1-CLOSE', 'the agent''s close waits for the watcher',
+    pg_temp.t3980_get(v, 'result', 'card', 'status') || '/' || pg_temp.t3980_get(v, 'result', 'card', 'proof', '0', 'verified'), 'doing/true');
+  v := pg_temp.t3980_person('admin', format($q$select public.ops_work_confirm(%L, %s)::text$q$, pg_temp.t3980_id('c2'),
+    (select revision from public.ops_work_cards where id = pg_temp.t3980_id('c2')::uuid)));
+  v := json_build_object('result', pg_temp.t3980_j(v))::text;
   perform pg_temp.t3980_check('W1-CLOSE', 'with a real draft the card closes and the proof is checked by Mingla',
     pg_temp.t3980_get(v, 'result', 'card', 'status') || '/' || pg_temp.t3980_get(v, 'result', 'card', 'proof', '0', 'verified')
       || '/' || pg_temp.t3980_get(v, 'result', 'card', 'closed_via'), 'done/true/claude');
@@ -465,27 +497,34 @@ begin
     (select count(*) from public.ops_claims where card_id = pg_temp.t3980_id('c2')::uuid and released_at is null)::text
       -- [TEST-MOD-APPROVED #3980] D-4: the card itself carries a working mark, not a claim, so two record claims end.
       || '/' || (select count(*) from public.ops_claims where card_id = pg_temp.t3980_id('c2')::uuid and release_reason = 'closed')::text, '0/2');
-  perform pg_temp.t3980_check('W1-CLOSE', 'the other owner and the watcher are told it closed',
-    (select count(*) from public.team_mentions m where m.source_kind = 'work_card' and m.body_excerpt like 'Ada''s Claude closed: W3980 write the first message%'
-       and m.target_user_id in ('39800000-0000-4000-a000-000000000005', '39800000-0000-4000-a000-000000000002'))::text, '2');
+  -- [TEST-MOD-APPROVED #4398] the watcher is asked to confirm; the owner hears the confirm.
+  perform pg_temp.t3980_check('W1-CLOSE', 'the watcher is asked to confirm and the owner is told it closed',
+    (select count(*) from public.team_mentions m where m.source_kind = 'work_card' and m.body_excerpt like '%Confirm or send back: W3980 write the first message%'
+       and m.target_user_id = '39800000-0000-4000-a000-000000000002')::text || '/' ||
+    (select count(*) from public.team_mentions m where m.source_kind = 'work_card' and m.body_excerpt like '%confirmed: W3980 write the first message%'
+       and m.target_user_id = '39800000-0000-4000-a000-000000000003')::text, '1/1');
 
   v_rev := (select revision from public.ops_work_cards where id = pg_temp.t3980_id('c1')::uuid);
   v := pg_temp.t3980_work('A', 'push_back', format('{"id":"%s","expected_revision":%s,"kind":"already_done","reason":"The host sent the menu last week already."}', pg_temp.t3980_id('c1'), v_rev));
   perform pg_temp.t3980_check('W1-CLOSE', 'pushing back as already done needs proof', pg_temp.t3980_get(v, 'error', 'token'), 'proof_required');
   v := pg_temp.t3980_work('A', 'push_back', format('{"id":"%s","expected_revision":%s,"kind":"declined","reason":"The host is closed for renovation this month."}', pg_temp.t3980_id('c1'), v_rev));
+  -- [TEST-MOD-APPROVED #4398] the push back waits for the watcher's confirm, then closes as declined.
+  v := pg_temp.t3980_person('admin', format($q$select public.ops_work_confirm(%L, %s)::text$q$, pg_temp.t3980_id('c1'),
+    (select revision from public.ops_work_cards where id = pg_temp.t3980_id('c1')::uuid)));
   perform pg_temp.t3980_check('W1-CLOSE', 'pushing back as not needed closes it as declined',
-    pg_temp.t3980_get(v, 'result', 'card', 'status') || '/' || pg_temp.t3980_get(v, 'result', 'card', 'close_kind'), 'done/declined');
-  v_rev := (pg_temp.t3980_j(v) #>> '{result,card,revision}')::bigint;
+    pg_temp.t3980_get(v, 'card', 'status') || '/' || pg_temp.t3980_get(v, 'card', 'close_kind'), 'done/declined');
+  v_rev := (pg_temp.t3980_j(v) #>> '{card,revision}')::bigint;
   v := pg_temp.t3980_person('growth', format($q$select public.ops_work_reopen(%L, 'The renovation was cancelled', %s)::text$q$, pg_temp.t3980_id('c1'), v_rev));
   perform pg_temp.t3980_check('W1-CLOSE', 'a person reopens it to To do',
     pg_temp.t3980_get(v, 'card', 'status') || '/' || coalesce(pg_temp.t3980_get(v, 'card', 'close_kind'), 'none'), 'todo/none');
 
   v_rev := (pg_temp.t3980_j(v) #>> '{card,revision}')::bigint;
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":["di.w3980@test.local","bo.w3980@test.local"]}'::jsonb, %s)::text$q$, pg_temp.t3980_id('c1'), v_rev));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":["bo.w3980@test.local"]}'::jsonb, %s)::text$q$, pg_temp.t3980_id('c1'), v_rev));
   v_event := pg_temp.t3980_get(v, 'event_id');
-  perform pg_temp.t3980_check('W1-CLOSE', 'adding a watcher is one people change that tells the new watcher',
+  -- [TEST-MOD-APPROVED #4398] a card has one watcher: Bo takes Di's place.
+  perform pg_temp.t3980_check('W1-CLOSE', 'changing the watcher is one people change that tells the new watcher',
     jsonb_array_length(pg_temp.t3980_j(v) #> '{card,watchers}')::text || '/'
-      || (select count(*) from public.team_mentions where source_kind = 'work_card' and source_id::text = v_event and target_user_id = '39800000-0000-4000-a000-000000000004')::text, '2/1');
+      || (select count(*) from public.team_mentions where source_kind = 'work_card' and source_id::text = v_event and target_user_id = '39800000-0000-4000-a000-000000000004')::text, '1/1');
   v := pg_temp.t3980_person('growth', format('select public.ops_work_undo(%L)::text', v_event));
   perform pg_temp.t3980_check('W1-CLOSE', 'undo puts the watchers back', jsonb_array_length(pg_temp.t3980_j(v) #> '{card,watchers}')::text, '1');
 end;
@@ -514,13 +553,18 @@ begin
 
   v_rev := (select revision from public.ops_work_cards where id = pg_temp.t3980_id('c3')::uuid);
   v := pg_temp.t3980_person('growth', format($q$select public.ops_work_person_action(%L, 'approve_spend', 'Boost of 20 pounds approved', %s)::text$q$, pg_temp.t3980_id('c3'), v_rev));
+  -- [TEST-MOD-APPROVED #4398] the approval waits for the watcher, Di, to confirm; then it is closed under her.
+  v := pg_temp.t3980_person('admin', format($q$select public.ops_work_confirm(%L, %s)::text$q$, pg_temp.t3980_id('c3'),
+    (select revision from public.ops_work_cards where id = pg_temp.t3980_id('c3')::uuid)));
   perform pg_temp.t3980_check('W1-PEOPLE', 'a person approves the spend and it closes with their note as proof',
     pg_temp.t3980_get(v, 'card', 'status') || '/' || pg_temp.t3980_get(v, 'card', 'proof', '0', 'text'),
     'done/Spend approved by Ada: Boost of 20 pounds approved');
   perform pg_temp.t3980_check('W1-PEOPLE', 'logged under the person',
     (select actor_email || '/' || coalesce(via, 'person') || '/' || action from public.ops_agent_log where card_id = pg_temp.t3980_id('c3')::uuid order by id desc limit 1),
-    'ada.w3980@test.local/person/closed');
+    'di.w3980@test.local/person/closed');
   v := pg_temp.t3980_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"event_public","text":"The night is public on Mingla","id":"39800000-0000-4000-b400-000000000001"}]'::jsonb, NULL, NULL)::text$q$, pg_temp.t3980_id('c4')));
+  v := pg_temp.t3980_person('admin', format($q$select public.ops_work_confirm(%L, %s)::text$q$, pg_temp.t3980_id('c4'),
+    (select revision from public.ops_work_cards where id = pg_temp.t3980_id('c4')::uuid))); -- [TEST-MOD-APPROVED #4398] the watcher confirms
   perform pg_temp.t3980_check('W1-PEOPLE', 'the owner can close the gate card once the event is public',
     pg_temp.t3980_get(v, 'card', 'status') || '/' || pg_temp.t3980_get(v, 'card', 'proof', '0', 'verified'), 'done/true');
   v := pg_temp.t3980_person('owner', format($q$select public.ops_work_archive(%L, 'Test card removed')::text$q$, pg_temp.t3980_id('c3')));
@@ -533,11 +577,12 @@ $people$;
 -- ---------------------------------------------------------------------------
 do $notify$
 begin
-  perform pg_temp.t3980_check('W1-NOTIFY', 'adding the first card told the other owner and the watcher, not the author',
+  -- [TEST-MOD-APPROVED #4398] one owner: only the watcher (Di) is told.
+  perform pg_temp.t3980_check('W1-NOTIFY', 'adding the first card told the watcher, not the author',
     (select string_agg(p.who, ',' order by p.who) from public.team_mentions m join t3980_people p on p.id = m.target_user_id
       -- [TEST-MOD-APPROVED #4255] rework: card notices open the card with its thread (&side=thread:<id>).
       where m.source_kind = 'work_card' and m.deep_link = 'https://admin.usemingla.com/#/work-board?card=' || pg_temp.t3980_id('c1') || '&side=thread:' || pg_temp.t3980_id('c1')
-        and m.source_id = (select e.id from public.ops_work_events e where e.card_id = pg_temp.t3980_id('c1')::uuid and e.action = 'added')), 'admin,partner');
+        and m.source_id = (select e.id from public.ops_work_events e where e.card_id = pg_temp.t3980_id('c1')::uuid and e.action = 'added')), 'admin');
   perform pg_temp.t3980_check('W1-NOTIFY', 'each notice has an outbox row with no country code',
     ((select count(*) from public.team_mentions m join public.notification_outbox o on o.idempotency_key = 'admin.team_mention:' || m.id::text
       where m.source_kind = 'work_card' and o.category_key = 'admin.team_mention' and o.country_code is null)::text

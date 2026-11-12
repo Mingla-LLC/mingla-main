@@ -1277,7 +1277,21 @@
         "supabase/migrations/20280624034255_issue_4255_team_chat_functions.sql",
         "supabase/migrations/20280624044255_issue_4255_team_chat_fixups.sql",
         "supabase/migrations/20280624054255_issue_4255_team_rework.sql",
-        "supabase/migrations/20280624064255_issue_4255_team_rework2.sql"
+        "supabase/migrations/20280624064255_issue_4255_team_rework2.sql",
+        "mingla-admin/src/components/messages/MessagesActivity.jsx",
+        "mingla-admin/src/components/ops/ProofForm.jsx",
+        "mingla-admin/src/components/ops/TeamSettingsPanels.jsx",
+        "mingla-admin/src/components/people/PeopleField.jsx",
+        "mingla-admin/src/hooks/useActivity.js",
+        "mingla-admin/src/lib/activityModel.js",
+        "mingla-admin/src/lib/dueLabel.js",
+        "mingla-admin/src/lib/peopleField.js",
+        "mingla-admin/src/lib/workReview.js",
+        "mingla-business/src/components/minglaTeam/workUpdates.ts",
+        "supabase/migrations/20280626004398_issue_4398_routes_and_people.sql",
+        "supabase/migrations/20280626014398_issue_4398_review_and_notices.sql",
+        "supabase/migrations/20280626034398_issue_4398_people_invariant.sql",
+        "supabase/migrations/20280626044398_issue_4398_mark_work_updates_read.sql"
       ]
     },
     {

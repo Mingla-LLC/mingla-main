@@ -21,6 +21,34 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+-- [TEST-MOD-APPROVED #4398] an automatic card takes its main task's owner and
+-- watcher: this suite's main task is the owner's (Oz), watched by the admin (Ivy).
+update public.ops_work_people w set email = case w.role when 'owner' then 'oz.w2r4t3980@test.local' else 'ivy.w2r4t3980@test.local' end
+ where w.card_id = (select (value->>'fallback')::uuid from public.ops_settings where key = 'auto_card_routes');
+
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
 alter table auth.users add column if not exists banned_until timestamptz;
@@ -373,13 +401,13 @@ begin
   v := pg_temp.t3980w2r4t_mcp('owner', 'add_work', jsonb_build_object('request_key', 'r4t-autokey-1', 'cards', jsonb_build_array(jsonb_build_object(
          'title', 'X2 a card claiming to be an approval card', 'instructions', 'Do it.', 'done_means', 'Done.',
          'auto_key', 'roadmap_shipped:issue-8101', 'auto', true, 'auto_kind', 'roadmap_shipped',
-         'owners', jsonb_build_array('oz.w2r4t3980@test.local'), 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
+         'owners', jsonb_build_array('oz.w2r4t3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
   insert into t3980w2r4t_info (label, detail) values ('X2 add_work with auto_key', left(v, 300));
   perform pg_temp.t3980w2r4t_check('X2', 'add_work refuses a card that sends auto, auto_key or auto_kind',
     (pg_temp.t3980w2r4t_j(v) #>> '{result,added}') || ':' || (pg_temp.t3980w2r4t_j(v) #>> '{result,refused}'), '0:1');
   v := pg_temp.t3980w2r4t_mcp('owner', 'add_work', jsonb_build_object('request_key', 'r4t-plain-0001', 'cards', jsonb_build_array(jsonb_build_object(
          'title', 'X2 the agent''s own plain card', 'instructions', 'Do the plain thing for the team.', 'done_means', 'It is done.',
-         'owners', jsonb_build_array('oz.w2r4t3980@test.local'), 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
+         'owners', jsonb_build_array('oz.w2r4t3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
   insert into t3980w2r4t_info (label, detail) values ('X2 plain add_work', left(v, 300));
   v_plain := (pg_temp.t3980w2r4t_j(v) #>> '{result,results,0,card,id}')::uuid;
   perform pg_temp.t3980w2r4t_check('X2', 'the agent''s plain card has no auto_key',
@@ -396,6 +424,7 @@ begin
   -- X3: a closed approval card. The close cannot be rewritten by an agent, and
   -- the gateway gives an agent no way to reopen it.
   v := pg_temp.t3980w2r4t_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Read it; will publish later"}]'::jsonb, null, %s)::text$q$, v_a, pg_temp.t3980w2r4t_rev(v_a::text)));
+  v := pg_temp.t3980w2r4t_person((select w.who from t3980w2r4t_people w where w.email = (public.ops_card_people(v_a::uuid, 'watcher'))[1]), format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_a, pg_temp.t3980w2r4t_rev(v_a::text))); -- [TEST-MOD-APPROVED #4398] the watcher confirms the close
   perform pg_temp.t3980w2r4t_check('X3', 'a person closes the approval card', pg_temp.t3980w2r4t_state(v_a), 'done:done:-');
   v := pg_temp.t3980w2r4t_raw_agent('owner', format($q$update public.ops_work_cards set close_reason = 'A person published the Recently shipped card.', proof = '[{"kind":"text","text":"Agent wrote this"}]'::jsonb where id = %L$q$, v_a));
   perform pg_temp.t3980w2r4t_like('X3', 'an agent cannot rewrite the close of a done approval card (raw)', v, 'ERR:42501:people_only:%');
@@ -450,7 +479,7 @@ begin
   perform pg_temp.t3980w2r4t_check('X4', 'an agent release leaves the person working on it',
     (select status || ':' || coalesce(working_by, '-') || ':' || coalesce(working_via, '-') from public.ops_work_cards where id = v_b), 'doing:oz.w2r4t3980@test.local:-');
   v := pg_temp.t3980w2r4t_mcp('owner', 'update_work', jsonb_build_object('id', v_b, 'expected_revision', pg_temp.t3980w2r4t_rev(v_b::text),
-         'changes', jsonb_build_object('owners', jsonb_build_array('kim.w2r4t3980@test.local'))));
+         'changes', jsonb_build_object('owners', jsonb_build_array('kim.w2r4t3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */)));
   insert into t3980w2r4t_info (label, detail) values ('X4 MCP owners change answer', left(v, 200));
   insert into t3980w2r4t_info (label, detail) values ('X4 owners after the agent call',
     (select coalesce(string_agg(email, ',' order by email), '-') from public.ops_work_people where card_id = v_b and role = 'owner'));
@@ -499,6 +528,7 @@ begin
   perform pg_temp.t3980w2r4t_bridges();
   perform pg_temp.t3980w2r4t_check('X6', 'a deleted draft never closes its approval card as published', pg_temp.t3980w2r4t_state(v_d), 'todo:-:-'); -- #4270: tagged in To do
   v := pg_temp.t3980w2r4t_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"The draft was removed"}]'::jsonb, null, %s)::text$q$, v_d, pg_temp.t3980w2r4t_rev(v_d::text)));
+  v := pg_temp.t3980w2r4t_person((select w.who from t3980w2r4t_people w where w.email = (public.ops_card_people(v_d::uuid, 'watcher'))[1]), format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_d, pg_temp.t3980w2r4t_rev(v_d::text))); -- [TEST-MOD-APPROVED #4398] the watcher confirms the close
   perform pg_temp.t3980w2r4t_check('X6', 'a person can still close it', pg_temp.t3980w2r4t_state(v_d), 'done:done:-');
 
   -- X7: people, bridges, housekeeping and sprint rollover are not affected.

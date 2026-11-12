@@ -18,6 +18,34 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+-- [TEST-MOD-APPROVED #4398] an automatic card takes its main task's owner and
+-- watcher: this suite's main task is the owner's (Oz), watched by the admin (Ivy).
+update public.ops_work_people w set email = case w.role when 'owner' then 'oz.w2rr3980@test.local' else 'ivy.w2rr3980@test.local' end
+ where w.card_id = (select (value->>'fallback')::uuid from public.ops_settings where key = 'auto_card_routes');
+
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
 alter table auth.users add column if not exists banned_until timestamptz;
@@ -261,6 +289,7 @@ begin
   v := pg_temp.t3980w2r2_person('owner', format($q$select public.ops_work_close(%L, '[]'::jsonb, null, %s)::text$q$, v_card, pg_temp.t3980w2r2_rev(v_card::text)));
   perform pg_temp.t3980w2r2_like('H2', 'closing needs at least one line of proof', v, 'ERR:22023:proof_required:%');
   v := pg_temp.t3980w2r2_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Published the Recently shipped card on the roadmap"}]'::jsonb, 'Checked the wording first.', %s)::text$q$, v_card, pg_temp.t3980w2r2_rev(v_card::text)));
+  v := pg_temp.t3980w2r2_person((select w.who from t3980w2r2_people w where w.email = (public.ops_card_people(v_card::uuid, 'watcher'))[1]), format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card, pg_temp.t3980w2r2_rev(v_card::text))); -- [TEST-MOD-APPROVED #4398] the watcher confirms the close
   perform pg_temp.t3980w2r2_check('H2', 'a person closes it with proof',
     pg_temp.t3980w2r2_get(v, 'card', 'status') || ':' || (select close_kind || ':' || closed_by || ':' || coalesce(closed_via, 'person') || ':' || (proof->0->>'text') from public.ops_work_cards where id = v_card),
     'done:done:oz.w2rr3980@test.local:person:Published the Recently shipped card on the roadmap');

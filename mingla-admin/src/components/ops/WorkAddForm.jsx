@@ -125,8 +125,8 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
         <textarea value={doneMeans} ref={doneMeansGrow} maxLength={300} rows={2} onChange={(e) => setDoneMeans(e.target.value)} placeholder="What shows the work is done" className={`min-h-[56px] w-full ${AUTO_GROW_CLASS} whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] ${FOCUS}`} />
       </label>
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-        <PeopleField id="new-card-owners" label="Owners" value={owners} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={watchers} min={1} onChange={(next) => setOwners(next)} />
-        <PeopleField id="new-card-watchers" label="Watching" value={watchers} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={owners} onChange={(next) => setWatchers(next)} />
+        <PeopleField id="new-card-owners" label="Owner" single value={owners} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={watchers} min={1} onChange={(next) => setOwners(next)} />
+        <PeopleField id="new-card-watchers" label="Watcher" single min={0} hint="One watcher, who is not the owner. They confirm the card is done." value={watchers} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={owners} onChange={(next) => setWatchers(next)} />
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
         <span className={LABEL}>Linked records</span>

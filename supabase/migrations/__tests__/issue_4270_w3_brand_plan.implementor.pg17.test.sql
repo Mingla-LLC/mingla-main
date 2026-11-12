@@ -245,7 +245,8 @@ begin
     values (v_t, 'Do this task carefully and say what changed.', 'It is done and checked.', 'todo', pg_temp.tp_day(v_due), 'explicit',
       public.ops_sprint_ensure(pg_temp.tp_day(0)), case when v_k = 'C1' then 'https://dropbox.com/p4270' end, v_on, 'host_card',
       'gia.p4270@test.local', 'gia.p4270@test.local') returning id into v_id;
-    insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'gia.p4270@test.local', 'owner', 'gia.p4270@test.local');
+    insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'gia.p4270@test.local', 'owner', 'gia.p4270@test.local'),
+      (v_id, 'kunle.p4270@test.local', 'watcher', 'gia.p4270@test.local');  -- [TEST-MOD-APPROVED #4398] one watcher
     insert into public.ops_work_links (card_id, kind, target_id, label, added_by) values (v_id, 'host', v_r, 'host', 'gia.p4270@test.local');
     insert into tp_ids (k, id) values (v_k, v_id);
   end loop;
@@ -753,7 +754,7 @@ declare v jsonb; v_t text; v_on text := pg_temp.tp_day(13)::text; v_bad text; v_
 begin
   v := pg_temp.tp_j(pg_temp.tp_as('annie', format($q$select public.brand_plan_host_add(%L, jsonb_build_object('type','post','title','R5 link door','on',%L), 'r5-link-door')::text$q$, A, v_on)));
   v_id := (v #>> '{item,id}')::uuid; v_rev := (v #>> '{item,revision}')::bigint;
-  v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick',true,'title','R5 files card','owners',jsonb_build_array('gia.p4270@test.local'),'due_on',%L)), 'r5-files-card')::text$q$, v_on)));
+  v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object('quick',true,'title','R5 files card','owners',jsonb_build_array('gia.p4270@test.local'),'watchers',jsonb_build_array('kunle.p4270@test.local'),'due_on',%L)), 'r5-files-card')::text$q$, v_on)));
   v_card := (v #>> '{results,0,card,id}')::uuid;
   foreach v_bad in array ARRAY['https://www./x', 'https://WWW./x', 'https://www../x',
     'https://canva.com%2eevil.example/', 'https://canva%2ecom/', 'https://%d1%81anva.example/', 'https://canva' || U&'\FF05' || 'com/',

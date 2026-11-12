@@ -22,6 +22,34 @@
 
 \set ON_ERROR_STOP on
 begin;
+
+-- [TEST-MOD-APPROVED #4398] cards this suite closes by writing the table straight away (fixtures for past
+-- decisions) count as confirmed by their watcher; every close through a function still goes through review.
+set local ops.review_confirmed = on;
+
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
 -- [TEST-MOD-APPROVED #3980] X3: follow-through counts from the switch-on time; these G5 checks run as if it was switched on long ago.
 update public.ops_settings set value = to_jsonb(now() - interval '400 days') where key = 'follow_through_since';
 
@@ -203,7 +231,7 @@ language plpgsql as $fn$
 declare v text;
 begin
   v := pg_temp.t3980w_chat('KC', 'aaaaaaaaaaaaaaaa', 'add_work', format(
-    $j${"cards":[{"title":"%s","instructions":"Adversarial fixture card; follow the steps.","done_means":"Every step is marked.","owners":["kim.w3980@test.local"],"due_on":"%s"%s}],"request_key":"%s"}$j$,
+    $j${"cards":[{"title":"%s","instructions":"Adversarial fixture card; follow the steps.","done_means":"Every step is marked.","owners":["kim.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"%s}],"request_key":"%s"}$j$,
     p_title, (now() AT TIME ZONE 'UTC')::date + 3, p_extra, 'w3980r-' || md5(p_title)));
   return pg_temp.t3980w_get(v, 'result', 'results', '0', 'card', 'id');
 end;
@@ -270,8 +298,9 @@ begin
   perform pg_temp.t3980w_check('D4', 'after two hours each pending target is a "Deploy still pending" card for whoever merged',
     (select string_agg(auto_key || '=' || title, ' | ' order by auto_key) from public.ops_work_cards where auto_key like 'eng\_deploy\_pending:pr-95001%' and status <> 'done'),
     'eng_deploy_pending:pr-95001:edge=Deploy still pending: edge function for PR #95001 | eng_deploy_pending:pr-95001:mingla-admin=Deploy still pending: mingla-admin web for PR #95001');
-  perform pg_temp.t3980w_check('D4', 'the card belongs to whoever merged, watched by the owner',
-    pg_temp.t3980w_owner_of('eng_deploy_pending:pr-95001:mingla-admin'), 'lou.w3980@test.local:owner,oz.w3980@test.local:watcher');
+  -- [TEST-MOD-APPROVED #4398] A3: a bot card takes its route's owner and watcher, not the merger.
+  perform pg_temp.t3980w_check('D4', 'the card belongs to its route''s owner and watcher',
+    pg_temp.t3980w_owner_of('eng_deploy_pending:pr-95001:mingla-admin'), 'route-owner.r4398@test.local:owner,route-watch.r4398@test.local:watcher');
   v := pg_temp.t3980w_sync();
   perform pg_temp.t3980w_check('D4', 'a second run makes no second card',
     (select count(*)::text from public.ops_work_cards where auto_key like 'eng\_deploy\_pending:pr-95001%'), '2');
@@ -286,8 +315,10 @@ begin
   perform pg_temp.t3980w_ingest(pg_temp.t3980w_record(95002, '{"merged_by":"lou-w3980","migrations_added":["29990404000001"],"migrations_applied_state":"pending"}'));
   update public.ops_release_records set merged_at = now() - interval '59 days' where pr = 95002;
   v := pg_temp.t3980w_sync();
-  perform pg_temp.t3980w_check('D5', 'day 59: the migrations card is open',
-    (select status from public.ops_work_cards where auto_key = 'eng_migrations:pr-95002'), 'todo');
+  -- [TEST-MOD-APPROVED #4398] S2: the migrations item is on the PR's one release card.
+  perform pg_temp.t3980w_check('D5', 'day 59: the release card is open with migrations to apply',
+    (select status from public.ops_work_cards where auto_key = 'eng_release:pr-95002') || '/' ||
+    (select (i->>'done') from jsonb_array_elements(public.ops_release_items(95002)) i where i->>'key' = 'migrations'), 'todo/false');
   -- [TEST-MOD-APPROVED #4179] A release record's Feature Guide
   -- classification is immutable once present. The engineering-card fixture
   -- needs only the recorded problem; it must not erase the classification.
@@ -297,13 +328,15 @@ begin
    where pr = 95002;
   for v_n in 1..2 loop v := pg_temp.t3980w_sync(); end loop;
   perform pg_temp.t3980w_check('D5', 'day 61 with the version still not in the ledger: the card stays open, never closed as applied',
-    (select status || '/' || coalesce(close_reason, 'none') from public.ops_work_cards where auto_key = 'eng_migrations:pr-95002'), 'todo/none');
+    (select status || '/' || coalesce(close_reason, 'none') from public.ops_work_cards where auto_key = 'eng_release:pr-95002'), 'todo/none');
   perform pg_temp.t3980w_check('D5', 'an aged record makes no new card for a problem it had no card for',
     (select count(*)::text from public.ops_work_cards where auto_key = 'eng_guide_missing:pr-95002'), '0');
   insert into supabase_migrations.schema_migrations (version) values ('29990404000001');
   v := pg_temp.t3980w_sync();
-  perform pg_temp.t3980w_check('D5', 'once the ledger has every version the card closes, with the true reason',
-    (select status || '/' || close_reason from public.ops_work_cards where auto_key = 'eng_migrations:pr-95002'), 'done/Every migration is in the production ledger.');
+  -- [TEST-MOD-APPROVED #4398] the migrations item ticks; the card stays open for its Feature Guide line.
+  perform pg_temp.t3980w_check('D5', 'once the ledger has every version the migrations item is done; the guide line keeps the card open',
+    (select (i->>'done') from jsonb_array_elements(public.ops_release_items(95002)) i where i->>'key' = 'migrations') || '/' ||
+    (select status from public.ops_work_cards where auto_key = 'eng_release:pr-95002'), 'true/todo');
   perform pg_temp.t3980w_ingest(pg_temp.t3980w_record(95003, '{"merged_by":"lou-w3980","migrations_added":["29990404000003"],"migrations_applied_state":"pending"}'));
   update public.ops_release_records set merged_at = now() - interval '61 days' where pr = 95003;
   v := pg_temp.t3980w_sync();
