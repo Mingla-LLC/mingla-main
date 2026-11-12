@@ -530,6 +530,9 @@ BEGIN
     left(format('%s confirmed Card %s: %s', v_name, n.number, n.title), 300), jsonb_build_object('confirmed', true));
   PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, 'owner') || c.review_requested_by, v.actor_email,
     format('%s confirmed: %s', v_name, n.title), 'status');
+  -- People taken off the card in the last day still hear that it closed (the #3980 guardrail), now at the confirm.
+  PERFORM public.ops_notify_people(c.id, v_event, public.ops_recently_removed(c.id), v.actor_email,
+    format('%s closed a card you were taken off in the last 24 hours: %s', public.ops_actor_label(c.review_requested_by, c.review_requested_via), n.title), 'edit');
   RETURN jsonb_build_object('card', public.ops_card_json(n, v_today), 'event_id', v_event);
 END;
 $function$;

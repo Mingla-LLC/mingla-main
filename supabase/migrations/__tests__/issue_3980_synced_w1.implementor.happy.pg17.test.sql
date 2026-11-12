@@ -288,7 +288,7 @@ select pg_temp.t3980s_keep('h1', pg_temp.t3980s_rec('S3980 Chat Host')::text),
 do $x1$
 declare v text; v_items text; v_rev bigint; v_id text;
 begin
-  v_items := format($j$[{"title":"S3980 plan with person steps","instructions":"Walk through the steps with the host and mark each one.","done_means":"Every step is marked.","owners":["ada.s3980@test.local"],"due_on":"%s",
+  v_items := format($j$[{"title":"S3980 plan with person steps","instructions":"Walk through the steps with the host and mark each one.","done_means":"Every step is marked.","owners":["ada.s3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s",
     "plan":[{"n":1,"text":"Call the host","tool":"person"},{"n":2,"text":"Write the recap","tool":"person"},{"n":3,"text":"Log the reply","tool":"record_reply"}]}]$j$,
     (now() AT TIME ZONE 'UTC')::date + 3);
   v := pg_temp.t3980s_work('A', 'aaaaaaaaaaaaaaaa', 'add_work', format('{"cards":%s,"request_key":"s3980-x1-add-01"}', v_items));
@@ -408,7 +408,7 @@ $f2$;
 do $d4$
 declare v text; v_id text; v_rev bigint; v_items text;
 begin
-  v_items := format($j$[{"title":"S3980 long build card","instructions":"A build that takes several days; post each step.","done_means":"The build is merged.","owners":["ada.s3980@test.local"],"due_on":"%s"}]$j$,
+  v_items := format($j$[{"title":"S3980 long build card","instructions":"A build that takes several days; post each step.","done_means":"The build is merged.","owners":["ada.s3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}]$j$,
     (now() AT TIME ZONE 'UTC')::date + 4);
   v := pg_temp.t3980s_work('A', 'aaaaaaaaaaaaaaaa', 'add_work', format('{"cards":%s,"request_key":"s3980-d4-add-01"}', v_items));
   v_id := pg_temp.t3980s_get(v, 'result', 'results', '0', 'card', 'id');
@@ -460,7 +460,7 @@ $d4$;
 do $d3$
 declare v text; v_id text; v_rev bigint; v_items text; v_far date := (now() AT TIME ZONE 'UTC')::date + 17; v_next uuid; v_card uuid;
 begin
-  v_items := format($j$[{"title":"S3980 due in two and a half weeks","instructions":"Prepare the launch pack well ahead.","done_means":"The launch pack is ready.","owners":["ada.s3980@test.local"],"due_on":"%s"}]$j$, v_far);
+  v_items := format($j$[{"title":"S3980 due in two and a half weeks","instructions":"Prepare the launch pack well ahead.","done_means":"The launch pack is ready.","owners":["ada.s3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}]$j$, v_far);
   v := pg_temp.t3980s_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text', v_items, 's3980-d3-add-01'));
   v_id := pg_temp.t3980s_get(v, 'results', '0', 'card', 'id');
   perform pg_temp.t3980s_check('D3', 'a card due in 17 days lands in this week''s sprint',
@@ -510,7 +510,7 @@ begin
       coalesce((public.ops_github_parse(r.input)->>'kind') || ':' || (public.ops_github_parse(r.input)->>'number'),
                case when public.ops_github_parse(r.input)->>'error' = v_words then 'error' end), r.want);
   end loop;
-  v_items := format($j$[{"title":"S3980 card with GitHub links","instructions":"Track the engineering issue and its pull request.","done_means":"Both are Live.","owners":["ada.s3980@test.local"],"due_on":"%s","github":["#3980","https://github.com/Mingla-LLC/mingla-main/pull/3991"]}]$j$,
+  v_items := format($j$[{"title":"S3980 card with GitHub links","instructions":"Track the engineering issue and its pull request.","done_means":"Both are Live.","owners":["ada.s3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s","github":["#3980","https://github.com/Mingla-LLC/mingla-main/pull/3991"]}]$j$,
     (now() AT TIME ZONE 'UTC')::date + 2);
   v := pg_temp.t3980s_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text', v_items, 's3980-f3-add-01'));
   v_id := pg_temp.t3980s_get(v, 'results', '0', 'card', 'id');

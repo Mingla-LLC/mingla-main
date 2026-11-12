@@ -183,8 +183,15 @@ declare v text;
 begin
   v := pg_temp.ti_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text',
     format('[{"title":"%s","instructions":"Do this removal tester task carefully.","done_means":"It is done and checked.","owners":%s,"watchers":%s,"due_on":"%s"}]',
-      p_title, p_owners, p_watchers, (now() AT TIME ZONE 'UTC')::date + 7),
+      p_title, jsonb_build_array(p_owners::jsonb->0)::text /* [TEST-MOD-APPROVED #4398] added with one owner and one watcher; extra people are pre-#4398 rows below */, CASE WHEN p_watchers::jsonb = '[]'::jsonb THEN '["route-watch.r4398@test.local"]' ELSE jsonb_build_array(p_watchers::jsonb->0)::text END, (now() AT TIME ZONE 'UTC')::date + 7),
     'x3980-' || substr(md5(p_title), 1, 16)));
+  if pg_temp.ti_get(v, 'results', '0', 'card', 'id') is not null then
+    insert into public.ops_work_people (card_id, email, role, added_by)
+    select (pg_temp.ti_get(v, 'results', '0', 'card', 'id'))::uuid, lower(e), 'owner', 'x-fixture' from jsonb_array_elements_text(p_owners::jsonb) with ordinality o(e, n) where n > 1
+    union all
+    select (pg_temp.ti_get(v, 'results', '0', 'card', 'id'))::uuid, lower(e), 'watcher', 'x-fixture' from jsonb_array_elements_text(p_watchers::jsonb) with ordinality o(e, n) where n > 1
+    on conflict do nothing;
+  end if;
   return coalesce(pg_temp.ti_get(v, 'results', '0', 'card', 'id'), v);
 end;
 $fn$;
@@ -206,6 +213,11 @@ declare v text;
 begin
   v := pg_temp.ti_person('growth', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Finished and checked by Gus"}]'::jsonb, NULL, %s)::text$q$,
     p_card, pg_temp.ti_rev(p_card)));
+  -- [TEST-MOD-APPROVED #4398] a close waits In review: the card's watcher confirms it.
+  if pg_temp.ti_get(v, 'card', 'status') = 'doing' then
+    v := pg_temp.ti_person((select p.who from ti_people p where p.email = (public.ops_card_people(p_card::uuid, 'watcher'))[1]),
+      format($q$select public.ops_work_confirm(%L, %s)::text$q$, p_card, pg_temp.ti_rev(p_card)));
+  end if;
   return coalesce(pg_temp.ti_get(v, 'card', 'status'), v);
 end;
 $fn$;
@@ -218,7 +230,7 @@ select pg_temp.ti_newkey('growth', 'claude', 'GC') is not null as k1;
 do $undone$
 declare v text; v_card text; v_event text;
 begin
-  v_card := pg_temp.ti_card('X3980 Undone removal', '["gus.x3980@test.local"]', '["ada.x3980@test.local","hugo.x3980@test.local"]');
+  v_card := pg_temp.ti_card('X3980 Undone removal', '["gus.x3980@test.local"]', '["ada.x3980@test.local"]'); -- [TEST-MOD-APPROVED #4398] one watcher; Ada is swapped for Hugo
   v := pg_temp.ti_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":["hugo.x3980@test.local"]}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
   v_event := pg_temp.ti_get(v, 'event_id');
   v := pg_temp.ti_person('growth', format('select public.ops_work_undo(%L)::text', v_event));
@@ -233,8 +245,9 @@ begin
   perform pg_temp.ti_check('X-UNDONE', 'Gus closes the card', pg_temp.ti_close(v_card), 'done');
   perform pg_temp.ti_check('X-UNDONE', 'an undone removal plus an old one tells Ada nothing at close',
     pg_temp.ti_told('admin', '%closed%X3980 Undone removal%') || '/' || pg_temp.ti_told('admin', '%taken off in the last 24 hours: X3980 Undone removal%'), '0/0');
+  -- [TEST-MOD-APPROVED #4398] Hugo is the watcher now: his ordinary close notice is the ask to confirm.
   perform pg_temp.ti_check('X-UNDONE', 'Hugo, still on, hears the ordinary close',
-    pg_temp.ti_told('growth2', '%closed: X3980 Undone removal%'), '1');
+    pg_temp.ti_told('growth2', '%Confirm or send back: X3980 Undone removal%'), '1');
 end;
 $undone$;
 
@@ -242,8 +255,8 @@ $undone$;
 do $edge$
 declare v text; v_card text;
 begin
-  v_card := pg_temp.ti_card('X3980 Window edge', '["gus.x3980@test.local"]', '["ada.x3980@test.local","hugo.x3980@test.local","ivy.x3980@test.local"]');
-  v := pg_temp.ti_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":["hugo.x3980@test.local","ivy.x3980@test.local"]}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
+  v_card := pg_temp.ti_card('X3980 Window edge', '["gus.x3980@test.local"]', '["ada.x3980@test.local"]'); -- [TEST-MOD-APPROVED #4398] one watcher at a time
+  v := pg_temp.ti_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":["hugo.x3980@test.local"]}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
   update public.ops_work_events set at = clock_timestamp() - interval '23 hours 55 minutes' where id = (pg_temp.ti_get(v, 'event_id'))::uuid;
   v := pg_temp.ti_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":["ivy.x3980@test.local"]}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
   update public.ops_work_events set at = clock_timestamp() - interval '24 hours 5 minutes' where id = (pg_temp.ti_get(v, 'event_id'))::uuid;
@@ -262,7 +275,7 @@ declare v text; v_a text; v_b text;
 begin
   v_a := pg_temp.ti_card('X3980 Scope card A', '["gus.x3980@test.local"]', '["hugo.x3980@test.local"]');
   v_b := pg_temp.ti_card('X3980 Scope card B', '["gus.x3980@test.local"]', '["ivy.x3980@test.local"]');
-  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":[]}}', v_a, pg_temp.ti_rev(v_a)));
+  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["otto.x3980@test.local"]}}', v_a, pg_temp.ti_rev(v_a))); -- [TEST-MOD-APPROVED #4398] one watcher: swap
   perform pg_temp.ti_check('X-SCOPE', 'the agent takes Hugo off card A and tells him',
     pg_temp.ti_told('growth2', '%took you off this card: X3980 Scope card A%'), '1');
   perform pg_temp.ti_check('X-SCOPE', 'Gus closes card B', pg_temp.ti_close(v_b), 'done');
@@ -286,16 +299,17 @@ begin
     'ada.x3980@test.local:watcher');
   perform pg_temp.ti_check('X-CASE', 'Ada is not told she was taken off',
     pg_temp.ti_told('admin', '%took you off this card: X3980 Same people%'), '0');
-  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"owners":["gus.x3980@test.local"],"watchers":["ada.x3980@test.local","hugo.x3980@test.local"]}}', v_card, pg_temp.ti_rev(v_card)));
+  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"owners":["gus.x3980@test.local"],"watchers":["hugo.x3980@test.local"]}}', v_card, pg_temp.ti_rev(v_card)));
   perform pg_temp.ti_check('X-DEMOTE', 'Hugo is now a watcher',
     (select role from public.ops_work_people where card_id = v_card::uuid and email = 'hugo.x3980@test.local'), 'watcher');
   perform pg_temp.ti_check('X-DEMOTE', 'Hugo is not told he was taken off',
     pg_temp.ti_told('growth2', '%took you off this card: X3980 Same people%'), '0');
   perform pg_temp.ti_check('X-DEMOTE', 'Gus closes the card', pg_temp.ti_close(v_card), 'done');
+  -- [TEST-MOD-APPROVED #4398] one watcher seat: Hugo takes Ada's, so Ada is taken off (and told so); Hugo, moved
+  -- from owner to watcher, is asked to confirm and is never told he was taken off.
   perform pg_temp.ti_check('X-DEMOTE', 'Ada and Hugo hear the ordinary close only',
-    pg_temp.ti_told('admin', '%closed: X3980 Same people%') || '/' || pg_temp.ti_told('growth2', '%closed: X3980 Same people%') || '/' ||
-    (select count(*)::text from public.team_mentions m join ti_people p on p.id = m.target_user_id
-      where p.who in ('admin', 'growth2') and m.body_excerpt like '%taken off in the last 24 hours: X3980 Same people%'), '1/1/0');
+    pg_temp.ti_told('growth2', '%Confirm or send back: X3980 Same people%') || '/' ||
+    pg_temp.ti_told('growth2', '%taken off in the last 24 hours: X3980 Same people%'), '1/0');
 end;
 $case$;
 
@@ -305,7 +319,7 @@ do $left$
 declare v text; v_card text;
 begin
   v_card := pg_temp.ti_card('X3980 Leaver taken off', '["gus.x3980@test.local"]', '["lena.x3980@test.local"]');
-  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":[]}}', v_card, pg_temp.ti_rev(v_card)));
+  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["otto.x3980@test.local"]}}', v_card, pg_temp.ti_rev(v_card))); -- [TEST-MOD-APPROVED #4398] one watcher: swap
   perform pg_temp.ti_check('X-LEFT', 'Lena is told she was taken off while still on the team',
     pg_temp.ti_told('leaver', '%took you off this card: X3980 Leaver taken off%'), '1');
   update public.admin_team_members set status = 'revoked' where email = 'lena.x3980@test.local';

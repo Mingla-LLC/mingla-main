@@ -373,11 +373,11 @@ begin
   perform pg_temp.t3980w2fu_check('P2', 'a person sets its owner and watcher', v_before, 'owner:oz.w2fu3980@test.local,watcher:sue.w2fu3980@test.local');
 
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_c, 'expected_revision', pg_temp.t3980w2fu_rev(v_c::text),
-         'changes', jsonb_build_object('owners', jsonb_build_array('kim.w2fu3980@test.local'))));
+         'changes', jsonb_build_object('owners', jsonb_build_array('kim.w2fu3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */)));
   perform pg_temp.t3980w2fu_like('P1', 'MCP replacing the owner is people_only', v, c_po);
   perform pg_temp.t3980w2fu_like('P1', 'the refusal says who owns or watches', v, c_words);
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_c, 'expected_revision', pg_temp.t3980w2fu_rev(v_c::text),
-         'changes', jsonb_build_object('owners', jsonb_build_array('oz.w2fu3980@test.local', 'kim.w2fu3980@test.local'))));
+         'changes', jsonb_build_object('owners', jsonb_build_array('oz.w2fu3980@test.local', 'kim.w2fu3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */)));
   perform pg_temp.t3980w2fu_like('P1', 'MCP adding a second owner is people_only', v, c_po);
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_c, 'expected_revision', pg_temp.t3980w2fu_rev(v_c::text),
          'changes', jsonb_build_object('watchers', jsonb_build_array('sue.w2fu3980@test.local', 'ivy.w2fu3980@test.local'))));
@@ -436,7 +436,7 @@ begin
   -- P4: the agent's own plain card.
   v := pg_temp.t3980w2fu_mcp('owner', 'add_work', jsonb_build_object('request_key', 'w2fu-plain-mcp-1', 'cards', jsonb_build_array(jsonb_build_object(
          'title', 'P4 plain card the agent may staff', 'instructions', 'Do the plain thing.', 'done_means', 'It is done.',
-         'owners', jsonb_build_array('oz.w2fu3980@test.local'), 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
+         'owners', jsonb_build_array('oz.w2fu3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
   v_plain := (pg_temp.t3980w2fu_j(v) #>> '{result,results,0,card,id}')::uuid;
   perform pg_temp.t3980w2fu_check('P4', 'the agent added its plain card', (v_plain is not null)::text, 'true');
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_plain, 'expected_revision', pg_temp.t3980w2fu_rev(v_plain::text),

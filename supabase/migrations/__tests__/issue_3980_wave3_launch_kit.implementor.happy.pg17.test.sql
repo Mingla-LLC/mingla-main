@@ -410,7 +410,7 @@ begin
   -- refusals
   v := pg_temp.t3980_person('growth', format('select public.ops_launch_kit_preview(%L, %L, %L::jsonb)::text', 'event', pg_temp.t3980_id('e_kit'), '{"host_owner_emails":["stranger@example.com"]}'));
   perform pg_temp.t3980_like('W3-KIT', 'an owner who is not on the team is refused', v, 'ERR:22023:invalid_owners: "stranger@example.com" is not on the team.%');
-  v := pg_temp.t3980_person('growth', format('select public.ops_launch_kit_preview(%L, %L, %L::jsonb)::text', 'event', pg_temp.t3980_id('e_kit'), '{"owners":["ada.w3980@test.local"]}'));
+  v := pg_temp.t3980_person('growth', format('select public.ops_launch_kit_preview(%L, %L, %L::jsonb)::text', 'event', pg_temp.t3980_id('e_kit'), '{"owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"]}'));
   perform pg_temp.t3980_like('W3-KIT', 'an unknown option is refused', v, 'ERR:22023:invalid_options:%');
   v := pg_temp.t3980_person('growth', format('select public.ops_launch_kit_preview(%L, %L)::text', 'event', gen_random_uuid()));
   perform pg_temp.t3980_like('W3-KIT', 'an event that is not there is refused', v, 'ERR:P0002:not_found:%');

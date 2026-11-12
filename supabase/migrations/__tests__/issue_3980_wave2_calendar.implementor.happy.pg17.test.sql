@@ -480,7 +480,7 @@ begin
   v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     format('{"record_id":"%s","title":"W3980 Far Party","event_type":"event","expected_on":"%s"}', pg_temp.t3980_id('host'), v_today + 70), 'w3980-exp-0011'));
   perform pg_temp.t3980_keep('x3', pg_temp.t3980_get(v, 'expected', 'id'));
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 harvest brief","instructions":"Write the content brief for the harvest party.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"anchor":{"kind":"expected","id":"%s"},"kit_step":-26}]'::jsonb, 'w3980-w2-add-01')::text$q$, pg_temp.t3980_id('x2')));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 harvest brief","instructions":"Write the content brief for the harvest party.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"anchor":{"kind":"expected","id":"%s"},"kit_step":-26}]'::jsonb, 'w3980-w2-add-01')::text$q$, pg_temp.t3980_id('x2')));
   perform pg_temp.t3980_check('W2-RECONCILE', 'a kit card counts from the expected date',
     pg_temp.t3980_get(v, 'results', '0', 'card', 'due_on'), (v_today + 24)::text);
   perform pg_temp.t3980_keep('ck', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));

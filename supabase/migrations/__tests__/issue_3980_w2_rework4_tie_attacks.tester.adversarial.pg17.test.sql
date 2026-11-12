@@ -397,13 +397,13 @@ begin
   v := pg_temp.t3980w2r4t_mcp('owner', 'add_work', jsonb_build_object('request_key', 'r4t-autokey-1', 'cards', jsonb_build_array(jsonb_build_object(
          'title', 'X2 a card claiming to be an approval card', 'instructions', 'Do it.', 'done_means', 'Done.',
          'auto_key', 'roadmap_shipped:issue-8101', 'auto', true, 'auto_kind', 'roadmap_shipped',
-         'owners', jsonb_build_array('oz.w2r4t3980@test.local'), 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
+         'owners', jsonb_build_array('oz.w2r4t3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
   insert into t3980w2r4t_info (label, detail) values ('X2 add_work with auto_key', left(v, 300));
   perform pg_temp.t3980w2r4t_check('X2', 'add_work refuses a card that sends auto, auto_key or auto_kind',
     (pg_temp.t3980w2r4t_j(v) #>> '{result,added}') || ':' || (pg_temp.t3980w2r4t_j(v) #>> '{result,refused}'), '0:1');
   v := pg_temp.t3980w2r4t_mcp('owner', 'add_work', jsonb_build_object('request_key', 'r4t-plain-0001', 'cards', jsonb_build_array(jsonb_build_object(
          'title', 'X2 the agent''s own plain card', 'instructions', 'Do the plain thing for the team.', 'done_means', 'It is done.',
-         'owners', jsonb_build_array('oz.w2r4t3980@test.local'), 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
+         'owners', jsonb_build_array('oz.w2r4t3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
   insert into t3980w2r4t_info (label, detail) values ('X2 plain add_work', left(v, 300));
   v_plain := (pg_temp.t3980w2r4t_j(v) #>> '{result,results,0,card,id}')::uuid;
   perform pg_temp.t3980w2r4t_check('X2', 'the agent''s plain card has no auto_key',
@@ -474,7 +474,7 @@ begin
   perform pg_temp.t3980w2r4t_check('X4', 'an agent release leaves the person working on it',
     (select status || ':' || coalesce(working_by, '-') || ':' || coalesce(working_via, '-') from public.ops_work_cards where id = v_b), 'doing:oz.w2r4t3980@test.local:-');
   v := pg_temp.t3980w2r4t_mcp('owner', 'update_work', jsonb_build_object('id', v_b, 'expected_revision', pg_temp.t3980w2r4t_rev(v_b::text),
-         'changes', jsonb_build_object('owners', jsonb_build_array('kim.w2r4t3980@test.local'))));
+         'changes', jsonb_build_object('owners', jsonb_build_array('kim.w2r4t3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */)));
   insert into t3980w2r4t_info (label, detail) values ('X4 MCP owners change answer', left(v, 200));
   insert into t3980w2r4t_info (label, detail) values ('X4 owners after the agent call',
     (select coalesce(string_agg(email, ',' order by email), '-') from public.ops_work_people where card_id = v_b and role = 'owner'));

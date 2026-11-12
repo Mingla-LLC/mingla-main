@@ -535,7 +535,7 @@ begin
   -- T6: the agent's own plain card is unaffected.
   v := pg_temp.t3980w2r4i_mcp('owner', 'add_work', jsonb_build_object('request_key', 'r4i-plain-mcp-1', 'cards', jsonb_build_array(jsonb_build_object(
          'title', 'T6 plain card the agent may finish', 'instructions', 'Do the plain thing.', 'done_means', 'It is done.',
-         'owners', jsonb_build_array('oz.w2r4i3980@test.local'), 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
+         'owners', jsonb_build_array('oz.w2r4i3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
   v_plain := (pg_temp.t3980w2r4i_j(v) #>> '{result,results,0,card,id}')::uuid;
   v := pg_temp.t3980w2r4i_mcp('owner', 'update_work', jsonb_build_object('id', v_plain, 'expected_revision', pg_temp.t3980w2r4i_rev(v_plain::text),
          'changes', jsonb_build_object('links', jsonb_build_array(jsonb_build_object('kind', 'roadmap_card', 'id', v_pub)), 'github', jsonb_build_array('#7996'))));

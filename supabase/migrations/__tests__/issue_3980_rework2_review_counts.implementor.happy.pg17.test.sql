@@ -245,8 +245,15 @@ declare v text;
 begin
   v := pg_temp.tw_person(p_who, format('select public.ops_work_add(%L::jsonb, %L)::text',
     format('[{"title":"%s","instructions":"Do this adversarial tester task carefully.","done_means":"It is done and checked.","owners":%s,"watchers":%s,"due_on":"%s"%s}]',
-      p_title, p_owners, p_watchers, (now() AT TIME ZONE 'UTC')::date + 7, p_extra),
+      p_title, jsonb_build_array(p_owners::jsonb->0)::text /* [TEST-MOD-APPROVED #4398] added with one owner and one watcher; extra people are pre-#4398 rows below */, CASE WHEN p_watchers::jsonb = '[]'::jsonb THEN '["route-watch.r4398@test.local"]' ELSE jsonb_build_array(p_watchers::jsonb->0)::text END, (now() AT TIME ZONE 'UTC')::date + 7, p_extra),
     'v3980-' || substr(md5(p_title), 1, 16)));
+  if pg_temp.tw_get(v, 'results', '0', 'card', 'id') is not null then
+    insert into public.ops_work_people (card_id, email, role, added_by)
+    select (pg_temp.tw_get(v, 'results', '0', 'card', 'id'))::uuid, lower(e), 'owner', 'x-fixture' from jsonb_array_elements_text(p_owners::jsonb) with ordinality o(e, n) where n > 1
+    union all
+    select (pg_temp.tw_get(v, 'results', '0', 'card', 'id'))::uuid, lower(e), 'watcher', 'x-fixture' from jsonb_array_elements_text(p_watchers::jsonb) with ordinality o(e, n) where n > 1
+    on conflict do nothing;
+  end if;
   return coalesce(pg_temp.tw_get(v, 'results', '0', 'card', 'id'), v);
 end;
 $fn$;
@@ -369,7 +376,7 @@ $review$;
 do $names$
 declare v text;
 begin
-  v := pg_temp.tw_work('GC', 'add_work', '{"cards":[{"title":"V3980 Owner nobody knows","instructions":"Do the task for a stranger carefully.","done_means":"It is done and checked.","owners":["Stranger"],"due_on":"' || ((now() AT TIME ZONE 'UTC')::date + 5)::text || '"}],"request_key":"v3980-names-0001"}');
+  v := pg_temp.tw_work('GC', 'add_work', '{"cards":[{"title":"V3980 Owner nobody knows","instructions":"Do the task for a stranger carefully.","done_means":"It is done and checked.","owners":["Stranger"],"watchers":["route-watch.r4398@test.local"],"due_on":"' || ((now() AT TIME ZONE 'UTC')::date + 5)::text || '"}],"request_key":"v3980-names-0001"}');
   perform pg_temp.tw_like('R2-NAMES', 'the refusal names each teammate with the address', v, '%Gia <gia.v3980@test.local>%');
   perform pg_temp.tw_like('R2-NAMES', 'the other Gia is told apart by the address', v, '%Gia <gia.other.v3980@test.local>%');
   perform pg_temp.tw_check('R2-NAMES', 'the shared helper lists Name <email>',
@@ -380,16 +387,18 @@ $names$;
 do $log$
 declare v text; v_card text; v_number text; v_summary text;
 begin
-  v_card := pg_temp.tw_card('growth', 'V3980 Reviewer leaves', '["gia.v3980@test.local"]', '["abe.v3980@test.local"]');
+  -- [TEST-MOD-APPROVED #4398] a card keeps one watcher, so Abe leaves a card from before #4398 that had two.
+  v_card := pg_temp.tw_card('growth', 'V3980 Reviewer leaves', '["gia.v3980@test.local"]', '["abe.v3980@test.local","route-watch.r4398@test.local"]');
   v_number := (select number::text from public.ops_work_cards where id = v_card::uuid);
-  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":[]}}', v_card, pg_temp.tw_rev(v_card)));
+  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["route-watch.r4398@test.local"]}}', v_card, pg_temp.tw_rev(v_card)));
   select summary into v_summary from public.ops_agent_log where card_id = v_card::uuid order by at desc limit 1;
   perform pg_temp.tw_check('R2-LOG', 'the agent log says who was taken off which card',
     v_summary, format('Took Abe off Card %s: V3980 Reviewer leaves', v_number));
   perform pg_temp.tw_check('R2-LOG', 'it does not say Updated Card', (v_summary like 'Updated Card%')::text, 'false');
   -- Taken off together with another change: both are said.
-  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"title":"V3980 Reviewer leaves, renamed","owners":["gia.v3980@test.local","hal.v3980@test.local"]}}', v_card, pg_temp.tw_rev(v_card)));
-  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"title":"V3980 Reviewer leaves again","owners":["gia.v3980@test.local"]}}', v_card, pg_temp.tw_rev(v_card)));
+  -- [TEST-MOD-APPROVED #4398] a card has one owner, so Hal is a second owner from before #4398.
+  insert into public.ops_work_people (card_id, email, role, added_by) values (v_card::uuid, 'hal.v3980@test.local', 'owner', 'x-fixture');
+  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"title":"V3980 Reviewer leaves again","owners":["gia.v3980@test.local"],"watchers":["route-watch.r4398@test.local"]}}', v_card, pg_temp.tw_rev(v_card)));
   select summary into v_summary from public.ops_agent_log where card_id = v_card::uuid order by at desc limit 1;
   perform pg_temp.tw_check('R2-LOG', 'a removal with another change names the person too',
     v_summary, format('Updated Card %s: V3980 Reviewer leaves again. Took Hal off it.', v_number));
@@ -407,7 +416,9 @@ begin
   select summary into v_summary from public.ops_agent_log where card_id = v_card::uuid order by at desc limit 1;
   perform pg_temp.tw_check('R2-LOG', 'a shared name is logged as Name <email>',
     v_summary, format('Took Gia <gia.other.v3980@test.local> off Card %s: V3980 Same name leaves', v_number));
-  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":[]}}', v_card, pg_temp.tw_rev(v_card)));
+  -- [TEST-MOD-APPROVED #4398] a card keeps one watcher: a second watcher from before #4398 stays when Abe leaves.
+  insert into public.ops_work_people (card_id, email, role, added_by) values (v_card::uuid, 'route-watch.r4398@test.local', 'watcher', 'x-fixture');
+  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["route-watch.r4398@test.local"]}}', v_card, pg_temp.tw_rev(v_card)));
   select summary into v_summary from public.ops_agent_log where card_id = v_card::uuid order by at desc limit 1;
   perform pg_temp.tw_check('R2-LOG', 'a unique name is still logged as just the name',
     v_summary, format('Took Abe off Card %s: V3980 Same name leaves', v_number));

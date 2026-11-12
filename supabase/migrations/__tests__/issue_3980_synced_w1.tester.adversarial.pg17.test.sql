@@ -250,7 +250,7 @@ language plpgsql as $fn$
 declare v text;
 begin
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'add_work', format(
-    $j${"cards":[{"title":"%s","instructions":"Adversarial fixture card; follow the steps.","done_means":"Every step is marked.","owners":["kim.a3980@test.local"],"due_on":"%s"%s}],"request_key":"%s"}$j$,
+    $j${"cards":[{"title":"%s","instructions":"Adversarial fixture card; follow the steps.","done_means":"Every step is marked.","owners":["kim.a3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"%s}],"request_key":"%s"}$j$,
     p_title, (now() AT TIME ZONE 'UTC')::date + 3, p_extra, 'a3980-' || md5(p_title)));
   return pg_temp.t3980a_get(v, 'result', 'results', '0', 'card', 'id');
 end;
@@ -535,7 +535,7 @@ begin
   returning id into v_e;
   -- A card a person planned for a later week by hand (sprint changed, due date not).
   v := pg_temp.t3980a_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text',
-    format('[{"title":"A3980 planned ahead by hand","instructions":"Kim chose the week herself.","done_means":"It stays in that week.","owners":["kim.a3980@test.local"],"due_on":"%s"}]', v_mon + 16), 'a3980-d3-hand-1'));
+    format('[{"title":"A3980 planned ahead by hand","instructions":"Kim chose the week herself.","done_means":"It stays in that week.","owners":["kim.a3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}]', v_mon + 16), 'a3980-d3-hand-1'));
   v_f := (pg_temp.t3980a_get(v, 'results', '0', 'card', 'id'))::uuid;
   v := pg_temp.t3980a_person('growth', format($q$select public.ops_work_update(%L, '{"week":"%s"}'::jsonb, 1)::text$q$, v_f, v_mon + 14));
   perform pg_temp.t3980a_check('D3', 'the hand-planned card is in the later week before the correction',
@@ -605,7 +605,7 @@ begin
   perform pg_temp.t3980a_check('F3', 'links that are not a list are refused in words',
     pg_temp.t3980a_get(v, 'error', 'message'), 'GitHub links must be a list, like ["#3980"].');
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'add_work', format(
-    $j${"cards":[{"title":"A3980 refused card with a fork link","instructions":"This card must not be written.","done_means":"Nothing is written.","owners":["kim.a3980@test.local"],"due_on":"%s","github":["https://github.com/Mingla-LLC/mingla-main-fork/pull/1"]}],"request_key":"a3980-f3-refused-1"}$j$,
+    $j${"cards":[{"title":"A3980 refused card with a fork link","instructions":"This card must not be written.","done_means":"Nothing is written.","owners":["kim.a3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s","github":["https://github.com/Mingla-LLC/mingla-main-fork/pull/1"]}],"request_key":"a3980-f3-refused-1"}$j$,
     (now() AT TIME ZONE 'UTC')::date + 3));
   perform pg_temp.t3980a_check('F3', 'a card refused for its link writes no card and no link',
     pg_temp.t3980a_get(v, 'result', 'refused') || '/' || (select count(*)::text from public.ops_work_cards where title = 'A3980 refused card with a fork link'), '1/0');
@@ -661,7 +661,7 @@ begin
   perform pg_temp.t3980a_check('F5', 'a shared name is ambiguous as an owner, while each address still works',
     coalesce(public.ops_team_email('Debrah'), '<ambiguous>') || '/' || public.ops_team_email('lou.a3980@test.local'), '<ambiguous>/lou.a3980@test.local');
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'add_work', format(
-    $j${"cards":[{"title":"A3980 card for Debrah","instructions":"Assign it by the shared name.","done_means":"Debrah has it.","owners":["Debrah"],"due_on":"%s"}],"request_key":"a3980-f5-debrah-1"}$j$,
+    $j${"cards":[{"title":"A3980 card for Debrah","instructions":"Assign it by the shared name.","done_means":"Debrah has it.","owners":["Debrah"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}],"request_key":"a3980-f5-debrah-1"}$j$,
     (now() AT TIME ZONE 'UTC')::date + 3));
   perform pg_temp.t3980a_check('F5', 'a card owned by a shared name is refused, never given to the wrong Debrah',
     pg_temp.t3980a_get(v, 'result', 'refused') || '/' || pg_temp.t3980a_get(v, 'result', 'results', '0', 'fixes', '0', 'field'), '1/owners');

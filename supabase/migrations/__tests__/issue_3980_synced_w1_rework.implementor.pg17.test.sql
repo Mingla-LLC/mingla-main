@@ -231,7 +231,7 @@ language plpgsql as $fn$
 declare v text;
 begin
   v := pg_temp.t3980w_chat('KC', 'aaaaaaaaaaaaaaaa', 'add_work', format(
-    $j${"cards":[{"title":"%s","instructions":"Adversarial fixture card; follow the steps.","done_means":"Every step is marked.","owners":["kim.w3980@test.local"],"due_on":"%s"%s}],"request_key":"%s"}$j$,
+    $j${"cards":[{"title":"%s","instructions":"Adversarial fixture card; follow the steps.","done_means":"Every step is marked.","owners":["kim.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"%s}],"request_key":"%s"}$j$,
     p_title, (now() AT TIME ZONE 'UTC')::date + 3, p_extra, 'w3980r-' || md5(p_title)));
   return pg_temp.t3980w_get(v, 'result', 'results', '0', 'card', 'id');
 end;

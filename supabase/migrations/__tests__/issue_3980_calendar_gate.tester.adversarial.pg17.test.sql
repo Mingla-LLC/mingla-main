@@ -296,7 +296,7 @@ begin
     v := pg_temp.ty_person('growth', format('select public.ops_anchor_detail(%L, %L)::text', 'event', pg_temp.ty_id(k)));
     perform pg_temp.ty_like('X-SCOPE', k || ' cannot be opened in the event panel', v, 'ERR:P0002:%');
     v := pg_temp.ty_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text',
-      format('[{"title":"Y3980 link %s","instructions":"Try to link an event out of view.","done_means":"It is linked.","owners":["gia.y3980@test.local"],"due_on":"%s","links":[{"kind":"event","id":"%s"}]}]', k, v_today + 3, pg_temp.ty_id(k)),
+      format('[{"title":"Y3980 link %s","instructions":"Try to link an event out of view.","done_means":"It is linked.","owners":["gia.y3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s","links":[{"kind":"event","id":"%s"}]}]', k, v_today + 3, pg_temp.ty_id(k)),
       'y3980-link-' || k));
     perform pg_temp.ty_check('X-SCOPE', k || ' cannot be linked to a card', pg_temp.ty_get(v, 'results', '0', 'status'), 'refused');
   end loop;
@@ -330,7 +330,7 @@ do $gate$
 declare v text; v_gate text; v_promo text; v_rev bigint;
 begin
   v := pg_temp.ty_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text',
-    format('[{"title":"Y3980 gate card","instructions":"The event must be public 28 days before it starts.","done_means":"The event is public on Mingla.","owners":["gia.y3980@test.local"],"kind":"gate_live","kit_step":-28,"anchor":{"kind":"event","id":"%s"}}]', pg_temp.ty_id('e_gate')),
+    format('[{"title":"Y3980 gate card","instructions":"The event must be public 28 days before it starts.","done_means":"The event is public on Mingla.","owners":["gia.y3980@test.local"],"watchers":["route-watch.r4398@test.local"],"kind":"gate_live","kit_step":-28,"anchor":{"kind":"event","id":"%s"}}]', pg_temp.ty_id('e_gate')),
     'y3980-gate-0001'));
   v_gate := pg_temp.ty_get(v, 'results', '0', 'card', 'id');
   perform pg_temp.ty_check('X-GATE', 'a gate card is added on a draft event', pg_temp.ty_get(v, 'results', '0', 'status'), 'added');

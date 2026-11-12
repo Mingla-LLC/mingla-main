@@ -266,7 +266,7 @@ declare v text;
 begin
   v := pg_temp.tx_person(p_who, format('select public.ops_work_add(%L::jsonb, %L)::text',
     format('[{"title":"%s","instructions":"Do this adversarial tester task carefully.","done_means":"It is done and checked.","owners":%s,"watchers":%s,"due_on":"%s"%s}]',
-      p_title, p_owners, p_watchers, (now() AT TIME ZONE 'UTC')::date + 7, p_extra),
+      p_title, p_owners, CASE WHEN p_watchers = '[]' THEN '["route-watch.r4398@test.local"]' ELSE p_watchers END /* [TEST-MOD-APPROVED #4398] one watcher */, (now() AT TIME ZONE 'UTC')::date + 7, p_extra),
     'x3980-' || substr(md5(p_title), 1, 16)));
   return coalesce(pg_temp.tx_get(v, 'results', '0', 'card', 'id'), v);
 end;
@@ -498,7 +498,7 @@ begin
   -- updates an agent may not make
   v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"done"}}', v_card, pg_temp.tx_rev(v_card)));
   perform pg_temp.tx_like('X-AGENT', 'an agent cannot set done through an update', pg_temp.tx_get(v, 'error', 'message'), '%Close a card with proof, or push it back.%');
-  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"owners":["gia.x3980@test.local","stranger@example.com"]}}', v_card, pg_temp.tx_rev(v_card)));
+  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"owners":["gia.x3980@test.local","stranger@example.com"],"watchers":["route-watch.r4398@test.local"]}}', v_card, pg_temp.tx_rev(v_card)));
   perform pg_temp.tx_check('X-AGENT', 'an agent cannot name an owner who is not on the team', pg_temp.tx_get(v, 'error', 'token'), 'invalid_card');
   v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["lou.x3980@test.local"]}}', v_card, pg_temp.tx_rev(v_card)));
   perform pg_temp.tx_check('X-AGENT', 'or a watcher who has left the team', pg_temp.tx_get(v, 'error', 'token'), 'invalid_card');

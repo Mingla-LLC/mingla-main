@@ -325,7 +325,7 @@ begin
   -- M5: the agent's own plain card is unaffected through MCP.
   v := pg_temp.t3980r3t_mcp('owner', 'add_work', jsonb_build_object('request_key', 'r3t-plain-mcp-1', 'cards', jsonb_build_array(jsonb_build_object(
          'title', 'M5 plain card the agent may finish', 'instructions', 'Do the plain thing.', 'done_means', 'It is done.',
-         'owners', jsonb_build_array('oz.r3t3980@test.local'), 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
+         'owners', jsonb_build_array('oz.r3t3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
     v_plain := coalesce(pg_temp.t3980r3t_j(v) #>> '{result,results,0,card,id}', pg_temp.t3980r3t_j(v) #>> '{results,0,card,id}')::uuid;
   v := pg_temp.t3980r3t_mcp('owner', 'start_work', jsonb_build_object('id', v_plain, 'expected_revision', pg_temp.t3980r3t_rev(v_plain::text)));
   perform pg_temp.t3980r3t_check('M5', 'the agent starts its plain card', (select status from public.ops_work_cards where id = v_plain), 'doing');

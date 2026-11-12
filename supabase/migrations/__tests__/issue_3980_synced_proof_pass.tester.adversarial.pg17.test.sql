@@ -195,7 +195,7 @@ begin
   -- Gus's card waits for #9701; the owner links the roadmap card to #9701.
   v := pg_temp.tpp_person('growth', format('select public.ops_work_add(%L::jsonb, %L)::text', jsonb_build_array(jsonb_build_object(
     'title', 'PP relaunch the trip once #9701 is Live', 'instructions', 'Relaunch the trip when trips publish again.',
-    'done_means', 'The trip is published again.', 'owners', jsonb_build_array('gus.pp3980@test.local'),
+    'done_means', 'The trip is published again.', 'owners', jsonb_build_array('gus.pp3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */,
     'due_on', ((now() AT TIME ZONE 'UTC')::date + 5)::text, 'github', jsonb_build_array('#9701'))), 'pp1-card-0001'));
   v_card := pg_temp.tpp_get(v, 'results', '0', 'card', 'id');
   select revision into v_rev from public.ops_work_cards where id = v_card::uuid;

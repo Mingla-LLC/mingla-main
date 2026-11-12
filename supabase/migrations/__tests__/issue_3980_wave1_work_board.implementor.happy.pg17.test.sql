@@ -310,7 +310,7 @@ begin
   perform pg_temp.t3980_check('W1-ADD', 'the refusal is in the agent log as stopped',
     (select outcome from public.ops_agent_log where action = 'card_refused' and actor_email = 'ada.w3980@test.local' order by id desc limit 1), 'stopped');
 
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 owner check","instructions":"Check the owner rule here.","done_means":"Owner rule checked.","owners":["gus.w3980@test.local","fay.w3980@test.local"],"due_on":"%s","links":[{"kind":"host","id":"39800000-0000-4000-9999-000000000001"}]}]'::jsonb, 'w3980-add-0003')::text$q$, v_due));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 owner check","instructions":"Check the owner rule here.","done_means":"Owner rule checked.","owners":["gus.w3980@test.local","fay.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s","links":[{"kind":"host","id":"39800000-0000-4000-9999-000000000001"}]}]'::jsonb, 'w3980-add-0003')::text$q$, v_due));
   perform pg_temp.t3980_like('W1-ADD', 'an owner who is not on the team is refused',
     (select string_agg(f->>'message', ' | ') from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'owners'),
     'Owner "gus.w3980@test.local" is not on the team. Pick from %');
@@ -321,7 +321,7 @@ begin
     (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'links'),
     'Linked host 39800000-0000-4000-9999-000000000001 does not exist or was removed. Pick it again from live data.');
 
-  v := pg_temp.t3980_person('growth2', format($q$select public.ops_work_add('[{"title":"collect the  W3980 MENU","instructions":"Same work again, typed differently.","done_means":"Menu collected.","owners":["bo.w3980@test.local"],"due_on":"%s"}]'::jsonb, 'w3980-add-0004')::text$q$, v_due));
+  v := pg_temp.t3980_person('growth2', format($q$select public.ops_work_add('[{"title":"collect the  W3980 MENU","instructions":"Same work again, typed differently.","done_means":"Menu collected.","owners":["bo.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}]'::jsonb, 'w3980-add-0004')::text$q$, v_due));
   perform pg_temp.t3980_check('W1-ADD', 'a duplicate of an open card returns that card',
     pg_temp.t3980_get(v, 'results', '0', 'status') || '/' || pg_temp.t3980_get(v, 'results', '0', 'existing', 'id'),
     'duplicate/' || pg_temp.t3980_id('c1'));
@@ -335,7 +335,7 @@ begin
   v := pg_temp.t3980_person('growth', $q$select public.ops_work_add('[{"title":"Another thing"}]'::jsonb, 'w3980-add-0001')::text$q$);
   perform pg_temp.t3980_like('W1-ADD', 'the same key with other cards is refused', v, 'ERR:22023:request_key_reused:%');
 
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 counted from the event","instructions":"Share the event with the creators list.","done_means":"Creators have the event.","owners":["ada.w3980@test.local"],"links":[{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}]},{"title":"W3980 content brief","instructions":"Write the content brief for the night.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"},"kit_step":-26}]'::jsonb, 'w3980-add-0005')::text$q$));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 counted from the event","instructions":"Share the event with the creators list.","done_means":"Creators have the event.","owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"links":[{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}]},{"title":"W3980 content brief","instructions":"Write the content brief for the night.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"},"kit_step":-26}]'::jsonb, 'w3980-add-0005')::text$q$));
   perform pg_temp.t3980_check('W1-ADD', 'with only an event linked, the due date is the day before it starts',
     pg_temp.t3980_get(v, 'results', '0', 'card', 'due_on') || '/' || pg_temp.t3980_get(v, 'results', '0', 'card', 'due_source'),
     ((pg_temp.t3980_id('start_on'))::date - 1)::text || '/event');
@@ -344,7 +344,7 @@ begin
     ((pg_temp.t3980_id('start_on'))::date - 26)::text || '/kit');
 
   -- cards used further down: C2 (agent A's person owns it), C3 (needs a person to spend), C4 (go-live gate)
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 write the first message","instructions":"Write the first message to the quiet host with save_drafts.","done_means":"A draft is waiting in To review.","owners":["ada.w3980@test.local","cy.w3980@test.local"],"watchers":["di.w3980@test.local"],"due_on":"%s"},{"title":"W3980 approve the boost","instructions":"Approve a small boost for the night.","done_means":"Spend approved by a person.","owners":["ada.w3980@test.local"],"due_on":"%s","person_reason":"spend"},{"title":"W3980 gate","instructions":"The event must be public 28 days before it starts.","done_means":"The event is public on Mingla.","owners":["ada.w3980@test.local"],"kind":"gate_live","kit_step":-28,"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}}]'::jsonb, 'w3980-add-0006')::text$q$, v_due, v_due));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 write the first message","instructions":"Write the first message to the quiet host with save_drafts.","done_means":"A draft is waiting in To review.","owners":["ada.w3980@test.local","cy.w3980@test.local"],"watchers":["di.w3980@test.local"],"due_on":"%s"},{"title":"W3980 approve the boost","instructions":"Approve a small boost for the night.","done_means":"Spend approved by a person.","owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s","person_reason":"spend"},{"title":"W3980 gate","instructions":"The event must be public 28 days before it starts.","done_means":"The event is public on Mingla.","owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"kind":"gate_live","kit_step":-28,"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}}]'::jsonb, 'w3980-add-0006')::text$q$, v_due, v_due));
   perform pg_temp.t3980_check('W1-ADD', 'three more cards are added, one waiting for a person',
     pg_temp.t3980_get(v, 'added') || '/' || pg_temp.t3980_get(v, 'results', '1', 'card', 'status') || ':' || pg_temp.t3980_get(v, 'results', '1', 'card', 'tag'), '3/todo:spend'); -- #4270: tagged in To do
   perform pg_temp.t3980_keep('c2', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));
@@ -352,10 +352,10 @@ begin
   perform pg_temp.t3980_keep('c4', pg_temp.t3980_get(v, 'results', '2', 'card', 'id'));
 
   -- through the connector: one valid card, one refused with every fix
-  v := pg_temp.t3980_work('A', 'add_work', $j${"cards":[{"title":"W3980 agent card","instructions":"Agent adds this card for its person.","done_means":"The card is on the board.","owners":["Ada"],"due_on":"2099-01-01"},{"title":"x"}],"request_key":"w3980-agent-add-01"}$j$);
+  v := pg_temp.t3980_work('A', 'add_work', $j${"cards":[{"title":"W3980 agent card","instructions":"Agent adds this card for its person.","done_means":"The card is on the board.","owners":["Ada"],"watchers":["route-watch.r4398@test.local"],"due_on":"2099-01-01"},{"title":"x"}],"request_key":"w3980-agent-add-01"}$j$);
   perform pg_temp.t3980_check('W1-ADD', 'an agent adds through the connector: one added, one refused',
     pg_temp.t3980_get(v, 'ok') || '/' || pg_temp.t3980_get(v, 'result', 'added') || '/' || pg_temp.t3980_get(v, 'result', 'refused'), 'true/0/2');
-  v := pg_temp.t3980_work('A', 'add_work', format($j${"cards":[{"title":"W3980 agent card","instructions":"Agent adds this card for its person.","done_means":"The card is on the board.","owners":["Ada"],"due_on":"%s"}],"request_key":"w3980-agent-add-02"}$j$, v_due));
+  v := pg_temp.t3980_work('A', 'add_work', format($j${"cards":[{"title":"W3980 agent card","instructions":"Agent adds this card for its person.","done_means":"The card is on the board.","owners":["Ada"],"watchers":["route-watch.r4398@test.local"],"due_on":"%s"}],"request_key":"w3980-agent-add-02"}$j$, v_due));
   perform pg_temp.t3980_check('W1-ADD', 'the agent card is added as made by its agent',
     pg_temp.t3980_get(v, 'result', 'results', '0', 'card', 'created_via') || '/' || pg_temp.t3980_get(v, 'result', 'results', '0', 'card', 'owners', '0', 'email'),
     'claude/ada.w3980@test.local');

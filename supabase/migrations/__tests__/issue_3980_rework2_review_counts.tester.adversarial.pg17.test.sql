@@ -253,7 +253,7 @@ declare v text;
 begin
   v := pg_temp.tw_person(p_who, format('select public.ops_work_add(%L::jsonb, %L)::text',
     format('[{"title":"%s","instructions":"Do this adversarial tester task carefully.","done_means":"It is done and checked.","owners":%s,"watchers":%s,"due_on":"%s"%s}]',
-      p_title, p_owners, p_watchers, (now() AT TIME ZONE 'UTC')::date + 7, p_extra),
+      p_title, p_owners, CASE WHEN p_watchers = '[]' THEN '["route-watch.r4398@test.local"]' ELSE p_watchers END /* [TEST-MOD-APPROVED #4398] one watcher */, (now() AT TIME ZONE 'UTC')::date + 7, p_extra),
     'v3980-' || substr(md5(p_title), 1, 16)));
   return coalesce(pg_temp.tw_get(v, 'results', '0', 'card', 'id'), v);
 end;
