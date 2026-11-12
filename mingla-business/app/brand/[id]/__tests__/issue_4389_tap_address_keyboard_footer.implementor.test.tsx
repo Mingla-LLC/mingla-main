@@ -60,7 +60,8 @@ describe("#4389 — T1 keeps Save address above the keyboard", () => {
     const kav = root.findAll((n) => n.type === KeyboardAvoidingView)[0];
     expect(kav).toBeDefined();
     expect(kav?.props.behavior).toBe("padding");
-    expect(kav?.props.keyboardVerticalOffset).toBe(53);
+    // Done bar (53) + the top safe area the page pads above the column (20).
+    expect(kav?.props.keyboardVerticalOffset).toBe(53 + 20);
     const save = root.findAll((n) => typeof n.type === "string" && n.props.testID === "tap-address-save")[0] as Node;
     expect(isInside(save, kav as Node)).toBe(true);
     expect(root.findAll((n) => n.type === ScrollView).some((s) => isInside(save, s))).toBe(false);

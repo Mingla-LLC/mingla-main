@@ -81,7 +81,8 @@ export default function TapToPayAddressRoute(): React.ReactElement {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="tap-to-pay-address">
-      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED} style={styles.fill}>
+      {/* The column starts insets.top below the screen top (see setupKeyboardOffset). */}
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED + insets.top} style={styles.fill}>
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={styles.h1} accessibilityRole="header">{C.t1.title}</Text>
         <Text style={styles.sub}>{Platform.OS === "android" ? C.t1.helperAndroid : C.t1.helper}</Text>

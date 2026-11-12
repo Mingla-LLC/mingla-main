@@ -33,6 +33,19 @@ import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
 import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+/**
+ * #4389 (iPhone 15 recording: the Done bar sat on Continue) — the library
+ * KeyboardAvoidingView measures its frame from onLayout, relative to its
+ * parent, and treats it as a screen position. Both setup routes pad the
+ * screen by the top safe area above this column, so that much of the lift was
+ * missing (59pt on a notched iPhone, the Done bar's height). The offset adds
+ * it back on top of the Done bar's own budget.
+ */
+export function setupKeyboardOffset(topInset: number): number {
+  return DONE_BAR_OCCUPIED + topInset;
+}
 
 import { useAuth } from "../../context/AuthContext";
 import { accent, canvas, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
@@ -140,6 +153,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const router = useRouter();
   const { user, isAuthReady } = useAuth();
   const { isWideDesktop } = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
   const network = useNetInfoSafe();
   const offline = network?.isConnected === false;
 
@@ -331,7 +345,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       {rail}
       <KeyboardAvoidingView
         behavior="padding"
-        keyboardVerticalOffset={DONE_BAR_OCCUPIED}
+        keyboardVerticalOffset={setupKeyboardOffset(insets.top)}
         style={isWideDesktop ? styles.pane : styles.fill}
       >
       <View style={styles.topBar}>

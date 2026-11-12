@@ -51,7 +51,9 @@ describe("#4389 P1 — the step CTA stays above the keyboard", () => {
     const a1 = avoiderAround(f1, nameCta);
     expect(a1).not.toBeNull();
     expect(a1?.props.behavior).toBe("padding");
-    expect(a1?.props.keyboardVerticalOffset).toBe(DONE_BAR_OCCUPIED);
+    // #4389 (iPhone 15): the Done bar covered Continue — the lift must add the
+    // top safe area the route pads above the column (harness: 59pt notch).
+    expect(a1?.props.keyboardVerticalOffset).toBe(DONE_BAR_OCCUPIED + 59);
 
     harness.checklist = checklistAt("country");
     const f2 = await mount(<BrandCreationFlow brandId={ID} requestedStep="country" onExit={() => undefined} />);

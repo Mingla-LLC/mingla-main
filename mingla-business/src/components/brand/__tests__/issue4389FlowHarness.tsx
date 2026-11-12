@@ -91,6 +91,7 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
   const RN = jest.requireActual("react-native") as typeof import("react-native");
   return { ScrollView: RN.ScrollView, DONE_BAR_OCCUPIED: 53 };
 });
+jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }) }));
 jest.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "acct-4389" }, isAuthReady: true, signOut: jest.fn() }),
 }));
