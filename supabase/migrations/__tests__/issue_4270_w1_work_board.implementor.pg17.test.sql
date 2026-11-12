@@ -169,6 +169,9 @@ begin
   returning id into v_id;
   if p_owner is not null then
     insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, p_owner, 'owner', p_owner);
+    -- [TEST-MOD-APPROVED #4398] every owned card has one watcher, who is not the owner (Hal).
+    insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'hal.w4270@test.local', 'watcher', p_owner)
+      on conflict do nothing;
   end if;
   insert into tw_ids (k, id) values (p_key, v_id);
   return v_id;
@@ -206,6 +209,9 @@ set local session_replication_role = origin;
 create temp table tw_before on commit drop as
   select count(*) as n from public.ops_work_cards;
 
+-- [TEST-MOD-APPROVED #4398] the #4270 one-time move rewrites pre-#4398 cards (no watcher), as a
+-- data migration did; it runs as a fixture load (replica mode), so the #4398 checks do not hold it.
+set local session_replication_role = replica;
 do $move$
 declare v jsonb;
 begin
@@ -216,6 +222,7 @@ end;
 $move$;
 
 -- The new checks go back on and hold for every moved row.
+set local session_replication_role = origin;
 alter table public.ops_work_cards add constraint ops_work_cards_status_check check (status in ('todo','doing','done'));
 alter table public.ops_work_cards add constraint ops_work_cards_tag_open check (person_reason is null or status <> 'done');
 
@@ -295,8 +302,12 @@ begin
   perform pg_temp.tw_check('M-GUARD', 'both tagged cards are still open with their tags', pg_temp.tw_row('G1') || ' ' || pg_temp.tw_row('G2'), 'todo/send doing/spend');
   v := pg_temp.tw_agent('growth', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Did it"}]'::jsonb, NULL, %s)::text$q$,
     pg_temp.tw_id('G3'), pg_temp.tw_rev('G3')));
-  perform pg_temp.tw_check('M-GUARD', 'an agent still closes an untagged card it owns', coalesce(pg_temp.tw_j(v) #>> '{card,status}', v), 'done');
+  -- [TEST-MOD-APPROVED #4398] an agent's close goes to In review (its watcher confirms), not Done.
+  perform pg_temp.tw_check('M-GUARD', 'an agent still closes an untagged card it owns (into review)',
+    coalesce((pg_temp.tw_j(v) #>> '{card,status}') || '/' || (pg_temp.tw_j(v) #>> '{review,watcher}'), v), 'doing/hal.w4270@test.local');
   v := pg_temp.tw_person('growth', format($q$select public.ops_work_person_action(%L, 'mark_sent', NULL, %s)::text$q$, pg_temp.tw_id('G1'), pg_temp.tw_rev('G1')));
+  -- [TEST-MOD-APPROVED #4398] marked sent by the owner, it waits for the watcher (Hal), who confirms it.
+  v := pg_temp.tw_person('hal', format($q$select public.ops_work_confirm(%L, %s)::text$q$, pg_temp.tw_id('G1'), pg_temp.tw_rev('G1')));
   perform pg_temp.tw_check('M-GUARD', 'a person marks a tagged To do card sent: it closes and the tag goes', coalesce(pg_temp.tw_row('G1'), v), 'done/-');
   v := pg_temp.tw_person('growth', format($q$select public.ops_work_person_action(%L, 'send_back', 'Change the amount first.', %s)::text$q$, pg_temp.tw_id('G2'), pg_temp.tw_rev('G2')));
   perform pg_temp.tw_check('M-GUARD', 'a person sends a tagged In progress card back: To do, tag gone', coalesce(pg_temp.tw_row('G2'), v), 'todo/-');
@@ -329,10 +340,10 @@ begin
   perform pg_temp.tw_like('M-FILES', 'an http link is refused', v, 'ERR:22023:invalid_card: Links start with https://%');
   v := pg_temp.tw_person('growth', format($q$select public.ops_work_update(%L, '{"files_url":""}'::jsonb, %s)::text$q$, pg_temp.tw_id('G5'), pg_temp.tw_rev('G5')));
   perform pg_temp.tw_check('M-FILES', 'an empty link clears it', coalesce(pg_temp.tw_j(v) #>> '{card,files_url}', '<null>'), '<null>');
-  v := pg_temp.tw_person('growth', format($q$select public.ops_work_add('[{"title":"T4270 Added with files","instructions":"Make the flyer and upload it.","done_means":"The flyer is uploaded.","owners":["gia.w4270@test.local"],"due_on":"%s","files_url":"https://files.example.com/x"}]'::jsonb, 'r4270-add-files-1')::text$q$, (now() AT TIME ZONE 'UTC')::date + 3));
+  v := pg_temp.tw_person('growth', format($q$select public.ops_work_add('[{"title":"T4270 Added with files","instructions":"Make the flyer and upload it.","done_means":"The flyer is uploaded.","owners":["gia.w4270@test.local"],"watchers":["hal.w4270@test.local"],"due_on":"%s","files_url":"https://files.example.com/x"}]'::jsonb, 'r4270-add-files-1')::text$q$, (now() AT TIME ZONE 'UTC')::date + 3));
   perform pg_temp.tw_check('M-FILES', 'a card added with a Files link keeps it',
     coalesce(pg_temp.tw_j(v) #>> '{results,0,card,files_url}', v), 'https://files.example.com/x');
-  v := pg_temp.tw_person('growth', format($q$select public.ops_work_add('[{"title":"T4270 Added tagged","instructions":"Send the host the reminder.","done_means":"The reminder is sent.","owners":["gia.w4270@test.local"],"due_on":"%s","person_reason":"send"}]'::jsonb, 'r4270-add-tag-1')::text$q$, (now() AT TIME ZONE 'UTC')::date + 3));
+  v := pg_temp.tw_person('growth', format($q$select public.ops_work_add('[{"title":"T4270 Added tagged","instructions":"Send the host the reminder.","done_means":"The reminder is sent.","owners":["gia.w4270@test.local"],"watchers":["hal.w4270@test.local"],"due_on":"%s","person_reason":"send"}]'::jsonb, 'r4270-add-tag-1')::text$q$, (now() AT TIME ZONE 'UTC')::date + 3));
   perform pg_temp.tw_check('M-FILES', 'a card added with a tag lands in To do with it',
     coalesce((pg_temp.tw_j(v) #>> '{results,0,card,status}') || '/' || (pg_temp.tw_j(v) #>> '{results,0,card,tag}'), v), 'todo/send');
 end;

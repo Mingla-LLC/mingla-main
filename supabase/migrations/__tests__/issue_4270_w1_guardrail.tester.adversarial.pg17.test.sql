@@ -49,6 +49,30 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 
 create temp table tx_people (who text primary key, id uuid not null, email text not null) on commit drop;
@@ -181,6 +205,8 @@ begin
   returning id into v_id;
   if p_owner is not null then
     insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, p_owner, 'owner', p_owner);
+    -- [TEST-MOD-APPROVED #4398] every owned card has one watcher, who is not the owner (Boss).
+    insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'boss.x4270@test.local', 'watcher', p_owner) on conflict do nothing;
   end if;
   insert into tx_ids (k, id) values (p_key, v_id);
   return v_id;
@@ -218,11 +244,15 @@ end;
 $fx_move$;
 set local session_replication_role = origin;
 
+-- [TEST-MOD-APPROVED #4398] the #4270 one-time move rewrites pre-#4398 cards (no watcher), as a
+-- data migration did; it runs as a fixture load (replica mode), so the #4398 checks do not hold it.
+set local session_replication_role = replica;
 do $move$
 begin
   perform public.ops_4270_move_person_cards();
 end;
 $move$;
+set local session_replication_role = origin;
 alter table public.ops_work_cards add constraint ops_work_cards_status_check check (status in ('todo','doing','done'));
 alter table public.ops_work_cards add constraint ops_work_cards_tag_open check (person_reason is null or status <> 'done');
 
@@ -362,6 +392,7 @@ begin
   v := public.ops_auto_card_upsert('x_test:auto-upsert-1',
     jsonb_build_object('title', 'X4270 Auto made tagged', 'instructions', 'Send the host the welcome note.', 'done_means', 'The note is sent.',
       'owners', jsonb_build_array('gia.x4270@test.local'), 'due_on', public.ops_today(NULL) + 2, 'person_reason', 'publish'), 'task', NULL);
+  -- (#4398: the route's people replace the maker's; the tag is kept.)
   perform pg_temp.tx_check('X-AUTO', 'an automatic card with a tag lands in To do with it',
     (select status || '/' || coalesce(person_reason, '-') from public.ops_work_cards where id = (v->>'id')::uuid), 'todo/publish');
   v := public.ops_auto_card_upsert('x_test:auto-upsert-2',
@@ -372,6 +403,8 @@ begin
   perform pg_temp.tx_check('X-AUTO', 'an automatic close clears the tag as it closes', v->>'status' || ' ' || pg_temp.tx_row('A7'), 'closed done/-');
   v_t := pg_temp.tx_person('gia', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"I approved it on the call."}]'::jsonb, 'Approved.', %s)::text$q$,
     pg_temp.tx_id('A6'), pg_temp.tx_rev('A6')));
+  -- [TEST-MOD-APPROVED #4398] the owner's close waits for the watcher (Boss), who confirms it.
+  v_t := pg_temp.tx_person('boss', format($q$select public.ops_work_confirm(%L, %s)::text$q$, pg_temp.tx_id('A6'), pg_temp.tx_rev('A6')));
   perform pg_temp.tx_check('X-AUTO', 'a person closes a tagged In progress card with proof; the tag goes', pg_temp.tx_row('A6'), 'done/-');
   v_t := pg_temp.tx_person('gia', format($q$select public.ops_work_reopen(%L, 'Reopening to check it again.', %s)::text$q$, pg_temp.tx_id('A6'), pg_temp.tx_rev('A6')));
   perform pg_temp.tx_check('X-AUTO', 'reopening never brings the tag back', pg_temp.tx_row('A6'), 'todo/-');
@@ -398,7 +431,8 @@ begin
 
   -- Mark sent, then undo: an open card with its tag again.
   v := pg_temp.tx_person('gia', format($q$select public.ops_work_person_action(%L, 'mark_sent', NULL, %s)::text$q$, pg_temp.tx_id('U2'), pg_temp.tx_rev('U2')));
-  perform pg_temp.tx_check('X-UNDO', 'Mark sent closes it', pg_temp.tx_row('U2'), 'done/-');
+  -- [TEST-MOD-APPROVED #4398] Mark sent by the owner sends it to its watcher (In review), tag gone; Undo still restores it.
+  perform pg_temp.tx_check('X-UNDO', 'Mark sent sends it for review', pg_temp.tx_row('U2'), 'doing/-');
   v := pg_temp.tx_person('gia', format('select public.ops_work_undo(%L)::text', (pg_temp.tx_j(v)->>'event_id')));
   perform pg_temp.tx_check('X-UNDO', 'undoing Mark sent reopens it in To do with the tag',
     coalesce(pg_temp.tx_row('U2'), v) || ' ' || (select coalesce(closed_at::text, '-') from public.ops_work_cards where id = pg_temp.tx_id('U2')), 'todo/send -');
@@ -420,7 +454,8 @@ begin
   begin
     update public.ops_work_cards set status = 'done', closed_at = now(), close_kind = 'done' where id = pg_temp.tx_id('A3');
     v := 'accepted';
-  exception when check_violation then v := 'refused';
+  -- [TEST-MOD-APPROVED #4398] the review backstop (42501) now refuses this write before the tag check does.
+  exception when check_violation or insufficient_privilege then v := 'refused';
   end;
   perform pg_temp.tx_check('X-DONE', 'closing a tagged card without clearing the tag is refused by the table', v, 'refused');
   v := pg_temp.tx_person('gia', format($q$select public.ops_work_update(%L, '{"person_reason":"send"}'::jsonb, %s)::text$q$, pg_temp.tx_id('D1'), pg_temp.tx_rev('D1')));

@@ -128,6 +128,8 @@ begin
   -- B: due Sunday 1 March, closed Monday 00:30 Lagos (23:30 UTC on Sunday).
   -- C: due Monday 9 March, closed Monday 00:30 New York, the first Monday after
   --    the clock change (04:30 UTC).
+  -- [TEST-MOD-APPROVED #4398] closed cards are loaded as fixtures (replica mode), past the review rule.
+  set local session_replication_role = replica;
   insert into public.ops_work_cards (title, instructions, done_means, status, due_on, due_source, sprint_id,
     created_by, created_at, updated_by, updated_at, closed_at, closed_by, close_kind)
   values ('TA Sunday close', 'Do this task carefully and say what changed.', 'It is done and checked.', 'done',
@@ -149,6 +151,7 @@ begin
     timestamptz '2026-03-03 10:00+00', 'ta-growth@mingla-fixture.org', timestamptz '2026-03-09 04:30+00',
     timestamptz '2026-03-09 04:30+00', 'ta-growth@mingla-fixture.org', 'done')
   returning id into v_c;
+  set local session_replication_role = origin;
   insert into public.ops_work_people (card_id, email, role, added_by) values
     (v_a, 'ta-growth@mingla-fixture.org', 'owner', 'ta-growth@mingla-fixture.org'),
     (v_b, 'ta-growth@mingla-fixture.org', 'owner', 'ta-growth@mingla-fixture.org'),
