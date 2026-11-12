@@ -101,8 +101,9 @@ AS $function$
     AND pg_catalog.length(btrim(COALESCE(p_country, ''))) = 2;
 $function$;
 REVOKE ALL ON FUNCTION public.payout_country_rail(text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.payout_country_rail(text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.payout_country_rail(text)
-  TO anon, authenticated, service_role;
+  TO authenticated, service_role;
 
 -- ── 3. Derive trigger + lock ───────────────────────────────────────────────
 -- Fires only when the statement writes payout_country. Writers that change
@@ -154,6 +155,13 @@ BEGIN
   END IF;
 
   IF v_new IS NULL THEN
+    -- A new brand without a bank country (older app builds, venue and partner
+    -- paths) keeps the currency and partner it was created with; the setup
+    -- checklist asks for the bank country later. Only clearing a country on
+    -- an existing brand resets the derived fields.
+    IF TG_OP = 'INSERT' THEN
+      RETURN NEW;
+    END IF;
     NEW.payment_country := NULL;
     IF NEW.payment_provider = 'paystack' AND NEW.paystack_subaccount_code IS NULL THEN
       NEW.payment_provider := 'stripe';
