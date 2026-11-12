@@ -16,7 +16,8 @@ BEGIN
     RAISE EXCEPTION 'issue_1384: provisional brand currency missing';
   END IF;
 
-  IF (SELECT count(*) FROM public.supported_brand_currencies WHERE active) < 15
+  -- #4389 retired BGN (Bulgaria pays out in EUR): 14 of the 15 registry rows stay active.
+  IF (SELECT count(*) FROM public.supported_brand_currencies WHERE active) < 14
      OR NOT EXISTS (
        SELECT 1 FROM public.supported_brand_currencies
        WHERE code = 'NGN' AND minor_unit_exponent = 2
