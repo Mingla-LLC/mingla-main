@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Receber um pagamento",
-      "chip": "Receber um pagamento",
       "atDoorToday_one": "Na portaria hoje · {{count}} venda · {{amount}}",
       "atDoorToday_other": "Na portaria hoje · {{count}} vendas · {{amount}}",
       "noEventToday": "Nada hoje para vender. Receba pagamentos no dia de um evento.",

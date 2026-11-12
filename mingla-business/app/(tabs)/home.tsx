@@ -988,14 +988,7 @@ export default function HomeTab(): React.ReactElement {
       {currentBrand !== null && recent.state !== "empty" ? (
         <View style={styles.todoWrap}>
           <HomeAskAri onAskAri={handleAskAri} />
-          {showTakePayment && homeBrandId !== null ? (
-            <TakePaymentButton
-              brandId={homeBrandId}
-              tapToPay={tapEligible}
-              variant="chip"
-              onMessage={showHomeMessage}
-            />
-          ) : null}
+          {/* #4389 (Seth): Take a payment lives only in the money panel. */}
         </View>
       ) : null}
 

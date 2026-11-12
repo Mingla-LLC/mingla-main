@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Karɓi biya",
-      "chip": "Karɓi biya",
       "atDoorToday_one": "A ƙofa yau · sayayya {{count}} · {{amount}}",
       "atDoorToday_other": "A ƙofa yau · sayayya {{count}} · {{amount}}",
       "noEventToday": "Babu abin sayarwa yau. Karɓi biya a ranar taro.",

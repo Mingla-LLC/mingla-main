@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Betaling ontvangen",
-      "chip": "Betaling ontvangen",
       "atDoorToday_one": "Vandaag aan de deur · {{count}} verkoop · {{amount}}",
       "atDoorToday_other": "Vandaag aan de deur · {{count}} verkopen · {{amount}}",
       "noEventToday": "Vandaag is er niets om voor te verkopen. Ontvang betalingen op de dag van een evenement.",

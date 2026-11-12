@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "รับชำระเงิน",
-      "chip": "รับชำระเงิน",
       "atDoorToday_one": "หน้างานวันนี้ · ขาย {{count}} รายการ · {{amount}}",
       "atDoorToday_other": "หน้างานวันนี้ · ขาย {{count}} รายการ · {{amount}}",
       "noEventToday": "วันนี้ไม่มีงานให้ขาย รับชำระเงินในวันที่จัดงาน",

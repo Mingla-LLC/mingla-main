@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Miẹ igho",
-      "chip": "Miẹ igho",
       "atDoorToday_one": "Vbe ẹkhu ẹdẹnọ · ọna a khiẹn {{count}} · {{amount}}",
       "atDoorToday_other": "Vbe ẹkhu ẹdẹnọ · ọna a khiẹn {{count}} · {{amount}}",
       "noEventToday": "Emwi rhọkpa i ye ne a khiẹn ẹdẹnọ. Miẹ igho vbe ẹdẹ ukpo.",

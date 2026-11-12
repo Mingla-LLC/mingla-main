@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Nhận thanh toán",
-      "chip": "Nhận thanh toán",
       "atDoorToday_one": "Tại cửa hôm nay · {{count}} giao dịch · {{amount}}",
       "atDoorToday_other": "Tại cửa hôm nay · {{count}} giao dịch · {{amount}}",
       "noEventToday": "Hôm nay không có gì để bán. Hãy nhận thanh toán vào ngày diễn ra sự kiện.",

@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Cobrar un pago",
-      "chip": "Cobrar un pago",
       "atDoorToday_one": "En la puerta hoy · {{count}} venta · {{amount}}",
       "atDoorToday_other": "En la puerta hoy · {{count}} ventas · {{amount}}",
       "noEventToday": "No hay nada hoy para vender. Acepta pagos el día de un evento.",

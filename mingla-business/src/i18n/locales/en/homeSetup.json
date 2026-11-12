@@ -34,7 +34,6 @@
     },
     "takePayment": {
       "pill": "Take a payment",
-      "chip": "Take a payment",
       "atDoorToday_one": "At the door today · {{count}} sale · {{amount}}",
       "atDoorToday_other": "At the door today · {{count}} sales · {{amount}}",
       "noEventToday": "Nothing on today to sell for. Take payments on the day of an event.",

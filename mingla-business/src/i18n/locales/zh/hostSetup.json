@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "收款",
-      "chip": "收款",
       "atDoorToday_one": "今日门口 · {{count}} 笔 · {{amount}}",
       "atDoorToday_other": "今日门口 · {{count}} 笔 · {{amount}}",
       "noEventToday": "今天没有可售卖的活动。请在活动当天收款。",

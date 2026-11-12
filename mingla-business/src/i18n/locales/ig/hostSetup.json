@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Nara ịkwụ ụgwọ",
-      "chip": "Nara ịkwụ ụgwọ",
       "atDoorToday_one": "N'ọnụ ụzọ taa · ahịa {{count}} · {{amount}}",
       "atDoorToday_other": "N'ọnụ ụzọ taa · ahịa {{count}} · {{amount}}",
       "noEventToday": "Ọ dịghị ihe a ga-ere taa. Nata ego n'ụbọchị mmemme.",

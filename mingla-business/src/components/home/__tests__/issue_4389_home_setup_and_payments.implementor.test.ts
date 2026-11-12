@@ -160,12 +160,19 @@ describe("#4389 Home wiring", () => {
     expect(home).toContain("<LazyHomeTapToPayCard");
     expect(read("src/components/home/HomeTapToPayCard.tsx")).toContain('require("../../../assets/tap-to-pay/ttp-visual.png")');
   });
-  test("Take a payment goes through openDoorSale; full-width button at the bottom of the money panel, chip under Ask Ari", () => {
-    expect(read("src/components/home/HomeTakePayment.tsx")).toContain('await import("../../utils/openDoorSale")');
-    // #4389 HT (Seth): full width at the bottom of the money panel, not the header.
+  // #4389 HT (Seth): "why take a payment in two places?" — one full-width
+  // button at the bottom of the money panel; no chip under Ask Ari. Ari keeps
+  // its start_door_sale tool.
+  test("Take a payment goes through openDoorSale; only the full-width button in the money panel", () => {
+    const button = read("src/components/home/HomeTakePayment.tsx");
+    expect(button).toContain('await import("../../utils/openDoorSale")');
+    expect(button).toContain('openTakePayment(router as never, brandId, "home")');
     expect(home).toContain("moneyAction={takePaymentButton}");
-    expect(home).toContain('variant="chip"');
-    expect(home.indexOf("<HomeAskAri")).toBeLessThan(home.indexOf('variant="chip"'));
+    expect(home.match(/<TakePaymentButton/g)).toHaveLength(1);
+    expect(home).not.toContain('variant="chip"');
+    expect(button).not.toContain("home-take-payment-chip");
+    expect(JSON.stringify(require("../../../i18n/locales/en/homeSetup.json"))).not.toContain('"chip"');
+    expect(read("../supabase/functions/_shared/agentBrandSetupTools.ts")).toContain("start_door_sale");
   });
   test("H2 is once per device per brand, owners and admins only, after hydration", () => {
     expect(home).toContain("!promptHydrated ||");

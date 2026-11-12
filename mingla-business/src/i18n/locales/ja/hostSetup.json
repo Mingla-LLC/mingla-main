@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "支払いを受け取る",
-      "chip": "支払いを受け取る",
       "atDoorToday_one": "本日の受付 · {{count}}件 · {{amount}}",
       "atDoorToday_other": "本日の受付 · {{count}}件 · {{amount}}",
       "noEventToday": "今日は販売できるものがありません。イベント当日に決済を受け付けてください。",

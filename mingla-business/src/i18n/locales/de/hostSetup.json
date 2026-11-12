@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Zahlung annehmen",
-      "chip": "Zahlung annehmen",
       "atDoorToday_one": "Heute am Einlass · {{count}} Verkauf · {{amount}}",
       "atDoorToday_other": "Heute am Einlass · {{count}} Verkäufe · {{amount}}",
       "noEventToday": "Heute gibt es nichts zu verkaufen. Nimm Zahlungen am Tag eines Events an.",

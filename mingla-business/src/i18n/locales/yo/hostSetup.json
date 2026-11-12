@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Gba ìsanwó",
-      "chip": "Gba ìsanwó",
       "atDoorToday_one": "Ní ẹnu-ọ̀nà lónìí · títà {{count}} · {{amount}}",
       "atDoorToday_other": "Ní ẹnu-ọ̀nà lónìí · títà {{count}} · {{amount}}",
       "noEventToday": "Kò sí nǹkan láti tà lónìí. Gba ìsanwó ní ọjọ́ ìṣẹ̀lẹ̀ kan.",

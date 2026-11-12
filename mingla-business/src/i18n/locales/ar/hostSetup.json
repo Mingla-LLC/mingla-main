@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "استلام دفعة",
-      "chip": "استلام دفعة",
       "atDoorToday_one": "عند المدخل اليوم · {{count}} عملية بيع · {{amount}}",
       "atDoorToday_other": "عند المدخل اليوم · {{count}} عمليات بيع · {{amount}}",
       "noEventToday": "لا يوجد ما تبيعه اليوم. استلم المدفوعات في يوم الفعالية.",

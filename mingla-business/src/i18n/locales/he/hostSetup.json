@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "קבלת תשלום",
-      "chip": "קבלת תשלום",
       "atDoorToday_one": "בכניסה היום · מכירה {{count}} · {{amount}}",
       "atDoorToday_other": "בכניסה היום · {{count}} מכירות · {{amount}}",
       "noEventToday": "אין היום מה למכור. קבלו תשלומים ביום של אירוע.",

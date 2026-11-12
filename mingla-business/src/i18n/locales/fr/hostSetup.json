@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Encaisser un paiement",
-      "chip": "Encaisser un paiement",
       "atDoorToday_one": "À la porte aujourd'hui · {{count}} vente · {{amount}}",
       "atDoorToday_other": "À la porte aujourd'hui · {{count}} ventes · {{amount}}",
       "noEventToday": "Rien aujourd'hui pour vendre. Acceptez des paiements le jour d'un événement.",

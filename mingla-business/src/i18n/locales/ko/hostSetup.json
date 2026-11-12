@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "결제 받기",
-      "chip": "결제 받기",
       "atDoorToday_one": "오늘 입구 · {{count}}건 · {{amount}}",
       "atDoorToday_other": "오늘 입구 · {{count}}건 · {{amount}}",
       "noEventToday": "오늘은 판매할 것이 없어요. 이벤트 당일에 결제를 받으세요.",

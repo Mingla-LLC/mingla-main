@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Ta betalt",
-      "chip": "Ta betalt",
       "atDoorToday_one": "I entrén i dag · {{count}} köp · {{amount}}",
       "atDoorToday_other": "I entrén i dag · {{count}} köp · {{amount}}",
       "noEventToday": "Inget i dag att sälja för. Ta betalt på dagen för ett evenemang.",

@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Terima pembayaran",
-      "chip": "Terima pembayaran",
       "atDoorToday_one": "Di pintu hari ini · {{count}} penjualan · {{amount}}",
       "atDoorToday_other": "Di pintu hari ini · {{count}} penjualan · {{amount}}",
       "noEventToday": "Tidak ada yang bisa dijual hari ini. Terima pembayaran di hari acara.",

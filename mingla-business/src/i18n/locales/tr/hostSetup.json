@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Ödeme al",
-      "chip": "Ödeme al",
       "atDoorToday_one": "Bugün kapıda · {{count}} satış · {{amount}}",
       "atDoorToday_other": "Bugün kapıda · {{count}} satış · {{amount}}",
       "noEventToday": "Bugün satış yapılacak bir şey yok. Ödemeleri etkinlik günü al.",

@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "Încasează o plată",
-      "chip": "Încasează o plată",
       "atDoorToday_one": "La intrare azi · {{count}} vânzare · {{amount}}",
       "atDoorToday_other": "La intrare azi · {{count}} vânzări · {{amount}}",
       "noEventToday": "Nimic azi pentru care să vinzi. Încasează plăți în ziua unui eveniment.",

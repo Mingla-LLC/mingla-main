@@ -359,7 +359,6 @@
     },
     "takePayment": {
       "pill": "Przyjmij płatność",
-      "chip": "Przyjmij płatność",
       "atDoorToday_one": "Dziś przy wejściu · {{count}} sprzedaż · {{amount}}",
       "atDoorToday_other": "Dziś przy wejściu · {{count}} sprzedaży · {{amount}}",
       "noEventToday": "Dziś nie ma nic do sprzedaży. Przyjmuj płatności w dniu wydarzenia.",

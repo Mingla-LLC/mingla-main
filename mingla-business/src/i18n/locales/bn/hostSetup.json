@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "পেমেন্ট নিন",
-      "chip": "পেমেন্ট নিন",
       "atDoorToday_one": "আজ প্রবেশপথে · {{count}}টি বিক্রি · {{amount}}",
       "atDoorToday_other": "আজ প্রবেশপথে · {{count}}টি বিক্রি · {{amount}}",
       "noEventToday": "আজ বিক্রির কিছু নেই। ইভেন্টের দিনে পেমেন্ট নিন।",

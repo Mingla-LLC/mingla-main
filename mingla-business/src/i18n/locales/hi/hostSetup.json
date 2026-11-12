@@ -356,7 +356,6 @@
     },
     "takePayment": {
       "pill": "भुगतान लें",
-      "chip": "भुगतान लें",
       "atDoorToday_one": "आज एंट्री पर · {{count}} बिक्री · {{amount}}",
       "atDoorToday_other": "आज एंट्री पर · {{count}} बिक्री · {{amount}}",
       "noEventToday": "आज बेचने के लिए कुछ नहीं है। इवेंट वाले दिन भुगतान लें।",

@@ -48,7 +48,6 @@ export const HOME_SETUP_COPY = {
   },
   takePayment: {
     get pill(): string { return t("takePayment.pill"); },
-    get chip(): string { return t("takePayment.chip"); },
     atDoorToday: (n: number, amount: string): string => t("takePayment.atDoorToday", { count: n, amount }),
     get noEventToday(): string { return t("takePayment.noEventToday"); },
     get openFailed(): string { return t("takePayment.openFailed"); },

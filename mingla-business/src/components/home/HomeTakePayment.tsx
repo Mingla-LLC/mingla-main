@@ -1,7 +1,7 @@
 /**
  * #4389 (screen HT) — "Take a payment" for every brand with payments set up:
- * a full-width white button at the bottom of the money panel ("block") and a
- * chip under Home's Ask Ari.
+ * one full-width white button at the bottom of the money panel (Seth: not in
+ * two places). Ari reaches the same sale through its start_door_sale tool.
  * Both open the door sale for today's event through `openDoorSale` (one way
  * in, owned by Door mode). The icon is Tap to Pay where it works, else the
  * pay-code (QR) icon. Payments are always for an event's tickets.
@@ -45,9 +45,8 @@ export interface TakePaymentButtonProps {
   brandId: string;
   /** Tap to Pay works for this brand on this phone (else the QR icon). */
   tapToPay: boolean;
-  /** "block": full width of the money panel, 50pt (Seth, #4389 HT). */
-  variant: "block" | "chip";
-  source?: "home" | "ari";
+  /** Full width of the money panel, 50pt (Seth, #4389 HT). */
+  variant: "block";
   onMessage: (message: string) => void;
 }
 
@@ -55,7 +54,6 @@ export const TakePaymentButton: React.FC<TakePaymentButtonProps> = ({
   brandId,
   tapToPay,
   variant,
-  source = "home",
   onMessage,
 }) => {
   const router = useRouter();
@@ -63,14 +61,14 @@ export const TakePaymentButton: React.FC<TakePaymentButtonProps> = ({
   const press = (): void => {
     if (busy) return;
     setBusy(true);
-    void openTakePayment(router as never, brandId, source).then((outcome) => {
+    void openTakePayment(router as never, brandId, "home").then((outcome) => {
       setBusy(false);
       if (outcome === "none") onMessage(C.takePayment.noEventToday);
       else if (outcome === "failed") onMessage(C.takePayment.openFailed);
     });
   };
-  const block = variant === "block";
-  const label = block ? C.takePayment.pill : C.takePayment.chip;
+  void variant;
+  const label = C.takePayment.pill;
   return (
     <Pressable
       onPress={press}
@@ -78,19 +76,19 @@ export const TakePaymentButton: React.FC<TakePaymentButtonProps> = ({
       accessibilityLabel={label}
       accessibilityState={{ busy }}
       hitSlop={8}
-      style={({ pressed }) => [block ? styles.block : styles.chip, pressed && styles.pressed]}
-      testID={block ? "home-take-payment-button" : "home-take-payment-chip"}
+      style={({ pressed }) => [styles.block, pressed && styles.pressed]}
+      testID="home-take-payment-button"
     >
       {tapToPay ? (
         // The Tap to Pay mark is drawn light; on the white button it sits in a
         // dark disc so it stays visible (the mark itself is never recoloured).
-        <View style={block ? styles.markDisc : null}>
-          <TapToPayIcon size={block ? 14 : 14} />
+        <View style={styles.markDisc}>
+          <TapToPayIcon size={14} />
         </View>
       ) : (
-        <Icon name="qr" size={block ? 18 : 14} color={block ? "#101216" : textTokens.primary} />
+        <Icon name="qr" size={18} color="#101216" />
       )}
-      <Text style={block ? styles.blockLabel : styles.chipLabel}>{label}</Text>
+      <Text style={styles.blockLabel}>{label}</Text>
     </Pressable>
   );
 };
@@ -129,20 +127,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   blockLabel: { ...typography.body, color: "#101216", fontWeight: "700" },
-  chip: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    minHeight: 36,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.full,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    marginBottom: spacing.sm,
-  },
-  chipLabel: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
   doorLine: { marginTop: spacing.sm },
   doorText: { ...typography.bodySm, color: textTokens.secondary },
   pressed: { opacity: 0.72 },
