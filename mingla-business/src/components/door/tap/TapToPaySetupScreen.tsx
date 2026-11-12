@@ -34,10 +34,12 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
+import { loadHasDoorSaleEvent, openDoorSaleFromTapSetup } from "./tapSetupTakePayment";
 import {
   TAP_GET_HELP,
   TAP_ON_FOR_BRAND,
   TAP_DONE,
+  TAP_TAKE_PAYMENT,
   TAP_ADMIN_ONLY_COPY,
   TAP_APPLE_TERMS_ROW,
   tapToPayName,
@@ -262,6 +264,28 @@ export const TapToPaySetupScreen = ({
     void runSetup(allowTerms);
   }, [terminal.client, runSetup]);
 
+  // #4389 — "On for this brand" offers Take a payment when there is an event to
+  // sell for now (same rule as Home's Take a payment).
+  const [canTakePayment, setCanTakePayment] = useState<boolean>(false);
+  const onForBrandShown = eventId === null && brandId !== null && availability.available && !availability.needsSetup;
+  useEffect(() => {
+    if (!onForBrandShown || brandId === null) return undefined;
+    let alive = true;
+    void loadHasDoorSaleEvent(brandId)
+      .then((has) => {
+        if (alive) setCanTakePayment(has);
+      })
+      .catch((readError: unknown) => reportNonFatal("door-tap.setup-events", readError));
+    return () => {
+      alive = false;
+    };
+  }, [onForBrandShown, brandId]);
+  const takePayment = useCallback((): void => {
+    if (brandId === null) return;
+    void openDoorSaleFromTapSetup(router, brandId)
+      .catch((openError: unknown) => reportNonFatal("door-tap.setup-take-payment", openError));
+  }, [brandId, router]);
+
   const startHostSetup = useCallback((): void => {
     setHostAttempted(true);
     void runSetup(mayAcceptTerms);
@@ -334,6 +358,17 @@ export const TapToPaySetupScreen = ({
             accessibilityLabel={TAP_DONE}
             testID="tap-on-done"
           />
+          {canTakePayment ? (
+            <Button
+              label={TAP_TAKE_PAYMENT}
+              onPress={takePayment}
+              variant="secondary"
+              size="lg"
+              fullWidth
+              accessibilityLabel={TAP_TAKE_PAYMENT}
+              testID="tap-on-take-payment"
+            />
+          ) : null}
         </View>
       </View>
     );
@@ -501,6 +536,7 @@ const styles = StyleSheet.create({
   bar: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+    gap: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: glass.border.profileBase,
   },

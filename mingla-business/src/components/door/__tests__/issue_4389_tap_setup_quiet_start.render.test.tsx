@@ -198,6 +198,10 @@ jest.mock("../../../diagnostics/reportNonFatal", () => ({ reportNonFatal: jest.f
 jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: jest.fn() }, rpc: jest.fn() },
 }));
+jest.mock("../tap/tapSetupTakePayment", () => ({
+  loadHasDoorSaleEvent: jest.fn(async () => false),
+  openDoorSaleFromTapSetup: jest.fn(async () => undefined),
+}));
 jest.mock("../../../services/terminal/howToTap", () => ({
   isTapToPayIphoneEntitled: () => true,
   showHowToTapEducation: jest.fn(async () => "shown"),
@@ -342,5 +346,26 @@ describe("#4389 — How to Tap shows before 'On for this brand' and its Done", (
     await act(async () => closeGuide("shown"));
     await settle();
     expect(pressables(tree.root, "tap-on-done").length).toBeGreaterThan(0);
+  });
+});
+
+describe("#4389 — 'On for this brand' offers Take a payment when an event is on now", () => {
+  test("Q6: an event to sell → Take a payment opens the door sale; none → no button", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const door = require("../tap/tapSetupTakePayment") as { loadHasDoorSaleEvent: jest.Mock; openDoorSaleFromTapSetup: jest.Mock };
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    updateTapToPaySession({ status: "ready", client: client(), errorMessage: null } as never);
+    door.loadHasDoorSaleEvent.mockImplementation(async () => false);
+    const none = await mountSetup(null);
+    expect(pressables(none.root, "tap-on-take-payment")).toHaveLength(0);
+    door.loadHasDoorSaleEvent.mockImplementation(async () => true);
+    const some = await mountSetup(null);
+    const btn = pressables(some.root, "tap-on-take-payment");
+    expect(btn.length).toBeGreaterThan(0);
+    await act(async () => {
+      (btn[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    expect(door.openDoorSaleFromTapSetup).toHaveBeenCalledWith(expect.anything(), "brand-1");
   });
 });

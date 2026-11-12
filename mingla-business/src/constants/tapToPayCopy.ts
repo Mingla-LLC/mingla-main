@@ -115,6 +115,8 @@ export const TAP_HOW_TO_TAP_FAILED = "Couldn't show Apple's How to Tap guide. Tr
 export const TAP_ON_FOR_BRAND = "On for this brand";
 /** #4389 — the way out of "On for this brand". */
 export const TAP_DONE = "Done";
+/** #4389 — the other way out of "On for this brand", when an event is on now. */
+export const TAP_TAKE_PAYMENT = "Take a payment";
 
 export const TAP_CARD_NEEDS_INSERT_COPY = {
   title: "This card can't be tapped",
