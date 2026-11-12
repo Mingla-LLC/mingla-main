@@ -1,5 +1,5 @@
 -- Issue #3355 rework 2 (tester P3-21) — I-ARI-MEMORY-BRAND-VOICE-AT-READ
--- (declared in supabase/migrations/20280628113355_issue_3355_ari_memory_brand_voice.sql).
+-- (declared in supabase/migrations/20280702113355_issue_3355_ari_memory_brand_voice.sql).
 --
 --   M1  a marketing manager's brand note reaches the owner; after the author
 --       is demoted to scanner it no longer does (ari_memory_list and a direct
@@ -9,9 +9,9 @@
 --   M3  the owner's own brand note, and a brand admin's, still reach a member;
 --   Q   (P2-11) a setup completed on its draft counts as completed in the
 --       quality panel, and its follow-up run (answers.follow_up_of) is not
---       counted as a second setup (20280628123355).
+--       counted as a second setup (20280702123355).
 -- Reverting the read-time rank filter in ari_memory_list raises M1; reverting
--- it in the read policy raises M1's RLS check; reverting 20280628123355
+-- it in the read policy raises M1's RLS check; reverting 20280702123355
 -- raises Q (the follow-up run is counted as a started setup).
 
 \set ON_ERROR_STOP on

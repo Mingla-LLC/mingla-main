@@ -256,6 +256,8 @@ export interface ConfirmActionArgs {
   /** #3355 P3: the server returns the next Website setup gap with the receipt. */
   workflow_context?: "website_setup";
   ari_ui?: AriUiCapabilitiesV2;
+  /** #4389 AR-13: the brand the card is shown under; the server refuses a mismatch. */
+  brand_id?: string;
 }
 
 function allowUnattestedRelease(): boolean {

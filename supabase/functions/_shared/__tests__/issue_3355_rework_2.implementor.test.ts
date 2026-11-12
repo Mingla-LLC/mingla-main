@@ -357,7 +357,7 @@ Deno.test("Stated values: the intent read carries per-code values and is still s
 Deno.test("P3-21: brand notes reach other members only while their author may speak for the brand", async () => {
   const sql = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20280628113355_issue_3355_ari_memory_brand_voice.sql",
+      "../../../migrations/20280702113355_issue_3355_ari_memory_brand_voice.sql",
       import.meta.url,
     ),
   );

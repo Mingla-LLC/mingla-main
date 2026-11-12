@@ -42,7 +42,7 @@ describe("#3355 Wave D — Admin Ari gaps", () => {
   });
 
   it("names every gap type in plain words, the same words as the SQL", () => {
-    const sql = read("../../../supabase/migrations/20280628073355_issue_3355_ari_gap_logging.sql");
+    const sql = read("../../../supabase/migrations/20280702073355_issue_3355_ari_gap_logging.sql");
     for (const type of ARI_GAP_TYPES) {
       const label = gapTypeLabel(type);
       assert.notEqual(label, "Other", type);

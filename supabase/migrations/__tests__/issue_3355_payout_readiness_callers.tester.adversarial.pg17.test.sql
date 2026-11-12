@@ -1,5 +1,5 @@
 -- Issue #3355 retest 7 (tester, adversarial) — the members-only payout
--- readiness check (20280628143355) from the angles the implementor suite
+-- readiness check (20280702143355) from the angles the implementor suite
 -- does not take:
 --
 --   T1  a pending invite (not accepted), a member of a DELETED brand, a
@@ -14,7 +14,7 @@
 --       denied for function");
 --   T4  brand_readiness still answers can_be_paid_out for a scanner and an
 --       event manager (members of every rank keep the readiness view).
--- Reverting 20280628143355's REVOKE makes T2's base-predicate probe pass for
+-- Reverting 20280702143355's REVOKE makes T2's base-predicate probe pass for
 -- anon; deleting the membership test makes T1 fail.
 
 \set ON_ERROR_STOP on

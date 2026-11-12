@@ -1,0 +1,19 @@
+{
+  "brandSetup": {
+    "delete": {
+      "blockedBalance": "There's money in your payment account. Wait for it to pay out, then try again.",
+      "blockedEvents": "Cancel or transfer the upcoming events first.",
+      "blockedPaying": "A guest is paying right now. Try again in a few minutes.",
+      "blockedPartner": "A partner payment is still in progress.",
+      "blockedPayout": "Money is still on its way to you. Wait for it to pay out.",
+      "cantDeleteYet": "You can't delete this brand yet",
+      "nothingDeleted": "Nothing was deleted",
+      "closeRefused": "Our payment partner couldn't close this account, so nothing was deleted. Contact support and we'll sort it.",
+      "close": "Close",
+      "undoTitle": "You can't undo this in the app",
+      "undoBody": "Once it's deleted, only support can bring it back.",
+      "previewErrorTitle": "Couldn't load the details",
+      "previewErrorBody": "You can still continue, but the numbers aren't shown."
+    }
+  }
+}

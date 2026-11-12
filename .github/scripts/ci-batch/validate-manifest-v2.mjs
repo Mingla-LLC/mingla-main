@@ -470,7 +470,11 @@ export function phase3dContractDigest(manifest) {
 // #3355 rework 7: register the retest 7 payout readiness callers PostgreSQL proof in the #1931 and #2117 replay lanes; re-sealed.
 // #3355 rework 8: merged origin/main 811c033211 (#4398 rows kept) and renumbered the fourteen #3355 migrations to 20280628013355 … 20280628143355 (above main's 20280626044398), in order; re-sealed.
 // #3355 final fix: register 20280628153355 (Ari understands first on for all brands, idempotent) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "90714c539f474769f51cdb1b6eab16f5edf65fcd9757c260b2604e766e1a078c";
+// #4389: register the brand setup, Ari brand operation, native connect flag and BGN retirement migrations (20280701004389, 20280701104389, 20280701204389, 20280701304389; renumbered above main's 20280626*4398) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280701004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog). Re-sealed after merging origin/main 811c033211 (#3281 and #4398 rows kept beside the #4389 rows).
+// #4389: skip 20280701004389 and 20280701104389 in the #2117 pre-landing replay (brand setup re-emits resolve_event_pricing_inputs, a #2117-gated reader). Re-sealed.
+// #4389: renumber the four #4389 migrations to 20280701004389 to 20280701304389 (above main's 20280630004402) in the replay lanes; re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows).
+// #3355 merge of #4404 (origin/main 7ace80fa0a; #4389 and #4402 rows kept beside the #3355 rows): renumbered the fifteen #3355 migrations to 20280702013355 … 20280702153355 (above main's 20280701304389), in order; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7d8365ca254f42fbf699d5cb4316171ef85f8878966d43441f0f942aa1cab312";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

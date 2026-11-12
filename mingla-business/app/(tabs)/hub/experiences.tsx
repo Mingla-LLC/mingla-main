@@ -33,7 +33,7 @@ import { ExperienceListCard } from "../../../src/components/experience/Experienc
 import {
   OfferingManageSheet,
   buildOfferingManageActions,
-} from "../../../src/components/offering/OfferingManageSheet";
+} from "../../../src/components/offering/LazyOfferingManageSheet";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Button } from "../../../src/components/ui/Button";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";

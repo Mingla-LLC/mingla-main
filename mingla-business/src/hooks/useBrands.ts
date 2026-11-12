@@ -544,11 +544,54 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
 };
 
+// ----- cache eviction / adoption (ORCH-1062, #4389) ----------------------
+
+export type BrandQueryClient = ReturnType<typeof useQueryClient>;
+
+/**
+ * ORCH-1062 — ROOT-CAUSE fix for the "Maximum update depth exceeded" crash when
+ * a brand that is (or was) current disappears. Only INVALIDATING the list keeps
+ * React Query serving the STALE list (still holding the gone brand) during the
+ * background refetch. In that window `useCurrentBrandRecovery` re-resolves the
+ * gone brand (stale list / stale default_brand_id) while `useCurrentBrand`
+ * clears currentBrandId to null (its detail read correctly returns null): the
+ * two writers ping-pong currentBrandId synchronously until React's nested-update
+ * cap trips. Fix: SYNCHRONOUSLY drop the brand from the list cache and clear a
+ * default_brand_id pointing at it, so the resolver lands on a valid brand.
+ *
+ * #4389 — shared by brand delete AND N1 "Discard and start new" (the discard
+ * path used to leave every cache untouched and crashed Ari, 2 of 2 times).
+ */
+export const evictDeletedBrandFromCaches = (
+  queryClient: BrandQueryClient,
+  brandId: string,
+  accountId: string,
+): void => {
+  queryClient.setQueryData<Brand[]>(brandKeys.list(accountId), (prev) =>
+    prev !== undefined ? prev.filter((b) => b.id !== brandId) : prev,
+  );
+  queryClient.setQueryData<CreatorAccountRow | null>(
+    creatorAccountKeys.byId(accountId),
+    (prev) =>
+      prev != null && prev.default_brand_id === brandId
+        ? { ...prev, default_brand_id: null }
+        : prev,
+  );
+  // Server-truth backstop (also reconciles any cascade).
+  queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
+  queryClient.removeQueries({ queryKey: brandKeys.detail(brandId) });
+  // ORCH-0740 Cycle 1: brandRoleKeys factory (Constitutional #4).
+  queryClient.removeQueries({ queryKey: brandRoleKeys.allForBrand(brandId) });
+  queryClient.removeQueries({ queryKey: brandKeys.cascadePreview(brandId) });
+};
+
 // ----- useSoftDeleteBrand (PESSIMISTIC) ---------------------------------
 
 export interface SoftDeleteBrandInput {
   brandId: string;
   accountId: string;
+  /** #4389 — the typed name; the server checks it again before closing payments. */
+  confirmName?: string;
 }
 
 export interface UseSoftDeleteBrandResult {
@@ -559,47 +602,13 @@ export interface UseSoftDeleteBrandResult {
 export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
   const queryClient = useQueryClient();
   const mutation = useMutation<SoftDeleteResult, Error, SoftDeleteBrandInput>({
-    mutationFn: async ({ brandId }) => {
-      const result = await softDeleteBrand(brandId);
+    mutationFn: async ({ brandId, confirmName }) => {
+      const result = await softDeleteBrand(brandId, confirmName);
       return result;
     },
     onSuccess: (result, { brandId, accountId }) => {
       if (!result.rejected) {
-        // ORCH-1062 — ROOT-CAUSE fix for the "Maximum update depth exceeded"
-        // crash when deleting the CURRENTLY-SELECTED brand. The old code only
-        // INVALIDATED the list, so React Query kept serving the STALE list (still
-        // containing the just-deleted brand) during the background refetch. In
-        // that window `useCurrentBrandRecovery` re-resolved the deleted brand
-        // (from the stale list / stale default_brand_id) while `useCurrentBrand`
-        // cleared currentBrandId to null (its detail fetch correctly returns
-        // null) — the two hooks ping-ponged currentBrandId synchronously until
-        // React's nested-update cap tripped the render-loop crash. Fix:
-        // SYNCHRONOUSLY drop the deleted brand from the list cache so the
-        // resolver immediately sees fresh data and lands on a valid brand.
-        queryClient.setQueryData<Brand[]>(brandKeys.list(accountId), (prev) =>
-          prev !== undefined ? prev.filter((b) => b.id !== brandId) : prev,
-        );
-        // Clear default_brand_id in the creator-account cache if it pointed at
-        // the deleted brand (softDeleteBrand Step 3 already cleared it server-
-        // side; this stops the cache from briefly re-resolving the dead pointer).
-        queryClient.setQueryData<CreatorAccountRow | null>(
-          creatorAccountKeys.byId(accountId),
-          (prev) =>
-            prev != null && prev.default_brand_id === brandId
-              ? { ...prev, default_brand_id: null }
-              : prev,
-        );
-        // Invalidate list — server-truth backstop (also reconciles any cascade).
-        queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
-        // Clear detail cache
-        queryClient.removeQueries({ queryKey: brandKeys.detail(brandId) });
-        // Clear role cache for this brand (useCurrentBrandRole sees no brand row → null role).
-        // ORCH-0740 Cycle 1: use brandRoleKeys.allForBrand factory instead of hardcoded literal.
-        queryClient.removeQueries({ queryKey: brandRoleKeys.allForBrand(brandId) });
-        // Clear cascade-preview cache (defensive)
-        queryClient.removeQueries({
-          queryKey: brandKeys.cascadePreview(brandId),
-        });
+        evictDeletedBrandFromCaches(queryClient, brandId, accountId);
       }
       // On rejection: caller (BrandDeleteSheet) handles via modal; no cache changes
     },
@@ -635,6 +644,17 @@ export interface BrandCascadePreviewCounts {
   liveEventCount: number;
   teamMemberCount: number;
   hasStripeConnect: boolean;
+  /**
+   * #4389 D1 — the brand is on the Nigerian bank rail (payment_provider
+   * "paystack"): the preview shows a "Bank payouts" line.
+   */
+  isPaystackBrand: boolean;
+  /**
+   * #4389 D1 — a Paystack subaccount or an active bank recipient exists, so
+   * the delete switches bank payouts off. A boolean only: the codes never
+   * leave the query function.
+   */
+  hasBankPayouts: boolean;
 }
 
 const CASCADE_PREVIEW_STALE_TIME_MS = 30 * 1000; // 30s
@@ -664,7 +684,7 @@ export const useBrandCascadePreview = (
       // stays status-only because cancelled/ended lifecycle is already
       // authoritative regardless of date.
       const nowIso = new Date().toISOString();
-      const [pastResult, upcomingResult, liveResult, teamResult, stripeStatusResult] =
+      const [pastResult, upcomingResult, liveResult, teamResult, stripeStatusResult, paystackRowResult, recipientResult] =
         await Promise.all([
           // ORCH-0859 REWORK 3 (events-type-filter audit): brand-stats
           // counters must exclude trips so the "X scheduled events" badge
@@ -700,6 +720,18 @@ export const useBrandCascadePreview = (
           supabase.rpc("pg_derive_brand_stripe_status", {
             p_brand_id: brandId,
           }),
+          // #4389 D1 — the Nigerian bank rail (read to a boolean below).
+          supabase
+            .from("brands")
+            .select("payment_provider, paystack_subaccount_code")
+            .eq("id", brandId)
+            .is("deleted_at", null)
+            .maybeSingle(),
+          // Authorized SECURITY DEFINER helper (#3645): the recipients table
+          // is RLS-blocked below payments managers.
+          supabase.rpc("biz_brand_has_active_paystack_recipient", {
+            p_brand_id: brandId,
+          }),
         ]);
 
       if (pastResult.error) throw pastResult.error;
@@ -707,6 +739,16 @@ export const useBrandCascadePreview = (
       if (liveResult.error) throw liveResult.error;
       if (teamResult.error) throw teamResult.error;
       if (stripeStatusResult.error) throw stripeStatusResult.error;
+      if (paystackRowResult.error) throw paystackRowResult.error;
+      if (recipientResult.error) throw recipientResult.error;
+      const paystackRow = (paystackRowResult.data ?? null) as {
+        payment_provider: string | null;
+        paystack_subaccount_code: string | null;
+      } | null;
+      const isPaystackBrand = paystackRow?.payment_provider === "paystack";
+      const hasBankPayouts =
+        (paystackRow?.paystack_subaccount_code ?? null) !== null ||
+        recipientResult.data === true;
 
       const derivedStatus = stripeStatusResult.data ?? "not_connected";
 
@@ -715,10 +757,13 @@ export const useBrandCascadePreview = (
         upcomingEventCount: upcomingResult.count ?? 0,
         liveEventCount: liveResult.count ?? 0,
         teamMemberCount: teamResult.count ?? 0,
-        // B2a HF-8 fix: only true for active or onboarding states (excludes
-        // not_connected, restricted, detached). Per spike findings.
-        hasStripeConnect:
-          derivedStatus === "active" || derivedStatus === "onboarding",
+        // #4389 P2 — any account that is not detached is closed by the
+        // delete, whatever its state: restricted (a started, unfinished
+        // account) used to read "Payment account: None". The derivation maps
+        // a detached account to not_connected.
+        hasStripeConnect: derivedStatus !== "not_connected",
+        isPaystackBrand,
+        hasBankPayouts,
       };
     },
   });

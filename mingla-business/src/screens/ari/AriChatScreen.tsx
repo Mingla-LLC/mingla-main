@@ -74,6 +74,26 @@ import {
   buildAriRenditionSubmission,
 } from "../../components/ari/renditions/ariRenditionProtocol";
 import { Toast } from "../../components/ui/Toast";
+// #4389 AB — Ari's one top bar composes the shared brand chip (never a brand
+// TopBar with rightSlot=, I-37).
+import { BrandChip } from "../../components/ui/BrandChip";
+import { AriBrandSwitchConfirmSheet } from "../../components/ari/AriBrandSwitchConfirmSheet";
+import { ARI_BRAND_BAR_COPY } from "../../components/ari/ariBrandBarCopy";
+import { trackBrandSetup } from "../../components/brand/brandSetupAnalytics";
+import type { Brand } from "../../store/currentBrandStore";
+import { usePickBrand } from "../../hooks/usePickBrand";
+// #4389 A1–A5 — setup cards from the server checklist; digits redacted before send.
+import { AriCreateBrandNotice, AriSensitiveNotice, AriSetupCard, AriSkipPaymentsCard } from "../../components/ari/AriSetupCard";
+import { a3NoticeFor, type A3Notice } from "../../components/ari/ariCreateBrandOutcome";
+import { ARI_SETUP_COPY } from "../../components/ari/ariSetupCopy";
+import { redactSensitiveDigits, wantsToSkipPayments } from "../../components/ari/ariRedaction";
+import { useBrandSetupChecklist, useMarkBrandSetupFreeOnly } from "../../hooks/useBrandSetupChecklist";
+import {
+  ariDraftFor,
+  decideAriBrandSwitch,
+  stashAriDraft,
+  type AriDraftsByBrand,
+} from "./ariBrandSwitch";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type {
   AgentChoiceSubmissionV2,
@@ -249,19 +269,15 @@ const LazyBrandSwitcherSheet = React.lazy(async () => {
   const mod = await import("../../components/brand/BrandSwitcherSheet");
   return { default: mod.BrandSwitcherSheet };
 });
-// #4304 — the first-run top bar. Evaluated only when a first-run host is on
-// Ari: a module-scope import pulls the notifications graph (expo-constants)
-// into every render suite that mounts this screen. TopBar already ships in the
-// boot bundle (Home imports it), so a deferred require adds no chunk.
-const LazyTopBar = React.lazy(async () => {
+// #4304 / #4389 AB — Messages + bell on the first-run bar (no Home tab to
+// reach them). Evaluated only when a first-run host is on Ari: a module-scope
+// import pulls the notifications graph (expo-constants) into every render
+// suite that mounts this screen. TopBar already ships in the boot bundle
+// (Home imports it), so a deferred require adds no chunk.
+const LazyMessagesAndBell = React.lazy(async () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require("../../components/ui/TopBar") as typeof import("../../components/ui/TopBar");
-  return { default: mod.TopBar };
-});
-// #4304 — "+ Create" on the first-run top bar opens the manual wizards.
-const LazyUniversalCreatorSheet = React.lazy(async () => {
-  const mod = await import("../../components/ui/UniversalCreatorSheet");
-  return { default: mod.UniversalCreatorSheet };
+  return { default: mod.TopBarMessagesAndBell };
 });
 const AriFlowPlaceCard = React.lazy(() =>
   import("../../components/ari/AriFlowPlaceCard").then((module) => ({
@@ -381,7 +397,21 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     null,
   );
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
-  const [creatorOpen, setCreatorOpen] = useState(false);
+  // #4389 R-16 — a pick held while Ari is answering, waiting for the host.
+  const [heldBrandPick, setHeldBrandPick] = useState<Brand | null>(null);
+  const pickBrand = usePickBrand();
+  // #4389 AR-14 — the unsent message per brand (it used to be cleared).
+  const draftsByBrandRef = useRef<AriDraftsByBrand>({});
+  const draftTextRef = useRef("");
+  draftTextRef.current = draftText;
+  const [draftKeptFor, setDraftKeptFor] = useState<string | null>(null);
+  const [switchedToast, setSwitchedToast] = useState<string | null>(null);
+  // #4389 A5 — a number was hidden from the last message.
+  const [sensitiveHidden, setSensitiveHidden] = useState(false);
+  // #4389 AR-12 — "skip payments" shows the K1 words as a card.
+  const [skipCard, setSkipCard] = useState<"ask" | "saving" | "saved" | "error" | null>(null);
+  // #4389 A3 — duplicate found / expired, shown as cards (not plain text).
+  const [a3Notice, setA3Notice] = useState<A3Notice | null>(null);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
@@ -538,15 +568,88 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
 
   React.useEffect(() => {
     if (previousBrandId.current === selectedBrandId) return;
+    const leftBrandId = previousBrandId.current;
     previousBrandId.current = selectedBrandId;
     setDrawerOpen(false);
     setAttachmentSourceOpen(false);
-    setDraftText("");
+    // #4389 AR-14 — keep what was typed for the brand we left; bring back
+    // what was typed for this one.
+    const leftDraft = draftTextRef.current;
+    draftsByBrandRef.current = stashAriDraft(
+      draftsByBrandRef.current,
+      leftBrandId,
+      leftDraft,
+    );
+    setDraftText(ariDraftFor(draftsByBrandRef.current, selectedBrandId));
+    setDraftKeptFor(
+      leftDraft.trim().length > 0 && leftBrandId !== null
+        ? (brandNamesById[leftBrandId] ?? null)
+        : null,
+    );
     setLocalError(null);
     setRateLimitUntil(null);
+    setSkipCard(null);
+    setA3Notice(null);
     Keyboard.dismiss();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a brand change only; names are read at that moment.
   }, [currentBrand?.displayName, selectedBrandId]);
-  const confirm = useConfirmPendingAction(chat.conversationId);
+  // #4389 AR-13 — a confirmation is sent with the brand it is shown under.
+  const confirm = useConfirmPendingAction(chat.conversationId, selectedBrandId);
+
+  // #4389 A2 — the selected brand's setup card, from the server checklist.
+  const setupChecklist = useBrandSetupChecklist(
+    !setup && !websiteSplit ? selectedBrandId : null,
+  );
+  const setupData = setupChecklist.data;
+  const markFreeOnly = useMarkBrandSetupFreeOnly(selectedBrandId);
+  const seenIncompleteRef = useRef<Set<string>>(new Set());
+  const [allSetShownFor, setAllSetShownFor] = useState<string | null>(null);
+  React.useEffect(() => {
+    if (selectedBrandId === null || setupData === undefined) return;
+    if (!setupData.facts.complete) {
+      seenIncompleteRef.current.add(selectedBrandId);
+    } else if (seenIncompleteRef.current.has(selectedBrandId)) {
+      // Complete collapses to "All set" once (AR-9).
+      seenIncompleteRef.current.delete(selectedBrandId);
+      setAllSetShownFor(selectedBrandId);
+    }
+  }, [selectedBrandId, setupData]);
+  const openBrandSetup = (step?: "pay"): void => {
+    if (selectedBrandId === null) {
+      router.push("/brand/new" as never);
+      return;
+    }
+    router.push(
+      `/brand/${selectedBrandId}/setup${step ? `?step=${step}` : ""}` as never,
+    );
+  };
+
+  // #4389 R-16 — switching while Ari is answering asks first. The answer
+  // keeps writing to the old conversation on the server.
+  const ariAnswering = chat.isSending || chat.activeTurn != null;
+  const handleBeforeBrandPick = (brand: Brand): boolean => {
+    const decision = decideAriBrandSwitch({
+      currentBrandId: selectedBrandId,
+      nextBrandId: brand.id,
+      answering: ariAnswering,
+    });
+    if (decision === "confirm") {
+      setHeldBrandPick(brand);
+      return false;
+    }
+    if (decision === "apply") {
+      trackBrandSetup("ari_brand_switched", {
+        brand_id: brand.id,
+        while_streaming: false,
+      });
+    }
+    return true;
+  };
+  const handleBrandPicked = (brand: Brand): void => {
+    if (brand.id !== selectedBrandId) {
+      setSwitchedToast(ARI_BRAND_BAR_COPY.switched(brand.displayName));
+    }
+  };
 
   // #4304 — Home's "Ask Ari to do something…" hands its text over in memory.
   // A request from Home is a new ask, so it opens a NEW conversation rather
@@ -616,8 +719,23 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     const selectedFiles = attachments.consumeReady();
     if (selectedFiles === null) return false;
     if (!text.trim() && selectedFiles.length === 0) return false;
+    // #4389 AR-3 — bank, card and ID numbers never leave the phone.
+    const safe = redactSensitiveDigits(text);
+    text = safe.text;
+    setSensitiveHidden(safe.redacted);
+    if (
+      selectedBrandId !== null &&
+      setupData !== undefined &&
+      !setupData.facts.complete &&
+      setupData.facts.freeOnlyAt === null &&
+      wantsToSkipPayments(text)
+    ) {
+      setSkipCard("ask");
+    }
     // Composer ownership transfers to one local row in this synchronous event.
     setDraftText("");
+    setDraftKeptFor(null);
+    setAllSetShownFor(null);
     setLocalError(null);
     // #4304 — while first-run is locked every turn carries the stage and what
     // the host said they host, so Ari sets up the brand first and then offers
@@ -917,6 +1035,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   ): Promise<ConfirmOutcome> => {
     if (!chat.pendingAction) return { ok: false };
     setLocalError(null);
+    setA3Notice(null);
+    const proposal = chat.pendingAction;
     // D-1: watch the proposal's own turn; its callout appears only once
     // approved_action_started arrives and clears when this confirm resolves.
     chat.beginConfirmedActivity(chat.pendingAction.pending_action_id);
@@ -938,7 +1058,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       // `expired_regenerate` used to clear the card as if it had worked).
       if (isAriProposalExpired(result)) {
         const message = ARI_PROPOSAL_EXPIRED_COPY;
-        setLocalError(message);
+        const expiredCard = a3NoticeFor({
+          toolName: proposal.tool_name,
+          args: proposal.tool_args,
+          code: null,
+          expired: true,
+        });
+        if (expiredCard !== null) setA3Notice(expiredCard);
+        else setLocalError(message);
         chat.clearPendingAction();
         // #3355 P3: the server knows the current step; ask it, don't guess.
         void chat.resumeFlow("resume");
@@ -962,6 +1089,24 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           return { ok: false, error: words, terminal: "resolved" };
         }
         if (isAlreadyResolvedError(result.message)) {
+          chat.clearPendingAction();
+          return { ok: false, terminal: "resolved" };
+        }
+        // #4389 AR-13 — the card belongs to the brand it was made for.
+        if (result.code === "BRAND_MISMATCH") {
+          setLocalError(ARI_SETUP_COPY.brandMismatch);
+          return { ok: false, error: ARI_SETUP_COPY.brandMismatch };
+        }
+        const duplicate = a3NoticeFor({
+          toolName: proposal.tool_name,
+          args: proposal.tool_args,
+          code: result.code,
+          message: result.message,
+          expired: false,
+          brandNamesById,
+        });
+        if (duplicate !== null) {
+          setA3Notice(duplicate);
           chat.clearPendingAction();
           return { ok: false, terminal: "resolved" };
         }
@@ -1263,11 +1408,31 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           displayName: firstRunContext.displayName,
           brandName: currentBrand?.displayName ?? null,
           remembered: rememberedFirstRun?.intent ?? null,
+          // #4389 — never "set up" unless brand_setup is complete.
+          setupComplete: setupData?.facts.complete === true,
         })
       : null;
   const firstRunCentred = firstRunCopy !== null && noMessages && isWideDesktop;
   const firstRunChipsDisabled =
     chat.isSending || rateLimited || !online || !conversationSelectionReady;
+  // #4389 A1 — the first-landing setup card: works with no AI call (AR-1).
+  const firstRunSetupCard =
+    firstRunStage === "no_brand" ? (
+      <AriSetupCard
+        brandName={null}
+        doneCount={0}
+        onSetUp={() => router.push("/brand/new" as never)}
+        onWithAri={
+          firstRunChipsDisabled
+            ? undefined
+            : () =>
+                handleSend(ARI_SETUP_COPY.a1.withAriMessage, {
+                  stage: "no_brand",
+                  intent: "brand",
+                })
+        }
+      />
+    ) : null;
   const composerBlock = (
     recovery ? (
               <RecoveryPanel recovery={recovery} onAction={handleRecovery} />
@@ -1281,6 +1446,74 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   );
                 }}
               >
+                {sensitiveHidden ? (
+                  <AriSensitiveNotice
+                    onOpen={() => {
+                      setSensitiveHidden(false);
+                      openBrandSetup("pay");
+                    }}
+                  />
+                ) : null}
+                {a3Notice !== null ? (
+                  <AriCreateBrandNotice
+                    notice={a3Notice}
+                    onContinue={() => {
+                      const id = a3Notice.kind === "duplicate" ? a3Notice.brandId : null;
+                      setA3Notice(null);
+                      router.push((id !== null ? `/brand/${id}/setup` : "/brand/new") as never);
+                    }}
+                    onCreateNew={() => {
+                      // /brand/new shows N1 first when a draft exists.
+                      setA3Notice(null);
+                      router.push("/brand/new" as never);
+                    }}
+                  />
+                ) : null}
+                {skipCard !== null && selectedBrandId !== null ? (
+                  <AriSkipPaymentsCard
+                    platform={Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web"}
+                    state={skipCard}
+                    onBankNow={() => {
+                      setSkipCard(null);
+                      openBrandSetup("pay");
+                    }}
+                    onFreeOnly={() => {
+                      setSkipCard("saving");
+                      markFreeOnly.mutate(undefined, {
+                        onSuccess: () => setSkipCard("saved"),
+                        onError: (error) => {
+                          console.warn("[ari] free events only failed", error);
+                          setSkipCard("error");
+                        },
+                      });
+                    }}
+                  />
+                ) : null}
+                {firstRunStage !== "no_brand" && selectedBrandId !== null && !setup && !websiteSplit ? (
+                  allSetShownFor === selectedBrandId ? (
+                    <AriSetupCard brandName={brandName} doneCount={4} state="complete" onSetUp={() => openBrandSetup()} />
+                  ) : setupChecklist.isError ? (
+                    <AriSetupCard
+                      brandName={brandName}
+                      doneCount={0}
+                      state="error"
+                      onSetUp={() => openBrandSetup()}
+                      onRetry={() => void setupChecklist.refetch()}
+                    />
+                  ) : setupData !== undefined && !setupData.facts.complete && setupData.facts.freeOnlyAt === null ? (
+                    <AriSetupCard
+                      brandName={brandName}
+                      doneCount={setupData.doneCount}
+                      waitingFor={setupData.facts.waitingFor}
+                      onSetUp={() => openBrandSetup()}
+                    />
+                  ) : null
+                ) : null}
+                {draftKeptFor !== null ? (
+                  <Text style={styles.draftKept} testID="ari-draft-kept">
+                    {ARI_BRAND_BAR_COPY.draftKept(draftKeptFor)}
+                  </Text>
+                ) : null}
                 {!online ? (
                   <RecoveryPanel
                     recovery={{
@@ -1466,41 +1699,54 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           websiteSplit && !websiteSetup && isWideDesktop ? styles.websiteAriPane : null,
         ]}
       >
-        {/* #4304 — the Home top bar stays on Ari while first-run is locked:
-          "Create brand" (or the brand switcher), "+ Create" for the manual
-          wizards once a brand exists, messages and notifications. */}
-        {firstRunStage !== null ? (
-          <View style={styles.firstRunBar} testID="ari-first-run-topbar">
-            <React.Suspense fallback={<View style={styles.firstRunBarFallback} />}>
-            <LazyTopBar
-              leftKind="brand"
-              onBrandTap={() => setBrandSwitcherOpen(true)}
-              extraRightSlot={
-                currentBrand !== null ? (
-                  <Pressable
-                    onPress={() => setCreatorOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Create event, RSVP, experience, trip or venue"
-                    style={({ pressed }) => [
-                      styles.firstRunCreate,
-                      pressed && styles.pressed,
-                    ]}
-                    testID="ari-first-run-create"
-                  >
-                    <Text style={styles.firstRunCreateLabel}>+ Create</Text>
-                  </Pressable>
-                ) : undefined
-              }
-            />
-            </React.Suspense>
+        {/* #4389 AB — Ari's one top bar: the brand chip (same as Home), then
+          Chats and Ari settings. First run (no Home tab) keeps Messages and
+          the bell before them. The centred "Ari · Mingla Intelligence"
+          header is gone from the tab; the Website setup and embedded
+          surfaces keep their own header below. */}
+        {!setup && !embedded ? (
+          <View style={styles.ariBar} testID="ari-top-bar">
+            <View style={styles.ariBarLeft}>
+              <BrandChip
+                onPress={() => setBrandSwitcherOpen(true)}
+                fullNameLabel
+                testID="ari-brand-chip"
+              />
+            </View>
+            <View style={styles.ariBarRight}>
+              {firstRunStage !== null ? (
+                <React.Suspense fallback={null}>
+                  <LazyMessagesAndBell />
+                </React.Suspense>
+              ) : null}
+              <Pressable
+                onPress={() => setDrawerOpen(true)}
+                style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={ARI_BRAND_BAR_COPY.chats}
+                testID="ari-bar-chats"
+              >
+                <Menu size={24} color={textTokens.primary} strokeWidth={2} />
+              </Pressable>
+              <Pressable
+                onPress={() => router.push("/ari/settings" as never)}
+                style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={ARI_BRAND_BAR_COPY.settings}
+                testID="ari-bar-settings"
+              >
+                <Settings size={22} color={textTokens.primary} strokeWidth={2} />
+              </Pressable>
+            </View>
           </View>
         ) : null}
         {/* Header — the embedding host owns the page title, so it is dropped
           there rather than stacking two headers in one column. */}
+        {setup || embedded ? (
         <View
           style={[
             styles.header,
-            embedded || firstRunStage !== null ? styles.headerEmbedded : null,
+            embedded ? styles.headerEmbedded : null,
           ]}
         >
           {setup ? (
@@ -1542,6 +1788,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             </Pressable>
           )}
         </View>
+        ) : null}
 
         <Toast
           visible={!!displayError}
@@ -1573,6 +1820,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 desktop
                 composer={composerBlock}
                 disabled={firstRunChipsDisabled}
+                footer={firstRunSetupCard}
               />
             ) : (
               <>
@@ -1596,6 +1844,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                     onChip={handleFirstRunChip}
                     compact={keyboardHeight > 0}
                     disabled={firstRunChipsDisabled}
+                    footer={firstRunSetupCard}
                   />
                 </View>
               </View>
@@ -1824,6 +2073,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
               // sends the chip label as a normal user turn (Q2 conversational
               // feedback; Gemini re-proposes with the resolved target).
+              onOpenRoute={(route) => router.push(route as never)}
               onSendChoice={(submission, label) =>
                 void handleChoice(submission, label)
               }
@@ -2020,24 +2270,45 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         surface={surface}
       />
 
-      {/* #3355 — the switcher loads when the owner opens it (#3493). */}
+      {/* #3355 — the switcher loads when the owner opens it (#3493).
+          #4389 AB — titled "Talk to Ari about"; a pick while Ari is
+          answering is held for the R-16 question. */}
       {brandSwitcherOpen ? (
         <React.Suspense fallback={null}>
           <LazyBrandSwitcherSheet
             visible
+            title={ARI_BRAND_BAR_COPY.switcherTitle}
+            onBeforePick={handleBeforeBrandPick}
+            onPicked={handleBrandPicked}
             onClose={() => setBrandSwitcherOpen(false)}
           />
         </React.Suspense>
       ) : null}
 
-      {creatorOpen ? (
-        <React.Suspense fallback={null}>
-          <LazyUniversalCreatorSheet
-            visible
-            onClose={() => setCreatorOpen(false)}
-          />
-        </React.Suspense>
-      ) : null}
+      <AriBrandSwitchConfirmSheet
+        visible={heldBrandPick !== null && !brandSwitcherOpen}
+        currentBrandName={currentBrand?.displayName ?? ""}
+        nextBrandName={heldBrandPick?.displayName ?? ""}
+        onStay={() => setHeldBrandPick(null)}
+        onSwitch={() => {
+          const brand = heldBrandPick;
+          setHeldBrandPick(null);
+          if (brand === null) return;
+          trackBrandSetup("ari_brand_switched", {
+            brand_id: brand.id,
+            while_streaming: true,
+          });
+          pickBrand(brand);
+          setSwitchedToast(ARI_BRAND_BAR_COPY.switched(brand.displayName));
+        }}
+      />
+
+      <Toast
+        visible={switchedToast !== null}
+        kind="success"
+        message={switchedToast ?? ""}
+        onDismiss={() => setSwitchedToast(null)}
+      />
 
       <AriAttachmentSourceSheet
         visible={attachmentSourceOpen}
@@ -2114,23 +2385,30 @@ const styles = StyleSheet.create({
   headerEmbedded: {
     display: "none",
   },
-  // #4304 — first-run top bar (same insets as Home's bar).
-  firstRunBar: {
+  // #4389 AB — Ari's one top bar.
+  ariBar: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: glass.border.profileBase,
   },
-  firstRunBarFallback: { height: 56 },
-  firstRunCreate: {
-    minHeight: 36,
-    justifyContent: "center",
-    paddingHorizontal: spacing.md - 4,
-    borderRadius: 999,
-    backgroundColor: accent.warm,
+  ariBarLeft: { flexShrink: 1, minWidth: 0 },
+  ariBarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flexShrink: 0,
   },
-  firstRunCreateLabel: {
-    color: "#101216",
-    fontWeight: "700",
-    fontSize: 13,
+  draftKept: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
   },
   firstRunOverlay: {
     ...StyleSheet.absoluteFillObject,

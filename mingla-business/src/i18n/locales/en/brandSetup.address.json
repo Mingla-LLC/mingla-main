@@ -1,0 +1,19 @@
+{
+  "brandSetup": {
+    "t1": {
+      "title": "Where will you take card payments?",
+      "helper": "Only used for Tap to Pay on iPhone. Not shown to guests.",
+      "helperAndroid": "Only used for Tap to Pay. Not shown to guests.",
+      "search": "Start typing your address",
+      "searchHelper": "Pick it from the list and we fill in the rest.",
+      "poweredByGoogle": "Powered by Google",
+      "noMatch": "No match in {{country}}. Check the spelling, or try the {{postal}}.",
+      "buildingNumber": "Building number",
+      "buildingNumberError": "Add the building number.",
+      "unit": "Add apartment or unit",
+      "refused": "We couldn't use that address. Pick it from the list again.",
+      "change": "Change",
+      "save": "Save address"
+    }
+  }
+}

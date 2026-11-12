@@ -35,6 +35,9 @@ INSERT INTO public.creator_accounts(id,email,display_name) VALUES
   ('38724000-0000-4000-8000-0000000000a3','r2-creator@mingla.test','Ada Films'),
   ('38724000-0000-4000-8000-0000000000a4','r2-creator2@mingla.test','Bo Clips'),
   ('38724000-0000-4000-8000-0000000000a6','r2-creator3@mingla.test','Cy Reels');
+-- #4402: the creator identity is the Explorer login (a live profiles row).
+INSERT INTO public.profiles(id) VALUES
+  ('38724000-0000-4000-8000-0000000000a3'),('38724000-0000-4000-8000-0000000000a4'),('38724000-0000-4000-8000-0000000000a6');
 INSERT INTO public.creator_profiles(creator_account_id,mode_enabled,display_name,home_city_id,niches,verification,date_of_birth,agreement_version,agreement_signed_at) VALUES
   ('38724000-0000-4000-8000-0000000000a3',true,'Ada Films','38724000-0000-4000-8000-0000000000c1',ARRAY['food'],'verified','1995-01-01','v1',now()),
   ('38724000-0000-4000-8000-0000000000a4',true,'Bo Clips','38724000-0000-4000-8000-0000000000c1',ARRAY['music'],'verified','1995-01-01','v1',now());

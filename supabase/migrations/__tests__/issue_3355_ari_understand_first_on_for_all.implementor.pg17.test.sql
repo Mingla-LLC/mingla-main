@@ -1,6 +1,6 @@
 -- Issue #3355 final fix (C-4) — the rollout switch is ON for every brand at
 -- launch, idempotently (enforced by
--- 20280628153355_issue_3355_ari_understand_first_on_for_all.sql).
+-- 20280702153355_issue_3355_ari_understand_first_on_for_all.sql).
 --
 --   P1  after the replay there is exactly one runtime version
 --       'ari-understand-first-3355' and one launch rollout for it: active,
@@ -10,7 +10,7 @@
 --   P4  the kill switch (status 'paused') turns it off for every brand, and
 --       re-applying the migration does not switch it back on;
 --   P5  the unique key refuses a second launch rollout for the version.
--- Reverting 20280628153355 fails P1 (no rows: off for everyone).
+-- Reverting 20280702153355 fails P1 (no rows: off for everyone).
 
 \set ON_ERROR_STOP on
 BEGIN;
@@ -67,8 +67,8 @@ END
 $p1$;
 
 -- ── P2 applies twice more, cleanly ────────────────────────────────────────
-\ir ../20280628153355_issue_3355_ari_understand_first_on_for_all.sql
-\ir ../20280628153355_issue_3355_ari_understand_first_on_for_all.sql
+\ir ../20280702153355_issue_3355_ari_understand_first_on_for_all.sql
+\ir ../20280702153355_issue_3355_ari_understand_first_on_for_all.sql
 
 DO $p2$
 BEGIN
@@ -108,7 +108,7 @@ BEGIN
 END
 $p4a$;
 
-\ir ../20280628153355_issue_3355_ari_understand_first_on_for_all.sql
+\ir ../20280702153355_issue_3355_ari_understand_first_on_for_all.sql
 
 DO $p4b$
 BEGIN

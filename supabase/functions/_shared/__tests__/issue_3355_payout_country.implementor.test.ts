@@ -1,7 +1,7 @@
 // Issue #3355 P7 (Phase 7 certification fix) — Ari's payout-country pick is
 // the Host chooser's pick (BrandPayoutCountryField), made as the caller.
 //
-// MINGLA-INVARIANT: I-ARI-PAYOUT-COUNTRY-HOST-PARITY | issue #3355 | Ari sets a payout country only through the confirmed set_brand_payout_country, making the Host chooser's writes as the caller: Nigeria goes through brand-paystack-onboard select_provider; any other supported country clears a Paystack rail, sets brands.default_currency, then brands.payout_country. A brand with a different currency, or an unsupported country, is refused with nothing written.
+// MINGLA-INVARIANT: I-ARI-PAYOUT-COUNTRY-HOST-PARITY | issue #3355 | Ari sets a payout country only through the confirmed set_brand_payout_country, making the Host chooser's write as the caller. Since #4389 that is ONE write, biz_set_brand_payout_country (the derive trigger sets currency, rail and payment country); Nigeria then stamps the hold through brand-paystack-onboard select_provider. A locked country, a forbidden caller or an unsupported country is refused and never reported as done.
 //
 // Run: deno test --no-check --allow-env --allow-read \
 //   supabase/functions/_shared/__tests__/issue_3355_payout_country.implementor.test.ts
@@ -44,47 +44,37 @@ type Brand = {
   payout_country: string | null;
 };
 
-/** The caller's own Supabase client over one brand row, with a call log. */
-function callerClient(brand: Brand, opts: { canUpdate?: boolean } = {}) {
+/** The caller's own Supabase client: the #4389 RPC and the Paystack edge, logged. */
+function callerClient(brand: Brand, opts: { refuse?: string } = {}) {
   const log: string[] = [];
   const client: Any = {
-    from(table: string) {
-      assertEquals(table, "brands");
-      let patch: Record<string, unknown> | null = null;
-      const self: Any = {
-        select: () => self,
-        eq: () => self,
-        is: () => self,
-        update(next: Record<string, unknown>) {
-          patch = next;
-          return self;
+    rpc(name: string, params: Record<string, unknown>) {
+      log.push(`rpc ${name} ${params.p_country}`);
+      if (opts.refuse) {
+        return Promise.resolve({ data: null, error: { message: opts.refuse } });
+      }
+      const country = String(params.p_country);
+      const rail = payoutRailFor(country)!;
+      Object.assign(brand, {
+        payout_country: country,
+        default_currency: rail.currency,
+        payment_provider: rail.provider,
+      });
+      return Promise.resolve({
+        data: {
+          payout_country: country,
+          default_currency: rail.currency,
+          payment_provider: rail.provider,
         },
-        maybeSingle: () => Promise.resolve({ data: { ...brand }, error: null }),
-        then(resolve: (value: unknown) => unknown) {
-          // update(...).eq().is().select("id")
-          if (!patch) return resolve({ data: [], error: null });
-          log.push(`update ${JSON.stringify(patch)}`);
-          if (opts.canUpdate === false) {
-            return resolve({ data: [], error: null });
-          }
-          Object.assign(brand, patch);
-          return resolve({ data: [{ id: brand.id }], error: null });
-        },
-      };
-      return self;
+        error: null,
+      });
+    },
+    from() {
+      throw new Error("#4389: no direct brands table write");
     },
     functions: {
       invoke(name: string, init: { body: Record<string, unknown> }) {
         log.push(`invoke ${name} ${init.body.action}`);
-        if (init.body.action === "select_provider") {
-          Object.assign(brand, {
-            payment_provider: "paystack",
-            default_currency: "NGN",
-          });
-        }
-        if (init.body.action === "clear_provider") {
-          Object.assign(brand, { payment_provider: null });
-        }
         return Promise.resolve({ data: { ok: true }, error: null });
       },
     },
@@ -106,7 +96,7 @@ function freshBrand(overrides: Partial<Brand> = {}): Brand {
   };
 }
 
-Deno.test("payout country: the United Kingdom sets GBP, then remembers GB (the Host's order)", async () => {
+Deno.test("payout country: the United Kingdom is one write that sets GB and GBP", async () => {
   const brand = freshBrand();
   const { client, log } = callerClient(brand);
   const result = await tool.executor(
@@ -115,16 +105,13 @@ Deno.test("payout country: the United Kingdom sets GBP, then remembers GB (the H
     "user",
     NO_OP,
   ) as Any;
-  assertEquals(log, [
-    'update {"default_currency":"GBP"}',
-    'update {"payout_country":"GB"}',
-  ]);
+  assertEquals(log, ["rpc biz_set_brand_payout_country GB"]);
   assertEquals(brand.default_currency, "GBP");
   assertEquals(result.currency, "GBP");
   assertEquals(result.country_name, "United Kingdom");
 });
 
-Deno.test("payout country: Nigeria goes through select_provider (server sets the rail and naira)", async () => {
+Deno.test("payout country: Nigeria is the same write, then the hold stamp", async () => {
   const brand = freshBrand();
   const { client, log } = callerClient(brand);
   const result = await tool.executor(
@@ -134,15 +121,18 @@ Deno.test("payout country: Nigeria goes through select_provider (server sets the
     NO_OP,
   ) as Any;
   assertEquals(log, [
+    "rpc biz_set_brand_payout_country NG",
     "invoke brand-paystack-onboard select_provider",
-    'update {"payout_country":"NG"}',
   ]);
   assertEquals(brand.default_currency, "NGN");
   assertEquals(result.payout_provider, "paystack");
 });
 
-Deno.test("payout country: leaving a Paystack rail clears it before the new currency", async () => {
-  const brand = freshBrand({ payment_provider: "paystack" });
+Deno.test("payout country: leaving a Paystack rail is the server's job (one write)", async () => {
+  const brand = freshBrand({
+    payment_provider: "paystack",
+    payout_country: "NG",
+  });
   const { client, log } = callerClient(brand);
   await tool.executor(
     { brand_id: BRAND, country_code: "IE" },
@@ -150,28 +140,25 @@ Deno.test("payout country: leaving a Paystack rail clears it before the new curr
     "u",
     NO_OP,
   );
-  assertEquals(log, [
-    "invoke brand-paystack-onboard clear_provider",
-    'update {"default_currency":"EUR"}',
-    'update {"payout_country":"IE"}',
-  ]);
+  assertEquals(log, ["rpc biz_set_brand_payout_country IE"]);
+  assertEquals(brand.default_currency, "EUR");
 });
 
-Deno.test("payout country: refusals write nothing", async () => {
-  const set = freshBrand({ default_currency: "USD" });
-  const first = callerClient(set);
+Deno.test("payout country: refusals are never reported as done (#4389 D7)", async () => {
+  const locked = callerClient(freshBrand(), {
+    refuse: "payout_country_locked",
+  });
   const err = await assertRejects(
     () =>
       tool.executor(
         { brand_id: BRAND, country_code: "GB" },
-        first.client,
+        locked.client,
         "u",
         NO_OP,
       ),
     ToolError,
   );
-  assertEquals((err as ToolError).code, "PAYOUT_COUNTRY_ALREADY_SET");
-  assertEquals(first.log, []);
+  assertEquals((err as ToolError).code, "PAYOUT_COUNTRY_LOCKED");
   const unsupported = callerClient(freshBrand());
   const err2 = await assertRejects(
     () =>
@@ -185,7 +172,7 @@ Deno.test("payout country: refusals write nothing", async () => {
   );
   assertEquals((err2 as ToolError).code, "PAYOUT_COUNTRY_UNSUPPORTED");
   assertEquals(unsupported.log, []);
-  const denied = callerClient(freshBrand(), { canUpdate: false });
+  const denied = callerClient(freshBrand(), { refuse: "forbidden" });
   const err3 = await assertRejects(
     () =>
       tool.executor(
@@ -196,12 +183,13 @@ Deno.test("payout country: refusals write nothing", async () => {
       ),
     ToolError,
   );
-  assertEquals((err3 as ToolError).code, "PERMISSION_DENIED");
+  assertEquals((err3 as ToolError).code, "FORBIDDEN");
   for (
     const code of [
-      "PAYOUT_COUNTRY_ALREADY_SET",
+      "PAYOUT_COUNTRY_LOCKED",
       "PAYOUT_COUNTRY_UNSUPPORTED",
       "PAYOUT_COUNTRY_NOT_SAVED",
+      "FORBIDDEN",
     ]
   ) {
     assertEquals(toolErrorHttpStatus(code), 409, code);

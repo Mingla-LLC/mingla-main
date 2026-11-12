@@ -19,6 +19,7 @@ import { CREATE_EXPERIENCE_FLOW } from "./offerings/experience.ts";
 import { CREATE_VENUE_FLOW } from "./offerings/venue.ts";
 import { CREATE_STAY_FLOW } from "./offerings/stay.ts";
 import { IMPORT_CONTACTS_FLOW } from "./contactImport.ts";
+import { BRAND_SETUP_FLOW } from "./brandSetup.ts";
 import type {
   FlowContext,
   FlowDefinition,
@@ -186,6 +187,8 @@ export const FLOW_DEFINITIONS: readonly FlowDefinition[] = Object.freeze([
   WEBSITE_SETUP_FLOW,
   // #3355 — a contact list for blasts and outreach, through Ari.
   IMPORT_CONTACTS_FLOW,
+  // #4389 — bank country, then Terms + payment details on the secure screen.
+  BRAND_SETUP_FLOW,
 ]);
 
 /**
@@ -309,6 +312,7 @@ export const READINESS_ACTION_WORDS: Readonly<Record<ReadinessAction, string>> =
     website_publish: "publish your Website",
     refund: "issue refunds",
     bank_setup: "get paid out to your bank",
+    brand_setup: "finish setting up this brand",
   });
 
 const READINESS_ASK =

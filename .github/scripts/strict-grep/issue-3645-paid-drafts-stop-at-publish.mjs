@@ -54,7 +54,9 @@ const F = {
   costBox: `${B}src/components/pricing/WhoCoversCostsSection.tsx`,
   chooser: `${B}src/components/brand/OfferingChooser.tsx`,
   deleteSheet: `${B}src/components/brand/BrandDeleteSheet.tsx`,
-  creationFlow: `${B}src/components/brand/BrandCreationFlow.tsx`,
+  // #4389: the step wizard with the payout step (E-h) moved verbatim to
+  // PartnerClientBrandCreationFlow.tsx; self brands use the 4-step setup.
+  creationFlow: `${B}src/components/brand/PartnerClientBrandCreationFlow.tsx`,
   topSheet: `${B}src/components/ui/TopSheet.tsx`,
   modal: `${B}src/components/ui/Modal.tsx`,
   sheetMobile: `${B}src/components/ui/SheetMobile.tsx`,
@@ -140,8 +142,10 @@ const RULES = [
     "Back with no history, and a finished Nigerian bank form, both return to the creator"),
   has("A4-web-body-hosted-return", F.webBody, "returnPath: resumePath,",
     "hosted setup started from the web body returns to the creator"),
+  // #4389: native Back from the funnel returns to the setup route itself
+  // (/brand/new?resume_brand= is now only an alias that redirects there).
   has("A5-funnel-return-untouched-route", F.onboardRoute,
-    "`/brand/new?resume_brand=${encodeURIComponent(brandId)}`",
+    "`/brand/${encodeURIComponent(brandId)}/setup?step=done`",
     "from=brand-create still returns to brand creation"),
   has("A5-funnel-return-untouched-web", F.webBody,
     "`/brand/new?resume_brand=${encodeURIComponent(brandId)}`",

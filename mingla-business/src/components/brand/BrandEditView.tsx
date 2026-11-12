@@ -102,7 +102,7 @@ const LazyBrandEditAddressField = React.lazy(() =>
 const LazyBrandEditTimezoneField = React.lazy(() =>
   import("./BrandEditTimezoneField").then((m) => ({ default: m.BrandEditTimezoneField })),
 );
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { ThemeControlRow } from "../theme/ThemeControlRow";

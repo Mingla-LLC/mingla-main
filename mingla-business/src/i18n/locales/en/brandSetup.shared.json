@@ -1,0 +1,17 @@
+{
+  "brandSetup": {
+    "k1": {
+      "title": "Only free events for now?",
+      "body": "Until your bank is set up, you can create and publish free events and RSVPs. You can't sell tickets or take payments, including Tap to Pay on iPhone.",
+      "bodyAndroid": "Until your bank is set up, you can create and publish free events and RSVPs. You can't sell tickets or take payments, including Tap to Pay.",
+      "later": "Finish any time from Home or Ari.",
+      "bankNow": "Set up bank now",
+      "freeOnly": "Free events only for now",
+      "toast": "Saved. You can create free events. Set up your bank to sell tickets."
+    },
+    "common": {
+      "offline": "You're offline. Your answers are saved.",
+      "serverError": "We couldn't save that. Try again."
+    }
+  }
+}

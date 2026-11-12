@@ -453,6 +453,29 @@
       "capability_keys": []
     },
     {
+      "pattern": "/brand/[id]/setup",
+      "params": [
+        "id"
+      ],
+      "title": "Brand setup",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/setup.tsx",
+      "capability_keys": [
+        "payouts-paystack-nigeria",
+        "rsvp-create"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/tap-to-pay/address",
+      "params": [
+        "id"
+      ],
+      "title": "Address",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/tap-to-pay/address.tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/brand/[id]/team",
       "params": [
         "id"
@@ -798,6 +821,16 @@
       "title": "Pay",
       "title_source": "path",
       "file": "mingla-business/app/event/[id]/door/pay/[codeId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/door/sell",
+      "params": [
+        "id"
+      ],
+      "title": "Sell",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/door/sell.tsx",
       "capability_keys": []
     },
     {

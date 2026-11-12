@@ -2,14 +2,14 @@
 //
 // With the "Ari understands first" rollout switch OFF for a brand
 // (ariRollout.ts), agent-chat builds this prompt: the exact text of
-// origin/main's buildSystemPrompt at 811c033211 (PROMPT_VERSION v29), so a
+// origin/main's buildSystemPrompt at 7ace80fa0a (PROMPT_VERSION v30, #4389's brand setup lines included), so a
 // brand outside the rollout sees the prompt production runs today. The body
 // below is a byte-for-byte copy; do not edit it. Remove this file (and the
 // switch's off path) once the rollout is global.
 // [TRANSITIONAL] legacy prompt for the off path — exit: rollout
 // ari-understand-first-3355 active at 100% for every brand.
 //
-// MINGLA-INVARIANT: I-ARI-ROLLOUT-OFF-IS-MAIN | issue #3355 | With the rollout switch off, agent-chat's system prompt is byte-identical to origin/main's builder (PROMPT_VERSION v29) for the same inputs, and the turn offers origin/main's tool declarations without search_mingla_guide (enforced by supabase/functions/_shared/__tests__/issue_3355_ship_prep_gating.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-ROLLOUT-OFF-IS-MAIN | issue #3355 | With the rollout switch off, agent-chat's system prompt is byte-identical to origin/main's builder (PROMPT_VERSION v30) for the same inputs, and the turn offers origin/main's tool declarations without search_mingla_guide (enforced by supabase/functions/_shared/__tests__/issue_3355_ship_prep_gating.implementor.test.ts).
 
 import {
   type AgentUserProfile,
@@ -21,8 +21,8 @@ import {
   PROMPT_VERSION,
 } from "./agentSystemPrompt.ts";
 
-/** The prompt version production runs today (origin/main at 811c033211). */
-export const LEGACY_PROMPT_VERSION = "v29";
+/** The prompt version production runs today (origin/main at 7ace80fa0a). */
+export const LEGACY_PROMPT_VERSION = "v30";
 
 export function buildLegacySystemPrompt(
   profile: AgentUserProfile | null,
@@ -156,7 +156,8 @@ BRAND MANAGEMENT:
 - If the user asks to create an event/experience/trip and they have NO brands, do NOT call create_event. First explain they need a brand (their public identity for tickets and payouts), then propose create_brand. After the brand is created, tell them it's ready and offer the first draft as FIRST RUN below describes, using what they already told you — never create it without their confirmation.
 
 FIRST RUN (a host with no brand, or a brand with nothing made yet):
-- Brand first, always. With NO brands, whatever the host taps or types, set up the brand before anything else: ask for its name and where they host (one short question), then propose create_brand and wait for their confirmation. Never create a placeholder brand or choose its name for them.
+- Brand first, always. With NO brands, whatever the host taps or types, set up the brand before anything else: ask for its name, then its bank country, then propose create_brand and wait for their confirmation. Never create a placeholder brand or choose its name for them.
+- Brand setup order is name → bank country → Organiser Terms and payment details on the secure screen. Never ask for, and never accept, bank, ID or tax numbers in chat (#4389).
 - "I host events", "I run experiences", "I run trips", "I run a venue": say "Great. Everything you sell lives under your brand, so let's make that first. What's it called?" and remember what they host.
 - "What is Mingla?": answer in two short lines (Mingla is where hosts sell tickets, RSVPs, experiences, trips and venue bookings, and where guests find them; Ari does the typing), then ask "Want to set up your brand now? It takes two minutes."
 - A typed idea before a brand exists (for example "make me a rooftop party on Saturday"): keep every detail they gave, set up the brand first, and once it exists draft that idea from what they said. Do not ask again for anything they already told you.
@@ -408,6 +409,8 @@ CAPABILITIES (your tools):
 - save_memory_note — save an approved preference, correction, business fact, or workflow
 - forget_memory_note — remove one Ari memory from future context
 - open_handoff — prepare an allowlisted Mingla destination for a human-owned step
+- start_payments_onboarding — open the secure screen for a brand's ID and bank details
+- start_door_sale — open the door sale for an event with tickets prefilled
 - tell_owner_in_brand_group — after confirmation, post one note in the brand group chat asking the owner to do an owner-only step (the server writes the words)
 - get_market_rules — read deterministic country, currency, timezone, and payment-rail rules
 - set_brand_payout_country — after confirmation, set the payout country (and so the price currency) of a brand that has no currency yet; ask which country the owner's bank account is in, never guess
@@ -503,7 +506,7 @@ export function buildAriTurnSystemPrompt(
     : buildLegacySystemPrompt(...args);
 }
 
-/** The prompt version a turn ran under (v29 with the switch off). */
+/** The prompt version a turn ran under (v30 with the switch off). */
 export function ariPromptVersionFor(understandFirst: boolean): string {
   return understandFirst ? PROMPT_VERSION : LEGACY_PROMPT_VERSION;
 }

@@ -35,6 +35,12 @@ import {
 } from "./agentAri10xTools.ts";
 // #3355 P2 — the canonical brand readiness read and its brand-wide "not now".
 import { READINESS_READ_ONLY, READINESS_TOOLS } from "./agentReadinessTools.ts";
+import {
+  BRAND_SETUP_READ_ONLY,
+  BRAND_SETUP_TOOLS,
+  createBrandRefusal,
+  executeDeleteBrandViaCore,
+} from "./agentBrandSetupTools.ts";
 import { isValidIanaTimezone } from "./agentRelativeTime.ts";
 
 export { normalizeAriToolError, ToolError } from "./agentToolHelpers.ts";
@@ -93,6 +99,9 @@ async function executeBrandOperation(
   });
   if (error) {
     const message = error.message ?? "Brand operation failed";
+    // #4389 — one brand in setup at a time; unsupported bank country.
+    const setupRefusal = createBrandRefusal(message);
+    if (setupRefusal) throw setupRefusal;
     if ((error as { code?: string }).code === "23505") {
       throw new ToolError(
         "SLUG_TAKEN",
@@ -144,7 +153,7 @@ async function executeBrandOperation(
 const createBrand: AgentToolDefinition = {
   name: "create_brand",
   description:
-    "Create a new brand owned by the user. Brand name is the public-facing organiser name. Slug is auto-derived from name if not provided. Cover media is attached by the user via the Add cover button — never set cover_media_url yourself.",
+    "Create a new brand owned by the user. Brand name is the public-facing organiser name. Slug is auto-derived from name if not provided. Cover media is attached by the user via the Add cover button — never set cover_media_url yourself. #4389: ask for the name, then the bank country (payout_country: the country their bank account is in), and pass both; ask back as a choice when the country name is ambiguous. If it returns DRAFT_EXISTS or EXISTING_INCOMPLETE_BRAND, offer to continue that brand (or discard it and start new) instead of creating another. Never say the brand is set up for payments: that needs the Organiser Terms and the secure screen (start_payments_onboarding).",
   // Schema scoped to Gemini's OpenAPI subset (type/description/properties/
   // required/enum). Length/pattern/format constraints re-validated in the
   // executor — the model schema is for shape only.
@@ -174,6 +183,11 @@ const createBrand: AgentToolDefinition = {
         type: "string",
         description:
           "3-letter ISO currency code (e.g. USD, GBP, NGN). If omitted, uses the user's preferred currency.",
+      },
+      payout_country: {
+        type: "string",
+        description:
+          "ISO 3166-1 alpha-2 bank country (e.g. US, GB, DE, NG): where the host's bank account is. Sets the currency. Omit only for a free-events-only brand.",
       },
       cover_media_url: {
         type: "string",
@@ -1108,17 +1122,10 @@ const deleteBrand: AgentToolDefinition = {
     },
   },
   executor: async (args, client, _userId, context) => {
-    // 1 — shape
-    if (!isUuid(args.brand_id)) {
-      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
-    }
-    if (!isString(args.confirm_phrase)) {
-      throw new ToolError(
-        "INVALID_ARGS",
-        "Type the exact brand name to confirm deletion.",
-      );
-    }
-    return await executeBrandOperation("delete_brand", args, client, context);
+    // #4389 — the app's delete core: payment accounts are closed first, and
+    // the delete is blocked while money is owed (I-4389-DELETE-CLOSES-PROVIDERS).
+    void context;
+    return await executeDeleteBrandViaCore(args, client);
   },
 };
 
@@ -1723,6 +1730,7 @@ export const AGENT_TOOLS: AgentTool[] = secureAgentTools([
   ...SITE_AGENT_TOOLS,
   ...ARI_10X_TOOLS,
   ...READINESS_TOOLS,
+  ...BRAND_SETUP_TOOLS,
 ]);
 
 // #3355 P1 (D-5/D-6): the owner copy gate refuses every registered tool name,
@@ -1742,6 +1750,7 @@ export const READ_ONLY_TOOL_NAMES = new Set<string>([
   ...SITE_AGENT_READ_ONLY,
   ...ARI_10X_READ_ONLY,
   ...READINESS_READ_ONLY,
+  ...BRAND_SETUP_READ_ONLY,
 ]);
 
 /** Reversible Ari-owned state that may advance inside the bounded loop. */

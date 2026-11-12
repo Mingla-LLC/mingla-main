@@ -1,0 +1,11 @@
+{
+  "brandSetup": {
+    "offerings": {
+      "event": "An event",
+      "experience": "An experience",
+      "trip": "A trip",
+      "rsvp": "An RSVP",
+      "venue": "A venue"
+    }
+  }
+}

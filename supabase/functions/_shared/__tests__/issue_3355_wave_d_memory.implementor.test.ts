@@ -406,7 +406,7 @@ Deno.test("D1: agent-chat reads memory as the caller into <user_data>, not into 
   const memory = read("supabase/functions/_shared/ariMemory.ts");
   assert(!/service_role|serviceClient|SERVICE_ROLE/.test(memory));
   // The prompt teaches the tool and the data's meaning (v31).
-  assertEquals(PROMPT_VERSION, "v36");
+  assertEquals(PROMPT_VERSION, "v37");
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assertMatch(prompt, /11\. Memory: .*remember_note/);
   assertMatch(
@@ -417,7 +417,7 @@ Deno.test("D1: agent-chat reads memory as the caller into <user_data>, not into 
 
 Deno.test("D1: the edge and SQL refuse the same words", () => {
   const sql = read(
-    "supabase/migrations/20280628063355_issue_3355_ari_memory_notes.sql",
+    "supabase/migrations/20280702063355_issue_3355_ari_memory_notes.sql",
   );
   const pii = read("supabase/functions/_shared/ariPii.ts");
   for (

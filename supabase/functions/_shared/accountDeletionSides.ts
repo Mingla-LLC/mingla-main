@@ -182,6 +182,20 @@ async function retainIfBusinessRecordsExist(
       .eq("account_id", userId),
   );
   if (brandRows > 0) return { remove: false, reason: "business_records_retained" };
+  // #4402 — the creator identity is the login, not creator_accounts, so an
+  // Explorer-only creator has a creator profile and no Host account. Removing
+  // their login would cascade through that profile into gig contracts and the
+  // signed agreement (RESTRICT foreign keys) or lose creator records. Same
+  // rule as a brand: a creator profile keeps the login, and a failed probe is
+  // never read as "no profile".
+  const creatorProfiles = await countOrThrow(
+    "creator_profiles",
+    adminClient
+      .from("creator_profiles")
+      .select("creator_account_id", { count: "exact", head: true })
+      .eq("creator_account_id", userId),
+  );
+  if (creatorProfiles > 0) return { remove: false, reason: "business_records_retained" };
   return { remove: true, reason: null };
 }
 

@@ -11,6 +11,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import { prepareBrandResearch } from "../_shared/ariBrandResearch.ts";
+import { withBrandSetupTools } from "../_shared/agentBrandSetupTools.ts";
 import {
   createClient,
   SupabaseClient,
@@ -2190,7 +2191,7 @@ async function handle(req: Request): Promise<Response> {
         confidence: intentResult.read.confidence,
         route: turnRoute.label,
         elapsed_ms: intentResult.elapsedMs,
-        // #3355 ship-prep: the prompt this turn runs (v29 with the switch off).
+        // #3355 ship-prep: the prompt this turn runs (v30 with the switch off).
         prompt_version: ariPromptVersionFor(understandFirst),
         understand_first: understandFirst,
       }),
@@ -2927,7 +2928,7 @@ async function handle(req: Request): Promise<Response> {
 
     // Build system prompt
     // #3355 ship-prep: the switch off builds origin/main's prompt verbatim
-    // (PROMPT_VERSION v29, agentSystemPromptLegacy.ts).
+    // (PROMPT_VERSION v30, agentSystemPromptLegacy.ts).
     const systemPrompt = buildAriTurnSystemPrompt(
       understandFirst,
       profile,
@@ -3745,6 +3746,12 @@ ${boundedAgentContext}
           websiteSetupBoundary ? 16 : 12,
           semanticMessage,
         );
+      // #4389 — no brand, or no bank country yet: the setup tools are always there.
+      selectedTools = withBrandSetupTools(
+        selectedTools,
+        turnTools,
+        activeBrand,
+      );
       // #3355 Wave E (E1): the tool the intent read named is always offered.
       const intentTargetTool = understandFirst && turnRoute.targetTool
         ? findTool(turnRoute.targetTool)

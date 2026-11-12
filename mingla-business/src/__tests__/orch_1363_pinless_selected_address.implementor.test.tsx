@@ -19,7 +19,7 @@ const generationGuardHosts = [
   "mingla-business/src/components/experience/ExperienceStopCard.tsx",
   "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx",
   "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
-  "mingla-business/src/components/brand/BrandCreationFlow.tsx",
+  "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
 ];
 
 describe("Issue #1363 pinless selected address", () => {

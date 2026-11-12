@@ -55,6 +55,20 @@ export const tapReaderProblemCopy = (problem: TapReaderProblem, os: string): str
 
 export const tapReaderProblemTitle = (os: string): string => `${tapToPayName(os)} didn't start`;
 
+/** #4389 — Apple's onboarding pre-alert, shown in setup before the system prompt. */
+export const TAP_LOCATION_PREALERT_COPY = {
+  title: "Allow location for card payments",
+  body: "Tap to Pay on iPhone uses your location to confirm where payments are taken. We only check it when you take a payment.",
+  cta: "Continue",
+} as const;
+
+/** #4389 — location refused: setup says why and opens Settings; checkout never asks. */
+export const TAP_LOCATION_DENIED_COPY = {
+  title: "Location is off for Mingla Host",
+  body: "Tap to Pay on iPhone uses your location to confirm where payments are taken. Turn on Location for Mingla Host in Settings, then come back.",
+  cta: "Open Settings",
+} as const;
+
 export const TAP_ADMIN_ONLY_COPY = {
   title: "Ask an admin to turn this on",
   body: "A brand owner or admin needs to accept Apple's terms for Tap to Pay on iPhone. Ask them to open Account, then Tap to Pay on iPhone, in Mingla Host.",
@@ -113,6 +127,10 @@ export const tapEducationRows = (os: string, options: { pinRow: boolean }): TapE
 export const TAP_HOW_TO_TAP_BUTTON = "Show How to Tap";
 export const TAP_HOW_TO_TAP_FAILED = "Couldn't show Apple's How to Tap guide. Try again.";
 export const TAP_ON_FOR_BRAND = "On for this brand";
+/** #4389 — the way out of "On for this brand". */
+export const TAP_DONE = "Done";
+/** #4389 — the other way out of "On for this brand", when an event is on now. */
+export const TAP_TAKE_PAYMENT = "Take a payment";
 
 export const TAP_CARD_NEEDS_INSERT_COPY = {
   title: "This card can't be tapped",
@@ -123,6 +141,19 @@ export const TAP_TIMED_OUT_COPY = {
   title: "Payment timed out",
   body: "No card was read. Nothing was charged.",
 } as const;
+
+/** #4389 — a decline is known: nothing was charged; the cart stays. */
+export const TAP_DECLINED_COPY = {
+  title: "Card declined",
+  body: "Nothing was charged. Try again or pick another way to pay.",
+} as const;
+
+/** #4389 — only when Stripe test mode refused a real card (test_mode_live_card). */
+export const TAP_TEST_MODE_LIVE_CARD_HINT =
+  "Test mode: real cards are always declined here. Use a test card.";
+
+export const tapDeclinedBody = (testModeLiveCard: boolean | undefined): string =>
+  testModeLiveCard === true ? `${TAP_DECLINED_COPY.body} ${TAP_TEST_MODE_LIVE_CARD_HINT}` : TAP_DECLINED_COPY.body;
 
 export const TAP_UNKNOWN_RESULT_COPY = {
   title: "Checking the payment",
@@ -145,3 +176,6 @@ export const TAP_SEND_RECEIPT = "Send receipt";
 
 /** Every Tap to Pay screen that isn't a success offers this; it opens Help & Support. */
 export const TAP_GET_HELP = "Get help";
+
+/** #4389 S-i — Tap to Pay has no usable card-payment address: open T1. */
+export const TAP_ADDRESS_MISSING_COPY = "Add the address where you'll take card payments";

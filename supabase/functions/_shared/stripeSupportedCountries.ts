@@ -10,7 +10,7 @@ export const STRIPE_SUPPORTED_COUNTRIES: readonly StripeSupportedCountry[] = [
   { country: "CH", defaultCurrency: "CHF" },
   { country: "AT", defaultCurrency: "EUR" },
   { country: "BE", defaultCurrency: "EUR" },
-  { country: "BG", defaultCurrency: "BGN" },
+  { country: "BG", defaultCurrency: "EUR" },
   { country: "CY", defaultCurrency: "EUR" },
   { country: "CZ", defaultCurrency: "CZK" },
   { country: "DE", defaultCurrency: "EUR" },

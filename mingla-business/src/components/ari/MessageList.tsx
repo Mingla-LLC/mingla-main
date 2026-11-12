@@ -31,6 +31,7 @@ import { AgentMessage } from "../../services/agentChatService";
 import { AriSentAttachments } from "./AriAttachmentCards";
 import { ChatBubble } from "./ChatBubble";
 import { ToolProposalCard } from "./ToolProposalCard";
+import { ARI_SETUP_COPY } from "./ariSetupCopy";
 import { ResponseCard } from "./ResponseCard";
 import { buildAnalyticsCardForTool } from "./ariAnalyticsResponseCard";
 import { QuickReplyChips } from "./QuickReplyChips";
@@ -144,6 +145,8 @@ export interface MessageListProps {
   accountId?: string | null;
   /** ORCH-1103 — receipt action pill seeds a composer message (never auto-creates). */
   onSeedMessage?: (text: string) => void;
+  /** #4389 A4 — a handoff card opens its app route (secure setup, door sale). */
+  onOpenRoute?: (route: string) => void;
   /**
    * ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip was tapped.
    * The chip's label is sent as a normal user turn (Q2 conversational feedback;
@@ -262,6 +265,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   brandNamesById = {},
   accountId = null,
   onSeedMessage,
+  onOpenRoute,
   onSendChoice,
   onRetryTurn,
   choicesDisabled = false,
@@ -662,7 +666,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           }
           const m = item.message;
           if (m.role === "tool") {
-            return renderToolResult(m, onSeedMessage, attachedCovers);
+            return renderToolResult(m, onSeedMessage, attachedCovers, onOpenRoute);
           }
           const text = (m.content as any)?.text ?? "";
           const attachments = ((m.content as { attachments?: unknown })
@@ -1287,12 +1291,39 @@ const THREAD_RECEIPT_TOOLS = new Set([
   "rollback_site",
 ]);
 
+/** #4389 A4 — the handoff card for a setup or door tool result, or null. */
+export function ariHandoffCard(
+  toolName: unknown,
+  result: unknown,
+): { title: string; body: string; cta: string; route: string | null } | null {
+  const r = (result ?? {}) as {
+    route?: unknown;
+    ready?: unknown;
+    requires_owner?: unknown;
+    missing?: unknown;
+  };
+  const route = typeof r.route === "string" && r.route.startsWith("/") ? r.route : null;
+  const C = ARI_SETUP_COPY.a4;
+  if (toolName === "start_payments_onboarding") {
+    if (r.requires_owner === true) return { title: C.secureTitle, body: C.owner, cta: C.open, route: null };
+    const missing = Array.isArray(r.missing) ? r.missing : [];
+    if (missing[0] === "money.market") return { title: C.countryTitle, body: C.countryBody, cta: C.countryCta, route };
+    if (missing.includes("money.terms_member")) return { title: C.termsTitle, body: C.termsBody, cta: C.termsCta, route };
+    return { title: C.secureTitle, body: C.secureBody, cta: C.open, route };
+  }
+  if (toolName === "start_door_sale" && route !== null) {
+    return { title: C.doorTitle, body: C.doorBody, cta: C.doorCta, route };
+  }
+  return null;
+}
+
 /** Generic successful reads stay in history for Ari, but not as visual rows. */
 export function toolResultNeedsThreadRow(toolResults: unknown): boolean {
   const tr = toolResults as any;
   const outcome = tr?.outcome ?? "executed";
   if (outcome === "failed") return confirmationFailureSentence(tr) !== null;
   if (outcome === "cancelled") return true;
+  if (ariHandoffCard(tr?.tool_name, tr?.result) !== null) return true;
   if (
     (tr?.tool_name === "create_brand" || tr?.tool_name === "update_brand") &&
     tr?.result?.brand?.name
@@ -1313,6 +1344,7 @@ function renderToolResult(
     string,
     { url: string | null; type: string | null }
   > = {},
+  onOpenRoute?: (route: string) => void,
 ): React.ReactElement | null {
   const tr = m.tool_results as any;
   const outcome = tr?.outcome ?? "executed";
@@ -1345,6 +1377,28 @@ function renderToolResult(
 
   // executed
   const r = tr?.result;
+
+  // #4389 A4 — payments and door sale handoffs: a card that opens the screen.
+  // Bank and ID details are never taken in chat.
+  const handoff = ariHandoffCard(tr?.tool_name, r);
+  if (handoff !== null) {
+    return (
+      <ResponseCard
+        eyebrow={handoff.title}
+        title={handoff.body}
+        rows={[]}
+        actions={
+          handoff.route !== null && onOpenRoute !== undefined
+            ? [{ id: "open", label: handoff.cta, primary: true }]
+            : undefined
+        }
+        state="default"
+        onAction={() => {
+          if (handoff.route !== null) onOpenRoute?.(handoff.route);
+        }}
+      />
+    );
+  }
 
   // ORCH-1103 — brand create/update render a ResponseCard receipt (real cover
   // thumbnail + rows + next-action) INSTEAD of the thin ribbon. Other tools

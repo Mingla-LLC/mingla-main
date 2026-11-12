@@ -7,7 +7,7 @@
  * The switch is the existing Ari rollout mechanism: a row in
  * `public.ari_runtime_versions` with `version_key = 'ari-understand-first-3355'`
  * and a row in `public.ari_rollouts` for it (both service-role only, from
- * migration 20280209003355). Migration 20280628153355 creates both, on for
+ * migration 20280209003355). Migration 20280702153355 creates both, on for
  * every brand; with no rows a brand keeps the earlier behaviour.
  *
  *   - Per brand (allow-list): a rollout with status `pilot`, `expanding` or
@@ -15,7 +15,7 @@
  *   - A share of brands: the same rollout with `rollout_percent` 1–99; a
  *     brand is in when its stable bucket (0–99, from its id) is below it.
  *   - Everyone: status `active` with `rollout_percent = 100`, or
- *     `audience.all = true`. Migration 20280628153355 seeds this (Seth,
+ *     `audience.all = true`. Migration 20280702153355 seeds this (Seth,
  *     2026-11-12: on for all brands at launch).
  *   - `completed` (the Improvement Lab's Complete) keeps its audience on.
  *   - Off again: set the rollout's status to `paused` or `rolled_back`.

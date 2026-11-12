@@ -105,6 +105,41 @@ function translate(
   ));
 }
 
+/**
+ * #4389 — host setup screens (brand setup, Door mode, Ari setup cards, Home
+ * setup) keep their English words next to the screens that use them, so the
+ * eager bundle does not grow. Each copy module registers its namespace (or
+ * its part of one) here as it loads, into the same English object the
+ * lookups and the fallback use; other languages carry the words in their own
+ * lazy hostSetup.json.
+ */
+export function registerBusinessEnglish(
+  tree: TranslationTree,
+  target: TranslationTree = en as unknown as TranslationTree,
+): void {
+  // A namespace may arrive in parts (one per screen chunk): merge, never replace.
+  for (const [key, words] of Object.entries(tree)) {
+    const current = target[key];
+    if (typeof words === "string") {
+      if (current === undefined) target[key] = words;
+    } else if (current === undefined) {
+      const part: TranslationTree = {};
+      target[key] = part;
+      registerBusinessEnglish(words, part);
+    } else if (typeof current !== "string") {
+      registerBusinessEnglish(words, current);
+    }
+  }
+}
+
+/**
+ * Translate outside a hook (copy modules read it while rendering). It uses the
+ * language the app is in at that moment and falls back to English.
+ */
+export function businessT(key: string, variables?: BusinessMediaVariables): string {
+  return translate(snapshot.language, snapshot.copy, key, variables);
+}
+
 async function loadCopy(language: BusinessMediaLanguage): Promise<TranslationTree> {
   const cached = cachedCopy[language];
   if (cached) return cached;

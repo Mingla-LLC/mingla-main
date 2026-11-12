@@ -3,6 +3,7 @@
 // (iOS 18+) supplies localized, up-to-date content; we present it, we don't
 // redraw it. Earlier iOS versions get the app's own setup explanation instead
 // (isAvailable() returns false).
+import CoreLocation
 import ExpoModulesCore
 import UIKit
 #if canImport(ProximityReader)
@@ -26,6 +27,19 @@ public class MinglaTapToPayEducationModule: Module {
       }
       #endif
       return false
+    }
+
+    // #4389 — Apple (Tap to Pay on iPhone requirements, Onboarding): location is
+    // asked during setup behind our own pre-alert, never in the checkout flow.
+    // "not_determined" | "denied" | "granted".
+    Function("locationAuthorization") { () -> String in
+      MinglaTapLocationRequester.describe(CLLocationManager().authorizationStatus)
+    }
+
+    AsyncFunction("requestLocationWhenInUse") { (promise: Promise) in
+      Task { @MainActor in
+        MinglaTapLocationRequester.shared.request { status in promise.resolve(status) }
+      }
     }
 
     AsyncFunction("showHowToTap") { (promise: Promise) in
@@ -63,5 +77,45 @@ public class MinglaTapToPayEducationModule: Module {
       top = presented
     }
     return top
+  }
+}
+
+/// #4389 — one "When In Use" request; answers once iOS has an answer.
+final class MinglaTapLocationRequester: NSObject, CLLocationManagerDelegate {
+  static let shared = MinglaTapLocationRequester()
+  private let manager = CLLocationManager()
+  private var pending: [(String) -> Void] = []
+
+  override init() {
+    super.init()
+    manager.delegate = self
+  }
+
+  static func describe(_ status: CLAuthorizationStatus) -> String {
+    switch status {
+    case .notDetermined: return "not_determined"
+    case .denied, .restricted: return "denied"
+    default: return "granted"
+    }
+  }
+
+  @MainActor
+  func request(_ done: @escaping (String) -> Void) {
+    let current = manager.authorizationStatus
+    if current != .notDetermined {
+      done(Self.describe(current))
+      return
+    }
+    pending.append(done)
+    if pending.count == 1 { manager.requestWhenInUseAuthorization() }
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    let status = manager.authorizationStatus
+    if status == .notDetermined { return }
+    let answer = Self.describe(status)
+    let waiting = pending
+    pending = []
+    waiting.forEach { $0(answer) }
   }
 }

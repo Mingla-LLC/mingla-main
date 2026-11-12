@@ -35,6 +35,7 @@ const ACTION_DOERS: Readonly<Record<ReadinessAction, string>> = Object.freeze({
   website_publish: "a brand admin or the owner",
   refund: "a finance manager, a brand admin or the owner",
   bank_setup: "the brand owner",
+  brand_setup: "the brand owner",
 });
 
 function blockerLine(

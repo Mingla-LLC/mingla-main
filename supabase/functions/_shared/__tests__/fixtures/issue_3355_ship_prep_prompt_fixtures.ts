@@ -1,6 +1,6 @@
 // #3355 ship-prep — fixture inputs for the rollout switch's off-path proof.
 // The digests in issue_3355_ship_prep_gating.implementor.test.ts were made by
-// running origin/main's (811c033211) buildSystemPrompt on exactly these
+// running origin/main's (7ace80fa0a; first made at 811c033211) buildSystemPrompt on exactly these
 // inputs. Keep this file free of imports so the same file runs against
 // origin/main's builder.
 

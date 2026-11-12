@@ -27,6 +27,9 @@ const TOOL_FILES = [
   "supabase/functions/_shared/agentAri10xTools.ts",
   // #3355 P2 — the canonical brand readiness read and its brand-wide "not now".
   "supabase/functions/_shared/agentReadinessTools.ts",
+  // #4389 — brand setup hand-offs (start_payments_onboarding, start_door_sale),
+  // composed into the registry through agentAri10xTools.ts (BRAND_SETUP_TOOLS).
+  "supabase/functions/_shared/agentBrandSetupTools.ts",
 ];
 const PROMPT_FILE = "supabase/functions/_shared/agentSystemPrompt.ts";
 

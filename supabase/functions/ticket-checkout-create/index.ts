@@ -157,6 +157,11 @@ import {
   resolveDoorPayCheckout,
 } from "./doorPayCheckout.ts";
 import { doorPayReturnUrl } from "../_shared/doorPay.ts";
+import {
+  assertVatCountryResolved,
+  BRAND_SETUP_INCOMPLETE,
+  vatCountryMissing,
+} from "../_shared/vatCountryGuard.ts";
 
 async function siteAttributionDigest(value: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -1760,6 +1765,8 @@ export const createTicketCheckoutCreateHandler = (
       let calculationId: string | null = null;
 
       if (provider.provider === "paystack") {
+        // #4389 — never 0% VAT for a brand with no VAT country.
+        assertVatCountryResolved(pricing, provider.provider);
         const configuredVat = computeConfigVat(
           subtotal.buyerSubtotalCents,
           pricing.vat_rate_bps ?? 0,
@@ -3713,6 +3720,11 @@ export const createTicketCheckoutCreateHandler = (
         paystack_subaccount_code: string | null;
         vat_rate_bps: number | null;
       };
+
+      // #4389 I-4389-NO-ZERO-VAT-FALLBACK — no VAT country, no checkout.
+      if (vatCountryMissing(pricing, "paystack")) {
+        return jsonResponse({ error: BRAND_SETUP_INCOMPLETE }, 409);
+      }
 
       // Currency must be NGN (Phase 1 = Nigeria only). Fail clean otherwise.
       const psCurrency = (providerRouting.currency || "NGN").toUpperCase();

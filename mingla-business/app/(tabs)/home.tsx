@@ -121,6 +121,26 @@ import { mostRecentDraftRoute } from "../../src/utils/homeNextAction";
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import { isScannerOnlyRank } from "../../src/utils/navTabGate";
 import { canViewBrandPayments } from "../../src/utils/brandPaymentsPermission";
+// #4389 — Home setup card (H1), one-time sheet (H2), Tap to Pay card and
+// "Take a payment" (HT).
+import { HomeSetupCard } from "../../src/components/home/HomeSetupCard";
+import {
+  DoorTodayLine,
+  TakePaymentButton,
+} from "../../src/components/home/HomeTakePayment";
+import { BRAND_SETUP_SHARED_COPY } from "../../src/components/brand/brandSetupSharedCopy";
+import { useBrandSetupChecklist } from "../../src/hooks/useBrandSetupChecklist";
+import { useDoorTodaySummary } from "../../src/hooks/useHomeTakePayment";
+import { useTapToPayWarmHint } from "../../src/hooks/useTapToPayWarmHint";
+import { useTapToPaySettingsEntry } from "../../src/hooks/useTapToPaySettingsEntry";
+import { openTapToPayAwareness } from "../../src/components/door/tap/TapToPayAwarenessModal";
+import {
+  homeSetupPromptKey,
+  useHomeSetupPromptStore,
+} from "../../src/store/homeSetupPromptStore";
+import { tapToPayBrandEligible } from "../../src/utils/tapToPayBrandEligible";
+import { tapToPayMayAcceptTerms } from "../../src/utils/brandRole";
+import { doorEventIdsToday, homeTapCardMode } from "../../src/utils/homeTakePayment";
 
 // #3355 — the brand switcher loads when the owner opens it, the way Hub,
 // Account and Marketing load it (#3493); a static import here, in the staff
@@ -135,6 +155,17 @@ const LazyBrandSwitcherSheet = React.lazy(async () => {
 const LazyBrandDeleteSheet = React.lazy(async () => {
   const mod = await import("../../src/components/brand/BrandDeleteSheet");
   return { default: mod.BrandDeleteSheet };
+});
+
+// #4389 — the Tap to Pay card (Apple's art) and the one-time setup sheet load
+// only when they show.
+const LazyHomeTapToPayCard = React.lazy(async () => {
+  const mod = await import("../../src/components/home/HomeTapToPayCard");
+  return { default: mod.HomeTapToPayCard };
+});
+const LazyHomeSetupPromptSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/home/HomeSetupPromptSheet");
+  return { default: mod.HomeSetupPromptSheet };
 });
 
 // The universal creator is an explicit + action, so keep its form and picker
@@ -202,7 +233,7 @@ export default function HomeTab(): React.ReactElement {
   const recentImpressionBrandRef = useRef<string | null>(null);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ recent?: string }>();
+  const params = useLocalSearchParams<{ recent?: string; toast?: string }>();
   const { isWideDesktop } = useResponsiveLayout();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -648,7 +679,134 @@ export default function HomeTab(): React.ReactElement {
   // ORCH-1038 — unified smart to-do list: derived from live state, ordered by
   // priority, auto-vanishing as conditions are met. Single source of truth shared
   // with Hub (useBusinessTodos).
-  const todos = useBusinessTodos();
+  const allTodos = useBusinessTodos();
+
+  // ── #4389 H1 / H2 / HT ────────────────────────────────────────────────
+  const homeBrandId = currentBrand?.id ?? null;
+  const setupChecklist = useBrandSetupChecklist(homeBrandId).data;
+  const setupIncomplete = setupChecklist !== undefined && !setupChecklist.facts.complete;
+  const paymentsReady = setupChecklist?.facts.complete === true;
+  // H1 is Home's own surface for the checklist; the To do row stays for Hub.
+  const todos = useMemo(
+    () => (setupIncomplete ? allTodos.filter((t) => t.id !== "finish_brand_setup") : allTodos),
+    [allTodos, setupIncomplete],
+  );
+  const promptHydrated = useHomeSetupPromptStore((st) => st.hasHydrated);
+  const promptKey =
+    user?.id != null && homeBrandId !== null ? homeSetupPromptKey(user.id, homeBrandId) : null;
+  const promptSeen = useHomeSetupPromptStore((st) =>
+    promptKey !== null ? st.promptSeen[promptKey] === true : true,
+  );
+  const tapNotNow = useHomeSetupPromptStore((st) =>
+    promptKey !== null ? st.tapNotNow[promptKey] === true : false,
+  );
+  const markPromptSeen = useHomeSetupPromptStore((st) => st.markPromptSeen);
+  const markTapNotNow = useHomeSetupPromptStore((st) => st.markTapNotNow);
+  // H2: once per device per brand, owners/admins only, an existing brand
+  // (not a draft in setup, not "free events only") with something missing.
+  const [promptOpenFor, setPromptOpenFor] = useState<string | null>(null);
+  const mayManageSetup = tapToPayMayAcceptTerms(callerRank);
+  useEffect(() => {
+    if (
+      !promptHydrated ||
+      promptKey === null ||
+      promptSeen ||
+      setupChecklist === undefined ||
+      setupChecklist.facts.complete ||
+      setupChecklist.facts.isDraft ||
+      setupChecklist.facts.freeOnlyAt !== null ||
+      setupChecklist.facts.waitingFor !== null ||
+      !mayManageSetup
+    ) {
+      return;
+    }
+    markPromptSeen(promptKey);
+    setPromptOpenFor(homeBrandId);
+  }, [homeBrandId, markPromptSeen, mayManageSetup, promptHydrated, promptKey, promptSeen, setupChecklist]);
+  const openSetup = useCallback((): void => {
+    if (homeBrandId === null) return;
+    router.push(`/brand/${homeBrandId}/setup` as never);
+  }, [homeBrandId, router]);
+
+  // HT — Tap to Pay card (moved out of Account) and "Take a payment".
+  const tapEntry = useTapToPaySettingsEntry(homeBrandId);
+  const tapEligible = tapEntry !== null && tapToPayBrandEligible(currentBrand);
+  const tapHint = useTapToPayWarmHint(tapEligible ? homeBrandId : null);
+  const tapCardMode = homeTapCardMode({
+    os: Platform.OS,
+    entryShown: tapEntry !== null,
+    brandEligible: tapEligible,
+    paymentsReady,
+    notNow: !promptHydrated || tapNotNow,
+    needsSetup: tapHint === false,
+    mayAcceptTerms: tapToPayMayAcceptTerms(callerRank),
+  });
+  const doorEventIds = useMemo(
+    () => (paymentsReady ? doorEventIdsToday(upcoming.liveItems, upcoming.items, new Date()) : []),
+    [paymentsReady, upcoming.items, upcoming.liveItems],
+  );
+  const doorToday = useDoorTodaySummary(doorEventIds);
+  const showTakePayment = homeBrandId !== null && paymentsReady && doorEventIds.length > 0;
+  const showHomeMessage = useCallback((message: string): void => {
+    setToast({ visible: true, message });
+  }, []);
+  // K1 → Home: "Saved. You can create free events. Set up your bank to sell tickets."
+  useEffect(() => {
+    if (params.toast !== "free_only") return;
+    setToast({ visible: true, message: BRAND_SETUP_SHARED_COPY.k1.toast });
+    router.setParams({ toast: undefined } as never);
+  }, [params.toast, router]);
+  // Lifetime revenue is the card payout ledger; door sales today may not be in it.
+  const hasDoorSalesToday = doorToday.count > 0;
+  // #4389 HT — full width at the bottom of the money panel (never the header).
+  const takePaymentButton = showTakePayment && homeBrandId !== null ? (
+    <TakePaymentButton
+      brandId={homeBrandId}
+      tapToPay={tapEligible}
+      variant="block"
+      onMessage={showHomeMessage}
+    />
+  ) : undefined;
+  // Constitution #10 — the sale's own currency, else the brand's; never a guess.
+  const doorTodayCurrency = doorToday.currency ?? currentBrand?.defaultCurrency ?? null;
+  const doorTodayLine =
+    showTakePayment && !doorToday.isLoading && doorTodayCurrency !== null ? (
+      <DoorTodayLine
+        count={doorToday.count}
+        totalMajor={doorToday.totalMajor}
+        currency={doorTodayCurrency}
+      />
+    ) : undefined;
+  const setupSection =
+    currentBrand !== null ? (
+      <>
+        <HomeSetupCard
+          brandName={currentBrand.displayName}
+          checklist={setupChecklist}
+          onContinue={openSetup}
+        />
+        {tapCardMode !== null && (Platform.OS === "ios" || Platform.OS === "android") ? (
+          <Suspense fallback={null}>
+            <LazyHomeTapToPayCard
+              mode={tapCardMode}
+              os={Platform.OS}
+              brandId={currentBrand.id}
+              brandName={currentBrand.displayName}
+              onGetStarted={() => {
+                // HT — Apple's awareness splash first, then setup.
+                if (openTapToPayAwareness(currentBrand.id)) return;
+                router.push(
+                  `/account/tap-to-pay?brandId=${encodeURIComponent(currentBrand.id)}` as never,
+                );
+              }}
+              onNotNow={() => {
+                if (promptKey !== null) markTapNotNow(promptKey);
+              }}
+            />
+          </Suspense>
+        ) : null}
+      </>
+    ) : null;
   // #3660 — every BusinessTodoAction kind must route through the shared
   // dispatcher. Pending invites push a dedicated Accept/Decline route so the
   // tap cannot fall through to Account/profile when local sheet state fails.
@@ -828,6 +986,7 @@ export default function HomeTab(): React.ReactElement {
       {currentBrand !== null && recent.state !== "empty" ? (
         <View style={styles.todoWrap}>
           <HomeAskAri onAskAri={handleAskAri} />
+          {/* #4389 (Seth): Take a payment lives only in the money panel. */}
         </View>
       ) : null}
 
@@ -863,6 +1022,7 @@ export default function HomeTab(): React.ReactElement {
             ) : null
           ) : (
             <>
+              {setupSection}
               <BusinessPulsePanel
                 brandId={currentBrand.id}
                 defaultCurrency={currentBrand.defaultCurrency ?? null}
@@ -872,6 +1032,9 @@ export default function HomeTab(): React.ReactElement {
                 liveMetricsById={liveMetricsById}
                 onScanPress={handleScanPress}
                 onOpenOffering={handleOpenPulseOffering}
+                moneyAction={takePaymentButton}
+                hasOtherSales={hasDoorSalesToday}
+                moneyFootnote={doorTodayLine}
               />
               <HomeAdsSection brandId={currentBrand.id} />
 
@@ -977,6 +1140,7 @@ export default function HomeTab(): React.ReactElement {
                   testID="business-todo-toggle"
                 />
               </View>
+              <View style={styles.setupWrap}>{setupSection}</View>
               <BusinessPulsePanel
                 brandId={currentBrand.id}
                 defaultCurrency={currentBrand.defaultCurrency ?? null}
@@ -986,6 +1150,9 @@ export default function HomeTab(): React.ReactElement {
                 liveMetricsById={liveMetricsById}
                 onScanPress={handleScanPress}
                 onOpenOffering={handleOpenPulseOffering}
+                moneyAction={takePaymentButton}
+                hasOtherSales={hasDoorSalesToday}
+                moneyFootnote={doorTodayLine}
               />
               <HomeAdsSection brandId={currentBrand.id} />
               <View style={styles.mobileRecentHeaderWrap}>
@@ -1060,6 +1227,21 @@ export default function HomeTab(): React.ReactElement {
         </Suspense>
       ) : null}
 
+      {promptOpenFor !== null && promptOpenFor === homeBrandId && setupChecklist !== undefined && currentBrand !== null ? (
+        <Suspense fallback={null}>
+          <LazyHomeSetupPromptSheet
+            visible
+            brandName={currentBrand.displayName}
+            facts={setupChecklist.facts}
+            onLater={() => setPromptOpenFor(null)}
+            onFinish={() => {
+              setPromptOpenFor(null);
+              openSetup();
+            }}
+          />
+        </Suspense>
+      ) : null}
+
       {deleteSheetVisible ? (
         <Suspense fallback={null}>
           <LazyBrandDeleteSheet
@@ -1119,6 +1301,10 @@ const styles = StyleSheet.create({
   todoWrap: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
+  },
+  // #4389 — H1 card + Tap to Pay card, between To do and the money panel.
+  setupWrap: {
+    paddingHorizontal: spacing.md,
   },
   scroll: {
     paddingHorizontal: spacing.md,

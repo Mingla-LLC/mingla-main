@@ -258,7 +258,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 rework 7: register the retest 7 payout readiness callers PostgreSQL proof in the #1931 and #2117 replay lanes; re-sealed.
 // #3355 rework 8: merged origin/main 811c033211 (#4398 rows kept) and renumbered the fourteen #3355 migrations to 20280628013355 … 20280628143355 (above main's 20280626044398), in order; re-sealed.
 // #3355 final fix: register 20280628153355 (Ari understands first on for all brands, idempotent) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
-export const BOOTSTRAP_SHA256 = "44363785c2a8af094d9e9d46e86d70cb54fdcbe94c85b33e64ef05d104cb6afe";
+// #4389: re-sealed after registering the four #4389 migrations (renumbered 20280629*4389, above main's 20280626*4398) and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes, skipping the brand setup migration in the #1931 template replay, and merging origin/main 811c033211.
+// #4389: re-sealed after skipping the brand setup and Ari brand operation migrations in the #2117 pre-landing replay (they re-emit #2117-gated readers before #2117 lands there).
+// #4389: re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows) and renumbering the four #4389 migrations to 20280701*4389 (above main's 20280630004402).
+// #3355 merge of #4404 (origin/main 7ace80fa0a; #4389 and #4402 rows kept beside the #3355 rows): renumbered the fifteen #3355 migrations to 20280702013355 … 20280702153355 (above main's 20280701304389), in order; re-sealed.
+export const BOOTSTRAP_SHA256 = "14bf5c3bee60e5fe39dab4e3cfe871b4157b7e33ddd35d8411b10e196dcd9cdf";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

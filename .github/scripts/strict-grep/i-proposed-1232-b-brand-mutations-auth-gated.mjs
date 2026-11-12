@@ -175,25 +175,61 @@ for (const hook of ["useCreateBrand", "useUpdateBrand", "useCreateVenueBrand"]) 
   }
 }
 
-// 2 — both CTAs in BrandCreationFlow.tsx gate on !isAuthReady.
-const flowSrc = stripComments(read(`${BIZ}/components/brand/BrandCreationFlow.tsx`));
+// 2 — both CTAs gate on !isAuthReady.
+// #4389: the self setup (BrandCreationFlow.tsx: F1 Name, F2 Bank country)
+// replaced the old wizard, which lives on as PartnerClientBrandCreationFlow.tsx
+// (partner Step 0 + client mode). Both are gated: the partner flow keeps its
+// create/address CTAs; the setup gates F1 create and F2 bank country (the
+// write that replaced the address step), and its two service writes await a
+// real attached session.
+const partnerSrc = stripComments(read(`${BIZ}/components/brand/PartnerClientBrandCreationFlow.tsx`));
 const CREATE_CTA_RE = /createBrandMutation\.isPending[\s\S]{0,80}!isAuthReady/;
 const ADDRESS_CTA_RE = /updateBrandMutation\.isPending[\s\S]{0,80}!isAuthReady/;
-if (CREATE_CTA_RE.test(flowSrc)) {
-  ok("create-cta-gated", "create CTA is disabled while !isAuthReady");
+if (CREATE_CTA_RE.test(partnerSrc)) {
+  ok("create-cta-gated", "partner flow create CTA is disabled while !isAuthReady");
 } else {
   fail(
     "create-cta-gated",
-    "BrandCreationFlow create CTA is not gated on !isAuthReady (SPEC §2 C2).",
+    "PartnerClientBrandCreationFlow create CTA is not gated on !isAuthReady (SPEC §2 C2).",
   );
 }
-if (ADDRESS_CTA_RE.test(flowSrc)) {
-  ok("address-cta-gated", "address CTA is disabled while !isAuthReady");
+if (ADDRESS_CTA_RE.test(partnerSrc)) {
+  ok("address-cta-gated", "partner flow address CTA is disabled while !isAuthReady");
 } else {
   fail(
     "address-cta-gated",
-    "BrandCreationFlow address CTA is not gated on !isAuthReady (SPEC §2 C2).",
+    "PartnerClientBrandCreationFlow address CTA is not gated on !isAuthReady (SPEC §2 C2).",
   );
+}
+
+const flowSrc = stripComments(read(`${BIZ}/components/brand/BrandCreationFlow.tsx`));
+const SETUP_AUTH_PROP_RE = /authReady=\{isAuthReady && user !== null\}/g;
+const SETUP_CREATE_RE = /const disabled = [^;]*!authReady[^;]*create\.isPending/;
+const SETUP_COUNTRY_RE = /testID="brand-setup-country-continue"[^\n]*!authReady/;
+if ((flowSrc.match(SETUP_AUTH_PROP_RE) ?? []).length >= 2 && SETUP_CREATE_RE.test(flowSrc)) {
+  ok("setup-create-cta-gated", "setup F1 create CTA is disabled while !isAuthReady");
+} else {
+  fail("setup-create-cta-gated", "BrandCreationFlow F1 create CTA is not gated on !isAuthReady (SPEC §2 C2).");
+}
+if (SETUP_COUNTRY_RE.test(flowSrc)) {
+  ok("setup-country-cta-gated", "setup F2 bank-country CTA is disabled while !isAuthReady");
+} else {
+  fail("setup-country-cta-gated", "BrandCreationFlow F2 bank-country CTA is not gated on !isAuthReady (SPEC §2 C2).");
+}
+const setupServiceSrc = stripComments(read(`${BIZ}/services/brandSetupService.ts`));
+for (const fn of ["createSetupBrand", "setBrandPayoutCountry"]) {
+  const start = setupServiceSrc.indexOf(`export async function ${fn}`);
+  const body = start < 0 ? "" : setupServiceSrc.slice(start, setupServiceSrc.indexOf("\n}\n", start));
+  const gate = body.search(AWAIT_SESSION_ATTACHED_RE);
+  const write = body.indexOf("supabase.rpc(");
+  if (gate >= 0 && write > gate) {
+    ok("setup-session-attached", `${fn} awaits a REAL attached session token before the write`);
+  } else {
+    fail(
+      "setup-session-attached",
+      `${fn} does NOT await awaitSessionAttached(() => supabase.auth.getSession()) before its RPC.`,
+    );
+  }
 }
 
 if (failures > 0) {

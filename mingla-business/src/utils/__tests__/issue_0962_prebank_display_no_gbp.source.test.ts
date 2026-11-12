@@ -42,8 +42,9 @@ describe("#962 R4 (source shape) — no fabricated GBP on the screen surfaces", 
     expect(src).not.toContain('event.currency ?? "GBP"');
   });
 
-  test("G5 DoorSaleNewSheet.tsx — paid record gated on a set currency, no GBP freeze", () => {
-    const src = read("src/components/door/DoorSaleNewSheet.tsx");
+  test("G5 DoorModeScreen.tsx — paid record gated on a set currency, no GBP freeze", () => {
+    // #4389: Door mode replaced DoorSaleNewSheet and keeps the same gate.
+    const src = read("src/components/door/DoorModeScreen.tsx");
     expect(src).toContain("eventCurrencyCode !== null");
     // [TEST-MOD-APPROVED #4063] The durable door-sale RPC derives currency
     // from the locked event row. The client still refuses pre-bank submission,

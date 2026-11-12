@@ -105,7 +105,13 @@ export type TapSaleState =
   | { kind: "saving"; amount: TapAmount }
   | { kind: "approved"; amount: TapAmount; result: DoorTapCompleteResult; cardLabel: string | null }
   | { kind: "needs_pin"; amount: TapAmount }
-  | { kind: "declined"; amount: TapAmount; cardLabel: string | null }
+  | {
+      kind: "declined";
+      amount: TapAmount;
+      cardLabel: string | null;
+      /** #4389 — Stripe test mode refused a real card (decline_code test_mode_live_card). Test mode only. */
+      testModeLiveCard?: boolean;
+    }
   | { kind: "timed_out"; amount: TapAmount }
   | { kind: "unknown_result"; amount: TapAmount }
   | { kind: "cancelled"; amount: TapAmount }
@@ -207,6 +213,10 @@ const READER_PROBLEMS: ReadonlySet<string> = new Set<TapReaderProblem>([
 
 export const isTapReaderProblem = (kind: TerminalFailureKind): kind is TapReaderProblem =>
   READER_PROBLEMS.has(kind);
+
+/** #4389 — Stripe test mode refuses real cards with this decline code. */
+export const isTestModeLiveCardDecline = (error: TerminalErrorLike): boolean =>
+  (error.apiError?.declineCode ?? "").toLowerCase() === "test_mode_live_card";
 
 export const classifyTerminalError = (error: TerminalErrorLike): TerminalFailureKind => {
   const native = error.nativeErrorCode === undefined ? undefined : NATIVE_KINDS[String(error.nativeErrorCode)];
@@ -794,7 +804,12 @@ export class TapToPaySaleFlow {
     }
     if (kind === "needs_pin") this.emit({ kind: "needs_pin", amount });
     else if (kind === "declined") {
-      this.emit({ kind: "declined", amount, cardLabel: cardLabelFor(error.paymentIntent ?? this.paymentIntent ?? undefined) });
+      this.emit({
+        kind: "declined",
+        amount,
+        cardLabel: cardLabelFor(error.paymentIntent ?? this.paymentIntent ?? undefined),
+        ...(isTestModeLiveCardDecline(error) ? { testModeLiveCard: true } : {}),
+      });
     } else if (kind === "timed_out") this.emit({ kind: "timed_out", amount });
     else if (kind === "cancelled") this.emit({ kind: "cancelled", amount });
     else this.emit({ kind: "failed", message: fallbackMessage });
@@ -860,10 +875,20 @@ export class TapToPaySaleFlow {
       // unknown and the answer is to confirm the same intent again. "Nothing was
       // charged" is only true when Stripe says it needs a new card, so anything
       // else (processing included) may not say that or offer a second way to pay.
+      // #4389 — a decline Stripe itself answered (a card_error or a decline
+      // code on the error) is KNOWN even when the SDK sends no PaymentIntent
+      // back: nothing was charged. Seen with a real card in test mode
+      // (test_mode_live_card), which sat on "Checking the payment" for ever.
+      // An error code alone (no Stripe answer) stays unknown.
+      const stripeAnsweredDecline =
+        error.code !== "REQUEST_TIMED_OUT" &&
+        (after === undefined || after.status === "requires_payment_method") &&
+        (error.apiError?.type === "card_error" || (error.apiError?.declineCode ?? "").length > 0);
       if (
-        error.code === "REQUEST_TIMED_OUT" ||
-        (after !== undefined && after.status !== "requires_payment_method") ||
-        (after === undefined && classifyTerminalError(error) !== "needs_pin")
+        !stripeAnsweredDecline &&
+        (error.code === "REQUEST_TIMED_OUT" ||
+          (after !== undefined && after.status !== "requires_payment_method") ||
+          (after === undefined && classifyTerminalError(error) !== "needs_pin"))
       ) {
         this.emit({ kind: "unknown_result", amount });
         return;

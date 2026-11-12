@@ -31,6 +31,7 @@ import { useTodoToggleCollapseStore } from "../store/todoToggleCollapseStore";
 import { useAriConversationSelectionStore } from "../store/ariConversationSelectionStore";
 import { useBusinessRecentStore } from "../store/businessRecentStore";
 import { useFirstRunStore } from "../store/firstRunStore";
+import { useHomeSetupPromptStore } from "../store/homeSetupPromptStore";
 import { useAriSeedStore } from "../store/ariSeedStore";
 import { clearBrandPhoneSessionCountries } from "./brandPhoneSessionCountries";
 import { clearDraftServerCurrencies } from "./draftServerCurrency";
@@ -55,6 +56,7 @@ export const clearAllStores = (): void => {
   useAriConversationSelectionStore.getState().reset(); // #1985 — account+brand Ari pointer must not survive sign-out
   useBusinessRecentStore.getState().reset(); // #2794 — account+brand Recent pointer queue must not survive sign-out
   useFirstRunStore.getState().reset(); // #4304 — first-run unlock + remembered intent are per account
+  useHomeSetupPromptStore.getState().reset(); // #4389 — Home setup prompt + Tap to Pay "Not now"
   useAriSeedStore.getState().reset(); // #4304 — Home → Ari composer hand-off text
   clearBrandPhoneSessionCountries(); // #3380 — the remembered phone-country picks are per account
   // #3645 — what the server said about a draft's currency, and any "prices

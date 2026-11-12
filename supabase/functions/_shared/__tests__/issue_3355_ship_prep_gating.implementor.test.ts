@@ -1,8 +1,8 @@
 // #3355 ship-prep — with the "Ari understands first" rollout switch OFF for a
-// brand, Ari runs as production does today (origin/main 811c033211). This
+// brand, Ari runs as production does today (origin/main 7ace80fa0a, #4389 included). This
 // pins the off path:
 //   1. the system prompt is byte-identical to origin/main's builder output,
-//      the tool declarations are origin/main's (same 185 tools, order,
+//      the tool declarations are origin/main's (same 187 tools, order,
 //      descriptions and schemas), and the per-turn tool selection matches;
 //   2. the Feature Guide search tool and its pre-answer / refusal guard are
 //      offered and enforced only with the switch on;
@@ -13,7 +13,7 @@
 // The digests were made by running origin/main's buildSystemPrompt and
 // AGENT_TOOLS on the fixtures in fixtures/issue_3355_ship_prep_prompt_fixtures.ts.
 //
-// MINGLA-INVARIANT: I-ARI-ROLLOUT-OFF-IS-MAIN | issue #3355 | With the rollout switch off, agent-chat's system prompt is byte-identical to origin/main's builder (PROMPT_VERSION v29) for the same inputs, and the turn offers origin/main's tool declarations without search_mingla_guide (enforced by supabase/functions/_shared/__tests__/issue_3355_ship_prep_gating.implementor.test.ts).
+// MINGLA-INVARIANT: I-ARI-ROLLOUT-OFF-IS-MAIN | issue #3355 | With the rollout switch off, agent-chat's system prompt is byte-identical to origin/main's builder (PROMPT_VERSION v30) for the same inputs, and the turn offers origin/main's tool declarations without search_mingla_guide (enforced by supabase/functions/_shared/__tests__/issue_3355_ship_prep_gating.implementor.test.ts).
 // MINGLA-INVARIANT: I-ARI-GUIDE-ONLY-WHEN-ON | issue #3355 | search_mingla_guide is offered, pre-read and forced (refusal recovery, stuck-host reads) only when the rollout switch covers the turn's brand (enforced by supabase/functions/_shared/__tests__/issue_3355_ship_prep_gating.implementor.test.ts).
 
 import {
@@ -56,19 +56,19 @@ import { classifyOfferingIntent } from "../ariFlows/index.ts";
 import { brandCanWaitStep } from "../ariFlows/brandGate.ts";
 import type { FlowContext } from "../ariFlows/types.ts";
 
-/** origin/main 811c033211, buildSystemPrompt on each fixture (sha-256). */
+/** origin/main 7ace80fa0a, buildSystemPrompt on each fixture (sha-256). */
 const MAIN_PROMPT_DIGESTS: Record<string, string> = {
   "owner with an active brand, offerings and a task":
-    "3f5c95c46291d505678c6b42e6f25ad656395062b708b572a6d31108861adcab",
+    "5f8923ea6c2e3443057c8954b542aac583e8de37ccc2155eddb1c693092d73ae",
   "no profile, no brands, first run, injection reminder":
-    "9e05be6fe235f08629bf7022dd0146304342688de28848aed93011857b827fe8",
+    "fa252906f21dab156d2c10978cca6648670dc9ade07f14c6d81b12841b138154",
   "teammate, payout ready, legacy unscoped summary":
-    "55f3ed26508148425373815a1aa05625c6ed48db1105762a32cc3900192b5917",
+    "65e687c809e6f14987a74fe1736558083c2552ab8a2a613ea0fa8b79f4ef6da4",
 };
 /** origin/main's AGENT_TOOLS as declared to the model (sha-256 of the JSON). */
 const MAIN_DECLARATIONS_DIGEST =
-  "3a3520d0e4901af18ef92d9558969d69353366cb58e4fa5f21fdcd08b927c485";
-const MAIN_DECLARATION_COUNT = 185;
+  "72e6c9b02d8039292d87233052bdf10391fab46adb3a7da7c1570c3b9ea7e844";
+const MAIN_DECLARATION_COUNT = 187;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {
   "Create a discount code FAVY10 for 10% off until 19 December": [
@@ -219,8 +219,8 @@ Deno.test("ship-prep 1: switch OFF builds a prompt byte-identical to origin/main
       fixture.name,
     );
   }
-  assertEquals(LEGACY_PROMPT_VERSION, "v29");
-  assertEquals(ariPromptVersionFor(false), "v29");
+  assertEquals(LEGACY_PROMPT_VERSION, "v30");
+  assertEquals(ariPromptVersionFor(false), "v30");
 });
 
 Deno.test("ship-prep 1: switch ON builds the current prompt, which differs", async () => {

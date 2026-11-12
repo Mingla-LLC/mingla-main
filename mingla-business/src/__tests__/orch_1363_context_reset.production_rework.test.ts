@@ -13,7 +13,7 @@ describe("Issue #1363 production rework — stale hierarchy context", () => {
   test.each([
     ["components/venue/VenueStep1Address.tsx", "savedContextRef", 3],
     ["components/experience/ExperienceStopCard.tsx", "savedContextRef", 3],
-    ["components/brand/BrandCreationFlow.tsx", "savedContextRef", 4],
+    ["components/brand/PartnerClientBrandCreationFlow.tsx", "savedContextRef", 4],
   ])("%s clears saved city/country on edit, X, and Clear", (file, ref, minimum) => {
     const body = source(`mingla-business/src/${file}`);
     const resets = count(

@@ -23,7 +23,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import type { CoverPatch } from "../ui/CoverPicker";

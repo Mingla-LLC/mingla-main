@@ -205,20 +205,32 @@ export function firstRunGreeting(args: {
   displayName: string | null | undefined;
   brandName: string | null | undefined;
   remembered: FirstRunIntent | null;
+  /**
+   * #4389 — brand_readiness(brand_setup).complete for this brand. Only a
+   * complete setup may be called "set up"; anything else (unknown, loading,
+   * 2 of 4, free events only) says the brand was created and what is next.
+   */
+  setupComplete?: boolean;
 }): FirstRunGreetingCopy {
   if (args.stage === "no_brand") {
     const first = firstNameOf(args.displayName);
     return {
-      headline: `${first ? `Hi ${first}.` : "Hi."} Let's get your business on Mingla.`,
-      body: "First we set up your brand: name, logo and where you host. It takes about two minutes, and I'll do the typing.",
+      // #4389 A1 — the approved first-landing words (never "business").
+      headline: `${first ? `Hi ${first}.` : "Hi."} Let's get your account ready to take bookings.`,
+      body: "It takes about 3 minutes: your brand name, your bank country, then payments. I'll guide you.",
       placeholder: "Tell Ari about your business…",
       chips: [...NO_BRAND_CHIPS],
     };
   }
   const brand = (args.brandName ?? "").trim() || "Your brand";
+  const setupComplete = args.setupComplete === true;
   return {
-    headline: `${brand} is set up. What are you hosting first?`,
-    body: "Tell me the idea in a sentence. I'll draft it, and you check it before anything goes public.",
+    headline: setupComplete
+      ? `${brand} is set up. What are you hosting first?`
+      : `${brand} was created. What are you hosting first?`,
+    body: setupComplete
+      ? "Tell me the idea in a sentence. I'll draft it, and you check it before anything goes public."
+      : "Next, finish setup to take payments. Or tell me the idea in a sentence and I'll draft it for you to check.",
     placeholder: "e.g. Rooftop party, 15 Nov",
     chips: emptyBrandChips(args.remembered),
   };

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4389_country_map_parity.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4389-country-map-parity-implementor",
+  "profile": "deno-2-unit"
+}

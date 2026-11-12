@@ -33,6 +33,8 @@ import {
   TAP_PROCESSING_TEXT,
   TAP_SEND_RECEIPT,
   TAP_TIMED_OUT_COPY,
+  TAP_DECLINED_COPY,
+  tapDeclinedBody,
   TAP_UNKNOWN_RESULT_COPY,
   tapPaidAfterCloseCopy,
   tapToPayName,
@@ -79,8 +81,9 @@ import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
 import { DoorStatusPill } from "../DoorStatusPill";
 import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
-import { TapStatusView, type TapStatusAction } from "./TapStatusView";
+import { TapNotReady, TapStatusView, type TapStatusAction } from "./TapStatusView";
 import { TAP_SAVE_FAILED_PAID_LINE, tapSaleTone } from "./tapSaleTone";
+import { tapLocationReadyForSale } from "../../../services/terminal/tapToPayIosLocation";
 import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
 import { TapConfiguringView } from "./TapConfiguringView";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
@@ -113,6 +116,8 @@ export const TapToPaySaleScreen = ({
     brand: route.brand,
     currency: route.event?.currency ?? route.brand?.defaultCurrency ?? null,
   });
+  // #4389 — Apple: never a location prompt mid-checkout; setup asks first.
+  const locationReady = useMemo(() => tapLocationReadyForSale(), []);
   const terminal = useTapToPayTerminal();
   const [state, setState] = useState<TapSaleState>({ kind: "idle" });
   const [payCodeBusy, setPayCodeBusy] = useState<boolean>(false);
@@ -148,13 +153,21 @@ export const TapToPaySaleScreen = ({
 
   // Setup comes first, once per phone. The draft travels with it.
   useEffect(() => {
-    if (draft !== null && availability.available && (availability.needsSetup || state.kind === "needs_setup")) {
+    // #4389 — never on a setup answer that is still being read (a phone that
+    // set up this brand would be sent back to setup on every cold open).
+    if (
+      draft !== null &&
+      availability.available &&
+      ((availability.needsSetup && availability.checking !== true) ||
+        state.kind === "needs_setup" ||
+        !locationReady)
+    ) {
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(
         `/event/${eventId}/door/tap/setup?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
       );
     }
-  }, [draft, availability.available, availability.needsSetup, state.kind, router, eventId]);
+  }, [draft, availability.available, availability.needsSetup, availability.checking, state.kind, locationReady, router, eventId]);
 
   // Start the sale once the reader session is ready.
   useEffect(() => {
@@ -163,6 +176,7 @@ export const TapToPaySaleScreen = ({
       !availability.available ||
       availability.reason === "ios_update_required" ||
       availability.needsSetup ||
+      !locationReady ||
       terminal.status !== "ready" ||
       terminal.client === null ||
       flowRef.current !== null
@@ -194,7 +208,7 @@ export const TapToPaySaleScreen = ({
     });
     flowRef.current = flow;
     void flow.start();
-  }, [draft, availability.available, availability.needsSetup, terminal.status, terminal.client, eventId, queryClient]);
+  }, [draft, availability.available, availability.needsSetup, locationReady, terminal.status, terminal.client, eventId, queryClient]);
 
   // A phone that slept on the ready screen: the flow rechecks the intent's age.
   useEffect(() => {
@@ -277,7 +291,7 @@ export const TapToPaySaleScreen = ({
     // The next guest is someone else: keep the tickets and date, never this
     // guest's name or phone.
     router.replace(
-      `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeTapToPayDraft(sellAnotherDraft(draft)))}` as never,
+      `/event/${eventId}/door/sell?source=sell_another&draft=${encodeURIComponent(encodeTapToPayDraft(sellAnotherDraft(draft)))}` as never,
     );
   }, [draft, eventId, router, goToDoor]);
 
@@ -364,13 +378,15 @@ export const TapToPaySaleScreen = ({
         availability.reason === "no_card_payments" ||
         availability.reason === "no_brand"
       ) {
+        // #4389 — finish setup (no payment account yet) vs truly unavailable.
+        const saleBrandId = route.brand?.id ?? null;
         return (
-          <TapStatusView
-            tone="neutral"
-            icon={Platform.OS === "ios" ? "globe" : "tap"}
-            title={`${tapToPayName(Platform.OS)} isn't available here`}
-            body="This brand can't take taps. Use a pay code instead. It works on any phone."
-            primary={{ label: "Use a pay code", onPress: () => void showPayCodeInstead(), loading: payCodeBusy }}
+          <TapNotReady
+            reason={availability.reason}
+            os={Platform.OS}
+            onFinishSetup={saleBrandId !== null ? () => router.push(`/brand/${saleBrandId}/setup?step=pay` as never) : null}
+            onUsePayCode={() => void showPayCodeInstead()}
+            payCodeBusy={payCodeBusy}
             onHelp={openHelp}
             testID="tap-state-not_available"
           />
@@ -473,8 +489,8 @@ export const TapToPaySaleScreen = ({
         return (
           <TapStatusView
             tone={tapSaleTone("declined")}
-            title="Card declined"
-            body="Their bank said no. Nothing was charged."
+            title={TAP_DECLINED_COPY.title}
+            body={tapDeclinedBody(state.testModeLiveCard)}
             primary={{
               label: "Try another card",
               onPress: () => void flowRef.current?.tryAnotherCard(),

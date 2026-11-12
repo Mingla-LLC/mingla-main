@@ -1,5 +1,5 @@
 -- Issue #3355 rework 6 — payout readiness is answered only for brand members
--- (enforced by 20280628143355_issue_3355_scope_payout_readiness_to_members.sql).
+-- (enforced by 20280702143355_issue_3355_scope_payout_readiness_to_members.sql).
 --
 --   P1  the brand owner and an accepted scanner get the readiness answer
 --       (true for a brand with a payout account, false for one without);
@@ -8,7 +8,7 @@
 --   P3  a signed-in user can no longer EXECUTE pg_brand_can_payout directly;
 --   P4  the service role keeps both, and brand_readiness (a SECURITY DEFINER
 --       caller of the predicate) still reports can_be_paid_out for a member.
--- Reverting 20280628143355 raises P2 (the outsider is answered) and P3.
+-- Reverting 20280702143355 raises P2 (the outsider is answered) and P3.
 
 \set ON_ERROR_STOP on
 BEGIN;

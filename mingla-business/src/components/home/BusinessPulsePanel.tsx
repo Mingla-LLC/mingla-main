@@ -81,6 +81,21 @@ export interface BusinessPulsePanelProps {
   liveMetricsById: Record<string, LiveCardMetrics>;
   onScanPress: (id: string) => void;
   onOpenOffering: (item: UpcomingItem) => void;
+  /** #4389 HT — "At the door today · …" under the revenue figure. */
+  moneyFootnote?: React.ReactNode;
+  /**
+   * #4389 HT — "Take a payment": a full-width button at the bottom of the
+   * money panel (Home decides when). Never in the header.
+   */
+  moneyAction?: React.ReactNode;
+  /**
+   * #4389 — sales exist that the lifetime figure does not count yet (today's
+   * door sales). Lifetime revenue is the card payout ledger, so it excludes
+   * cash / paid-another-way sales and a card sale until it is processed. When
+   * true the panel never says "Your first sale will show here" and names
+   * the figure "From card sales".
+   */
+  hasOtherSales?: boolean;
 }
 
 const offeringName = (item: UpcomingItem): string => {
@@ -535,6 +550,9 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
   liveMetricsById,
   onScanPress,
   onOpenOffering,
+  moneyFootnote,
+  moneyAction,
+  hasOtherSales = false,
 }) => {
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
@@ -676,7 +694,7 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
       testID="business-pulse-money"
     >
       <View style={styles.moneyHeadline}>
-        <View style={styles.zoneHeading}>
+        <View style={styles.zoneHeading} testID="business-pulse-money-header">
           <Text style={styles.eyebrow}>TOTAL LIFETIME REVENUE</Text>
           <Text style={styles.zoneChevron}>›</Text>
         </View>
@@ -688,11 +706,19 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
           <Text style={[styles.moneyAmount, !isWideDesktop && styles.moneyAmountPhone]}>—</Text>
         ) : (
           <>
-            <Text style={[styles.moneyAmount, !isWideDesktop && styles.moneyAmountPhone]}>
+            <Text
+              style={[
+                styles.moneyAmount,
+                !isWideDesktop && styles.moneyAmountPhone,
+                moneyAction !== undefined && styles.moneyAmountRoomy,
+              ]}
+            >
               {formatCurrencyRound(lifetime, currency, true)}
             </Text>
-            {lifetime === 0 ? (
-              <Text style={styles.subline}>Your first sale will show here</Text>
+            {hasOtherSales ? (
+              <Text style={styles.subline} testID="business-pulse-card-sales">From card sales</Text>
+            ) : lifetime === 0 ? (
+              <Text style={styles.subline} testID="business-pulse-first-sale">Your first sale will show here</Text>
             ) : null}
             {otherCurrencies.map(([code, amount]) => (
               <Text key={code} style={styles.subline}>
@@ -701,6 +727,7 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
             ))}
           </>
         )}
+        {moneyFootnote}
       </View>
       {showMoneyRows ? <View
         style={[
@@ -738,6 +765,11 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
           </>
         )}
       </View> : null}
+      {moneyAction !== undefined ? (
+        <View style={styles.moneyAction} testID="business-pulse-money-action">
+          {moneyAction}
+        </View>
+      ) : null}
     </Pressable>
   ) : null;
 
@@ -991,6 +1023,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   moneyAmountPhone: { fontSize: 38, lineHeight: 44, letterSpacing: -0.76 },
+  // #4389 HT — breathing room around the figure when the panel carries
+  // Take a payment (Seth: "more breathing room").
+  moneyAmountRoomy: { marginTop: spacing.md, marginBottom: spacing.xs },
+  // Full width inside the panel's padding, spacing.lg under the door line.
+  moneyAction: { alignSelf: "stretch", marginTop: spacing.lg, paddingBottom: spacing.md },
   moneySkeleton: { marginTop: spacing.sm },
   subline: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.xs },
   moneyRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },

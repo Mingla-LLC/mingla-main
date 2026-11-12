@@ -66,7 +66,7 @@ import type { DeckReadinessFocus } from "../../utils/deckReadinessRoutes";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
 import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 
 /** #3655 — best-effort remove of staged/replaced cover storage objects. */

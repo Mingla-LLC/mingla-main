@@ -52,6 +52,10 @@ export interface PlaceDetails {
    */
   featureType?: string | null;
   provider?: "google";
+  /** #4389 (additive) — street line ("1520 N Milwaukee Ave") or null. */
+  line1?: string | null;
+  /** #4389 (additive) — postal code / ZIP or null. */
+  postalCode?: string | null;
 }
 
 export interface SavedLocationContext {

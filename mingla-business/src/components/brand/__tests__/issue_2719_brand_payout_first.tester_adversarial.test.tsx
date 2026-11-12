@@ -2,7 +2,7 @@ import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
 import { StyleSheet } from "react-native";
 
-import { BrandCreationFlow } from "../BrandCreationFlow";
+import { BrandCreationFlow } from "../PartnerClientBrandCreationFlow";
 import {
   OFFERING_OPTIONS,
   OfferingChooser,
@@ -242,30 +242,26 @@ describe("issue 2719 tester adversarial payout and creator boundaries", () => {
     }
   });
 
-  test("the narrow grid is 2+2 plus full-width Venue with minimum targets and a 720 wide ceiling", async () => {
+  // #4389 addendum 2 (Seth approved) — the 2+2+Venue grid became one list of
+  // five 76pt video rows inside a 560 pane; each row keeps a 44pt+ target.
+  test("the chooser is one list of five 76pt rows in a 560 wide pane", async () => {
     let tree!: Renderer;
     await TestRenderer.act(async () => {
       tree = TestRenderer.create(
         <OfferingChooser payoutState="not-connected" onSelect={jest.fn()} />,
       );
     });
-    for (const kind of ["event", "trip", "experience", "rsvp"] as OfferingKind[]) {
+    for (const kind of ["event", "experience", "trip", "rsvp", "venue"] as OfferingKind[]) {
       const nodes = byTestId(tree.root, `offering-chooser-${kind}`);
       const styleNode = nodes.find((node) => typeof node.props.style === "function") ??
         nodes[nodes.length - 1]!;
       const style = flatStyle(styleNode.props.style);
-      expect(style.flexBasis).toBe("48%");
-      expect(style.minHeight).toBeGreaterThanOrEqual(132);
+      expect(style.minHeight).toBeGreaterThanOrEqual(76);
+      expect(style.flexBasis).toBeUndefined();
     }
-    const venueNodes = byTestId(tree.root, "offering-chooser-venue");
-    const venueStyleNode = venueNodes.find((node) => typeof node.props.style === "function") ??
-      venueNodes[venueNodes.length - 1]!;
-    const venueStyle = flatStyle(venueStyleNode.props.style);
-    expect(venueStyle.flexBasis).toBe("100%");
-    expect(venueStyle.minHeight).toBeGreaterThanOrEqual(104);
     const maxWidthNodes = tree.root.findAll((node) => {
       const style = flatStyle(node.props.style);
-      return style.maxWidth === 720;
+      return style.maxWidth === 560;
     });
     expect(maxWidthNodes.length).toBeGreaterThan(0);
     await TestRenderer.act(async () => tree.unmount());

@@ -53,6 +53,10 @@
 // whatever the host asks, remember what they host, then offer that draft.
 // v29 (#4304): Ari can end and resume discounts; a discount named by its code
 // is looked up with list_discounts, then the change is proposed.
+// v30 (#4389, on main): brand setup order is name → bank country → Terms and
+// payment details on the secure screen; bank, ID and tax numbers never in chat.
+// (The #3355 versions below were numbered on the branch from v30; production's
+// v30 is #4389's, and the switch's off path builds it.)
 // v30 (#3355 Wave B): the prompt is principles — the capability list and the
 // tool-specific rules move into each tool's generated description; Ari reads
 // the Feature Guide (search_mingla_guide) before "can't" or how-to answers,
@@ -74,7 +78,9 @@
 // v36 (#3355 rework 3): status words are allowed when the records back them
 // (the server's claim check compares every completion claim with receipts,
 // cards, notes and reads); read and how-to answers are answered in full.
-export const PROMPT_VERSION = "v36";
+// v37 (#3355 merge of #4389): the understand-first prompt carries #4389's brand
+// setup order and its two secure-screen tools.
+export const PROMPT_VERSION = "v37";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has
@@ -268,6 +274,8 @@ export const ARI_CAPABILITY_INDEX = `CAPABILITIES (your tools):
 - remember_note — keep a short correction, preference or fact for later turns (brand or user scope; never contact, payment or ID details)
 - forget_memory_note — remove one Ari memory from future context
 - open_handoff — prepare an allowlisted Mingla destination for a human-owned step
+- start_payments_onboarding — open the secure screen for a brand's ID and bank details
+- start_door_sale — open the door sale for an event with tickets prefilled
 - tell_owner_in_brand_group — after confirmation, post one note in the brand group chat asking the owner to do an owner-only step (the server writes the words)
 - get_market_rules — read deterministic country, currency, timezone, and payment-rail rules
 - set_brand_payout_country — after confirmation, set the payout country (and so the price currency) of a brand that has no currency yet; ask which country the owner's bank account is in, never guess
@@ -641,7 +649,8 @@ BRAND MANAGEMENT:
 - If the user asks to create an event/experience/trip and they have NO brands, do NOT call create_event. First explain they need a brand (their public identity for tickets and payouts), then propose create_brand. After the brand is created, tell them it's ready and offer the first draft as FIRST RUN below describes, using what they already told you — never create it without their confirmation.
 
 FIRST RUN (a host with no brand, or a brand with nothing made yet):
-- Brand first, always. With NO brands, whatever the host taps or types, set up the brand before anything else: ask for its name and where they host (one short question), then propose create_brand and wait for their confirmation. Never create a placeholder brand or choose its name for them.
+- Brand first, always. With NO brands, whatever the host taps or types, set up the brand before anything else: ask for its name, then its bank country, then propose create_brand and wait for their confirmation. Never create a placeholder brand or choose its name for them.
+- Brand setup order is name → bank country → Organiser Terms and payment details on the secure screen. Never ask for, and never accept, bank, ID or tax numbers in chat (#4389).
 - "I host events", "I run experiences", "I run trips", "I run a venue": say "Great. Everything you sell lives under your brand, so let's make that first. What's it called?" and remember what they host.
 - "What is Mingla?": answer in two short lines (Mingla is where hosts sell tickets, RSVPs, experiences, trips and venue bookings, and where guests find them; Ari does the typing), then ask "Want to set up your brand now? It takes two minutes."
 - A typed idea before a brand exists (for example "make me a rooftop party on Saturday"): keep every detail they gave, set up the brand first, and once it exists draft that idea from what they said. Do not ask again for anything they already told you.

@@ -49,7 +49,7 @@ const FILES = [
   "mingla-business/src/utils/eventSalesSummary.ts",
   "mingla-business/app/event/[id]/reconciliation.tsx",
   "mingla-business/app/event/[id]/door/index.tsx",
-  "mingla-business/src/components/door/DoorSaleNewSheet.tsx",
+  "mingla-business/src/components/door/DoorModeScreen.tsx", // #4389: replaced DoorSaleNewSheet
   "mingla-business/src/components/brand/BrandProfileView.tsx",
   "mingla-business/src/components/brand/BrandPricingDefaultsView.tsx",
   "mingla-business/src/utils/ticketDisplay.ts",

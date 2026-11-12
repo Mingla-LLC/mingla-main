@@ -180,7 +180,10 @@ async function handleCreate(
     return jsonResponse({ error: "tap_not_available" }, 400);
   }
   const pricing = await loadDoorPricing(supabase, eventId);
+  // #4389 — the host's T1 address counts at the door too (it used to be read
+  // only with no event in view, so Charge kept asking for it).
   const address = terminalAddressFor({
+    tapLocationAddress: tap.tapLocationAddress,
     venueTaxAddress: pricing?.venueTaxAddress ?? null,
     brandAddress: tap.brandAddress,
     brandCity: tap.brandCity,
@@ -320,6 +323,7 @@ async function handleLocation(
     return jsonResponse({ error: "stripe_account_not_ready" }, 400);
   }
   const address = terminalAddressFor({
+    tapLocationAddress: tap.tapLocationAddress,
     venueTaxAddress: pricing.venueTaxAddress,
     brandAddress: tap.brandAddress,
     brandCity: tap.brandCity,

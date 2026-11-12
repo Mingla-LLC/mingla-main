@@ -115,6 +115,9 @@ jest.mock("../../../hooks/useMinglaToSAcceptance", () => ({
   CURRENT_MINGLA_TOS_VERSION: "1.0",
   ORGANISER_TERMS_URL: "https://usemingla.com/organiser-terms",
   useAcceptMinglaToS: () => ({ isPending: false, mutateAsync: jest.fn() }),
+  // #4389 — read only on the brand-setup entry (from=brand-create).
+  useMinglaToSAcceptance: () => ({ data: undefined, isLoading: false }),
+  isCurrentMinglaToSAccepted: () => false,
 }));
 
 jest.mock("expo-haptics", () => ({

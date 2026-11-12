@@ -192,7 +192,15 @@ const auth = () => Promise.resolve(ACTOR);
 const token = (db: FakeDb, stripe: ReturnType<typeof fakeStripe>) =>
   createTerminalConnectionTokenHandler({
     serviceClient: () => db, userIdFromAuthHeader: auth, stripe: () => stripe.client,
+    // #4389: no account address in these cases; the brand's own sources decide.
+    accountAddress: () => Promise.resolve(null),
   });
+// #4389 S-i: the token refusal now names the screen that fixes it (T1).
+const MISSING = {
+  error: "tap_not_available",
+  reason: "address_missing",
+  route: `/brand/${BRAND}/tap-to-pay/address`,
+};
 
 Deno.test("#4271 tap-address: the live brand gets a token at a Location with the full address (was a 500)", async () => {
   const stripe = fakeStripe();
@@ -218,7 +226,7 @@ Deno.test("#4271 tap-address: an incomplete address is address_missing and never
     const stripe = fakeStripe();
     const res = await token(makeDb({ ...LIVE_BRAND, address }), stripe)(post({ brandId: BRAND, platform: "ios" }));
     assertEquals(res.status, 400);
-    assertEquals(await res.json(), { error: "tap_not_available", reason: "address_missing" });
+    assertEquals(await res.json(), MISSING);
     assertEquals(stripe.calls.length, 0, `Stripe was called for ${address}`);
   }
   // The setup step (door-tap-intent location) says the same, also without Stripe.
@@ -244,7 +252,7 @@ Deno.test("#4271 tap-address: Stripe refusing the address is a 400 address_missi
   const db = makeDb(LIVE_BRAND);
   const res = await token(db, stripe)(post({ brandId: BRAND, platform: "ios" }));
   assertEquals(res.status, 400);
-  assertEquals(await res.json(), { error: "tap_not_available", reason: "address_missing" });
+  assertEquals(await res.json(), MISSING);
   assertEquals(db.opsOn("brand_terminal_locations", "upsert").length, 0);
   assert(!stripe.calls.some((c) => c.method === "terminal.connectionTokens.create"));
 });
@@ -325,6 +333,6 @@ Deno.test("#4271 tap-address: event path with no venue tax address uses the bran
     makeDb({ ...LIVE_BRAND, address: "700 Corporate Center Dr" }, { venue: { line1: "1 Main St", city: "Austin" } }),
     partial,
   )(post({ eventId: EVENT, platform: "ios" }));
-  assertEquals(await refused.json(), { error: "tap_not_available", reason: "address_missing" });
+  assertEquals(await refused.json(), MISSING);
   assertEquals(partial.calls.length, 0);
 });

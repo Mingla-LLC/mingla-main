@@ -49,7 +49,7 @@ beforeEach(() => {
   mockInvoke.mockResolvedValue({ data: INTENT_BODY, error: null });
 });
 
-/** The route param exactly as DoorSaleNewSheet builds it (base64 of UTF-8 JSON). */
+/** The route param exactly as the door sale builds it (base64 of UTF-8 JSON; Door mode since #4389). */
 const draftParam = (buyerName: unknown, extra: Record<string, unknown> = {}): string =>
   Buffer.from(
     JSON.stringify({

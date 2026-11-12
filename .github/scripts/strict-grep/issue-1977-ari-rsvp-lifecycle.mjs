@@ -299,12 +299,12 @@ export function audit(base, plans = effectiveSuites()) {
     // #3355 P7: set_brand_payout_country; 181→182.
     // #4238 wave 2: list_ad_audiences; 182→183.
     // #4304: end_discount + resume_discount; 183→185.
-    // #3355 Wave B: search_mingla_guide; 185→186.
-    if (parsed.audit?.registered_tool_count !== 186) {
-      failures.push("ledger audit registered_tool_count is not 186");
+    // #3355 Wave B: search_mingla_guide; #4389: start_payments_onboarding + start_door_sale; 185→188.
+    if (parsed.audit?.registered_tool_count !== 188) {
+      failures.push("ledger audit registered_tool_count is not 188");
     }
-    if (mapped.length !== 186 || new Set(mapped).size !== 186) {
-      failures.push("ledger mapped tool census is not 186 unique tools");
+    if (mapped.length !== 188 || new Set(mapped).size !== 188) {
+      failures.push("ledger mapped tool census is not 188 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||

@@ -37,8 +37,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
-import { ScrollView } from "../../wrappers/SmartScrollView";
+// ORCH-0892-B v2: the body scrolls in SheetScrollLayout (SmartScrollView +
+// the library KeyboardAvoidingView on the type-to-confirm step). Per SPEC §7.F.
 
 import {
   accent,
@@ -67,6 +67,8 @@ import { captureException } from "../../diagnostics/sentry";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { SheetScrollLayout } from "../ui/SheetScrollLayout";
+import { BRAND_DELETE_COPY } from "./brandDeleteCopy";
 
 type DeleteStep = "warn" | "preview" | "confirm" | "submitting" | "rejected";
 
@@ -83,6 +85,28 @@ export interface BrandDeleteSheetProps {
   onDeleted?: (brandId: string) => void;
 }
 
+/** #4389 D2 — one plain line per blocker (host copy names no provider). */
+export function brandDeleteBlockerCopy(
+  blockers: Array<{ code: string; count?: number }>,
+): string {
+  const lines = blockers.map((b) => {
+    switch (b.code) {
+      case "payment_account_balance":
+        return BRAND_DELETE_COPY.delete.blockedBalance;
+      case "upcoming_events":
+        return BRAND_DELETE_COPY.delete.blockedEvents;
+      case "checkout_in_progress":
+        return BRAND_DELETE_COPY.delete.blockedPaying;
+      case "partner_payment_in_progress":
+        return BRAND_DELETE_COPY.delete.blockedPartner;
+      default:
+        return BRAND_DELETE_COPY.delete.blockedPayout;
+    }
+  });
+  return [...new Set(lines)].join(" ") ||
+    BRAND_DELETE_COPY.delete.blockedPayout;
+}
+
 export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
   visible,
   brand,
@@ -94,6 +118,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
   const [confirmInput, setConfirmInput] = useState<string>("");
   const [rejectionCount, setRejectionCount] = useState<number>(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // #4389 — why the delete stopped (D2 blocked / D3 refused / upcoming events).
+  const [rejection, setRejection] = useState<SoftDeleteResult | null>(null);
 
   // Cascade preview query — fires only when sheet visible AND brand non-null
   const previewQuery = useBrandCascadePreview(
@@ -110,6 +136,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
       setConfirmInput("");
       setRejectionCount(0);
       setSubmitError(null);
+      setRejection(null);
     }
   }, [visible, brand?.id]);
 
@@ -171,9 +198,11 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
         await softDeleteMutation.mutateAsync({
           brandId: brand.id,
           accountId,
+          confirmName: confirmInput,
         });
       if (result.rejected) {
         setRejectionCount(result.upcomingEventCount);
+        setRejection(result);
         setStep("rejected");
         return;
       }
@@ -193,7 +222,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
       });
       setSubmitError(brandDeleteErrorMessage(error));
     }
-  }, [canConfirm, brand, accountId, softDeleteMutation, onDeleted, onClose, step, isOwner]);
+  }, [canConfirm, brand, accountId, softDeleteMutation, onDeleted, onClose, step, isOwner, confirmInput]);
 
   if (brand === null) return null;
 
@@ -204,10 +233,22 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
   if (!isOwner) {
     return (
       <Sheet visible={visible} onClose={onClose} snapPoint="full">
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <SheetScrollLayout
+          contentStyle={styles.scrollContent}
+          testID="brand-delete-not-owner"
+          footer={
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Close"
+                  variant="primary"
+                  size="md"
+                  onPress={onClose}
+                  fullWidth
+                />
+              </View>
+            </View>
+          }
         >
           <Text style={styles.title}>Only the owner can delete this brand</Text>
           <Text style={styles.brandLabel}>{brand.displayName}</Text>
@@ -220,56 +261,21 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
               </Text>
             </View>
           </View>
-          <View style={styles.actionRow}>
-            <View style={styles.actionCell}>
-              <Button
-                label="Close"
-                variant="primary"
-                size="md"
-                onPress={onClose}
-                fullWidth
-              />
-            </View>
-          </View>
-        </ScrollView>
+        </SheetScrollLayout>
       </Sheet>
     );
   }
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="full">
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-      >
-        {step === "warn" ? (
-          <View>
-            <Text style={styles.title}>Delete this brand?</Text>
-            <Text style={styles.brandLabel}>{brand.displayName}</Text>
-            <View style={styles.warnCard}>
-              <Icon name="flag" size={18} color={accent.warm} />
-              <View style={styles.warnTextCol}>
-                <Text style={styles.warnTitle}>Recoverable for 30 days</Text>
-                <Text style={styles.warnBody}>
-                  Deleting hides this brand from your list. Your data
-                  (events, orders, refunds, audit logs) is preserved. Recovery
-                  within 30 days requires support intervention.
-                </Text>
-              </View>
-            </View>
-            <View style={styles.warnCard}>
-              <Icon name="flag" size={18} color={textTokens.tertiary} />
-              <View style={styles.warnTextCol}>
-                <Text style={styles.warnTitle}>One-way action in-app</Text>
-                <Text style={styles.warnBody}>
-                  Once you delete, you can&apos;t undo from inside the app.
-                  Future cycles may add a recovery UI.
-                </Text>
-              </View>
-            </View>
+      {/* #4389 — every step scrolls inside the bounded sheet; its buttons are
+          pinned under it (and above the keyboard on the type-to-confirm step). */}
+      <SheetScrollLayout
+        contentStyle={styles.scrollContent}
+        keyboardAware={step === "confirm"}
+        testID="brand-delete-sheet-body"
+        footer={
+          step === "warn" ? (
             <View style={styles.actionRow}>
               <View style={styles.actionCell}>
                 <Button
@@ -290,6 +296,91 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 />
               </View>
             </View>
+          ) : step === "preview" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Back"
+                  variant="ghost"
+                  size="md"
+                  onPress={handleBackToWarn}
+                  fullWidth
+                />
+              </View>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Type to confirm"
+                  variant="primary"
+                  size="md"
+                  onPress={handleNextFromPreview}
+                  disabled={previewQuery.isLoading}
+                  fullWidth
+                />
+              </View>
+            </View>
+          ) : step === "confirm" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Back"
+                  variant="ghost"
+                  size="md"
+                  onPress={handleBackToPreview}
+                  fullWidth
+                />
+              </View>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Delete brand"
+                  variant="primary"
+                  size="md"
+                  onPress={handleSubmit}
+                  disabled={!canConfirm}
+                  fullWidth
+                />
+              </View>
+            </View>
+          ) : step === "rejected" && rejection !== null && rejection.rejected &&
+            rejection.reason !== "upcoming_events" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button label={BRAND_DELETE_COPY.delete.close} variant="primary" size="md" onPress={onClose} fullWidth />
+              </View>
+            </View>
+          ) : step === "rejected" ? (
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Close"
+                  variant="primary"
+                  size="md"
+                  onPress={onClose}
+                  fullWidth
+                />
+              </View>
+            </View>
+          ) : null
+        }
+      >
+        {step === "warn" ? (
+          <View>
+            <Text style={styles.title}>Delete this brand?</Text>
+            <Text style={styles.brandLabel}>{brand.displayName}</Text>
+            <View style={styles.warnCard}>
+              <Icon name="flag" size={18} color={accent.warm} />
+              <View style={styles.warnTextCol}>
+                {/* #4389 — host words (no internal terms), through i18n. */}
+                <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.restoreTitle}</Text>
+                <Text style={styles.warnBody}>{BRAND_DELETE_COPY.delete.restoreBody}</Text>
+              </View>
+            </View>
+            <View style={styles.warnCard}>
+              <Icon name="flag" size={18} color={textTokens.tertiary} />
+              <View style={styles.warnTextCol}>
+                <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.undoTitle}</Text>
+                <Text style={styles.warnBody}>{BRAND_DELETE_COPY.delete.undoBody}</Text>
+              </View>
+            </View>
           </View>
         ) : null}
 
@@ -305,11 +396,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
               <View style={[styles.warnCard, styles.warnCardDanger]}>
                 <Icon name="flag" size={18} color={semantic.error} />
                 <View style={styles.warnTextCol}>
-                  <Text style={styles.warnTitle}>Couldn&apos;t load details</Text>
-                  <Text style={styles.warnBody}>
-                    The cascade preview failed to load. You can still
-                    continue, but you won&apos;t see exact counts.
-                  </Text>
+                  <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.previewErrorTitle}</Text>
+                  <Text style={styles.warnBody}>{BRAND_DELETE_COPY.delete.previewErrorBody}</Text>
                 </View>
               </View>
             ) : counts !== null ? (
@@ -346,13 +434,10 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                     {counts.teamMemberCount}
                   </Text>
                 </View>
-                <View style={styles.previewRow}>
-                  {/* #3645 — host-facing copy never names a payment provider. */}
-                  <Text style={styles.previewLabel}>Payment account</Text>
-                  <Text style={styles.previewValue}>
-                    {counts.hasStripeConnect ? "Linked (will unlink)" : "None"}
-                  </Text>
-                </View>
+                <PaymentAccountPreviewRow hasAccount={counts.hasStripeConnect} />
+                {counts.isPaystackBrand ? (
+                  <BankPayoutsPreviewRow hasBankPayouts={counts.hasBankPayouts} />
+                ) : null}
                 {counts.upcomingEventCount > 0 || counts.liveEventCount > 0 ? (
                   <View style={[styles.warnCard, styles.warnCardDanger]}>
                     <Icon name="flag" size={18} color={semantic.error} />
@@ -375,27 +460,6 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 )}
               </View>
             ) : null}
-            <View style={styles.actionRow}>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Back"
-                  variant="ghost"
-                  size="md"
-                  onPress={handleBackToWarn}
-                  fullWidth
-                />
-              </View>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Type to confirm"
-                  variant="primary"
-                  size="md"
-                  onPress={handleNextFromPreview}
-                  disabled={previewQuery.isLoading}
-                  fullWidth
-                />
-              </View>
-            </View>
           </View>
         ) : null}
 
@@ -427,27 +491,6 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
             {submitError !== null ? (
               <Text style={styles.errorText}>{submitError}</Text>
             ) : null}
-            <View style={styles.actionRow}>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Back"
-                  variant="ghost"
-                  size="md"
-                  onPress={handleBackToPreview}
-                  fullWidth
-                />
-              </View>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Delete brand"
-                  variant="primary"
-                  size="md"
-                  onPress={handleSubmit}
-                  disabled={!canConfirm}
-                  fullWidth
-                />
-              </View>
-            </View>
           </View>
         ) : null}
 
@@ -460,7 +503,29 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
           </View>
         ) : null}
 
-        {step === "rejected" ? (
+        {step === "rejected" && rejection !== null && rejection.rejected &&
+          rejection.reason !== "upcoming_events" ? (
+          <View>
+            <Text style={styles.title}>
+              {rejection.reason === "delete_blocked"
+                ? BRAND_DELETE_COPY.delete.cantDeleteYet
+                : BRAND_DELETE_COPY.delete.nothingDeleted}
+            </Text>
+            <View style={[styles.warnCard, styles.warnCardDanger]}>
+              <Icon name="flag" size={18} color={semantic.error} />
+              <View style={styles.warnTextCol}>
+                <Text style={styles.warnBody}>
+                  {rejection.reason === "delete_blocked"
+                    ? brandDeleteBlockerCopy(rejection.blockers)
+                    : BRAND_DELETE_COPY.delete.closeRefused}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        {step === "rejected" && (rejection === null || !rejection.rejected ||
+          rejection.reason === "upcoming_events") ? (
           <View>
             <Text style={styles.title}>Cannot delete this brand</Text>
             <View style={[styles.warnCard, styles.warnCardDanger]}>
@@ -478,28 +543,44 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 </Text>
               </View>
             </View>
-            <View style={styles.actionRow}>
-              <View style={styles.actionCell}>
-                <Button
-                  label="Close"
-                  variant="primary"
-                  size="md"
-                  onPress={onClose}
-                  fullWidth
-                />
-              </View>
-            </View>
           </View>
         ) : null}
-      </ScrollView>
+      </SheetScrollLayout>
     </Sheet>
   );
 };
 
+/**
+ * #4389 D1 — the payment account row of the delete preview. The value is a
+ * sentence ("Will be closed when you delete"), so the row stacks: label on
+ * line 1, value on line 2 with a gap, wrapping, never truncated (#4389 P2 on
+ * SE: in one row the two ran together and the value was clipped).
+ * #3645 — host-facing copy never names a payment provider.
+ */
+export const PaymentAccountPreviewRow: React.FC<{ hasAccount: boolean }> = ({ hasAccount }) => (
+  <View style={[styles.previewRow, styles.previewRowStacked]} testID="brand-delete-payment-account-row">
+    <Text style={styles.previewLabel}>Payment account</Text>
+    <Text style={[styles.previewValue, styles.previewValueWrap]}>
+      {hasAccount ? BRAND_DELETE_COPY.delete.closedOnDelete : BRAND_DELETE_COPY.delete.none}
+    </Text>
+  </View>
+);
+
+/**
+ * #4389 D1 — a Nigerian-bank (Paystack) brand's preview: "Bank payouts ·
+ * Will be switched off", or "None" when no bank is connected. Same stacked
+ * layout as the payment account row.
+ */
+export const BankPayoutsPreviewRow: React.FC<{ hasBankPayouts: boolean }> = ({ hasBankPayouts }) => (
+  <View style={[styles.previewRow, styles.previewRowStacked]} testID="brand-delete-bank-payouts-row">
+    <Text style={styles.previewLabel}>{BRAND_DELETE_COPY.delete.bankPayouts}</Text>
+    <Text style={[styles.previewValue, styles.previewValueWrap]}>
+      {hasBankPayouts ? BRAND_DELETE_COPY.delete.bankPayoutsSwitchedOff : BRAND_DELETE_COPY.delete.none}
+    </Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-  },
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
@@ -562,7 +643,6 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     gap: spacing.sm,
-    marginTop: spacing.lg,
   },
   actionCell: {
     flex: 1,
@@ -579,6 +659,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     marginBottom: spacing.xs,
+  },
+  previewRowStacked: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
+    gap: spacing.xs,
+  },
+  previewValueWrap: {
+    flexShrink: 1,
+    alignSelf: "stretch",
   },
   previewRowDanger: {
     borderColor: "rgba(239, 68, 68, 0.32)",

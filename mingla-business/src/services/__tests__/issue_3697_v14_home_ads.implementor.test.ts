@@ -93,7 +93,8 @@ describe("#3697 Host Home Ads lifecycle", () => {
       "utf8",
     );
     const placements = source.match(
-      /<BusinessPulsePanel[\s\S]*?onOpenOffering=\{handleOpenPulseOffering\}\s*\/>\s*<HomeAdsSection brandId=\{currentBrand\.id\} \/>/g,
+      // #4389 HT added the Take a payment pill and door line props to the panel.
+      /<BusinessPulsePanel[\s\S]*?onOpenOffering=\{handleOpenPulseOffering\}(?:\s+\w+=\{\w+\})*\s*\/>\s*<HomeAdsSection brandId=\{currentBrand\.id\} \/>/g,
     );
     expect(placements).toHaveLength(2);
   });

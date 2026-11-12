@@ -25,6 +25,8 @@ const TOOL_PATHS = [
   "supabase/functions/_shared/agentAri10xTools.ts",
   // #3355 P2 — the canonical brand readiness read and its brand-wide "not now".
   "supabase/functions/_shared/agentReadinessTools.ts",
+  // #4389 — brand setup and door sale handoffs.
+  "supabase/functions/_shared/agentBrandSetupTools.ts",
 ];
 const PROMPT_PATH = "supabase/functions/_shared/agentSystemPrompt.ts";
 
@@ -32,6 +34,8 @@ const PROMPT_PATH = "supabase/functions/_shared/agentSystemPrompt.ts";
 // truth; this manifest owns the reviewed denominator, so deleting a real
 // operation and reconciling mutable audit counters still fails closed.
 const REQUIRED_CAPABILITY_IDS = new Set(`
+ari.handoffs.payments_onboarding
+ari.handoffs.door_sale
 ari.brand.create
 ari.brand.list
 ari.brand.update

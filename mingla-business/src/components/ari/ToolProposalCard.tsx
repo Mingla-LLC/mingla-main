@@ -15,6 +15,8 @@
  *     intentional departure from "all primary actions = userBubble".
  */
 
+// #4389 A3 — create_brand shows where funds are collected.
+import { ARI_SETUP_COPY, payoutCountryLabel } from "./ariSetupCopy";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -41,7 +43,7 @@ import {
 import { AriOrb } from "./AriOrb";
 import { isToolProposalEditable, ToolEditForm } from "./ToolEditForm";
 import { GlassChrome } from "../ui/GlassChrome";
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
@@ -69,6 +71,7 @@ import {
   readServerPresentation,
   toolProposalOwnerCopy,
 } from "./toolProposalCopy";
+import { BRAND_DELETE_SHARED_COPY } from "../brand/brandDeleteSharedCopy";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -747,6 +750,11 @@ function fieldsFor(
     if (typeof args.name === "string" && args.name) {
       out.push({ label: "Name", value: args.name });
     }
+    // #4389 A3 — the bank country decides the currency; say both.
+    const funds = toolName === "create_brand" ? payoutCountryLabel(args.payout_country) : null;
+    if (funds !== null) {
+      out.push({ label: ARI_SETUP_COPY.a3.fundsLabel, value: `${funds.name} (${funds.currency})` });
+    }
     if (typeof args.description === "string" && args.description) {
       out.push({ label: "Description", value: args.description });
     }
@@ -1390,10 +1398,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         {isBrandDelete ? (
           <>
             <View style={styles.assuranceRow}>
+              {/* #4389 — the delete sheet's host words (i18n). */}
               <Text style={styles.assuranceText}>
-                Recoverable for 30 days. Your data stays — events, orders,
-                refunds, audit logs are preserved. Recovery needs support after
-                that.
+                {`${BRAND_DELETE_SHARED_COPY.delete.restoreTitle}. ${BRAND_DELETE_SHARED_COPY.delete.restoreBody}`}
               </Text>
             </View>
             {cascade.isLoading ? (
@@ -1415,14 +1422,26 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                     {cascade.data.teamMemberCount}
                   </Text>
                 </View>
-                <View style={styles.fieldRow}>
-                  <Text style={styles.fieldLabel}>Payout account</Text>
+                {/* #4389 — the same row as the delete sheet: any undetached
+                    payment account is closed by the delete. */}
+                <View style={styles.fieldRow} testID="ari-delete-payment-account">
+                  <Text style={styles.fieldLabel}>Payment account</Text>
                   <Text style={styles.fieldValue}>
                     {cascade.data.hasStripeConnect
-                      ? "Linked (will unlink)"
-                      : "Not linked"}
+                      ? BRAND_DELETE_SHARED_COPY.delete.closedOnDelete
+                      : BRAND_DELETE_SHARED_COPY.delete.none}
                   </Text>
                 </View>
+                {cascade.data.isPaystackBrand ? (
+                  <View style={styles.fieldRow} testID="ari-delete-bank-payouts">
+                    <Text style={styles.fieldLabel}>{BRAND_DELETE_SHARED_COPY.delete.bankPayouts}</Text>
+                    <Text style={styles.fieldValue}>
+                      {cascade.data.hasBankPayouts
+                        ? BRAND_DELETE_SHARED_COPY.delete.bankPayoutsSwitchedOff
+                        : BRAND_DELETE_SHARED_COPY.delete.none}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             ) : (
               <Text style={styles.coverSubLabel}>

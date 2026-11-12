@@ -9,7 +9,7 @@
 // catalogue's one home), so a new item, or a route moved to a screen that
 // cannot write the column, fails CI.
 //
-// Also pins the single-zone country list in migration 20280628023355 to the
+// Also pins the single-zone country list in migration 20280702023355 to the
 // edge's own list (MARKET_DEFAULT_TIMEZONES).
 //
 // Run: deno test --no-check --allow-read \
@@ -53,6 +53,20 @@ function catalogue(): Map<string, CatalogueItem> {
   const row =
     /\('([a-z_.]+)','([a-z]+)','((?:[^']|'')+)',(\d+),'(brand|action)','([a-z]+)',\s*'(\{[^']*\})',\s*(NULL|'[^']*'),\s*'((?:[^']|'')+)'/g;
   for (const match of seed.matchAll(row)) {
+    items.set(match[1], {
+      key: match[1],
+      owner_action: match[6],
+      route: match[8] === "NULL" ? null : match[8].slice(1, -1),
+      route_label: match[9].replace(/''/g, "'"),
+    });
+  }
+  // #4389 (merged into #3355): the brand_setup checklist seeds two more items.
+  const setupSeed = read(
+    "supabase/migrations/20280701004389_issue_4389_brand_setup.sql",
+  );
+  const setupRow =
+    /\('([a-z_.]+)','([a-z]+)','((?:[^']|'')+)',(\d+),'(brand|action)','([a-z]+)',\s*'(\{[^']*\})',\s*(NULL|'[^']*'),'((?:[^']|'')+)'/g;
+  for (const match of setupSeed.matchAll(setupRow)) {
     items.set(match[1], {
       key: match[1],
       owner_action: match[6],
@@ -214,6 +228,16 @@ const FIX: Record<
     evidence: [[PLAN_API, /venue_descriptor\?: string \| null/]],
   },
   approved_plan: { column: null, evidence: [[PLAN_API, /approve\?: boolean/]] },
+  // #4389: the setup screen's name step creates the brand with its name.
+  "brand.name": {
+    column: "name",
+    evidence: [[
+      "mingla-business/src/services/brandSetupService.ts",
+      /p_name: input\.name\.trim\(\)/,
+    ]],
+  },
+  // #4389: payment details are entered on the secure screen (a handoff).
+  "money.details_submitted": { column: null, evidence: [] },
   "money.market": { column: null, evidence: [] },
   "money.currency": { column: null, evidence: [] },
   "money.currency_reconciliation": { column: null, evidence: [] },
@@ -272,7 +296,7 @@ Deno.test("I-ARI-HANDOFF-FIXABLE: the Time zone handoff opens Brand profile's Ti
 
 Deno.test("A4: the migration's single-zone countries are exactly the edge's", () => {
   const sql = read(
-    "supabase/migrations/20280628023355_issue_3355_brand_timezone_from_country.sql",
+    "supabase/migrations/20280702023355_issue_3355_brand_timezone_from_country.sql",
   );
   const fromSql = Object.fromEntries(
     [...sql.matchAll(/\('([A-Z]{2})','([A-Za-z_/]+)'\)/g)].map((

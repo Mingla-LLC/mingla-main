@@ -28,6 +28,7 @@ import { currentTapToPayDevice, isTapToPayDeviceSupported } from "../../../servi
 import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
 import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../../../services/terminal/doorTapEdge";
 import { hasTapToPayLocation, requestTapToPayLocation } from "../../../services/terminal/tapToPayAndroidLocation";
+import { tapLocationReadyForSale } from "../../../services/terminal/tapToPayIosLocation";
 import { readTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
 import { TapToPayWarmUp } from "../../../services/terminal/tapToPayWarmUp";
 import type {
@@ -134,6 +135,11 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
         // A warm-up never prompts: without the permission it just doesn't run.
         // The SDK needs coarse location on every API level (see
         // tapToPayAndroidLocation.ts): fine location is capped at API 30.
+        // #4389 — iPhone: a warm-up never connects before setup asked for
+        // location (the reader may ask iOS itself; never outside setup).
+        if (Platform.OS === "ios" && options?.warm === true && !tapLocationReadyForSale()) {
+          return { error: { message: "location_not_granted" } };
+        }
         if (Platform.OS === "android" && options?.warm === true) {
           if (!(await hasTapToPayLocation())) return { error: { message: "location_not_granted" } };
         } else if (Platform.OS === "android") {

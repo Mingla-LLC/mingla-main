@@ -273,11 +273,26 @@ export interface CreateBrandInput {
   partnerSetup?: boolean;
 }
 
-export interface SoftDeleteRejection {
-  rejected: true;
-  reason: "upcoming_events";
-  upcomingEventCount: number;
-}
+export type SoftDeleteRejection =
+  | {
+    rejected: true;
+    reason: "upcoming_events";
+    upcomingEventCount: number;
+  }
+  // #4389 D2 — money still owed / on its way, or a balance on the account.
+  | {
+    rejected: true;
+    reason: "delete_blocked";
+    upcomingEventCount: 0;
+    blockers: Array<{ code: string; count?: number }>;
+  }
+  // #4389 D3 — the payment partner refused to close the account.
+  | {
+    rejected: true;
+    reason: "payment_account_close_refused";
+    upcomingEventCount: 0;
+    reasonCode: string;
+  };
 export interface SoftDeleteSuccess {
   rejected: false;
   brandId: string;
@@ -911,7 +926,10 @@ export async function updateBrand(
  *
  * Per SPEC §3.2.7. NEVER swallows error per Const #3.
  */
-export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult> {
+export async function softDeleteBrand(
+  brandId: string,
+  confirmName?: string,
+): Promise<SoftDeleteResult> {
   // Step 1 — count scheduled OR live events whose end_at is in the future.
   // DB enum is draft/scheduled/live/ended/cancelled; "upcoming" is a UI bucket.
   //
@@ -956,57 +974,28 @@ export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult
     };
   }
 
-  // Step 2 — soft-delete via UPDATE with rowcount verification.
-  // Chains .select("id") to verify exactly 1 row was updated. Without this
-  // verification, supabase-js silently returns success when 0 rows match
-  // (RLS denial, wrong brandId, already-soft-deleted) — the bug closed by
-  // ORCH-0734 REWORK. The .select() chain is safe post-ORCH-0734-v1: the
-  // "Account owner can select own brands" policy admits the post-update
-  // row regardless of deleted_at state.
-  // ORCH-0862 — reuses Step 1's `nowIso` (captured a few ms earlier);
-  // sub-second drift is acceptable for the `deleted_at` audit timestamp.
-  const { data, error: updateError } = await supabase
-    .from("brands")
-    .update({ deleted_at: nowIso })
-    .eq("id", brandId)
-    .is("deleted_at", null) // defensive idempotency
-    .select("id");
-
-  // Issue #1835 — same normalisation as Step 1. This is the throw that carried
-  // the "new row violates row-level security policy for table \"brands\"" /
-  // code 42501 the operator never got to see.
-  if (updateError) {
-    throw normalizeSupabaseError(
-      updateError,
-      "softDeleteBrand: update rejected",
-    );
+  // Step 2 — #4389 I-4389-DELETE-CLOSES-PROVIDERS: the delete runs through
+  // the brand-delete core, which closes the payment accounts first (Paystack
+  // switched off, the Stripe account deleted), refuses while money is owed,
+  // and only then stamps deleted_at (and clears default_brand_id) in one
+  // transaction. A direct client UPDATE of deleted_at is refused by the
+  // database for any brand with a payment account.
+  const { deleteBrandClosingPayments } = await import("./brandSetupService");
+  const outcome = await deleteBrandClosingPayments(brandId, confirmName ?? "");
+  if (!outcome.ok) {
+    if (outcome.error === "delete_blocked") {
+      return { rejected: true, reason: "delete_blocked", upcomingEventCount: 0, blockers: outcome.blockers };
+    }
+    if (outcome.error === "payment_account_close_refused") {
+      return {
+        rejected: true,
+        reason: "payment_account_close_refused",
+        upcomingEventCount: 0,
+        reasonCode: outcome.reasonCode,
+      };
+    }
+    throw new Error(`softDeleteBrand: ${outcome.error}`);
   }
-  if (data === null || data.length === 0) {
-    throw new Error(
-      "softDeleteBrand: 0 rows updated — brand may not exist, may already be soft-deleted, or RLS denied. brandId=" +
-        brandId,
-    );
-  }
-
-  // Step 3 — clear default_brand_id pointer if matches (I-PROPOSED-B per SPEC §5.2).
-  // ORCH-0734 fire-and-forget cleanup — idempotent by design. If 0 rows match
-  // (user didn't have this brand as default), that's the expected NORMAL case.
-  // Step 2 already verified the brand soft-delete; step 3 is non-fatal cleanup.
-  const { error: clearDefaultError } = await supabase
-    .from("creator_accounts")
-    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0734 fire-and-forget cleanup, idempotent
-    .update({ default_brand_id: null })
-    .eq("default_brand_id", brandId);
-
-  if (clearDefaultError) {
-    // Soft-delete already succeeded — log + continue (non-fatal)
-    // Const #3: don't swallow silently — surface to console
-    console.warn(
-      "[softDeleteBrand] clear default_brand_id failed:",
-      clearDefaultError.message,
-    );
-  }
-
   return { rejected: false, brandId };
 }
 

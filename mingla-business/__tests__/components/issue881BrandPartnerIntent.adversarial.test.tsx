@@ -1,9 +1,19 @@
+// MINGLA-INVARIANT: I-881-PARTNER-INTENT | issue #4389 | A partner host on /brand/new sees the partner Step 0 while untouched; once the host typed a brand name or chose Myself, Step 0 never appears late.
+// #881 unresolved partner intent. #4389 moved the old wizard (with Step 0)
+// to PartnerClientBrandCreationFlow; the blocks below still run against it.
+// On /brand/new the same boundaries are now decided BEFORE either flow mounts
+// (brandNewEntry.decideBrandNewEntry): the final block pins every one of them
+// against that rule, which is what the route renders from.
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
 import {
+  decideBrandNewEntry,
+  type BrandNewEntryInput,
+} from "../../src/components/brand/brandNewEntry";
+import {
   BRAND_CREATION_COPY,
   BrandCreationFlow,
-} from "../../src/components/brand/BrandCreationFlow";
+} from "../../src/components/brand/PartnerClientBrandCreationFlow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -314,5 +324,56 @@ describe("issue #881 unresolved partner intent boundaries", () => {
     expect(byLabel(touchedTree.root, BRAND_CREATION_COPY.step1.bioLabel)[0]?.props.value)
       .toBe("Offline draft");
     await TestRenderer.act(async () => touchedTree.unmount());
+  });
+});
+
+describe("issue #881 boundaries on /brand/new (#4389 decideBrandNewEntry)", () => {
+  const base: BrandNewEntryInput = {
+    partnerModeParam: null,
+    partnerEnabled: null,
+    selfTyped: false,
+    selfChosen: false,
+    intentShown: false,
+  };
+  const at = (patch: Partial<BrandNewEntryInput>) => decideBrandNewEntry({ ...base, ...patch });
+
+  test("untouched late partner status reveals Step 0 once and remains idempotent", () => {
+    expect(at({ partnerEnabled: null })).toBe("self");
+    expect(at({ partnerEnabled: true })).toBe("partner-intent");
+    expect(at({ partnerEnabled: true, intentShown: true })).toBe("partner-intent");
+  });
+
+  test("typed local name survives late partner status (the setup stays mounted)", () => {
+    expect(at({ partnerEnabled: true, selfTyped: true })).toBe("self");
+  });
+
+  test("explicit client intent opens the partner client flow whatever the status", () => {
+    for (const partnerEnabled of [null, false, true]) {
+      expect(at({ partnerModeParam: "client", partnerEnabled })).toBe("client");
+      expect(at({ partnerModeParam: "client", partnerEnabled, selfTyped: true })).toBe("client");
+    }
+  });
+
+  test("post-Continue status refetch and rerender cannot reopen Step 0", () => {
+    const chosen = { selfChosen: true, intentShown: true };
+    expect(at({ ...chosen, partnerEnabled: true })).toBe("self");
+    expect(at({ ...chosen, partnerEnabled: false })).toBe("self");
+    expect(at({ ...chosen, partnerEnabled: true })).toBe("self");
+  });
+
+  test("nonpartner and status-error states fail open on the setup", () => {
+    expect(at({ partnerEnabled: false })).toBe("self");
+    expect(at({ partnerEnabled: null })).toBe("self");
+  });
+
+  test("error recovery reveals Step 0 only while untouched", () => {
+    expect(at({ partnerEnabled: null })).toBe("self");
+    expect(at({ partnerEnabled: true })).toBe("partner-intent");
+    expect(at({ partnerEnabled: true, selfTyped: true })).toBe("self");
+  });
+
+  test("Step 0 once shown is never demoted by a later status read", () => {
+    expect(at({ intentShown: true, partnerEnabled: false })).toBe("partner-intent");
+    expect(at({ intentShown: true, partnerEnabled: null })).toBe("partner-intent");
   });
 });

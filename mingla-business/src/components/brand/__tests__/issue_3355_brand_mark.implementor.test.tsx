@@ -87,7 +87,9 @@ describe("#3355 the switcher and the TopBar chip use the brand's logo", () => {
   });
 
   test("the TopBar brand chip renders the logo when the current brand has one", () => {
-    const topBar = read("../../ui/TopBar.tsx");
-    expect(topBar).toMatch(/brandMarkPhotoUrl\(currentBrand\) !== null \? \(\s*<BrandMark/);
+    // #4389 AB — the chip moved, unchanged, into the shared BrandChip.
+    expect(read("../../ui/TopBar.tsx")).toContain("<BrandChip ");
+    const chip = read("../../ui/BrandChip.tsx");
+    expect(chip).toMatch(/brandMarkPhotoUrl\(currentBrand\) !== null \? \(\s*<BrandMark/);
   });
 });

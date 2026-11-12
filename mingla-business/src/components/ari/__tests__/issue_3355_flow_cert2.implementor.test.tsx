@@ -410,7 +410,8 @@ describe("#3355 cert round 2 — D6 in-chat logo and cover upload", () => {
     expect(read("mingla-business/src/components/brand/LazyBrandAvatarPickerSheet.tsx")).toMatch(
       /import\("\.\/BrandAvatarPickerSheet"\)/,
     );
-    expect(card).toMatch(/import \{ CoverPickerSheet \} from "\.\.\/ui\/CoverPickerSheet";/);
+    // #4389 — the same sheet, through its one mount point (on-intent on web).
+    expect(card).toMatch(/import \{ CoverPickerSheet \} from "\.\.\/ui\/LazyCoverPickerSheet";/);
     expect(card).toMatch(/kind: "brand",/);
     // No second upload path: no storage or brand write of its own.
     expect(card).not.toMatch(/supabase|uploadBrandAvatar|uploadBrandCover|useUpdateBrand/);

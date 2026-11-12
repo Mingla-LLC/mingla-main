@@ -1,6 +1,6 @@
--- #3355 tester (adversarial; committed by rework 1 with the rework-1 rename; numbers now 20280628xx3355
--- and the global idle sweep added to the T1 census) — the Ari 100x migrations (20280628013355 ..
--- 20280628103355) attacked from angles the implementor suites do not take:
+-- #3355 tester (adversarial; committed by rework 1 with the rework-1 rename; numbers now 20280702xx3355
+-- and the global idle sweep added to the T1 census) — the Ari 100x migrations (20280702013355 ..
+-- 20280702103355) attacked from angles the implementor suites do not take:
 --
 --   T1  ACL census: anon executes NONE of the 25 functions these migrations
 --       create or replace; the service-only ones are not callable by a
