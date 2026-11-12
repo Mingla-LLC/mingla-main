@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "物理的なデビットカードやクレジットカードに加え、Apple Payやその他のデジタルウォレットを受け付けられます。iPhoneだけで。",
       "ttpTerms": "規約が適用されます。",
-      "ttpCta": "Tap to Pay on iPhoneを設定"
+      "ttpCta": "Tap to Pay on iPhoneを設定",
+      "ttpOn": "Tap to Pay on iPhone · オン",
+      "takePayment": "支払いを受け取る"
     },
     "k1": {
       "title": "しばらくは無料イベントのみにしますか？",

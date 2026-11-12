@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Δέξου φυσικές χρεωστικές και πιστωτικές κάρτες, καθώς και Apple Pay και άλλα ψηφιακά πορτοφόλια. Κατευθείαν στο iPhone σου.",
       "ttpTerms": "Ισχύουν όροι.",
-      "ttpCta": "Ρύθμιση Tap to Pay on iPhone"
+      "ttpCta": "Ρύθμιση Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · Ενεργό",
+      "takePayment": "Λήψη πληρωμής"
     },
     "k1": {
       "title": "Μόνο δωρεάν εκδηλώσεις προς το παρόν;",

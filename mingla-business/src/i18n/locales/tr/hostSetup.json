@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Fiziksel banka ve kredi kartlarının yanı sıra Apple Pay ve diğer dijital cüzdanları kabul et. Doğrudan iPhone'unda.",
       "ttpTerms": "Koşullar geçerlidir.",
-      "ttpCta": "Tap to Pay on iPhone'u ayarla"
+      "ttpCta": "Tap to Pay on iPhone'u ayarla",
+      "ttpOn": "Tap to Pay on iPhone · Açık",
+      "takePayment": "Ödeme al"
     },
     "k1": {
       "title": "Şimdilik yalnızca ücretsiz etkinlikler mi?",

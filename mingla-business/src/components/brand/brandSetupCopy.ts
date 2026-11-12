@@ -83,6 +83,8 @@ export const BRAND_SETUP_COPY = {
     get ttpBody(): string { return t("f4.ttpBody"); },
     get ttpTerms(): string { return t("f4.ttpTerms"); },
     get ttpCta(): string { return t("f4.ttpCta"); },
+    get ttpOn(): string { return t("f4.ttpOn"); },
+    get takePayment(): string { return t("f4.takePayment"); },
   },
   k1: {
     get title(): string { return t("k1.title"); },

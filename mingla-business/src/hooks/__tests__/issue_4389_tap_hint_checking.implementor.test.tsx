@@ -56,7 +56,12 @@ jest.mock("../../services/terminal/tapToPayDevice", () => ({
   MIN_IOS_MAJOR: 17,
 }));
 
-import { useTapToPayAvailability, type TapToPayAvailability, type TapToPayBrandFacts } from "../useTapToPayAvailability";
+import {
+  useTapToPayAvailability,
+  useTapToPayOnForBrand,
+  type TapToPayAvailability,
+  type TapToPayBrandFacts,
+} from "../useTapToPayAvailability";
 
 const BRAND = {
   id: "14fee35b-0000-4000-8000-000000004389",
@@ -105,5 +110,20 @@ describe("#4389 — a Tap to Pay setup answer still being read never counts as '
       "utf8",
     );
     expect(src).toMatch(/availability\.needsSetup && availability\.checking !== true/);
+  });
+
+  test("C4: F4's 'On' reads the same hint — off while unread, on once read as set up", async () => {
+    mockPeek = undefined;
+    const seen: boolean[] = [];
+    const Probe = (): null => {
+      seen.push(useTapToPayOnForBrand("14fee35b-0000-4000-8000-000000004389"));
+      return null;
+    };
+    let r: Renderer | null = null;
+    await TestRenderer.act(async () => { r = TestRenderer.create(<Probe />); });
+    expect(seen[0]).toBe(false);
+    await TestRenderer.act(async () => mockRelease(true));
+    expect(seen[seen.length - 1]).toBe(true);
+    (r as unknown as Renderer).unmount();
   });
 });

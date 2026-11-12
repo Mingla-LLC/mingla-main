@@ -74,6 +74,7 @@ import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { tapToPayBrandEligible } from "../../utils/tapToPayBrandEligible";
 import { useTapToPaySettingsEntry } from "../../hooks/useTapToPaySettingsEntry";
+import { useTapToPayOnForBrand } from "../../hooks/useTapToPayAvailability";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
@@ -905,6 +906,23 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
   const ttpEntry = useTapToPaySettingsEntry(brandId);
   const showTtp = Platform.OS === "ios" && ttpEntry !== null &&
     tapToPayBrandEligible({ paymentProvider: provider, payoutCountry: country });
+  const ttpOn = useTapToPayOnForBrand(showTtp ? brandId : null);
+  // Take a payment only when there is an event to sell for now (read on demand,
+  // so the door modules stay out of this screen's chunk).
+  const [hasDoorSaleEvent, setHasDoorSaleEvent] = useState(false);
+  useEffect(() => {
+    if (!ttpOn) return undefined;
+    let alive = true;
+    void import("../../utils/openDoorSale")
+      .then(({ hasDoorSaleEvent: check }) => check(brandId))
+      .then((has) => {
+        if (alive) setHasDoorSaleEvent(has);
+      })
+      .catch((error: unknown) => console.warn("[BrandCreationFlow] could not read events for Take a payment", error));
+    return () => {
+      alive = false;
+    };
+  }, [ttpOn, brandId]);
 
   useEffect(() => {
     if (provider !== "stripe") return;
@@ -963,10 +981,34 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
               <Image source={TTP_VISUAL} style={styles.ttpVisual} resizeMode="cover" accessible={false} />
             </View>
           ) : null}
-          <Text style={styles.cardTitle} numberOfLines={1}>{C.f4.ttpTitle}</Text>
-          <Text style={styles.cardText}>{C.f4.ttpBody}</Text>
-          <Text style={styles.helper}>{C.f4.ttpTerms}</Text>
-          <Button label={C.f4.ttpCta} onPress={() => router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}` as never)} variant="primary" size="md" fullWidth />
+          {ttpOn ? (
+            // #4389 — on for this brand on this phone: the ready state, never "Set up" again.
+            <>
+              <Text style={styles.cardTitle} numberOfLines={1} testID="brand-setup-ttp-on">{C.f4.ttpOn}</Text>
+              {hasDoorSaleEvent ? (
+                <Button
+                  label={C.f4.takePayment}
+                  onPress={() => {
+                    // Loaded on press, as Home's Take a payment does (keeps the query client out of this chunk).
+                    void import("../../utils/openDoorSale")
+                      .then(({ openDoorSale }) => openDoorSale(router, brandId, null, { source: "brand_setup" }))
+                      .catch((error: unknown) => console.warn("[BrandCreationFlow] Take a payment failed to open", error));
+                  }}
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  testID="brand-setup-ttp-take-payment"
+                />
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Text style={styles.cardTitle} numberOfLines={1}>{C.f4.ttpTitle}</Text>
+              <Text style={styles.cardText}>{C.f4.ttpBody}</Text>
+              <Text style={styles.helper}>{C.f4.ttpTerms}</Text>
+              <Button label={C.f4.ttpCta} onPress={() => router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}` as never)} variant="primary" size="md" fullWidth testID="brand-setup-ttp-setup" />
+            </>
+          )}
         </View>
       ) : null}
       {/* The list of 5 carries its own "What do you want to make first?" heading. */}

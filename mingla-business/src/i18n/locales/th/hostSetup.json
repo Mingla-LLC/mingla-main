@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "รับบัตรเดบิตและบัตรเครดิตแบบแข็ง รวมถึง Apple Pay และกระเป๋าเงินดิจิทัลอื่นๆ ได้ทันทีบน iPhone ของคุณ",
       "ttpTerms": "มีข้อกำหนด",
-      "ttpCta": "ตั้งค่า Tap to Pay on iPhone"
+      "ttpCta": "ตั้งค่า Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · เปิดอยู่",
+      "takePayment": "รับชำระเงิน"
     },
     "k1": {
       "title": "จัดเฉพาะงานฟรีไปก่อนไหม",

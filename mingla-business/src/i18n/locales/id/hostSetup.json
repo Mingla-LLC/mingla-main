@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Terima kartu debit dan kredit fisik serta Apple Pay dan dompet digital lainnya. Langsung di iPhone kamu.",
       "ttpTerms": "Syarat berlaku.",
-      "ttpCta": "Siapkan Tap to Pay on iPhone"
+      "ttpCta": "Siapkan Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · Aktif",
+      "takePayment": "Terima pembayaran"
     },
     "k1": {
       "title": "Hanya acara gratis untuk saat ini?",

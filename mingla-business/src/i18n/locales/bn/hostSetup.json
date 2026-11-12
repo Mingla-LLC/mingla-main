@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "ফিজিক্যাল ডেবিট ও ক্রেডিট কার্ড, সেই সঙ্গে Apple Pay ও অন্যান্য ডিজিটাল ওয়ালেট গ্রহণ করুন। সরাসরি আপনার iPhone-এ।",
       "ttpTerms": "শর্তাবলি প্রযোজ্য।",
-      "ttpCta": "Tap to Pay on iPhone সেট আপ করুন"
+      "ttpCta": "Tap to Pay on iPhone সেট আপ করুন",
+      "ttpOn": "Tap to Pay on iPhone · চালু",
+      "takePayment": "পেমেন্ট নিন"
     },
     "k1": {
       "title": "আপাতত শুধু ফ্রি ইভেন্ট?",

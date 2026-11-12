@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Принимайте физические дебетовые и кредитные карты, а также Apple Pay и другие цифровые кошельки. Прямо на iPhone.",
       "ttpTerms": "Действуют условия.",
-      "ttpCta": "Настроить Tap to Pay on iPhone"
+      "ttpCta": "Настроить Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · Включено",
+      "takePayment": "Принять оплату"
     },
     "k1": {
       "title": "Пока только бесплатные мероприятия?",

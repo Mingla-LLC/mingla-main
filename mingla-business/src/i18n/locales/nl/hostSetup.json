@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Accepteer fysieke debet- en creditcards en Apple Pay en andere digitale wallets. Gewoon op je iPhone.",
       "ttpTerms": "Voorwaarden van toepassing.",
-      "ttpCta": "Tap to Pay on iPhone instellen"
+      "ttpCta": "Tap to Pay on iPhone instellen",
+      "ttpOn": "Tap to Pay on iPhone · Aan",
+      "takePayment": "Betaling ontvangen"
     },
     "k1": {
       "title": "Voorlopig alleen gratis evenementen?",

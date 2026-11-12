@@ -56,3 +56,16 @@ export const openDoorSale = async (
   router.push(doorSaleHref(candidates[0].eventId, { pick, source }) as never);
   return pick ? "picker" : "opened";
 };
+
+/**
+ * #4389 — is there an event to sell for now (live or on today)? Same list and
+ * rule as openDoorSale, so a "Take a payment" button shows only when it opens one.
+ */
+export const hasDoorSaleEvent = async (brandId: string): Promise<boolean> => {
+  const events = await queryClient.fetchQuery({
+    queryKey: businessEventKeys.list(brandId),
+    queryFn: () => fetchBusinessEventsForBrand(brandId),
+    staleTime: 30_000,
+  });
+  return doorSaleCandidates(events, Date.now()).length > 0;
+};

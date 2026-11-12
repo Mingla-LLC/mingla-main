@@ -159,17 +159,12 @@ export const tapToPayNeedsSetup = (
   os === "ios" ? acceptance === "not_accepted" || (acceptance === "unknown" && !hint) : !hint;
 
 
-export const useTapToPayAvailability = (
-  input: Omit<TapToPayAvailabilityInput, "released"> | null,
-): TapToPayAvailability => {
-  const givenBrand = input?.brand ?? null;
-  const brandId = givenBrand?.id ?? null;
-  // A slim brand is completed from the brand's own record (useBrand); a brand
-  // that already carries its card facts is used as is and fetches nothing.
-  const slimBrandId = givenBrand !== null && !hasTapToPayCardFacts(givenBrand) ? brandId : null;
-  const fullBrand = useTapToPayBrandFacts(slimBrandId);
-  // null = not read yet. Seeded from what this runtime already read, so a
-  // screen opened after setup never starts out "needs setup".
+/**
+ * This phone's per-brand setup hint. null = not read yet; seeded from what this
+ * runtime already read, so a screen opened after setup never starts out
+ * "needs setup".
+ */
+const useTapToPayWarmHint = (brandId: string | null): boolean | null => {
   const [hint, setHint] = useState<boolean | null>(() =>
     brandId === null ? false : peekTapToPayWarmHint(brandId) ?? null,
   );
@@ -192,6 +187,34 @@ export const useTapToPayAvailability = (
       unsubscribe();
     };
   }, [brandId]);
+
+  return hint;
+};
+
+/**
+ * #4389 — Tap to Pay is on for this brand on this phone (Apple's terms accepted
+ * here, or set up here before and Apple not yet asked again this run). F4 shows
+ * its ready state with this.
+ */
+export const useTapToPayOnForBrand = (brandId: string | null): boolean => {
+  const hint = useTapToPayWarmHint(brandId);
+  const session = useTapToPayTerminal();
+  const acceptance = tapToPayAcceptanceFor(session, brandId);
+  if (brandId === null) return false;
+  if (Platform.OS === "ios" && acceptance === "accepted") return true;
+  return hint === true && !tapToPayNeedsSetup(Platform.OS, acceptance, true);
+};
+
+export const useTapToPayAvailability = (
+  input: Omit<TapToPayAvailabilityInput, "released"> | null,
+): TapToPayAvailability => {
+  const givenBrand = input?.brand ?? null;
+  const brandId = givenBrand?.id ?? null;
+  // A slim brand is completed from the brand's own record (useBrand); a brand
+  // that already carries its card facts is used as is and fetches nothing.
+  const slimBrandId = givenBrand !== null && !hasTapToPayCardFacts(givenBrand) ? brandId : null;
+  const fullBrand = useTapToPayBrandFacts(slimBrandId);
+  const hint = useTapToPayWarmHint(brandId);
 
   const session = useTapToPayTerminal();
   const acceptance = tapToPayAcceptanceFor(session, brandId);

@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Chấp nhận thẻ ghi nợ và thẻ tín dụng vật lý, cũng như Apple Pay và các ví kỹ thuật số khác. Ngay trên iPhone của bạn.",
       "ttpTerms": "Áp dụng điều khoản.",
-      "ttpCta": "Thiết lập Tap to Pay on iPhone"
+      "ttpCta": "Thiết lập Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · Đang bật",
+      "takePayment": "Nhận thanh toán"
     },
     "k1": {
       "title": "Chỉ sự kiện miễn phí trước nhé?",

@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Ta emot fysiska betal- och kreditkort samt Apple Pay och andra digitala plånböcker. Direkt i din iPhone.",
       "ttpTerms": "Villkor gäller.",
-      "ttpCta": "Ställ in Tap to Pay on iPhone"
+      "ttpCta": "Ställ in Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · På",
+      "takePayment": "Ta betalt"
     },
     "k1": {
       "title": "Bara gratisevenemang tills vidare?",

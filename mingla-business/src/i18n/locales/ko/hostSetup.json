@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "실물 체크카드와 신용카드는 물론 Apple Pay와 기타 디지털 지갑도 받을 수 있어요. iPhone에서 바로요.",
       "ttpTerms": "약관이 적용돼요.",
-      "ttpCta": "Tap to Pay on iPhone 설정"
+      "ttpCta": "Tap to Pay on iPhone 설정",
+      "ttpOn": "Tap to Pay on iPhone · 켜짐",
+      "takePayment": "결제 받기"
     },
     "k1": {
       "title": "당분간 무료 이벤트만 할까요?",

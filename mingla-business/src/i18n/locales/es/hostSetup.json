@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Acepta tarjetas físicas de débito y crédito, además de Apple Pay y otras carteras digitales. Directamente en tu iPhone.",
       "ttpTerms": "Se aplican condiciones.",
-      "ttpCta": "Configurar Tap to Pay on iPhone"
+      "ttpCta": "Configurar Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · Activado",
+      "takePayment": "Cobrar"
     },
     "k1": {
       "title": "¿Solo eventos gratuitos por ahora?",

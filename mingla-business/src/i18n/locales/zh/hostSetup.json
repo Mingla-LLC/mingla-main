@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "接受实体借记卡和信用卡，以及 Apple Pay 和其他数字钱包。直接在你的 iPhone 上完成。",
       "ttpTerms": "适用条款。",
-      "ttpCta": "设置 Tap to Pay on iPhone"
+      "ttpCta": "设置 Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · 已开启",
+      "takePayment": "收款"
     },
     "k1": {
       "title": "暂时只办免费活动？",

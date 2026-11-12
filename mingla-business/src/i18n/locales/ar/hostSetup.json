@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "اقبل بطاقات الخصم والائتمان الفعلية، بالإضافة إلى Apple Pay والمحافظ الرقمية الأخرى. مباشرةً على iPhone الخاص بك.",
       "ttpTerms": "تطبق الشروط.",
-      "ttpCta": "إعداد Tap to Pay on iPhone"
+      "ttpCta": "إعداد Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · مفعّل",
+      "takePayment": "استلم دفعة"
     },
     "k1": {
       "title": "فعاليات مجانية فقط حاليًا؟",

@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Accept physical debit and credit cards as well as Apple Pay and other digital wallets. Right on your iPhone.",
       "ttpTerms": "Terms apply.",
-      "ttpCta": "Set up Tap to Pay on iPhone"
+      "ttpCta": "Set up Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · On",
+      "takePayment": "Take a payment"
     },
     "k1": {
       "title": "Only free events for now?",

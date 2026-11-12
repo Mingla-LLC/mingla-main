@@ -25,6 +25,7 @@ export interface FlowFacts {
 }
 
 export const harness = {
+  ttpEntry: null as { label: string } | null,
   checklist: null as null | { readiness: { items: FlowItem[] }; facts: FlowFacts; doneCount: number },
   refetches: 0,
   push: jest.fn<(href: string) => void>(),
@@ -117,7 +118,8 @@ jest.mock("../../../hooks/useMinglaToSAcceptance", () => ({
 }));
 jest.mock("../../../lib/netinfoSafe", () => ({ useNetInfoSafe: () => ({ isConnected: true }) }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: false }) }));
-jest.mock("../../../hooks/useTapToPaySettingsEntry", () => ({ useTapToPaySettingsEntry: () => null }));
+// #4389 — F4's Tap to Pay card: off unless a test turns the entry on.
+jest.mock("../../../hooks/useTapToPaySettingsEntry", () => ({ useTapToPaySettingsEntry: () => harness.ttpEntry }));
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   useCurrentBrandRole: () => ({ isLoading: false, isError: false, role: "brand_owner", rank: 99 }),
 }));
@@ -234,6 +236,7 @@ export async function press(n: Node | undefined): Promise<void> {
   });
 }
 export function resetHarness(): void {
+  harness.ttpEntry = null;
   harness.checklist = null;
   harness.refetches = 0;
   harness.push.mockReset();

@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "Acceptă carduri fizice de debit și de credit, precum și Apple Pay și alte portofele digitale. Direct pe iPhone-ul tău.",
       "ttpTerms": "Se aplică termeni.",
-      "ttpCta": "Configurează Tap to Pay on iPhone"
+      "ttpCta": "Configurează Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · Activat",
+      "takePayment": "Încasează o plată"
     },
     "k1": {
       "title": "Doar evenimente gratuite deocamdată?",

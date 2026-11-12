@@ -63,7 +63,9 @@
       "ttpTitle": "Tap to Pay on iPhone",
       "ttpBody": "קבלו כרטיסי חיוב ואשראי פיזיים, וגם Apple Pay וארנקים דיגיטליים אחרים. ישירות ב-iPhone שלכם.",
       "ttpTerms": "בכפוף לתנאים.",
-      "ttpCta": "הגדרת Tap to Pay on iPhone"
+      "ttpCta": "הגדרת Tap to Pay on iPhone",
+      "ttpOn": "Tap to Pay on iPhone · פעיל",
+      "takePayment": "קבלת תשלום"
     },
     "k1": {
       "title": "רק אירועים חינמיים בינתיים?",
