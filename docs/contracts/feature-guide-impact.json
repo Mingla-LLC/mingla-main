@@ -2315,8 +2315,7 @@
         "mingla-business/src/components/discounts/DiscountEditSheet.tsx",
         "mingla-business/src/components/discounts/DiscountListView.tsx",
         "packages/offering-rendering/discountWriteRefusalCopy.ts",
-        "supabase/functions/brand-discount-upsert/index.ts",
-        "supabase/migrations/20280702103355_issue_3355_feature_guide_discount_codes_live.sql"
+        "supabase/functions/brand-discount-upsert/index.ts"
       ]
     },
     {

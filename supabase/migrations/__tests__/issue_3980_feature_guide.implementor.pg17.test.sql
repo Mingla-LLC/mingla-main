@@ -103,9 +103,7 @@ BEGIN
   IF (SELECT count(*) FROM public.product_capabilities c
        WHERE c.claimed_status = 'live' AND public.issue_3720_feature_guide_effective_status(c.id) = 'Live'
          -- [TEST-MOD-APPROVED #3980] the synced program's F1 makes the Work board and Agent log Live with their 20 Oct evidence
-         -- [TEST-MOD-APPROVED #3355] 20280702103355 records PR #4099's complete release record
-         -- (issue #3872 comment 6389131230, Feature Guide: events-discount-codes) and its live check, matching production
-         AND c.capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers', 'staff-work-board', 'staff-agent-log', 'events-discount-codes')) <> 0 THEN
+         AND c.capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers', 'staff-work-board', 'staff-agent-log')) <> 0 THEN
     RAISE EXCEPTION 'issue3980_guide_promoted_an_entry';
   END IF;
 END;

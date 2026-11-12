@@ -8,7 +8,9 @@
 --   S   the global idle sweep ends every idle run, skips a leased one, is
 --       service-role only, and is scheduled when pg_cron is present;
 --   P   the server refuses an obfuscated email, full-width digits and a PIN;
---   G   events-discount-codes is claimed live with its release proof.
+--   G   #3355 leaves events-discount-codes as the Feature Guide has it: no
+--       #3355 migration changes its claim or records proof for it (Ari reads
+--       whatever status the guide gives it).
 -- Reverting a fix makes its block raise (see the rework report for each).
 
 \set ON_ERROR_STOP on
@@ -230,29 +232,25 @@ BEGIN
 END;
 $p$;
 
--- ── G the discount codes guide entry is claimed live ───────────────────────
+-- ── G #3355 leaves the discount codes guide entry as the guide has it ──────
 DO $g$
 DECLARE
   v_cap public.product_capabilities%ROWTYPE;
 BEGIN
   SELECT * INTO v_cap FROM public.product_capabilities
    WHERE capability_key = 'events-discount-codes';
-  IF v_cap.claimed_status <> 'live' THEN
-    RAISE EXCEPTION 'G events-discount-codes is still claimed %', v_cap.claimed_status;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'G events-discount-codes is missing from the Feature Guide';
   END IF;
-  IF public.issue_3720_feature_guide_effective_status(v_cap.id) = 'Planned' THEN
-    RAISE EXCEPTION 'G events-discount-codes still reads Planned';
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.product_capability_evidence e
-     WHERE e.capability_id = v_cap.id AND e.evidence_kind = 'live_check'
-       AND e.is_current AND e.verdict = 'verified'
-       AND e.evidence_url = 'https://github.com/Mingla-LLC/mingla-main/issues/3872#issuecomment-6389366354'
+  IF EXISTS (
+    SELECT 1 FROM public.product_truth_audit a
+     WHERE a.capability_id = v_cap.id
+       AND a.metadata->>'source' LIKE 'issue\_3355%'
   ) THEN
-    RAISE EXCEPTION 'G the live check proof is missing';
+    RAISE EXCEPTION 'G a #3355 migration changed events-discount-codes';
   END IF;
-  IF position('pilot brands' IN v_cap.limitations) = 0 THEN
-    RAISE EXCEPTION 'G the pilot limitation was dropped';
+  IF public.issue_3720_feature_guide_effective_status(v_cap.id) IS NULL THEN
+    RAISE EXCEPTION 'G events-discount-codes has no effective status';
   END IF;
 END;
 $g$;
