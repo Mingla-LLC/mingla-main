@@ -4040,11 +4040,44 @@ export const createTicketCheckoutCreateHandler = (
         return jsonResponse(checkoutUnavailableResponse(), 409);
       }
 
+      // Issue #3281 (bundle 6c) — the session's own expiry. A retry can reuse
+      // an older session row, which keeps its original `expires_at`, so a
+      // client timing its held page from its own clock could outlive it. Sent
+      // as an ISO time and as seconds left by the server's clock (a phone whose
+      // clock is off misreads a time, not a duration). Best effort: a failed
+      // read, or a queued hold's `infinity`, sends neither, and clients keep
+      // their own shorter bound.
+      // The Paystack page already exists and is committed here, so nothing in
+      // this read may turn the answer into an error.
+      let psExpiresMs = NaN;
+      try {
+        const { data: psExpiryRow } = await supabase
+          .from("ticket_checkout_sessions")
+          .select("expires_at")
+          .eq("id", checkoutSessionId)
+          .maybeSingle();
+        if (typeof psExpiryRow?.expires_at === "string") {
+          psExpiresMs = Date.parse(psExpiryRow.expires_at);
+        }
+      } catch {
+        psExpiresMs = NaN;
+      }
+      const psExpiry = Number.isFinite(psExpiresMs)
+        ? {
+          expiresAt: new Date(psExpiresMs).toISOString(),
+          expiresInSeconds: Math.max(
+            0,
+            Math.floor((psExpiresMs - Date.now()) / 1000),
+          ),
+        }
+        : {};
+
       return jsonResponse({
         kind: "requires_paystack_redirect",
         checkoutSessionId,
         buyerStatusToken,
         authorizationUrl: psInit.authorization_url,
+        ...psExpiry,
         returnUrl: providerCallbackUrl,
         reference: psInit.reference,
         // buyer_total is the inclusive all-in NGN total (kobo).

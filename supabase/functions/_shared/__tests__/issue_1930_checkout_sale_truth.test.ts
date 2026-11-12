@@ -44,8 +44,14 @@ Deno.test("#1930 claim/commit pass only bounded identities to service RPCs", asy
 });
 
 Deno.test("#1930 preflight fails closed and never returns provider identity", async () => {
-  const unavailable = await ticketCheckoutPreflight(
+  // #3281 6c — a failed check is its own answer, and still never allowed.
+  const failed = await ticketCheckoutPreflight(
     { rpc: () => Promise.resolve({ data: null, error: new Error("down") }) },
+    { checkoutSessionId: "s", buyerStatusTokenHash: "hash" },
+  );
+  assertEquals(failed, "error");
+  const unavailable = await ticketCheckoutPreflight(
+    { rpc: () => Promise.resolve({ data: "something_else", error: null }) },
     { checkoutSessionId: "s", buyerStatusTokenHash: "hash" },
   );
   assertEquals(unavailable, "unavailable");

@@ -100,6 +100,8 @@ on:
       - "supabase/functions/partner-paystack-onboard/**"
       - "supabase/functions/partner-paystack-split-retry/**"
       - "supabase/functions/ticket-checkout-create/**"
+      # #3281 6c — the Paystack expiry suite also pins the status preflight.
+      - "supabase/functions/ticket-checkout-status/**"
       - ".github/scripts/strict-grep/orch-1331-*.mjs"
       # ORCH-1331 client leg — earnings NG fork + Paystack onboard form.
       - "mingla-business/app/partner/**"
@@ -534,6 +536,8 @@ on:
       - "supabase/functions/partner-paystack-onboard/**"
       - "supabase/functions/partner-paystack-split-retry/**"
       - "supabase/functions/ticket-checkout-create/**"
+      # #3281 6c — the Paystack expiry suite also pins the status preflight.
+      - "supabase/functions/ticket-checkout-status/**"
       - ".github/scripts/strict-grep/orch-1331-*.mjs"
       # ORCH-1331 client leg — earnings NG fork + Paystack onboard form.
       - "mingla-business/app/partner/**"
