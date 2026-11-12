@@ -291,7 +291,6 @@
         "mingla-business/src/components/programs/contractCopy.ts",
         "mingla-business/src/services/gigHireService.ts",
         "mingla-business/src/utils/auditActionLabels.ts",
-        "mingla-business/src/utils/creatorProgramFormat.ts",
         "supabase/functions/_shared/gigMoney.ts",
         "supabase/functions/_shared/gigPaymentCapture.ts",
         "supabase/functions/_shared/paystackWebhookRouter.ts",

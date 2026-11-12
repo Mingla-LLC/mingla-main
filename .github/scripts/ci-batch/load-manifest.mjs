@@ -251,7 +251,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4402 rework: register the tester's creator review pg17 proof beside the implementor's; re-sealed.
 // #4402: register the admin band-change migration (20280702104402, skipped in the #1931 template replay) and its pg17 proof; re-sealed.
 // #4402: re-sealed after merging origin/main 87e922d58f (the shared payee bank rows kept beside the creator review and band-change rows).
-export const BOOTSTRAP_SHA256 = "898b6030ca951c4619a1c220a0c44ec582e20c82a32f13113be860f2dda3d9d6";
+export const BOOTSTRAP_SHA256 = "87c5ae193f774676acc992d7bb7e2ebd59eab6ccc910b2759dda62977aed5c91";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

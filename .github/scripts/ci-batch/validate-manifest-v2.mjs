@@ -459,7 +459,7 @@ export function phase3dContractDigest(manifest) {
 // #4402 rework: the tester's creator review pg17 proof joins the #1931 and #2117 lanes.
 // #4402: the admin band-change migration (20280702104402) joins the #1857, #1931 and #2117 lanes and the #1931 template-replay skip list.
 // #4402: re-sealed after merging origin/main 87e922d58f (the shared payee bank rows kept beside the creator review and band-change rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7488fe245fa69229c2abfe2c0626cb340318409919e91f511e2a53bfc9af81b2";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "6b913d5a5c40bd8e2f802043f5f3f3150b7e5f58b98af866a1d032e8fe955488";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
