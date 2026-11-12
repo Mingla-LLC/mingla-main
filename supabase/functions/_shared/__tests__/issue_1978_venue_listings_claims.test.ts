@@ -26,7 +26,10 @@ import {
 } from "../agentTools.ts";
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
-import { buildSystemPrompt } from "../agentSystemPrompt.ts";
+import {
+  ARI_CAPABILITY_INDEX,
+  buildSystemPrompt,
+} from "../agentSystemPrompt.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
 const VENUE = "22222222-2222-4222-8222-222222222222";
@@ -314,7 +317,10 @@ Deno.test("#1978 Ari is never given a venue publish/approve tool", () => {
       `forbidden venue publication tool: ${tool.name}`,
     );
   }
-  const prompt = buildSystemPrompt(null, []);
+  // #3355 Wave B: tools are advertised by the capability index (it feeds
+  // each tool's generated description), no longer pasted into the prompt.
+  const prompt = buildSystemPrompt(null, []) +
+    "\n" + ARI_CAPABILITY_INDEX;
   assert(!prompt.includes("- publish_venue"), "prompt advertised a venue publish tool");
   // The create capability line must frame submission as review, not publication.
   assert(

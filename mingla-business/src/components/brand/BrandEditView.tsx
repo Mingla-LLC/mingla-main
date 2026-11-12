@@ -98,6 +98,10 @@ import { LazyBrandAvatarPickerSheet } from "./LazyBrandAvatarPickerSheet";
 const LazyBrandEditAddressField = React.lazy(() =>
   import("./BrandEditAddressField").then((m) => ({ default: m.BrandEditAddressField })),
 );
+// #3355 Wave A (A4) — lazy for the same reason: only Brand Edit needs it.
+const LazyBrandEditTimezoneField = React.lazy(() =>
+  import("./BrandEditTimezoneField").then((m) => ({ default: m.BrandEditTimezoneField })),
+);
 import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { ThemeInput } from "@mingla/offering-rendering";
@@ -125,6 +129,8 @@ export type BrandEditSection =
   // #1022 M6 — theme is now a first-class, deep-linkable section like the rest.
   | "theme"
   | "address"
+  // #3355 Wave A (A4) — Ari's time zone handoff lands here.
+  | "timezone"
   | "contact"
   | "social";
 
@@ -938,6 +944,31 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </React.Suspense>
             <Text style={styles.kindHint}>
               Optional. We&apos;ll use this to pre-fill venues for any experiences you publish, and to show your address on your public page.
+            </Text>
+          </View>
+
+          {/* #3355 Wave A (A4, D5a) — the brand's time zone. Ari's "Time zone"
+              handoff opens this section (?section=timezone). */}
+          <Text
+            style={styles.sectionLabel}
+            onLayout={handleSectionLayout("timezone")}
+          >
+            TIME ZONE
+          </Text>
+          <View style={styles.fieldsCol}>
+            <React.Suspense fallback={null}>
+              <LazyBrandEditTimezoneField
+                value={draft.defaultTimezone}
+                onChange={(zone) =>
+                  setDraft((current) =>
+                    current === null ? current : { ...current, defaultTimezone: zone },
+                  )
+                }
+                testID="brand-edit-timezone"
+              />
+            </React.Suspense>
+            <Text style={styles.kindHint}>
+              Used for your events&apos; times and when discounts start and end.
             </Text>
           </View>
 

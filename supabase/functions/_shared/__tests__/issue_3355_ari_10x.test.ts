@@ -863,12 +863,14 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
     Deno.env.set("ARI_LOCAL_MODEL_ID", "qwen3:4b-instruct");
     globalThis.fetch = async (input, init) => {
       assertEquals(String(input), "http://host.docker.internal:11434/api/chat");
-      requestSignals.push(init?.signal as AbortSignal);
+      const request = init as RequestInit | undefined;
+      requestSignals.push(request?.signal as AbortSignal);
       wireModel = String(
-        (JSON.parse(String(init?.body)) as Record<string, unknown>).model ?? "",
+        (JSON.parse(String(request?.body)) as Record<string, unknown>).model ??
+          "",
       );
       wireContext = Number(
-        ((JSON.parse(String(init?.body)) as Record<string, unknown>)
+        ((JSON.parse(String(request?.body)) as Record<string, unknown>)
           .options as Record<string, unknown>)?.num_ctx ?? 0,
       );
       return new Response(
@@ -1778,7 +1780,7 @@ Deno.test("#3355 terse continuation requests read the durable onboarding plan", 
 });
 
 Deno.test("#3355 onboarding stays on the selected brand and treats future materials as absent", () => {
-  assertEquals(PROMPT_VERSION, "v30");
+  assertEquals(PROMPT_VERSION, "v37"); // #3355 + #4389 merge: understand-first prompt with the brand setup lines
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   for (
     const phrase of [
@@ -2219,8 +2221,10 @@ Deno.test("#3355 every committed assistant reply crosses the diagnostic sanitize
   );
   assertMatch(
     commitBoundary,
-    // #3355 P1 (D-6): the sanitizer's output then crosses the owner copy gate.
-    /const publicText = assertOwnerCopy\(\s*sanitizeAriUserFacingDiagnostics\(args\.text\)/,
+    // #3355 P1 (D-6): the sanitizer's output then crosses the owner copy gate
+    // (rework 3, R3-11: after the repeated-line dedupe; #3355 ship-prep: the
+    // rollout switch's off path skips only the dedupe, never the sanitizer).
+    /const publicText = assertOwnerCopy\(\s*legacyText\s*\? sanitizeAriUserFacingDiagnostics\(args\.text\)\s*: dedupeReplySentences\(sanitizeAriUserFacingDiagnostics\(args\.text\)\)/,
   );
   assertMatch(commitBoundary, /const content = \{\s*text: publicText,/);
   assertMatch(commitBoundary, /assistantText: publicText,/);

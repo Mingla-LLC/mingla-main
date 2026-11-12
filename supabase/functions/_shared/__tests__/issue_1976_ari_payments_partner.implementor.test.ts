@@ -19,7 +19,11 @@ import {
   DOMAIN_READ_ONLY,
 } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
-import { PROMPT_VERSION, buildSystemPrompt } from "../agentSystemPrompt.ts";
+import {
+  ARI_CAPABILITY_INDEX,
+  PROMPT_VERSION,
+  buildSystemPrompt,
+} from "../agentSystemPrompt.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
@@ -139,8 +143,11 @@ Deno.test("#1976 implementor: payout + tax tools are finance-gated read-only", (
 Deno.test("#1976 implementor: prompt v16 advertises enriched payout/tax copy", () => {
   // [TEST-MOD-APPROVED #1980] prompt version advanced for marketing/growth tools.
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v30"); // #2829 W11 completes the website journey entrances
-  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
+  assertEquals(PROMPT_VERSION, "v37"); // #3355 + #4389 merge: understand-first prompt with the brand setup lines
+  // #3355 Wave B: tools are advertised by the capability index (it feeds
+  // each tool's generated description), no longer pasted into the prompt.
+  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +
+    "\n" + ARI_CAPABILITY_INDEX;
   assert(
     prompt.includes(
       "get_payout_status — read payout readiness plus Stripe/Paystack connect status",

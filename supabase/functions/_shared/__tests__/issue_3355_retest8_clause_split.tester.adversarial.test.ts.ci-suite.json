@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3355_retest8_clause_split.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3355-retest8-clause-split-adversarial",
+  "profile": "deno-2-unit"
+}

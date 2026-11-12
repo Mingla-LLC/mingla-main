@@ -193,11 +193,12 @@ function passingEvidence(plan) {
 // #3355 P7: the confirmed Host-parity payout country pick; 193→194.
 // #4238: the read-only list_ad_audiences row (brand's own audience names and sizes); 194→195.
 // #4304: end_discount + resume_discount rows; 195→197.
-test("#2060 plan covers the current exact 199-row ledger with one cache/readback owner", () => {
+// #3355 Wave B: the search_mingla_guide row; #4389: two brand setup rows; 197→200.
+test("#2060 plan covers the current exact 200-row ledger with one cache/readback owner", () => {
   const { ledger, owners } = loadCertificationInputs();
   const plan = buildCertificationPlan(ledger, owners);
-  assert.equal(plan.capability_count, 199);
-  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 199);
+  assert.equal(plan.capability_count, 200);
+  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 200);
   assert.equal(
     plan.rows.every((row) =>
       row.cache_owner_id && row.canonical_readback_owner
@@ -249,7 +250,7 @@ test("#2060 rejects missing rows, SHA mismatch surfaces, dirty cleanup, and stra
       "requirements_digest",
       "release_artifact_sha:agent_chat_bundle",
       "native_artifact:business_android",
-      "evidence_capability_count:198",
+      "evidence_capability_count:199",
       "cleanup_zero_residue",
       "rollback_no_stranded_operations",
     ]

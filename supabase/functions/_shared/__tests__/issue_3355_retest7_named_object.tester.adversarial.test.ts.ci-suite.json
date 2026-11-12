@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3355_retest7_named_object.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3355-retest7-named-object-adversarial",
+  "profile": "deno-2-unit"
+}

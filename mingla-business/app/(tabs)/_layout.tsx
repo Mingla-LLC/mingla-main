@@ -25,6 +25,7 @@ import type { BottomNavTab } from "../../src/components/ui/BottomNav";
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { isTabVisible } from "../../src/config/featureFlags";
 import { tabsNavigatorSettings } from "../../src/config/tabsNavigatorSettings";
+import { rememberAriHostScreen } from "../../src/config/routes";
 import { accent, canvas, spacing } from "../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-aware tab filtering. The TABS
@@ -91,6 +92,11 @@ export const unstable_settings = tabsNavigatorSettings;
 export default function TabsLayout(): React.ReactElement {
   const router = useRouter();
   const pathname = usePathname();
+  // #3355 Wave C (C2): Ari's next message says which screen the host was on.
+  // The shell stays mounted under pushed screens, and usePathname is global.
+  useEffect(() => {
+    rememberAriHostScreen(pathname);
+  }, [pathname]);
   const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
 

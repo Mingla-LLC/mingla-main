@@ -23,6 +23,7 @@ const TOOLSET_PATTERNS: Readonly<Record<AriToolsetKey, readonly RegExp[]>> =
     core: [
       /^get_operator_snapshot$/,
       /^search_capabilities$/,
+      /^search_mingla_guide$/,
       /^request_tools$/,
       /^get_capability_inventory$/,
     ],
@@ -67,7 +68,7 @@ const TOOLSET_PATTERNS: Readonly<Record<AriToolsetKey, readonly RegExp[]>> =
       /social_profile/,
       /listing_page/,
     ],
-    memory: [/memory/, /ari_history/, /ari_prefs/, /agent_job/],
+    memory: [/memory/, /remember/, /ari_history/, /ari_prefs/, /agent_job/],
     onboarding: [
       /onboarding/,
       /handoff/,
@@ -97,7 +98,11 @@ const INTENT_PATTERNS: ReadonlyArray<[AriToolsetKey, RegExp]> = [
     "research",
     /\b(search|research|online|website|social|instagram|tiktok|youtube|public page|compare sources)\b/i,
   ],
-  ["memory", /\b(remember|preference|correction|forget|last time)\b/i],
+  // #3355 Wave D (D1): corrections and lasting preferences bring remember_note.
+  [
+    "memory",
+    /\b(remember|preference|correction|forget|last time|actually|that'?s (?:wrong|not right)|i (?:said|meant)|from now on|going forward|in future|always|never)\b/i,
+  ],
   [
     "onboarding",
     /\b(set up|onboard|launch my|flyer|voice note|document|materials)\b/i,
@@ -112,11 +117,67 @@ const INTENT_PATTERNS: ReadonlyArray<[AriToolsetKey, RegExp]> = [
   ],
 ];
 
-export function inferAriToolsets(text: string): AriToolsetKey[] {
+/**
+ * #3355 Wave B (B3, D3a): the keyword classifiers are hints, never the
+ * router. A hint (readFlowRequest / classifyOfferingIntent) adds the
+ * toolset that serves it to this turn's tools; the model still chooses.
+ */
+const HINT_TOOLSETS: Readonly<Record<string, readonly AriToolsetKey[]>> = Object
+  .freeze({
+    create_discount: ["marketing"],
+    campaign: ["marketing"],
+    ticket_tiers: ["listings"],
+    refund: ["money", "listings"],
+    payouts: ["money"],
+    team: ["people"],
+    website: ["sites"],
+    readiness: ["brand"],
+    create_event: ["listings"],
+    create_experience: ["listings"],
+    create_trip: ["listings"],
+    create_venue: ["venues"],
+    create_stay: ["venues"],
+  });
+
+export function ariToolsetsForHints(
+  hints: readonly (string | null | undefined)[],
+): AriToolsetKey[] {
+  const selected = new Set<AriToolsetKey>();
+  for (const hint of hints) {
+    if (typeof hint !== "string") continue;
+    for (const key of HINT_TOOLSETS[hint] ?? []) selected.add(key);
+  }
+  return [...selected];
+}
+
+/**
+ * #3355 ship-prep — origin/main's toolset inference (811c033211), for the
+ * rollout switch's off path: no classifier hints, and the memory toolset only
+ * on its original words. [TRANSITIONAL] off path — exit: rollout
+ * ari-understand-first-3355 active at 100% for every brand.
+ */
+const LEGACY_MEMORY_INTENT =
+  /\b(remember|preference|correction|forget|last time)\b/i;
+
+export function inferLegacyAriToolsets(text: string): AriToolsetKey[] {
+  const selected = new Set<AriToolsetKey>(["core"]);
+  for (const [key, pattern] of INTENT_PATTERNS) {
+    const legacyPattern = key === "memory" ? LEGACY_MEMORY_INTENT : pattern;
+    if (legacyPattern.test(text)) selected.add(key);
+  }
+  if (selected.size === 1) selected.add("brand");
+  return [...selected];
+}
+
+export function inferAriToolsets(
+  text: string,
+  hints: readonly (string | null | undefined)[] = [],
+): AriToolsetKey[] {
   const selected = new Set<AriToolsetKey>(["core"]);
   for (const [key, pattern] of INTENT_PATTERNS) {
     if (pattern.test(text)) selected.add(key);
   }
+  for (const key of ariToolsetsForHints(hints)) selected.add(key);
   if (selected.size === 1) selected.add("brand");
   return [...selected];
 }
@@ -198,6 +259,7 @@ export function selectAriTools(
   const priority: Record<string, number> = {
     get_operator_snapshot: 80,
     search_capabilities: 78,
+    search_mingla_guide: 77,
     list_brands: 75,
     list_events: 70,
     request_tools: 68,
@@ -244,9 +306,8 @@ export function selectAriTools(
       (score, token) => score + (terms.includes(token) ? 90 : 0),
       0,
     );
-    const venueListScore = hostVenueCreate && tool.name === "list_venue_listings"
-      ? 150
-      : 0;
+    const venueListScore =
+      hostVenueCreate && tool.name === "list_venue_listings" ? 150 : 0;
     const tripPricingScore =
       tripTierRequested && tool.name === "manage_trip_tiers"
         ? 180
@@ -361,6 +422,10 @@ export function selectAriCampaignWorkflowTools(
  * small model to guess which product feature implements the request. Specific
  * CRUD requests still go directly to their scoped toolset.
  */
+/** A request to Mingla support ("open a support ticket", "my support request"). */
+export const ARI_SUPPORT_REQUEST =
+  /\bsupport\s+(?:ticket|request|team|chat|case)s?\b|\b(?:open|raise|file|submit|log|create|send|start)\s+(?:a\s+|an\s+|my\s+)?(?:support\s+)?(?:ticket|request|case)\b/i;
+
 export function needsAriCapabilityDiscovery(text: string): boolean {
   return /\b(?:host\s+promotion|promotion\s+plan|marketing\s+plan|growth\s+plan|launch\s+strategy|what\s+can\s+(?:ari|mingla)|can\s+(?:ari|mingla)\s+help|available\s+capabilit(?:y|ies))\b/i
     .test(text);
@@ -771,6 +836,8 @@ export function ariDeterministicReadPlan(
   taskTitle?: string | null,
   hasAttachments = false,
   campaignDraftId?: string | null,
+  /** #3355 ship-prep: the rollout switch's off path keeps origin/main's lanes. */
+  options: { legacy?: boolean } = {},
 ): AriDeterministicReadPlan | null {
   if (brandId && campaignDraftId && needsAriCampaignDraftReview(text)) {
     return {
@@ -894,7 +961,10 @@ export function ariDeterministicReadPlan(
   if (
     listingType &&
     /\b(?:platform|capabilit|support|comparison|time[- ]dependent|per[- ]hour|rate\s+card|bookable)\b/i
-      .test(text)
+      .test(text) &&
+    // #3355 rework 3 (live answer eval): "open a support ticket" is a
+    // support request for the support tools, never an event-capability read.
+    (options.legacy === true || !ARI_SUPPORT_REQUEST.test(text))
   ) {
     return {
       intent: "listing_capabilities",

@@ -35,7 +35,8 @@ export const SHOREDITCH = place({
 /** The owner's answers to the event cards every event eval shares. */
 export function eventBasicsScript({ startText, endText }) {
   return {
-    // A brand-new brand is offered its can-wait profile items once.
+    // #3355 Wave A (D4a): can-wait items are never a card; kept for runs
+    // started before the change.
     brand_can_wait: () => ({ choose: "not_now" }),
     event_start: () => ({ answer: { response: startText } }),
     event_end: () => ({ answer: { response: endText } }),

@@ -25,3 +25,62 @@ const AppRoutes = {
 } as const;
 
 export default AppRoutes;
+
+// ─── #3355 Wave C (C2): the Host screen Ari is asked from ───────────────────
+// The root layout records the last non-Ari pathname; each Ari message sends it
+// as `client_context`, so "this event" means the event the host was looking
+// at. Dependency-free on purpose: this file is already in the eager bundle.
+// The server validates the route against the App Map and the entity against
+// the active brand, and drops anything that does not hold.
+
+export interface AriClientContext {
+  route: string;
+  entity_kind?: "event" | "trip" | "experience" | "rsvp" | "venue" | "brand";
+  entity_id?: string;
+}
+
+const ARI_ENTITY_ROUTE_KINDS: Record<string, AriClientContext["entity_kind"]> = {
+  event: "event",
+  trip: "trip",
+  experience: "experience",
+  rsvp: "rsvp",
+  venue: "venue",
+  brand: "brand",
+};
+const ARI_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+let lastAriHostScreen: string | null = null;
+
+function ariPathSegments(pathname: string): string[] {
+  return pathname
+    .split(/[?#]/)[0]
+    .split("/")
+    .filter((segment) => segment.length > 0 && !/^\(.*\)$/.test(segment));
+}
+
+/** Ari's own screens are never "the screen the host is on". */
+export function isAriChatPath(pathname: string): boolean {
+  const segments = ariPathSegments(pathname);
+  return segments[0] === "ari" || segments[segments.length - 1] === "ari";
+}
+
+export function rememberAriHostScreen(pathname: string | null | undefined): void {
+  if (typeof pathname !== "string" || !pathname.startsWith("/")) return;
+  if (isAriChatPath(pathname)) return;
+  lastAriHostScreen = pathname;
+}
+
+/** `client_context` for the last host screen; the query string never leaves. */
+export function ariClientContextFor(
+  pathname: string | null = lastAriHostScreen,
+): AriClientContext | undefined {
+  if (typeof pathname !== "string" || !pathname.startsWith("/")) return undefined;
+  const segments = ariPathSegments(pathname);
+  const route = `/${segments.join("/")}`.slice(0, 300);
+  const kind = ARI_ENTITY_ROUTE_KINDS[segments[0] ?? ""];
+  const id = segments[1];
+  return kind && id && ARI_UUID_RE.test(id)
+    ? { route, entity_kind: kind, entity_id: id.toLowerCase() }
+    : { route };
+}

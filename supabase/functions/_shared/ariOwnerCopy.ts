@@ -63,6 +63,55 @@ const HEX_ONE = new RegExp(HEX_RUN.source, "i");
 const ALL_CAPS_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g;
 const SNAKE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
 
+/**
+ * #3355 rework 8 (R8-10): words of Ari's own instructions that the model
+ * sometimes repeats to the host ("Verified via canonical Mingla readback",
+ * "Human-owned work: None").
+ */
+function PROMPT_ECHO_WORDS(): RegExp[] {
+  return [
+    /\bcanonical\b/i,
+    /\bread[- ]?backs?\b/i,
+    /\bhuman[- ]owned\b/i,
+    /\bAri[- ]owned\b/i,
+  ];
+}
+
+/** "Waiting for approval: None." / "Skipped: none" — an empty category. */
+const EMPTY_CATEGORY = /^[\p{L} -]{2,40}:\s*(?:none|n\/a|nothing|-)\s*[.!]?$/iu;
+/** "Goal complete." / "Final result confirmed in Mingla system." */
+const BARE_STATUS_ECHO =
+  /^(?:goal\s+(?:is\s+)?complete(?:d)?|final\s+result\s+confirmed(?:\s+in\s+(?:the\s+)?mingla(?:\s+system)?)?|all\s+steps\s+complete(?:d)?)\s*[.!]?$/i;
+
+/**
+ * #3355 rework 8 (R8-10): remove the sentences that repeat Ari's own
+ * instructions (they carry no fact for the host), and empty categories.
+ * What is left is the plain receipt.
+ */
+export function stripPromptEcho(text: string): string {
+  const echo = PROMPT_ECHO_WORDS();
+  const lines: string[] = [];
+  for (const line of String(text ?? "").split("\n")) {
+    if (!line.trim()) {
+      lines.push("");
+      continue;
+    }
+    if (INVENTED_CODE_STEP.test(line.replace(/[*_`]/g, ""))) continue;
+    const kept = line.split(/(?<=[.!?])\s+(?=[A-Z])/).filter((sentence) => {
+      const plain = sentence.replace(/[*_`]/g, "").replace(/^\s*[-•]\s*/, "")
+        .trim();
+      if (!plain) return false;
+      if (echo.some((pattern) => pattern.test(plain))) return false;
+      if (EMPTY_CATEGORY.test(plain) || BARE_STATUS_ECHO.test(plain)) {
+        return false;
+      }
+      return true;
+    });
+    if (kept.length > 0) lines.push(kept.join(" "));
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** Internal keys that are plumbing in any spelling ("plan revision", "state_version"). */
 const INTERNAL_KEY_PHRASES: readonly RegExp[] = [
   /\b(?:expected[ _])?(?:plan|context|client|site|draft)[ _]revision\b/i,
@@ -75,6 +124,8 @@ const INTERNAL_KEY_PHRASES: readonly RegExp[] = [
   // #3355 P9 (D-21): places come from the address search; Ari never asks
   // for, or talks about, coordinates.
   /\b(?:latitudes?|longitudes?)\b/i,
+  // #3355 rework 8 (R8-10): the continuation prompt's own words.
+  ...PROMPT_ECHO_WORDS(),
 ];
 
 /** Strict-only words: fine in prose, never in a label or engine line. */
@@ -290,3 +341,65 @@ export const OWNER_PROSE_FALLBACK =
 /** Post-approval budget stop. Never claims anything was saved for later. */
 export const ARI_STOPPED_HERE_LINE =
   "I stopped here. Say 'continue' when you're ready.";
+
+/**
+ * #3355 final fix (P3): Ari speaks to the host, never about them ("The host
+ * still needs to share this code" → "You still need to share this code"),
+ * and never adds a step the product does not have: a discount code is live
+ * once it is saved, so "Publish the code" is dropped.
+ */
+const HOST_THIRD_PERSON: ReadonlyArray<[RegExp, string]> = [
+  [/\bThe host still needs to\b/g, "You still need to"],
+  [/\bthe host still needs to\b/g, "you still need to"],
+  [/\bThe host needs to\b/g, "You need to"],
+  [/\bthe host needs to\b/g, "you need to"],
+  [/\bThe host has\b/g, "You have"],
+  [/\bthe host has\b/g, "you have"],
+  [/\bThe host is\b/g, "You are"],
+  [/\bthe host is\b/g, "you are"],
+  [/\bThe host(?:'|’)s\b/g, "Your"],
+  [/\bthe host(?:'|’)s\b/g, "your"],
+  [/\bThe host (can|should|will|must|may)\b/g, "You $1"],
+  [/\bthe host (can|should|will|must|may)\b/g, "you $1"],
+];
+const INVENTED_CODE_STEP =
+  /^(?:\s*(?:\d+[.)]|[-•*])\s*)?(?:(?:then|next|finally|and)[,\s]+)?(?:you\s+(?:still\s+)?(?:need|have)\s+to\s+)?publish\s+(?:the|your|this)\s+(?:discount\s+|promo\s+)?codes?\b[^.!?\n]*[.!]?\s*$/i;
+/**
+ * #3355 rework 9 (fix 4, I-ARI-HOST-IS-YOU): a step that sends the reader
+ * to "the host" ("You still need to confirm with the host that the discount
+ * is live", "Let the host know…") is about a third person who is the reader
+ * themself, so the sentence goes. "As the host, you…" is kept.
+ */
+const HOST_THIRD_PARTY_STEP =
+  /\b(?:confirm|check|verify|coordinate|discuss|share|agree|follow\s+up|double[-\s]check|talk|speak|work|sync|align)\s+(?:[\p{L}'’]+\s+){0,4}?with\s+the\s+host\b|\b(?:let|tell|ask|remind|notify|inform|message|email|contact|text|ping|update)\s+the\s+host\b|\b(?:send|forward|pass|give|show)\s+(?:[\p{L}'’]+\s+){0,4}?to\s+the\s+host\b/iu;
+/** "the host" left mid-sentence is the reader ("Mingla pays the host" → "pays you"). */
+const HOST_OBJECT =
+  /(?<!\b[Aa]s\s)\bthe host\b(?!\s*(?:app|web|portal|dashboard)\b)(?!['’]s)/g;
+
+export function speakToHost(text: string): string {
+  let out = String(text ?? "");
+  for (const [pattern, words] of HOST_THIRD_PERSON) {
+    out = out.replace(pattern, words);
+  }
+  const lines: string[] = [];
+  for (const line of out.split("\n")) {
+    if (!line.trim()) {
+      lines.push(line);
+      continue;
+    }
+    const plainLine = line.replace(/[*_`]/g, "");
+    if (INVENTED_CODE_STEP.test(plainLine)) continue;
+    if (HOST_THIRD_PARTY_STEP.test(plainLine) && !/[.!?]\s+\S/.test(line)) {
+      continue;
+    }
+    const kept = line.split(/(?<=[.!?])\s+(?=[A-Z])/).filter((sentence) => {
+      const plain = sentence.replace(/[*_`]/g, "");
+      return !INVENTED_CODE_STEP.test(plain) &&
+        !HOST_THIRD_PARTY_STEP.test(plain);
+    }).map((sentence) => sentence.replace(HOST_OBJECT, "you"));
+    if (kept.length > 0) lines.push(kept.join(" "));
+  }
+  // Nothing left (the whole reply was a step for "the host"): say it as is.
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() ||
+    String(text ?? "").trim();
+}

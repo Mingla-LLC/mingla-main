@@ -57,6 +57,7 @@ import {
 import {
   continueAfterApprovedAction,
   type PostApprovalContinuation,
+  prepareContinuationProposal,
 } from "../_shared/agentPostApproval.ts";
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
 import { websiteSetupApprovedWriteFollowup } from "../_shared/agentWebsiteSetup.ts";
@@ -1466,22 +1467,39 @@ async function handleConfirmAction(args: {
           conversationId: pending.conversation_id,
           toolName: tool.name,
           result,
+          toolArgs: finalArgs,
+          brandId: pending.related_brand_id ?? null,
         });
         if (continuation?.kind === "proposal") {
           const nextTool = findTool(continuation.toolName);
           if (!nextTool) {
             continuation = null;
           } else {
-            continuation.toolArgs = canonicalizeAgentProposalArgs(
-              nextTool.name,
-              continuation.toolArgs,
-            );
-            await authorizeAgentTool(
-              nextTool,
-              continuation.toolArgs,
-              userClient,
-              userId,
-            );
+            // #3355 rework 4 (R4-7): the same discount fill-in as agent-chat
+            // before #4304 canonicalises; a question replaces the card.
+            // #3355 ship-prep: origin/main's canonicalisation when the
+            // continuation came from the switch's off path.
+            continuation = continuation.legacy
+              ? {
+                ...continuation,
+                toolArgs: canonicalizeAgentProposalArgs(
+                  nextTool.name,
+                  continuation.toolArgs,
+                ),
+              }
+              : await prepareContinuationProposal({
+                continuation,
+                client: userClient,
+                canonicalize: canonicalizeAgentProposalArgs,
+              });
+            if (continuation.kind === "proposal") {
+              await authorizeAgentTool(
+                nextTool,
+                continuation.toolArgs,
+                userClient,
+                userId,
+              );
+            }
           }
         }
       } catch (error) {
@@ -1516,7 +1534,10 @@ async function handleConfirmAction(args: {
     ? websiteSetupFollowup
     : continuationHasScopeFailure
     ? buildFollowupText(tool.name, result)
-    : continuation?.text ?? buildFollowupText(tool.name, result);
+    // #3355 rework 3 (R3-9): a continuation whose words could not be shown
+    // safely, or were all claims the records do not back, says the server's
+    // own receipt line.
+    : continuation?.text || buildFollowupText(tool.name, result);
   // #3355 P1 (D-6): the owner copy gate is the last word on follow-up text.
   const followupText = rawFollowupText
     ? assertOwnerCopy(sanitizeAriUserFacingDiagnostics(rawFollowupText), {

@@ -133,20 +133,39 @@ export function formatMinorAmount(
   return formatMinor(minor, currency, "en") ?? (minor / 100).toFixed(2);
 }
 
-function formatInstant(value: string, timezone: string | null): string | null {
+/** "Lagos time" for Africa/Lagos; "UTC" when no zone is known. */
+export function zoneCityLabel(timezone: string | null): string {
+  if (!timezone) return "UTC";
+  const city = timezone.split("/").pop()?.replace(/_/g, " ").trim();
+  return city ? `${city} time` : timezone;
+}
+
+/**
+ * #3355 rework 3 (R3-5): a card's date and time in the brand's own time zone,
+ * the way the host says it: "Sat 19 Dec 2026, 11:59 pm Lagos time".
+ */
+export function formatInstant(
+  value: string,
+  timezone: string | null,
+): string | null {
   const instant = new Date(value);
   if (Number.isNaN(instant.getTime())) return null;
   try {
-    return new Intl.DateTimeFormat("en-GB", {
-      timeZone: timezone ?? "UTC",
+    const zone = timezone ?? "UTC";
+    const day = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
       weekday: "short",
       day: "numeric",
       month: "short",
       year: "numeric",
+    }).format(instant).replace(/,/g, "");
+    const time = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
       hour: "numeric",
       minute: "2-digit",
-      timeZoneName: "short",
-    }).format(instant);
+      hour12: true,
+    }).format(instant).toLowerCase();
+    return `${day}, ${time} ${zoneCityLabel(timezone)}`;
   } catch {
     return null;
   }
@@ -180,7 +199,13 @@ function displayValue(
     if (!trimmed) return null;
     if (key === "item_key") return readinessItemLabel(trimmed);
     if (/(_at|^date)$/.test(key) && /^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
-      const tz = typeof args.timezone === "string" ? args.timezone : null;
+      // #3355 rework 3 (R3-5): the brand's zone (server proposal context)
+      // when the write has no zone of its own.
+      const tz = typeof args.timezone === "string"
+        ? args.timezone
+        : typeof args.__brand_timezone === "string"
+        ? args.__brand_timezone
+        : null;
       return formatInstant(trimmed, tz) ?? trimmed;
     }
     if (VERBATIM_KEY.test(key)) return trimmed.slice(0, MAX_VALUE);
@@ -212,7 +237,11 @@ function displayValue(
 /** Rows for the confirmed args: one level of nesting (e.g. `patch`), plumbing hidden. */
 export function presentationFields(
   args: Record<string, unknown>,
+  brandTimezone: string | null = null,
 ): PresentationField[] {
+  const zoned = brandTimezone
+    ? { ...args, __brand_timezone: brandTimezone }
+    : args;
   const out: PresentationField[] = [];
   const visit = (key: string, value: unknown, depth: number): void => {
     if (out.length >= MAX_FIELDS || HIDDEN_KEY.test(key)) return;
@@ -225,7 +254,7 @@ export function presentationFields(
       }
       return;
     }
-    const text = displayValue(key, value, args);
+    const text = displayValue(key, value, zoned);
     if (text === null || !isOwnerSafeValue(text)) return;
     const label = labelFor(key);
     if (!isOwnerSafe(label, "label")) return;
@@ -294,6 +323,11 @@ export function buildProposalPresentation(
   const clean = { ...args };
   const context = clean.__proposal_context;
   delete clean.__proposal_context;
+  const brandZone = context !== null && typeof context === "object" &&
+      !Array.isArray(context) &&
+      typeof (context as Record<string, unknown>).brand_timezone === "string"
+    ? (context as Record<string, unknown>).brand_timezone as string
+    : null;
   const identity = identityOf(clean);
   // #3355: an engine proposal may name its own card ("Import 48 contacts").
   const flowTitle = flowTitleOf(context);
@@ -313,7 +347,7 @@ export function buildProposalPresentation(
     }),
     title,
     fields: [
-      ...(rowsOnly ? [] : presentationFields(clean)),
+      ...(rowsOnly ? [] : presentationFields(clean, brandZone)),
       ...flowRows(context),
     ].slice(
       0,

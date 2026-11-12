@@ -61,7 +61,10 @@ import {
   isValidAdCreativeOwnerKey,
 } from "../../services/eventCoverVideoEdgeContract";
 import type { ConfirmOutcome } from "./toolProposalTypes";
-import { formatEventProposalWhen } from "./eventProposalDisplay";
+import {
+  discountProposalFields,
+  formatEventProposalWhen,
+} from "./eventProposalDisplay";
 import { websiteSetupProposalCopy } from "./websiteSetupProposalCopy";
 import {
   ownerSafeProposalFields,
@@ -370,23 +373,8 @@ function fieldsFor(
   }
 
   if (toolName === "create_discount") {
-    if (typeof args.name === "string")
-      out.push({ label: "Discount", value: args.name });
-    if (typeof args.kind === "string")
-      out.push({ label: "Type", value: args.kind.replace(/_/g, " ") });
-    if (typeof args.code === "string")
-      out.push({ label: "Code", value: args.code });
-    if (typeof args.value_bps === "number")
-      out.push({ label: "Value", value: `${args.value_bps / 100}% off` });
-    if (typeof args.value_minor === "number")
-      out.push({ label: "Value", value: `${args.value_minor} minor units` });
-    if (typeof args.scope_kind === "string")
-      out.push({ label: "Scope", value: args.scope_kind.replace(/_/g, " ") });
-    if (typeof args.combines_with === "string")
-      out.push({
-        label: "Combines with",
-        value: args.combines_with.replace(/_/g, " "),
-      });
+    // #3355 rework 3 (R3-5): Starts / Ends in the brand's time zone.
+    out.push(...discountProposalFields(args));
   }
   if (toolName === "pause_discount") {
     // #3355 P1 (D-5): the discount's name, never its id.

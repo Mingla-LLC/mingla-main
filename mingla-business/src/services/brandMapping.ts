@@ -111,6 +111,8 @@ export interface BrandRow {
   location_provider_place_id?: string | null;
   city?: string | null;
   country_code?: string | null;
+  /** #3355 Wave A (A4) — the brand's IANA time zone. */
+  default_timezone?: string | null;
   claim_status?: BrandClaimStatus | null;
   rejection_reason?: string | null;
   claim_follow_up_at?: string | null;
@@ -157,6 +159,7 @@ export type BrandTableInsert = {
   location_provider_place_id?: string | null;
   city?: string | null;
   country_code?: string | null;
+  default_timezone?: string | null;
   claim_status?: BrandClaimStatus;
   venue_category?: VenueCategory | null;
   has_physical_location?: boolean | null;
@@ -374,6 +377,7 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     locationProviderPlaceId: row.location_provider_place_id ?? undefined,
     city: row.city ?? undefined,
     countryCode: row.country_code ?? undefined,
+    defaultTimezone: row.default_timezone ?? undefined,
     venueCategory: (row.venue_category as VenueCategory | undefined) ?? undefined,
     placePoolId: row.place_pool_id ?? undefined,
     hasPhysicalLocation: row.has_physical_location === true,
@@ -544,6 +548,11 @@ export function mapUiToBrandUpdatePatch(
   if (patch.city !== undefined) out.city = patch.city ?? null;
   if (patch.countryCode !== undefined) {
     out.country_code = patch.countryCode ?? null;
+  }
+  // #3355 Wave A (A4) — Brand Edit's Time zone field. brands_default_timezone_guard
+  // refuses a zone the database does not know.
+  if (patch.defaultTimezone !== undefined) {
+    out.default_timezone = patch.defaultTimezone?.trim() || null;
   }
   if (patch.venueCategory !== undefined) {
     out.venue_category = patch.venueCategory ?? null;

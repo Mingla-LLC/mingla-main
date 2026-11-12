@@ -36,14 +36,19 @@ import {
 } from "../ariContactImportWrite.ts";
 import { PLAN_PARTS, type PlanPartKey } from "../siteContracts/sitePlan.ts";
 import {
+  followUpOf,
+  parkArtefact,
+  RESUME_CHOICE,
   runFlowStep,
   type RunnerOutcome,
   type RunnerTrigger,
 } from "./runner.ts";
+import type { FlowRequestHint } from "./requestRead.ts";
+import { readAriUnderstandFirst } from "../ariRollout.ts";
 import {
-  type FlowDisplacement,
   createFlowStore,
   FlowConflict,
+  type FlowDisplacement,
   FlowEngineUnavailable,
   type FlowStore,
 } from "./store.ts";
@@ -190,7 +195,8 @@ export function parseFlowPlace(value: unknown): FlowPlaceValue | null {
   const placeId = raw.place_id ?? null;
   if (
     placeId !== null &&
-    (typeof placeId !== "string" || !/^[A-Za-z0-9._:=+/-]{1,300}$/.test(placeId))
+    (typeof placeId !== "string" ||
+      !/^[A-Za-z0-9._:=+/-]{1,300}$/.test(placeId))
   ) return null;
   return {
     venue_name: venue,
@@ -227,8 +233,16 @@ export function flowStateOf(run: FlowRun | null): FlowStateView | null {
     run_id: run.id,
     flow_key: run.flow_key,
     status: run.status,
+    // #3355 Wave A: a parked run's one current card is its Resume card.
     current_artefact_id: live
       ? run.current_artefact?.artefact_id ?? null
+      : run.status === "parked"
+      ? parkArtefact(run).artefact_id
+      // #3355 Wave A (A3): a finished run's summary link stays tappable.
+      : run.status === "completed" &&
+          run.current_artefact?.kind === "summary" &&
+          run.current_artefact.options.length > 0
+      ? run.current_artefact.artefact_id
       : null,
     current_step_key: run.current_step_key,
     lease_owner_name: run.lease_held && !run.lease_held_by_me
@@ -472,9 +486,10 @@ async function readExperienceRow(
   const theme = row.theme && typeof row.theme === "object"
     ? row.theme as Record<string, unknown>
     : {};
-  const meta = theme.experience_meta && typeof theme.experience_meta === "object"
-    ? theme.experience_meta as Record<string, unknown>
-    : {};
+  const meta =
+    theme.experience_meta && typeof theme.experience_meta === "object"
+      ? theme.experience_meta as Record<string, unknown>
+      : {};
   const whenDraft = meta.when_draft && typeof meta.when_draft === "object"
     ? meta.when_draft as Record<string, unknown>
     : {};
@@ -612,8 +627,9 @@ function importCounts(value: unknown): ContactImportCounts | null {
     "alreadySuppressedCount",
   ] as const;
   if (keys.some((key) => typeof raw[key] !== "number")) return null;
-  return Object.fromEntries(keys.map((key) => [key, raw[key]])) as unknown as
-    ContactImportCounts;
+  return Object.fromEntries(
+    keys.map((key) => [key, raw[key]]),
+  ) as unknown as ContactImportCounts;
 }
 
 async function invokeContactImport(
@@ -940,6 +956,16 @@ export type FlowTurnDecision =
     state: FlowStateView | null;
   }
   | { kind: "stale"; next: FlowArtefact | null; state: FlowStateView | null }
+  /**
+   * #3355 Wave A (A2) — the run was parked: the agent loop serves the
+   * owner's words this turn, and `resume` (the Resume card) goes with it.
+   */
+  | {
+    kind: "parked";
+    hint: FlowRequestHint | "repeated";
+    resume: FlowArtefact;
+    state: FlowStateView | null;
+  }
   /** #2830 P4: the owner's answer becomes one protected proposal. */
   | {
     kind: "propose";
@@ -1019,6 +1045,13 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
       };
     case "stale":
       return { kind: "stale", next: outcome.artefact, state };
+    case "parked":
+      return {
+        kind: "parked",
+        hint: outcome.hint,
+        resume: outcome.resume,
+        state,
+      };
     case "propose":
       return {
         kind: "propose",
@@ -1036,6 +1069,36 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
   }
 }
 
+/**
+ * #3355 Wave E (E1, D3a) — the turn's intent route, as the flow engine needs
+ * it. The model's intent read decides; with the hint read ("hints", today's
+ * behaviour) the keyword classifier decides the readiness answer and the
+ * runner's own Wave A rules decide what typed words do to an open card.
+ * Typed words never start a setup here: only the model's start_flow does
+ * (see startFlowFromTool).
+ */
+export interface FlowTurnRoute {
+  source: "model" | "hints";
+  /** Answer a readiness question from the canonical checklist (no model). */
+  readiness: ReadinessAction | "all" | null;
+  /**
+   * What typed words do to a live run: answer the card, park the run and
+   * serve the words, cancel the run, or leave it untouched for a side answer.
+   * Undefined: the runner's own rules (the fallback).
+   */
+  flowAction?: "answer" | "park" | "cancel" | "side";
+  /** The host asked to carry on with this chat's parked run. */
+  resumeParked?: boolean;
+}
+
+/** The hint route (no model): today's classifier behaviour. */
+export function flowRouteFromHints(message: string): FlowTurnRoute {
+  return {
+    source: "hints",
+    readiness: classifyReadinessQuestion(message),
+  };
+}
+
 export interface FlowTurnArgs {
   service: SupabaseClient;
   /** #2830 — see FlowResearch. */
@@ -1050,10 +1113,27 @@ export interface FlowTurnArgs {
   /** An event plan or Website setup already owns this chat. */
   otherLaneActive: boolean;
   /**
-   * #2830 P4: this turn is Website setup (the Website setup screen, or a
-   * "start / continue Website setup" request).
+   * #3355 Wave D (D4): the host is stuck. An open setup is set aside, and no
+   * setup or deterministic readiness answer starts this turn.
+   */
+  escalate?: boolean;
+  /**
+   * #2830 P4: this turn is Website setup (the Website setup screen). #3355
+   * Wave E: a typed "start Website setup" in chat is the model's start_flow.
    */
   websiteSetup?: boolean;
+  /** #3355 Wave E — the turn's intent route (default: the hint route). */
+  route?: FlowTurnRoute;
+  /**
+   * #3355 ship-prep — the "Ari understands first" rollout switch is off for
+   * this brand: typed words start a setup exactly as origin/main does (the
+   * contact-import and offering keyword starts, with origin/main's
+   * classifier), and the runner keeps origin/main's rules for an open card
+   * (no parking, the "can wait" step, no completion follow-up).
+   * [TRANSITIONAL] off path — exit: rollout ari-understand-first-3355 active
+   * at 100% for every brand.
+   */
+  legacy?: boolean;
   /**
    * #3355 — this turn's attachments as text (a contact list attached in the
    * chat). Read only when the import flow needs them.
@@ -1081,7 +1161,10 @@ export interface FlowTurnAttachment {
 export function contactListFromFiles(
   run: FlowRun,
   files: FlowTurnAttachment[],
-): { kind: "answer"; answer: FlowAnswer } | { kind: "unreadable"; text: string } {
+): { kind: "answer"; answer: FlowAnswer } | {
+  kind: "unreadable";
+  text: string;
+} {
   const readable = files.filter((file) => file.text && file.text.trim());
   if (readable.length === 0) {
     const pdf = files.some((file) => file.file_type === "pdf");
@@ -1165,6 +1248,7 @@ async function importFilesTurn(
       answer: read.answer,
       ownerText: read.answer.display_text,
       brandName: args.brand!.name,
+      ...(args.legacy ? { legacy: true } : {}),
     }),
   );
 }
@@ -1179,10 +1263,13 @@ export async function decideFlowTurn(
 ): Promise<FlowTurnDecision> {
   if (!args.brand) return { kind: "none" };
   const websiteMode = args.websiteSetup === true;
+  const route = args.route ?? flowRouteFromHints(args.message);
 
-  // Deterministic readiness answers: the canonical checklist, no model.
-  if (!args.flowAnswer && !websiteMode) {
-    const action = classifyReadinessQuestion(args.message);
+  // Readiness answers come from the canonical checklist, no model — but only
+  // when the turn's intent route says this is a readiness question (#3355
+  // Wave E: the classifier is a hint, the intent read decides).
+  if (!args.flowAnswer && !websiteMode && !args.escalate) {
+    const action = route.readiness;
     if (action) {
       try {
         const readiness = await readBrandReadiness(
@@ -1225,7 +1312,7 @@ export async function decideFlowTurn(
     ),
   };
   try {
-    let run = await store.getForConversation(args.conversationId);
+    const run = await store.getForConversation(args.conversationId);
     const live = run && LIVE_FLOW_STATUSES.has(run.status) ? run : null;
     if (!live) {
       // #2830 — the run left this chat because a teammate took it over: say so
@@ -1238,6 +1325,18 @@ export async function decideFlowTurn(
       if (taken) return taken;
     }
     if (args.flowAnswer) {
+      if (!live && run && isResumeAnswer(run, args.flowAnswer)) {
+        return await resumeParkedRun(args, deps, run);
+      }
+      if (
+        args.flowAnswer.choice_id === RESUME_CHOICE &&
+        args.flowAnswer.run_id !== live?.id
+      ) {
+        return await staleResumeReply(args.flowAnswer, store, live);
+      }
+      // #3355 rework 2 (P2-11): the completion card's follow-up.
+      const followUp = await completedRunFollowUp(args, deps, live, run);
+      if (followUp) return followUp;
       if (!live) return { kind: "stale", next: null, state: flowStateOf(run) };
       return decisionFromOutcome(
         await runFlowStep(deps, {
@@ -1246,6 +1345,7 @@ export async function decideFlowTurn(
           answer: args.flowAnswer,
           ownerText: args.flowAnswer.display_text,
           brandName: args.brand.name,
+          ...(args.legacy ? { legacy: true } : {}),
         }),
       );
     }
@@ -1258,6 +1358,10 @@ export async function decideFlowTurn(
         trigger: "turn",
         ownerText: args.message,
         brandName: args.brand.name,
+        ...(args.escalate ? { escalate: true } : {}),
+        // #3355 Wave E: the intent read's flow_action is primary.
+        ...(route.flowAction ? { flowAction: route.flowAction } : {}),
+        ...(args.legacy ? { legacy: true } : {}),
       });
       const website = live.flow_key === WEBSITE_SETUP_FLOW_KEY;
       // #2830 P4: "Start / continue Website setup" points at the open card.
@@ -1283,6 +1387,14 @@ export async function decideFlowTurn(
         artefact: current.current_artefact,
       };
     }
+    // #3355 Wave E: "carry on with my event setup" typed in chat, read by the
+    // model as flow_action resume on this chat's parked run.
+    if (
+      !live && run && run.status === "parked" && route.resumeParked &&
+      !args.escalate
+    ) {
+      return await resumeParkedRun(args, deps, run);
+    }
     if (websiteMode) {
       // A finished Website setup in this chat is not restarted by every
       // message on the Website screen — only by asking for it again.
@@ -1294,57 +1406,14 @@ export async function decideFlowTurn(
       }
       return await startWebsiteSetup(args, store, deps);
     }
-    if (args.otherLaneActive) return { kind: "none" };
-    // #3355: "Import my contacts" / "Upload a contact list".
-    if (isContactImportIntent(args.message)) {
-      const def = IMPORT_CONTACTS_FLOW;
-      const started = await store.start({
-        brandId: args.brand.id,
-        flowKey: def.key,
-        flowVersion: def.version,
-        concurrency: def.concurrency,
-        conversationId: args.conversationId,
-        answers: {},
-      });
-      const first = await runFlowStep(deps, {
-        run: started.run,
-        trigger: "turn",
-        brandName: args.brand.name,
-      });
-      // The list attached to the same message is read straight away.
-      if (first.kind === "artefact") {
-        const filesTurn = await importFilesTurn(args, deps, first.run);
-        if (filesTurn) return filesTurn;
-      }
-      return decisionFromOutcome(first);
-    }
-    const flowKey = classifyOfferingIntent(args.message);
-    if (!flowKey) return { kind: "none" };
-    const def = findFlowDefinition(flowKey);
-    if (!def) return { kind: "none" };
-    const started = await store.start({
-      brandId: args.brand.id,
-      flowKey: def.key,
-      flowVersion: def.version,
-      concurrency: def.concurrency,
-      conversationId: args.conversationId,
-      answers: {
-        intent_text: { value: args.message.slice(0, 600), source: "owner" },
-        paid: { value: intentWantsPaid(args.message), source: "owner" },
-        // #3355 P6: deposits/instalments are the one paid path payouts block.
-        ...(def.key === "create_trip" && intentWantsInstallments(args.message)
-          ? { installments: { value: true, source: "owner" as const } }
-          : {}),
-      },
-    });
-    run = started.run;
-    return decisionFromOutcome(
-      await runFlowStep(deps, {
-        run,
-        trigger: "turn",
-        brandName: args.brand.name,
-      }),
-    );
+    // #3355 Wave E (D3a, I-ARI-FLOWS-START-BY-TOOL): typed words never start
+    // a setup here. The contact-import and offering keyword starts that lived
+    // here are hints now; the model starts a setup with start_flow
+    // (startFlowFromTool below).
+    if (!args.legacy) return { kind: "none" };
+    // #3355 ship-prep — the rollout switch is off: origin/main's keyword
+    // starts, verbatim (811c033211).
+    return await legacyTypedStart(args, store, deps);
   } catch (error) {
     if (
       error instanceof FlowEngineUnavailable || error instanceof FlowConflict
@@ -1355,6 +1424,293 @@ export async function decideFlowTurn(
     }
     throw error;
   }
+}
+
+/** The completed run whose completion card this answer is for, or null. */
+async function followUpTarget(
+  store: FlowStore,
+  conversationId: string,
+  answer: FlowAnswer,
+): Promise<FlowRun | null> {
+  const old = await store.getById(answer.run_id).catch(() => null);
+  if (!old || old.conversation_id !== conversationId) return null;
+  return followUpOf(old, answer) ? old : null;
+}
+
+/**
+ * #3355 rework 2 (P2-11, I-ARI-FLOW-COMPLETES-ON-DRAFT) — an answer to the
+ * follow-up on a completed run's card; the runner decides what it does
+ * (runner.ts followUpAnswer). Another setup open in this chat is never
+ * cancelled by a tap on an older card: its own card comes back.
+ */
+async function completedRunFollowUp(
+  args: FlowTurnArgs,
+  deps: { store: FlowStore; probes: FlowProbeDeps },
+  live: FlowRun | null,
+  current: FlowRun | null = null,
+): Promise<FlowTurnDecision | null> {
+  const answer = args.flowAnswer;
+  if (!answer || !args.brand || live?.id === answer.run_id) return null;
+  const old = await followUpTarget(deps.store, args.conversationId, answer);
+  if (!old) return null;
+  // #3355 rework 3 (R3-7): a paused setup in this chat is open too. The old
+  // card's "Yes" never cancels it: its Resume card comes back instead.
+  const parked = !live && current?.status === "parked" &&
+      current.id !== old.id
+    ? current
+    : null;
+  if (parked) {
+    const resume = parkArtefact(parked);
+    return {
+      kind: "reply",
+      text:
+        `You have another setup paused in this chat. Pick it up again with ${resume.title}, or finish or stop it first, then ask me again.`,
+      artefact: resume,
+      state: flowStateOf(parked),
+      classification: "flow_engine_follow_up",
+    };
+  }
+  if (live) {
+    return {
+      kind: "reply",
+      text: live.current_artefact
+        ? `You have another setup open in this chat. Here's where it is:\n\n${live.current_artefact.text}`
+        : "You have another setup open in this chat. Finish or stop it first, then ask me again.",
+      artefact: live.current_artefact,
+      state: flowStateOf(live),
+      classification: "flow_engine_follow_up",
+    };
+  }
+  return decisionFromOutcome(
+    await runFlowStep(deps, {
+      run: old,
+      trigger: "answer",
+      answer,
+      ownerText: answer.display_text,
+      brandName: args.brand.name,
+    }),
+  );
+}
+
+/**
+ * #3355 ship-prep — origin/main's typed setup starts, for the rollout
+ * switch's off path: "Import my contacts" starts the contact import, and the
+ * keyword offering classifier (origin/main's, without the Wave A
+ * non-offering rule) starts an offering setup.
+ */
+async function legacyTypedStart(
+  args: FlowTurnArgs,
+  store: FlowStore,
+  deps: { store: FlowStore; probes: FlowProbeDeps },
+): Promise<FlowTurnDecision> {
+  if (!args.brand) return { kind: "none" };
+  if (args.otherLaneActive) return { kind: "none" };
+  // #3355: "Import my contacts" / "Upload a contact list".
+  if (isContactImportIntent(args.message)) {
+    const def = IMPORT_CONTACTS_FLOW;
+    const started = await store.start({
+      brandId: args.brand.id,
+      flowKey: def.key,
+      flowVersion: def.version,
+      concurrency: def.concurrency,
+      conversationId: args.conversationId,
+      answers: {},
+    });
+    const first = await runFlowStep(deps, {
+      run: started.run,
+      trigger: "turn",
+      brandName: args.brand.name,
+      legacy: true,
+    });
+    // The list attached to the same message is read straight away.
+    if (first.kind === "artefact") {
+      const filesTurn = await importFilesTurn(args, deps, first.run);
+      if (filesTurn) return filesTurn;
+    }
+    return decisionFromOutcome(first);
+  }
+  const flowKey = classifyOfferingIntent(args.message, { legacy: true });
+  if (!flowKey) return { kind: "none" };
+  const def = findFlowDefinition(flowKey);
+  if (!def) return { kind: "none" };
+  const started = await store.start({
+    brandId: args.brand.id,
+    flowKey: def.key,
+    flowVersion: def.version,
+    concurrency: def.concurrency,
+    conversationId: args.conversationId,
+    answers: {
+      intent_text: { value: args.message.slice(0, 600), source: "owner" },
+      paid: { value: intentWantsPaid(args.message), source: "owner" },
+      // #3355 P6: deposits/instalments are the one paid path payouts block.
+      ...(def.key === "create_trip" && intentWantsInstallments(args.message)
+        ? { installments: { value: true, source: "owner" as const } }
+        : {}),
+    },
+  });
+  return decisionFromOutcome(
+    await runFlowStep(deps, {
+      run: started.run,
+      trigger: "turn",
+      brandName: args.brand.name,
+      legacy: true,
+    }),
+  );
+}
+
+/**
+ * #3355 Wave E (D3a) — the model called start_flow. The setup starts exactly
+ * as the keyword lane used to start it: its facts come from the host's own
+ * words (provenance "owner"), every step keeps its server checks, and the
+ * first thing it says is one card. The model's prefills are kept as engine
+ * hints only. A run already live in this chat is never forked: its card comes
+ * back instead.
+ */
+export async function startFlowFromTool(
+  args: FlowTurnArgs & {
+    call: {
+      flow_key: string;
+      intent_text?: string;
+      prefills?: Record<string, string | number | boolean>;
+    };
+  },
+): Promise<FlowTurnDecision> {
+  if (!args.brand || !args.engineEnabled) return { kind: "none" };
+  const def = findFlowDefinition(args.call.flow_key);
+  if (!def) return { kind: "none" };
+  const store = args.store ?? createFlowStore(args.service, args.userId);
+  const deps = {
+    store,
+    probes: args.probes ?? buildFlowProbeDeps(
+      args.userClient,
+      args.brand.id,
+      args.userId,
+      args.conversationId,
+      args.research,
+    ),
+  };
+  try {
+    const existing = await store.getForConversation(args.conversationId);
+    if (existing && LIVE_FLOW_STATUSES.has(existing.status)) {
+      const open = existing.current_artefact;
+      return {
+        kind: "reply",
+        text: open
+          ? `You already have a setup open in this chat. Here's where it is:\n\n${open.text}`
+          : "You already have a setup open in this chat. Finish it, or say stop, before starting another.",
+        artefact: open,
+        state: flowStateOf(existing),
+        classification: "flow_engine_already_open",
+      };
+    }
+    // #3355 Wave F (I-ARI-NO-STALE-RESUME): starting a setup closes this
+    // chat's parked run (one open run per chat, migration 20280702013355).
+    // The host is told so in the same reply, and the old Resume card answers
+    // "that was closed" instead of acting.
+    const closedParked = existing?.status === "parked"
+      ? parkArtefact(existing).title.replace(/^Resume /, "")
+      : null;
+    if (def.key === WEBSITE_SETUP_FLOW_KEY) {
+      return withParkedClosedNotice(
+        await startWebsiteSetup(args, store, deps),
+        closedParked,
+      );
+    }
+    // The owner's own words (this turn) are the setup's request.
+    const ownerWords = args.message.slice(0, 600);
+    const prefills = args.call.prefills ?? {};
+    const started = await store.start({
+      brandId: args.brand.id,
+      flowKey: def.key,
+      flowVersion: def.version,
+      concurrency: def.concurrency,
+      conversationId: args.conversationId,
+      answers: def.key === IMPORT_CONTACTS_FLOW_KEY ? {} : {
+        intent_text: { value: ownerWords, source: "owner" },
+        paid: { value: intentWantsPaid(ownerWords), source: "owner" },
+        // #3355 P6: deposits/instalments are the one paid path payouts block.
+        ...(def.key === "create_trip" && intentWantsInstallments(ownerWords)
+          ? { installments: { value: true, source: "owner" as const } }
+          : {}),
+        ...(Object.keys(prefills).length > 0
+          ? { model_prefills: { value: prefills, source: "engine" as const } }
+          : {}),
+      },
+    });
+    const first = await runFlowStep(deps, {
+      run: started.run,
+      trigger: "turn",
+      brandName: args.brand.name,
+    });
+    // A contact list attached to the same message is read straight away.
+    if (def.key === IMPORT_CONTACTS_FLOW_KEY && first.kind === "artefact") {
+      const filesTurn = await importFilesTurn(args, deps, first.run);
+      if (filesTurn) return withParkedClosedNotice(filesTurn, closedParked);
+    }
+    return withParkedClosedNotice(decisionFromOutcome(first), closedParked);
+  } catch (error) {
+    if (
+      error instanceof FlowEngineUnavailable || error instanceof FlowConflict
+    ) {
+      return { kind: "none" };
+    }
+    throw error;
+  }
+}
+
+/** #3355 Wave F — the words that say a parked setup was closed. */
+export function parkedClosedNotice(noun: string): string {
+  return `I closed your paused ${noun} to start this one, so its Resume button won't bring it back.`;
+}
+
+/**
+ * #3355 Wave F (I-ARI-NO-STALE-RESUME) — a new setup closed this chat's
+ * parked run: say so first, whatever the new setup's first move is.
+ */
+export function withParkedClosedNotice(
+  decision: FlowTurnDecision,
+  closedNoun: string | null,
+): FlowTurnDecision {
+  if (!closedNoun) return decision;
+  const notice = parkedClosedNotice(closedNoun);
+  switch (decision.kind) {
+    case "reply":
+      return { ...decision, text: `${notice}\n\n${decision.text}` };
+    case "propose":
+    case "delegate":
+      return {
+        ...decision,
+        ack: decision.ack ? `${notice} ${decision.ack}` : notice,
+      };
+    default:
+      return decision;
+  }
+}
+
+/**
+ * #3355 Wave F (I-ARI-NO-STALE-RESUME) — a Resume tap whose run is no longer
+ * this chat's parked run (a new setup closed it, it expired, or another chat
+ * moved on): plain words, plus the setup that is open now. Never acts.
+ */
+async function staleResumeReply(
+  answer: FlowAnswer,
+  store: FlowStore,
+  live: FlowRun | null,
+): Promise<Extract<FlowTurnDecision, { kind: "reply" }>> {
+  const old = await store.getById(answer.run_id).catch(() => null);
+  const noun = old
+    ? parkArtefact(old).title.replace(/^Resume /, "")
+    : "paused setup";
+  const open = live?.current_artefact ?? null;
+  return {
+    kind: "reply",
+    text: open
+      ? `That ${noun} was closed, so there's nothing to pick up. Here's the setup that's open now:\n\n${open.text}`
+      : `That ${noun} was closed, so there's nothing to pick up. Tell me what you'd like to do and I'll start from here.`,
+    artefact: open,
+    state: flowStateOf(live),
+    classification: "flow_engine_resume_closed",
+  };
 }
 
 /**
@@ -1444,6 +1800,7 @@ async function startWebsiteSetup(
       run,
       trigger: "turn",
       brandName: args.brand!.name,
+      ...(args.legacy ? { legacy: true } : {}),
     }),
   );
   if (decision.kind === "reply" && started.created) {
@@ -1501,7 +1858,9 @@ async function takenOverReply(args: {
     if (error instanceof FlowEngineUnavailable) return null;
     throw error;
   }
-  if (!displaced || (!args.force && displaced.notified_at !== null)) return null;
+  if (!displaced || (!args.force && displaced.notified_at !== null)) {
+    return null;
+  }
   if (displaced.notified_at === null) {
     await args.store.markDisplacementNotified?.(displaced.id);
   }
@@ -1512,6 +1871,72 @@ async function takenOverReply(args: {
     artefact: null,
     state: flowStateOf(run),
     classification: "flow_engine_taken_over",
+  };
+}
+
+/** #3355 Wave A — the Resume card's answer, for this chat's parked run. */
+export function isResumeAnswer(run: FlowRun, answer: FlowAnswer): boolean {
+  if (run.status !== "parked" || answer.choice_id !== RESUME_CHOICE) {
+    return false;
+  }
+  const card = parkArtefact(run);
+  return answer.run_id === run.id && answer.question_id === card.question_id &&
+    answer.step_key === card.step_key;
+}
+
+/**
+ * #3355 Wave A — Resume: the parked run is live again in this chat and the
+ * owner is shown the step they left (the same card id, so it stays the one
+ * answerable copy). A run that expired, or a chat that started something
+ * else meanwhile, says so in plain words.
+ */
+async function resumeParkedRun(
+  args: FlowTurnArgs,
+  deps: { store: FlowStore; probes: FlowProbeDeps },
+  parked: FlowRun,
+): Promise<FlowTurnDecision> {
+  const title = parkArtefact(parked).title.replace(/^Resume /, "");
+  if (!deps.store.resume) return { kind: "stale", next: null, state: null };
+  const closed = (run: FlowRun | null): FlowTurnDecision => ({
+    kind: "reply",
+    text:
+      `That ${title} was closed, so there's nothing to pick up. Tell me what you'd like to do and I'll start from here.`,
+    artefact: null,
+    state: flowStateOf(run),
+    classification: "flow_engine_resume_closed",
+  });
+  let run: FlowRun;
+  try {
+    run = await deps.store.resume(parked.id, args.conversationId);
+  } catch (error) {
+    if (error instanceof FlowConflict) {
+      return closed(await deps.store.getById(parked.id).catch(() => null));
+    }
+    throw error;
+  }
+  // Idle past the rule: it expired instead of coming back (A5).
+  if (!LIVE_FLOW_STATUSES.has(run.status)) return closed(run);
+  const outcome = await runFlowStep(deps, {
+    run,
+    trigger: "resume",
+    brandName: args.brand!.name,
+  });
+  const decision = decisionFromOutcome(outcome);
+  if (decision.kind !== "none") return decision;
+  const current = outcome.run;
+  const artefact = LIVE_FLOW_STATUSES.has(current.status)
+    ? current.current_artefact
+    : null;
+  return {
+    kind: "reply",
+    text: artefact
+      ? `Okay, back to your ${title}.\n\n${artefact.text}`
+      : current.status === "awaiting_approval"
+      ? `Okay, back to your ${title}. Your change is waiting on its confirmation card above.`
+      : `Okay, back to your ${title}.`,
+    artefact,
+    state: flowStateOf(current),
+    classification: "flow_engine_resumed",
   };
 }
 
@@ -1535,6 +1960,25 @@ export async function staleFlowAnswer(args: {
       run.current_question_id === args.answer.question_id &&
       run.current_step_key === args.answer.step_key
     ) return null;
+    // #3355 Wave A: the Resume card of this chat's parked run is current.
+    if (run && isResumeAnswer(run, args.answer)) return null;
+    // #3355 rework 2 (P2-11): a completed run's follow-up card is current
+    // while no other setup is live in the chat.
+    if (
+      !(run && LIVE_FLOW_STATUSES.has(run.status)) &&
+      await followUpTarget(args.store, args.conversationId, args.answer)
+    ) return null;
+    // #3355 Wave F (I-ARI-NO-STALE-RESUME): a Resume card whose run was
+    // closed says so in plain words, with the setup that is open now.
+    if (args.answer.choice_id === RESUME_CHOICE) {
+      const live = run && LIVE_FLOW_STATUSES.has(run.status) ? run : null;
+      const closed = await staleResumeReply(args.answer, args.store, live);
+      return {
+        next: closed.artefact,
+        state: closed.state,
+        taken_over_text: closed.text,
+      };
+    }
     if (!run || !LIVE_FLOW_STATUSES.has(run.status)) {
       const taken = await takenOverReply({
         store: args.store,
@@ -1580,6 +2024,11 @@ export async function runFlowForConversation(args: {
   probes?: FlowProbeDeps;
   /** #2830 — see FlowResearch. */
   research?: FlowResearch;
+  /**
+   * #3355 ship-prep — FlowTurnArgs.legacy. Unset: read from the rollout
+   * switch for the run's brand.
+   */
+  legacy?: boolean;
 }): Promise<{ outcome: RunnerOutcome | null; run: FlowRun | null }> {
   const store = args.store ?? createFlowStore(args.service, args.userId);
   try {
@@ -1587,6 +2036,8 @@ export async function runFlowForConversation(args: {
     if (!run || !LIVE_FLOW_STATUSES.has(run.status)) {
       return { outcome: null, run };
     }
+    const legacy = args.legacy ??
+      !(await readAriUnderstandFirst(args.service, args.brand.id));
     const outcome = await runFlowStep({
       store,
       probes: args.probes ?? buildFlowProbeDeps(
@@ -1603,6 +2054,7 @@ export async function runFlowForConversation(args: {
       ...(args.failed ? { failed: args.failed } : {}),
       ...(args.requireStatus ? { requireStatus: args.requireStatus } : {}),
       brandName: args.brand.name,
+      ...(legacy ? { legacy: true } : {}),
     });
     return { outcome, run: outcome.run };
   } catch (error) {

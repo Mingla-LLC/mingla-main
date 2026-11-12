@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3355_wave_a_understand_first.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3355-wave-a-understand-first",
+  "profile": "deno-2-unit"
+}

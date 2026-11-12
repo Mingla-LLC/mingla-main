@@ -68,3 +68,20 @@ export function safeAriCopyFallback(
   }
   return "I couldn't format that answer safely. Try again and I'll give you a simpler response.";
 }
+
+/**
+ * #3355 rework 4 (R4-12): a markdown heading ("### Next steps") becomes a
+ * bold line ("**Next steps**") and "***x***" becomes "**x**", so the copy
+ * lint's RAW_MARKUP rule only stops what the chat cannot show (code fences).
+ */
+export function softenAriHeadings(text: string): string {
+  return text
+    .replace(
+      /(^|\n)[ \t]{0,3}#{1,6}[ \t]+([^\n]*?)[ \t]*#*[ \t]*(?=\n|$)/g,
+      (_match, lead: string, title: string) =>
+        title.trim()
+          ? `${lead}**${title.trim().replace(/^\*+|\*+$/g, "")}**`
+          : lead,
+    )
+    .replace(/\*\*\*([^*\n]+)\*\*\*/g, "**$1**");
+}

@@ -50,6 +50,10 @@ export function computeDirtyFieldsPatch(
   if (draft.countryCode !== original.countryCode) {
     patch.countryCode = draft.countryCode;
   }
+  // #3355 Wave A (A4) — Brand Edit's Time zone field.
+  if (draft.defaultTimezone !== original.defaultTimezone) {
+    patch.defaultTimezone = draft.defaultTimezone;
+  }
   // #4334 — the pin is its coordinates AND its Google place id, and they
   // travel together: a re-pick whose text and coordinates match the saved
   // ones can still bring a new place id, and a refined pin must carry the id

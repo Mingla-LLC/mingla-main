@@ -24,7 +24,11 @@ import {
 } from "../agentToolAuthorization.ts";
 import { TENANT_SCOPED_READ_TOOL_NAMES } from "../agentTenantScope.ts";
 import { isReadOnlyAgentToolCall } from "../agentTools.ts";
-import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
+import {
+  ARI_CAPABILITY_INDEX,
+  buildSystemPrompt,
+  PROMPT_VERSION,
+} from "../agentSystemPrompt.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
@@ -148,8 +152,11 @@ Deno.test("#1982 implementor: auth + read-only pins", () => {
 });
 
 Deno.test("#1982 implementor: PROMPT_VERSION v22 ads team surface", () => {
-  assertEquals(PROMPT_VERSION, "v30"); // #2829 W11 completes the website journey entrances
-  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
+  assertEquals(PROMPT_VERSION, "v37"); // #3355 + #4389 merge: understand-first prompt with the brand setup lines
+  // #3355 Wave B: tools are advertised by the capability index (it feeds
+  // each tool's generated description), no longer pasted into the prompt.
+  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +
+    "\n" + ARI_CAPABILITY_INDEX;
   assert(prompt.includes("revoke_brand_invitation"));
   assert(prompt.includes("scanner invitations"));
   assert(prompt.includes("cursor pagination"));

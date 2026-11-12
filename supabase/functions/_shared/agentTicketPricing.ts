@@ -81,6 +81,12 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   "ad_binding",
   // #4304: the pause/resume/end discount card names the discount (display only).
   "discount_name",
+  // #3355 rework 3 (R3-5): a card's dates and money read in the brand's own
+  // time zone and currency (display only; read by the server).
+  "brand_timezone",
+  "brand_currency",
+  // #3355 rework 4 (R4-8): the event titles a discount card applies to.
+  "discount_target_titles",
 ]);
 
 export function verifiedProposalArgs(

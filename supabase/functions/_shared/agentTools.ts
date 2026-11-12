@@ -43,7 +43,7 @@ import {
 } from "./agentBrandSetupTools.ts";
 import { isValidIanaTimezone } from "./agentRelativeTime.ts";
 
-export { ToolError } from "./agentToolHelpers.ts";
+export { normalizeAriToolError, ToolError } from "./agentToolHelpers.ts";
 
 // ----------------------------------------------------------------------------
 // 1. create_brand
