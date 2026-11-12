@@ -61,7 +61,14 @@ export default function CreatorProfileStep(): React.ReactElement {
 
   if (own.isLoading || status.isLoading) return <ProgramScreen title={stepTitle('profile')}><ProgramLoading /></ProgramScreen>;
 
-  return <ProgramScreen title={stepTitle('profile')} footer={<ProgramButton label="Save and continue" busy={busy} disabled={!valid} onPress={() => void save()} />}>
+  // #4402: a save error that is not about one field sits beside the button,
+  // never at the bottom of the scroll where a failed Save looked like a dead tap.
+  const saveError = error && error.field !== 'display_name' && error.field !== 'home_city' && error.code !== 'city_required' ? error.message : null;
+
+  return <ProgramScreen title={stepTitle('profile')} footer={<>
+    {saveError ? <ProgramNotice tone="error" text={saveError} /> : null}
+    <ProgramButton label="Save and continue" busy={busy} disabled={!valid} onPress={() => void save()} />
+  </>}>
     <ProgramField label="Name hosts see" value={name} onChangeText={setName} onBlur={() => setTouched(true)} placeholder="e.g. Ada Films" maxLength={40}
       error={error?.field === 'display_name' ? error.message : nameError} autoCorrect={false} returnKeyType="next" />
     <ProgramField label="Short bio" value={bio} onChangeText={setBio} placeholder="What you make and where" multiline counter={{ max: 160 }} maxLength={160} />
@@ -76,7 +83,6 @@ export default function CreatorProfileStep(): React.ReactElement {
       <View style={s.wrap}>{CREATOR_LANGUAGES.map((l) => <Chip key={l} label={l} selected={languages.includes(l)} onPress={() => setLanguages((v) => toggle(v, l, 6))} />)}</View>
     </View>
     <ProgramNotice text={PAID_ADS_NOTICE} />
-    {error && error.field !== 'display_name' && error.field !== 'home_city' && error.code !== 'city_required' ? <ProgramNotice tone="error" text={error.message} /> : null}
     <Text style={s.small}>Your date of birth is asked when you sign the agreement. Hosts never see it.</Text>
   </ProgramScreen>;
 }
