@@ -454,7 +454,8 @@ export function phase3dContractDigest(manifest) {
 // #4389: register the brand setup, Ari brand operation, native connect flag and BGN retirement migrations (20280701004389, 20280701104389, 20280701204389, 20280701304389; renumbered above main's 20280626*4398) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280701004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog). Re-sealed after merging origin/main 811c033211 (#3281 and #4398 rows kept beside the #4389 rows).
 // #4389: skip 20280701004389 and 20280701104389 in the #2117 pre-landing replay (brand setup re-emits resolve_event_pricing_inputs, a #2117-gated reader). Re-sealed.
 // #4389: renumber the four #4389 migrations to 20280701004389 to 20280701304389 (above main's 20280630004402) in the replay lanes; re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "a4a9e6a70811db2f41b80a5d5e585ad2622e547aee0a73432530ddfb99fd7ed7";
+// #4402: register the creator review migration (20280702004402) in the #1857, #1931 and #2117 replay lanes.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "70a2790344f279c1763712a0d4f411167925ba9adb4fcd0103127fd9fa83f90d";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
