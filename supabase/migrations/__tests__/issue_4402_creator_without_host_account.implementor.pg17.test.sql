@@ -1,6 +1,8 @@
 -- #4402 — an Explorer who never opened the Host app can become a Creator.
 --
--- Invariant I-4402-CREATOR-IDENTITY-IS-LOGIN (enforced here): creator program
+-- MINGLA-INVARIANT: I-4402-CREATOR-IDENTITY-IS-LOGIN | issue #4402 | Creator program rows are keyed to auth.users, never to creator_accounts; a live Explorer account alone can complete creator setup.
+--
+-- Detail: creator program
 -- rows are keyed to auth.users, never to creator_accounts. A person with a live
 -- Explorer account (profiles row, explorer_deleted_at IS NULL) can save a
 -- creator profile, home city, handle, rate and agreement without any Host
