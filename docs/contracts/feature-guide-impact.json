@@ -528,7 +528,9 @@
         "supabase/migrations/20280402004265_issue_3281_discover_card_price_and_experience_bookable.sql",
         "app-mobile/src/hooks/useConsumerEventFoundation.ts",
         "app-mobile/src/hooks/usePublicRsvpBySlug.ts",
-        "packages/offering-rendering/normalizeCityCountry.ts"
+        "packages/offering-rendering/normalizeCityCountry.ts",
+        "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
+        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql"
       ]
     },
     {
@@ -950,7 +952,9 @@
         "mingla-business/src/utils/publishedEventEditGuards.ts",
         "mingla-business/src/store/liveEventStore.ts",
         "mingla-business/src/utils/liveEventAdapter.ts",
-        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
+        "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
+        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql"
       ]
     },
     {
@@ -1854,7 +1858,9 @@
         "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
         "mingla-business/src/components/experience/ExperienceStopCard.tsx",
         "mingla-business/src/components/experience/experienceWizardTypes.ts",
-        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql"
+        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
+        "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
+        "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql"
       ]
     },
     {
