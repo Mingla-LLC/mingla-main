@@ -91,6 +91,7 @@ const MESSAGES: Record<string, string> = {
   handle_taken: 'Another creator already verified that account. If it’s yours, contact support.',
   handle_claimed: 'Another creator already verified that account. If it’s yours, contact support.',
   platform_unsupported: 'That platform can’t be checked. Choose Instagram, TikTok, YouTube or Snapchat.',
+  handle_rejected: 'Mingla couldn’t confirm this account, so it can’t be changed. Message Mingla if you think this is a mistake.',
   city_required: 'Choose your home city.',
   invalid_display_name: 'Use 2 to 40 characters for your name.',
   invalid_price: 'Enter a price above zero.',

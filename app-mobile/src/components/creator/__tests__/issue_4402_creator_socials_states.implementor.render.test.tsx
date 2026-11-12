@@ -4,10 +4,13 @@
  *
  *   - Socials: every handle card is drawn from the server's saved outcome
  *     (last_check_status, review_required, expires_at), so it survives a
- *     reload: Code not seen → Check my bio; In review → no Check; expired and
- *     rejected → Get a new code (fixed wording plus the reviewer's note);
- *     verified leaves the pending list. X is not offered. A platform with no
- *     row starts from the Mingla Local application handle.
+ *     reload. Seth, 12 Nov 2026: a person at Mingla verifies every handle, so
+ *     a submitted handle reads "With Mingla for review" (never "checking
+ *     automatically"), whatever the bio check saw; expired → Get a new code;
+ *     rejected → fixed wording plus the reviewer's note and NO way to undo it
+ *     (no new code, the sheet is locked); verified by Mingla leaves the
+ *     pending list. X is not offered. A platform with no row starts from the
+ *     Mingla Local application handle.
  *   - Showcase: a cancelled picker never shows "Uploading 0%"; the bar
  *     appears only after a video is picked.
  *
@@ -105,7 +108,7 @@ jest.mock("../../programs/ProgramUi", () => {
 
 const CreatorSocialsStep = require("../../../../app/creator/setup/socials").default;
 const CreatorShowcaseStep = require("../../../../app/creator/setup/showcase").default;
-const { REJECTED_STANDARD_COPY } = require("../handleCheckState");
+const { REJECTED_STANDARD_COPY, REVIEW_COPY } = require("../handleCheckState");
 
 type Renderer = import("react-test-renderer").ReactTestRenderer;
 type Instance = import("react-test-renderer").ReactTestInstance;
@@ -156,23 +159,33 @@ describe("#4402 socials step reads each handle's state from the server", () => {
     return list[0];
   }
 
-  it("code not seen: warning copy and Check my bio", async () => {
-    const card = await single({ last_check_status: "pending", last_checked_at: "2026-11-12T09:29:00Z" });
-    expect(pills(card)).toEqual(["Code not seen"]);
-    expect(notices(card).join(" ")).toMatch(/couldn’t see the code yet/);
-    expect(buttons(card)).toEqual(["Check my bio"]);
+  it("a new handle is with Mingla for review, never checked automatically", async () => {
+    const card = await single({ review_required: true });
+    expect(pills(card)).toEqual(["With Mingla"]);
+    expect(notices(card)).toEqual([REVIEW_COPY]);
+    expect(notices(card).join(" ")).not.toMatch(/automatic/i);
+    expect(buttons(card)).toEqual(["I added the code"]);
   });
 
-  it("in review: a person checks it, and there is no Check button", async () => {
-    const card = await single({ review_required: true, last_check_status: "unreadable" });
-    expect(pills(card)).toEqual(["In review"]);
-    expect(notices(card).join(" ")).toMatch(/a person at Mingla will check it, usually within a day/);
-    expect(buttons(card)).toEqual([]);
+  it("whatever the bio check saw, the handle stays with Mingla for review", async () => {
+    for (const [status, words] of [["code_seen", /We saw the code/], ["code_not_seen", /couldn’t see the code on your profile yet/], ["unreadable", /look for the code themselves/]] as const) {
+      const card = await single({ review_required: true, last_check_status: status, last_checked_at: "2026-11-12T09:29:00Z" });
+      expect(pills(card)).toEqual(["With Mingla"]);
+      expect(notices(card)[0].startsWith(REVIEW_COPY)).toBe(true);
+      expect(notices(card)[0]).toMatch(words);
+      expect(pills(card)).not.toContain("Verified");
+    }
+  });
+
+  it("a submitted handle lets setup continue", async () => {
+    mockQueries["creator/status"] = ok({ profile: true, handles: [handle({ review_required: true })] });
+    const r = await mount(React.createElement(CreatorSocialsStep));
+    expect(buttons(r.root)).toContain("Continue");
   });
 
   it("expired (server status or past expiry): Get a new code re-saves the same handle", async () => {
     mockSaveHandle.mockResolvedValue({ id: "h-instagram", verify_code: "MINGLA-9999", expires_at: FUTURE });
-    for (const over of [{ last_check_status: "expired" }, { expires_at: PAST }]) {
+    for (const over of [{ last_check_status: "expired", review_required: true }, { expires_at: PAST, review_required: true }]) {
       const card = await single(over);
       expect(pills(card)).toEqual(["Code expired"]);
       expect(buttons(card)).toEqual(["Get a new code"]);
@@ -185,19 +198,30 @@ describe("#4402 socials step reads each handle's state from the server", () => {
     expect(mockVerifyHandle).not.toHaveBeenCalled();
   });
 
-  it("rejected: fixed wording plus the reviewer's short note, then Get a new code", async () => {
-    const card = await single({ last_check_status: "rejected", rejected_note: "Not their account" });
+  it("rejected: fixed wording plus the reviewer's short note, and it sticks", async () => {
+    mockQueries["creator/status"] = ok({ profile: true, handles: [handle({ last_check_status: "rejected", rejected_note: "Not their account" })] });
+    const r = await mount(React.createElement(CreatorSocialsStep));
+    const card = cards(r.root)[0];
     expect(pills(card)).toEqual(["Not confirmed"]);
     expect(notices(card)).toEqual([`${REJECTED_STANDARD_COPY}\nNote from Mingla: Not their account`]);
-    expect(buttons(card)).toEqual(["Get a new code"]);
+    expect(buttons(card)).toEqual([]);
+    expect(buttons(r.root)).toContain("Add one account to continue");
+    // The platform sheet cannot ask for a new code either.
+    await act(async () => {
+      typed(r.root, "ProgramRow").find((x) => x.props.title === "Instagram")?.props.onPress();
+    });
+    const footer = typed(r.root, "SheetFooter")[0];
+    expect(buttons(footer)).toEqual(["Not confirmed by Mingla"]);
+    expect(typed(footer, "ProgramButton")[0].props.disabled).toBe(true);
+    expect(mockSaveHandle).not.toHaveBeenCalled();
   });
 
-  it("verified leaves the pending list and shows where the audience came from", async () => {
-    mockQueries["creator/status"] = ok({ profile: true, handles: [handle({ verified: true, last_check_status: "verified", follower_band: "1k_10k", follower_source: "provider" })] });
+  it("verified by Mingla leaves the pending list and says the band was checked by Mingla", async () => {
+    mockQueries["creator/status"] = ok({ profile: true, handles: [handle({ verified: true, last_check_status: "verified", follower_band: "1k_10k", follower_source: "admin" })] });
     const r = await mount(React.createElement(CreatorSocialsStep));
     expect(cards(r.root)).toHaveLength(0);
     const row = typed(r.root, "ProgramRow").find((x) => x.props.title === "Instagram");
-    expect(row?.props.subtitle).toBe("@uncledelena · audience 1k–10k · from Instagram");
+    expect(row?.props.subtitle).toBe("@uncledelena · audience 1k–10k · checked by Mingla");
     expect(buttons(r.root)).toContain("Continue");
   });
 

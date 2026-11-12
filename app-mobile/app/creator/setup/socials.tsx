@@ -33,6 +33,8 @@ export default function CreatorSocialsStep(): React.ReactElement {
   const suggested = status.data?.suggested_handles ?? {};
   const byPlatform = new Map(handles.map((h) => [h.platform, h]));
   const anyVerified = handles.some((h) => h.verified && !h.review_required);
+  // #4402: a handle with Mingla for review lets setup go on; the step passes when Mingla approves it.
+  const anySubmitted = anyVerified || handles.some((h) => h.review_required && h.last_check_status !== 'rejected');
 
   const openPlatform = (key: string): void => {
     const existing = byPlatform.get(key);
@@ -68,7 +70,7 @@ export default function CreatorSocialsStep(): React.ReactElement {
     } finally { setWorking(null); }
   };
 
-  // #4402: an expired or rejected code gets a fresh one for the same handle.
+  // #4402: an expired code gets a fresh one for the same handle (a rejected one cannot).
   const newCode = async (h: CreatorHandle): Promise<void> => {
     setWorking(h.id);
     setErrors((r) => { const next = { ...r }; delete next[h.id]; return next; });
@@ -84,12 +86,13 @@ export default function CreatorSocialsStep(): React.ReactElement {
     try { await copyAddressText(code); setCopied(code); setTimeout(() => setCopied(null), 2000); } catch { setCopied(null); }
   };
 
+  const platformRejected = platform !== null && byPlatform.get(platform)?.last_check_status === 'rejected';
   if (status.isLoading) return <ProgramScreen title={stepTitle('socials')}><ProgramLoading /></ProgramScreen>;
   const pendingHandles = handles.filter((h) => handleCheckView(h).kind !== 'verified');
 
   return <ProgramScreen title={stepTitle('socials')}
-    footer={<ProgramButton label={anyVerified ? 'Continue' : 'Verify one account to continue'} disabled={!anyVerified} onPress={() => void goToNextStep(router, queryClient, 'socials')} />}>
-    <Text style={s.copy}>Prove one account is yours: add a short code to your public bio, then tap Check. Hosts see the platform and audience size, never your handle.</Text>
+    footer={<ProgramButton label={anySubmitted ? 'Continue' : 'Add one account to continue'} disabled={!anySubmitted} onPress={() => void goToNextStep(router, queryClient, 'socials')} />}>
+    <Text style={s.copy}>Prove one account is yours: add a short code to your public bio. A person at Mingla checks it and confirms the account. Hosts see the platform and audience size, never your handle.</Text>
 
     {pendingHandles.map((h) => {
       const view = handleCheckView(h);
@@ -106,11 +109,11 @@ export default function CreatorSocialsStep(): React.ReactElement {
             <Text style={s.accentText}>{copied === h.verify_code ? 'Copied' : 'Copy'}</Text>
           </Pressable>
         </View> : null}
-        {view.kind === 'new' ? <Text style={s.copy}>1. Paste it anywhere in your {platformLabel(h.platform)} bio and save.{'\n'}2. Come back and tap Check my bio.</Text> : null}
-        {view.text ? <ProgramNotice tone={view.noticeTone} text={view.text} /> : null}
-        {showCode && view.kind !== 'review' && h.expires_at ? <Text style={s.small}>{formatTimeLeft(h.expires_at, new Date(), 'to use this code')}</Text> : null}
+        {view.kind === 'review' && !h.last_check_status ? <Text style={s.copy}>Paste it anywhere in your {platformLabel(h.platform)} bio and save.</Text> : null}
+        <ProgramNotice tone={view.noticeTone} text={view.text} />
+        {showCode && h.expires_at ? <Text style={s.small}>{formatTimeLeft(h.expires_at, new Date(), 'to use this code')}</Text> : null}
         {errors[h.id] ? <ProgramNotice tone="error" text={errors[h.id].text} /> : null}
-        {view.action === 'check' ? <ProgramButton label="Check my bio" busy={working === h.id} onPress={() => void check(h)} /> : null}
+        {view.action === 'check' ? <ProgramButton label="I added the code" variant="secondary" busy={working === h.id} onPress={() => void check(h)} /> : null}
         {view.action === 'new_code' ? <ProgramButton label="Get a new code" busy={working === h.id} onPress={() => void newCode(h)} /> : null}
       </ProgramCard>;
     })}
@@ -125,7 +128,10 @@ export default function CreatorSocialsStep(): React.ReactElement {
     </ProgramCard>
 
     <ProgramSheet visible={platform !== null} onClose={() => setPlatform(null)} title={platform ? `Your ${platformLabel(platform)}` : ''} snapPoints={['62%']} busy={busy}
-      footer={<ProgramButton label={platform && byPlatform.get(platform) ? 'Save and get a new code' : 'Get my code'} busy={busy} disabled={!handle.trim()} onPress={() => void getCode()} />}>
+      footer={platformRejected
+        ? <ProgramButton label="Not confirmed by Mingla" disabled onPress={() => undefined} />
+        : <ProgramButton label={platform && byPlatform.get(platform) ? 'Save and get a new code' : 'Get my code'} busy={busy} disabled={!handle.trim()} onPress={() => void getCode()} />}>
+      {platformRejected ? <ProgramNotice tone="error" text="Mingla couldn’t confirm this account, so it can’t be changed here. Message Mingla if you think this is a mistake." /> : null}
       <ProgramField inSheet label="Handle" prefix="@" value={handle} onChangeText={(v) => { setHandle(v.replace(/^@+/, '')); setFieldError(null); setPrefilled(false); }}
         placeholder="yourhandle" autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType="default" textContentType="username" error={fieldError} />
       {prefilled ? <Text style={s.small}>From your Mingla Local application</Text> : null}

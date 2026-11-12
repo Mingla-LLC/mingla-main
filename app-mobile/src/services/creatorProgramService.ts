@@ -14,11 +14,12 @@ export const CREATOR_FORMATS = FORMAT_INFO.map(({ key, name }) => ({ key, name }
 
 export type CreatorVerification = 'incomplete' | 'review' | 'needs_more' | 'verified' | 'declined' | 'suspended';
 export type SetupCheck = { key: string; done: boolean; label: string };
-export type CreatorHandleCheckStatus = 'verified' | 'pending' | 'unreadable' | 'expired' | 'rejected';
+/** #4402: what the bio check last saw (evidence for Mingla's reviewer), or the reviewer's decision. */
+export type CreatorHandleCheckStatus = 'code_seen' | 'code_not_seen' | 'unreadable' | 'expired' | 'verified' | 'rejected';
 export type CreatorHandle = {
   id: string; platform: string; handle: string; verify_code: string; verified: boolean; review_required: boolean; expires_at: string;
   follower_band?: string | null;
-  /** #4402: where the band came from ('provider' = the public page, 'admin' = checked by Mingla). */
+  /** #4402: where the band came from ('admin' = checked by Mingla; 'provider' only on old rows). */
   follower_source?: 'self_reported' | 'provider' | 'admin' | null;
   /** #4402: the server's last check outcome, so the screen survives a reload. */
   last_check_status?: CreatorHandleCheckStatus | null;
@@ -141,7 +142,8 @@ export const creatorProgramService = {
   saveHandle: (input: { platform: string; handle: string; followerBand?: string | null }) => programWrite<{ id: string; verify_code: string; expires_at: string }>('creator_handle_upsert', {
     p_platform: input.platform, p_handle: input.handle.trim().replace(/^@+/, '').toLowerCase(), p_follower_band: input.followerBand ?? null,
   }),
-  verifyHandle: (handleId: string) => programEdge<{ status: 'verified' | 'pending' | 'review' | 'expired' }>('creator-handle-verify', { handleId }),
+  /** #4402: records what the bio check saw for Mingla's reviewer; it never verifies. */
+  verifyHandle: (handleId: string) => programEdge<{ status: 'review' | 'expired' | 'rejected' | 'verified'; check: 'code_seen' | 'code_not_seen' | 'unreadable' | 'expired' | null }>('creator-handle-verify', { handleId }),
   savePackage: (input: { formatKey: string; platforms: string[]; priceMinor: number; currency: string; turnaroundDays: number; active?: boolean }) => programWrite('creator_package_upsert', {
     p_format_key: input.formatKey, p_platforms: input.platforms, p_price_minor: input.priceMinor,
     p_currency: input.currency, p_turnaround_days: input.turnaroundDays,
