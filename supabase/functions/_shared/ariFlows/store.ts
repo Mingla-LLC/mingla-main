@@ -99,6 +99,7 @@ const STATUSES: ReadonlySet<string> = new Set([
   "completed",
   "cancelled",
   "expired",
+  "parked",
 ]);
 
 export function parseFlowArtefact(value: unknown): FlowArtefact | null {
@@ -223,6 +224,11 @@ export interface FlowStore {
     mode: "continue" | "take_over";
   }): Promise<{ changed: boolean; kind: string | null; run: FlowRun }>;
   displacement?(conversationId: string): Promise<FlowDisplacement | null>;
+  /**
+   * #3355 Wave A — bring this chat's parked run back (live again, the same
+   * step). FlowConflict when it expired or the chat moved on.
+   */
+  resume?(runId: string, conversationId: string): Promise<FlowRun>;
   markDisplacementNotified?(id: string): Promise<void>;
 }
 
@@ -251,6 +257,7 @@ function failure(
       "flow_brand_paused",
       "flow_takeover_invalid",
       "flow_form_locked",
+      "flow_run_not_parked",
     ]
   ) {
     if (message.includes(code)) return new FlowConflict(code);
@@ -440,6 +447,19 @@ export function createFlowStore(
         created_at: str(data.created_at),
         notified_at: str(data.notified_at),
       };
+    },
+    async resume(runId, conversationId) {
+      return runOrThrow(
+        settle(
+          "ari_flow_run_resume",
+          await service.rpc("ari_flow_run_resume", {
+            p_user_id: userId,
+            p_run_id: runId,
+            p_conversation_id: conversationId,
+          }),
+        ),
+        "ari_flow_run_resume",
+      );
     },
     async markDisplacementNotified(id) {
       settle(

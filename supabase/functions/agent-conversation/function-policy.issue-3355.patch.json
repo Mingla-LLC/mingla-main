@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3355",
+  "target": {
+    "kind": "function",
+    "name": "agent-conversation"
+  },
+  "basePolicySha256": "c1321716e70f512f6234003e71dd6119b9c85d1c411a4989b02fdb6e47e7dcf3",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_UNDERSTAND_FIRST",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "1ed80251ed11cc23568ddb82653080cba9e9cf2c9709af62caad9c62f7921373",
+  "reason": "Issue #3355 rework 9: the chat title rule follows the staged rollout switch. ARI_UNDERSTAND_FIRST=on|off overrides the staged \"Ari understands first\" rollout (ariRollout.ts) for a local stack or an eval run; unset, the rollout rows decide."
+}

@@ -21,6 +21,7 @@ import {
 } from "../_shared/ariFlows/store.ts";
 import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
 import { LIVE_FLOW_STATUSES } from "../_shared/ariFlows/types.ts";
+import { sweepIdleAriFlowRunsForUser } from "../_shared/agentTurnSweep.ts";
 
 import { TENANT_CONTEXT_VERSION as PROMPT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION as MODEL_VERSION } from "../_shared/ariModelVersion.ts";
@@ -49,6 +50,17 @@ export async function resumeFlowForHost(args: {
     return { status: 200, body: { flow_state: null, artefact: null } };
   }
   const store = args.store ?? createFlowStore(args.service, args.userId);
+  // #3355 Wave A (A5): a run idle for a day ends before a reload can show it.
+  if (!args.store) {
+    try {
+      await sweepIdleAriFlowRunsForUser({
+        admin: args.service,
+        userId: args.userId,
+      });
+    } catch (_error) {
+      // The old card may show once more; the next turn's sweep ends it.
+    }
+  }
   try {
     if (args.trigger === "resume") {
       // A plain reload reads only; it never re-probes or writes.

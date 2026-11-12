@@ -244,7 +244,7 @@ function retry(ctx: FlowContext, problem: string): AnswerOutcome {
 
 const LIST_TITLE = "Add your contact list";
 export const LIST_QUESTION =
-  "Attach your list with the paperclip — a spreadsheet saved as CSV, a text file or a Word document — or paste it here, one person per line. I'll pick out each person's name, phone number and email, and show you what I'll add before anything is saved. If it's a PDF or an Excel file, save it as CSV or copy the rows and paste them.";
+  "Attach your list with the paperclip — a spreadsheet saved as CSV, a text file or a Word document — or paste it here, one person per line. I'll pick out each person's name, phone number and email, and show you what I'll add before anything is saved. If it's a PDF or an Excel file, save it as CSV or copy the rows and paste them. You can also import it yourself in Mingla Host: open Blast, go to People and tap Import.";
 
 function listQuestion(ctx: FlowContext): AskSpec {
   const problem = problemOf(ctx);

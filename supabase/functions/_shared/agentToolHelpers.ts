@@ -4,9 +4,11 @@
 // deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
-  ariDomainRefusalMessage,
+  ARI_REFUSAL_COPY,
+  detectAriRefusalCode,
   DOMAIN_REFUSED_CODE,
 } from "./ariRefusalCopy.ts";
+import { matchAriAppRoute } from "./ariAppMap.ts";
 
 export type AgentRequiredRole =
   | "business_user"
@@ -82,11 +84,169 @@ export interface AgentToolDefinition {
 export interface AgentTool
   extends AgentToolDefinition, AgentAuthorizationDeclaration {}
 
+/**
+ * #3355 Wave B (B4) — what Ari can do after a refusal: open a Host screen (an
+ * App Map pattern, never a guessed route) or call another tool.
+ */
+export type AriNextStep =
+  | { kind: "route"; route: string; screen: string }
+  | { kind: "tool"; tool: string };
+
+export interface ToolErrorGuidance {
+  /** One plain sentence for the host: why it did not happen. No codes. */
+  user_reason?: string;
+  /** The step that moves the host forward, or null when there is none. */
+  next_step?: AriNextStep | null;
+}
+
+const PLACEHOLDER_ID = "00000000-0000-4000-8000-000000000000";
+
+/** A route template ("/brand/{brandId}/payments") as an App Map step, or null. */
+export function ariRouteStep(template: string): AriNextStep | null {
+  const entry = matchAriAppRoute(
+    template.replace(/\{[A-Za-z_]+\}/g, PLACEHOLDER_ID),
+  );
+  return entry
+    ? { kind: "route", route: entry.pattern, screen: entry.title }
+    : null;
+}
+
+const toolStep = (tool: string): AriNextStep => ({ kind: "tool", tool });
+
+/**
+ * Safe defaults for the common refusal codes. Anything not listed gets a
+ * neutral reason and no next step (never a guessed screen).
+ */
+const TOOL_ERROR_GUIDANCE: Readonly<
+  Record<string, { user_reason: string; next_step: () => AriNextStep | null }>
+> = Object.freeze({
+  INVALID_ARGS: {
+    user_reason: "A detail in the request was missing or not valid.",
+    next_step: () => null,
+  },
+  BRAND_ACCESS_DENIED: {
+    user_reason: "That isn't on a brand you can manage.",
+    next_step: () => toolStep("list_brands"),
+  },
+  OWNERSHIP_DENIED: {
+    user_reason: "That isn't on a brand you can manage.",
+    next_step: () => toolStep("list_brands"),
+  },
+  ROLE_DENIED: {
+    user_reason: "Your role on this brand can't do that.",
+    next_step: () => ariRouteStep("/brand/{brand_id}/team"),
+  },
+  MONEY_ROLE_DENIED: {
+    user_reason: "Only the brand owner or a finance manager can do that.",
+    next_step: () => ariRouteStep("/brand/{brand_id}/team"),
+  },
+  PAYOUT_NOT_READY: {
+    user_reason: "This brand can't take payments yet.",
+    next_step: () => ariRouteStep("/brand/{brand_id}/payments/onboard"),
+  },
+  PAYOUT_CHECK_FAILED: {
+    user_reason: "Mingla couldn't check this brand's payment setup just now.",
+    next_step: () => toolStep("get_payout_status"),
+  },
+  ORGANISER_TERMS_REQUIRED: {
+    user_reason:
+      "The Organiser Terms need to be accepted in the Mingla Host app first.",
+    next_step: () => null,
+  },
+  NOT_FOUND: {
+    user_reason: "Ari couldn't find that.",
+    next_step: () => toolStep("get_operator_snapshot"),
+  },
+  UNKNOWN_TOOL: {
+    user_reason: "That isn't something Ari can do from chat.",
+    next_step: () => toolStep("search_mingla_guide"),
+  },
+  HANDOFF_NOT_ALLOWED: {
+    user_reason: "Ari can't open that screen.",
+    next_step: () => toolStep("search_mingla_guide"),
+  },
+  AD_AUDIENCE_NOT_OWNED: {
+    user_reason: "That audience isn't one of this brand's.",
+    next_step: () => toolStep("list_ad_audiences"),
+  },
+  DISCOUNT_PROPOSAL_REFUSED: {
+    user_reason: "That discount can't be set up as asked.",
+    next_step: () => toolStep("list_discounts"),
+  },
+  REVISION_CONFLICT: {
+    user_reason: "It changed since Ari last read it.",
+    next_step: () => null,
+  },
+  RPC_FAILED: {
+    user_reason: "Mingla couldn't complete that just now.",
+    next_step: () => null,
+  },
+  READ_FAILED: {
+    user_reason: "Mingla couldn't read that just now.",
+    next_step: () => null,
+  },
+  WRITE_FAILED: {
+    user_reason: "Mingla couldn't save that just now.",
+    next_step: () => null,
+  },
+  RESOURCE_CHECK_FAILED: {
+    user_reason: "Mingla couldn't check that just now.",
+    next_step: () => null,
+  },
+});
+
+export const TOOL_ERROR_GUIDED_CODES: readonly string[] = Object.freeze(
+  Object.keys(TOOL_ERROR_GUIDANCE),
+);
+
 export class ToolError extends Error {
-  constructor(public code: string, message: string) {
+  /** #3355 Wave B (B4): why, in the host's words. */
+  readonly user_reason: string;
+  /** #3355 Wave B (B4): a Host screen (App Map) or a tool, else null. */
+  readonly next_step: AriNextStep | null;
+  constructor(
+    public code: string,
+    message: string,
+    guidance: ToolErrorGuidance = {},
+  ) {
     super(message);
     this.name = "ToolError";
+    const fallback = TOOL_ERROR_GUIDANCE[code];
+    this.user_reason = guidance.user_reason?.trim() ||
+      fallback?.user_reason ||
+      "That didn't go through.";
+    this.next_step = guidance.next_step !== undefined
+      ? guidance.next_step
+      : fallback?.next_step() ?? null;
   }
+}
+
+/** The observation the agent loop hands the model for a failed tool call. */
+export function normalizeAriToolError(error: unknown): {
+  code: string;
+  message: string;
+  user_reason: string;
+  next_step: AriNextStep | null;
+  recoverable: boolean;
+} {
+  if (error instanceof ToolError) {
+    return {
+      code: error.code,
+      message: error.message,
+      user_reason: error.user_reason,
+      next_step: error.next_step,
+      recoverable: error.code !== "TURN_STOPPED",
+    };
+  }
+  return {
+    code: "TOOL_FAILED",
+    message: error instanceof Error
+      ? error.message
+      : "The tool failed without a usable reason.",
+    user_reason: "That didn't go through.",
+    next_step: null,
+    recoverable: true,
+  };
 }
 
 export function deriveSlug(value: string): string {
@@ -205,6 +365,7 @@ export function organiserTermsRefusal(raw: unknown): ToolError | null {
     ? new ToolError(
       ORGANISER_TERMS_REQUIRED_CODE,
       ORGANISER_TERMS_REQUIRED_MESSAGE,
+      { user_reason: ORGANISER_TERMS_REQUIRED_MESSAGE },
     )
     : null;
 }
@@ -251,8 +412,14 @@ async function organiserTermsRefusalFromInvoke(
  * must treat as "maybe committed" and answer 202 "verifying").
  */
 export function ariDomainRefusal(raw: unknown): ToolError | null {
-  const message = ariDomainRefusalMessage(raw);
-  return message === null ? null : new ToolError(DOMAIN_REFUSED_CODE, message);
+  const code = detectAriRefusalCode(raw);
+  if (code === null) return null;
+  const copy = ARI_REFUSAL_COPY[code];
+  // #3355 Wave B (B4): the refusal's own fix screen, as an App Map step.
+  return new ToolError(DOMAIN_REFUSED_CODE, copy.message, {
+    user_reason: copy.message,
+    next_step: copy.fixRoute ? ariRouteStep(copy.fixRoute) : null,
+  });
 }
 
 /**

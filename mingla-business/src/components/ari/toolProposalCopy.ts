@@ -448,7 +448,7 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<
     "Setup plan",
     "Setup plan updated",
   ),
-  save_memory_note: row(
+  remember_note: row(
     "Remember this",
     "Something to remember",
     "Saved to memory",

@@ -19,7 +19,10 @@ import {
   payoutRailFor,
 } from "../agentAri10xTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
-import { ToolError } from "../agentToolHelpers.ts";
+import {
+  type AgentToolExecutionContext,
+  ToolError,
+} from "../agentToolHelpers.ts";
 import { WRITE_TOOL_OWNER_COPY } from "../ariPresentation/toolLabels.ts";
 import { WRITE_TOOL_OWNER_COPY as HOST_COPY } from "../../../../mingla-business/src/components/ari/toolProposalCopy.ts";
 import { STRIPE_SUPPORTED_COUNTRIES } from "../../../../mingla-business/src/constants/stripeSupportedCountries.ts";
@@ -27,6 +30,9 @@ import { toolErrorHttpStatus } from "../../agent-confirm-action/executionOutcome
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
+
+/** #3355 rework 5 (R5-14): a typed empty execution context. */
+const NO_OP: AgentToolExecutionContext = { operationId: null };
 
 const BRAND = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -44,7 +50,9 @@ function callerClient(brand: Brand, opts: { refuse?: string } = {}) {
   const client: Any = {
     rpc(name: string, params: Record<string, unknown>) {
       log.push(`rpc ${name} ${params.p_country}`);
-      if (opts.refuse) return Promise.resolve({ data: null, error: { message: opts.refuse } });
+      if (opts.refuse) {
+        return Promise.resolve({ data: null, error: { message: opts.refuse } });
+      }
       const country = String(params.p_country);
       const rail = payoutRailFor(country)!;
       Object.assign(brand, {
@@ -53,7 +61,11 @@ function callerClient(brand: Brand, opts: { refuse?: string } = {}) {
         payment_provider: rail.provider,
       });
       return Promise.resolve({
-        data: { payout_country: country, default_currency: rail.currency, payment_provider: rail.provider },
+        data: {
+          payout_country: country,
+          default_currency: rail.currency,
+          payment_provider: rail.provider,
+        },
         error: null,
       });
     },
@@ -91,7 +103,7 @@ Deno.test("payout country: the United Kingdom is one write that sets GB and GBP"
     { brand_id: BRAND, country_code: "GB" },
     client,
     "user",
-    {},
+    NO_OP,
   ) as Any;
   assertEquals(log, ["rpc biz_set_brand_payout_country GB"]);
   assertEquals(brand.default_currency, "GBP");
@@ -106,7 +118,7 @@ Deno.test("payout country: Nigeria is the same write, then the hold stamp", asyn
     { brand_id: BRAND, country_code: "NG" },
     client,
     "user",
-    {},
+    NO_OP,
   ) as Any;
   assertEquals(log, [
     "rpc biz_set_brand_payout_country NG",
@@ -117,30 +129,58 @@ Deno.test("payout country: Nigeria is the same write, then the hold stamp", asyn
 });
 
 Deno.test("payout country: leaving a Paystack rail is the server's job (one write)", async () => {
-  const brand = freshBrand({ payment_provider: "paystack", payout_country: "NG" });
+  const brand = freshBrand({
+    payment_provider: "paystack",
+    payout_country: "NG",
+  });
   const { client, log } = callerClient(brand);
-  await tool.executor({ brand_id: BRAND, country_code: "IE" }, client, "u", {});
+  await tool.executor(
+    { brand_id: BRAND, country_code: "IE" },
+    client,
+    "u",
+    NO_OP,
+  );
   assertEquals(log, ["rpc biz_set_brand_payout_country IE"]);
   assertEquals(brand.default_currency, "EUR");
 });
 
 Deno.test("payout country: refusals are never reported as done (#4389 D7)", async () => {
-  const locked = callerClient(freshBrand(), { refuse: "payout_country_locked" });
+  const locked = callerClient(freshBrand(), {
+    refuse: "payout_country_locked",
+  });
   const err = await assertRejects(
-    () => tool.executor({ brand_id: BRAND, country_code: "GB" }, locked.client, "u", {}),
+    () =>
+      tool.executor(
+        { brand_id: BRAND, country_code: "GB" },
+        locked.client,
+        "u",
+        NO_OP,
+      ),
     ToolError,
   );
   assertEquals((err as ToolError).code, "PAYOUT_COUNTRY_LOCKED");
   const unsupported = callerClient(freshBrand());
   const err2 = await assertRejects(
-    () => tool.executor({ brand_id: BRAND, country_code: "AU" }, unsupported.client, "u", {}),
+    () =>
+      tool.executor(
+        { brand_id: BRAND, country_code: "AU" },
+        unsupported.client,
+        "u",
+        NO_OP,
+      ),
     ToolError,
   );
   assertEquals((err2 as ToolError).code, "PAYOUT_COUNTRY_UNSUPPORTED");
   assertEquals(unsupported.log, []);
   const denied = callerClient(freshBrand(), { refuse: "forbidden" });
   const err3 = await assertRejects(
-    () => tool.executor({ brand_id: BRAND, country_code: "GB" }, denied.client, "u", {}),
+    () =>
+      tool.executor(
+        { brand_id: BRAND, country_code: "GB" },
+        denied.client,
+        "u",
+        NO_OP,
+      ),
     ToolError,
   );
   assertEquals((err3 as ToolError).code, "FORBIDDEN");

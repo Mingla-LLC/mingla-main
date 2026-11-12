@@ -23,8 +23,41 @@ export interface AgentLoopObservation {
   args: Record<string, unknown>;
   thoughtSignature?: string;
   result?: unknown;
-  error?: { code: string; message: string };
+  /**
+   * #3355 Wave B (B4): a failed call is an observation the model reasons
+   * over — the code, the detail, the host-facing reason and the next step
+   * (a Host screen from the App Map or another tool).
+   */
+  error?: AgentLoopToolErrorObservation;
   elapsedMs: number;
+}
+
+export interface AgentLoopToolErrorObservation {
+  code: string;
+  message: string;
+  user_reason?: string;
+  next_step?: unknown;
+}
+
+export interface AgentLoopNormalizedError {
+  code: string;
+  message: string;
+  recoverable: boolean;
+  user_reason?: string;
+  next_step?: unknown;
+}
+
+function errorObservation(
+  normal: AgentLoopNormalizedError,
+): AgentLoopToolErrorObservation {
+  return {
+    code: normal.code,
+    message: normal.message,
+    ...(normal.user_reason !== undefined
+      ? { user_reason: normal.user_reason }
+      : {}),
+    ...(normal.next_step !== undefined ? { next_step: normal.next_step } : {}),
+  };
 }
 
 export interface AgentLoopProposalValidationIssue {
@@ -51,6 +84,73 @@ export const DEFAULT_AGENT_LOOP_BUDGET: AgentLoopBudget = Object.freeze({
   deadlineMs: 55_000,
 });
 
+// #3355 Wave C (C3): agent-chat's production budget, tuned for Gemini Flash
+// (D2b). Before this, production fell through to DEFAULT_AGENT_LOOP_BUDGET
+// (12 tool calls) and only the local lane had an explicit budget.
+//
+// Invariant I-ARI-PRODUCTION-LOOP-BUDGET (declared beside its enforcing test): With the local-model lane off, agent-chat runs at most 6 steps, 7 model calls and 5 model-chosen tool calls (plus the turn's required deterministic pre-reads) inside the 55 s deadline, and the deadline still stops the loop first. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_c_loop_budget.implementor.test.ts
+export const ARI_PRODUCTION_LOOP_BUDGET: AgentLoopBudget = Object.freeze({
+  maxSteps: 6,
+  maxModelCalls: 7,
+  maxToolCalls: 5,
+  maxConsecutiveErrors: DEFAULT_AGENT_LOOP_BUDGET.maxConsecutiveErrors,
+  deadlineMs: 55_000,
+});
+
+/** #3355 rework 3: the claim check's share of the turn (its own ~4 s cap). */
+export const ARI_CLAIM_CHECK_RESERVE_MS = 4_000;
+
+/** The loopback lane's budget (#3355 local verification), unchanged. */
+export const ARI_LOCAL_LOOP_BUDGET: Partial<AgentLoopBudget> = Object.freeze({
+  deadlineMs: 115_000,
+  maxSteps: 9,
+  maxModelCalls: 10,
+  maxToolCalls: 8,
+});
+
+/**
+ * agent-chat's budget. `requiredReads` are the turn's deterministic pre-reads
+ * (initialCalls plus any expanded page reads); they run before the model and
+ * would otherwise use up the 5 tool calls the model may choose.
+ */
+export function ariChatLoopBudget(args: {
+  localModelEnabled: boolean;
+  requiredReads?: number;
+  /**
+   * #3355 Wave E (E1) — the turn's intent read already ran: it is one of the
+   * turn's model calls and its wall time comes out of the 55 s deadline.
+   */
+  intentRead?: { modelCalls: number; elapsedMs: number };
+  /**
+   * #3355 rework 3 — the reply's claim check runs after the loop: one model
+   * call and up to ARI_CLAIM_CHECK_RESERVE_MS are kept out of the loop's
+   * budget so the turn still ends inside the one deadline.
+   */
+  claimCheck?: boolean;
+}): Partial<AgentLoopBudget> {
+  const reserveCalls = args.claimCheck ? 1 : 0;
+  const reserveMs = args.claimCheck ? ARI_CLAIM_CHECK_RESERVE_MS : 0;
+  const spentCalls = Math.max(0, Math.floor(args.intentRead?.modelCalls ?? 0)) +
+    reserveCalls;
+  const spentMs = Math.max(0, Math.floor(args.intentRead?.elapsedMs ?? 0)) +
+    reserveMs;
+  if (args.localModelEnabled) {
+    return {
+      ...ARI_LOCAL_LOOP_BUDGET,
+      maxModelCalls: (ARI_LOCAL_LOOP_BUDGET.maxModelCalls ?? 10) - spentCalls,
+      deadlineMs: (ARI_LOCAL_LOOP_BUDGET.deadlineMs ?? 115_000) - spentMs,
+    };
+  }
+  const required = Math.max(0, Math.floor(args.requiredReads ?? 0));
+  return {
+    ...ARI_PRODUCTION_LOOP_BUDGET,
+    maxToolCalls: ARI_PRODUCTION_LOOP_BUDGET.maxToolCalls + required,
+    maxModelCalls: ARI_PRODUCTION_LOOP_BUDGET.maxModelCalls - spentCalls,
+    // The read and the loop together stay inside the one 55 s deadline.
+    deadlineMs: ARI_PRODUCTION_LOOP_BUDGET.deadlineMs - spentMs,
+  };
+}
+
 export type AgentLoopResult =
   | {
     kind: "text";
@@ -61,6 +161,18 @@ export type AgentLoopResult =
   }
   | {
     kind: "proposal";
+    toolCall: AgentLoopToolCall;
+    observations: AgentLoopObservation[];
+    usage: { input: number; output: number; calls: number };
+    exhausted: false;
+  }
+  /**
+   * #3355 Wave E (D3a) — the model chose to start a guided setup
+   * (start_flow). The caller hands it to the flow engine; nothing is written
+   * by the loop and no confirmation card is involved.
+   */
+  | {
+    kind: "flow_start";
     toolCall: AgentLoopToolCall;
     observations: AgentLoopObservation[];
     usage: { input: number; output: number; calls: number };
@@ -110,7 +222,7 @@ export async function runAgentLoop(args: {
   ) => Promise<AgentLoopModelResult>;
   classifyTool: (
     call: AgentLoopToolCall,
-  ) => "read" | "agent_state" | "write" | "unknown";
+  ) => "read" | "agent_state" | "write" | "flow" | "unknown";
   /** A failed proposal check is returned to the model for a bounded repair. */
   validateProposal?: (
     call: AgentLoopToolCall,
@@ -124,17 +236,31 @@ export async function runAgentLoop(args: {
   validateFinalText?: (
     text: string,
     observations: readonly AgentLoopObservation[],
-  ) => AgentLoopProposalValidationIssue | null | Promise<
-    AgentLoopProposalValidationIssue | null
-  >;
+  ) =>
+    | AgentLoopProposalValidationIssue
+    | null
+    | Promise<
+      AgentLoopProposalValidationIssue | null
+    >;
   executeTool: (call: AgentLoopToolCall) => Promise<unknown>;
+  /**
+   * #3355 Wave F (I-ARI-FLOW-HANDOFF-SAME-TURN): the caller starts the
+   * setup the model asked for. "stop" ends the loop with `flow_start` (the
+   * setup's card or proposal is the reply). An observation means the setup
+   * handed the owner's request to another lane (its gates passed): the model
+   * sees it and serves the request in this same turn. Absent: every
+   * start_flow ends the loop, as before.
+   */
+  resolveFlowStart?: (
+    call: AgentLoopToolCall,
+  ) => Promise<
+    "stop" | { result?: unknown; error?: AgentLoopToolErrorObservation }
+  >;
   isCancelled?: () => Promise<boolean>;
   onProgress?: (
     event: { phase: string; step: number; tool?: string },
   ) => Promise<void> | void;
-  normalizeError?: (
-    error: unknown,
-  ) => { code: string; message: string; recoverable: boolean };
+  normalizeError?: (error: unknown) => AgentLoopNormalizedError;
 }): Promise<AgentLoopResult> {
   const budget = { ...DEFAULT_AGENT_LOOP_BUDGET, ...(args.budget ?? {}) };
   const started = Date.now();
@@ -200,7 +326,7 @@ export async function runAgentLoop(args: {
       });
       consecutiveErrors = 0;
     } catch (error) {
-      const normal = args.normalizeError?.(error) ?? {
+      const normal: AgentLoopNormalizedError = args.normalizeError?.(error) ?? {
         code: "TOOL_FAILED",
         message: error instanceof Error ? error.message : "The tool failed.",
         recoverable: true,
@@ -208,7 +334,7 @@ export async function runAgentLoop(args: {
       observations.push({
         tool: call.name,
         args: call.args,
-        error: { code: normal.code, message: normal.message },
+        error: errorObservation(normal),
         elapsedMs: Date.now() - toolStarted,
       });
       if (
@@ -279,7 +405,7 @@ export async function runAgentLoop(args: {
       });
       consecutiveErrors = 0;
     } catch (error) {
-      const normal = args.normalizeError?.(error) ?? {
+      const normal: AgentLoopNormalizedError = args.normalizeError?.(error) ?? {
         code: "TOOL_FAILED",
         message: error instanceof Error ? error.message : "The tool failed.",
         recoverable: true,
@@ -287,7 +413,7 @@ export async function runAgentLoop(args: {
       observations.push({
         tool: call.name,
         args: call.args,
-        error: { code: normal.code, message: normal.message },
+        error: errorObservation(normal),
         elapsedMs: Date.now() - toolStarted,
       });
       if (
@@ -420,6 +546,32 @@ export async function runAgentLoop(args: {
     }
     for (const call of calls) {
       const classification = args.classifyTool(call);
+      if (classification === "flow") {
+        const resolved = args.resolveFlowStart
+          ? await args.resolveFlowStart(call)
+          : "stop";
+        if (resolved !== "stop") {
+          observations.push({
+            tool: call.name,
+            args: call.args,
+            ...(call.thoughtSignature
+              ? { thoughtSignature: call.thoughtSignature }
+              : {}),
+            ...(resolved.error
+              ? { error: resolved.error }
+              : { result: resolved.result ?? null }),
+            elapsedMs: 0,
+          });
+          continue modelTurns;
+        }
+        return {
+          kind: "flow_start",
+          toolCall: call,
+          observations,
+          usage: usage(),
+          exhausted: false,
+        };
+      }
       if (classification === "write") {
         const issue = await args.validateProposal?.(call);
         if (issue) {
@@ -497,7 +649,7 @@ export async function runAgentLoop(args: {
         });
         consecutiveErrors = 0;
       } catch (error) {
-        const normal = args.normalizeError?.(error) ??
+        const normal: AgentLoopNormalizedError = args.normalizeError?.(error) ??
           {
             code: "TOOL_FAILED",
             message: error instanceof Error
@@ -511,7 +663,7 @@ export async function runAgentLoop(args: {
           ...(call.thoughtSignature
             ? { thoughtSignature: call.thoughtSignature }
             : {}),
-          error: { code: normal.code, message: normal.message },
+          error: errorObservation(normal),
           elapsedMs: Date.now() - toolStarted,
         });
         if (!normal.recoverable) {

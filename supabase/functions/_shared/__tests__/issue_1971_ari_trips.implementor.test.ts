@@ -20,7 +20,11 @@ import {
 } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
 import { TENANT_SCOPED_READ_TOOL_NAMES } from "../agentTenantScope.ts";
-import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
+import {
+  ARI_CAPABILITY_INDEX,
+  buildSystemPrompt,
+  PROMPT_VERSION,
+} from "../agentSystemPrompt.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 
 const TRIP_WRITE_TOOLS = [
@@ -383,8 +387,11 @@ Deno.test("#1971 happy: the prompt advertises the trip graph and its revision ru
   // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
   // [TEST-MOD-APPROVED #1980] Prompt revision advanced for marketing draft/growth report tools.
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v30"); // #3355 advances the prompt for brand-scoped onboarding and grounded campaign drafts
-  const prompt = buildSystemPrompt(null, []);
+  assertEquals(PROMPT_VERSION, "v37"); // #3355 + #4389 merge: understand-first prompt with the brand setup lines
+  // #3355 Wave B: tools are advertised by the capability index (it feeds
+  // each tool's generated description), no longer pasted into the prompt.
+  const prompt = buildSystemPrompt(null, []) +
+    "\n" + ARI_CAPABILITY_INDEX;
   for (const name of ALL_TRIP_TOOLS) {
     assertStringIncludes(prompt, `- ${name} —`);
   }

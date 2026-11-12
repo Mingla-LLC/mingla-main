@@ -6,7 +6,10 @@ import {
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
 import { AGENT_TOOLS, isReadOnlyAgentToolCall } from "../agentTools.ts";
-import { buildSystemPrompt } from "../agentSystemPrompt.ts";
+import {
+  ARI_CAPABILITY_INDEX,
+  buildSystemPrompt,
+} from "../agentSystemPrompt.ts";
 
 // MINGLA-INVARIANT: I-3872-ARI-CANONICAL-WRITER | issue #3872 | Ari exposes the same Host discount and referral operations and never owns pricing or attribution math.
 Deno.test(
@@ -114,7 +117,10 @@ for (
 }
 
 Deno.test("#4304 the prompt tells Ari to look a named discount up, then propose", () => {
-  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
+  // #3355 Wave B: tools are advertised by the capability index (it feeds
+  // each tool's generated description), no longer pasted into the prompt.
+  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +
+    "\n" + ARI_CAPABILITY_INDEX;
   assert(prompt.includes("- end_discount — "));
   assert(prompt.includes("- resume_discount — "));
   assert(

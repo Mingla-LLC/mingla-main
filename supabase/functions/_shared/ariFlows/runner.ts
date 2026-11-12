@@ -23,6 +23,11 @@ import { readinessItemLabel } from "../readinessCatalog.ts";
 import { listWords, ownerItemNoun } from "./brandGate.ts";
 import { findFlowDefinition } from "./index.ts";
 import { FlowConflict, type FlowStore } from "./store.ts";
+import {
+  type FlowRequestHint,
+  readFlowRequest,
+  sameOwnerText,
+} from "./requestRead.ts";
 import type {
   AskSpec,
   FlowAnswer,
@@ -57,6 +62,28 @@ export interface RunnerInput {
    */
   requireStatus?: FlowRun["status"];
   brandName: string;
+  /**
+   * #3355 Wave D (D4) — the host is stuck (a second failure or strong
+   * frustration): a typed turn sets the run aside instead of answering it.
+   */
+  escalate?: boolean;
+  /**
+   * #3355 Wave E (E1) — what the turn's intent read says typed words do to
+   * this run: answer the card, park the run and serve the words, cancel it,
+   * or leave it untouched while the model answers a side question.
+   * Undefined (the intent read failed): the Wave A re-read below decides.
+   */
+  flowAction?: "answer" | "park" | "cancel" | "side";
+  /**
+   * #3355 ship-prep — the "Ari understands first" rollout switch is off for
+   * this brand: origin/main's runner rules (811c033211). Typed words that are
+   * not the card's answer get the card's own notice (no parking), the "can
+   * wait" items are a card, a waiting change refuses a new request, and the
+   * run walks on past the draft instead of completing with a follow-up.
+   * [TRANSITIONAL] off path — exit: rollout ari-understand-first-3355 active
+   * at 100% for every brand.
+   */
+  legacy?: boolean;
 }
 
 export interface RunnerDeps {
@@ -130,7 +157,19 @@ export type RunnerOutcome =
     text: string;
     run: FlowRun;
   }
-  | { kind: "cancelled"; text: string; run: FlowRun };
+  | { kind: "cancelled"; text: string; run: FlowRun }
+  /**
+   * #3355 Wave A (A2) — the owner's words carried a request of their own
+   * (or repeated words the card could not read): the run is parked and the
+   * agent loop serves the words in this turn. `resume` is the one card that
+   * brings the run back.
+   */
+  | {
+    kind: "parked";
+    hint: FlowRequestHint | "repeated";
+    resume: FlowArtefact;
+    run: FlowRun;
+  };
 
 const SETTLED = new Set(["done", "skipped", "deferred"]);
 
@@ -210,6 +249,13 @@ export function textChoiceFor(
   }
 }
 
+/** The open step, said in a sentence that fits its title. */
+export function stepLine(title: string): string {
+  const clean = title.trim().replace(/[\s:;,.]+$/, "");
+  if (/\?$/.test(clean)) return `Here's the question again: ${clean}`;
+  return `We're on ${clean}:`;
+}
+
 /**
  * #3355 — typed words that are not an answer to the open card: say plainly
  * what Ari is waiting for; the same card comes back under the words.
@@ -223,12 +269,63 @@ export function waitingText(
     : intent === "done"
     ? "There's nothing for me to check on this step — it's answered right here in the chat."
     : "I didn't catch that as an answer to this step, so nothing was changed.";
-  return `${lead} We're on ${artefact.title}:\n\n${artefact.text}`;
+  // #3355 final fix (P3): a step title that is a question ("Where is it?")
+  // is asked again, never pasted into a sentence ("We're on Where is it?:").
+  return `${lead} ${stepLine(artefact.title)}\n\n${artefact.text}`;
 }
 
 /** #3355 — a protected change is waiting on its confirmation card. */
 export const WAITING_ON_PROPOSAL_TEXT =
   "Your change is waiting on the confirmation card above. Approve it there to save it, or cancel it — nothing is saved until you do.";
+
+/** #3355 Wave A — the one choice that brings a parked run back. */
+export const RESUME_CHOICE = "resume";
+
+/** "Resume event setup", "Resume Website setup", "Resume contact import". */
+export function resumeLabel(
+  def: Pick<FlowDefinition, "key" | "noun" | "subject">,
+): string {
+  if (def.key === "website_setup") return "Resume Website setup";
+  if (def.key === "import_contacts") return "Resume contact import";
+  return `Resume ${def.noun} setup`;
+}
+
+/**
+ * #3355 Wave A — the parked run's Resume card. Deterministic per run, so a
+ * reload (flow_resume) shows the same card and the Host treats it as current
+ * while the run is parked. Bound to the question the run was on (or the run
+ * itself when it waited on a confirmation card).
+ */
+export function parkArtefact(
+  run: Pick<
+    FlowRun,
+    | "id"
+    | "flow_key"
+    | "flow_version"
+    | "current_step_key"
+    | "current_question_id"
+  >,
+  def?: FlowDefinition | null,
+): FlowArtefact {
+  const found = def ?? findFlowDefinition(run.flow_key, run.flow_version);
+  const label = resumeLabel(
+    found ?? { key: run.flow_key, noun: "your", subject: "offering" },
+  );
+  const noun = label.replace(/^Resume /, "");
+  return {
+    schema_version: 1,
+    artefact_id: `p:${run.id}`,
+    run_id: run.id,
+    step_key: run.current_step_key ?? "parked",
+    question_id: run.current_question_id ?? run.id,
+    kind: "notice",
+    reuse_key: "parked",
+    title: label,
+    text:
+      `I've paused your ${noun} so I can help with this first. Nothing in it was lost, and you can pick it up again here.`,
+    options: [{ id: RESUME_CHOICE, label }],
+  };
+}
 
 function stepIndex(def: FlowDefinition, key: string | null): number {
   return key ? def.steps.findIndex((step) => step.key === key) : -1;
@@ -291,6 +388,19 @@ function setAsideLabels(run: FlowRun): string[] {
     for (const item of run.step_states[key]?.set_aside ?? []) {
       if (run.step_states[key]?.state === "deferred") keys.add(item);
     }
+    // #3355 Wave A (A3, D4a): what can wait is never a step; the probe's
+    // evidence names it, and the summary says it once.
+    const observed = run.step_states[key]?.evidence?.observed as
+      | { can_wait?: unknown }
+      | undefined;
+    if (
+      run.step_states[key]?.state === "done" &&
+      Array.isArray(observed?.can_wait)
+    ) {
+      for (const item of observed.can_wait) {
+        if (typeof item === "string") keys.add(item);
+      }
+    }
   }
   return [...keys].flatMap((key) => {
     const label = readinessItemLabel(key);
@@ -298,15 +408,23 @@ function setAsideLabels(run: FlowRun): string[] {
   });
 }
 
+/** #3355 Wave A (A3) — the Home route the "can wait" line links to. */
+export const HOME_TODO_ROUTE = "/(tabs)/home";
+
+/** #3355 Wave A (A3) — the one summary line for what can wait, or "". */
+export function canWaitLine(run: FlowRun): string {
+  const later = setAsideLabels(run);
+  return later.length > 0
+    ? `Still on your Home to-do list: ${listWords(later)}.`
+    : "";
+}
+
 /** Built only from what the probes saw. */
 export function summaryText(def: FlowDefinition, run: FlowRun): string {
-  const later = setAsideLabels(run);
   const moneyLater = run.step_states.money_gate?.state === "deferred";
   return [
     `Your ${def.noun} draft is saved and I've checked it's there. Nobody can see it until you publish.`,
-    later.length > 0
-      ? `Still on your Home to-do list: ${listWords(later)}.`
-      : "",
+    canWaitLine(run),
     moneyLater ? "Tickets can go on sale once payments are ready." : "",
   ].filter(Boolean).join(" ");
 }
@@ -362,6 +480,11 @@ export async function runFlowStep(
 ): Promise<RunnerOutcome> {
   const newId = deps.newId ?? (() => crypto.randomUUID());
   let run = input.run;
+  // #3355 rework 2 (P2-11): the completion card's follow-up answer.
+  if (input.trigger === "answer" && run.status === "completed") {
+    const followed = await followUpAnswer(deps, input);
+    if (followed) return followed;
+  }
   if (!LIVE_FLOW_STATUSES.has(run.status)) return { kind: "pass", run };
   const def = findFlowDefinition(run.flow_key, run.flow_version);
   if (!def) return { kind: "pass", run };
@@ -412,6 +535,101 @@ export async function runFlowStep(
   }
 }
 
+/**
+ * #3355 rework 2 (P2-11, I-ARI-FLOW-COMPLETES-ON-DRAFT) — the completed run
+ * whose completion card carries this follow-up answer, or null.
+ */
+export function followUpOf(
+  run: FlowRun,
+  answer: FlowAnswer | undefined,
+):
+  | { def: FlowDefinition; follow: NonNullable<FlowDefinition["follow_up"]> }
+  | null {
+  if (!answer || run.status !== "completed") return null;
+  const def = findFlowDefinition(run.flow_key, run.flow_version);
+  const follow = def?.follow_up;
+  if (
+    !def || !follow || answer.run_id !== run.id ||
+    run.current_step_key !== follow.step || answer.step_key !== follow.step ||
+    !run.current_question_id ||
+    answer.question_id !== run.current_question_id ||
+    (answer.choice_id !== follow.yes.id && answer.choice_id !== follow.no.id)
+  ) return null;
+  return { def, follow };
+}
+
+/**
+ * "Not now" is plain words and changes nothing. "Yes" carries on in a new
+ * run for the same draft: the completed run's answers are copied (plus the
+ * follow-up's own), `follow_up_of` names it, and the new run walks on from
+ * the follow-up step. The completed run is never reopened.
+ */
+async function followUpAnswer(
+  deps: RunnerDeps,
+  input: RunnerInput,
+): Promise<RunnerOutcome | null> {
+  const old = input.run;
+  const target = followUpOf(old, input.answer);
+  if (!target) return null;
+  const { def, follow } = target;
+  if (input.answer?.choice_id === follow.no.id) {
+    return { kind: "notice", text: follow.no_text, artefact: null, run: old };
+  }
+  const started = await deps.store.start({
+    brandId: old.brand_id,
+    flowKey: old.flow_key,
+    flowVersion: old.flow_version,
+    concurrency: def.concurrency,
+    conversationId: old.conversation_id,
+    subjectId: old.subject_id,
+    answers: {
+      ...old.answers,
+      ...(follow.yes_answers ?? {}),
+      follow_up_of: { value: old.id, source: "engine" },
+    },
+  });
+  if (!started.created && started.run.id === old.id) return null;
+  let next = started.run;
+  if (started.created) {
+    // What the first run settled before the follow-up (done with evidence,
+    // or set aside by the host) is settled here too: no gate is asked twice.
+    const before = stepIndex(def, follow.step);
+    const carried = Object.fromEntries(
+      Object.entries(old.step_states).filter(([key, value]) =>
+        stepIndex(def, key) >= 0 && stepIndex(def, key) < before &&
+        SETTLED.has(value.state)
+      ),
+    );
+    if (Object.keys(carried).length > 0 || old.session_skips.length > 0) {
+      const token = (deps.newId ?? (() => crypto.randomUUID()))();
+      const lease = await deps.store.lease(
+        next.id,
+        token,
+        deps.leaseSeconds ?? 30,
+      );
+      if (lease.ok) {
+        try {
+          next = await deps.store.advance(next.id, token, lease.run.revision, {
+            ...(Object.keys(carried).length > 0
+              ? { step_states: carried }
+              : {}),
+            ...(old.session_skips.length > 0
+              ? { session_skips: old.session_skips }
+              : {}),
+          });
+        } finally {
+          await deps.store.release(next.id, token).catch(() => undefined);
+        }
+      }
+    }
+  }
+  return await runFlowStep(deps, {
+    run: next,
+    trigger: "turn",
+    brandName: input.brandName,
+  });
+}
+
 async function advanceUnderLease(
   deps: RunnerDeps,
   def: FlowDefinition,
@@ -444,6 +662,7 @@ async function advanceUnderLease(
     trigger: input.trigger,
     answered,
     ...(input.failed ? { failed: input.failed } : {}),
+    ...(input.legacy ? { legacy: true } : {}),
   });
 
   const commit = async (extra: Record<string, unknown>): Promise<FlowRun> => {
@@ -456,6 +675,22 @@ async function advanceUnderLease(
     };
     if (Object.keys(body).length === 0) return run;
     return await deps.store.advance(run.id, token, run.revision, body);
+  };
+
+  // #3355 Wave A (A2, I-ARI-NO-JAIL) — the owner asked for something else:
+  // set the run aside (never cancelled; Resume brings it back) and let the
+  // agent loop serve the words this turn. Website setup is never parked: its
+  // own screen reads the brand's live run, so its side requests go to the
+  // model as a side question instead.
+  const parkOrPass = async (
+    hint: FlowRequestHint | "repeated",
+  ): Promise<RunnerOutcome> => {
+    if (def.key === "website_setup") {
+      run = await commit({});
+      return { kind: "pass", run };
+    }
+    run = await commit({ status: "parked" });
+    return { kind: "parked", hint, resume: parkArtefact(run, def), run };
   };
 
   // ── 1. A bound answer (structured, or typed text that plainly is one) ────
@@ -483,10 +718,37 @@ async function advanceUnderLease(
       formAnswer = answer;
     }
   } else if (input.trigger === "turn") {
+    // #3355 Wave D (D4): a stuck host leaves the setup; Resume brings it back.
+    if (input.escalate && open) return await parkOrPass("repeated");
+    // #3355 Wave E (E1): the intent read's flow_action is primary; the
+    // keyword re-read below is the fallback when the read failed.
+    if (input.flowAction === "side") return { kind: "pass", run };
+    if (input.flowAction === "cancel") {
+      patch.status = "cancelled";
+      patch.current_artefact = null;
+      patch.current_question_id = null;
+      run = await commit({});
+      return {
+        kind: "cancelled",
+        text:
+          "Okay, I've stopped here. Nothing was changed, and everything you already saved stays saved. You can pick this up again anytime.",
+        run,
+      };
+    }
+    if (input.flowAction === "park") {
+      return await parkOrPass(readFlowRequest(input.ownerText) ?? "request");
+    }
     choiceId = textChoiceFor(open, input.ownerText);
+    // #3355 Wave A (A2) — a typed request for something else (a discount
+    // code, a refund, another kind of offering) is never taken as this form
+    // card's answer (the FAVY10 sentence must not become an event's title or
+    // start); it falls through to the re-read below, which parks the run.
+    const otherRequest = input.legacy ? null : readFlowRequest(input.ownerText);
+    const answersThisCard = input.flowAction === "answer" || !otherRequest ||
+      otherRequest === "request" || otherRequest === def.key;
     if (
       !choiceId && open?.answer_mode === "form" && open.question_id &&
-      openStep?.textAnswer && input.ownerText
+      openStep?.textAnswer && input.ownerText && answersThisCard
     ) {
       const values = openStep.textAnswer(ctxFor(openStep.key), input.ownerText);
       if (values) {
@@ -633,12 +895,80 @@ async function advanceUnderLease(
     ) {
       break;
     }
+    // #3355 rework 2 (P2-11, I-ARI-FLOW-COMPLETES-ON-DRAFT): the run's job is
+    // done once the draft is saved and verified. The optional next step is a
+    // follow-up on the completion card, never a step that holds the run open.
+    // A run that already asked it (rec set) or a continuation run goes on.
+    const follow = def.follow_up;
+    if (
+      !input.legacy &&
+      follow && step.key === follow.step && rec === undefined &&
+      run.answers.follow_up_of === undefined && def.summarize
+    ) {
+      const summary = def.summarize({ ...run, step_states: states });
+      if (summary) {
+        const laterLine = canWaitLine({ ...run, step_states: states });
+        const questionId = newId();
+        const artefact: FlowArtefact = {
+          schema_version: 1,
+          artefact_id: `s:${run.id}`,
+          run_id: run.id,
+          step_key: follow.step,
+          kind: "summary",
+          reuse_key: "summary",
+          title: assertOwnerCopy(summary.title, {
+            fallback: def.title,
+            surface: "flow_title",
+            mode: "label",
+          }),
+          text: ownerSafe(
+            [
+              summary.text,
+              laterLine && !summary.text.includes(laterLine) ? laterLine : "",
+              follow.text,
+            ].filter(Boolean).join(" "),
+            def.title,
+            "flow_text",
+          ),
+          question_id: questionId,
+          options: [
+            { id: follow.yes.id, label: follow.yes.label },
+            { id: follow.no.id, label: follow.no.label },
+            ...(laterLine
+              ? [{
+                id: "open:home",
+                label: "Open your Home to-do list",
+                route: HOME_TODO_ROUTE,
+              }]
+              : []),
+          ],
+        };
+        run = await commit({
+          status: "completed",
+          completion_evidence: summary.evidence,
+          current_step_key: follow.step,
+          current_question_id: questionId,
+          current_artefact: artefact,
+        });
+        return {
+          kind: "completed",
+          artefact,
+          text: [...lines, artefact.text].join("\n\n"),
+          run,
+        };
+      }
+    }
     const probe = await step.probe(ctxFor(step.key));
     // A step's note is said when it settles, not again on every later turn
-    // ("I'll add it to … venue" was repeated above each question).
+    // ("I'll add it to … venue" was repeated above each question). A
+    // follow-up run (rework 2) re-reads the steps its first run already
+    // settled; their notes were said then.
+    const resettled = follow !== undefined &&
+      run.answers.follow_up_of !== undefined &&
+      stepIndex(def, step.key) < stepIndex(def, follow.step);
     if (
       "note" in probe && probe.note &&
-      !(probe.done && rec?.state === "done")
+      !(probe.done && rec?.state === "done") && !resettled
     ) {
       lines.push(probe.note);
     }
@@ -657,6 +987,10 @@ async function advanceUnderLease(
         input.trigger === "turn" && input.ownerText?.trim() &&
         classifyFlowText(input.ownerText) !== "question"
       ) {
+        // #3355 Wave A: a new request while a change waits on its card is
+        // served, not refused; the pending card itself stays valid.
+        const request = input.legacy ? null : readFlowRequest(input.ownerText);
+        if (request) return await parkOrPass(request);
         return {
           kind: "notice",
           text: WAITING_ON_PROPOSAL_TEXT,
@@ -810,6 +1144,35 @@ async function advanceUnderLease(
             run,
           };
         }
+        // #3355 Wave A (A2) — re-read the words before refusing them. A
+        // request is served (the run is parked); the same words twice are
+        // never answered with the same card twice.
+        const openRecord = states[step.key];
+        // #3355 Wave E: words the intent read called an answer are not
+        // re-read as a request; the same words twice still never get the
+        // same card twice.
+        // #3355 ship-prep: the switch off keeps origin/main's notice.
+        const request = input.flowAction === "answer" || input.legacy
+          ? null
+          : readFlowRequest(input.ownerText);
+        if (
+          !input.legacy &&
+          (request ||
+            sameOwnerText(openRecord?.data?.unmatched_text, input.ownerText))
+        ) {
+          return await parkOrPass(request ?? "repeated");
+        }
+        if (openRecord && !input.legacy) {
+          setState(step.key, {
+            ...openRecord,
+            data: {
+              ...(openRecord.data ?? {}),
+              unmatched_text: input.ownerText.replace(/\s+/g, " ").trim()
+                .slice(0, 300),
+            },
+          });
+          run = await commit({});
+        }
         return {
           kind: "notice",
           text: ownerSafe(
@@ -852,6 +1215,22 @@ async function advanceUnderLease(
   }
 
   // ── 4. Every step settled: an evidence-backed summary ────────────────────
+  // #3355 Wave A (A3): what can wait is one line here, with a link to Home
+  // (a route-only button; it never posts an answer).
+  const settledRun = { ...run, step_states: states };
+  // #3355 ship-prep: the switch off keeps origin/main's summary (no line
+  // added here, no link).
+  const laterLine = input.legacy ? "" : canWaitLine(settledRun);
+  const summaryLink = laterLine
+    ? {
+      question_id: newId(),
+      options: [{
+        id: "open:home",
+        label: "Open your Home to-do list",
+        route: HOME_TODO_ROUTE,
+      }],
+    }
+    : { question_id: null, options: [] };
   if (def.summarize) {
     const summary = def.summarize({ ...run, step_states: states });
     if (summary) {
@@ -860,7 +1239,6 @@ async function advanceUnderLease(
         artefact_id: `s:${run.id}`,
         run_id: run.id,
         step_key: "summary",
-        question_id: null,
         kind: "summary",
         reuse_key: "summary",
         title: assertOwnerCopy(summary.title, {
@@ -868,8 +1246,14 @@ async function advanceUnderLease(
           surface: "flow_title",
           mode: "label",
         }),
-        text: ownerSafe(summary.text, def.title, "flow_text"),
-        options: [],
+        text: ownerSafe(
+          laterLine && !summary.text.includes(laterLine)
+            ? `${summary.text} ${laterLine}`
+            : summary.text,
+          def.title,
+          "flow_text",
+        ),
+        ...summaryLink,
       };
       run = await commit({
         status: "completed",
@@ -893,12 +1277,11 @@ async function advanceUnderLease(
       artefact_id: `s:${run.id}`,
       run_id: run.id,
       step_key: "summary",
-      question_id: null,
       kind: "summary",
       reuse_key: "summary",
       title: `Your ${def.noun} draft`,
-      text: summaryText(def, { ...run, step_states: states }),
-      options: [],
+      text: summaryText(def, settledRun),
+      ...summaryLink,
     };
     run = await commit({
       status: "completed",

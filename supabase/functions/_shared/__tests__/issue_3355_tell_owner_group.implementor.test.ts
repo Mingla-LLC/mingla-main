@@ -290,12 +290,15 @@ Deno.test("owner note: cancel sends nothing — the note is a confirmed write, n
     1,
   );
   const legacyAt = source.indexOf('"issue_3720_send_brand_group_message"');
-  assert(source.lastIndexOf("if (!receipts) {", legacyAt) > source.indexOf("const tellOwnerInBrandGroup"));
+  assert(
+    source.lastIndexOf("if (!receipts) {", legacyAt) >
+      source.indexOf("const tellOwnerInBrandGroup"),
+  );
   const binder = source.slice(
     source.indexOf("export async function bindOwnerNoteProposal"),
     source.indexOf("const tellOwnerInBrandGroup"),
   );
-  assert(!binder.includes("ari_tell_owner_in_brand_group\""));
+  assert(!binder.includes('ari_tell_owner_in_brand_group"'));
 });
 
 Deno.test("owner note: a teammate with no group they can post in falls back to the Team screen, at propose and at confirm", async () => {
@@ -311,7 +314,10 @@ Deno.test("owner note: a teammate with no group they can post in falls back to t
     ToolError,
   );
   assertEquals(refused.code, "OWNER_NOTE_UNAVAILABLE");
-  assertEquals(refused.message, `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`);
+  assertEquals(
+    refused.message,
+    `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
+  );
   assert(OWNER_SPOKEN_REFUSAL_CODES.has("OWNER_NOTE_UNAVAILABLE"));
   // Removed from the group between the card and the confirm.
   const atConfirm = await assertRejects(
@@ -397,8 +403,9 @@ Deno.test("owner note: the write tool is registered everywhere the registry requ
   const chat = Deno.readTextFileSync(
     new URL("../../agent-chat/index.ts", import.meta.url),
   );
-  // Every proposal path (model loop, legacy model path, flow answer) binds.
-  assertEquals(chat.match(/await bindOwnerNoteProposal\(/g)?.length, 3);
+  // Every proposal path (model loop, legacy model path, flow answer, and
+  // #3355 Wave D's "Ask the Mingla team" offer) binds.
+  assertEquals(chat.match(/await bindOwnerNoteProposal\(/g)?.length, 4);
 });
 
 Deno.test("owner note: the money step's 'Tell them' becomes the same protected proposal", async () => {
@@ -521,7 +528,10 @@ Deno.test("owner note: before its migration is applied the note still sends, and
   // Receipt-backed results (and every other tool) still need their receipt.
   assertEquals(requiresOperationReceipt(true, { sent: true }), true);
   assertEquals(requiresOperationReceipt(true, null), true);
-  assertEquals(requiresOperationReceipt(false, { receipt_backed: false }), false);
+  assertEquals(
+    requiresOperationReceipt(false, { receipt_backed: false }),
+    false,
+  );
   // Any other failure of the receipt read is not a reason to send: unknown.
   const flaky = teammateClient({ receiptError: "fetch failed" });
   const err = await assertRejects(

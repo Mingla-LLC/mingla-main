@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#3355",
+  "suite": {
+    "id": "issue-3355-ari-eval-gate",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "scripts/ari/eval/**",
+      "docs/contracts/ari-live-eval-baseline.json"
+    ],
+    "steps": [
+      {
+        "name": "Ari live-eval gate fails a 2+ point drop against the stored baseline",
+        "cwd": "scripts/ari/eval",
+        "run": "node --test __tests__/issue_3355_eval_gate.implementor.test.mjs",
+        "commandId": "assert:issue-3355-ari-eval-gate:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test __tests__/issue_3355_eval_gate.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#3355",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "scripts/ari/eval",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "scripts/ari/eval/__tests__/issue_3355_eval_gate.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-11"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

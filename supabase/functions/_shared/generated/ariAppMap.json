@@ -1,0 +1,1774 @@
+{
+  "schema_version": 1,
+  "generated_by": "scripts/ari/build-app-map.mjs",
+  "source": "mingla-business/app/** (Expo Router) + supabase/migrations Feature Guide seeds",
+  "routes": [
+    {
+      "pattern": "/",
+      "params": [],
+      "title": "Home",
+      "title_source": "path",
+      "file": "mingla-business/app/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/accept-brand-invitation",
+      "params": [],
+      "title": "Accept brand invitation",
+      "title_source": "path",
+      "file": "mingla-business/app/accept-brand-invitation.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/accept-brand-invitation/success",
+      "params": [],
+      "title": "Accept brand invitation success",
+      "title_source": "path",
+      "file": "mingla-business/app/accept-brand-invitation/success.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/accept-scanner-invitation",
+      "params": [],
+      "title": "Accept scanner invitation",
+      "title_source": "path",
+      "file": "mingla-business/app/accept-scanner-invitation.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/account",
+      "params": [],
+      "title": "Account",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/account.tsx",
+      "capability_keys": [
+        "account-delete",
+        "account-settings",
+        "help-announcements-roadmap",
+        "help-ideas-and-questions",
+        "help-support",
+        "help-video-guides"
+      ]
+    },
+    {
+      "pattern": "/account/delete",
+      "params": [],
+      "title": "Delete",
+      "title_source": "path",
+      "file": "mingla-business/app/account/delete.tsx",
+      "capability_keys": [
+        "web-legal"
+      ]
+    },
+    {
+      "pattern": "/account/edit-profile",
+      "params": [],
+      "title": "Edit profile",
+      "title_source": "path",
+      "file": "mingla-business/app/account/edit-profile.tsx",
+      "capability_keys": [
+        "account-delete"
+      ]
+    },
+    {
+      "pattern": "/account/notifications",
+      "params": [],
+      "title": "Notifications",
+      "title_source": "path",
+      "file": "mingla-business/app/account/notifications.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/account/support",
+      "params": [],
+      "title": "Support",
+      "title_source": "path",
+      "file": "mingla-business/app/account/support.tsx",
+      "capability_keys": [
+        "web-blog"
+      ]
+    },
+    {
+      "pattern": "/account/tap-to-pay",
+      "params": [],
+      "title": "Tap to pay",
+      "title_source": "path",
+      "file": "mingla-business/app/account/tap-to-pay.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/analytics",
+      "params": [],
+      "title": "Analytics",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/analytics.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/ari",
+      "params": [],
+      "title": "Ari",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/ari.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/ari/settings",
+      "params": [],
+      "title": "Settings",
+      "title_source": "path",
+      "file": "mingla-business/app/ari/settings.tsx",
+      "capability_keys": [
+        "events-visibility",
+        "venues-reservations",
+        "web-legal"
+      ]
+    },
+    {
+      "pattern": "/attendance/claim",
+      "params": [],
+      "title": "Claim",
+      "title_source": "path",
+      "file": "mingla-business/app/attendance/claim.tsx",
+      "capability_keys": [
+        "checkout-free"
+      ]
+    },
+    {
+      "pattern": "/auth",
+      "params": [],
+      "title": "Auth",
+      "title_source": "path",
+      "file": "mingla-business/app/auth/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/auth/ari-renditions",
+      "params": [],
+      "title": "Ari renditions",
+      "title_source": "path",
+      "file": "mingla-business/app/auth/ari-renditions.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/auth/callback",
+      "params": [],
+      "title": "Auth callback",
+      "title_source": "path",
+      "file": "mingla-business/app/auth/callback.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/b/[brandSlug]",
+      "params": [
+        "brandSlug"
+      ],
+      "title": "Brand page",
+      "title_source": "path",
+      "file": "mingla-business/app/b/[brandSlug]/index.tsx",
+      "capability_keys": [
+        "brand-audit-log",
+        "marketing-buyer-blasts"
+      ]
+    },
+    {
+      "pattern": "/b/[brandSlug]/v/[venueSlug]",
+      "params": [
+        "brandSlug",
+        "venueSlug"
+      ],
+      "title": "V",
+      "title_source": "path",
+      "file": "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/booking/[orderId]/cancel",
+      "params": [
+        "orderId"
+      ],
+      "title": "Booking cancel",
+      "title_source": "path",
+      "file": "mingla-business/app/booking/[orderId]/cancel.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Brand",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/audit-log",
+      "params": [
+        "id"
+      ],
+      "title": "Audit log",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/audit-log.tsx",
+      "capability_keys": [
+        "brand-audit-log",
+        "brand-team-roles"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/blasts",
+      "params": [
+        "id"
+      ],
+      "title": "Blasts",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/blasts.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/connect",
+      "params": [
+        "id"
+      ],
+      "title": "Connect",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/connect.tsx",
+      "capability_keys": [
+        "payouts-partner-program",
+        "payouts-paystack-nigeria",
+        "payouts-stripe"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/creators",
+      "params": [
+        "id"
+      ],
+      "title": "Creators",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/creators/index.tsx",
+      "capability_keys": [
+        "programs-creators"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/creators/[gigId]/interest",
+      "params": [
+        "id",
+        "gigId"
+      ],
+      "title": "Interest",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/creators/[gigId]/interest.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/creators/brief",
+      "params": [
+        "id"
+      ],
+      "title": "Brief",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/creators/brief.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/creators/contract/[contractId]",
+      "params": [
+        "id",
+        "contractId"
+      ],
+      "title": "Contract",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/creators/contract/[contractId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/creators/profile/[creatorId]",
+      "params": [
+        "id",
+        "creatorId"
+      ],
+      "title": "Profile",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/creators/profile/[creatorId].tsx",
+      "capability_keys": [
+        "account-delete",
+        "account-settings",
+        "social-follow-brands"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/creators/results",
+      "params": [
+        "id"
+      ],
+      "title": "Creators results",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/creators/results.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/creators/roster",
+      "params": [
+        "id"
+      ],
+      "title": "Roster",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/creators/roster.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/discounts",
+      "params": [
+        "id"
+      ],
+      "title": "Discounts",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/discounts.tsx",
+      "capability_keys": [
+        "events-discount-codes"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/discounts/report",
+      "params": [
+        "id"
+      ],
+      "title": "Report",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/discounts/report.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/edit",
+      "params": [
+        "id"
+      ],
+      "title": "Brand edit",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/edit.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/listing",
+      "params": [
+        "id"
+      ],
+      "title": "Listing",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/listing.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/payments",
+      "params": [
+        "id"
+      ],
+      "title": "Payments",
+      "title_source": "header",
+      "file": "mingla-business/app/brand/[id]/payments/index.tsx",
+      "capability_keys": [
+        "brand-pricing-defaults",
+        "payouts-balances-reports",
+        "payouts-paystack-nigeria",
+        "payouts-stripe",
+        "payouts-tax-registrations",
+        "payouts-timing"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/payments/[releaseId]",
+      "params": [
+        "id",
+        "releaseId"
+      ],
+      "title": "Payout",
+      "title_source": "header",
+      "file": "mingla-business/app/brand/[id]/payments/[releaseId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/payments/onboard",
+      "params": [
+        "id"
+      ],
+      "title": "Set up payments",
+      "title_source": "header",
+      "file": "mingla-business/app/brand/[id]/payments/onboard.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/payments/reports",
+      "params": [
+        "id"
+      ],
+      "title": "Payout reports",
+      "title_source": "header",
+      "file": "mingla-business/app/brand/[id]/payments/reports.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/pricing-defaults",
+      "params": [
+        "id"
+      ],
+      "title": "Pricing defaults",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/pricing-defaults.tsx",
+      "capability_keys": [
+        "brand-pricing-defaults",
+        "events-fees-and-tax",
+        "money-mingla-fee"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/promote",
+      "params": [
+        "id"
+      ],
+      "title": "Promote",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/promote.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/referrals",
+      "params": [
+        "id"
+      ],
+      "title": "Referrals",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/referrals.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/scanners",
+      "params": [
+        "id"
+      ],
+      "title": "Scanners",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/scanners.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/setup",
+      "params": [
+        "id"
+      ],
+      "title": "Brand setup",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/setup.tsx",
+      "capability_keys": [
+        "payouts-paystack-nigeria",
+        "rsvp-create"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/tap-to-pay/address",
+      "params": [
+        "id"
+      ],
+      "title": "Address",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/tap-to-pay/address.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/team",
+      "params": [
+        "id"
+      ],
+      "title": "Team",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/team.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/[id]/website",
+      "params": [
+        "id"
+      ],
+      "title": "Website",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/website.tsx",
+      "capability_keys": [
+        "sites-brand-website"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/website/[...path]",
+      "params": [
+        "id",
+        "path"
+      ],
+      "title": "Website",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/website/[...path].tsx",
+      "capability_keys": [
+        "sites-brand-website"
+      ]
+    },
+    {
+      "pattern": "/brand/[id]/website/ari",
+      "params": [
+        "id"
+      ],
+      "title": "Ari",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/website/ari.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/brand/new",
+      "params": [],
+      "title": "Brand new",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/new.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout-experience/[experienceEventId]",
+      "params": [
+        "experienceEventId"
+      ],
+      "title": "Get your spot",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout-experience/[experienceEventId]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout-experience/[experienceEventId]/buyer",
+      "params": [
+        "experienceEventId"
+      ],
+      "title": "Your details",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout-experience/[experienceEventId]/buyer.tsx",
+      "capability_keys": [
+        "account-explorer-onboarding",
+        "checkout-nigeria",
+        "checkout-tickets",
+        "payouts-stripe",
+        "trips-intake-forms"
+      ]
+    },
+    {
+      "pattern": "/checkout-experience/[experienceEventId]/confirm",
+      "params": [
+        "experienceEventId"
+      ],
+      "title": "Checkout experience confirm",
+      "title_source": "path",
+      "file": "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout-experience/[experienceEventId]/payment",
+      "params": [
+        "experienceEventId"
+      ],
+      "title": "Payment",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout-experience/[experienceEventId]/payment.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout-trip/[tripEventId]",
+      "params": [
+        "tripEventId"
+      ],
+      "title": "Reserve your spot",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout-trip/[tripEventId]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout-trip/[tripEventId]/buyer",
+      "params": [
+        "tripEventId"
+      ],
+      "title": "Your details",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx",
+      "capability_keys": [
+        "account-explorer-onboarding",
+        "checkout-nigeria",
+        "checkout-tickets",
+        "payouts-stripe",
+        "trips-intake-forms"
+      ]
+    },
+    {
+      "pattern": "/checkout-trip/[tripEventId]/confirm",
+      "params": [
+        "tripEventId"
+      ],
+      "title": "Checkout trip confirm",
+      "title_source": "path",
+      "file": "mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout-trip/[tripEventId]/intake",
+      "params": [
+        "tripEventId"
+      ],
+      "title": "Checkout trip intake",
+      "title_source": "path",
+      "file": "mingla-business/app/checkout-trip/[tripEventId]/intake.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout-trip/[tripEventId]/payment",
+      "params": [
+        "tripEventId"
+      ],
+      "title": "Review & pay",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout-trip/[tripEventId]/payment.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout/[eventId]",
+      "params": [
+        "eventId"
+      ],
+      "title": "Get tickets",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout/[eventId]/index.tsx",
+      "capability_keys": [
+        "checkout-free",
+        "checkout-hidden-link",
+        "checkout-nigeria",
+        "checkout-tickets"
+      ]
+    },
+    {
+      "pattern": "/checkout/[eventId]/buyer",
+      "params": [
+        "eventId"
+      ],
+      "title": "Your details",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout/[eventId]/buyer.tsx",
+      "capability_keys": [
+        "account-explorer-onboarding",
+        "checkout-nigeria",
+        "checkout-tickets",
+        "payouts-stripe",
+        "trips-intake-forms"
+      ]
+    },
+    {
+      "pattern": "/checkout/[eventId]/confirm",
+      "params": [
+        "eventId"
+      ],
+      "title": "Checkout confirm",
+      "title_source": "path",
+      "file": "mingla-business/app/checkout/[eventId]/confirm.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout/[eventId]/payment",
+      "params": [
+        "eventId"
+      ],
+      "title": "Payment",
+      "title_source": "header",
+      "file": "mingla-business/app/checkout/[eventId]/payment.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout/[eventId]/queue",
+      "params": [
+        "eventId"
+      ],
+      "title": "Checkout queue",
+      "title_source": "path",
+      "file": "mingla-business/app/checkout/[eventId]/queue.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/checkout/[eventId]/waitlist",
+      "params": [
+        "eventId"
+      ],
+      "title": "Waitlist",
+      "title_source": "path",
+      "file": "mingla-business/app/checkout/[eventId]/waitlist.tsx",
+      "capability_keys": [
+        "venues-waitlist-text"
+      ]
+    },
+    {
+      "pattern": "/connect-account-management",
+      "params": [],
+      "title": "Connect account management",
+      "title_source": "path",
+      "file": "mingla-business/app/connect-account-management.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/connect-onboarding",
+      "params": [],
+      "title": "Connect onboarding",
+      "title_source": "path",
+      "file": "mingla-business/app/connect-onboarding.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/connect-partner-account-management",
+      "params": [],
+      "title": "Connect partner account management",
+      "title_source": "path",
+      "file": "mingla-business/app/connect-partner-account-management.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/connect-partner-onboarding",
+      "params": [],
+      "title": "Connect partner onboarding",
+      "title_source": "path",
+      "file": "mingla-business/app/connect-partner-onboarding.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/connect-tax-registrations",
+      "params": [],
+      "title": "Connect tax registrations",
+      "title_source": "path",
+      "file": "mingla-business/app/connect-tax-registrations/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/e/[brandSlug]/[eventSlug]",
+      "params": [
+        "brandSlug",
+        "eventSlug"
+      ],
+      "title": "Event page",
+      "title_source": "path",
+      "file": "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
+      "capability_keys": [
+        "checkout-free",
+        "checkout-tickets",
+        "events-cancel-refund-all",
+        "events-tier-waitlist",
+        "rsvp-chip-in",
+        "social-follow-brands"
+      ]
+    },
+    {
+      "pattern": "/event/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Event",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/blasts",
+      "params": [
+        "id"
+      ],
+      "title": "Blasts",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/blasts/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/dates",
+      "params": [
+        "id"
+      ],
+      "title": "Dates",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/dates.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/door",
+      "params": [
+        "id"
+      ],
+      "title": "Door",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/door/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/door/[saleId]",
+      "params": [
+        "id",
+        "saleId"
+      ],
+      "title": "Door",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/door/[saleId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/door/pay/[codeId]",
+      "params": [
+        "id",
+        "codeId"
+      ],
+      "title": "Pay",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/door/pay/[codeId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/door/sell",
+      "params": [
+        "id"
+      ],
+      "title": "Sell",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/door/sell.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/door/tap/[saleId]",
+      "params": [
+        "id",
+        "saleId"
+      ],
+      "title": "Tap",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/door/tap/[saleId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/door/tap/setup",
+      "params": [
+        "id"
+      ],
+      "title": "Tap setup",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/door/tap/setup.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/edit",
+      "params": [
+        "id"
+      ],
+      "title": "Event edit",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/edit.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/group-chat",
+      "params": [
+        "id"
+      ],
+      "title": "Group chat",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/group-chat.tsx",
+      "capability_keys": [
+        "checkout-claim-ticket",
+        "events-group-chat",
+        "rsvp-create",
+        "social-collab-decide",
+        "trips-create"
+      ]
+    },
+    {
+      "pattern": "/event/[id]/guests",
+      "params": [
+        "id"
+      ],
+      "title": "Guests",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/guests/index.tsx",
+      "capability_keys": [
+        "events-check-in",
+        "events-comp-guests",
+        "events-guest-list"
+      ]
+    },
+    {
+      "pattern": "/event/[id]/guests/[guestId]",
+      "params": [
+        "id",
+        "guestId"
+      ],
+      "title": "Guests",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/guests/[guestId].tsx",
+      "capability_keys": [
+        "events-check-in",
+        "events-comp-guests",
+        "events-guest-list"
+      ]
+    },
+    {
+      "pattern": "/event/[id]/orders",
+      "params": [
+        "id"
+      ],
+      "title": "Orders",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/orders/index.tsx",
+      "capability_keys": [
+        "venues-qr-ordering"
+      ]
+    },
+    {
+      "pattern": "/event/[id]/orders/[oid]",
+      "params": [
+        "id",
+        "oid"
+      ],
+      "title": "Orders",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/orders/[oid]/index.tsx",
+      "capability_keys": [
+        "venues-qr-ordering"
+      ]
+    },
+    {
+      "pattern": "/event/[id]/preview",
+      "params": [
+        "id"
+      ],
+      "title": "Event preview",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/preview.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/reconciliation",
+      "params": [
+        "id"
+      ],
+      "title": "Reconciliation",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/reconciliation.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/scanner",
+      "params": [
+        "id"
+      ],
+      "title": "Scanner",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/scanner/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/[id]/scanners",
+      "params": [
+        "id"
+      ],
+      "title": "Scanners",
+      "title_source": "path",
+      "file": "mingla-business/app/event/[id]/scanners/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/event/create",
+      "params": [],
+      "title": "Event create",
+      "title_source": "path",
+      "file": "mingla-business/app/event/create.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/exp/[brandSlug]/[experienceSlug]",
+      "params": [
+        "brandSlug",
+        "experienceSlug"
+      ],
+      "title": "Experience page",
+      "title_source": "path",
+      "file": "mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/experience/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Experience",
+      "title_source": "path",
+      "file": "mingla-business/app/experience/[id]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/experience/[id]/edit",
+      "params": [
+        "id"
+      ],
+      "title": "Experience edit",
+      "title_source": "path",
+      "file": "mingla-business/app/experience/[id]/edit.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/experience/create",
+      "params": [],
+      "title": "Experience create",
+      "title_source": "path",
+      "file": "mingla-business/app/experience/create.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/experience/snap",
+      "params": [],
+      "title": "Snap",
+      "title_source": "path",
+      "file": "mingla-business/app/experience/snap.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/g/[token]",
+      "params": [
+        "token"
+      ],
+      "title": "Group invite",
+      "title_source": "path",
+      "file": "mingla-business/app/g/[token].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/home",
+      "params": [],
+      "title": "Home",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/home.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/hub",
+      "params": [],
+      "title": "Hub",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/hub/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/hub/events",
+      "params": [],
+      "title": "Events",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/hub/events.tsx",
+      "capability_keys": [
+        "discover-events",
+        "events-create"
+      ]
+    },
+    {
+      "pattern": "/hub/experiences",
+      "params": [],
+      "title": "Experiences",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/hub/experiences.tsx",
+      "capability_keys": [
+        "experiences-create",
+        "experiences-snap"
+      ]
+    },
+    {
+      "pattern": "/hub/getstarted",
+      "params": [],
+      "title": "Getstarted",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/hub/getstarted.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/hub/listing",
+      "params": [],
+      "title": "Listing",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/hub/listing.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/hub/trips",
+      "params": [],
+      "title": "Trips",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/hub/trips.tsx",
+      "capability_keys": [
+        "discover-trips",
+        "trips-create"
+      ]
+    },
+    {
+      "pattern": "/insights/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Insights",
+      "title_source": "path",
+      "file": "mingla-business/app/insights/[id].tsx",
+      "capability_keys": [
+        "marketing-analytics"
+      ]
+    },
+    {
+      "pattern": "/join/referral/[token]",
+      "params": [
+        "token"
+      ],
+      "title": "Referral",
+      "title_source": "path",
+      "file": "mingla-business/app/join/referral/[token].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/m/[token]",
+      "params": [
+        "token"
+      ],
+      "title": "Message link",
+      "title_source": "path",
+      "file": "mingla-business/app/m/[token].tsx",
+      "capability_keys": [
+        "brand-customer-enquiries"
+      ]
+    },
+    {
+      "pattern": "/marketing",
+      "params": [],
+      "title": "Marketing",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/ads",
+      "params": [],
+      "title": "Ads",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/ads/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/ads/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Ads",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/ads/[id].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/ads/create",
+      "params": [],
+      "title": "Ads create",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/ads/create.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/audiences",
+      "params": [],
+      "title": "Audiences",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/audiences/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/campaigns",
+      "params": [],
+      "title": "Campaigns",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/campaigns/index.tsx",
+      "capability_keys": [
+        "marketing-buyer-blasts"
+      ]
+    },
+    {
+      "pattern": "/marketing/campaigns/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Campaigns",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/campaigns/[id].tsx",
+      "capability_keys": [
+        "marketing-buyer-blasts"
+      ]
+    },
+    {
+      "pattern": "/marketing/campaigns/compose",
+      "params": [],
+      "title": "New campaign",
+      "title_source": "header",
+      "file": "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx",
+      "capability_keys": [
+        "marketing-buyer-blasts",
+        "marketing-campaigns",
+        "marketing-people",
+        "marketing-templates"
+      ]
+    },
+    {
+      "pattern": "/marketing/creators",
+      "params": [],
+      "title": "Creators",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/creators/index.tsx",
+      "capability_keys": [
+        "programs-creators"
+      ]
+    },
+    {
+      "pattern": "/marketing/people",
+      "params": [],
+      "title": "People",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/people/index.tsx",
+      "capability_keys": [
+        "marketing-people",
+        "official-brand-groups"
+      ]
+    },
+    {
+      "pattern": "/marketing/referrals",
+      "params": [],
+      "title": "Referrals",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/referrals/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/templates",
+      "params": [],
+      "title": "Templates",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/templates/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/templates/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Templates",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/templates/[id].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/messages",
+      "params": [],
+      "title": "Messages",
+      "title_source": "path",
+      "file": "mingla-business/app/messages/index.tsx",
+      "capability_keys": [
+        "brand-customer-enquiries"
+      ]
+    },
+    {
+      "pattern": "/messages/[conversationId]",
+      "params": [
+        "conversationId"
+      ],
+      "title": "Messages",
+      "title_source": "path",
+      "file": "mingla-business/app/messages/[conversationId].tsx",
+      "capability_keys": [
+        "brand-customer-enquiries"
+      ]
+    },
+    {
+      "pattern": "/messages/enquiry/[enquiryId]",
+      "params": [
+        "enquiryId"
+      ],
+      "title": "Enquiry",
+      "title_source": "path",
+      "file": "mingla-business/app/messages/enquiry/[enquiryId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/messages/media/[conversationId]",
+      "params": [
+        "conversationId"
+      ],
+      "title": "Media",
+      "title_source": "path",
+      "file": "mingla-business/app/messages/media/[conversationId].tsx",
+      "capability_keys": [
+        "official-brand-groups"
+      ]
+    },
+    {
+      "pattern": "/notifications",
+      "params": [],
+      "title": "Notifications",
+      "title_source": "path",
+      "file": "mingla-business/app/notifications.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/o/[orderId]",
+      "params": [
+        "orderId"
+      ],
+      "title": "Order",
+      "title_source": "path",
+      "file": "mingla-business/app/o/[orderId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/o/venue/[orderId]",
+      "params": [
+        "orderId"
+      ],
+      "title": "Venue order",
+      "title_source": "path",
+      "file": "mingla-business/app/o/venue/[orderId].tsx",
+      "capability_keys": [
+        "venues-insights"
+      ]
+    },
+    {
+      "pattern": "/partner/brands",
+      "params": [],
+      "title": "Brands",
+      "title_source": "path",
+      "file": "mingla-business/app/partner/brands.tsx",
+      "capability_keys": [
+        "social-follow-brands"
+      ]
+    },
+    {
+      "pattern": "/partner/earnings",
+      "params": [],
+      "title": "Earnings",
+      "title_source": "path",
+      "file": "mingla-business/app/partner/earnings.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/pay/[token]",
+      "params": [
+        "token"
+      ],
+      "title": "Pay",
+      "title_source": "path",
+      "file": "mingla-business/app/pay/[token].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/pay/door/[code]",
+      "params": [
+        "code"
+      ],
+      "title": "Door",
+      "title_source": "path",
+      "file": "mingla-business/app/pay/door/[code].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/pending-brand-invite",
+      "params": [],
+      "title": "Pending brand invite",
+      "title_source": "path",
+      "file": "mingla-business/app/pending-brand-invite.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/people/[personId]",
+      "params": [
+        "personId"
+      ],
+      "title": "People",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/people/[personId].tsx",
+      "capability_keys": [
+        "marketing-people",
+        "official-brand-groups"
+      ]
+    },
+    {
+      "pattern": "/people/groups/[groupId]",
+      "params": [
+        "groupId"
+      ],
+      "title": "Groups",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/people/groups/[groupId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/people/import",
+      "params": [],
+      "title": "Import",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/people/import.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/promoting",
+      "params": [],
+      "title": "Promoting",
+      "title_source": "path",
+      "file": "mingla-business/app/promoting/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/recent",
+      "params": [],
+      "title": "Recent",
+      "title_source": "path",
+      "file": "mingla-business/app/recent.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/refund/[refundId]/attention",
+      "params": [
+        "refundId"
+      ],
+      "title": "Attention",
+      "title_source": "path",
+      "file": "mingla-business/app/refund/[refundId]/attention.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/reserve/[brandId]",
+      "params": [
+        "brandId"
+      ],
+      "title": "Reserve",
+      "title_source": "path",
+      "file": "mingla-business/app/reserve/[brandId]/index.tsx",
+      "capability_keys": [
+        "checkout-free"
+      ]
+    },
+    {
+      "pattern": "/reserve/[brandId]/confirm",
+      "params": [
+        "brandId"
+      ],
+      "title": "Reserve confirm",
+      "title_source": "path",
+      "file": "mingla-business/app/reserve/[brandId]/confirm.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/reserve/[brandId]/manage",
+      "params": [
+        "brandId"
+      ],
+      "title": "Reserve manage",
+      "title_source": "path",
+      "file": "mingla-business/app/reserve/[brandId]/manage.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/rsvp/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Rsvp",
+      "title_source": "path",
+      "file": "mingla-business/app/rsvp/[id]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/rsvp/[id]/edit",
+      "params": [
+        "id"
+      ],
+      "title": "Rsvp edit",
+      "title_source": "path",
+      "file": "mingla-business/app/rsvp/[id]/edit.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/rsvp/[id]/guests",
+      "params": [
+        "id"
+      ],
+      "title": "Guests",
+      "title_source": "path",
+      "file": "mingla-business/app/rsvp/[id]/guests.tsx",
+      "capability_keys": [
+        "events-check-in",
+        "events-comp-guests",
+        "events-guest-list"
+      ]
+    },
+    {
+      "pattern": "/rsvp/[id]/preview",
+      "params": [
+        "id"
+      ],
+      "title": "Rsvp preview",
+      "title_source": "path",
+      "file": "mingla-business/app/rsvp/[id]/preview.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/rsvp/[id]/scanner",
+      "params": [
+        "id"
+      ],
+      "title": "Scanner",
+      "title_source": "path",
+      "file": "mingla-business/app/rsvp/[id]/scanner/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/rsvp/[id]/scanners",
+      "params": [
+        "id"
+      ],
+      "title": "Scanners",
+      "title_source": "path",
+      "file": "mingla-business/app/rsvp/[id]/scanners/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/rsvp/create",
+      "params": [],
+      "title": "Rsvp create",
+      "title_source": "path",
+      "file": "mingla-business/app/rsvp/create.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/rsvp/pass",
+      "params": [],
+      "title": "Rsvp pass",
+      "title_source": "path",
+      "file": "mingla-business/app/rsvp/pass.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/stay/[groupId]",
+      "params": [
+        "groupId"
+      ],
+      "title": "Stay",
+      "title_source": "path",
+      "file": "mingla-business/app/stay/[groupId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/stay/pay/[token]",
+      "params": [
+        "token"
+      ],
+      "title": "Pay",
+      "title_source": "path",
+      "file": "mingla-business/app/stay/pay/[token].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/stripe-onboarding-return",
+      "params": [],
+      "title": "Stripe onboarding return",
+      "title_source": "path",
+      "file": "mingla-business/app/stripe-onboarding-return.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/support/[ticketId]",
+      "params": [
+        "ticketId"
+      ],
+      "title": "Support",
+      "title_source": "path",
+      "file": "mingla-business/app/support/[ticketId].tsx",
+      "capability_keys": [
+        "web-blog"
+      ]
+    },
+    {
+      "pattern": "/support/inbox",
+      "params": [],
+      "title": "Inbox",
+      "title_source": "path",
+      "file": "mingla-business/app/support/inbox.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/t/[brandSlug]/[tripSlug]",
+      "params": [
+        "brandSlug",
+        "tripSlug"
+      ],
+      "title": "Trip page",
+      "title_source": "path",
+      "file": "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/team",
+      "params": [],
+      "title": "Team",
+      "title_source": "path",
+      "file": "mingla-business/app/team/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/trip/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Trip",
+      "title_source": "path",
+      "file": "mingla-business/app/trip/[id]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/trip/[id]/edit",
+      "params": [
+        "id"
+      ],
+      "title": "Trip edit",
+      "title_source": "path",
+      "file": "mingla-business/app/trip/[id]/edit.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/trip/[id]/money",
+      "params": [
+        "id"
+      ],
+      "title": "Money",
+      "title_source": "path",
+      "file": "mingla-business/app/trip/[id]/money/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/trip/[id]/travelers",
+      "params": [
+        "id"
+      ],
+      "title": "Travelers",
+      "title_source": "path",
+      "file": "mingla-business/app/trip/[id]/travelers/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/trip/coming-soon",
+      "params": [],
+      "title": "Coming soon",
+      "title_source": "path",
+      "file": "mingla-business/app/trip/coming-soon.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/trip/create",
+      "params": [],
+      "title": "Trip create",
+      "title_source": "path",
+      "file": "mingla-business/app/trip/create.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/[venueId]",
+      "params": [
+        "venueId"
+      ],
+      "title": "Venue",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/[venueId]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/create",
+      "params": [],
+      "title": "Venue create",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/create.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/deck-readiness",
+      "params": [],
+      "title": "Deck readiness",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/deck-readiness.tsx",
+      "capability_keys": [
+        "venues-go-live-readiness"
+      ]
+    },
+    {
+      "pattern": "/website-return",
+      "params": [],
+      "title": "Website return",
+      "title_source": "path",
+      "file": "mingla-business/app/website-return.tsx",
+      "capability_keys": []
+    }
+  ],
+  "guide_how_to": {
+    "account-delete": "Mingla Explorer (iOS and Android): open the Profile tab, tap \"Account Settings\", scroll to \"The Red Zone\" and tap \"Delete My Account\". On \"Are you sure?\" tap \"Delete my account\" (or \"Never mind\" to stop). When it finishes the app shows \"Account Deleted\" and signs you out. If the same login also has an active Host account, it shows \"Explorer Profile Deleted\" instead and the login keeps working for Mingla Host.\n\nMingla Host (iOS, Android and web): open the Account tab (on a wide web screen, the account button at the top right), then under Settings tap \"Delete account\" (also reachable from \"Edit profile\"). Step 1 \"Delete your Mingla Host account?\": tap \"Continue\". Step 2 \"Here's what you'll lose\" lists brands, events, ticket sales, door sales, comp guests and team invitations; Mingla checks your account here. If something must be finished first you see \"You can't delete your account yet\" with the reasons, plus \"Go to Home\" and \"Close\". Otherwise tap \"Continue\". Step 3: type your account email (or the word DELETE if no email is on file) and tap \"Delete my account\". Step 4 shows \"Account and login deleted\", or \"Business Account Deleted\" when the login is kept.",
+    "account-explorer-onboarding": "After signing in for the first time, Mingla Explorer opens onboarding automatically.\n1. Pick your language.\n2. \"What's your number?\": enter your phone and tap \"Send code\". On \"Enter the code\" type the code and tap \"Verify\". If it does not arrive, after the countdown choose \"Resend SMS\" or \"Call me instead\".\n3. \"Tell us about you.\" and \"Almost done.\": add your details.\n4. \"Now the fun part.\": tap every vibe that sounds like you.\n5. Location: \"Better spots start here\", tap \"Continue\" to allow location. Mingla then checks whether you are in a live city (\"Checking your city\"). If you are not, you see \"We're not in your city yet\"; tap \"Choose a city to explore\", pick from the list and tap \"Explore\" with the city name.\n6. \"What kind of places do you love?\", \"How do you get around?\" and \"How far will you go?\".\n7. \"Your inner circle\": add friends and tap \"Pair\" (optional).\n8. \"Plan it together\": start a group or join a chat you are invited to.\n9. \"One quick thing\": the consent screen, then Mingla builds your first set of picks.",
+    "account-settings": "Open Mingla Explorer, tap Profile, then Account Settings to change language, country, birthday, profile visibility, activity sharing, analytics, notifications and the direct-message exception during quiet hours. Return to Profile and scroll to the bottom to read Mingla · v{version} ({build}) on a native install.",
+    "brand-audit-log": "1. Go to the Account tab, tap the brand under \"Your brands\" to open its brand page.\n2. In the Operations list, tap \"Audit log\" (subtitle \"Recent actions on this brand\"). This row only appears for brand owners and brand admins.\n3. Use the filter chips at the top (\"All\", \"Payout account\", \"Payouts & refunds\", \"Orders\", \"Legal\", \"Ops\", \"Other\") to narrow the list.\n4. Each entry shows what happened, how long ago, who did it (shown as \"User\" plus the last 6 characters of their account ID, or \"System\") and what it affected.\n5. Tap \"Load more\" at the bottom to see older entries.\nThe screen is the same on iOS, Android and web.",
+    "brand-customer-enquiries": "On a public brand or offering page, use Stay in the loop to confirm an email subscription, or choose Message {Brand}, select what the message is about and send it. The guest can continue on the private message link. In Mingla Host, open Messages and choose the Customer enquiry to reply, resolve, block or report it. Staff see only enquiries a participant reports.",
+    "brand-pricing-defaults": "1. Go to Account > \"Your brands\", open the brand.\n2. In the Operations list tap \"Pricing defaults\" (subtitle \"Who covers VAT and fees by default\").\n3. Under \"Who covers the costs?\" set each row:\n   - \"VAT\": \"Included in price\" or \"I'll cover it\".\n   - \"Mingla fee\": \"Add to price\" or \"I'll cover it\".\n   - \"Service fee\": \"Add to price\" or \"I'll cover it\".\n4. Each change saves straight away. The preview shows \"Buyer pays\" and \"You keep\" for an example order.\n5. If VAT shows \"Set up VAT\", add an active tax registration in Payments first.\nInside the event, trip or experience pricing step the same section shows \"Using your brand defaults\" with an \"Edit defaults\" link, and you can override it for that one listing.\nSame on iOS, Android and web.",
+    "brand-team-roles": "1. Open the brand (Account > \"Your brands\") and tap \"Team & permissions\".\n2. Tap \"+\" (\"Invite team member\").\n3. Enter \"Name\" and \"Email\", tap the Role field and pick a role. Tap \"Roles explained\" to see what each role does.\n4. If you pick Brand owner, choose under \"After they accept\": \"I leave this brand\" (default) or stay as admin.\n5. Tap \"Send invitation\". They get an email link that expires in 7 days, and appear under \"PENDING INVITATIONS\".\n6. Tap a person to \"Revoke invitation\" or \"Remove from team\"; accepted people are listed under \"ACTIVE MEMBERS\".\nWhat each role can do in the app:\n- Brand owner: everything, and the only role that can connect or change the payout bank account and invite a new owner.\n- Brand admin: brand settings and profile, team invites and removals, audit log, viewing payouts and refunds.\n- Event manager: create and edit events, manage tickets, scanners and comp guests.\n- Finance manager: view payouts and balances, issue refunds, change pricing settings.\n- Marketing manager: the brand Website workspace and marketing tools.\n- Scanner: scan tickets at the door.\nSame on iOS, Android and web.",
+    "checkout-claim-ticket": "1. Open the confirmation email from your web purchase or RSVP and tap its Mingla app button (the attendance link).\n2. On a phone, the web page says \"Open Mingla to connect your attendance\". Tap Open Mingla (or Get Mingla to install it first). On a computer, the page shows a code to scan so you can continue on your phone.\n3. In the Explorer app the \"Connect attendance\" sheet opens. If you are not signed in, tap Sign in and use the same email or phone you used at checkout.\n4. Tap Connect attendance. If the app needs to confirm your inbox it shows \"Email me a code\"; enter the code and tap Confirm and connect.\n5. When it works you see \"You're in\" and can tap Open the chat (or See who's going if the event has no group chat).\nIf the link has expired, just sign in to the app with the email or phone used at checkout and the ticket will be waiting.",
+    "checkout-free": "Free ticketed event, web: open the event page, tap Get tickets, pick a free ticket and tap Reserve free ticket. Enter Full name, Email and Mobile number under Buyer details, agree to the terms and tap Reserve free ticket. The confirmation page says \"You're in\" and shows your QR code.\nFree ticketed event, Explorer app (iOS and Android): open the event, tap Get tickets, choose the free ticket and tap Claim Free Ticket.\nRSVP event: open the event link and choose Going, Maybe or Can't go. Guests without an account give name, email and phone; signed-in app users do not need to retype them. Free trips and experiences use Reserve free spot the same way.",
+    "checkout-hidden-link": "Host app (iOS, Android, web): in the event creator's Settings step, under Visibility choose Unlisted (\"Only people with the direct link can see this event\"). Publish, then share the event's link (mingla web address /e/your-brand/your-event) with the people you want.\nBuyer: open the shared link and tap Get tickets; checkout works the same as for a public event.",
+    "checkout-nigeria": "Web: open the event and tap Get tickets, choose tickets, fill in Your details and continue to Payment. The screen says \"You'll be taken to our secure payment page\". Tap Pay and you are sent to Paystack's page to finish, then brought back to the confirmation page.\nExplorer app (iOS and Android): tap Get tickets, then Continue to Payment. Paystack's page opens in an in-app browser; after paying, the app checks the order and shows \"You're booked\".\nThe same path is used automatically for any brand that is set up to get paid in Nigeria; the guest does not choose the provider.",
+    "checkout-tickets": "Web (any browser): open the event page and tap Get tickets. Under Select your tickets choose quantities and tap Continue. Fill in Your details (Full name, Email, Mobile number), agree to the terms and tap Continue to payment. On Payment tap Pay; you are taken to the secure payment page to finish, then returned to a confirmation page that says \"You're in\" with your QR codes.\nExplorer app (iOS, Android): open the event, tap Get tickets, pick tickets and tap Continue to Payment. The payment sheet offers card, Apple Pay (iPhone) or Google Pay (Android). After payment you see \"You're booked\" and the ticket is in your tickets.",
+    "discover-events": "Open Discover and choose Events. Use the city chip and Filter for date, type and genre, then open an event. Mingla-host events use Mingla ticketing or RSVP; Ticketmaster events open Ticketmaster's ticket page.",
+    "discover-trips": "Open Discover and choose Trips. Set destination, departure, dates, price, group size or sort order, then open a trip and use Reserve when it fits.",
+    "events-cancel-refund-all": "In Mingla Host (iOS, Android or web), open the event and scroll to the bottom of the event page. Tap \"Cancel event\" (also in the event's manage menu on the Events list). The \"Cancel this event?\" dialog explains what happens: \"Sales stop straight away\" and paid orders are \"queued for a full refund, and Mingla reviews the batch before the money is sent\". Type the event name to confirm and tap \"Cancel event\" (or \"Keep event live\" to back out). If tickets were sold, the toast reads \"Event cancelled. Refunds are with Mingla for review.\" Mingla staff then open the event in Mingla Admin under Offerings, check the held batch (\"Cancel refunds are held for review\") and tap \"Release held refunds\", typing RELEASE to confirm. Refunds then go back to each buyer's original payment method (card via Stripe or Paystack). Staff can also cancel an offering from Mingla Admin with \"Cancel offering\".",
+    "events-check-in": "In the Mingla Host app on iOS or Android, open the event and tap \"Scan tickets\". People invited as scanners see their events on the Home screen and tap one to open the camera. Allow camera access when asked. Point the camera at the ticket QR code. A result shows for about three seconds: \"<name> checked in\", \"Already checked in\", \"Different event\", \"Ticket not valid\", \"Doors aren't open yet\", \"Event has ended\" or \"Ticket not found\".\nNo QR? Tap \"Find by name\", type at least 2 letters of the name or email, and tap \"Admit\" on the ticket (or \"Admit all\" for a party). On Mingla Host web, the Scan tickets page has the same \"Find a guest by name\" panel, so a laptop at the door works too. A host can also open a guest in Guests and tap \"Admit\" on a ticket.",
+    "events-comp-guests": "In Mingla Host, open the event and tap \"Guests\", then tap \"+\" (\"Add to guest list\").\n1. Pick the ticket type. Hidden ticket types are listed too, so a hidden \"Guest list\" ticket type works well. Each one shows how many places are left; a sold-out one is greyed out.\n2. If the event runs on several dates, pick the date they are coming.\n3. Fill in Full name (required), Email (sends their ticket) and Phone (optional). Tap \"+ Add a plus-one\" for each person they bring: give a plus-one a name (and optionally an email or phone) and they get their own ticket; leave a plus-one blank and their QR code goes in the main guest's email.\n4. Tap \"+ Add another guest\" for more people (up to 50 at once), or \"Paste a list\" and paste one guest per line as \"Name, email, party size\", then tap \"Preview\".\n5. Add an optional \"Note for your team\" and tap \"Add {n} guests\".\nEveryone with an email gets the standard free-ticket email with a QR code. They show in Guests with a GUEST LIST pill. Open a guest to tap \"Resend ticket\" or \"Cancel guest-list ticket\".",
+    "events-create": "1. Tap the create button (\"Create event, experience, or trip\") on Home or Hub, choose \"Create event\", then \"Ticketed event\". You can also use \"Build a new event\" in Hub > Events.\n2. Work through the steps: \"Basics\", \"When\", \"Where\", \"Cover\", \"Tickets\", \"Settings\", \"Preview\". Tap \"Continue\" to move on; drafts save automatically.\n3. On \"When\", pick \"Single\", \"Recurring\" or \"Multi-date\":\n   - Single: date, \"Doors open\" and end time.\n   - Recurring: \"First occurrence\", times, a pattern (\"Daily\", \"Weekly\", \"Every 2 weeks\", \"Monthly (by day)\", \"Monthly (by weekday)\") and an end: \"After N occurrences\" (up to 52) or \"On a date\".\n   - Multi-date: tap \"Add date\" for each date and time (2 to 24 dates); each date can have its own overrides.\n4. On \"Preview\", tap \"Publish event\" and confirm.\nSame on iOS, Android and web.",
+    "events-discount-codes": "In Mingla Host, open a brand, then Discounts. Create a code, automatic discount or sale price; choose what it applies to; review the server preview; and publish it. Use the Prices tab to allow or stop discounts item by item.",
+    "events-fees-and-tax": "Brand defaults: in Mingla Host open your brand profile and tap \"Pricing defaults\" (\"Who covers VAT and fees by default\"). Per event: in the Tickets step of creating an event (or the pricing step of an experience) find \"Who covers the costs?\" (\"Buyers always see one all-in price.\"). For \"Mingla fee\" and \"Service fee\" choose \"Add to price\" or \"I'll cover it\". For \"VAT\" choose \"Included in price\" or \"I'll cover it\". Watch \"Buyer pays\" and \"You keep\" update. If the brand has no active tax registration, the VAT row shows \"Set up VAT\", which opens the tax registrations page. Tap \"Edit defaults\" to jump to brand defaults.",
+    "events-group-chat": "Host (Mingla Host app on iOS, Android or web): open the event, then tap the \"Group chat\" tile (\"Read + reply + moderate\"). The same tile is on trip pages and RSVP event pages. Type in \"Write a reply\" and tap \"Send\"; tap the image button (\"Attach image\") to add a photo with an optional caption. Tap \"Open moderation\" to open \"Group chat moderation\": turn on \"Broadcast-only\" (\"Only your team can post. Buyers can still read.\"), see \"Members\" and remove someone, or delete a single message from the message itself.\nGuest (Mingla Explorer app on iOS or Android): a signed-in buyer is added to the chat when their ticket is confirmed. A guest who bought on the web without an account is added when they install Explorer and claim their ticket; onboarding can show \"Your trip and event chats\" with a \"Join chat\" button. The chat then appears in the \"Chats\" tab, labelled as an event or trip channel with the organiser and attendees. In broadcast-only mode guests can read but not post.",
+    "events-guest-list": "In Mingla Host, open a ticketed event and tap Guests, then tap the link icon to open Private links. You can also open a saved hidden ticket type and tap Private links.\n1. Tap New link and choose a ticket type. A free type makes a guest-list sign-up link. A paid type must be hidden and makes a private ticket link that opens normal checkout.\n2. Give the link a recognisable name such as \"DJ Kaycee's invites\". Optionally limit the number of people who may use it. For free links, choose how many guests one person may bring and whether requests need host approval.\n3. Tap Create link, then Copy link or Share. Anyone holding the bearer link can use it, so share it only with the intended audience.\n4. The list shows people or tickets attributed to each link, remaining link uses, and approval requests. Open Review to approve or decline a whole pending group. Pending requests do not hold capacity.\n5. Reset link immediately invalidates the old URL and copies a replacement. Revoke link stops all future use and declines pending requests; tickets and paid orders already issued remain valid.\nThe Guests list, guest detail, door search and CSV show the link label as Via link. Hidden paid tickets are omitted from ordinary public event and direct-checkout reads; only a currently active matching private link can unlock checkout.",
+    "events-tier-waitlist": "Host (Mingla Host, any platform): edit the ticket type, give it a limited capacity, and turn on \"Enable waitlist\" (\"When this ticket sells out, buyers can join a waitlist.\"). The same sheet shows \"Waitlist\" with the number waiting; tap \"See all\" to view \"Waitlist signups\".\nBuyer (public event page or checkout on the web): on a sold-out ticket type, tap \"Join waitlist\". In the \"Join waitlist\" sheet enter \"Email\" and/or \"Phone\", an optional name, the quantity, tick consent, and tap \"Join waitlist\". The page confirms \"You're on the waitlist.\" When a spot frees up, the buyer gets a \"Claim spot\" email (or a text if only a phone was given) and has 24 hours.",
+    "events-visibility": "1. In the event wizard open the \"Settings\" step (or Manage event > \"Edit details\" > Settings on a live event).\n2. Under visibility choose \"Public\" (\"Anyone on Mingla can find this event. The link is shareable.\") or \"Unlisted\" (\"Only people with the direct link can see this event.\").\n3. Optional toggles: \"Require approval to buy\", \"Hide remaining count\", \"Password-protected\", \"Private guest list\", \"In-person payments\".\n4. Publish, or save your changes. Share the link from Manage event > \"Share event\" for an unlisted event.\nSame on iOS, Android and web.",
+    "experiences-create": "1. In Mingla Host (iPhone, Android or web) tap the \"+\" button in the top bar, choose \"Create experience\", then \"Build it yourself\". (\"Snap a food menu\" and \"Snap an activities menu\" draft one for you from a photo instead.)\n2. Identity: enter the \"Experience title\", \"What's it about?\" (10 to 500 characters) and pick at least one vibe under \"Which vibes fit this experience?\".\n3. Stops (\"Build the itinerary\"): choose \"One location for all stops\" or \"Each stop has its own location\", then tap \"Add stop\" for each stop. Each stop needs a \"Stop name\", a \"Description\" and an address picked from the suggestions; photos (up to 5 per stop) and a start time are optional. Use the arrows to reorder.\n4. When (\"When does it happen?\"): set a single date, several dates, or a repeating schedule that can run with no end date.\n5. Pricing: choose \"One price for the whole experience\" or \"Price each stop\", or tick \"This experience is free\". Set \"Total spots\" or \"Unlimited spots\", the refund policy, who covers fees and tax, and the guest privacy switches \"Private guest list\" and \"Hide remaining count\".\n6. Cover: add the cover image or video and theme.\n7. Review and tap \"Publish\", or \"Save as draft\" to finish later. A published experience opens its manage screen with Share and the public page.\n8. Find drafts and live experiences later under Hub > Experiences. Editing a live experience uses \"Save changes\".",
+    "experiences-snap": "1. In Mingla Host tap the \"+\" button in the top bar, choose \"Create experience\", then \"Snap a food menu\" or \"Snap an activities menu\".\n2. In the \"Add your menu\" (or \"Add your activities list\") sheet choose \"Take photo\", \"Choose from library\" or \"Upload PDF\". JPG, PNG, WebP and PDF are accepted.\n3. Wait while Mingla shows \"Reading your menu…\" then \"Creating your experiences…\". Do not leave the screen; Back is disabled while drafts are created.\n4. Mingla opens Hub > Experiences with a message saying how many draft experiences were created. Open each draft, add stops, a date and a price, then publish it, or delete the ones you do not want.\n5. If nothing was found you stay on the snap screen with a message such as \"We couldn't find menu items in that file. Try a clearer photo of your menu.\" and can try again.",
+    "help-announcements-roadmap": "1. In the Mingla Host app open Account, then \"Help & Support\" (the row shows a count when there are unread announcements).\n2. Tap the \"Community\" tab, then \"Announcements\". Tap a card to read it in full. Opening it marks it read. Some announcements show a \"What you need to do\" box and an \"On the roadmap\" link to the related roadmap item. Tap \"Back to announcements\" to return.\n3. At the bottom of Announcements, use the \"Email me announcements\" switch to stop or restart announcement emails. Push stays on.\n4. Tap \"Roadmap\" to see public roadmap cards grouped as \"Being delivered now\", \"Next\", \"Later\" and \"Recently shipped\". A card may show \"Aiming for\" a target and how many host ideas fed it.\n5. On a wide desktop browser the same sections appear in a left rail under COMMUNITY.",
+    "help-ideas-and-questions": "1. In the Mingla Host app open Account, then \"Help & Support\", then the \"Community\" tab.\n2. Tap \"Ideas\" to see ideas with their status and vote count. Tap \"Vote\" (it changes to \"Voted\") to back one. Tap \"Suggest an idea\", add a title and details, then \"Suggest idea\". While typing a title, similar ideas appear under \"Vote instead?\" so you can vote on an existing one.\n3. Tap \"Questions\" to browse. Tap \"Ask a question\", add a title and details, then \"Ask question\".\n4. Open any post to read replies, write an answer or comment and tap \"Reply\". On your own question you can tap \"Accept answer\".\n5. On someone else's post tap \"Report\" or \"Block author\". If one of your posts was held back, tap \"Appeal decision\".",
+    "help-support": "1. In the Mingla Host app open Account, then \"Help & Support\", then the \"Support\" tab.\n2. A banner shows \"Support is online\" or that Support is away and will reply when back.\n3. Under \"Need a hand?\", type a short subject (for example payouts or a stuck event) and tap \"Start a chat\".\n4. In the chat, type in \"Write a message\" and tap \"Send\". Replies from Mingla appear in the same thread.\n5. Reopen any earlier chat from \"My support requests\"; each one shows its status and last update date.",
+    "help-video-guides": "Website: go to usemingla.com/help. Use the search box (\"What are you trying to do?\") or the intent chips, or browse by chapter. Open a video to watch it and read \"What happens in this video\" step by step.\n\nHost app: open Account, then \"Help & Support\", then the \"Guides\" tab. Five featured guides show first; tap one to play it in the app. Tap \"View more\" to see all guides by chapter and search with \"Search the full Mingla Host video library\". Tap \"Help Centre videos\" to open the website in your browser.",
+    "marketing-analytics": "Open Mingla Host Home for Home Pulse, live activity, recent work, lifetime sales and ad results. Open Analytics for traffic, actions and completed outcomes by listing type and date window. From a supported listing, open Insights to see that listing's page traffic and outcomes. Refresh on web or pull down on mobile.",
+    "marketing-buyer-blasts": "1. Open the event in Mingla Host and tap the \"Blasts\" tile (\"Message ticket buyers\"). The Blasts screen lists the event's buyers with a count such as \"12 buyers · 10 reachable\".\n2. Tap \"Send Blast (N)\" at the bottom. The campaign composer opens with the audience set to \"Event buyers\".\n3. Write a subject and message (the Email tab is selected by default), then tap \"Preview email\" to check it.\n4. Choose \"Now\" or pick a time with the schedule chip, then tap \"Send now\" or \"Schedule\" and confirm in the review sheet.\n5. To message every buyer of the brand instead, open the brand page, tap \"Blasts\" (\"Message your event buyers about what's next\"), then \"Send Blast (N)\". You can also start from Blast tab > Campaigns > \"New campaign\" and pick an audience under \"Automatic\" (\"Buyers of <event name>\" or \"All buyers of <brand>\").\n6. Track results under Blast tab > Campaigns: tap a sent campaign to see accepted, delivered, opened, clicked, bounced and unsubscribed counts.\nThe same steps work on iOS, Android and web.",
+    "marketing-campaigns": "1. In Mingla Host, open the \"Blast\" tab. Its sub-tabs are \"Overview\", \"People\", \"Campaigns\", \"Templates\" and \"Ads\".\n2. Tap \"New campaign\" (on Overview or Campaigns).\n3. Tap \"Pick an audience\" and choose who gets it: \"Your Book\", a saved group under \"Groups\", \"Followers\" or \"Friends of followers\" (when available), or an automatic buyer group such as \"Buyers of <event name>\".\n4. Keep the \"Email\" tab selected, write a subject and message. Use the toolbar to add links, images, dividers, or \"From template…\".\n5. Tap \"Preview email\". Choose \"Now\" or pick a send time, then tap \"Send now\" or \"Schedule\" and confirm in the review sheet. For Your Book, groups and followers the review sheet shows reach, cost and how many emails are left this month.\n6. Your work auto-saves; tap \"Save draft\" any time. Under Campaigns, filter by \"All\", \"Scheduled\", \"Sent\", \"Drafts\" or \"Failed\"; tap \"Resume\" on a draft, \"Cancel\" on a scheduled send, or \"Delete\" on a failed one.\n7. Tap a campaign to see its report: total audience, accepted, delivered, opened, clicked, bounced, marked as spam, unsubscribed, link clicks, and every recipient's status. Overview shows totals for the last 30 days.\nWorks the same on iOS, Android and web (web adds keyboard shortcuts in the composer).",
+    "marketing-people": "1. Open the Blast tab, then the People pill.\n2. \"Your book\" lists people who gave your brand their details, with \"Add\", \"Import\", \"Export\" and \"See all\". Tap \"Add\" to add a person by hand.\n3. Tap a person to see \"Contact details\" and \"Marketing preferences\" (for example \"Email marketing suppressed\").\n4. To combine duplicates, tap \"Merge duplicate\" on the person, search by name, email or phone, choose the other record, pick the person to keep, check the \"Merged result\", then tap \"Review merge\" and confirm. To undo, find the merge in the person's history and tap \"Split\".\n5. When Mingla is unsure whether a new customer matches an existing person, a review strip appears; tap \"Review\" and choose \"Same person\", \"Different people\", \"Add to your book\" or \"Dismiss\".\n6. \"Groups\" shows buyer groups that update automatically, and you can tap \"Create group\" to organize people for campaigns.\n7. Tap \"Export\", then \"Prepare CSV\" and \"Download CSV\". The file includes email addresses, phone numbers and opt-out status.\n8. Tap \"New campaign\" to send a Blast to your people.",
+    "marketing-templates": "1. In Mingla Host, open the \"Blast\" tab and tap \"Templates\". You will see \"MINGLA STARTER PACK\" and, once you have some, \"YOUR TEMPLATES\".\n2. Tap a starter template to read it. Tap \"Duplicate\" to make your own editable copy, or \"Use this template\" to open a new campaign with it loaded.\n3. To write your own, tap \"New template\", add a subject (optional) and body (required), then tap \"Save\". The subject becomes the template name (or \"Untitled template\").\n4. Open one of your templates to edit and \"Save\", or tap \"Delete this template\" (campaigns that already used it keep their content).\n5. While writing a campaign, open the toolbar's overflow and pick \"From template…\" to browse templates, then tap \"Insert at cursor\" or \"Apply\" (\"Replace draft\" if you have unsaved edits).\nSame on iOS, Android and web.",
+    "money-mingla-fee": "Host app (iOS, Android, web): Account → your brand → Pricing defaults (\"Who covers VAT and fees by default\"). Under \"Who covers the costs?\" set Mingla fee and Service fee to Add to price (guests pay) or I'll cover it (you pay). You can override this per event, trip or experience in the pricing or tickets step. Guests always see one all-in price.\nMingla staff (Admin web): Pricing page sets Mingla's default take-rate and per-brand overrides.",
+    "official-brand-groups": "Open Messages and choose the Brand group. Send a message or attachment, use @ to mention an active teammate, open Media to browse shared photos and videos, or open People to see authorised names, emails, roles and mute controls. Show in Chat returns to the exact media message.",
+    "payouts-balances-reports": "Host app (iOS, Android, web): Account → your brand → Payments & Bank. The Payments screen shows a status card (for example \"Selling, add a bank to get paid\", \"Payouts paused\" or \"You're all set\"), tiles for Earned (\"Total from sales\"), On its way (\"Held, then sent\") and Paid (\"Sent to your bank\"), and tiles for Available, Pending and Last payout. Tap How payouts work for what each deduction means. Export finance report opens the Finance reports screen.",
+    "payouts-partner-program": "Host app: once Mingla turns on Partner for your account, a Mingla Partner card appears on the Account tab with Partner earnings and Partner brands.\n1. Account → Partner earnings → Connect your payout account. Pick the country where you'll get paid (it is locked after setup), then Connect bank. Nigeria uses a Nigerian bank account; other countries use Stripe.\n2. Account → Partner brands to see the brands you are a partner on.\n3. Partner earnings shows Earnings by currency and each split's status (Pending, Transferred, Failed, Reversed, or Blocked with a reason).",
+    "payouts-paystack-nigeria": "Host app (iOS, Android, web), brand owner only: Account → your brand → Payments & Bank (or Connect bank during brand setup) and choose Nigeria as the payout country (\"Continue with Nigeria\"). Accept Mingla's organiser terms when asked (\"A quick read before you connect your Nigerian bank\"). Under Get paid in Nigeria tap Choose your bank, search and select it, type the Bank account number and tap Verify account. Check the Account name shown, then tap Connect bank & get paid. To change it later use Change payout bank.",
+    "payouts-stripe": "Host app (iOS, Android, web), brand owner only: Account → your brand → Payments & Bank → Connect bank (or Set up payouts during brand creation). Choose your payout country, accept Mingla's terms if asked, then tap Start bank setup. Stripe's secure form opens (on web inside Mingla's page; on iOS and Android in a browser window). Fill it in and finish. You see \"Submitted. Your details are being verified.\" and later \"You're all set\". If Stripe needs more, tap Continue verification. Use Manage payouts & tax to update details, Change bank account to switch accounts, or Disconnect bank in the danger zone.",
+    "payouts-tax-registrations": "Host app, brand owner: Account → your brand → Payments & Bank. When the Stripe account is active, a Tax & registrations card appears. Tap Manage tax registrations. On web it opens Mingla's tax page inside the browser; on iOS and Android it opens in a browser window. Add or edit registrations and tax settings there.",
+    "payouts-timing": "Host app (iOS, Android, web): Account → your brand → Payments & Bank. The status card shows the payout state (for example next payout, waiting for a bank, or paused) and the On its way tile shows money held before release. Tap How payouts work for the deductions (Mingla fee, payment processing, partner share, Nigerian transfer fee and stamp duty, held balance).\nMingla checks for payouts that are due every 30 minutes and sends each due amount to the brand's connected bank.",
+    "programs-creators": "Hosts open Blast, then Creators or Referrals, to post work, hire a creator, review delivery and see results. Explorers use the Creator area to complete setup, browse gigs, accept contracts and follow earnings, or use Mingla Locals when their city is open.",
+    "rsvp-chip-in": "Host setup:\n1. In the RSVP wizard, go to the \"RSVP\" step. Under \"Contributions\" switch on \"Let guests chip in\".\n2. Optionally set \"Suggested amount (optional)\" and \"Minimum contribution (optional)\". The minimum cannot be more than the suggested amount.\n3. If the brand has no payout bank, the step shows a \"Connect bank\" action. At publish without a bank, the \"Chip-ins need a bank\" dialog offers to connect a bank or \"Publish without chip-ins for now\".\n4. To change it after publishing, edit the live RSVP; turning chip-ins on still needs a connected bank.\nGuest side:\n5. After a guest replies Going, the \"Chip in for (host)\" panel appears with preset amounts, \"Other\" for a custom amount, and a \"Chip in\" button. On the web the guest is sent to the card or Paystack payment page and returns to the event page; in the Mingla Explorer app the card payment sheet opens in the app.\nRefunds:\n6. Host opens the RSVP, taps \"Guests\", taps the guest, and uses \"Refund contribution\".",
+    "rsvp-create": "1. In Mingla Host, tap the \"+\" button on Home, Hub, Marketing or Account, choose \"Create event\", then \"RSVP event\". (The brand setup chooser also has an \"RSVP\" option.)\n2. Work through the steps: \"Basics\", \"When\", \"Where\", \"Cover\", \"RSVP\" and \"Preview\". The draft saves as you go.\n3. On the \"RSVP\" step set \"Limit the guest list\" and \"Max guests\", \"Allow guests to bring extras\", \"Start a waitlist when full\" (needs a guest limit), \"Approvals\" (\"Auto-approve\" or \"Approve each RSVP\"), \"Let guests chip in\", \"Keep the guest list private\", \"Hide the spots-left count\", and \"Who can find this\" (\"Public\", \"Unlisted\", \"Private\"). For Public you can also turn on \"Also show this on Mingla's discovery feed\".\n4. Tap \"Publish RSVP\" and confirm \"Publish\". If something is wrong the publish dialog stays open and shows the reason.\n5. After publishing, the RSVP dashboard has \"Guests\", \"Scan guests\", \"Scanners\", \"Edit\", \"Blasts\", \"Group chat\" and \"Public page\", plus \"Return RSVP to draft\" and \"Cancel RSVP\".\nGuests reply on the public page (web) or in the Mingla Explorer app. Works the same on Host iOS, Android and web.",
+    "sites-brand-website": "In Mingla Host web open the brand, then Website. Start the site, choose and edit pages and design, add media and offering sections, preview, then publish after the review checks pass. Use Ari for a proposed change you review before publishing. Add a custom domain from Settings when DNS and ownership checks are ready.",
+    "social-collab-decide": "Open a one-to-one friend chat and start a collab, or create a group chat and choose Start swiping together. Invitees join the shared deck, set preferences and swipe. When at least two people like the same card it becomes a match and appears in the shared plan strip. End or leave the collab without deleting the chat.",
+    "social-follow-brands": "1. On an event page or a brand's page, tap Follow next to the brand name.\n2. When you buy, RSVP or book while signed in, you follow that brand automatically.\n3. To manage, go to the Profile tab and open Brands you follow (See all for the full list).\n4. Tap a brand's menu to choose Notification channels, Mute for 1 week, 30 days or until you turn it back on, or Unfollow.\n5. You can also tap Following on an event page and choose Unfollow.",
+    "trips-create": "1. In Mingla Host tap the \"+\" button in the top bar and choose \"Create trip or otherwise\". The wizard saves as you go.\n2. Basics: \"Trip title\", \"Start date\", \"End date\", \"Departing from\", \"Destination\" (pick both from the suggestions) and \"Cover\".\n3. Day by day: \"Add a day\" and describe each day. Shortening the dates asks before removing a day that has content.\n4. What's included: add items under \"What's included\" and \"What's NOT included\".\n5. Pricing: \"Add package\" for each package with \"Package name\", \"Price per spot\", \"Spots in this package\" and an optional \"Payment plan\". Trip capacity is the total of the package spots.\n6. Cancellation & deadline: pick a refund policy (\"Flexible\", \"Standard\", \"Custom\" tiers or none) and when bookings close.\n7. Traveler info: add the questions travellers answer before paying.\n8. Review and tap \"Publish trip\", and confirm in \"Publish trip?\".\n9. Manage it under Hub > Trips: \"Edit trip\" or \"Continue editing\", \"Guests\" (the Travelers list with name, email, package, payment status, amount and intake answers), \"Orders\", \"Payments\", \"Group chat\", \"Public page\", and the options menu with \"View public page\", \"Share trip link\" and \"Cancel trip\".",
+    "trips-intake-forms": "Host: 1. In the trip wizard go to the \"Traveler info\" step (\"What to ask travelers before they pay\"). With several packages, pick the package tab; with one package the questions are \"For all travelers\". 2. Tap \"Add question\", pick a type (\"Short text\", \"Long text\", \"Choice\", \"Multi\", \"Date\", \"Number\", \"File upload\"), write the question and set whether it is required. Drag to reorder on iPhone and Android; on web use move up and move down. 3. Publish the trip. To change questions on a live trip open \"Edit trip\", then \"Intake form\", make the change and give a reason in \"Save intake form changes?\", then \"Save + notify travelers\".\nTraveller: during trip checkout on buyer web, after \"Your details\", the \"Tell us about your trip\" step asks the questions for each package booked; then \"Continue to payment\". In the Mingla Explorer app the questions appear in the booking sheet before paying.\nHost review: open the trip, tap \"Guests\" to see each traveller with their answers and uploaded files.",
+    "venues-go-live-readiness": "1. In Mingla Host, open the venue (Hub > Venues > tap the venue), or tap the \"Get <venue> live\" item on Home.\n2. From the venue's \"Overview\" tap \"Edit listing\", or from \"Settings\" > \"Photos & vibes & AI\" tap \"Edit photos & details\". This opens \"Deck readiness\" with the heading \"Get recommended on Mingla\".\n3. Under \"Photos & video\" tap \"Add hero cover\" (or \"Change hero cover\"). Under \"Venue photos\" tap \"Add photos\" until the counter shows at least 5 (up to 20).\n4. Under \"About your venue\" enter \"Website (required)\", \"Typical spend from\" and optionally \"Up to\", pick \"Best for\" tags and answer \"A few quick questions\" (for example \"Good for groups?\", \"Outdoor seating?\").\n5. Tap \"Save deck details\". If you leave with unsaved changes you are asked \"Save your deck changes?\".\n6. Read \"What's left before you go live\": each card names one remaining fix (for example add photos, add an official website rather than a social link, confirm opening hours). Mingla writes your pitch and match scores when it approves the venue.",
+    "venues-insights": "1. In Mingla Host, open the venue (Hub > Venues > tap the venue) and choose the \"Insights\" tab.\n2. Site check: under \"How does your website treat your guests?\" confirm the venue name, city and website, then tap \"Check my site\". When it finishes, open the full report; later use \"Re-check my site\". If no website is on file, tap \"Add website\".\n3. Orders: tap \"Orders\" (\"See what sells, where, and when.\") for venue order insights.\n4. Competitor watch: under \"COMPETITION\" tap \"Watch a competitor\", search nearby venues or enter a name, city and public links (\"Website\" checked weekly, \"Instagram profile\" weekly if eligible, \"TikTok\" saved as a link only). Each watched competitor shows \"THIS WEEK\" and \"WORTH DOING NEXT\", with \"Open weekly brief\", \"Refresh now\", \"Edit sources\" and \"Stop watching\".\n5. Organic page stats are on the venue's \"Overview\" tab under \"Organic engagement\" > \"Venue page activity\" (last 30 days).",
+    "venues-qr-ordering": "Host side (Mingla Host app on iOS, Android or web): 1) Open Hub, then Venues, and tap the venue card. 2) Open the Orders module and turn on \"Take orders through Mingla\". The switch only works once the venue is live (verified) on Mingla; before that the card says \"Ordering turns on once your venue is live. Mingla is still reviewing it.\" 3) Build the menu in the Menu module. 4) Print codes: in the Menu or Tables module tap \"QR spots & printing\", then \"Print\" for one area or \"Print all\" for every active spot. Each table gets a code automatically. 5) Work the queue in Orders using the views New, Cooking, Ready, Refunds and Done, and filter by area with \"All areas\" or a zone. Use \"Pause new orders\" when the kitchen is slammed; guests are told you are not taking orders. 6) Staff can tap \"New order\" to take an order at the table, \"Send to kitchen\", and open or close a tab with \"Send the bill\".\nGuest side: scanning the code opens the venue's public page on the web on the Menu tab, labelled \"Ordering for\" the table, or \"Order & collect from the counter\". The guest adds items, enters name, email and phone, reviews the total and taps \"Pay\". The order page then shows progress (\"Order placed\", \"The venue has your order\", \"Being made now\", \"Ready to collect\" or \"On its way\"). Until the venue picks the order up, the guest can tap \"Cancel · full refund\"; after that they can tap \"Ask for a refund\". They can also \"Order another round\". The same venue page and ordering also open in the Mingla Explorer app when the link opens there.",
+    "venues-reservations": "Host side (Mingla Host iOS, Android or web): 1) Open Hub, then Venues, tap the venue card and open Settings. 2) Under \"Reservations\" turn on \"Take table reservations\". This adds the Tables, Availability, Reservations and Waitlist modules. 3) Optional: under \"Reservation fee\" turn on \"Charge a reservation fee\" and enter the \"Fee amount\". Guests then pay that all-in at booking. Set the cancellation policy under \"Cancellation & no-show\" (\"Forfeit fee on no-show\" or \"No penalty\"). 4) In Tables, add tables and open \"Smart capacity rules\" to use \"Party fit\" or \"Deposit for large parties\" (choose the party size and deposit amount). 5) In Availability set reservation hours, turn times and blackout dates. 6) In Reservations see bookings by day, week or month, and tap \"New reservation\" to add one yourself.\nGuest side: on the venue's public web page tap \"Reserve a table\" (some venue types say \"Book a visit\"), choose party size, a date and a time, enter name, email and phone, optional occasion and notes, then tap \"Confirm reservation\". If a fee or deposit applies they pay on the next step and land on \"Your table is reserved\", with a \"Manage reservation\" link to view or cancel. In the Mingla Explorer app, a reservable venue card shows \"Reserve a table\": pick party size and date, tap \"See times\", choose a slot and confirm; a fee is paid with the in-app payment sheet.",
+    "venues-waitlist-text": "In the Mingla Host app (iOS, Android or web): 1) Make sure \"Take table reservations\" is on in the venue's Settings, which shows the Waitlist module. 2) Open Hub, then Venues, tap the venue card and open Waitlist. 3) Tap \"Add\" (or \"Add to waitlist\" when empty), enter \"Guest name\", party size, \"Preferred seating (optional)\", \"Quoted wait (minutes, optional)\" and the guest's mobile under \"Phone for the table's ready text\", then tap \"Add to waitlist\". 4) When a table opens, tap \"Notify\" on the guest's row. The guest receives: \"Your table's ready at\" the venue name, with \"Reply STOP to opt out.\" The row then shows \"Notified\". 5) Tap \"Seat\" to turn the guest into a reservation with \"Seat as reservation\", or the X to mark them as left.",
+    "web-blog": "Readers open usemingla.com/blog, choose a category or post and use the public links. Staff open Mingla Admin > Support > Blog to draft, preview and publish a post. In Support > Email, add Blog post and select a published post for the approved email layout.",
+    "web-legal": "Open the page directly or from the \"Legal\" links in the site footer:\n- Terms of Service: usemingla.com/terms-of-service\n- Privacy Policy: usemingla.com/privacy-policy\n- Organiser Terms (for anyone who lists, sells, messages or advertises with Mingla Host): usemingla.com/organiser-terms\n- SMS Terms: usemingla.com/sms-terms (linked from the unsubscribe page)\n- Account deletion instructions: usemingla.com/delete-account, which tells people to open the app, go to Settings, then Delete Account, and to email privacy@usemingla.com for exceptional requests.\nThe footer \"Legal\" group shows Privacy, Terms and Organiser Terms."
+  }
+}

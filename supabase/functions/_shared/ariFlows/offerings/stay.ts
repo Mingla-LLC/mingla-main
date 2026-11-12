@@ -1156,6 +1156,16 @@ export const CREATE_STAY_FLOW: FlowDefinition = {
   },
   subject_tools: [],
   subject_table: null,
+  // #3355 rework 2 (P2-11): the draft completes the run; publishing is
+  // offered once on the completion card.
+  follow_up: {
+    step: "stay_publish",
+    text: "Want me to check it's ready for guests to book?",
+    yes: { id: "yes", label: "Check it's ready" },
+    no: { id: "not_now", label: "Not now" },
+    no_text:
+      "Okay. It stays as a draft. Ask me to publish it whenever you like.",
+  },
   steps: [
     brandBlockersStep,
     brandCanWaitStep,

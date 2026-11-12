@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v30"); // #2829 W11 completes the website journey entrances
+    assertEquals(PROMPT_VERSION, "v37"); // #3355 + #4389 merge: understand-first prompt with the brand setup lines
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

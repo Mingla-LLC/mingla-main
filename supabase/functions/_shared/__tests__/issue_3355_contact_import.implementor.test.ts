@@ -47,6 +47,7 @@ import {
 import {
   contactListFromFiles,
   decideFlowTurn,
+  startFlowFromTool,
   flowChoices,
 } from "../ariFlows/edge.ts";
 import {
@@ -94,6 +95,9 @@ class MemoryStore implements FlowStore {
       lease_held: false,
       lease_held_by_me: false,
       lease_owner_name: null,
+      stopped: false,
+      last_activity_at: null,
+      owner_since: null,
       token: null,
     };
     this.runs.set(run.id, run);
@@ -971,9 +975,12 @@ Deno.test("an attached CSV is the list; a PDF gets plain words and the same card
     store,
     probes: world.probes("GB"),
   };
-  const pdf = await decideFlowTurn({
+  // #3355 Wave E (D3a): the model starts the import with start_flow; typed
+  // words alone no longer start it.
+  const pdf = await startFlowFromTool({
     ...base,
     message: "Import these contacts",
+    call: { flow_key: "import_contacts" },
     attachments: () =>
       Promise.resolve([{ file_type: "pdf", name: "guests.pdf", text: null }]),
   });
@@ -1000,7 +1007,9 @@ Deno.test("an attached CSV is the list; a PDF gets plain words and the same card
 Deno.test("a list attached with the request is read straight away", async () => {
   const store = new MemoryStore();
   const world = new FakeImport();
-  const out = await decideFlowTurn({
+  // #3355 Wave E (D3a): started by the model's start_flow.
+  const out = await startFlowFromTool({
+    call: { flow_key: "import_contacts" },
     service: {} as never,
     userClient: {} as never,
     userId: "user-1",

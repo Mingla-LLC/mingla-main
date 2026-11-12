@@ -14,6 +14,14 @@ import {
   ToolError,
 } from "./agentToolHelpers.ts";
 import { DOMAIN_TOOLS } from "./agentDomainTools.ts";
+import {
+  applyDiscountTargetDefault,
+  applyStatedMinimumOrder,
+  codeClause,
+  discountTargetsNeedDefault,
+  parseStatedMinimumOrder,
+  resolveDiscountTargetDefault,
+} from "./ariDiscountArgs.ts";
 import { SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
 import { READINESS_TOOLS } from "./agentReadinessTools.ts";
 import { STRIPE_SUPPORTED_COUNTRIES } from "./stripeSupportedCountries.ts";
@@ -31,9 +39,29 @@ export {
   payoutRailFor,
 } from "./payoutCountries.ts";
 import { sanitizeAriPublicText } from "./agentSanitization.ts";
+// #3355 Wave D (D1): remember_note replaces save_memory_note.
+import {
+  ARI_MEMORY_KINDS,
+  ARI_MEMORY_NOTE_MAX,
+  ARI_MEMORY_SCOPES,
+  rememberNoteArgs,
+  rememberNoteError,
+} from "./ariMemory.ts";
+// #3355 Wave D (D4): "Ask the Mingla team" rides the tell_owner send.
+import {
+  ARI_ASK_TEAM_TOPIC,
+  ASK_TEAM_ALREADY_SENT,
+  askTeamNoteFromGaps,
+  askTeamSentRecently,
+  readAskTeamGaps,
+} from "./ariGaps.ts";
 // #4389 — brand setup tools live in their own module.
-import { BRAND_SETUP_TOOLS, executeSetBrandPayoutCountry } from "./agentBrandSetupTools.ts";
+import {
+  BRAND_SETUP_TOOLS,
+  executeSetBrandPayoutCountry,
+} from "./agentBrandSetupTools.ts";
 import { toolBelongsTo } from "./agentToolsets.ts";
+import { ARI_APP_ROUTES, ariHandoffRoute } from "./ariAppMap.ts";
 import {
   type AriResearchResult,
   readPublicUrl,
@@ -78,6 +106,10 @@ const LOCAL_CAPABILITIES = [
     "Read a public social profile where public access permits.",
   ],
   ["search_capabilities", "Search Ari's current Mingla capability map."],
+  [
+    "search_mingla_guide",
+    "Search the Mingla Feature Guide for what Mingla can do and the exact steps.",
+  ],
   ["request_tools", "Load a compact toolset needed for the current step."],
   ["get_onboarding_plan", "Read the user's durable onboarding plan."],
   [
@@ -86,8 +118,8 @@ const LOCAL_CAPABILITIES = [
   ],
   ["list_memory_notes", "List editable memories scoped to the user and brand."],
   [
-    "save_memory_note",
-    "Save an approved preference, correction, business fact or workflow.",
+    "remember_note",
+    "Keep a short correction, preference or fact for later turns (brand or user scope).",
   ],
   ["forget_memory_note", "Remove a memory from future Ari context."],
   [
@@ -372,13 +404,38 @@ function publicSocialType(url: URL): "social" | null {
     : null;
 }
 
-function catalogue(): Array<{ name: string; description: string }> {
+/**
+ * #3355 ship-prep — the capability map as origin/main lists it (811c033211),
+ * for the rollout switch's off path: no Feature Guide search, and the memory
+ * write is save_memory_note. [TRANSITIONAL] off path — exit: rollout
+ * ari-understand-first-3355 active at 100% for every brand.
+ */
+const LEGACY_LOCAL_CAPABILITIES: ReadonlyArray<readonly [string, string]> =
+  LOCAL_CAPABILITIES.flatMap((
+    [name, description],
+  ): Array<readonly [string, string]> =>
+    name === "search_mingla_guide" ? [] : name === "remember_note"
+      ? [[
+        "save_memory_note",
+        "Save an approved preference, correction, business fact or workflow.",
+      ]]
+      : [[name, description]]
+  );
+
+function catalogue(
+  legacy = false,
+): Array<{ name: string; description: string }> {
   const all = [
     ...DOMAIN_TOOLS.map(({ name, description }) => ({ name, description })),
     ...SITE_AGENT_TOOLS.map(({ name, description }) => ({ name, description })),
     ...READINESS_TOOLS.map(({ name, description }) => ({ name, description })),
-    ...BRAND_SETUP_TOOLS.map(({ name, description }) => ({ name, description })),
-    ...LOCAL_CAPABILITIES.map(([name, description]) => ({ name, description })),
+    ...BRAND_SETUP_TOOLS.map(({ name, description }) => ({
+      name,
+      description,
+    })),
+    ...(legacy ? LEGACY_LOCAL_CAPABILITIES : LOCAL_CAPABILITIES).map((
+      [name, description],
+    ) => ({ name, description })),
     {
       name: "create_brand",
       description: "Create a host brand after confirmation.",
@@ -415,10 +472,12 @@ function capabilityTerms(query: string): string[] {
 export function searchAriCapabilities(
   query: string,
   limit = 12,
+  /** #3355 ship-prep: the off path's capability map (origin/main's). */
+  options: { legacy?: boolean } = {},
 ): Array<{ name: string; description: string; score: number }> {
   const terms = capabilityTerms(query);
   const minimumCoverage = terms.length <= 1 ? 1 : 2;
-  return catalogue().map((item) => {
+  return catalogue(options.legacy === true).map((item) => {
     const haystack = new Set(
       `${item.name} ${item.description}`.toLowerCase().match(/[a-z0-9]{3,}/g) ??
         [],
@@ -640,6 +699,147 @@ const searchCapabilities: AgentToolDefinition = {
   }),
 };
 
+/**
+ * #3355 ship-prep — search_capabilities as origin/main answers it (the
+ * legacy capability map), for the rollout switch's off path only.
+ */
+export const ARI_LEGACY_SEARCH_CAPABILITIES: AgentToolDefinition = {
+  name: "search_capabilities",
+  description:
+    "Search Mingla capabilities before concluding that Ari cannot do something.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["query"],
+    properties: {
+      query: { type: "string", minLength: 2, maxLength: 300 },
+      limit: { type: "integer", minimum: 1, maximum: 20 },
+    },
+  },
+  executor: (args) =>
+    Promise.resolve({
+      query: requiredText(args.query, "query", 300),
+      matches: searchAriCapabilities(
+        String(args.query),
+        Number(args.limit ?? 12),
+        { legacy: true },
+      ),
+      total_capabilities: catalogue(true).length,
+    }),
+};
+
+/**
+ * #3355 Wave B (B1) — Ari reads the Feature Guide (public.product_capabilities)
+ * through ari_search_feature_guide, as the signed-in caller. The guide's
+ * effective status decides how Ari may speak (how_to_say).
+ */
+const GUIDE_STATUS: Readonly<
+  Record<string, { status: string; how_to_say: string }>
+> = Object.freeze({
+  Live: { status: "live", how_to_say: "state_as_fact" },
+  "Needs review": {
+    status: "needs_review",
+    how_to_say: "hedge_and_point_to_the_screen",
+  },
+  Planned: { status: "planned", how_to_say: "not_available_yet" },
+  Retired: { status: "retired", how_to_say: "not_available" },
+});
+
+/**
+ * #3355 rework 1 (tester P1-1): the guide's own status decides how Ari speaks.
+ * A planned entry is never upgraded because an Ari tool shares its key
+ * (trips-cancel-booking is the traveller's self-cancel, while
+ * cancel_trip_booking is the host cancelling). When the product is live, the
+ * Feature Guide entry is moved to Live through the runbook, not here.
+ * MINGLA-INVARIANT: I-ARI-PLANNED-GUIDE-STAYS-PLANNED | issue #3355 | A Feature Guide entry whose effective status is Planned reads as planned / not_available_yet to Ari, whatever tools Ari has (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_1.implementor.test.ts).
+ */
+export function ariGuideReadStatus(
+  guideStatus: unknown,
+  _key: string,
+): { status: string; how_to_say: string } {
+  const status = GUIDE_STATUS[String(guideStatus)] ??
+    GUIDE_STATUS["Needs review"];
+  return { ...status };
+}
+
+function guideText(value: unknown, max: number): string {
+  return typeof value === "string"
+    ? sanitizeAriPublicText(value).text.trim().slice(0, max)
+    : "";
+}
+
+function guideList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+      .slice(0, 12)
+    : [];
+}
+
+const searchMinglaGuide: AgentToolDefinition = {
+  name: "search_mingla_guide",
+  description:
+    "Search the Mingla Feature Guide: what Mingla can do, who can use it, the exact steps (how_to) and limits. Use it before saying Mingla can't do something and before giving how-to steps. status live = say it as fact; needs_review = hedge and point to the screen; planned or retired = not available yet, so say so plainly. Cite the capability_key of the entry you used.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["query"],
+    properties: {
+      query: { type: "string", minLength: 2, maxLength: 300 },
+      limit: { type: "integer", minimum: 1, maximum: 5 },
+    },
+  },
+  executor: async (args, client) => {
+    const query = requiredText(args.query, "query", 300);
+    const limit = Math.min(
+      Math.max(Math.trunc(Number(args.limit ?? 3)) || 3, 1),
+      5,
+    );
+    const { data, error } = await client.rpc("ari_search_feature_guide", {
+      p_query: query,
+      p_limit: limit,
+    });
+    if (error) {
+      throw new ToolError(
+        "READ_FAILED",
+        "The Mingla Feature Guide could not be read just now.",
+        {
+          user_reason: "Ari couldn't read the Mingla guide just now.",
+          next_step: null,
+        },
+      );
+    }
+    const rows = Array.isArray(data) ? data as Record<string, unknown>[] : [];
+    return {
+      query,
+      results: rows.slice(0, limit).map((row) => {
+        const key = guideText(row.capability_key, 80);
+        const status = ariGuideReadStatus(row.guide_status, key);
+        return {
+          capability_key: key,
+          title: guideText(row.title, 160),
+          outcome: guideText(row.outcome_summary, 600),
+          how_to: guideText(row.how_to, 1500),
+          limitations: guideText(row.limitations, 800),
+          support_wording: guideText(row.support_wording, 600),
+          who_can_use: guideList(row.who_can_use),
+          surfaces: guideList(row.surfaces),
+          claimed_status: guideText(row.claimed_status, 20),
+          status: status.status,
+          evidence_current: row.evidence_current === true,
+          how_to_say: status.how_to_say,
+          screens: ARI_APP_ROUTES.filter((route) =>
+            route.capability_keys.includes(key)
+          ).slice(0, 3).map((route) => ({
+            route: route.pattern,
+            title: route.title,
+          })),
+        };
+      }),
+      found: rows.length > 0,
+    };
+  },
+};
+
 const requestTools: AgentToolDefinition = {
   name: "request_tools",
   description:
@@ -739,25 +939,18 @@ const listMemoryNotes: AgentToolDefinition = {
     }),
 };
 
-const saveMemoryNote: AgentToolDefinition = {
-  name: "save_memory_note",
-  description:
-    "Save an explicit approved preference, correction, business fact or working style. Do not infer sensitive facts.",
-  parameters: {
-    type: "object",
-    additionalProperties: false,
-    required: ["kind", "content"],
-    properties: {
-      brand_id: { type: "string", format: "uuid", nullable: true },
-      kind: {
-        type: "string",
-        enum: ["preference", "correction", "business_fact", "workflow"],
-      },
-      content: { type: "string", minLength: 1, maxLength: 1200 },
-      evidence_message_id: { type: "string", format: "uuid", nullable: true },
-    },
-  },
-  executor: async (args, client) =>
+// #3355 Wave D (D1): Ari's memory write. Ari-owned, reversible state (the
+// host sees and deletes every note in Ari settings), so it runs in the loop
+// without a card (ARI_10X_AGENT_STATE), through ari_remember_note with the
+// caller's JWT. See ariMemory.ts.
+/**
+ * #3355 ship-prep — the executor of origin/main's memory write (verbatim from
+ * 811c033211), for the rollout switch's off path only; the tool itself is
+ * declared in ariRolloutTurn.ts, outside the registry. [TRANSITIONAL] exit:
+ * rollout ari-understand-first-3355 active at 100% for every brand.
+ */
+export const legacySaveMemoryNoteExecutor: AgentToolDefinition["executor"] =
+  async (args, client) =>
     await callRpc(client, "ari_memory_save", {
       p_brand_id: isUuid(args.brand_id) ? args.brand_id : null,
       p_kind: args.kind,
@@ -765,7 +958,49 @@ const saveMemoryNote: AgentToolDefinition = {
       p_evidence_message_id: isUuid(args.evidence_message_id)
         ? args.evidence_message_id
         : null,
-    }),
+    });
+
+const rememberNote: AgentToolDefinition = {
+  name: "remember_note",
+  description:
+    "Keep one short note for later turns: a correction the host gave you, a lasting preference, or a fact about their business. scope brand shares it with everyone on the brand; scope user keeps it to this host. Never store emails, phone numbers, card or bank details, passwords or ID numbers. The host sees and deletes notes in Ari settings.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["scope", "kind", "text"],
+    properties: {
+      scope: { type: "string", enum: [...ARI_MEMORY_SCOPES] },
+      kind: { type: "string", enum: [...ARI_MEMORY_KINDS] },
+      text: {
+        type: "string",
+        minLength: 3,
+        maxLength: ARI_MEMORY_NOTE_MAX,
+      },
+      brand_id: { type: "string", format: "uuid", nullable: true },
+      evidence_message_id: { type: "string", format: "uuid", nullable: true },
+    },
+  },
+  executor: async (args, client) => {
+    const checked = rememberNoteArgs(args);
+    try {
+      return await callRpc(client, "ari_remember_note", {
+        p_scope: checked.scope,
+        p_kind: checked.kind,
+        p_content: checked.text,
+        p_brand_id: checked.brandId,
+        p_evidence_message_id: isUuid(args.evidence_message_id)
+          ? args.evidence_message_id
+          : null,
+      });
+    } catch (error) {
+      if (error instanceof ToolError && error.code !== "RPC_FAILED") {
+        throw error;
+      }
+      throw rememberNoteError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  },
 };
 
 const forgetMemoryNote: AgentToolDefinition = {
@@ -922,6 +1157,9 @@ export async function bindOwnerNoteProposal(
     throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
   }
   const topic = String(args.about ?? "");
+  if (topic === ARI_ASK_TEAM_TOPIC) {
+    return await bindAskTeamProposal(args, client, userId);
+  }
   if (!OWNER_NOTE_TOPICS[topic]) {
     throw new ToolError("INVALID_ARGS", "That isn't an owner-only step.");
   }
@@ -956,6 +1194,95 @@ export async function bindOwnerNoteProposal(
   };
 }
 
+/**
+ * #3355 Wave D (D4, D7a) — "Ask the Mingla team": the server writes a
+ * PII-minimised note from this Ari chat's gap rows (by id, so the executor
+ * rebuilds the same words), bound to the brand's own group. Refused when the
+ * team was already asked from this chat within the hour.
+ */
+async function bindAskTeamProposal(
+  args: JsonRecord,
+  client: SupabaseClient,
+  userId: string,
+): Promise<JsonRecord> {
+  const brandId = String(args.brand_id);
+  if (!isUuid(args.ari_conversation_id)) {
+    throw new ToolError("INVALID_ARGS", "ari_conversation_id must be a uuid");
+  }
+  const ariConversationId = String(args.ari_conversation_id);
+  if (
+    await askTeamSentRecently({ caller: client, userId, ariConversationId })
+  ) {
+    throw new ToolError("ASK_TEAM_RECENTLY_SENT", ASK_TEAM_ALREADY_SENT, {
+      user_reason: ASK_TEAM_ALREADY_SENT,
+      next_step: null,
+    });
+  }
+  const [group, brandName, firstName, gaps] = await Promise.all([
+    findCallerBrandGroup(client, brandId),
+    brandNameFor(client, brandId),
+    teammateFirstName(client, userId),
+    readAskTeamGaps({ caller: client, ariConversationId }),
+  ]);
+  if (!group) {
+    throw new ToolError(
+      "OWNER_NOTE_UNAVAILABLE",
+      `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
+    );
+  }
+  return {
+    brand_id: brandId,
+    about: ARI_ASK_TEAM_TOPIC,
+    ari_conversation_id: ariConversationId,
+    gap_ids: gaps.map((gap) => gap.id),
+    send_to: `${brandName} group chat`,
+    message: askTeamNoteFromGaps({
+      firstName,
+      brandName,
+      ariConversationId,
+      gaps,
+    }),
+  };
+}
+
+/** The exact words the server would write today for this approval. */
+async function expectedOwnerNote(
+  args: JsonRecord,
+  client: SupabaseClient,
+  userId: string,
+): Promise<string> {
+  const brandId = String(args.brand_id);
+  if (args.about === ARI_ASK_TEAM_TOPIC) {
+    if (!isUuid(args.ari_conversation_id)) {
+      throw new ToolError(
+        "OWNER_NOTE_CHANGED",
+        "That note is out of date, so nothing was sent. Ask me again and I'll show the new words.",
+      );
+    }
+    const gapIds = Array.isArray(args.gap_ids)
+      ? args.gap_ids.filter((id): id is string => isUuid(id))
+      : [];
+    const gaps = gapIds.length > 0
+      ? await readAskTeamGaps({
+        caller: client,
+        ariConversationId: String(args.ari_conversation_id),
+        gapIds,
+      })
+      : [];
+    return askTeamNoteFromGaps({
+      firstName: await teammateFirstName(client, userId),
+      brandName: await brandNameFor(client, brandId),
+      ariConversationId: String(args.ari_conversation_id),
+      gaps,
+    });
+  }
+  return ownerNoteText({
+    teammateFirstName: await teammateFirstName(client, userId),
+    brandName: await brandNameFor(client, brandId),
+    topic: String(args.about ?? ""),
+  });
+}
+
 /** PostgREST's answer for an RPC that doesn't exist (yet) in this database. */
 export function receiptFunctionsMissing(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error ?? "");
@@ -966,14 +1293,24 @@ export function receiptFunctionsMissing(error: unknown): boolean {
 const tellOwnerInBrandGroup: AgentToolDefinition = {
   name: "tell_owner_in_brand_group",
   description:
-    "After the teammate confirms, post one note in the brand's group chat asking the owner to do an owner-only step (payment setup). Sent as the teammate. The server writes the exact words; never write your own. Offer it when open_handoff returns requires_owner with tell_owner.via brand_group; when it says team_screen, say its message and link the Team screen instead.",
+    "After the teammate confirms, post one note in the brand's group chat asking the owner to do an owner-only step (payment setup). Sent as the teammate. The server writes the exact words; never write your own. Offer it when open_handoff returns requires_owner with tell_owner.via brand_group; when it says team_screen, say its message and link the Team screen instead. about ask_mingla_team asks the Mingla team for help in the same group with a server-written summary (Ari offers it when a host is stuck; at most once an hour per chat).",
   parameters: {
     type: "object",
     additionalProperties: false,
     required: ["brand_id", "about"],
     properties: {
       brand_id: { type: "string", format: "uuid" },
-      about: { type: "string", enum: Object.keys(OWNER_NOTE_TOPICS) },
+      about: {
+        type: "string",
+        enum: [...Object.keys(OWNER_NOTE_TOPICS), ARI_ASK_TEAM_TOPIC],
+      },
+      // #3355 Wave D (D4): server-bound for an ask_mingla_team note.
+      ari_conversation_id: { type: "string", format: "uuid" },
+      gap_ids: {
+        type: "array",
+        maxItems: 5,
+        items: { type: "string", format: "uuid" },
+      },
       send_to: { type: "string", maxLength: 200 },
       message: { type: "string", maxLength: 600 },
     },
@@ -1021,7 +1358,6 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
         message: typeof args.message === "string" ? args.message : null,
       };
     }
-    const topic = String(args.about ?? "");
     const conversationId = await findCallerBrandGroup(client, args.brand_id);
     if (!conversationId) {
       throw new ToolError(
@@ -1031,11 +1367,7 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
     }
     // Send exactly the words the teammate confirmed, and only words the
     // server would write today (a stale or altered note is refused).
-    const expected = ownerNoteText({
-      teammateFirstName: await teammateFirstName(client, userId),
-      brandName: await brandNameFor(client, args.brand_id),
-      topic,
-    });
+    const expected = await expectedOwnerNote(args, client, userId);
     if (args.message !== expected) {
       throw new ToolError(
         "OWNER_NOTE_CHANGED",
@@ -1080,6 +1412,13 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
       // of reading as "result unknown" (receipt-backed RPC_FAILED is kept
       // `executing` for a retry).
       const text = error instanceof Error ? error.message : "";
+      // #3355 Wave D (D4): the team was already asked from this chat.
+      if (text.includes("ask_team_recently_sent")) {
+        throw new ToolError("ASK_TEAM_RECENTLY_SENT", ASK_TEAM_ALREADY_SENT, {
+          user_reason: ASK_TEAM_ALREADY_SENT,
+          next_step: null,
+        });
+      }
       if (text.includes("conversation_unavailable")) {
         throw new ToolError(
           "OWNER_NOTE_UNAVAILABLE",
@@ -1189,9 +1528,13 @@ const openHandoff: AgentToolDefinition = {
         };
       }
     }
+    // #3355 Wave B (I-ARI-HANDOFF-FIXABLE): a destination is only a route
+    // when the Host App Map has that screen; otherwise say how to get there.
     return {
       destination,
-      route: template.replace("{brand_id}", String(args.brand_id ?? "")),
+      ...ariHandoffRoute(
+        template.replace("{brand_id}", String(args.brand_id ?? "")),
+      ),
       reason,
       requires_human: true,
     };
@@ -1329,6 +1672,100 @@ export async function bindProposalTimezone(
     );
   }
   return { ...args, timezone };
+}
+
+/**
+ * #3355 rework 3b: the listing kinds a brand sells, read as the caller (RLS):
+ * events.event_type (event / experience / trip; RSVPs take no discount). A
+ * venue listing alone is not counted (live eval: the seed venue made "venue
+ * orders" the only kind for a host mid event setup); venue orders and table
+ * deposits are used only when the host names them. A failed read is treated
+ * as no listings.
+ */
+export async function readBrandListingKinds(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string[]> {
+  const { data, error } = await client.from("events").select("event_type")
+    .eq("brand_id", brandId).is("deleted_at", null)
+    .neq("event_type", "rsvp").limit(200);
+  if (error) return [];
+  const kinds = new Set<string>();
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    if (typeof row.event_type === "string") kinds.add(row.event_type);
+  }
+  return [...kinds];
+}
+
+/**
+ * #3355 rework 5 (R5-4): the brand's currency, read as the caller (RLS),
+ * for a minimum order stated with a currency mark. Null when it cannot be
+ * read (the amount is then taken as stated).
+ */
+async function readBrandCurrency(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string | null> {
+  const { data, error } = await client.from("brands").select(
+    "default_currency",
+  ).eq("id", brandId).limit(1);
+  if (error) {
+    console.warn(
+      "[agent-chat] brand currency read failed",
+      JSON.stringify({ code: error.code ?? null }),
+    );
+    return null;
+  }
+  const row = Array.isArray(data) ? data[0] : null;
+  const value = (row as { default_currency?: unknown } | null)
+    ?.default_currency;
+  return typeof value === "string" && value.trim()
+    ? value.trim().toUpperCase()
+    : null;
+}
+
+/**
+ * #3355 rework 3b (I-ARI-DISCOUNT-TARGET-RESOLVED): a create_discount whose
+ * target names no listing kind is bound at the server boundary, before the
+ * #4304 canonicaliser, from the host's words and the brand's listings
+ * (resolveDiscountTargetDefault). A brand with several kinds and no kind
+ * named gets one question listing them. A kind Ari does not know is left for
+ * the canonicaliser to refuse.
+ */
+export async function bindDiscountTargetDefault(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: SupabaseClient,
+  hostText: string,
+): Promise<Record<string, unknown>> {
+  if (toolName !== "create_discount") return args;
+  // #3355 rework 4 (R4-3) / rework 5 (R5-4, R5-5): "orders over ₦10,000" in
+  // THIS code's clause is the minimum order, in the brand's currency.
+  const stated = parseStatedMinimumOrder(
+    codeClause(hostText, typeof args.code === "string" ? args.code : null),
+  );
+  const currency = stated?.kind === "amount" && stated.currency &&
+      isUuid(args.brand_id)
+    ? await readBrandCurrency(client, String(args.brand_id))
+    : null;
+  const withMinimum = applyStatedMinimumOrder(args, hostText, currency);
+  if (!discountTargetsNeedDefault(withMinimum)) return withMinimum;
+  const kinds = isUuid(withMinimum.brand_id)
+    ? await readBrandListingKinds(client, String(withMinimum.brand_id))
+    : [];
+  const resolved = resolveDiscountTargetDefault(
+    kinds,
+    hostText,
+    typeof withMinimum.code === "string" ? withMinimum.code : null,
+  );
+  console.log(
+    "[agent-chat] discount target bound",
+    JSON.stringify({
+      outcome: resolved.kind === "ask" ? "ask" : resolved.reason,
+      kinds: resolved.listingKinds,
+    }),
+  );
+  return applyDiscountTargetDefault(withMinimum, resolved);
 }
 
 const getListingCapabilities: AgentToolDefinition = {
@@ -1811,11 +2248,12 @@ export const ARI_10X_TOOLS: AgentToolDefinition[] = [
   readPublicUrlTool,
   inspectPublicSocialProfile,
   searchCapabilities,
+  searchMinglaGuide,
   requestTools,
   getOnboardingPlan,
   updateOnboardingPlan,
   listMemoryNotes,
-  saveMemoryNote,
+  rememberNote,
   forgetMemoryNote,
   openHandoff,
   tellOwnerInBrandGroup,
@@ -1836,6 +2274,7 @@ export const ARI_10X_READ_ONLY = new Set([
   "read_public_url",
   "inspect_public_social_profile",
   "search_capabilities",
+  "search_mingla_guide",
   "request_tools",
   "get_onboarding_plan",
   "list_memory_notes",
@@ -1853,7 +2292,7 @@ export const ARI_10X_READ_ONLY = new Set([
 export const ARI_10X_AGENT_STATE = new Set([
   "request_tools",
   "update_onboarding_plan",
-  "save_memory_note",
+  "remember_note",
   "forget_memory_note",
   "manage_agent_job",
 ]);

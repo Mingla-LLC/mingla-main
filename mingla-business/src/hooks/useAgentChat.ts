@@ -30,6 +30,7 @@ import {
   sendAgentMessage,
 } from "../services/agentChatService";
 import { currentAriUiCapabilities } from "../services/ariUiCapabilitiesService";
+import { ariClientContextFor } from "../config/routes";
 import {
   type AriAttachmentDraft,
   type AriSentAttachment,
@@ -353,6 +354,11 @@ function mergeEvents(
       a.sequence - b.sequence ||
       a.id.localeCompare(b.id),
   );
+}
+
+function clientContextField(): { client_context?: ReturnType<typeof ariClientContextFor> } {
+  const context = ariClientContextFor();
+  return context ? { client_context: context } : {};
 }
 
 export function useAgentChat(
@@ -787,6 +793,8 @@ export function useAgentChat(
           locale: Intl.DateTimeFormat().resolvedOptions().locale || "en-US",
           brand_id: brandId,
           ari_ui: currentAriUiCapabilities(),
+          // #3355 Wave C (C2): the screen the host asked from.
+          ...clientContextField(),
         });
         if (turn.epoch !== brandEpoch.current) return response;
         if (response.kind === "error") {
