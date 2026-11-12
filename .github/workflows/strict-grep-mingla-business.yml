@@ -1077,7 +1077,15 @@ jobs:
       # and deduped by `sort -u`, so it counts once. It attacks the return-leg
       # mapper with the hostile-input set #2229's own adversarial suite already
       # pins against the create-leg mapper in the same module.
-      - name: "Issues #2227/#2229/#2264/#2265: native Paystack hand-off, total error mapper + pending surface"
+      #
+      # Floor 11 -> 17 (#3281 bundle 6d): the globs already matched 13. Added
+      # `issue_3281_*` (Explorer's held-page re-check, Android return wait and
+      # sign-out isolation) and the three #3859 implementor suites that guard
+      # the same replay and recovery-pointer code and were wired into no lane:
+      # paystack_recovery_terminal_truth, checkout_v2_client,
+      # native_checkout_terminal_flow. The #3281 suite is also required by
+      # name, so a rename cannot hide under the floor.
+      - name: "Issues #2227/#2229/#2264/#2265/#3281: native Paystack hand-off, total error mapper + pending surface"
         working-directory: app-mobile
         shell: bash
         run: |
@@ -1087,15 +1095,23 @@ jobs:
             src/payments/__tests__/issue_2227_*.test.ts \
             src/payments/__tests__/issue_2229_*.test.ts \
             src/payments/__tests__/issue_2264_*.test.ts \
+            src/payments/__tests__/issue_3281_*.test.ts \
+            src/payments/__tests__/issue_3859_paystack_recovery_terminal_truth.implementor.happy.test.ts \
+            src/payments/__tests__/issue_3859_checkout_v2_client.implementor.happy.test.ts \
+            src/payments/__tests__/issue_3859_native_checkout_terminal_flow.implementor.happy.test.ts \
             src/payments/__tests__/*.tester_adversarial.test.ts \
             src/components/expandedCard/__tests__/issue_2265_*.test.ts \
             | sort -u)
           echo "Suites matched:"
           echo "$suites"
           matched=$(printf '%s\n' "$suites" | grep -c '\.test\.ts$' || true)
-          if [ "$matched" -lt 11 ]; then
-            echo "FAIL: the suite globs matched $matched files, expected at least 11."
+          if [ "$matched" -lt 17 ]; then
+            echo "FAIL: the suite globs matched $matched files, expected at least 17."
             echo "A guard that matches nothing cannot fail. Fix the glob or the paths."
+            exit 1
+          fi
+          if ! printf '%s\n' "$suites" | grep -q 'issue_3281_explorer_paystack_page\.test\.ts$'; then
+            echo "FAIL: the #3281 Explorer held-page suite was not matched."
             exit 1
           fi
           npx jest --runInBand $suites

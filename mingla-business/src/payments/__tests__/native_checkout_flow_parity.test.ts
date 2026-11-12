@@ -160,6 +160,9 @@ describe("#2264 — consumer/business terminal-token parity", () => {
     // issue #3281 (bundle 6b) — the held-page arms.
     "CHECKOUT_NO_HANDOFF_MESSAGE",
     "CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE",
+    // issue #3281 (bundle 6d) — Explorer's held-page re-check and expiry.
+    "CHECKOUT_RECHECK_FAILED_MESSAGE",
+    "CHECKOUT_PAGE_EXPIRED_MESSAGE",
   ] as const;
 
   /** The string literal a `const NAME =\n  "…";` declaration carries. */

@@ -743,8 +743,14 @@ describe("#2264 T-15 — the held hand-off SURVIVES a terminal abandonment", () 
     const first = await run(inputFor(eventId));
     expect(first.outcome).toBe("failed");
 
-    // Second tap on the SAME cart: replay, no create, same URL.
-    mockInvoke.mockResolvedValueOnce(finalized("ord-second-try"));
+    // Second tap on the SAME cart: replay, no create, same URL. #3281 6d —
+    // the held page is re-checked first: the status read still says
+    // abandoned (the session is live and payable), the #1930 preflight admits
+    // it, then the page reopens and the poll finds the order.
+    mockInvoke
+      .mockResolvedValueOnce(terminal("paystack_charge_abandoned"))
+      .mockResolvedValueOnce({ data: { status: "present_allowed" }, error: null })
+      .mockResolvedValueOnce(finalized("ord-second-try"));
     const second = await run(inputFor(eventId));
 
     expect(second).toEqual({ outcome: "succeeded", orderId: "ord-second-try" });

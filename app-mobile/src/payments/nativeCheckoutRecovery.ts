@@ -205,6 +205,28 @@ export const clearNativeCheckoutRecovery = async (): Promise<void> => {
   }
 };
 
+/**
+ * issue #3281 (bundle 6d) — delete the recovery pointer ONLY if it is for this
+ * checkout. The pointer is one SecureStore key per device, so a continuation
+ * that outlived a sign-out (or any other checkout) must never delete a newer
+ * checkout's pointer. Sign-out itself uses `purgeNativeCheckoutRecovery`.
+ */
+export const clearNativeCheckoutRecoveryFor = async (
+  checkoutSessionId: string,
+): Promise<void> => {
+  try {
+    const parsed = parseNativeCheckoutRecoveryPointer(
+      await secureGetItem(RECOVERY_KEY),
+    );
+    if (parsed !== null && parsed.checkoutSessionId !== checkoutSessionId) {
+      return;
+    }
+    await secureDeleteItem(RECOVERY_KEY);
+  } catch {
+    // Secure-store failure cannot be allowed to break confirmation.
+  }
+};
+
 export const purgeNativeCheckoutRecovery = async (): Promise<void> => {
   await clearNativeCheckoutRecovery();
   reportedPurchaseOrders.clear();
@@ -364,7 +386,7 @@ export const reconcileNativeCheckout = async (
         ? extracted
         : null;
       if (recovered) captureRecoveryOnce(pointer, "failed");
-      await clearNativeCheckoutRecovery();
+      await clearNativeCheckoutRecoveryFor(pointer.checkoutSessionId);
       if (status === 409 || token === "checkout_unavailable") {
         return {
           outcome: "failed",
@@ -407,7 +429,7 @@ export const reconcileNativeCheckout = async (
       );
     }
     if (recovered) captureRecoveryOnce(pointer, "succeeded");
-    await clearNativeCheckoutRecovery();
+    await clearNativeCheckoutRecoveryFor(pointer.checkoutSessionId);
     return {
       outcome: "succeeded",
       orderId,
@@ -422,7 +444,7 @@ export const reconcileNativeCheckout = async (
 
   if (data.error === "checkout_unavailable") {
     if (recovered) captureRecoveryOnce(pointer, "failed");
-    await clearNativeCheckoutRecovery();
+    await clearNativeCheckoutRecoveryFor(pointer.checkoutSessionId);
     return {
       outcome: "failed",
       message:
@@ -435,7 +457,7 @@ export const reconcileNativeCheckout = async (
 
   if (data.status === "failed" || data.status === "expired") {
     if (recovered) captureRecoveryOnce(pointer, "failed");
-    await clearNativeCheckoutRecovery();
+    await clearNativeCheckoutRecoveryFor(pointer.checkoutSessionId);
     if (source === "payment_canceled") {
       captureNativeCheckoutAnalytics("checkout_provider_cancelled", {
         event_id: pointer.eventId,
