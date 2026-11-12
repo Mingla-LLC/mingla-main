@@ -247,7 +247,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389: re-sealed after skipping the brand setup and Ari brand operation migrations in the #2117 pre-landing replay (they re-emit #2117-gated readers before #2117 lands there).
 // #4389: re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows) and renumbering the four #4389 migrations to 20280701*4389 (above main's 20280630004402).
 // #4402: register the creator review migration (20280702004402) and its pg17 suite in the #1857, #1931 and #2117 replay lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "a0dd4f5bde77a84e48e67be7368bbff42db3d9f55833979f9f273a6a0a728da5";
+// #4402 rework: register the tester's creator review pg17 proof beside the implementor's; re-sealed.
+export const BOOTSTRAP_SHA256 = "ad0241def1830574c2fdfc0a7362ebfa76b9dcd1d5b10da109bfed73793b89f7";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

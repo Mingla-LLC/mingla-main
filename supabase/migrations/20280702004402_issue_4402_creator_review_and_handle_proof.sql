@@ -1,52 +1,57 @@
 -- #4402 — Creator review in Admin and honest social-handle proof.
 --
--- Plain English: checking a bio code no longer crashes when the code is not
--- found, an unreadable profile goes to a person instead of "not found", Admin
--- can approve or reject one social account at a time (and record the audience
--- band it saw), Verify is refused on the server until all six setup steps
--- pass, and an active rate is now one of the steps for automatic verification.
+-- Plain English: a person at Mingla verifies everything. Every social handle a
+-- creator adds goes to Admin review; the server's bio-code check only records
+-- what it saw, as evidence. Only an admin's "Approve handle" verifies a handle,
+-- and it records the audience band the admin saw (Hosts see only that band).
+-- A rejected handle stays rejected until an admin reopens it. A creator is
+-- verified only by the admin's Verify, which the server refuses until all six
+-- setup steps pass. Nothing turns a creator verified automatically any more:
+-- a recompute can say "ready for review", never "verified".
 --
 -- Invariants (declared in
 -- supabase/migrations/__tests__/issue_4402_creator_review.implementor.pg17.test.sql):
 --   I-4402-CREATOR-VERIFY-NEEDS-SIX-STEPS: admin_creator_decide('verify')
 --     writes nothing unless all six setup checks pass and no handle is under
 --     review; it never approves a flagged handle as a side effect.
---   I-4402-HANDLE-DECISION-IS-AUDITED: a handle is approved or rejected only by
---     admin_creator_handle_decide, which writes a creator_review_events row.
+--   I-4402-HANDLE-DECISION-IS-AUDITED: a handle is approved, rejected or
+--     reopened only by admin_creator_handle_decide, which writes a
+--     creator_review_events row.
+--   I-4402-ONLY-ADMIN-VERIFIES: no recompute, handle check or setup write sets
+--     a creator or a handle verified; only admin_creator_decide('verify') and
+--     admin_creator_handle_decide('approve') do.
 --
 -- Seth's answers (12 Nov 2026): X is no longer a handle platform; an active
--- rate is required before automatic verification; a rejected creator sees
--- fixed wording plus the reviewer's short note.
+-- rate is one of the six steps; a rejected creator sees fixed wording plus
+-- the reviewer's short note; verification is by an admin, not automated.
 --
--- Static SQL only. The recompute loop at the end brings every existing
--- creator onto the six-step rule (production had 0 verified creators on
--- 12 Nov 2026).
+-- Static SQL only. The tail moves existing handles onto the admin-review rule
+-- and recomputes every creator (production had 0 verified creators and 1
+-- unchecked handle on 12 Nov 2026).
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 
--- 1. Handle check outcome, rejection note, provider count and the creator's
---    own band (kept when the provider or an admin records another one).
+-- 1. What the last bio-code check saw (evidence for the admin, never a
+--    verdict), the rejection note, and the creator's own band (kept beside
+--    the band an admin records). No platform-derived audience is stored.
 ALTER TABLE public.creator_handles
   ADD COLUMN IF NOT EXISTS last_check_status text,
   ADD COLUMN IF NOT EXISTS rejected_note text,
-  ADD COLUMN IF NOT EXISTS provider_follower_count bigint,
   ADD COLUMN IF NOT EXISTS self_reported_band text;
 
 ALTER TABLE public.creator_handles
   DROP CONSTRAINT IF EXISTS creator_handles_last_check_status_check,
   ADD CONSTRAINT creator_handles_last_check_status_check
-    CHECK (last_check_status IS NULL OR last_check_status IN ('verified','pending','unreadable','expired','rejected')),
+    CHECK (last_check_status IS NULL OR last_check_status IN ('code_seen','code_not_seen','unreadable','expired','verified','rejected')),
   DROP CONSTRAINT IF EXISTS creator_handles_rejected_note_check,
   ADD CONSTRAINT creator_handles_rejected_note_check
     CHECK (rejected_note IS NULL OR char_length(rejected_note) BETWEEN 1 AND 500),
-  DROP CONSTRAINT IF EXISTS creator_handles_provider_follower_count_check,
-  ADD CONSTRAINT creator_handles_provider_follower_count_check
-    CHECK (provider_follower_count IS NULL OR provider_follower_count >= 0),
   DROP CONSTRAINT IF EXISTS creator_handles_self_reported_band_check,
   ADD CONSTRAINT creator_handles_self_reported_band_check
     CHECK (self_reported_band IS NULL OR self_reported_band IN ('lt1k','1k_10k','10k_50k','50k_250k','250k_1m','gt1m')),
   -- 'admin' = the band a Mingla admin recorded when approving the handle.
+  -- 'provider' stays legal for old rows only; nothing writes it any more.
   DROP CONSTRAINT creator_handles_follower_source_check,
   ADD CONSTRAINT creator_handles_follower_source_check
     CHECK (follower_source IN ('self_reported','provider','admin'));
@@ -66,16 +71,19 @@ ALTER TABLE public.creator_review_events
 ALTER TABLE public.creator_review_events
   DROP CONSTRAINT creator_review_events_action_check,
   ADD CONSTRAINT creator_review_events_action_check
-    CHECK (action IN ('verify','ask_more','decline','suspend','handle_approve','handle_reject')),
+    CHECK (action IN ('verify','ask_more','decline','suspend','handle_approve','handle_reject','handle_reopen')),
   DROP CONSTRAINT IF EXISTS creator_review_events_follower_band_check,
   ADD CONSTRAINT creator_review_events_follower_band_check
     CHECK (follower_band IS NULL OR follower_band IN ('lt1k','1k_10k','10k_50k','50k_250k','250k_1m','gt1m')),
   DROP CONSTRAINT IF EXISTS creator_review_events_handle_shape,
   ADD CONSTRAINT creator_review_events_handle_shape
-    CHECK ((action IN ('handle_approve','handle_reject')) = (handle_id IS NOT NULL AND platform IS NOT NULL));
+    CHECK ((action IN ('handle_approve','handle_reject','handle_reopen')) = (handle_id IS NOT NULL AND platform IS NOT NULL));
 
--- 3. Recompute: the 4216 body (20280221004216) plus the rates step, so
---    automatic verification and Admin Verify agree on the same six steps.
+-- 3. Recompute: the 4216 body (20280221004216) plus the rates step, and it
+--    never makes anyone verified (Seth, 12 Nov 2026: an admin verifies). All
+--    six steps done, or a handle waiting for a person, means 'review' (ready
+--    for an admin). A creator an admin already verified stays verified while
+--    all six steps still pass, and drops out as soon as one fails.
 CREATE OR REPLACE FUNCTION public.issue_3872_recompute_creator_verification(
   p_creator_account_id uuid,p_signal_conflict boolean DEFAULT false
 ) RETURNS jsonb
@@ -102,10 +110,11 @@ BEGIN
   IF NOT v_package_ok THEN v_reasons:=array_append(v_reasons,'active_package'); END IF;
   v_next:=CASE
     WHEN v_profile.verification IN ('declined','suspended') THEN v_profile.verification
+    WHEN v_profile.verification='verified' AND cardinality(v_reasons)=0 AND NOT p_signal_conflict THEN 'verified'
     WHEN p_signal_conflict OR EXISTS(SELECT 1 FROM public.creator_handles WHERE creator_account_id=p_creator_account_id AND review_required) THEN 'review'
     WHEN v_profile.verification='needs_more' THEN CASE WHEN cardinality(v_reasons)=0 THEN 'review' ELSE 'needs_more' END
     WHEN v_profile.verification='review' AND v_profile.reviewed_at IS NOT NULL THEN 'review'
-    WHEN cardinality(v_reasons)=0 THEN 'verified'
+    WHEN cardinality(v_reasons)=0 THEN 'review'
     ELSE 'incomplete' END;
   UPDATE public.creator_profiles SET verification=v_next,verification_reasons=v_reasons
    WHERE creator_account_id=p_creator_account_id RETURNING * INTO v_profile;
@@ -116,8 +125,10 @@ REVOKE ALL ON FUNCTION public.issue_3872_recompute_creator_verification(uuid,boo
 GRANT EXECUTE ON FUNCTION public.issue_3872_recompute_creator_verification(uuid,boolean) TO service_role;
 
 -- 4. Handle upsert: the r3 body (20271225003872), plus: X is no longer a
---    handle platform, a new code starts a new attempt (outcome and rejection
---    cleared), and the creator's own band is kept beside any checked band.
+--    handle platform; every added handle goes straight to Admin review
+--    ('awaiting_admin'); a new code clears the last check's evidence; a
+--    rejected handle cannot be re-added or given a new code until an admin
+--    reopens it; the creator's own band is kept beside the admin's band.
 CREATE OR REPLACE FUNCTION public.creator_handle_upsert(
   p_platform text,p_handle text,p_follower_band text DEFAULT NULL
 ) RETURNS jsonb
@@ -131,14 +142,17 @@ BEGIN
   IF v_platform NOT IN ('instagram','tiktok','youtube','snapchat') THEN
     RAISE EXCEPTION 'platform_unsupported' USING ERRCODE='22023';
   END IF;
+  IF EXISTS(SELECT 1 FROM public.creator_handles WHERE creator_account_id=v_id AND platform=v_platform AND last_check_status='rejected') THEN
+    RAISE EXCEPTION 'handle_rejected' USING ERRCODE='22023';
+  END IF;
   v_handle:=lower(regexp_replace(btrim(p_handle),'^@','','g'));
-  INSERT INTO public.creator_handles(creator_account_id,platform,handle,follower_band,self_reported_band,verify_code)
-  VALUES(v_id,v_platform,v_handle,p_follower_band,p_follower_band,'MINGLA-'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,4)))
+  INSERT INTO public.creator_handles(creator_account_id,platform,handle,follower_band,self_reported_band,verify_code,review_required,review_reason)
+  VALUES(v_id,v_platform,v_handle,p_follower_band,p_follower_band,'MINGLA-'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,4)),true,'awaiting_admin')
   ON CONFLICT(creator_account_id,platform) DO UPDATE SET
     handle=excluded.handle,follower_band=excluded.follower_band,follower_source='self_reported',
-    self_reported_band=excluded.self_reported_band,provider_follower_count=NULL,
+    self_reported_band=excluded.self_reported_band,
     verify_code=excluded.verify_code,verify_started_at=now(),verify_expires_at=now()+interval '72 hours',
-    verified_at=NULL,last_checked_at=NULL,review_required=false,review_reason=NULL,
+    verified_at=NULL,last_checked_at=NULL,review_required=true,review_reason='awaiting_admin',
     last_check_status=NULL,rejected_note=NULL
   RETURNING * INTO v_row;
   PERFORM public.issue_3872_recompute_creator_verification(v_id,false);
@@ -154,7 +168,8 @@ GRANT EXECUTE ON FUNCTION public.creator_handle_upsert(text,text,text) TO authen
 
 -- 5. Rates: the 4402 body (20280630004402), plus a recompute, because an
 --    active rate is now one of the six steps. Adding the last missing rate can
---    verify a creator; switching off the only rate takes them out of view.
+--    only make a creator ready for review; switching off the only rate takes
+--    a verified creator out of view.
 CREATE OR REPLACE FUNCTION public.creator_package_upsert(
   p_format_key text,p_platforms text[],p_price_minor bigint,p_currency text,
   p_turnaround_days integer,p_includes_usage_days integer DEFAULT 90,
@@ -269,9 +284,10 @@ BEGIN
     IF jsonb_array_length(v_missing)>0 THEN
       RETURN jsonb_build_object('ok',false,'error','checks_incomplete','missing',v_missing);
     END IF;
-    UPDATE public.creator_profiles SET verification='incomplete',review_note=NULL,declined_reason=NULL,reviewed_by=auth.uid(),reviewed_at=now()
-     WHERE creator_account_id=p_creator_id;
-    v_result:=public.issue_3872_recompute_creator_verification(p_creator_id,false);
+    -- The only path to 'verified' for a creator (I-4402-ONLY-ADMIN-VERIFIES).
+    UPDATE public.creator_profiles SET verification='verified',verification_reasons='{}',review_note=NULL,declined_reason=NULL,reviewed_by=auth.uid(),reviewed_at=now()
+     WHERE creator_account_id=p_creator_id RETURNING * INTO v_profile;
+    v_result:=jsonb_build_object('verification',v_profile.verification);
   ELSE
     UPDATE public.creator_profiles SET
       verification=CASE p_decision WHEN 'ask_more' THEN 'needs_more' WHEN 'decline' THEN 'declined' ELSE 'suspended' END,
@@ -288,8 +304,11 @@ $fn$;
 REVOKE ALL ON FUNCTION public.admin_creator_decide(uuid,text,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.admin_creator_decide(uuid,text,text) TO authenticated,service_role;
 
--- 9. One handle at a time. Approve records the band the admin saw (optional);
---    Reject needs a short note the creator sees under fixed wording.
+-- 9. One handle at a time, and the only path to a verified handle. Approve
+--    needs the audience band the admin saw (the only band Hosts see). Reject
+--    needs a short note the creator sees under fixed wording, and sticks:
+--    the creator cannot re-add or re-check it. Reopen puts a rejected handle
+--    back in review with a fresh 72-hour code window.
 CREATE OR REPLACE FUNCTION public.admin_creator_handle_decide(
   p_handle_id uuid,p_decision text,p_note text DEFAULT NULL,p_band text DEFAULT NULL
 ) RETURNS jsonb
@@ -297,29 +316,43 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
 DECLARE v_row public.creator_handles; v_note text:=nullif(btrim(coalesce(p_note,'')),''); v_band text:=nullif(btrim(coalesce(p_band,'')),''); v_result jsonb;
 BEGIN
   IF NOT public.is_admin_user() THEN RAISE EXCEPTION 'admin_only' USING ERRCODE='42501'; END IF;
-  IF p_decision IS NULL OR p_decision NOT IN ('approve','reject') THEN RAISE EXCEPTION 'invalid_decision' USING ERRCODE='22023'; END IF;
+  IF p_decision IS NULL OR p_decision NOT IN ('approve','reject','reopen') THEN RAISE EXCEPTION 'invalid_decision' USING ERRCODE='22023'; END IF;
   SELECT * INTO v_row FROM public.creator_handles WHERE id=p_handle_id FOR UPDATE;
   IF NOT FOUND THEN RETURN jsonb_build_object('ok',false,'error','handle_not_found'); END IF;
   IF char_length(coalesce(v_note,''))>500 THEN RETURN jsonb_build_object('ok',false,'error','note_too_long','field','note'); END IF;
   IF p_decision='reject' AND v_note IS NULL THEN RETURN jsonb_build_object('ok',false,'error','note_required','field','note'); END IF;
-  IF p_decision='approve' AND v_band IS NOT NULL AND v_band NOT IN ('lt1k','1k_10k','10k_50k','50k_250k','250k_1m','gt1m') THEN
+  IF p_decision='approve' AND v_band IS NULL THEN
+    RETURN jsonb_build_object('ok',false,'error','band_required','field','band');
+  END IF;
+  IF p_decision='approve' AND v_band NOT IN ('lt1k','1k_10k','10k_50k','50k_250k','250k_1m','gt1m') THEN
     RETURN jsonb_build_object('ok',false,'error','invalid_band','field','band');
+  END IF;
+  IF p_decision='reopen' AND v_row.last_check_status IS DISTINCT FROM 'rejected' THEN
+    RETURN jsonb_build_object('ok',false,'error','not_rejected');
   END IF;
   IF p_decision='approve' THEN
     UPDATE public.creator_handles SET
       verified_at=coalesce(verified_at,now()),review_required=false,review_reason=NULL,
       last_check_status='verified',rejected_note=NULL,
-      follower_band=coalesce(v_band,follower_band),
-      follower_source=CASE WHEN v_band IS NOT NULL THEN 'admin' ELSE follower_source END
+      follower_band=v_band,follower_source='admin'
+     WHERE id=p_handle_id RETURNING * INTO v_row;
+  ELSIF p_decision='reject' THEN
+    -- The admin's band is withdrawn with the handle; the creator's own stays.
+    UPDATE public.creator_handles SET
+      verified_at=NULL,review_required=false,review_reason=NULL,
+      last_check_status='rejected',rejected_note=v_note,
+      follower_band=CASE WHEN follower_source='self_reported' THEN follower_band ELSE self_reported_band END,
+      follower_source='self_reported'
      WHERE id=p_handle_id RETURNING * INTO v_row;
   ELSE
     UPDATE public.creator_handles SET
-      verified_at=NULL,review_required=false,review_reason=NULL,
-      last_check_status='rejected',rejected_note=v_note
+      review_required=true,review_reason='awaiting_admin',
+      last_check_status=NULL,last_checked_at=NULL,rejected_note=NULL,
+      verify_started_at=now(),verify_expires_at=now()+interval '72 hours'
      WHERE id=p_handle_id RETURNING * INTO v_row;
   END IF;
   INSERT INTO public.creator_review_events(creator_account_id,action,note,actor,handle_id,platform,follower_band)
-  VALUES(v_row.creator_account_id,CASE p_decision WHEN 'approve' THEN 'handle_approve' ELSE 'handle_reject' END,v_note,auth.uid(),
+  VALUES(v_row.creator_account_id,CASE p_decision WHEN 'approve' THEN 'handle_approve' WHEN 'reject' THEN 'handle_reject' ELSE 'handle_reopen' END,v_note,auth.uid(),
          v_row.id,v_row.platform,CASE WHEN p_decision='approve' THEN v_band END);
   v_result:=public.issue_3872_recompute_creator_verification(v_row.creator_account_id,false);
   RETURN jsonb_build_object('ok',true,
@@ -382,7 +415,6 @@ BEGIN
     'handles',(SELECT coalesce(jsonb_agg(jsonb_build_object(
         'id',h.id,'platform',h.platform,'handle',h.handle,'verify_code',h.verify_code,
         'follower_band',h.follower_band,'follower_source',h.follower_source,'self_reported_band',h.self_reported_band,
-        'provider_follower_count',h.provider_follower_count,
         'verified_at',h.verified_at,'last_checked_at',h.last_checked_at,'last_check_status',h.last_check_status,
         'review_required',h.review_required,'review_reason',h.review_reason,'rejected_note',h.rejected_note,
         'verify_expires_at',h.verify_expires_at
@@ -461,7 +493,35 @@ $fn$;
 REVOKE ALL ON FUNCTION public.admin_creator_queue(text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.admin_creator_queue(text) TO authenticated,service_role;
 
--- 12. Bring every existing creator onto the six-step rule now.
+-- 12. Host pre-hire profile: the r3 body (20271226003872), but "Verified
+--     audience" lists only bands an admin recorded when approving the handle.
+CREATE OR REPLACE FUNCTION public.prehire_creator_profile(p_creator_account_id uuid) RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
+  SELECT CASE WHEN EXISTS(SELECT 1 FROM public.brands b WHERE public.biz_is_brand_member_for_read(b.id,auth.uid()))
+    AND p.mode_enabled AND p.verification='verified' THEN jsonb_build_object(
+      'id',p.creator_account_id,'display_name',p.display_name,'city_id',p.home_city_id,'niches',p.niches,'languages',p.languages,
+      'follower_bands',(SELECT coalesce(jsonb_agg(jsonb_build_object('platform',h.platform,'band',h.follower_band,'verified',h.verified_at IS NOT NULL,'source',h.follower_source) ORDER BY h.platform),'[]'::jsonb) FROM public.creator_handles h WHERE h.creator_account_id=p.creator_account_id AND h.verified_at IS NOT NULL AND NOT h.review_required AND h.follower_source='admin' AND h.follower_band IS NOT NULL),
+      'showcase',(SELECT coalesce(jsonb_agg(jsonb_build_object('media_id',m.id,'thumb',NULL) ORDER BY m.created_at DESC),'[]'::jsonb) FROM public.creator_media_jobs m WHERE m.owner_id=p.creator_account_id AND m.purpose='showcase' AND m.status='ready' AND m.deleted_at IS NULL),
+      'rating',CASE WHEN p.rating_count>0 THEN p.rating_avg_x100/100.0 END,'rating_count',p.rating_count,'completed',p.completed_gigs,'reliability',p.reliability_bps,
+      'packages',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',c.id,'format_key',c.format_key,'platforms',c.platforms,'price_minor',c.price_minor,'currency',c.currency,'turnaround_days',c.turnaround_days,'includes_usage_days',c.includes_usage_days,'extra_usage_price_minor',c.extra_usage_price_minor) ORDER BY c.format_key),'[]'::jsonb) FROM public.creator_packages c WHERE c.creator_account_id=p.creator_account_id AND c.active)
+    ) ELSE NULL END FROM public.creator_profiles p WHERE p.creator_account_id=p_creator_account_id;
+$fn$;
+REVOKE ALL ON FUNCTION public.prehire_creator_profile(uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.prehire_creator_profile(uuid) TO authenticated,service_role;
+
+-- 13. Existing handles onto the admin-review rule: a handle no admin approved
+--     waits for one (a rejected one stays rejected), and a band no admin
+--     recorded goes back to what the creator said.
+UPDATE public.creator_handles h
+   SET verified_at=NULL,review_required=true,review_reason=coalesce(h.review_reason,'awaiting_admin')
+ WHERE coalesce(h.last_check_status,'') <> 'rejected'
+   AND NOT EXISTS(SELECT 1 FROM public.creator_review_events e WHERE e.handle_id=h.id AND e.action='handle_approve')
+   AND (h.verified_at IS NOT NULL OR NOT h.review_required);
+UPDATE public.creator_handles
+   SET follower_band=self_reported_band,follower_source='self_reported'
+ WHERE follower_source='provider';
+
+-- 14. Recompute every creator under the admin-verifies rule (never promotes).
 DO $do$
 DECLARE v_id uuid;
 BEGIN

@@ -1,17 +1,18 @@
 -- #4402 — Admin creator review and honest social-handle proof.
 --
 -- MINGLA-INVARIANT: I-4402-CREATOR-VERIFY-NEEDS-SIX-STEPS | issue #4402 | admin_creator_decide('verify') writes nothing unless all six setup checks pass and no handle is under review, and it never approves a flagged handle as a side effect.
--- MINGLA-INVARIANT: I-4402-HANDLE-DECISION-IS-AUDITED | issue #4402 | A social handle is approved or rejected only through admin_creator_handle_decide, admin-gated, and every decision writes a creator_review_events row naming the handle and platform.
+-- MINGLA-INVARIANT: I-4402-HANDLE-DECISION-IS-AUDITED | issue #4402 | A social handle is approved, rejected or reopened only through admin_creator_handle_decide, admin-gated, and every decision writes a creator_review_events row naming the handle and platform.
+-- MINGLA-INVARIANT: I-4402-ONLY-ADMIN-VERIFIES | issue #4402 | Only admin_creator_handle_decide('approve') verifies a handle (with the band the admin saw) and only admin_creator_decide('verify') verifies a creator; every added handle waits for an admin, a recompute never makes anyone verified, a rejection sticks until an admin reopens it, and Hosts see only admin-recorded audience bands (Seth, 12 Nov 2026).
 --
--- Also proves: a "code not seen" outcome saves with no review reason (the
--- 23514 crash), the rates step joins automatic verification, X is refused as a
--- handle platform, setup status carries the server outcome and the Local
--- application handles, and the Admin record read is admin-only and never
--- returns a date of birth.
+-- Also proves: an evidence save from the bio-code check is CHECK-valid, the
+-- rates step is one of the six, X is refused as a handle platform, setup
+-- status carries the server outcome and the Local application handles, and
+-- the Admin record read is admin-only and never returns a date of birth.
 --
 -- Fails on origin/main @ 7ace80fa0a: admin_creator_decide('verify') returned
--- ok:true and cleared every review_required handle; admin_creator_handle_decide
--- and admin_creator_detail did not exist.
+-- ok:true and cleared every review_required handle; a recompute verified a
+-- creator by itself; admin_creator_handle_decide and admin_creator_detail did
+-- not exist.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -72,7 +73,12 @@ BEGIN
   EXCEPTION WHEN others THEN v_code:=SQLERRM; END;
   IF v_code IS DISTINCT FROM 'platform_unsupported' THEN RAISE EXCEPTION '4402r.x handle platform: %',v_code; END IF;
 
-  -- Rates: without an active rate the creator cannot auto-verify (R12).
+  -- Every added handle waits for an admin.
+  IF (SELECT NOT review_required OR review_reason<>'awaiting_admin' OR verified_at IS NOT NULL FROM public.creator_handles WHERE id=v_handle) THEN
+    RAISE EXCEPTION '4402r.a new handle must wait for an admin: %',(SELECT to_jsonb(h) FROM public.creator_handles h WHERE id=v_handle);
+  END IF;
+
+  -- Rates: an active rate is one of the six steps (R12).
   IF NOT EXISTS(SELECT 1 FROM public.creator_profiles WHERE creator_account_id=v_ready AND 'active_package'=ANY(verification_reasons)) THEN
     RAISE EXCEPTION '4402r.rates recompute does not list active_package: %',(SELECT verification_reasons FROM public.creator_profiles WHERE creator_account_id=v_ready);
   END IF;
@@ -86,17 +92,17 @@ BEGIN
     RAISE EXCEPTION '4402r.rates saving a rate did not recompute';
   END IF;
 
-  -- The edge function's "code not seen" save: no review reason, a status.
-  UPDATE public.creator_handles SET last_checked_at=now(),review_required=false,review_reason=NULL,last_check_status='pending'
+  -- The edge function's "code not seen" save (evidence; the handle stays flagged).
+  UPDATE public.creator_handles SET last_checked_at=now(),review_required=true,review_reason='verification_code_not_found',last_check_status='code_not_seen'
    WHERE id=v_handle;
   -- The schema still refuses a reason on a handle nobody is asked to review.
   v_code:=NULL;
-  BEGIN UPDATE public.creator_handles SET review_reason='verification_code_not_found' WHERE id=v_handle;
+  BEGIN UPDATE public.creator_handles SET review_required=false WHERE id=v_handle;
   EXCEPTION WHEN check_violation THEN v_code:='23514'; END;
   IF v_code IS DISTINCT FROM '23514' THEN RAISE EXCEPTION '4402r.review_shape must stay unchanged'; END IF;
 
   v_r:=public.creator_setup_status();
-  IF v_r->'handles'->0->>'last_check_status' IS DISTINCT FROM 'pending'
+  IF v_r->'handles'->0->>'last_check_status' IS DISTINCT FROM 'code_not_seen'
      OR NOT (v_r->'handles'->0 ? 'last_checked_at') OR NOT (v_r->'handles'->0 ? 'rejected_note')
      OR v_r->'handles'->0->>'follower_source' IS DISTINCT FROM 'self_reported' THEN
     RAISE EXCEPTION '4402r.setup status handle outcome: %',v_r->'handles';
@@ -195,11 +201,18 @@ BEGIN
   v_r:=public.admin_creator_handle_decide(v_handle,'reject','   ',NULL);
   IF v_r->>'error' IS DISTINCT FROM 'note_required' OR v_r->>'field'<>'note'
      OR (SELECT count(*) FROM public.creator_review_events WHERE creator_account_id=v_ready)<>v_events
-     OR (SELECT last_check_status FROM public.creator_handles WHERE id=v_handle)<>'pending' THEN
+     OR (SELECT last_check_status FROM public.creator_handles WHERE id=v_handle)<>'code_not_seen' THEN
     RAISE EXCEPTION '4402r.reject without a note: %',v_r;
   END IF;
   IF public.admin_creator_handle_decide(v_handle,'approve',NULL,'huge')->>'error' IS DISTINCT FROM 'invalid_band' THEN
     RAISE EXCEPTION '4402r.approve with a bad band';
+  END IF;
+  -- The audience band comes only from the admin: approving needs one.
+  IF public.admin_creator_handle_decide(v_handle,'approve','Saw the code',NULL)->>'error' IS DISTINCT FROM 'band_required' THEN
+    RAISE EXCEPTION '4402r.approve without a band';
+  END IF;
+  IF public.admin_creator_handle_decide(v_handle,'reopen',NULL,NULL)->>'error' IS DISTINCT FROM 'not_rejected' THEN
+    RAISE EXCEPTION '4402r.reopen of a handle that is not rejected';
   END IF;
   v_r:=public.admin_creator_handle_decide(v_handle,'reject','Not their account',NULL);
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->'handle'->>'last_check_status'<>'rejected' THEN
@@ -210,24 +223,54 @@ BEGIN
                     AND handle_id=v_handle AND platform='instagram' AND note='Not their account' AND actor=v_admin) THEN
     RAISE EXCEPTION '4402r.reject was not written or audited';
   END IF;
-  -- The creator sees the rejection on reload, and a new code clears it.
+  -- The creator sees the rejection on reload, and it sticks: a new code (or a
+  -- different handle on the same platform) is refused until an admin reopens.
   PERFORM pg_temp.act(v_ready);
   v_r:=public.creator_setup_status();
   IF v_r->'handles'->0->>'last_check_status'<>'rejected' OR v_r->'handles'->0->>'rejected_note'<>'Not their account' THEN
     RAISE EXCEPTION '4402r.creator does not see the rejection: %',v_r->'handles';
   END IF;
+  FOREACH v_text IN ARRAY ARRAY['ready.creator','someone.else'] LOOP
+    v_code:=NULL;
+    BEGIN PERFORM public.creator_handle_upsert('instagram',v_text,'lt1k');
+    EXCEPTION WHEN others THEN v_code:=SQLERRM; END;
+    IF v_code IS DISTINCT FROM 'handle_rejected' THEN RAISE EXCEPTION '4402r.a rejected handle took a new code (%): %',v_text,v_code; END IF;
+  END LOOP;
+  IF (SELECT last_check_status<>'rejected' OR rejected_note<>'Not their account' OR handle<>'ready.creator' FROM public.creator_handles WHERE id=v_handle) THEN
+    RAISE EXCEPTION '4402r.the rejection did not stick';
+  END IF;
+  -- An admin reopens it: back in review, audited; then the creator may get a new code.
+  PERFORM pg_temp.act(v_admin);
+  v_r:=public.admin_creator_handle_decide(v_handle,'reopen',NULL,NULL);
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT NOT review_required OR review_reason<>'awaiting_admin' OR last_check_status IS NOT NULL OR rejected_note IS NOT NULL
+           FROM public.creator_handles WHERE id=v_handle)
+     OR NOT EXISTS(SELECT 1 FROM public.creator_review_events WHERE creator_account_id=v_ready AND action='handle_reopen' AND handle_id=v_handle AND platform='instagram') THEN
+    RAISE EXCEPTION '4402r.reopen: %',v_r;
+  END IF;
+  PERFORM pg_temp.act(v_ready);
   PERFORM public.creator_handle_upsert('instagram','ready.creator','lt1k');
-  IF (SELECT last_check_status IS NOT NULL OR rejected_note IS NOT NULL FROM public.creator_handles WHERE id=v_handle) THEN
-    RAISE EXCEPTION '4402r.a new code did not start a new attempt';
+  IF (SELECT NOT review_required OR last_check_status IS NOT NULL FROM public.creator_handles WHERE id=v_handle) THEN
+    RAISE EXCEPTION '4402r.a new code after reopen must wait for an admin';
   END IF;
 
-  -- Approve with the band the admin saw: the handle passes, the creator's own
-  -- band is kept, and with all six steps done the creator auto-verifies.
+  -- Approve with the band the admin saw: the handle passes and the creator's
+  -- own band is kept. All six steps now pass, but the creator is only READY
+  -- for review: no recompute makes anyone verified.
   PERFORM pg_temp.act(v_admin);
   v_r:=public.admin_creator_handle_decide(v_review_handle,'approve','Saw MINGLA code in bio','1k_10k');
-  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'verification'<>'verified' OR jsonb_array_length(v_r->'missing')<>0 THEN
-    RAISE EXCEPTION '4402r.approve: %',v_r;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'verification'<>'review' OR jsonb_array_length(v_r->'missing')<>0 THEN
+    RAISE EXCEPTION '4402r.approve (must be ready for review, not verified): %',v_r;
   END IF;
+  IF (public.issue_3872_recompute_creator_verification(v_review,false))->>'verification'<>'review' THEN
+    RAISE EXCEPTION '4402r.a recompute verified a creator by itself';
+  END IF;
+  PERFORM pg_temp.act(v_review);
+  PERFORM public.creator_package_upsert('date_idea',ARRAY['instagram'],4500000,'NGN',3,90,NULL,true);
+  IF (SELECT verification FROM public.creator_profiles WHERE creator_account_id=v_review)<>'review' THEN
+    RAISE EXCEPTION '4402r.saving a rate verified a creator by itself';
+  END IF;
+  PERFORM pg_temp.act(v_admin);
   IF (SELECT verified_at IS NULL OR review_required OR review_reason IS NOT NULL OR last_check_status<>'verified'
              OR follower_band<>'1k_10k' OR follower_source<>'admin' OR self_reported_band<>'lt1k'
         FROM public.creator_handles WHERE id=v_review_handle)
@@ -239,7 +282,21 @@ BEGIN
     RAISE EXCEPTION '4402r.history actor name';
   END IF;
 
-  -- With all six steps the gate opens: suspend, then lift it with Verify.
+  -- With all six steps the gate opens: Verify is the admin's, and the only path.
+  v_r:=public.admin_creator_decide(v_review,'verify',NULL);
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'verification'<>'verified' THEN
+    RAISE EXCEPTION '4402r.verify at six of six: %',v_r;
+  END IF;
+  -- A verified creator stays verified through a recompute while six still pass,
+  -- and a new handle waiting for an admin does not take them out of view.
+  PERFORM pg_temp.act(v_review);
+  PERFORM public.creator_handle_upsert('tiktok','review.creator','1k_10k');
+  IF (SELECT verification FROM public.creator_profiles WHERE creator_account_id=v_review)<>'verified' THEN
+    RAISE EXCEPTION '4402r.a verified creator dropped on a recompute with six of six';
+  END IF;
+  PERFORM pg_temp.act(v_admin);
+  PERFORM public.admin_creator_handle_decide((SELECT id FROM public.creator_handles WHERE creator_account_id=v_review AND platform='tiktok'),'reject','Not their account',NULL);
+  -- Suspend, then lift it with Verify.
   v_r:=public.admin_creator_decide(v_review,'suspend','Checking a report');
   IF v_r->>'verification'<>'suspended' THEN RAISE EXCEPTION '4402r.suspend: %',v_r; END IF;
   IF (public.admin_creator_detail(v_review)->>'can_verify')::boolean IS DISTINCT FROM true THEN
@@ -254,6 +311,11 @@ BEGIN
   SELECT e INTO v_r FROM jsonb_array_elements(public.admin_creator_queue('all')) e WHERE e->>'creator_id'=v_review::text;
   IF v_r->'handle'->>'handle'<>'review.creator' OR (v_r->>'can_verify')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION '4402r.queue card: %',v_r;
+  END IF;
+
+  -- Hosts see only the band an admin recorded.
+  IF pg_get_functiondef('public.prehire_creator_profile(uuid)'::regprocedure) NOT LIKE '%h.follower_source=''admin''%' THEN
+    RAISE EXCEPTION '4402r.prehire_creator_profile lists bands no admin recorded';
   END IF;
 
   -- ── Widened audit table ──
