@@ -703,6 +703,50 @@ begin
 end;
 $t$;
 
+-- Undo of a Confirm that closed subtasks reopens exactly those, each to the
+-- column and state it had; a subtask closed before stays Done; the 60-second
+-- window and the watcher-only rule hold for the whole undo.
+do $t$
+declare v text; v_ev text; v_late text; v_k1_col uuid;
+begin
+  v := pg_temp.add('UP', 'V34398 Undo parent', 'tao', 'seth');
+  v := pg_temp.add('UK1', 'V34398 Undo open child', 'kun', 'tao', 'UP');
+  v := pg_temp.add('UK0', 'V34398 Undo child closed before', 'kun', 'tao', 'UP');
+  v := pg_temp.person('kun', format('select public.ops_work_start(%L, %s)::text', pg_temp.id('UK1'), pg_temp.rev('UK1')));
+  v_k1_col := (select status_id from public.ops_work_cards where id = pg_temp.id('UK1'));
+  v := pg_temp.person('tao', format('select public.ops_work_close(%L, %L::jsonb, null, %s)::text', pg_temp.id('UK0'),
+         '[{"kind":"text","text":"Done earlier."}]', pg_temp.rev('UK0')));
+  perform pg_temp.chk('UNDO', 'setup: one child in progress, one closed by its watcher earlier',
+    (select string_agg(status, '/' order by title) from public.ops_work_cards where id in (pg_temp.id('UK1'), pg_temp.id('UK0'))), 'done/doing');
+  v := pg_temp.person('tao', format('select public.ops_work_move(%L, %L, %s, %L::jsonb, null, true)::text', pg_temp.id('UP'), public.ops_status_default('done'),
+         pg_temp.rev('UP'), '[{"kind":"text","text":"All of it is done."}]'));
+  v := pg_temp.person('seth', format('select public.ops_work_confirm(%L, %s)::text', pg_temp.id('UP'), pg_temp.rev('UP')));
+  v_ev := (v::jsonb)->>'event_id';
+  perform pg_temp.chk('UNDO', 'the confirm closes the parent and its open child',
+    (select string_agg(status, '/' order by title) from public.ops_work_cards where id in (pg_temp.id('UP'), pg_temp.id('UK1'), pg_temp.id('UK0'))), 'done/done/done');
+  v := pg_temp.person('tao', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.lk('UNDO', 'with children: only the watcher who confirmed can undo it', v, 'ERR:22023:undo_expired:%');
+  -- Past 60 seconds the whole undo is refused (tried in a subtransaction, then put back).
+  begin
+    update public.ops_work_events set at = at - interval '61 seconds' where id = v_ev::uuid;
+    v_late := pg_temp.person('seth', format('select public.ops_work_undo(%L)::text', v_ev));
+    raise exception 'put_back' using errcode = 'P0001';
+  exception when others then
+    if sqlerrm <> 'put_back' then raise; end if;
+  end;
+  perform pg_temp.lk('UNDO', 'with children: after 60 seconds the undo is refused', v_late, 'ERR:22023:undo_expired:%');
+  v := pg_temp.person('seth', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.chk('UNDO', 'undo reopens the parent In review and the child it closed to its own column',
+    (select status || '/' || (status_id = public.ops_review_status_id())::text from public.ops_work_cards where id = pg_temp.id('UP')) || '|' ||
+    (select status || '/' || (status_id = v_k1_col)::text || '/' || coalesce(close_kind, '-') from public.ops_work_cards where id = pg_temp.id('UK1')),
+    'doing/true|doing/true/-');
+  perform pg_temp.chk('UNDO', 'the child closed before the confirm stays Done',
+    (select status from public.ops_work_cards where id = pg_temp.id('UK0')), 'done');
+  perform pg_temp.chk('UNDO', 'the parent still asks the watcher to close its children on the next confirm',
+    (select review_close_children::text from public.ops_work_cards where id = pg_temp.id('UP')), 'true');
+end;
+$t$;
+
 -- ───────────────────────────── report ─────────────────────────────
 do $r$
 declare r record; v_fail integer := 0; v_all integer := 0;

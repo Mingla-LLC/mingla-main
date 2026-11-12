@@ -511,6 +511,7 @@ CREATE FUNCTION public.ops_work_confirm(p_id uuid, p_expected_revision bigint) R
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $function$
 DECLARE v record; c public.ops_work_cards; n public.ops_work_cards; v_before jsonb; v_event uuid; v_watcher text; v_name text;
+        v_open uuid[] := ARRAY[]::uuid[]; v_closed jsonb := '[]'::jsonb;  -- #4398: the subtasks this confirm closes
         v_today date := public.ops_today(NULL);
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
@@ -533,7 +534,15 @@ BEGIN
   v_name := public.ops_name(v.actor_email);
   IF COALESCE(current_setting('ops.review_confirmed', true), '') <> 'on' THEN PERFORM set_config('ops.review_confirmed', c.id::text, true); END IF;
   PERFORM set_config('ops.review_confirmer', v.actor_email, true);
-  IF c.review_close_children THEN PERFORM set_config('ops.close_children', 'on', true); END IF;
+  IF c.review_close_children THEN
+    PERFORM set_config('ops.close_children', 'on', true);
+    -- #4398 retest (P3-A): the open subtasks (and theirs) this confirm will close, nearest first.
+    v_open := ARRAY(WITH RECURSIVE d AS (
+        SELECT w.id, 1 AS depth FROM public.ops_work_cards w WHERE w.parent_id = c.id AND w.status <> 'done' AND w.archived_at IS NULL
+        UNION ALL
+        SELECT w.id, d.depth + 1 FROM public.ops_work_cards w JOIN d ON w.parent_id = d.id WHERE w.status <> 'done' AND w.archived_at IS NULL AND d.depth < 5)
+      SELECT d.id FROM d ORDER BY d.depth, d.id);
+  END IF;
   v_before := public.ops_card_snapshot(c.id);
   UPDATE public.ops_work_cards w SET status = 'done',
     status_id = COALESCE((SELECT s.id FROM public.ops_work_statuses s WHERE s.id = c.review_close_status_id AND s.archived_at IS NULL),
@@ -546,6 +555,15 @@ BEGIN
     revision = w.revision + 1, updated_by = v.actor_email, updated_via = NULL, updated_at = now()
    WHERE w.id = c.id RETURNING w.* INTO n;
   PERFORM set_config('ops.close_children', '', true);
+  -- #4398 retest (P3-A): the close event of each subtask closed here, kept on the confirm's record so
+  -- Undo reopens exactly these (subtasks closed before stay Done).
+  IF cardinality(v_open) > 0 THEN
+    v_closed := COALESCE((SELECT jsonb_agg(x.ev ORDER BY x.ord) FROM (
+        SELECT (SELECT ev.id FROM public.ops_work_events ev WHERE ev.card_id = o.id AND ev.action = 'closed' ORDER BY ev.at DESC LIMIT 1) AS ev, o.ord
+          FROM unnest(v_open) WITH ORDINALITY o(id, ord)
+         WHERE EXISTS (SELECT 1 FROM public.ops_work_cards w WHERE w.id = o.id AND w.status = 'done')) x WHERE x.ev IS NOT NULL), '[]'::jsonb);
+    v_before := v_before || jsonb_build_object('closed_children', v_closed);
+  END IF;
   PERFORM public.ops_claims_release_card(c.id, 'closed', v.actor_email);
   v_event := public.ops_card_event(c.id, v.actor_email, NULL, 'confirmed', format('%s confirmed it. Done.', v_name),
     v_before, public.ops_card_snapshot(c.id), c.revision, n.revision);
@@ -2977,7 +2995,7 @@ CREATE OR REPLACE FUNCTION public.ops_work_undo(p_event_id uuid)
  SET search_path TO 'pg_catalog', 'pg_temp'
 AS $function$
 DECLARE v record; e public.ops_work_events; c public.ops_work_cards; r public.ops_work_cards; n public.ops_work_cards; v_now_snap jsonb;
-        v_today date := public.ops_today(NULL);
+        v_today date := public.ops_today(NULL); v_child uuid;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   IF v.via IS NOT NULL THEN RAISE EXCEPTION 'people_only: Only a person can undo a change.' USING ERRCODE = '42501'; END IF;
@@ -3038,6 +3056,13 @@ BEGIN
   SELECT c.id, x->>'kind', (x->>'id')::uuid, x->>'label', x->>'added_by', x->>'added_via', (x->>'added_at')::timestamptz FROM jsonb_array_elements(e.before->'links') x;
   UPDATE public.ops_work_events SET undone_at = clock_timestamp(), undone_by = v.actor_email WHERE id = e.id;
   PERFORM public.ops_card_event(c.id, v.actor_email, NULL, 'undone', NULL, v_now_snap, public.ops_card_snapshot(c.id), c.revision, n.revision);
+  -- #4398 retest (P3-A): undoing a Confirm that closed subtasks reopens exactly those, each from its own
+  -- close record (same person, same 60 seconds, unchanged since), nearest first.
+  IF e.action = 'confirmed' AND jsonb_typeof(e.before->'closed_children') = 'array' THEN
+    FOR v_child IN SELECT (x #>> '{}')::uuid FROM jsonb_array_elements(e.before->'closed_children') WITH ORDINALITY t(x, o) ORDER BY o LOOP
+      PERFORM public.ops_work_undo(v_child);
+    END LOOP;
+  END IF;
   RETURN jsonb_build_object('card', public.ops_card_json(n, v_today));
 END;
 $function$;
