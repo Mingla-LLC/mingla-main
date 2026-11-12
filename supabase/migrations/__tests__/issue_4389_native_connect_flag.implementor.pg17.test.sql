@@ -7,8 +7,8 @@
 --              another brand is not; the list is never returned.
 --   A-BAD      bad values, a non-object and a missing row all read as off.
 --   A-GRANT    authenticated may call it, anon may not.
---   A-KEYS     the earlier ops_settings keys are still accepted; an unknown key
---              is still refused.
+--   A-KEYS     the earlier ops_settings keys (incl. #4398 auto_card_routes) are
+--              still accepted; an unknown key is still refused.
 BEGIN;
 DO $$
 DECLARE
@@ -81,6 +81,11 @@ BEGIN
 
   IF NOT EXISTS (SELECT 1 FROM public.ops_settings WHERE key = 'tap_to_pay_release') THEN
     RAISE EXCEPTION 'A-KEYS the tap_to_pay_release row must survive the constraint swap';
+  END IF;
+  -- #4398 (applied before this migration) added 'auto_card_routes'; the swap keeps it.
+  IF pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname = 'ops_settings_key_check'
+                            AND conrelid = 'public.ops_settings'::regclass)) NOT LIKE '%auto_card_routes%' THEN
+    RAISE EXCEPTION 'A-KEYS the #4398 auto_card_routes key must stay allowed';
   END IF;
   BEGIN
     INSERT INTO public.ops_settings (key, value, updated_by)

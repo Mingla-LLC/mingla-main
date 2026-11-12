@@ -18,7 +18,8 @@
 -- =============================================================================
 ALTER TABLE public.ops_settings DROP CONSTRAINT ops_settings_key_check;
 ALTER TABLE public.ops_settings ADD CONSTRAINT ops_settings_key_check
-  CHECK (key IN ('auto_steps','brand_auto_cards','brand_auto_since','marketing_owner','follow_through_since','auto_promo_cards','tap_to_pay_release','native_connect_onboarding'));
+  CHECK (key IN ('auto_steps','brand_auto_cards','brand_auto_since','marketing_owner','follow_through_since','auto_promo_cards','tap_to_pay_release','auto_card_routes','native_connect_onboarding'));
+-- (#4398's 20280626004398 added 'auto_card_routes' before this migration; it is kept.)
 
 INSERT INTO public.ops_settings (key, value, updated_by)
 VALUES (
