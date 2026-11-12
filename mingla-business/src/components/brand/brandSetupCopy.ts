@@ -148,6 +148,8 @@ export const BRAND_SETUP_COPY = {
     get title(): string { return t("onboard.title"); },
     get body(): string { return t("onboard.body"); },
     get opening(): string { return t("onboard.opening"); },
+    get checking(): string { return t("onboard.checking"); },
+    get checkingSub(): string { return t("onboard.checkingSub"); },
     get haveReady(): string { return t("onboard.haveReady"); },
     get readyId(): string { return t("onboard.readyId"); },
     readyBank: (country: string | null): string =>

@@ -162,6 +162,8 @@
       "title": "Gu banki ruẹ ye ọ",
       "body": "Ọ ra mẹhẹn 5. Ẹmwẹ banki ruẹ rrie ọkpa ọkpa ye ọnọ nọ ga ima vbe igho.",
       "opening": "A ya kie ẹkpẹ ọ mwẹ ẹtin…",
+      "checking": "Checking your details with our payment partner…",
+      "checkingSub": "This usually takes under a minute.",
       "haveReady": "Ru ẹre ye ẹkpo",
       "readyId": "Ẹbe ọ mwẹ uhunmwu ruẹ",
       "readyBank": "Akauntu banki vbe {{country}}",

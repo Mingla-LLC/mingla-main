@@ -162,6 +162,8 @@
       "title": "은행 연결하기",
       "body": "약 5분. 은행 정보는 결제 파트너에게 바로 전달됩니다.",
       "opening": "보안 설정을 여는 중…",
+      "checking": "결제 파트너와 정보를 확인하고 있어요…",
+      "checkingSub": "보통 1분도 걸리지 않아요.",
       "haveReady": "준비할 것",
       "readyId": "사진이 있는 신분증",
       "readyBank": "{{country}} 은행 계좌",

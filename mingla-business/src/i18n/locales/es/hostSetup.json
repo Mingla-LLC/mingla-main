@@ -162,6 +162,8 @@
       "title": "Conecta tu banco",
       "body": "Unos 5 minutos. Tus datos bancarios van directamente a nuestro socio de pagos.",
       "opening": "Abriendo la configuración segura…",
+      "checking": "Comprobando tus datos con nuestro socio de pagos…",
+      "checkingSub": "Suele tardar menos de un minuto.",
       "haveReady": "Ten a mano",
       "readyId": "Identificación con foto",
       "readyBank": "Cuenta bancaria en {{country}}",

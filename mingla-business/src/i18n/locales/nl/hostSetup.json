@@ -162,6 +162,8 @@
       "title": "Koppel je bank",
       "body": "Ongeveer 5 minuten. Je bankgegevens gaan rechtstreeks naar onze betaalpartner.",
       "opening": "Beveiligde installatie wordt geopend…",
+      "checking": "We controleren je gegevens bij onze betaalpartner…",
+      "checkingSub": "Dit duurt meestal minder dan een minuut.",
       "haveReady": "Houd bij de hand",
       "readyId": "Identiteitsbewijs met foto",
       "readyBank": "Bankrekening in {{country}}",

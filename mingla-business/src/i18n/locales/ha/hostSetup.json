@@ -162,6 +162,8 @@
       "title": "Haɗa bankinka",
       "body": "Kusan minti 5. Bayanan bankinka suna zuwa kai tsaye ga abokin biyan kuɗinmu.",
       "opening": "Ana buɗe saitin tsaro…",
+      "checking": "Muna duba bayananka tare da abokin biyan kuɗinmu…",
+      "checkingSub": "Yawanci yana ɗaukar ƙasa da minti ɗaya.",
       "haveReady": "Ka shirya",
       "readyId": "Katin shaida mai hoto",
       "readyBank": "Asusun banki a {{country}}",

@@ -162,6 +162,8 @@
       "title": "Connectez votre banque",
       "body": "Environ 5 minutes. Vos coordonnées bancaires vont directement à notre partenaire de paiement.",
       "opening": "Ouverture de la configuration sécurisée…",
+      "checking": "Vérification de vos informations auprès de notre partenaire de paiement…",
+      "checkingSub": "Cela prend généralement moins d'une minute.",
       "haveReady": "À préparer",
       "readyId": "Pièce d'identité avec photo",
       "readyBank": "Compte bancaire en {{country}}",

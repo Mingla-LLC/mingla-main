@@ -162,6 +162,8 @@
       "title": "Collega la tua banca",
       "body": "Circa 5 minuti. I tuoi dati bancari vanno direttamente al nostro partner di pagamento.",
       "opening": "Apertura della configurazione sicura…",
+      "checking": "Stiamo verificando i tuoi dati con il nostro partner di pagamento…",
+      "checkingSub": "Di solito richiede meno di un minuto.",
       "haveReady": "Tieni a portata di mano",
       "readyId": "Documento d'identità con foto",
       "readyBank": "Conto bancario in {{country}}",

@@ -162,6 +162,8 @@
       "title": "Conectează-ți banca",
       "body": "Aproximativ 5 minute. Datele tale bancare ajung direct la partenerul nostru de plăți.",
       "opening": "Se deschide configurarea securizată…",
+      "checking": "Verificăm datele tale cu partenerul nostru de plăți…",
+      "checkingSub": "De obicei durează mai puțin de un minut.",
       "haveReady": "Pregătește",
       "readyId": "Act de identitate cu fotografie",
       "readyBank": "Cont bancar în {{country}}",

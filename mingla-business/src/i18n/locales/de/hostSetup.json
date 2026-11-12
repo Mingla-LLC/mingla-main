@@ -162,6 +162,8 @@
       "title": "Bank verbinden",
       "body": "Etwa 5 Minuten. Deine Bankdaten gehen direkt an unseren Zahlungspartner.",
       "opening": "Sichere Einrichtung wird geöffnet…",
+      "checking": "Wir prüfen deine Angaben mit unserem Zahlungspartner…",
+      "checkingSub": "Das dauert meist weniger als eine Minute.",
       "haveReady": "Halte bereit",
       "readyId": "Lichtbildausweis",
       "readyBank": "Bankkonto in {{country}}",

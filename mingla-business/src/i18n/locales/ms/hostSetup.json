@@ -162,6 +162,8 @@
       "title": "Sambungkan bank anda",
       "body": "Kira-kira 5 minit. Butiran bank anda terus dihantar kepada rakan pembayaran kami.",
       "opening": "Membuka persediaan selamat…",
+      "checking": "Menyemak butiran anda dengan rakan pembayaran kami…",
+      "checkingSub": "Biasanya mengambil masa kurang dari seminit.",
       "haveReady": "Sediakan",
       "readyId": "ID bergambar",
       "readyBank": "Akaun bank di {{country}}",

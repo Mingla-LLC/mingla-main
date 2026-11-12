@@ -162,6 +162,8 @@
       "title": "Bankanı bağla",
       "body": "Yaklaşık 5 dakika. Banka bilgilerin doğrudan ödeme ortağımıza gider.",
       "opening": "Güvenli kurulum açılıyor…",
+      "checking": "Bilgilerin ödeme ortağımızla kontrol ediliyor…",
+      "checkingSub": "Bu genellikle bir dakikadan kısa sürer.",
       "haveReady": "Hazır bulundur",
       "readyId": "Fotoğraflı kimlik",
       "readyBank": "{{country}} içinde banka hesabı",

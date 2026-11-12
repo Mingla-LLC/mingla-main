@@ -90,6 +90,49 @@ export const setupExitFromRefreshState = (
   state: "submitted" | "action_needed" | "not_started",
 ): NativeConnectExit => (state === "submitted" ? "finished" : "closed-early");
 
+/**
+ * #4389 (iPhone 15 recording, 22:59) — after "Account onboarded" the host sat
+ * ~37 s on "Checking your payout status…" with only Cancel: the exit first ran
+ * the 15-attempt status settle (it keeps polling while Stripe reports pending
+ * verification, which is normal right after submitting) and only then read
+ * refresh_status. From brand setup the live read alone decides, bounded; a
+ * failed or slow read falls back to ONE status read, never the long settle.
+ */
+export const SETUP_EXIT_LIVE_READ_TIMEOUT_MS = 20000;
+
+type SetupOutcome = Parameters<typeof classifyNativeConnectExit>[0];
+
+export const decideBrandSetupExit = async (deps: {
+  readLive: () => Promise<"submitted" | "action_needed" | "not_started">;
+  readStatusOnce: () => Promise<SetupOutcome>;
+  timeoutMs?: number;
+  onFallback?: (reason: unknown) => void;
+}): Promise<NativeConnectExit> => {
+  const timeoutMs = deps.timeoutMs ?? SETUP_EXIT_LIVE_READ_TIMEOUT_MS;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const state = await Promise.race([
+      deps.readLive(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("setup_exit_live_read_timeout")), timeoutMs);
+      }),
+    ]);
+    return setupExitFromRefreshState(state);
+  } catch (reason) {
+    deps.onFallback?.(reason);
+    try {
+      return classifyNativeConnectExit(await deps.readStatusOnce());
+    } catch (fallbackReason) {
+      deps.onFallback?.(fallbackReason);
+      // F4 reads the account again and has its own "Couldn't check right now"
+      // state with Try again; K1 would wrongly say nothing was done.
+      return "finished";
+    }
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+};
+
 /** Extracts a readable message from the SDK's onLoadError payload. */
 export const nativeConnectLoadErrorMessage = (event: unknown): string => {
   if (typeof event === "object" && event !== null && "error" in event) {

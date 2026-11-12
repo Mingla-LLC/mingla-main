@@ -162,6 +162,8 @@
       "title": "Jikọọ akụ gị",
       "body": "Ihe dị ka nkeji 5. Nkọwa akụ gị na-aga ozugbo n'aka onye mmekọ ịkwụ ụgwọ anyị.",
       "opening": "Na-emepe nhazi nchekwa…",
+      "checking": "Anyị na-enyocha nkọwa gị na onye mmekọ ịkwụ ụgwọ anyị…",
+      "checkingSub": "Ọ na-ewekarị ihe na-erughị otu nkeji.",
       "haveReady": "Kwadebe",
       "readyId": "NJ nwere foto",
       "readyBank": "Akaụntụ akụ na {{country}}",

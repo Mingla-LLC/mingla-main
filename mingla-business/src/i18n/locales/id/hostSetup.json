@@ -162,6 +162,8 @@
       "title": "Hubungkan bank Anda",
       "body": "Sekitar 5 menit. Detail bank Anda langsung dikirim ke mitra pembayaran kami.",
       "opening": "Membuka penyiapan aman…",
+      "checking": "Memeriksa detail Anda dengan mitra pembayaran kami…",
+      "checkingSub": "Biasanya kurang dari satu menit.",
       "haveReady": "Siapkan",
       "readyId": "Kartu identitas berfoto",
       "readyBank": "Rekening bank di {{country}}",

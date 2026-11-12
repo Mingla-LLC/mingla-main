@@ -171,10 +171,9 @@ import {
   isNativeConnectModuleAvailable,
 } from "../stripe/ConnectOnboardingNative";
 import {
-  classifyNativeConnectExit,
+  decideBrandSetupExit,
   decideConnectOnboardingSurface,
   nativeConnectLoadErrorMessage,
-  setupExitFromRefreshState,
   type NativeConnectExit,
 } from "../stripe/nativeConnectOnboarding";
 import { useNativeConnectOnboardingRelease } from "../../hooks/useNativeConnectOnboardingRelease";
@@ -800,20 +799,32 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   // #4389 P2 — leaving the secure setup from brand setup: refresh_status (the
   // live read F4 uses) decides. Submitted or verifying → F4; anything still
-  // due or not started → Get paid with K1. A failed read falls back to the
-  // settled status.
+  // due or not started → Get paid with K1. #4389 — no long settle first: one
+  // bounded live read, then (if it fails) one status read.
   const decideSetupExit = useCallback(
-    async (brandId: string, outcome: StripeOnboardingOutcome): Promise<NativeConnectExit> => {
-      try {
-        const { refreshStripeSetupStatus } = await import("../../services/brandSetupService");
-        const live = await refreshStripeSetupStatus(brandId);
-        return setupExitFromRefreshState(live.state);
-      } catch (err) {
-        console.warn("[BrandOnboardView] refresh_status after secure setup failed; using the settled status", err);
-        return classifyNativeConnectExit(outcome);
-      }
+    async (brandId: string): Promise<NativeConnectExit> => {
+      setViewState("settling-status");
+      announceForAccessibility(BRAND_SETUP_COPY.onboard.checking);
+      return decideBrandSetupExit({
+        readLive: async () => {
+          const { refreshStripeSetupStatus } = await import("../../services/brandSetupService");
+          return (await refreshStripeSetupStatus(brandId)).state;
+        },
+        readStatusOnce: async () => {
+          await queryClient.invalidateQueries({
+            queryKey: brandStripeStatusKeys.detail(brandId),
+          });
+          const refreshed = await settleStripeStatus(() => statusQuery.refetch(), { maxAttempts: 1 });
+          return classifyStripeOnboardingOutcome({
+            status: refreshed?.status,
+            requirements: coerceRequirements(refreshed?.requirements),
+          });
+        },
+        onFallback: (reason) =>
+          console.warn("[BrandOnboardView] refresh_status after secure setup failed; using one status read", reason),
+      });
     },
-    [],
+    [queryClient, statusQuery],
   );
 
   const openBrowserSheetAndSettle = useCallback(
@@ -822,14 +833,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         onboardingUrl,
         RETURN_DEEP_LINK,
       );
-      const outcome = await settleOutcome(brandId);
-
       // Brand setup owns the way out of the browser sheet too (same rule as
       // the native screen).
       if (onNativeExit !== undefined) {
-        onNativeExit(await decideSetupExit(brandId, outcome));
+        onNativeExit(await decideSetupExit(brandId));
         return;
       }
+      const outcome = await settleOutcome(brandId);
 
       if (browserResult.type === "success") {
         applyOnboardingOutcome(outcome);
@@ -999,12 +1009,12 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     const session = nativeSession;
     setNativeSession(null);
     if (session === null) return;
+    if (onNativeExit !== undefined) {
+      onNativeExit(await decideSetupExit(session.brandId));
+      return;
+    }
     try {
       const outcome = await settleOutcome(session.brandId);
-      if (onNativeExit !== undefined) {
-        onNativeExit(await decideSetupExit(session.brandId, outcome));
-        return;
-      }
       // Outside brand setup the screen shows its own outcome states, exactly
       // as after the browser sheet (needs information included).
       if (outcome !== "session-expired") {
@@ -1482,7 +1492,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </>
         ) : null}
 
-        {viewState === "checking-status" || viewState === "settling-status" ? (
+        {viewState === "checking-status" ? (
           <View style={styles.stateBlock}>
             <Spinner size={48} color={accent.warm} />
             <Text style={styles.stateTitle}>Checking your payout status…</Text>
@@ -1490,6 +1500,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               We{"’"}re confirming your account before marking payments
               ready.
             </Text>
+          </View>
+        ) : null}
+
+        {/* #4389 — after the secure setup: say what is happening and for how long. */}
+        {viewState === "settling-status" ? (
+          <View style={styles.stateBlock} testID="onboard-settling">
+            <Spinner size={48} color={accent.warm} />
+            <Text style={styles.stateTitle} accessibilityRole="header">
+              {BRAND_SETUP_COPY.onboard.checking}
+            </Text>
+            <Text style={styles.stateSub}>{BRAND_SETUP_COPY.onboard.checkingSub}</Text>
           </View>
         ) : null}
 

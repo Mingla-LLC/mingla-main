@@ -162,6 +162,8 @@
       "title": "Koppla din bank",
       "body": "Cirka 5 minuter. Dina bankuppgifter går direkt till vår betalpartner.",
       "opening": "Öppnar säker konfiguration…",
+      "checking": "Vi kontrollerar dina uppgifter med vår betalpartner…",
+      "checkingSub": "Det tar oftast mindre än en minut.",
       "haveReady": "Ha redo",
       "readyId": "Fotolegitimation",
       "readyBank": "Bankkonto i {{country}}",

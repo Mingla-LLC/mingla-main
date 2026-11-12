@@ -162,6 +162,8 @@
       "title": "Połącz swój bank",
       "body": "Około 5 minut. Twoje dane bankowe trafiają bezpośrednio do naszego partnera płatności.",
       "opening": "Otwieranie bezpiecznej konfiguracji…",
+      "checking": "Sprawdzamy Twoje dane u naszego partnera płatniczego…",
+      "checkingSub": "Zwykle trwa to krócej niż minutę.",
       "haveReady": "Przygotuj",
       "readyId": "Dokument tożsamości ze zdjęciem",
       "readyBank": "Konto bankowe w kraju: {{country}}",

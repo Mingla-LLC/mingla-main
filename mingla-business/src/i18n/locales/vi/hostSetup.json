@@ -162,6 +162,8 @@
       "title": "Kết nối ngân hàng",
       "body": "Khoảng 5 phút. Thông tin ngân hàng của bạn được gửi thẳng đến đối tác thanh toán của chúng tôi.",
       "opening": "Đang mở thiết lập bảo mật…",
+      "checking": "Đang kiểm tra thông tin của bạn với đối tác thanh toán…",
+      "checkingSub": "Thường mất chưa đến một phút.",
       "haveReady": "Chuẩn bị sẵn",
       "readyId": "Giấy tờ tùy thân có ảnh",
       "readyBank": "Tài khoản ngân hàng tại {{country}}",
