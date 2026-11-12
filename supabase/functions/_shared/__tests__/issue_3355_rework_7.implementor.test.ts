@@ -398,6 +398,20 @@ Deno.test("R7-2: when the status read fails, only this turn's write for the same
     });
     assertNotMatch(out, /is live/, out);
   }
+  // This turn's publish of ANOTHER object never backs it.
+  const otherPublish = await run({
+    host: "Publish Abuja Brunch",
+    reply: other,
+    claims: [claim(other, "live", "event", "Lagos Night Out")],
+    asked: true,
+    tables: { events: "error" },
+    observations: [{
+      tool: "publish_event",
+      args: { event_id: EV2, title: "Abuja Brunch" },
+      result: { event: { id: EV2, title: "Abuja Brunch" } },
+    }],
+  });
+  assertNotMatch(otherPublish, /is live/, otherPublish);
   // This turn's publish of the same object does back it.
   const published = "Lagos Night Out is now live.";
   const out2 = await run({
@@ -838,5 +852,26 @@ Deno.test("R7-18: a clock pair with no card in the chat points to Mingla Host", 
   assertEquals(
     fixClockPairs(text),
     "It starts at the time shown on the card.",
+  );
+});
+
+Deno.test("rework 7 wiring: agent-chat passes the intent source, the previous turn, the decline read and the host's code", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../../agent-chat/index.ts", import.meta.url),
+  );
+  assertEquals(
+    source.match(/intentFromModel: intentResult\.source === "model"/g)?.length,
+    3,
+  );
+  assertMatch(source, /intentRead: args\.intentFromModel/);
+  assertMatch(source, /const previousTurn = previousTurnText\(args\.history\)/);
+  assertMatch(
+    source,
+    /readAriAskTeamDeclined\(\{ caller: userClient, conversationId \}\)/,
+  );
+  assertMatch(source, /askTeamDeclined,\n\s+\}\)/);
+  assertEquals(
+    source.match(/withHostStatedDiscountCode\(\n\s+tool\.name,/g)?.length,
+    2,
   );
 });
