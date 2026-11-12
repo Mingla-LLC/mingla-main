@@ -42,6 +42,10 @@
 --            made, and folds once it can; a legacy feature_guide_gap:sha-*
 --            card folds into the standing card; no function makes a
 --            guide_live card.
+--   AUTH     a card write by a signed-in person COMMITS while the session
+--            role is still authenticated, as every PostgREST request does
+--            (Admin and the Host app): the deferred invariant must be able to
+--            run at commit in that role.
 --   NOTICE   a bot close is Admin-only with no outbox; an owner's agent
 --            moving a card pushes to the watcher, never the owner; a reopen
 --            pushes to the other person; a due-date change is Admin-only; a
@@ -129,6 +133,34 @@ begin
     raise exception 'ok_rollback' using errcode = 'P0001';
   exception when others then
     set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    return case when sqlerrm = 'ok_rollback' then 'OK' else 'ERR:' || sqlstate || ':' || sqlerrm end;
+  end;
+end;
+$fn$;
+-- Runs p_sql as the signed-in person AND fires the deferred invariant while
+-- still in that role, as a PostgREST request does at COMMIT (role
+-- authenticated for the whole transaction). pg_temp.as_ resets the role
+-- before the commit-time check, which hides a trigger the role cannot run.
+create function pg_temp.commit_as(p_who text, p_sql text) returns text
+language plpgsql as $fn$
+declare v_id uuid; v_email text; v_out text;
+begin
+  perform pg_temp.next_request();
+  select id, email into strict v_id, v_email from tx_people where who = p_who;
+  begin
+    set local role authenticated;
+    perform set_config('request.jwt.claim.sub', v_id::text, true);
+    perform set_config('request.jwt.claim.email', v_email, true);
+    perform set_config('request.jwt.claims', json_build_object('sub', v_id, 'email', v_email, 'role', 'authenticated')::text, true);
+    perform set_config('request.jwt.claim.role', '', true);
+    execute p_sql into v_out;
+    set constraints ops_4398_card_people_people, ops_4398_card_people_cards immediate;
+    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    reset role;
+    raise exception 'ok_rollback' using errcode = 'P0001';
+  exception when others then
+    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    reset role;
     return case when sqlerrm = 'ok_rollback' then 'OK' else 'ERR:' || sqlstate || ':' || sqlerrm end;
   end;
 end;
@@ -691,6 +723,24 @@ begin
   v := pg_temp.person('abi', $q$select public.team_inbox_mark_read('all', null)::text$q$);
   perform pg_temp.chk('NOTICE', 'N6 team_inbox_mark_read reads the push row and leaves the Admin-only row unread',
     (select (read_at is not null)::text from public.team_mentions where id = v_m1) || '/' || (select (read_at is null)::text from public.team_mentions where id = v_m2), 'true/true');
+end;
+$t$;
+
+-- ───────────────────────── COMMIT AS A SIGNED-IN PERSON ─────────────────────────
+-- Admin and the Host app call these functions through PostgREST, whose whole
+-- transaction (COMMIT included) runs as role authenticated. The deferred
+-- invariant fires at COMMIT, outside the SECURITY DEFINER function.
+do $t$
+declare v text;
+begin
+  v := pg_temp.add('CA', 'ADV4398 Commit as a person', 'tao', 'seth');
+  perform pg_temp.chk('AUTH', 'A1 a signed-in owner adds a card and the request commits (PostgREST role)',
+    pg_temp.commit_as('seth', format('select public.ops_work_add(%L::jsonb, %L)::text', jsonb_build_array(jsonb_build_object(
+      'title', 'ADV4398 Added by a signed-in person', 'instructions', 'Do the work carefully and say what changed.', 'done_means', 'It is done.',
+      'owners', jsonb_build_array(pg_temp.email('tao')), 'watchers', jsonb_build_array(pg_temp.email('seth')),
+      'due_on', (now() at time zone 'UTC')::date + 3)), pg_temp.rk())), 'OK');
+  perform pg_temp.chk('AUTH', 'A2 a signed-in owner starts a card and the request commits (PostgREST role)',
+    pg_temp.commit_as('tao', format('select public.ops_work_start(%L, %s)::text', pg_temp.id('CA'), pg_temp.rev('CA'))), 'OK');
 end;
 $t$;
 
