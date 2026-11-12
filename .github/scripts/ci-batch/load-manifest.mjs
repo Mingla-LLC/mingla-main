@@ -263,7 +263,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389: re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows) and renumbering the four #4389 migrations to 20280701*4389 (above main's 20280630004402).
 // #3355 merge of #4404 (origin/main 7ace80fa0a; #4389 and #4402 rows kept beside the #3355 rows): renumbered the fifteen #3355 migrations to 20280702013355 … 20280702153355 (above main's 20280701304389), in order; re-sealed.
 // #3355 rework 9: register 20280702163355 (deleting a chat closes its Ari flow runs) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
-export const BOOTSTRAP_SHA256 = "4abe56f26c6dfa91b00ce7a31653f700e042a4a74369330aeeffc7e4704f0dfd";
+// #3355 merge of origin/main c6941aac31 (#4402 payee_shared_bank_account rows kept beside the #3355 rows); re-sealed.
+export const BOOTSTRAP_SHA256 = "21fbe7692632aa7ba58faf8a39ec0a14647b15887d46a67642611c3fee48a399";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

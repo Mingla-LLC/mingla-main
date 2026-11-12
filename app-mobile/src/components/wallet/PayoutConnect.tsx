@@ -66,6 +66,9 @@ export function PayoutConnect({ onConnected }: { onConnected?: () => void }): Re
 
   if (status.isLoading) return <ProgramLoading />;
   const current = status.data;
+  // #4402 — the error sits directly under the action that raised it, never
+  // at the bottom of the form where the sticky footer hides it.
+  const errorNotice = error ? <ProgramNotice tone="error" text={error} /> : null;
 
   if (current?.connected && !editing) {
     return <View style={{ gap: 12 }}>
@@ -97,14 +100,19 @@ export function PayoutConnect({ onConnected }: { onConnected?: () => void }): Re
         <Text style={s.title}>{resolved.name}</Text>
         <Text style={s.copy}>{bankName} · {resolved.masked}</Text>
         <ProgramButton label="Yes, connect this account" busy={busy} onPress={() => void confirm()} />
+        {errorNotice}
         <ProgramButton label="Change details" variant="ghost" disabled={busy} onPress={() => setResolved(null)} />
-      </ProgramCard> : <ProgramButton label="Connect bank" busy={busy} disabled={!bankCode || account.length !== 10} onPress={() => void check()} />}
+      </ProgramCard> : <>
+        <ProgramButton label="Connect bank" busy={busy} disabled={!bankCode || account.length !== 10} onPress={() => void check()} />
+        {errorNotice}
+      </>}
     </> : null}
     {country && !inApp ? <>
       <Text style={s.copy}>You’ll add your bank details on a secure page, then come back here.</Text>
       <ProgramButton label="Connect bank" busy={busy} onPress={() => void connectLink()} />
+      {errorNotice}
     </> : null}
-    {error ? <ProgramNotice tone="error" text={error} /> : null}
+    {!country ? errorNotice : null}
     {editing ? <ProgramButton label="Keep my current bank" variant="ghost" onPress={() => setEditing(false)} /> : null}
     {country && !payoutCountry(country) ? <ProgramNotice tone="warning" text="Payouts aren’t available in that country yet." /> : null}
   </View>;

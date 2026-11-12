@@ -367,6 +367,48 @@ describe("#3281 6b — reopening the held Paystack page", () => {
     ]);
   });
 
+  it.each([
+    [
+      "the status read refuses A (409)",
+      () => {
+        statusAnswers = [http(409, { error: "checkout_unavailable" })];
+      },
+    ],
+    [
+      "the status read says A's session is gone (404)",
+      () => {
+        statusAnswers = [http(404)];
+      },
+    ],
+    [
+      "the preflight says A is not this buyer's (403)",
+      () => {
+        statusAnswers = [noAnswer];
+        preflightAnswer = () => http(403);
+      },
+    ],
+  ])(
+    "a refused re-check of cart A (%s) drops only A: cart B's page still reopens",
+    async (_label, refuseA) => {
+      await pay(v2Input()); // A held (abandoned)
+      await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 })); // B held
+      refuseA();
+      expect(await pay(v2Input())).toMatchObject({ outcome: "failed" });
+      preflightAnswer = () => ({
+        data: { status: "present_allowed" },
+        error: null,
+      });
+      statusAnswers = [noAnswer, abandoned];
+      await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 })); // B reopens
+      expect(calls("ticket-checkout-create")).toHaveLength(2);
+      expect(openBrowserAsync.mock.calls.map((c) => c[0])).toEqual([
+        "https://checkout.paystack.test/page-1",
+        "https://checkout.paystack.test/page-2",
+        "https://checkout.paystack.test/page-2",
+      ]);
+    },
+  );
+
   it("v1 (trip) cart A, then B, then back to A reopens A's page", async () => {
     await pay(v1Input());
     await pay(v1Input({ lines: [{ ticketTypeId: GENERAL, quantity: 2 }] }));
@@ -516,8 +558,6 @@ const PAGE_EXPIRED =
   "This payment page has expired, so we didn't reopen it. If you already paid, your tickets will arrive here and by email within a few minutes — don't pay again. If you didn't, start the payment again.";
 const RECHECK_FAILED =
   "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
-const UNAVAILABLE =
-  "This sale is no longer available — the organiser may have paused or changed this event. You have not been charged.";
 
 describe("#3281 6b — a held page is re-checked before it is reopened", () => {
   it("a session revoked between visits is refused and never reopened", async () => {
@@ -545,7 +585,7 @@ describe("#3281 6b — a held page is re-checked before it is reopened", () => {
       preflightAnswer = () => http(status, { error: "checkout_unavailable" });
       expect(await pay(v2Input())).toEqual({
         outcome: "failed",
-        message: UNAVAILABLE,
+        message: NOT_ISSUED,
       });
       expect(openBrowserAsync).toHaveBeenCalledTimes(1);
 
@@ -627,7 +667,7 @@ describe("#3281 6b — a held page is re-checked before it is reopened", () => {
     preflightAnswer = () => http(409, { error: "checkout_unavailable" });
     expect(await pay(v2Input())).toEqual({
       outcome: "failed",
-      message: UNAVAILABLE,
+      message: NOT_ISSUED,
     });
     expect(openBrowserAsync).toHaveBeenCalledTimes(1);
 
@@ -1051,6 +1091,63 @@ describe("#3281 6c — the hold never outlives the server session", () => {
       });
       await pay(v2Input());
       expect(calls("ticket-checkout-create")).toHaveLength(2);
+    },
+  );
+
+  it("the server's seconds left shorten the hold even when the page opens later", async () => {
+    const T0 = new Date("2026-11-12T10:00:00Z").getTime();
+    jest.useFakeTimers({ now: T0 });
+    await pay(v2Input()); // the 14-minute fallback
+    jest.setSystemTime(T0 + 10_000);
+    preflightAnswer = () => {
+      // 65 s left, then 10 s pass before the page would open: inside the margin.
+      jest.setSystemTime(T0 + 20_000);
+      return {
+        data: { status: "present_allowed", expiresInSeconds: 65 },
+        error: null,
+      };
+    };
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: PAGE_EXPIRED,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("a wall clock moved back before the page opens cannot stretch the server's deadline", async () => {
+    const T0 = new Date("2026-11-12T10:00:00Z").getTime();
+    const now = jest.spyOn(Date, "now").mockReturnValue(T0);
+    const mono = jest.spyOn(performance, "now").mockReturnValue(1_000);
+    await pay(v2Input());
+    now.mockReturnValue(T0 + 330_000);
+    mono.mockReturnValue(1_000 + 30_000);
+    preflightAnswer = () => {
+      // 65 s left; then 70 s pass while the wall clock is corrected back.
+      now.mockReturnValue(T0 + 100_000);
+      mono.mockReturnValue(1_000 + 100_000);
+      return {
+        data: { status: "present_allowed", expiresInSeconds: 65 },
+        error: null,
+      };
+    };
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: PAGE_EXPIRED,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([403, 404])(
+    "a first status read of %s is a refusal: the page is dropped, not retried",
+    async (status) => {
+      await pay(v2Input());
+      statusAnswers = [abandoned, http(status)];
+      expect(await pay(v2Input())).toEqual({
+        outcome: "failed",
+        message: NOT_ISSUED,
+      });
+      expect(preflights()).toHaveLength(0);
+      expect(openBrowserAsync).toHaveBeenCalledTimes(1);
     },
   );
 

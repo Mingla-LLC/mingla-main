@@ -135,6 +135,22 @@ const paystackCreate = (eventId: string, authorizationUrl: string) => ({
   error: null,
 });
 
+/**
+ * #3281 6d — the create answers the page; a held page's re-check gets "not
+ * settled yet" from the status read and "admitted" from the #1930 preflight.
+ */
+const serve = (eventId: string, authorizationUrl: string) =>
+  mockInvoke.mockImplementation(
+    async (fn: string, opts?: { body?: { preflight?: boolean } }) => {
+      if (fn === "ticket-checkout-create") {
+        return paystackCreate(eventId, authorizationUrl);
+      }
+      return opts?.body?.preflight === true
+        ? { data: { status: "present_allowed" }, error: null }
+        : { data: { status: "pending", order: null }, error: null };
+    },
+  );
+
 const countCreates = (): number =>
   mockInvoke.mock.calls.filter((c: unknown[]) => c[0] === "ticket-checkout-create").length;
 
@@ -156,7 +172,7 @@ describe("#2227 F-3 — the held payment page dies with the session", () => {
     const eventId = nextEvent();
 
     // Buyer one is handed a live Paystack page. It is HELD.
-    mockInvoke.mockResolvedValue(paystackCreate(eventId, PAGE_ONE));
+    serve(eventId, PAGE_ONE);
     await useNativeCheckoutFlow()(inputFor(eventId));
     expect(countCreates()).toBe(1);
     expect(openedUrls()).toEqual([PAGE_ONE]);
@@ -174,7 +190,7 @@ describe("#2227 F-3 — the held payment page dies with the session", () => {
 
     // The next buyer on this device rebuilds the identical cart. The old page
     // must be unreachable — a create runs, and the browser gets the NEW url.
-    mockInvoke.mockResolvedValue(paystackCreate(eventId, PAGE_TWO));
+    serve(eventId, PAGE_TWO);
     await useNativeCheckoutFlow()(inputFor(eventId));
     expect(countCreates()).toBe(2);
     expect(openedUrls()).toEqual([PAGE_ONE, PAGE_ONE, PAGE_TWO]);
@@ -184,7 +200,7 @@ describe("#2227 F-3 — the held payment page dies with the session", () => {
   it("clears on a cleanup that skips the integrations (JWT expiry / account switch)", async () => {
     const eventId = nextEvent();
 
-    mockInvoke.mockResolvedValue(paystackCreate(eventId, PAGE_ONE));
+    serve(eventId, PAGE_ONE);
     await useNativeCheckoutFlow()(inputFor(eventId));
     expect(countCreates()).toBe(1);
 
@@ -195,7 +211,7 @@ describe("#2227 F-3 — the held payment page dies with the session", () => {
       includeIntegrations: false,
     });
 
-    mockInvoke.mockResolvedValue(paystackCreate(eventId, PAGE_TWO));
+    serve(eventId, PAGE_TWO);
     await useNativeCheckoutFlow()(inputFor(eventId));
     expect(countCreates()).toBe(2);
     expect(openedUrls()).toEqual([PAGE_ONE, PAGE_TWO]);

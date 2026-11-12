@@ -163,5 +163,8 @@ module.exports = {
     // issue #4402 — Creator setup errors land beside the button: a refused
     // profile Save, the Rates step before a profile exists, a refused Save rate.
     "**/__tests__/issue_4402_creator_setup_errors.implementor.render.test.tsx",
+    // issue #4402 — a refused bank connect shows its error under the button
+    // that caused it, not at the bottom of the form.
+    "**/__tests__/issue_4402_payout_connect_error.implementor.render.test.tsx",
   ],
 };
