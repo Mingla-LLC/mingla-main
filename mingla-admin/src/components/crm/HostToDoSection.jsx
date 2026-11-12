@@ -33,7 +33,8 @@ const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--col
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
 
 function emptyForm(owners) {
-  return { title: "", owners, watchers: [], due: "", filesUrl: "", hostSees: false };
+  // #4398: one owner to start with (the host card's first owner); the watcher is picked.
+  return { title: "", owners: (owners || []).slice(0, 1), watchers: [], due: "", filesUrl: "", hostSees: false };
 }
 
 /** One open card: title, due chip, owners, tag, Host sees. Opens the card beside. */
@@ -167,10 +168,14 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
           </label>
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-1">
-              <PeopleField id={fid("owners")} label="Assignees" value={form.owners} team={team} me={me} suggested={defaultOwners} exclude={form.watchers} onChange={(owners) => set({ owners })} />
+              {/* #4398: one owner and one watcher, who is not the owner. */}
+              <PeopleField id={fid("owners")} label="Owner" single value={form.owners} team={team} me={me} suggested={defaultOwners} exclude={form.watchers} onChange={(owners) => set({ owners })} />
               {problemFor("owners") && <span role="alert" className="text-[12px] text-[var(--color-error-700)]">{problemFor("owners")}</span>}
             </div>
-            <PeopleField id={fid("watchers")} label="Watchers" value={form.watchers} team={team} me={me} suggested={[me].filter(Boolean)} exclude={form.owners} onChange={(watchers) => set({ watchers })} />
+            <div className="flex min-w-0 flex-col gap-1">
+              <PeopleField id={fid("watchers")} label="Watcher" single value={form.watchers} team={team} me={me} suggested={[me].filter(Boolean)} exclude={form.owners} onChange={(watchers) => set({ watchers })} />
+              {problemFor("watchers") && <span role="alert" className="text-[12px] text-[var(--color-error-700)]">{problemFor("watchers")}</span>}
+            </div>
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex min-w-0 flex-col gap-1" htmlFor={fid("due")}>
