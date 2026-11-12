@@ -513,7 +513,7 @@ describe("#3281 6b — when the held page is dropped", () => {
 });
 
 const PAGE_EXPIRED =
-  "This payment page expired before it opened. You have not been charged — please try again.";
+  "This payment page has expired, so we didn't reopen it. If you already paid, your tickets will arrive here and by email within a few minutes — don't pay again. If you didn't, start the payment again.";
 const RECHECK_FAILED =
   "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
 const UNAVAILABLE =
@@ -977,6 +977,54 @@ describe("#3281 6c — the hold never outlives the server session", () => {
       message: PAGE_EXPIRED,
     });
     expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("a payment still settling when the page runs out is never told it was not charged", async () => {
+    jest.useFakeTimers({ now: T0 });
+    createAnswer = withSecondsLeft(300); // reopenable for 240 s
+    statusAnswers = [abandoned, noAnswer]; // second read: still pending
+    await pay(v2Input());
+    jest.setSystemTime(T0 + 200_000);
+    preflightAnswer = () => {
+      jest.setSystemTime(T0 + 245_000);
+      return { data: { status: "present_allowed" }, error: null };
+    };
+    const outcome = await pay(v2Input());
+    expect(outcome).toEqual({ outcome: "failed", message: PAGE_EXPIRED });
+    if (outcome.outcome === "failed") {
+      expect(outcome.message).not.toMatch(/not been charged/);
+      expect(outcome.message).toMatch(/don't pay again/);
+    }
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("cart A running out during its re-check leaves cart B's page held", async () => {
+    jest.useFakeTimers({ now: T0 });
+    createAnswer = withSecondsLeft(300); // A: reopenable for 240 s
+    await pay(v2Input());
+    jest.setSystemTime(T0 + 100_000);
+    createAnswer = withSecondsLeft(900); // B: the 14-minute bound
+    await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 }));
+
+    jest.setSystemTime(T0 + 200_000);
+    preflightAnswer = () => {
+      jest.setSystemTime(T0 + 245_000);
+      return { data: { status: "present_allowed" }, error: null };
+    };
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: PAGE_EXPIRED,
+    });
+
+    preflightAnswer = () => ({
+      data: { status: "present_allowed" },
+      error: null,
+    });
+    await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 }));
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+    expect(openBrowserAsync.mock.calls.at(-1)?.[0]).toBe(
+      "https://checkout.paystack.test/page-2",
+    );
   });
 
   it("a phone clock moved back during the hold cannot stretch it", async () => {

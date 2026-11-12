@@ -144,6 +144,23 @@ export const clearHeldHandoff = (
   held.delete(eventId);
 };
 
+/**
+ * issue #3281 (bundle 6c) — drop ONE purchase's page (it ran out), leaving the
+ * event's other carts' pages alone. Ignored after a sign-out, like
+ * `clearHeldHandoff`.
+ */
+export const dropHeldHandoff = (
+  eventId: string,
+  fingerprint: string,
+  sinceGeneration: number,
+): void => {
+  if (sinceGeneration !== generation) return;
+  const forEvent = held.get(eventId);
+  if (forEvent === undefined) return;
+  forEvent.delete(fingerprint);
+  if (forEvent.size === 0) held.delete(eventId);
+};
+
 export const clearAllHeldHandoffs = (): void => {
   held.clear();
   generation += 1;

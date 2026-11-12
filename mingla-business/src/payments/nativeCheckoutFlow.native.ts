@@ -57,6 +57,7 @@ import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview"
 import { waitForPaymentPageClosed } from "@mingla/payments-native/paymentPageReturn";
 import {
   clearHeldHandoff,
+  dropHeldHandoff,
   handoffGeneration,
   handoffLifetimeMs,
   holdHandoff,
@@ -274,9 +275,11 @@ const CHECKOUT_RECHECK_FAILED_MESSAGE =
   "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
 
 // issue #3281 (bundle 6c) — Host-app only: the held or new page's session had
-// run out before the page could be opened.
+// run out before the page could be opened. A held page may already have been
+// paid (the payment can still be settling), so this never says "not charged"
+// or invites paying again without that warning.
 const CHECKOUT_PAGE_EXPIRED_MESSAGE =
-  "This payment page expired before it opened. You have not been charged — please try again.";
+  "This payment page has expired, so we didn't reopen it. If you already paid, your tickets will arrive here and by email within a few minutes — don't pay again. If you didn't, start the payment again.";
 
 const CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE =
   "We couldn't issue your tickets for this sale. If your payment went through, we're sorting it out and will email you — please don't pay again. Contact support@usemingla.com and we'll pick it up from there.";
@@ -517,7 +520,8 @@ async function followPaystackHandoff(
   // can pass during the re-check's network calls, and a fresh session can
   // arrive with no time left. An expired page is never opened.
   if (!isHandoffLive(handoff)) {
-    clearHeldHandoff(eventId, generation);
+    // Only THIS purchase's page ran out; other carts' pages stay held.
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
   }
   let opened: WebBrowser.WebBrowserResult;
