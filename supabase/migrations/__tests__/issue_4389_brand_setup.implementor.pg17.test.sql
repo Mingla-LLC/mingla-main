@@ -1,6 +1,6 @@
 -- Issue #4389 — brand setup with the minimum information
--- (20280629004389_issue_4389_brand_setup.sql and
---  20280629104389_issue_4389_ari_brand_operation.sql), on the fully replayed
+-- (20280701004389_issue_4389_brand_setup.sql and
+--  20280701104389_issue_4389_ari_brand_operation.sql), on the fully replayed
 -- PG17 schema.
 -- MINGLA-INVARIANT: I-4389-COUNTRY-ONE-TRUTH | issue #4389 | default_currency, payment_provider and payment_country follow brands.payout_country (rail map, BG->EUR); the country locks once a payment account exists or a payments setup started in the last 15 minutes.
 -- MINGLA-INVARIANT: I-4389-SETUP-DONE-IS-SERVER | issue #4389 | brand_readiness(brand_setup) is exactly brand.name, money.market, money.terms_member, money.details_submitted, routed to /brand/{id}/setup?step=.
@@ -27,7 +27,7 @@
 --   T11 Ari create_brand: bank country at create, operation id = brand id,
 --       re-confirm returns the same brand, unsupported country refused
 --
--- FAILS-ON-REVERT: replay without 20280629004389 -> payout_country_rail is
+-- FAILS-ON-REVERT: replay without 20280701004389 -> payout_country_rail is
 -- missing and T1 stops. Dropping the lock block in
 -- issue_4389_brand_country_derive fails T3; dropping the guard trigger fails T8;
 -- dropping the brand_setup CONTINUE filter fails T6 (item count).

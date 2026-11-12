@@ -155,12 +155,20 @@ export function AuthProvider({ children }) {
     if (notice) setAuthNotice(notice);
     clearAll();
     try {
-      const { error } = await supabase.auth.signOut();
+      // #4400: "local" ends this browser only; other browsers keep their sign-in.
+      const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error) await supabase.auth.signOut({ scope: "local" });
     } catch (err) {
       console.error("[AuthContext] sign out failed:", err?.message || err);
     }
   }, [clearAll]);
+
+  /**
+   * #4400 — the server no longer accepts this sign-in (an edge function
+   * answered 401 after a refresh). End it in this browser and show the notice
+   * on the sign-in screen.
+   */
+  const endSession = useCallback((notice) => rejectSession(notice), [rejectSession]);
 
   /**
    * The one decision procedure for "there is (or is not) a Supabase session",
@@ -451,7 +459,8 @@ export function AuthProvider({ children }) {
         otpVerifiedRef.current = false;
         setAuthNotice(INVITE_EXPIRED_MESSAGE);
         try {
-          const { error } = await supabase.auth.signOut();
+          // #4400: "local" ends this browser only.
+          const { error } = await supabase.auth.signOut({ scope: "local" });
           if (error) await supabase.auth.signOut({ scope: "local" });
         } catch (err) {
           console.error("[AuthContext] sign out failed:", err?.message || err);
@@ -494,7 +503,9 @@ export function AuthProvider({ children }) {
       const loaded = await loadAccess();
 
       // Password verified. Sign out so no session persists until OTP is complete.
-      const { error: signOutError } = await supabase.auth.signOut();
+      // #4400: scope "local" ends only this temporary session. The default
+      // ("global") signed the account out of every other browser.
+      const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
       if (signOutError) {
         // Critical: if signOut fails, we have a live session without OTP verification.
         // Retry once to prevent session leak.
@@ -567,7 +578,8 @@ export function AuthProvider({ children }) {
     localStorage.removeItem(FULL_AUTH_KEY);
     otpVerifiedRef.current = false;
     setInviteSetup(null);
-    const { error } = await supabase.auth.signOut();
+    // #4400 (Seth, 2026-11-12): Sign out ends this browser only.
+    const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) {
       // The server could not be reached: still end the session on this device.
       const { error: localError } = await supabase.auth.signOut({ scope: "local" });
@@ -595,6 +607,7 @@ export function AuthProvider({ children }) {
       verifyOtp,
       acceptInvite,
       signOut,
+      endSession,
       completeInviteSetup,
     }}>
       {children}

@@ -219,6 +219,7 @@
         "app-mobile/app/creator/contract/[contractId].tsx",
         "app-mobile/app/creator/gig/[gigId].tsx",
         "app-mobile/app/creator/setup/agreement.tsx",
+        "app-mobile/app/creator/setup/profile.tsx",
         "app-mobile/app/creator/setup/rates.tsx",
         "app-mobile/app/local/index.tsx",
         "app-mobile/app/local/review.tsx",
@@ -265,6 +266,7 @@
         "supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql",
         "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
         "supabase/migrations/20280221004216_issue_4216_creator_rights.sql",
+        "supabase/migrations/20280630004402_issue_4402_creator_identity_without_host_account.sql",
         "mingla-marketing/app/creators/page.tsx",
         "mingla-marketing/app/locals/page.tsx"
       ]
@@ -1169,14 +1171,14 @@
         "supabase/functions/_shared/agentBrandSetupTools.ts",
         "supabase/functions/_shared/ariFlows/brandSetup.ts",
         "supabase/functions/_shared/vatCountryGuard.ts",
-        "supabase/migrations/20280629004389_issue_4389_brand_setup.sql",
-        "supabase/migrations/20280629104389_issue_4389_ari_brand_operation.sql",
-        "supabase/migrations/20280629304389_issue_4389_retire_bgn.sql",
+        "supabase/migrations/20280701004389_issue_4389_brand_setup.sql",
+        "supabase/migrations/20280701104389_issue_4389_ari_brand_operation.sql",
+        "supabase/migrations/20280701304389_issue_4389_retire_bgn.sql",
         "mingla-business/src/components/stripe/ConnectOnboardingNative.native.tsx",
         "mingla-business/src/components/stripe/ConnectOnboardingNative.tsx",
         "mingla-business/src/components/stripe/nativeConnectOnboarding.ts",
         "mingla-business/src/hooks/useNativeConnectOnboardingRelease.ts",
-        "supabase/migrations/20280629204389_issue_4389_native_connect_flag.sql",
+        "supabase/migrations/20280701204389_issue_4389_native_connect_flag.sql",
         "mingla-business/src/components/brand/BrandProfileView.tsx"
       ]
     },
@@ -1412,6 +1414,8 @@
         "mingla-admin/src/context/AuthContext.jsx",
         "mingla-admin/src/lib/communitySupportAccess.js",
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",
+        "mingla-admin/src/lib/teamInvite.js",
+        "mingla-admin/src/pages/AdminPage.jsx",
         "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
       ]
     },
@@ -2397,8 +2401,8 @@
         "supabase/functions/_shared/agentBrandSetupTools.ts",
         "supabase/functions/_shared/ariFlows/brandSetup.ts",
         "supabase/functions/_shared/vatCountryGuard.ts",
-        "supabase/migrations/20280629004389_issue_4389_brand_setup.sql",
-        "supabase/migrations/20280629104389_issue_4389_ari_brand_operation.sql",
+        "supabase/migrations/20280701004389_issue_4389_brand_setup.sql",
+        "supabase/migrations/20280701104389_issue_4389_ari_brand_operation.sql",
         "mingla-business/src/components/brand/BrandProfileView.tsx"
       ]
     },

@@ -8,6 +8,8 @@ SET LOCAL session_replication_role = replica;
 INSERT INTO auth.users(id, email) VALUES ('38720000-0000-4000-8000-0000000000c1', 'creator-mode@mingla.test');
 INSERT INTO public.creator_accounts(id, email, display_name)
 VALUES ('38720000-0000-4000-8000-0000000000c1', 'creator-mode@mingla.test', 'Mode Test');
+-- #4402: the creator identity is the Explorer login (a live profiles row).
+INSERT INTO public.profiles(id) VALUES ('38720000-0000-4000-8000-0000000000c1');
 SET LOCAL session_replication_role = origin;
 
 SELECT set_config('request.jwt.claims', '{"sub":"38720000-0000-4000-8000-0000000000c1","role":"authenticated"}', true);
