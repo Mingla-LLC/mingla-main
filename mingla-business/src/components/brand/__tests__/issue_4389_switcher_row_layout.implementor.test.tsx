@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4389-SWITCHER-UNFINISHED-ROW | issue #4389 | A brand whose setup checklist is not complete (in progress, free-only or published) shows in the brand switcher as one row: line 1 the name only, line 2 "Draft" (accent) · "Free events only" when the host chose it (no count), else "Draft" · "{n} of 4 done", and a Continue pill INSIDE the row that opens /brand/{id}/setup. There is no separate Continue button under the row and no pill next to the name. Only a true draft offers "Discard draft".
+// MINGLA-INVARIANT: I-4389-SWITCHER-UNFINISHED-ROW | issue #4389 | A brand whose setup checklist is not complete shows in the brand switcher as one row: line 1 the name only, line 2 the unfinished label with either "Free events only" (no count) or "{n} of 4 done", and a Continue pill INSIDE the row that opens /brand/{id}/setup; no separate Continue button under the row and no pill next to the name.
 /**
  * Seth (2026-11-11): "the continue should be in the brand and it should be
  * clear it is a draft", then "the draft is placed awkwardly" (no pill by the
