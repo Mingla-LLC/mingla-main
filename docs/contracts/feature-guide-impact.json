@@ -807,7 +807,8 @@
         "supabase/migrations/20280628113355_issue_3355_ari_memory_brand_voice.sql",
         "supabase/migrations/20280628123355_issue_3355_ari_quality_follow_up_runs.sql",
         "supabase/migrations/20280628133355_issue_3355_flow_follow_up_never_cancels.sql",
-        "supabase/migrations/20280628143355_issue_3355_scope_payout_readiness_to_members.sql"
+        "supabase/migrations/20280628143355_issue_3355_scope_payout_readiness_to_members.sql",
+        "supabase/migrations/20280628153355_issue_3355_ari_understand_first_on_for_all.sql"
       ]
     },
     {
