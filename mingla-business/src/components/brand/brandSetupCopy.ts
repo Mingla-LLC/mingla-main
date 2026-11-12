@@ -1,16 +1,24 @@
 /**
- * #4389 — host copy for brand setup (design v11, binding words).
+ * #4389 — host copy for the brand setup flow (design v11, binding words): F1
+ * name, F2 bank country, F3 get paid, F4 done, N1 and the flow's interruptions.
  * Host copy never names a payment partner and never says "business" (U-7,
  * U-8). Tap to Pay on iPhone is always written in full (Apple naming), in
  * every language.
  *
- * The words live in src/i18n/locales/<lang>/ (English: brandSetup.json, kept
- * next to this module so the eager bundle does not grow; other languages:
- * hostSetup.json, loaded with the language). Each property reads the current
- * language when it is read, with English as the fallback.
+ * Only the setup flow's chunk loads this module. The words other screens show
+ * live next to them (brandSetupSharedCopy, brandSetupAddressCopy,
+ * brandOnboardCopy, brandDeleteCopy, brandDeleteSharedCopy, brandSwitcherCopy,
+ * brandOfferingsCopy, brandNewCopy, door/tap/f4TapToPayCopy): Metro hoists a
+ * module more than one chunk imports into the eager web __common chunk.
+ *
+ * The words live in src/i18n/locales/<lang>/ (English: brandSetup.json and its
+ * brandSetup.<part>.json siblings; other languages: hostSetup.json, loaded with
+ * the language). Each property reads the current language when it is read,
+ * with English as the fallback.
  */
 import english from "../../i18n/locales/en/brandSetup.json";
 import { businessT, registerBusinessEnglish } from "../../i18n";
+import { BRAND_SETUP_SHARED_COPY } from "./brandSetupSharedCopy";
 
 registerBusinessEnglish(english);
 
@@ -79,26 +87,10 @@ export const BRAND_SETUP_COPY = {
     get retry(): string { return t("f4.retry"); },
     get makeFirst(): string { return t("f4.makeFirst"); },
     get coverBio(): string { return t("f4.coverBio"); },
-    get ttpTitle(): string { return t("f4.ttpTitle"); },
-    get ttpBody(): string { return t("f4.ttpBody"); },
-    get ttpTerms(): string { return t("f4.ttpTerms"); },
-    get ttpCta(): string { return t("f4.ttpCta"); },
-    get ttpOn(): string { return t("f4.ttpOn"); },
-    get takePayment(): string { return t("f4.takePayment"); },
   },
-  k1: {
-    get title(): string { return t("k1.title"); },
-    get body(): string { return t("k1.body"); },
-    get bodyAndroid(): string { return t("k1.bodyAndroid"); },
-    get later(): string { return t("k1.later"); },
-    get bankNow(): string { return t("k1.bankNow"); },
-    get freeOnly(): string { return t("k1.freeOnly"); },
-    get toast(): string { return t("k1.toast"); },
-  },
+  k1: BRAND_SETUP_SHARED_COPY.k1,
   common: {
     get later(): string { return t("common.later"); },
-    get offline(): string { return t("common.offline"); },
-    get serverError(): string { return t("common.serverError"); },
     get tryAgain(): string { return t("common.tryAgain"); },
     get back(): string { return t("common.back"); },
     get goHome(): string { return t("common.goHome"); },
@@ -108,6 +100,8 @@ export const BRAND_SETUP_COPY = {
     noAccess: (brand: string | null): string =>
       brand ? t("common.noAccess", { brand }) : t("common.thisBrandNoAccess"),
     progress: (step: number): string => t("common.progress", { step }),
+    get offline(): string { return BRAND_SETUP_SHARED_COPY.common.offline; },
+    get serverError(): string { return BRAND_SETUP_SHARED_COPY.common.serverError; },
   },
   n1: {
     get title(): string { return t("n1.title"); },
@@ -121,76 +115,12 @@ export const BRAND_SETUP_COPY = {
     get discard(): string { return t("n1.discard"); },
     get keep(): string { return t("n1.keep"); },
     discardError: (brand: string): string => t("n1.discardError", { brand }),
-    discarded: (brand: string): string => t("n1.discarded", { brand }),
-  },
-  n3: {
-    get draftLabel(): string { return t("n3.draftLabel"); },
-    progress: (done: number): string => t("n3.progress", { done }),
-    get freeOnlyTag(): string { return t("n3.freeOnlyTag"); },
-    get continue(): string { return t("n3.continue"); },
-    get discard(): string { return t("n3.discard"); },
-  },
-  t1: {
-    get title(): string { return t("t1.title"); },
-    get helper(): string { return t("t1.helper"); },
-    get helperAndroid(): string { return t("t1.helperAndroid"); },
-    get search(): string { return t("t1.search"); },
-    get searchHelper(): string { return t("t1.searchHelper"); },
-    get poweredByGoogle(): string { return t("t1.poweredByGoogle"); },
-    noMatch: (country: string, postal: string): string => t("t1.noMatch", { country, postal }),
-    get buildingNumber(): string { return t("t1.buildingNumber"); },
-    get buildingNumberError(): string { return t("t1.buildingNumberError"); },
-    get unit(): string { return t("t1.unit"); },
-    get refused(): string { return t("t1.refused"); },
-    get change(): string { return t("t1.change"); },
-    get save(): string { return t("t1.save"); },
-  },
-  /** #4389 — the bank setup screen (/brand/{id}/payments/onboard). */
-  onboard: {
-    get title(): string { return t("onboard.title"); },
-    get body(): string { return t("onboard.body"); },
-    get opening(): string { return t("onboard.opening"); },
-    get checking(): string { return t("onboard.checking"); },
-    get checkingSub(): string { return t("onboard.checkingSub"); },
-    get haveReady(): string { return t("onboard.haveReady"); },
-    get readyId(): string { return t("onboard.readyId"); },
-    readyBank: (country: string | null): string =>
-      country === null ? t("onboard.readyBankAny") : t("onboard.readyBank", { country }),
-    get readyTax(): string { return t("onboard.readyTax"); },
   },
   stepNames: {
     get name(): string { return t("stepNames.name"); },
     get country(): string { return t("stepNames.country"); },
     get pay(): string { return t("stepNames.pay"); },
     get done(): string { return t("stepNames.done"); },
-  },
-  offerings: {
-    get event(): string { return t("offerings.event"); },
-    get experience(): string { return t("offerings.experience"); },
-    get trip(): string { return t("offerings.trip"); },
-    get rsvp(): string { return t("offerings.rsvp"); },
-    get venue(): string { return t("offerings.venue"); },
-  },
-  delete: {
-    get blockedBalance(): string { return t("delete.blockedBalance"); },
-    get blockedEvents(): string { return t("delete.blockedEvents"); },
-    get blockedPaying(): string { return t("delete.blockedPaying"); },
-    get blockedPartner(): string { return t("delete.blockedPartner"); },
-    get blockedPayout(): string { return t("delete.blockedPayout"); },
-    get closedOnDelete(): string { return t("delete.closedOnDelete"); },
-    get none(): string { return t("delete.none"); },
-    get cantDeleteYet(): string { return t("delete.cantDeleteYet"); },
-    get nothingDeleted(): string { return t("delete.nothingDeleted"); },
-    get closeRefused(): string { return t("delete.closeRefused"); },
-    get close(): string { return t("delete.close"); },
-    get restoreTitle(): string { return t("delete.restoreTitle"); },
-    get restoreBody(): string { return t("delete.restoreBody"); },
-    get undoTitle(): string { return t("delete.undoTitle"); },
-    get undoBody(): string { return t("delete.undoBody"); },
-    get previewErrorTitle(): string { return t("delete.previewErrorTitle"); },
-    get previewErrorBody(): string { return t("delete.previewErrorBody"); },
-    get bankPayouts(): string { return t("delete.bankPayouts"); },
-    get bankPayoutsSwitchedOff(): string { return t("delete.bankPayoutsSwitchedOff"); },
   },
 };
 

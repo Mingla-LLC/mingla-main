@@ -128,7 +128,7 @@ import {
   DoorTodayLine,
   TakePaymentButton,
 } from "../../src/components/home/HomeTakePayment";
-import { BRAND_SETUP_COPY } from "../../src/components/brand/brandSetupCopy";
+import { BRAND_SETUP_SHARED_COPY } from "../../src/components/brand/brandSetupSharedCopy";
 import { useBrandSetupChecklist } from "../../src/hooks/useBrandSetupChecklist";
 import { useDoorTodaySummary } from "../../src/hooks/useHomeTakePayment";
 import { useTapToPayWarmHint } from "../../src/hooks/useTapToPayWarmHint";
@@ -753,7 +753,7 @@ export default function HomeTab(): React.ReactElement {
   // K1 → Home: "Saved. You can create free events. Set up your bank to sell tickets."
   useEffect(() => {
     if (params.toast !== "free_only") return;
-    setToast({ visible: true, message: BRAND_SETUP_COPY.k1.toast });
+    setToast({ visible: true, message: BRAND_SETUP_SHARED_COPY.k1.toast });
     router.setParams({ toast: undefined } as never);
   }, [params.toast, router]);
   // Lifetime revenue is the card payout ledger; door sales today may not be in it.

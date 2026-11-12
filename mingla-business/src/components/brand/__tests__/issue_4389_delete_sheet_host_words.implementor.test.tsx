@@ -35,7 +35,7 @@ jest.mock("../../../hooks/useBrands", () => ({
 }));
 
 import { BrandDeleteSheet } from "../BrandDeleteSheet";
-import { BRAND_SETUP_COPY as C } from "../brandSetupCopy";
+import { BRAND_DELETE_COPY as C } from "../brandDeleteCopy";
 import type { Brand } from "../../../store/currentBrandStore";
 
 interface Node { type: unknown; props: Record<string, unknown>; children: Array<Node | string>; findAll(p: (n: Node) => boolean): Node[] }
@@ -75,8 +75,12 @@ describe("#4389 — the delete sheet speaks in host words", () => {
   test("T2: every locale has the new delete words", () => {
     const base = path.join(__dirname, "../../../i18n/locales");
     for (const lang of fs.readdirSync(base)) {
-      const file = path.join(base, lang, lang === "en" ? "brandSetup.json" : "hostSetup.json");
-      const del = (JSON.parse(fs.readFileSync(file, "utf8")) as { brandSetup: { delete: Record<string, string> } }).brandSetup.delete;
+      // English splits the delete words by chunk (sheet / shared with Ari and the profile).
+      const files = lang === "en" ? ["brandSetup.delete.json", "brandSetup.deleteShared.json"] : ["hostSetup.json"];
+      const del: Record<string, string> = {};
+      for (const name of files) {
+        Object.assign(del, (JSON.parse(fs.readFileSync(path.join(base, lang, name), "utf8")) as { brandSetup: { delete: Record<string, string> } }).brandSetup.delete);
+      }
       for (const k of ["restoreTitle", "restoreBody", "undoTitle", "undoBody", "previewErrorTitle", "previewErrorBody"]) {
         expect({ lang, k, ok: typeof del[k] === "string" && del[k].length > 0 }).toEqual({ lang, k, ok: true });
       }
@@ -89,7 +93,7 @@ describe("#4389 — the delete sheet speaks in host words", () => {
     for (const rel of ["../../ari/ToolProposalCard.tsx", "../BrandProfileView.tsx"]) {
       const src = fs.readFileSync(path.join(__dirname, rel), "utf8");
       expect({ rel, old: /Recoverable for 30 days|audit logs are preserved|Recovery needs support|via support\./.test(src) }).toEqual({ rel, old: false });
-      expect({ rel, key: src.includes("BRAND_SETUP_COPY.delete.restoreBody") }).toEqual({ rel, key: true });
+      expect({ rel, key: src.includes("BRAND_DELETE_SHARED_COPY.delete.restoreBody") }).toEqual({ rel, key: true });
     }
   });
 
@@ -101,8 +105,8 @@ describe("#4389 — the delete sheet speaks in host words", () => {
     expect(card).not.toMatch(/will unlink|Not linked|Payout account<\/Text>/);
     const row = card.slice(card.indexOf('testID="ari-delete-payment-account"'), card.indexOf('testID="ari-delete-payment-account"') + 500);
     expect(row).toContain("Payment account");
-    expect(row).toContain("BRAND_SETUP_COPY.delete.closedOnDelete");
-    expect(row).toContain("BRAND_SETUP_COPY.delete.none");
+    expect(row).toContain("BRAND_DELETE_SHARED_COPY.delete.closedOnDelete");
+    expect(row).toContain("BRAND_DELETE_SHARED_COPY.delete.none");
     expect(row).toContain("cascade.data.hasStripeConnect");
     expect(C.delete.closedOnDelete).toBe("Will be closed when you delete");
   });
@@ -135,9 +139,9 @@ describe("#4389 — the delete sheet speaks in host words", () => {
     const at = card.indexOf('testID="ari-delete-bank-payouts"');
     expect(at).toBeGreaterThan(0);
     const block = card.slice(card.lastIndexOf("cascade.data.isPaystackBrand", at), at + 500);
-    expect(block).toContain("BRAND_SETUP_COPY.delete.bankPayouts");
+    expect(block).toContain("BRAND_DELETE_SHARED_COPY.delete.bankPayouts");
     expect(block).toContain("cascade.data.hasBankPayouts");
-    expect(block).toContain("BRAND_SETUP_COPY.delete.bankPayoutsSwitchedOff");
-    expect(block).toContain("BRAND_SETUP_COPY.delete.none");
+    expect(block).toContain("BRAND_DELETE_SHARED_COPY.delete.bankPayoutsSwitchedOff");
+    expect(block).toContain("BRAND_DELETE_SHARED_COPY.delete.none");
   });
 });

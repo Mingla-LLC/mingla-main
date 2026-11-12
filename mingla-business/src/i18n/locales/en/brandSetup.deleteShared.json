@@ -1,0 +1,12 @@
+{
+  "brandSetup": {
+    "delete": {
+      "closedOnDelete": "Will be closed when you delete",
+      "none": "None",
+      "restoreTitle": "You can restore it for 30 days",
+      "restoreBody": "Your brand leaves your list. Its events, orders and refunds are kept. To restore it, contact support within 30 days.",
+      "bankPayouts": "Bank payouts",
+      "bankPayoutsSwitchedOff": "Will be switched off"
+    }
+  }
+}

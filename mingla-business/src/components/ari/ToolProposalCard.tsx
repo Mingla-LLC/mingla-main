@@ -68,7 +68,7 @@ import {
   readServerPresentation,
   toolProposalOwnerCopy,
 } from "./toolProposalCopy";
-import { BRAND_SETUP_COPY } from "../brand/brandSetupCopy";
+import { BRAND_DELETE_SHARED_COPY } from "../brand/brandDeleteSharedCopy";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -1412,7 +1412,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             <View style={styles.assuranceRow}>
               {/* #4389 — the delete sheet's host words (i18n). */}
               <Text style={styles.assuranceText}>
-                {`${BRAND_SETUP_COPY.delete.restoreTitle}. ${BRAND_SETUP_COPY.delete.restoreBody}`}
+                {`${BRAND_DELETE_SHARED_COPY.delete.restoreTitle}. ${BRAND_DELETE_SHARED_COPY.delete.restoreBody}`}
               </Text>
             </View>
             {cascade.isLoading ? (
@@ -1440,17 +1440,17 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                   <Text style={styles.fieldLabel}>Payment account</Text>
                   <Text style={styles.fieldValue}>
                     {cascade.data.hasStripeConnect
-                      ? BRAND_SETUP_COPY.delete.closedOnDelete
-                      : BRAND_SETUP_COPY.delete.none}
+                      ? BRAND_DELETE_SHARED_COPY.delete.closedOnDelete
+                      : BRAND_DELETE_SHARED_COPY.delete.none}
                   </Text>
                 </View>
                 {cascade.data.isPaystackBrand ? (
                   <View style={styles.fieldRow} testID="ari-delete-bank-payouts">
-                    <Text style={styles.fieldLabel}>{BRAND_SETUP_COPY.delete.bankPayouts}</Text>
+                    <Text style={styles.fieldLabel}>{BRAND_DELETE_SHARED_COPY.delete.bankPayouts}</Text>
                     <Text style={styles.fieldValue}>
                       {cascade.data.hasBankPayouts
-                        ? BRAND_SETUP_COPY.delete.bankPayoutsSwitchedOff
-                        : BRAND_SETUP_COPY.delete.none}
+                        ? BRAND_DELETE_SHARED_COPY.delete.bankPayoutsSwitchedOff
+                        : BRAND_DELETE_SHARED_COPY.delete.none}
                     </Text>
                   </View>
                 ) : null}

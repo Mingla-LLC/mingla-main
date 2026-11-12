@@ -14,7 +14,7 @@ import { useBrandListState } from "../../hooks/useBrandListShim";
 import { usePickBrand } from "../../hooks/usePickBrand";
 // #4389 N3 — draft and free-only rows from the setup checklist.
 import { useBrandSetupStates } from "../../hooks/useBrandSetupStates";
-import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+import { BRAND_SWITCHER_COPY } from "./brandSwitcherCopy";
 import { useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
 import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
 import {
@@ -157,8 +157,8 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                     setupState.kind === "none"
                       ? null
                       : setupState.kind === "free_only"
-                        ? ` · ${BRAND_SETUP_COPY.n3.freeOnlyTag}`
-                        : ` · ${BRAND_SETUP_COPY.n3.progress(setupState.doneCount)}`;
+                        ? ` · ${BRAND_SWITCHER_COPY.n3.freeOnlyTag}`
+                        : ` · ${BRAND_SWITCHER_COPY.n3.progress(setupState.doneCount)}`;
                   const canDiscard =
                     setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null);
                   const subline = setupRest !== null
@@ -209,7 +209,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                               numberOfLines={1}
                               testID={`brand-switcher-setup-line-${brand.id}`}
                             >
-                              <Text style={styles.brandSubDraft}>{BRAND_SETUP_COPY.n3.draftLabel}</Text>
+                              <Text style={styles.brandSubDraft}>{BRAND_SWITCHER_COPY.n3.draftLabel}</Text>
                               {setupRest}
                             </Text>
                           ) : subline !== null ? (
@@ -227,12 +227,12 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                             onPress={() => openSetup(brand)}
                             onLongPress={canDiscard ? () => openDiscard(brand) : undefined}
                             accessibilityRole="button"
-                            accessibilityLabel={`${BRAND_SETUP_COPY.n3.continue} ${brand.displayName}`}
+                            accessibilityLabel={`${BRAND_SWITCHER_COPY.n3.continue} ${brand.displayName}`}
                             hitSlop={4}
                             style={styles.rowContinueBtn}
                             testID={`brand-switcher-continue-${brand.id}`}
                           >
-                            <Text style={styles.rowContinueLabel}>{BRAND_SETUP_COPY.n3.continue}</Text>
+                            <Text style={styles.rowContinueLabel}>{BRAND_SWITCHER_COPY.n3.continue}</Text>
                           </Pressable>
                         ) : null}
                         {/* The row menu on a true draft: "Discard draft" (the
@@ -244,7 +244,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           <Pressable
                             onPress={() => openDiscard(brand)}
                             accessibilityRole="button"
-                            accessibilityLabel={`${BRAND_SETUP_COPY.n3.discard}: ${brand.displayName}`}
+                            accessibilityLabel={`${BRAND_SWITCHER_COPY.n3.discard}: ${brand.displayName}`}
                             hitSlop={8}
                             style={styles.rowMenuBtn}
                             testID={`brand-switcher-discard-${brand.id}`}

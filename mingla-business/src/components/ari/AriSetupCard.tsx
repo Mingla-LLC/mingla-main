@@ -21,7 +21,7 @@ import {
 } from "../../constants/designSystem";
 import { ARI_SETUP_COPY as C, ariSetupItems } from "./ariSetupCopy";
 import { CenteredState } from "../ui/CenteredState";
-import { BRAND_SETUP_COPY } from "../brand/brandSetupCopy";
+import { BRAND_SETUP_SHARED_COPY } from "../brand/brandSetupSharedCopy";
 
 type CardButton = { label: string; onPress: () => void; primary?: boolean; testID?: string };
 
@@ -154,7 +154,7 @@ export const AriSkipPaymentsCard: React.FC<{
   onBankNow: () => void;
   onFreeOnly: () => void;
 }> = ({ platform, state, onBankNow, onFreeOnly }) => {
-  const K = BRAND_SETUP_COPY.k1;
+  const K = BRAND_SETUP_SHARED_COPY.k1;
   if (state === "saved") {
     return (
       <View style={styles.card} testID="ari-skip-payments-saved" accessibilityRole="alert">
@@ -168,7 +168,7 @@ export const AriSkipPaymentsCard: React.FC<{
       <Text style={styles.body}>{platform === "ios" ? K.body : K.bodyAndroid}</Text>
       <Text style={styles.body}>{K.later}</Text>
       {state === "error" ? (
-        <Text style={styles.body} accessibilityRole="alert">{BRAND_SETUP_COPY.common.serverError}</Text>
+        <Text style={styles.body} accessibilityRole="alert">{BRAND_SETUP_SHARED_COPY.common.serverError}</Text>
       ) : null}
       <CardButtons
         buttons={[

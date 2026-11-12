@@ -22,7 +22,7 @@ import {
   LazyPartnerClientBrandCreationFlow,
 } from "../../src/components/brand/LazyBrandCreationFlow";
 import { canvas, spacing } from "../../src/constants/designSystem";
-import { BRAND_SETUP_COPY } from "../../src/components/brand/brandSetupCopy";
+import { BRAND_NEW_COPY } from "../../src/components/brand/brandNewCopy";
 import { Toast } from "../../src/components/ui/Toast";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
 import { useBrandSetupStates } from "../../src/hooks/useBrandSetupStates";
@@ -124,7 +124,7 @@ export default function BrandNewRoute(): React.ReactElement {
           <Toast
             visible
             kind="success"
-            message={BRAND_SETUP_COPY.n1.discarded(discardedName)}
+            message={BRAND_NEW_COPY.n1.discarded(discardedName)}
             onDismiss={() => setDiscardedName(null)}
           />
         </View>

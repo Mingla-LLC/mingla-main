@@ -9,7 +9,7 @@ import * as path from "path";
 
 import { brandSetupRowState } from "../../../hooks/useBrandSetupStates";
 import type { BrandSetupChecklist } from "../../../services/brandSetupService";
-import { BRAND_SETUP_COPY } from "../brandSetupCopy";
+import { BRAND_SWITCHER_COPY } from "../brandSwitcherCopy";
 import { TAP_ADDRESS_MISSING_COPY } from "../../../constants/tapToPayCopy";
 
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
@@ -47,15 +47,15 @@ describe("#4389 N3 switcher rows", () => {
     expect(brandSetupRowState(checklist({}, 3))).toEqual({ kind: "incomplete", doneCount: 3 });
     expect(brandSetupRowState(checklist({ complete: true }))).toEqual({ kind: "none" });
     expect(brandSetupRowState(undefined)).toEqual({ kind: "none" });
-    expect(BRAND_SETUP_COPY.n3.draftLabel).toBe("Draft");
-    expect(BRAND_SETUP_COPY.n3.progress(1)).toBe("1 of 4 done");
-    expect(BRAND_SETUP_COPY.n3.freeOnlyTag).toBe("Free events only");
+    expect(BRAND_SWITCHER_COPY.n3.draftLabel).toBe("Draft");
+    expect(BRAND_SWITCHER_COPY.n3.progress(1)).toBe("1 of 4 done");
+    expect(BRAND_SWITCHER_COPY.n3.freeOnlyTag).toBe("Free events only");
   });
   test("Continue opens the setup route; Discard draft opens the N1 confirm on its route, never over the sheet", () => {
     const sheet = read("src/components/brand/BrandSwitcherSheet.tsx");
     expect(sheet).toContain("router.push(`/brand/${brand.id}/setup` as never);");
     expect(sheet).toContain("&discard=1");
-    expect(sheet).toContain("BRAND_SETUP_COPY.n3.discard");
+    expect(sheet).toContain("BRAND_SWITCHER_COPY.n3.discard");
     expect(sheet).not.toMatch(/<(Sheet|Modal|ConfirmDialog)\b/);
   });
   test("Create brand with a draft opens N1", () => {
@@ -73,7 +73,7 @@ describe("#4389 N1 up front", () => {
     // the #3645 open-time latch sit in the same branch.
     expect(route).toContain("waitingForDrafts || resume !== null ? null : ");
     expect(route).toContain('startConfirming={first(params.discard) === "1"}');
-    expect(route).toContain("BRAND_SETUP_COPY.n1.discarded(discardedName)");
+    expect(route).toContain("BRAND_NEW_COPY.n1.discarded(discardedName)");
     expect(read("src/components/brand/BrandCreationFlow.tsx")).toContain(
       "const [confirming, setConfirming] = useState(startConfirming);",
     );

@@ -25,7 +25,7 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
 
 /* eslint-disable import/first */
 import { PaymentAccountPreviewRow } from "../BrandDeleteSheet";
-import { BRAND_SETUP_COPY } from "../brandSetupCopy";
+import { BRAND_DELETE_COPY as BRAND_SETUP_COPY } from "../brandDeleteCopy";
 /* eslint-enable import/first */
 
 interface Node {

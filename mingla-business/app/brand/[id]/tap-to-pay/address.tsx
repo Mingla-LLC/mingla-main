@@ -18,7 +18,7 @@ import { DONE_BAR_OCCUPIED, ScrollView } from "../../../../src/wrappers/SmartScr
 import { KeyboardAvoidingView } from "../../../../src/wrappers/SmartKeyboardAvoidingView";
 import { Button } from "../../../../src/components/ui/Button";
 import { CenteredState } from "../../../../src/components/ui/CenteredState";
-import { BRAND_SETUP_COPY as C } from "../../../../src/components/brand/brandSetupCopy";
+import { BRAND_SETUP_ADDRESS_COPY as C } from "../../../../src/components/brand/brandSetupAddressCopy";
 import { payoutCountryOption } from "../../../../src/components/brand/payoutCountryOptions";
 import {
   tapAddressFromPlace,

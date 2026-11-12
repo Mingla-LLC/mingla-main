@@ -9,6 +9,14 @@ import fs from "fs";
 import path from "path";
 
 import { BRAND_SETUP_COPY, BRAND_SETUP_BANNED_WORDS } from "../brandSetupCopy";
+import { BRAND_SETUP_SHARED_COPY } from "../brandSetupSharedCopy";
+import { BRAND_SETUP_ADDRESS_COPY } from "../brandSetupAddressCopy";
+import { BRAND_ONBOARD_COPY } from "../brandOnboardCopy";
+import { BRAND_DELETE_COPY } from "../brandDeleteCopy";
+import { BRAND_SWITCHER_COPY } from "../brandSwitcherCopy";
+import { BRAND_OFFERINGS_COPY } from "../brandOfferingsCopy";
+import { BRAND_NEW_COPY } from "../brandNewCopy";
+import { F4_TAP_TO_PAY_COPY } from "../../door/tap/f4TapToPayCopy";
 import { BRAND_SETUP_EVENTS } from "../brandSetupAnalytics";
 import { PAYOUT_COUNTRY_OPTIONS, filterPayoutCountries, suggestedPayoutCountry } from "../PayoutCountryList";
 import { tapAddressFromPlace, withBuildingNumber } from "../tapLocationAddress";
@@ -63,16 +71,17 @@ describe("#4389 copy rules (U-7, U-8, Apple naming)", () => {
     else if (typeof v === "function") strings.push(String((v as (...a: string[]) => string)("X", "Y")));
     else if (v && typeof v === "object") Object.values(v).forEach(collect);
   };
-  collect(BRAND_SETUP_COPY);
+  // #4389 — brand setup's words are split by screen chunk; check every part.
+  for (const part of [BRAND_SETUP_COPY, BRAND_SETUP_SHARED_COPY, BRAND_SETUP_ADDRESS_COPY, BRAND_ONBOARD_COPY, BRAND_DELETE_COPY, BRAND_SWITCHER_COPY, BRAND_OFFERINGS_COPY, BRAND_NEW_COPY, F4_TAP_TO_PAY_COPY]) collect(part);
 
   test("no partner names, no 'business', no reader/terminal/hardware", () => {
     for (const s of strings) for (const re of BRAND_SETUP_BANNED_WORDS) expect(`${s}`).not.toMatch(re);
   });
 
   test("Tap to Pay is never shortened on iPhone copy", () => {
-    const iphone = [BRAND_SETUP_COPY.f4.ttpTitle, BRAND_SETUP_COPY.f4.ttpCta, BRAND_SETUP_COPY.k1.body, BRAND_SETUP_COPY.t1.helper];
+    const iphone = [F4_TAP_TO_PAY_COPY.f4.ttpTitle, F4_TAP_TO_PAY_COPY.f4.ttpCta, BRAND_SETUP_COPY.k1.body, BRAND_SETUP_ADDRESS_COPY.t1.helper];
     for (const s of iphone) expect(s).toMatch(/Tap to Pay on iPhone/);
-    expect(BRAND_SETUP_COPY.f4.ttpBody).toBe(
+    expect(F4_TAP_TO_PAY_COPY.f4.ttpBody).toBe(
       "Accept physical debit and credit cards as well as Apple Pay and other digital wallets. Right on your iPhone.",
     );
   });

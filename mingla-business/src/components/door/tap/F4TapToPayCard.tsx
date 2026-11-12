@@ -17,7 +17,7 @@ import { radius, spacing, text as textTokens, typography } from "../../../consta
 import { useTapToPayOnForBrand } from "../../../hooks/useTapToPayAvailability";
 import { useTapToPaySettingsEntry } from "../../../hooks/useTapToPaySettingsEntry";
 import { tapToPayBrandEligible } from "../../../utils/tapToPayBrandEligible";
-import { BRAND_SETUP_COPY as C } from "../../brand/brandSetupCopy";
+import { F4_TAP_TO_PAY_COPY as C } from "./f4TapToPayCopy";
 import { Button } from "../../ui/Button";
 
 /** #4389 design .ttph .vis: a 186pt band; the 720×559 art is 330pt wide, cropped. */

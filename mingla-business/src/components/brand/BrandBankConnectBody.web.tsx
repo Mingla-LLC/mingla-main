@@ -55,7 +55,7 @@ import {
   useAcceptMinglaToS,
   useMinglaToSAcceptance,
 } from "../../hooks/useMinglaToSAcceptance";
-import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+import { BRAND_ONBOARD_COPY } from "./brandOnboardCopy";
 import { payoutCountryOption } from "./payoutCountryOptions";
 import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
 import { useBrand } from "../../hooks/useBrands";
@@ -700,7 +700,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
       <View style={styles.host}>
         <View style={styles.centeredState} testID="bank-connect-opening-secure-setup">
           <Spinner size={48} color={accent.warm} />
-          <Text style={styles.stateTitle}>{BRAND_SETUP_COPY.onboard.opening}</Text>
+          <Text style={styles.stateTitle}>{BRAND_ONBOARD_COPY.onboard.opening}</Text>
         </View>
       </View>
     );
@@ -831,9 +831,9 @@ export default function BrandBankConnectBody(): React.ReactElement {
                 <Icon name="bank" size={28} color={accent.warm} />
               </View>
               <Text style={styles.title} accessibilityRole="header">
-                {BRAND_SETUP_COPY.onboard.title}
+                {BRAND_ONBOARD_COPY.onboard.title}
               </Text>
-              <Text style={styles.body}>{BRAND_SETUP_COPY.onboard.body}</Text>
+              <Text style={styles.body}>{BRAND_ONBOARD_COPY.onboard.body}</Text>
             </>
           ) : null}
 
@@ -948,16 +948,16 @@ export default function BrandBankConnectBody(): React.ReactElement {
                   style={styles.prerequisites}
                   testID="bank-connect-have-ready"
                 >
-                  <Text style={styles.prereqLabel}>{BRAND_SETUP_COPY.onboard.haveReady}</Text>
-                  <Text style={styles.prereqItem}>{`• ${BRAND_SETUP_COPY.onboard.readyId}`}</Text>
+                  <Text style={styles.prereqLabel}>{BRAND_ONBOARD_COPY.onboard.haveReady}</Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_ONBOARD_COPY.onboard.readyId}`}</Text>
                   <Text style={styles.prereqItem}>
-                    {`• ${BRAND_SETUP_COPY.onboard.readyBank(
+                    {`• ${BRAND_ONBOARD_COPY.onboard.readyBank(
                       selectedCountry === null
                         ? null
                         : payoutCountryOption(selectedCountry)?.name ?? null,
                     )}`}
                   </Text>
-                  <Text style={styles.prereqItem}>{`• ${BRAND_SETUP_COPY.onboard.readyTax}`}</Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_ONBOARD_COPY.onboard.readyTax}`}</Text>
                 </GlassCard>
               ) : null}
 

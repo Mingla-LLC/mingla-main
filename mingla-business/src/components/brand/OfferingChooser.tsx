@@ -20,7 +20,7 @@ import { Icon, type IconName } from "../ui/Icon";
 // #4389 addendum 2 — one list of 5 with a silent looping clip behind each row.
 import { OfferingRowClip } from "./offeringRowVisibility";
 import { offeringMedia } from "./offeringMedia";
-import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+import { BRAND_OFFERINGS_COPY } from "./brandOfferingsCopy";
 import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutState";
 
 export type OfferingKind = "event" | "trip" | "experience" | "rsvp" | "venue";
@@ -300,7 +300,7 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
             <View style={styles.optionInner} pointerEvents="none">
               <View style={styles.optionText}>
                 <Text style={styles.optionTitle} numberOfLines={1}>
-                  {BRAND_SETUP_COPY.offerings[option.kind]}
+                  {BRAND_OFFERINGS_COPY.offerings[option.kind]}
                 </Text>
                 <Text style={styles.optionSubhead} numberOfLines={2}>
                   {option.subhead}

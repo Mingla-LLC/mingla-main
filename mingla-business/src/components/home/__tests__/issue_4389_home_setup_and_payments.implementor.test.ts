@@ -186,7 +186,7 @@ describe("#4389 Home wiring", () => {
   });
   test("Home shows the K1 free-only toast", () => {
     expect(home).toContain('params.toast !== "free_only"');
-    expect(home).toContain("BRAND_SETUP_COPY.k1.toast");
+    expect(home).toContain("BRAND_SETUP_SHARED_COPY.k1.toast");
   });
   test("web: the Tap to Pay entry is null there, so no card, row or To do item", () => {
     expect(read("src/hooks/useTapToPaySettingsEntry.web.ts")).toContain("=> null;");

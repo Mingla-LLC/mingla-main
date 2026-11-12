@@ -95,12 +95,13 @@ describe("#4389 host setup words in every shipped language", () => {
     const i18n = await import("../index");
     const { BRAND_SETUP_COPY } = await import("../../components/brand/brandSetupCopy");
     const { DOOR_MODE_COPY } = await import("../../components/door/doorModeCopy");
+    const { F4_TAP_TO_PAY_COPY } = await import("../../components/door/tap/f4TapToPayCopy");
     await i18n.changeBusinessMediaLanguage("en");
     expect(BRAND_SETUP_COPY.f1.title).toBe("Name your brand");
     expect(DOOR_MODE_COPY.ticketCount(2)).toBe("2 tickets");
     await i18n.changeBusinessMediaLanguage("fr");
     expect(BRAND_SETUP_COPY.f1.title).toBe("Nommez votre marque");
-    expect(BRAND_SETUP_COPY.f4.ttpTitle).toBe("Tap to Pay on iPhone");
+    expect(F4_TAP_TO_PAY_COPY.f4.ttpTitle).toBe("Tap to Pay on iPhone");
     expect(DOOR_MODE_COPY.ticketCount(1)).toBe("1 billet");
     expect(DOOR_MODE_COPY.ticketCount(3)).toBe("3 billets");
     await i18n.changeBusinessMediaLanguage("ru");

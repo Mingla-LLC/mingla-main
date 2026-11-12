@@ -93,7 +93,7 @@ import { brandPhoneTelHref } from "@mingla/brand-rendering/brandPhoneHref";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
-import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+import { BRAND_DELETE_SHARED_COPY } from "./brandDeleteSharedCopy";
 
 const loadMeasuredTextDisclosure = () => {
   // Jest's Node 22 VM does not enable native dynamic imports. Keep the
@@ -1171,7 +1171,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           <View style={styles.dangerZone}>
             <Text style={styles.dangerLabel}>Danger zone</Text>
             {/* #4389 — the delete sheet's host words (i18n). */}
-            <Text style={styles.dangerHelper}>{BRAND_SETUP_COPY.delete.restoreBody}</Text>
+            <Text style={styles.dangerHelper}>{BRAND_DELETE_SHARED_COPY.delete.restoreBody}</Text>
             <View style={styles.dangerCta}>
               <Button
                 label="Delete brand"

@@ -107,7 +107,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Spinner } from "../ui/Spinner";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
-import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+import { BRAND_ONBOARD_COPY } from "./brandOnboardCopy";
 import { flagEmoji, payoutCountryOption } from "./payoutCountryOptions";
 import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 import { useAuth } from "../../context/AuthContext";
@@ -804,7 +804,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const decideSetupExit = useCallback(
     async (brandId: string): Promise<NativeConnectExit> => {
       setViewState("settling-status");
-      announceForAccessibility(BRAND_SETUP_COPY.onboard.checking);
+      announceForAccessibility(BRAND_ONBOARD_COPY.onboard.checking);
       return decideBrandSetupExit({
         readLive: async () => {
           const { refreshStripeSetupStatus } = await import("../../services/brandSetupService");
@@ -1508,9 +1508,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <View style={styles.stateBlock} testID="onboard-settling">
             <Spinner size={48} color={accent.warm} />
             <Text style={styles.stateTitle} accessibilityRole="header">
-              {BRAND_SETUP_COPY.onboard.checking}
+              {BRAND_ONBOARD_COPY.onboard.checking}
             </Text>
-            <Text style={styles.stateSub}>{BRAND_SETUP_COPY.onboard.checkingSub}</Text>
+            <Text style={styles.stateSub}>{BRAND_ONBOARD_COPY.onboard.checkingSub}</Text>
           </View>
         ) : null}
 
@@ -1531,7 +1531,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         {autoStartPending && !tosAsking ? (
           <View style={styles.stateBlock} testID="onboard-opening-secure-setup">
             <Spinner size={48} color={accent.warm} />
-            <Text style={styles.stateTitle}>{BRAND_SETUP_COPY.onboard.opening}</Text>
+            <Text style={styles.stateTitle}>{BRAND_ONBOARD_COPY.onboard.opening}</Text>
           </View>
         ) : null}
 
@@ -1546,9 +1546,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <Text style={styles.stateTitle} accessibilityRole="header">
-                {BRAND_SETUP_COPY.onboard.title}
+                {BRAND_ONBOARD_COPY.onboard.title}
               </Text>
-              <Text style={styles.stateSub}>{BRAND_SETUP_COPY.onboard.body}</Text>
+              <Text style={styles.stateSub}>{BRAND_ONBOARD_COPY.onboard.body}</Text>
 
               <View style={styles.prereqCard}>
                 {fixedCountryOption !== null ? (
@@ -1581,16 +1581,16 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                   style={styles.prereqCard}
                   testID="onboard-have-ready"
                 >
-                  <Text style={styles.prereqHeader}>{BRAND_SETUP_COPY.onboard.haveReady}</Text>
-                  <Text style={styles.prereqItem}>{`• ${BRAND_SETUP_COPY.onboard.readyId}`}</Text>
+                  <Text style={styles.prereqHeader}>{BRAND_ONBOARD_COPY.onboard.haveReady}</Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_ONBOARD_COPY.onboard.readyId}`}</Text>
                   <Text style={styles.prereqItem}>
-                    {`• ${BRAND_SETUP_COPY.onboard.readyBank(
+                    {`• ${BRAND_ONBOARD_COPY.onboard.readyBank(
                       selectedCountry === null
                         ? null
                         : payoutCountryOption(selectedCountry)?.name ?? null,
                     )}`}
                   </Text>
-                  <Text style={styles.prereqItem}>{`• ${BRAND_SETUP_COPY.onboard.readyTax}`}</Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_ONBOARD_COPY.onboard.readyTax}`}</Text>
                 </GlassCard>
               ) : null}
             </View>

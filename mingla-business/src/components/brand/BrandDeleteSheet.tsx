@@ -68,7 +68,7 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
-import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+import { BRAND_DELETE_COPY } from "./brandDeleteCopy";
 
 type DeleteStep = "warn" | "preview" | "confirm" | "submitting" | "rejected";
 
@@ -92,19 +92,19 @@ export function brandDeleteBlockerCopy(
   const lines = blockers.map((b) => {
     switch (b.code) {
       case "payment_account_balance":
-        return BRAND_SETUP_COPY.delete.blockedBalance;
+        return BRAND_DELETE_COPY.delete.blockedBalance;
       case "upcoming_events":
-        return BRAND_SETUP_COPY.delete.blockedEvents;
+        return BRAND_DELETE_COPY.delete.blockedEvents;
       case "checkout_in_progress":
-        return BRAND_SETUP_COPY.delete.blockedPaying;
+        return BRAND_DELETE_COPY.delete.blockedPaying;
       case "partner_payment_in_progress":
-        return BRAND_SETUP_COPY.delete.blockedPartner;
+        return BRAND_DELETE_COPY.delete.blockedPartner;
       default:
-        return BRAND_SETUP_COPY.delete.blockedPayout;
+        return BRAND_DELETE_COPY.delete.blockedPayout;
     }
   });
   return [...new Set(lines)].join(" ") ||
-    BRAND_SETUP_COPY.delete.blockedPayout;
+    BRAND_DELETE_COPY.delete.blockedPayout;
 }
 
 export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
@@ -344,7 +344,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
             rejection.reason !== "upcoming_events" ? (
             <View style={styles.actionRow}>
               <View style={styles.actionCell}>
-                <Button label={BRAND_SETUP_COPY.delete.close} variant="primary" size="md" onPress={onClose} fullWidth />
+                <Button label={BRAND_DELETE_COPY.delete.close} variant="primary" size="md" onPress={onClose} fullWidth />
               </View>
             </View>
           ) : step === "rejected" ? (
@@ -370,15 +370,15 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
               <Icon name="flag" size={18} color={accent.warm} />
               <View style={styles.warnTextCol}>
                 {/* #4389 — host words (no internal terms), through i18n. */}
-                <Text style={styles.warnTitle}>{BRAND_SETUP_COPY.delete.restoreTitle}</Text>
-                <Text style={styles.warnBody}>{BRAND_SETUP_COPY.delete.restoreBody}</Text>
+                <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.restoreTitle}</Text>
+                <Text style={styles.warnBody}>{BRAND_DELETE_COPY.delete.restoreBody}</Text>
               </View>
             </View>
             <View style={styles.warnCard}>
               <Icon name="flag" size={18} color={textTokens.tertiary} />
               <View style={styles.warnTextCol}>
-                <Text style={styles.warnTitle}>{BRAND_SETUP_COPY.delete.undoTitle}</Text>
-                <Text style={styles.warnBody}>{BRAND_SETUP_COPY.delete.undoBody}</Text>
+                <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.undoTitle}</Text>
+                <Text style={styles.warnBody}>{BRAND_DELETE_COPY.delete.undoBody}</Text>
               </View>
             </View>
           </View>
@@ -396,8 +396,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
               <View style={[styles.warnCard, styles.warnCardDanger]}>
                 <Icon name="flag" size={18} color={semantic.error} />
                 <View style={styles.warnTextCol}>
-                  <Text style={styles.warnTitle}>{BRAND_SETUP_COPY.delete.previewErrorTitle}</Text>
-                  <Text style={styles.warnBody}>{BRAND_SETUP_COPY.delete.previewErrorBody}</Text>
+                  <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.previewErrorTitle}</Text>
+                  <Text style={styles.warnBody}>{BRAND_DELETE_COPY.delete.previewErrorBody}</Text>
                 </View>
               </View>
             ) : counts !== null ? (
@@ -508,8 +508,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
           <View>
             <Text style={styles.title}>
               {rejection.reason === "delete_blocked"
-                ? BRAND_SETUP_COPY.delete.cantDeleteYet
-                : BRAND_SETUP_COPY.delete.nothingDeleted}
+                ? BRAND_DELETE_COPY.delete.cantDeleteYet
+                : BRAND_DELETE_COPY.delete.nothingDeleted}
             </Text>
             <View style={[styles.warnCard, styles.warnCardDanger]}>
               <Icon name="flag" size={18} color={semantic.error} />
@@ -517,7 +517,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 <Text style={styles.warnBody}>
                   {rejection.reason === "delete_blocked"
                     ? brandDeleteBlockerCopy(rejection.blockers)
-                    : BRAND_SETUP_COPY.delete.closeRefused}
+                    : BRAND_DELETE_COPY.delete.closeRefused}
                 </Text>
               </View>
             </View>
@@ -561,7 +561,7 @@ export const PaymentAccountPreviewRow: React.FC<{ hasAccount: boolean }> = ({ ha
   <View style={[styles.previewRow, styles.previewRowStacked]} testID="brand-delete-payment-account-row">
     <Text style={styles.previewLabel}>Payment account</Text>
     <Text style={[styles.previewValue, styles.previewValueWrap]}>
-      {hasAccount ? BRAND_SETUP_COPY.delete.closedOnDelete : BRAND_SETUP_COPY.delete.none}
+      {hasAccount ? BRAND_DELETE_COPY.delete.closedOnDelete : BRAND_DELETE_COPY.delete.none}
     </Text>
   </View>
 );
@@ -573,9 +573,9 @@ export const PaymentAccountPreviewRow: React.FC<{ hasAccount: boolean }> = ({ ha
  */
 export const BankPayoutsPreviewRow: React.FC<{ hasBankPayouts: boolean }> = ({ hasBankPayouts }) => (
   <View style={[styles.previewRow, styles.previewRowStacked]} testID="brand-delete-bank-payouts-row">
-    <Text style={styles.previewLabel}>{BRAND_SETUP_COPY.delete.bankPayouts}</Text>
+    <Text style={styles.previewLabel}>{BRAND_DELETE_COPY.delete.bankPayouts}</Text>
     <Text style={[styles.previewValue, styles.previewValueWrap]}>
-      {hasBankPayouts ? BRAND_SETUP_COPY.delete.bankPayoutsSwitchedOff : BRAND_SETUP_COPY.delete.none}
+      {hasBankPayouts ? BRAND_DELETE_COPY.delete.bankPayoutsSwitchedOff : BRAND_DELETE_COPY.delete.none}
     </Text>
   </View>
 );
