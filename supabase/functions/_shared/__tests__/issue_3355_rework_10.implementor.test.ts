@@ -143,6 +143,7 @@ const MEMORY_POSITIVES: ReadonlyArray<readonly [string, string]> = [
   ],
   ["Our DJ is always Kaycee.", "That's now part of what I know."],
   ["Our DJ is always Kaycee.", "Great, I'll apply that going forward."],
+  ["Doors open at 6pm.", "I'll keep it on file."],
 ];
 
 Deno.test("#3355 R10-1 positives: label lines and keep-for-later promises are corrected", () => {
@@ -211,6 +212,25 @@ const MEMORY_NEGATIVES: ReadonlyArray<readonly [string, string]> = [
   ["Where are scanners?", "Next time, tap Scanners on the event page."],
   [DRINK_HOST, "Want me to remember that for next time?"],
 ];
+
+Deno.test("#3355 R10-1 the live demo's 'I'll keep that in memory' with no save is corrected", async () => {
+  // The final text of the rework 10 live local-model turn mem2_3; the brand's
+  // ari_memory_notes had no new row after it.
+  const host = "For future events, we always end by 11pm. Got it?";
+  const live =
+    "Got it. All future events will end by 11 p.m. Lagos time. I’ll keep that in memory.";
+  for (const judge of JUDGES) {
+    assertEquals(
+      await check({ host, reply: live, judge }),
+      `Got it. All future events will end by 11 p.m. Lagos time. ${MEMORY_NOT_SAVED_SENTENCE}`,
+    );
+  }
+  assertEquals(
+    memoryClaimWithoutSave({ text: live, hostMessage: host, observations: [] })
+      ?.code,
+    "MEMORY_SAVE_REQUIRED",
+  );
+});
 
 Deno.test("#3355 R10-1 must-keep: reading back, quoting, plain 'Got it', explaining memory", () => {
   for (const [host, reply] of MEMORY_NEGATIVES) {
@@ -282,6 +302,55 @@ Deno.test("#3355 R10-1 reading back notes from a memory read this turn is never 
   assertEquals(other, MEMORY_NOT_SAVED_SENTENCE);
 });
 
+Deno.test("#3355 R10-1 the live demo's 'This will be applied to all upcoming events' is a promise only after a host rule with no other write", async () => {
+  const host = "For future events, we always end by 11pm. Got it?";
+  // The final text the live local-model turn returned (rework 10 demo, mem_3).
+  const live =
+    "I haven't saved that as a note yet. This will be applied to all upcoming events, including \"Jollof & Jazz Night\" and any new ones. Is there anything else you'd like to do with your brand or offerings?";
+  for (const judge of JUDGES) {
+    const text = await check({ host, reply: live, judge });
+    assertEquals(
+      text,
+      `${MEMORY_NOT_SAVED_SENTENCE} Is there anything else you'd like to do with your brand or offerings?`,
+    );
+  }
+  assertEquals(
+    memoryClaimWithoutSave({ text: live, hostMessage: host, observations: [] })
+      ?.code,
+    "MEMORY_SAVE_REQUIRED",
+  );
+  // A real settings write this turn can say the same words: kept.
+  const card = "Done. It will be applied to all upcoming events.";
+  const written: ClaimObservation = {
+    tool: "update_pricing_defaults",
+    args: { vat_mode: "buyer_pays" },
+    result: { ok: true },
+  };
+  assertEquals(
+    correctMemoryClaimWithoutSave({
+      text: card,
+      hostMessage: "Buyers always pay VAT, for all future events.",
+      evidence: buildClaimEvidence({ states: [], observations: [written] }),
+    }).text,
+    card,
+  );
+  assertEquals(
+    memoryClaimWithoutSave({
+      text: card,
+      hostMessage: "Buyers always pay VAT, for all future events.",
+      observations: [written],
+    }),
+    null,
+  );
+  // No lasting rule in the host's words: not a memory promise.
+  assert(
+    !replyClaimsMemorySave(
+      "It will be applied to all upcoming events.",
+      "Add a 10% code for Jollof & Jazz Night.",
+    ),
+  );
+});
+
 // ── Gap 2: screen paths in any case ─────────────────────────────────────────
 
 /** Invented paths (lowercase, mixed and capitalised): the pointer replaces them. */
@@ -295,6 +364,13 @@ const PATH_POSITIVES: readonly string[] = [
   "open the manage tab, then scanners",
   'go to hub, then "Scanners"',
   "navigate to hub › door",
+  // The rework 10 live demo's reply (path_1): a line that opens with ">".
+  "> scanners > invite scanner > send invitation",
+  // One invented named screen (the rework 10 live demo's path2_3 wording).
+  'Then, on the event\'s Manage screen, tap "Scanners" and invite staff via email.',
+  "Go to the Manage tab.",
+  // The rework 10 live demo's path3_1 wording ("via" / "under").
+  "You can find it under the event's Manage screen.",
 ];
 
 Deno.test("#3355 R10-2 positives: invented paths in any case become the honest pointer", () => {
@@ -345,6 +421,16 @@ const PATH_NEGATIVES: readonly string[] = [
   "go to usemingla.com/host/settings",
   "run `open settings > scanners` in the console",
   "go to src/app/home",
+  // The rework 10 live demo's real lowercase path (path_2).
+  "go to account > your brand > payments & bank > connect bank",
+  "> hub > events",
+  // One real named screen, and prose that names a section.
+  "Open the Guests tab.",
+  "On the Home screen, tap +.",
+  'Go to the "Payments" screen.',
+  "In the Lagos section of the page, add the address.",
+  "From the Home screen, tap +.",
+  "> Remember that we always give a free welcome drink.",
   // Prose with "then" (not navigation).
   "open the doors, then greet the guests",
   "we can go to lagos then abuja",

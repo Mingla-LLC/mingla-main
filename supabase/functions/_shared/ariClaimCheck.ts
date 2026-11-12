@@ -3678,6 +3678,9 @@ const MEMORY_PERSIST_PROMISE = new RegExp(
       .raw`\b(?:that|this|it)(?:['’]s|\s+is)\s+(?:now\s+)?part\s+of\s+what\s+I\s+know\b`,
     String
       .raw`\bI\s+(?:now\s+)?know\s+(?:that|this)\s+(?:now|for\s+next\s+time|going\s+forward|from\s+now\s+on)\b`,
+    // "I'll keep that in memory", "I'll keep it on file" (rework 10 live demo).
+    String
+      .raw`\bI(?:['’]ll|\s+will)\s+(?:always\s+|now\s+|also\s+)?(?:keep|hold|store|save|have)\s+(?:that|this|it)\s+(?:in\s+(?:my\s+)?(?:memory|notes)|on\s+file|on\s+record|for\s+(?:next\s+time|later|future\s+\w+))\b`,
     // "I'll keep in mind that…".
     String
       .raw`\bI(?:['’]ll|\s+will)\s+(?:always\s+|definitely\s+|now\s+|also\s+)?(?:keep|bear)\s+in\s+mind\b`,
@@ -3690,6 +3693,17 @@ const MEMORY_PERSIST_PROMISE = new RegExp(
   ].join("|"),
   "i",
 );
+
+/**
+ * "This will be applied to all upcoming events" (the rework 10 live demo):
+ * a keep-for-later promise only when the host stated a lasting rule and
+ * nothing else was written or proposed this turn (a real settings card can
+ * say the same words).
+ */
+const APPLY_LATER =
+  /\b(?:this|that|it)(?:['’]ll|\s+will)\s+(?:now\s+)?(?:be\s+)?(?:applied|used|kept|remembered|included|reflected)\s+(?:to|for|in|on|across)\s+(?:all\s+)?(?:of\s+)?(?:your\s+)?(?:upcoming|future|next|new|later)\b/i;
+const HOST_STATES_RULE =
+  /\b(?:always|never|every|usually|for\s+(?:all\s+)?(?:future|upcoming)|from\s+now\s+on|going\s+forward|in\s+(?:the\s+)?future)\b/i;
 
 /**
  * How the memory feature works in general ("When you ask me to remember
@@ -3739,9 +3753,11 @@ function labelFilesMemory(
   return hostAsked || restatesHost(content, hostMessage);
 }
 
-function promiseKeepsMemory(plain: string): boolean {
+function promiseKeepsMemory(plain: string, applyLater: boolean): boolean {
   if (MEMORY_EXPLAINER.test(plain)) return false;
-  return MEMORY_PERSIST_PROMISE.test(withoutQuotes(plain));
+  const said = withoutQuotes(plain);
+  return MEMORY_PERSIST_PROMISE.test(said) ||
+    (applyLater && APPLY_LATER.test(said));
 }
 
 /** One sentence claims Ari saved or will remember something. */
@@ -3749,6 +3765,8 @@ export function sentenceClaimsMemorySave(
   sentence: string,
   hostAsked: boolean,
   hostMessage = "",
+  /** Rework 10: "it will be applied to upcoming events" counts too. */
+  applyLater = false,
 ): boolean {
   const plain = sentence.replace(/[*_`]/g, "").trim();
   if (!plain || /\?\s*$/.test(plain)) return false;
@@ -3762,15 +3780,21 @@ export function sentenceClaimsMemorySave(
   if (MEMORY_RECALL_WORDS.test(plain)) return false;
   if (MEMORY_CLAIM_STRONG.test(plain)) return true;
   if (hostAsked && MEMORY_CLAIM_ON_REQUEST.test(plain)) return true;
-  return promiseKeepsMemory(plain);
+  return promiseKeepsMemory(plain, applyLater);
 }
 
 /** Every sentence of the reply that claims a memory save. */
-function memoryClaimSentences(text: string, hostMessage: string): string[] {
+function memoryClaimSentences(
+  text: string,
+  hostMessage: string,
+  nothingElseWritten = true,
+): string[] {
   const hostAsked = hostAsksToRemember(hostMessage);
+  const applyLater = nothingElseWritten &&
+    HOST_STATES_RULE.test(String(hostMessage ?? ""));
   return String(text ?? "").split("\n").flatMap((line) =>
     lineSentences(line).filter((sentence) =>
-      sentenceClaimsMemorySave(sentence, hostAsked, hostMessage)
+      sentenceClaimsMemorySave(sentence, hostAsked, hostMessage, applyLater)
     )
   );
 }
@@ -3781,6 +3805,15 @@ export function replyClaimsMemorySave(
   hostMessage: string,
 ): boolean {
   return memoryClaimSentences(text, hostMessage).length > 0;
+}
+
+/** Rework 10: a write or card other than a memory note exists this turn. */
+function otherWriteInEvidence(evidence: readonly ClaimEvidence[]): boolean {
+  return evidence.some((item) =>
+    item.state !== null ||
+    (item.thisTurn && item.status === "done" &&
+      !ARI_MEMORY_WRITE_TOOLS.has(item.toolName))
+  );
 }
 
 /** A memory write of this turn succeeded (its receipt). */
@@ -3871,6 +3904,11 @@ export function correctMemoryClaimWithoutSave(args: {
   const corrected: string[] = [];
   let said = false;
   const lines: string[] = [];
+  const nothingElseWritten = !otherWriteInEvidence(args.evidence);
+  // Rework 10: a reply with a memory claim says "not saved" in one wording.
+  const mergeTrueState = hostAsked ||
+    memoryClaimSentences(args.text, args.hostMessage, nothingElseWritten)
+        .length > 0;
   for (const line of args.text.split("\n")) {
     if (!line.trim()) {
       lines.push(line);
@@ -3881,7 +3919,7 @@ export function correctMemoryClaimWithoutSave(args: {
       // On a remember request the ordinary note true state ("I haven't
       // saved that as a note yet.") says the same thing: one wording.
       if (
-        hostAsked &&
+        mergeTrueState &&
         NOTE_TRUE_STATES.has(
           // Rework 10: the true state may sit on a list line ("- …").
           sentence.trim().replace(/^(?:\d+[.)]|[-•*])\s+/, ""),
@@ -3892,7 +3930,12 @@ export function correctMemoryClaimWithoutSave(args: {
         continue;
       }
       if (
-        sentenceClaimsMemorySave(sentence, hostAsked, args.hostMessage) &&
+        sentenceClaimsMemorySave(
+          sentence,
+          hostAsked,
+          args.hostMessage,
+          nothingElseWritten && HOST_STATES_RULE.test(args.hostMessage),
+        ) &&
         !(notes.length > 0 && recallsKnownNote(sentence, notes))
       ) {
         corrected.push(sentence.trim());
@@ -3924,7 +3967,17 @@ export function memoryClaimWithoutSave(args: {
   hostMessage: string;
   observations: readonly ClaimObservation[];
 }): { code: "MEMORY_SAVE_REQUIRED"; message: string } | null {
-  const claims = memoryClaimSentences(args.text, args.hostMessage);
+  // Rework 10: any other write or proposal this turn (not a read).
+  const nothingElseWritten = !args.observations.some((item) =>
+    !item.error && item.tool !== "request_tools" &&
+    !ARI_MEMORY_WRITE_TOOLS.has(item.tool) &&
+    !/^(?:list|get|search|read|find|check)_/.test(item.tool)
+  );
+  const claims = memoryClaimSentences(
+    args.text,
+    args.hostMessage,
+    nothingElseWritten,
+  );
   if (claims.length === 0) return null;
   const saved = args.observations.some((item) =>
     !item.error && ARI_MEMORY_WRITE_TOOLS.has(item.tool)

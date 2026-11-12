@@ -318,6 +318,14 @@ export function ariKnownNavLabels(): ReadonlySet<string> {
         }
       }
     }
+    // #3355 rework 10: "the Menu tab", "the Payments screen" name a screen.
+    for (
+      const match of howTo.matchAll(
+        /\b([A-Z][\p{L}&]*(?: (?:& )?[A-Z][\p{L}&]*){0,2})\s+(?:screen|tab|page|menu|section|tile)\b/gu,
+      )
+    ) {
+      add(match[1]);
+    }
     for (
       const match of howTo.matchAll(
         // #3355 rework 10: a sentence may start "Tap …" / "Open …".
@@ -552,6 +560,21 @@ const ANY_CASE_CHAIN = new RegExp(
   `${ANY_CASE_LEAD}(${ANY_STEP}(?:(?:${ARROW_SEP}|${SLASH_SEP}|${THEN_SEP})${ANY_STEP})+)`,
   "giu",
 );
+/**
+ * "On the event's Manage screen", "go to the "Manage" tab": one named
+ * screen in a navigation phrase (the rework 9 and 10 demos' invention).
+ */
+const NAMED_SCREEN = new RegExp(
+  String
+    .raw`\b(?:[Oo]n|[Oo]pen|[Gg]o\s+to|[Hh]ead\s+to|[Ss]witch\s+to|[Uu]nder|[Vv]ia|[Ff]rom)\s+(?:the\s+|your\s+)?(?:[\p{L}]+['’]s\s+)?(["“][^"”\n]{1,40}["”]|[\p{Lu}][\p{L}&]*(?:[ ](?:&[ ])?[\p{Lu}][\p{L}&]*){0,2})\s+(?:screen|tab|page|menu|section)\b`,
+  "gu",
+);
+/** "> scanners > invite scanner": a line that opens with an arrow (live demo). */
+const LINE_ARROW_CHAIN = new RegExp(
+  String.raw`(?:^|\n)[ \t]*(?:(?:\d+[.)]|[-•*])\s+)?(?:->|→|›|»|>)\s*` +
+    `(${ANY_STEP}(?:${ARROW_SEP}${ANY_STEP})+)`,
+  "giu",
+);
 const ANY_CASE_SPLIT = new RegExp(
   `${ARROW_SEP}|${SLASH_SEP}|${THEN_SEP}`,
   "iu",
@@ -588,6 +611,21 @@ function anyCasePaths(
     if (steps.length < 2) continue;
     if (steps.some((step) => /^\s*[\d₦£$€]/.test(step))) continue;
     if (!arrow && !slash && !thenChainIsNavigation(steps, extra)) continue;
+    out.push({ path, known: stepsKnown(steps, extra) });
+  }
+  for (const match of masked.matchAll(NAMED_SCREEN)) {
+    const path = source.slice(
+      match.index ?? 0,
+      (match.index ?? 0) + match[0].length,
+    );
+    out.push({ path, known: stepLabel(match[1], 1, 2, extra) !== null });
+  }
+  for (const match of masked.matchAll(LINE_ARROW_CHAIN)) {
+    const chain = match[1];
+    const start = (match.index ?? 0) + match[0].length - chain.length;
+    const path = source.slice(start, start + chain.length);
+    const steps = path.split(new RegExp(ARROW_SEP, "u"));
+    if (steps.some((step) => /^\s*[\d₦£$€]/.test(step))) continue;
     out.push({ path, known: stepsKnown(steps, extra) });
   }
   return out;
