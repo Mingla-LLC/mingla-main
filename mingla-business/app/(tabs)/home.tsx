@@ -758,11 +758,14 @@ export default function HomeTab(): React.ReactElement {
     setToast({ visible: true, message: BRAND_SETUP_COPY.k1.toast });
     router.setParams({ toast: undefined } as never);
   }, [params.toast, router]);
-  const takePaymentPill = showTakePayment && homeBrandId !== null ? (
+  // Lifetime revenue is the card payout ledger; door sales today may not be in it.
+  const hasDoorSalesToday = doorToday.count > 0;
+  // #4389 HT — full width at the bottom of the money panel (never the header).
+  const takePaymentButton = showTakePayment && homeBrandId !== null ? (
     <TakePaymentButton
       brandId={homeBrandId}
       tapToPay={tapEligible}
-      variant="pill"
+      variant="block"
       onMessage={showHomeMessage}
     />
   ) : undefined;
@@ -1038,7 +1041,8 @@ export default function HomeTab(): React.ReactElement {
                 liveMetricsById={liveMetricsById}
                 onScanPress={handleScanPress}
                 onOpenOffering={handleOpenPulseOffering}
-                headerAction={takePaymentPill}
+                moneyAction={takePaymentButton}
+                hasOtherSales={hasDoorSalesToday}
                 moneyFootnote={doorTodayLine}
               />
               <HomeAdsSection brandId={currentBrand.id} />
@@ -1155,7 +1159,8 @@ export default function HomeTab(): React.ReactElement {
                 liveMetricsById={liveMetricsById}
                 onScanPress={handleScanPress}
                 onOpenOffering={handleOpenPulseOffering}
-                headerAction={takePaymentPill}
+                moneyAction={takePaymentButton}
+                hasOtherSales={hasDoorSalesToday}
                 moneyFootnote={doorTodayLine}
               />
               <HomeAdsSection brandId={currentBrand.id} />

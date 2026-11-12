@@ -160,9 +160,10 @@ describe("#4389 Home wiring", () => {
     expect(home).toContain("<LazyHomeTapToPayCard");
     expect(read("src/components/home/HomeTapToPayCard.tsx")).toContain('require("../../../assets/tap-to-pay/ttp-visual.png")');
   });
-  test("Take a payment goes through openDoorSale; pill in the money header, chip under Ask Ari", () => {
+  test("Take a payment goes through openDoorSale; full-width button at the bottom of the money panel, chip under Ask Ari", () => {
     expect(read("src/components/home/HomeTakePayment.tsx")).toContain('await import("../../utils/openDoorSale")');
-    expect(home).toContain("headerAction={takePaymentPill}");
+    // #4389 HT (Seth): full width at the bottom of the money panel, not the header.
+    expect(home).toContain("moneyAction={takePaymentButton}");
     expect(home).toContain('variant="chip"');
     expect(home.indexOf("<HomeAskAri")).toBeLessThan(home.indexOf('variant="chip"'));
   });

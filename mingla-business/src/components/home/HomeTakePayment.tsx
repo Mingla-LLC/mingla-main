@@ -1,6 +1,7 @@
 /**
  * #4389 (screen HT) — "Take a payment" for every brand with payments set up:
- * a white pill in the money panel header and a chip under Home's Ask Ari.
+ * a full-width white button at the bottom of the money panel ("block") and a
+ * chip under Home's Ask Ari.
  * Both open the door sale for today's event through `openDoorSale` (one way
  * in, owned by Door mode). The icon is Tap to Pay where it works, else the
  * pay-code (QR) icon. Payments are always for an event's tickets.
@@ -44,7 +45,8 @@ export interface TakePaymentButtonProps {
   brandId: string;
   /** Tap to Pay works for this brand on this phone (else the QR icon). */
   tapToPay: boolean;
-  variant: "pill" | "chip";
+  /** "block": full width of the money panel, 50pt (Seth, #4389 HT). */
+  variant: "block" | "chip";
   source?: "home" | "ari";
   onMessage: (message: string) => void;
 }
@@ -67,8 +69,8 @@ export const TakePaymentButton: React.FC<TakePaymentButtonProps> = ({
       else if (outcome === "failed") onMessage(C.takePayment.openFailed);
     });
   };
-  const pill = variant === "pill";
-  const label = pill ? C.takePayment.pill : C.takePayment.chip;
+  const block = variant === "block";
+  const label = block ? C.takePayment.pill : C.takePayment.chip;
   return (
     <Pressable
       onPress={press}
@@ -76,19 +78,19 @@ export const TakePaymentButton: React.FC<TakePaymentButtonProps> = ({
       accessibilityLabel={label}
       accessibilityState={{ busy }}
       hitSlop={8}
-      style={({ pressed }) => [pill ? styles.pill : styles.chip, pressed && styles.pressed]}
-      testID={pill ? "home-take-payment-pill" : "home-take-payment-chip"}
+      style={({ pressed }) => [block ? styles.block : styles.chip, pressed && styles.pressed]}
+      testID={block ? "home-take-payment-button" : "home-take-payment-chip"}
     >
       {tapToPay ? (
-        // The Tap to Pay mark is drawn light; on the white pill it sits in a
+        // The Tap to Pay mark is drawn light; on the white button it sits in a
         // dark disc so it stays visible (the mark itself is never recoloured).
-        <View style={pill ? styles.markDisc : null}>
-          <TapToPayIcon size={pill ? 12 : 14} />
+        <View style={block ? styles.markDisc : null}>
+          <TapToPayIcon size={block ? 14 : 14} />
         </View>
       ) : (
-        <Icon name="qr" size={14} color={pill ? "#101216" : textTokens.primary} />
+        <Icon name="qr" size={block ? 18 : 14} color={block ? "#101216" : textTokens.primary} />
       )}
-      <Text style={pill ? styles.pillLabel : styles.chipLabel}>{label}</Text>
+      <Text style={block ? styles.blockLabel : styles.chipLabel}>{label}</Text>
     </Pressable>
   );
 };
@@ -107,24 +109,26 @@ export const DoorTodayLine: React.FC<{
 );
 
 const styles = StyleSheet.create({
-  pill: {
+  block: {
+    alignSelf: "stretch",
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    minHeight: 32,
-    paddingHorizontal: spacing.sm + 4,
+    justifyContent: "center",
+    gap: spacing.sm,
+    minHeight: 50,
+    paddingHorizontal: spacing.md,
     borderRadius: radiusTokens.full,
     backgroundColor: "#FFFFFF",
   },
   markDisc: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "#101216",
     alignItems: "center",
     justifyContent: "center",
   },
-  pillLabel: { ...typography.caption, color: "#101216", fontWeight: "700" },
+  blockLabel: { ...typography.body, color: "#101216", fontWeight: "700" },
   chip: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -139,7 +143,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   chipLabel: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
-  doorLine: { marginTop: spacing.xs },
+  doorLine: { marginTop: spacing.sm },
   doorText: { ...typography.bodySm, color: textTokens.secondary },
   pressed: { opacity: 0.72 },
 });

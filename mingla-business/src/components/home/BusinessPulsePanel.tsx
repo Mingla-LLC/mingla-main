@@ -81,10 +81,21 @@ export interface BusinessPulsePanelProps {
   liveMetricsById: Record<string, LiveCardMetrics>;
   onScanPress: (id: string) => void;
   onOpenOffering: (item: UpcomingItem) => void;
-  /** #4389 HT — "Take a payment" pill in the revenue header (Home decides when). */
-  headerAction?: React.ReactNode;
   /** #4389 HT — "At the door today · …" under the revenue figure. */
   moneyFootnote?: React.ReactNode;
+  /**
+   * #4389 HT — "Take a payment": a full-width button at the bottom of the
+   * money panel (Home decides when). Never in the header.
+   */
+  moneyAction?: React.ReactNode;
+  /**
+   * #4389 — sales exist that the lifetime figure does not count yet (today's
+   * door sales). Lifetime revenue is the card payout ledger, so it excludes
+   * cash / paid-another-way sales and a card sale until it is processed. When
+   * true the panel never says "Your first sale will show here" and names
+   * the figure "From card sales".
+   */
+  hasOtherSales?: boolean;
 }
 
 const offeringName = (item: UpcomingItem): string => {
@@ -539,8 +550,9 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
   liveMetricsById,
   onScanPress,
   onOpenOffering,
-  headerAction,
   moneyFootnote,
+  moneyAction,
+  hasOtherSales = false,
 }) => {
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
@@ -682,20 +694,10 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
       testID="business-pulse-money"
     >
       <View style={styles.moneyHeadline}>
-        {headerAction !== undefined ? (
-          <View style={styles.zoneHeading}>
-            <View style={styles.eyebrowGroup}>
-              <Text style={styles.eyebrow}>TOTAL LIFETIME REVENUE</Text>
-              <Text style={styles.zoneChevron}>›</Text>
-            </View>
-            {headerAction}
-          </View>
-        ) : (
-          <View style={styles.zoneHeading}>
-            <Text style={styles.eyebrow}>TOTAL LIFETIME REVENUE</Text>
-            <Text style={styles.zoneChevron}>›</Text>
-          </View>
-        )}
+        <View style={styles.zoneHeading} testID="business-pulse-money-header">
+          <Text style={styles.eyebrow}>TOTAL LIFETIME REVENUE</Text>
+          <Text style={styles.zoneChevron}>›</Text>
+        </View>
         {payout.isLoading ? (
           <View style={styles.moneySkeleton}>
             <Skeleton width="60%" height={44} />
@@ -704,11 +706,19 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
           <Text style={[styles.moneyAmount, !isWideDesktop && styles.moneyAmountPhone]}>—</Text>
         ) : (
           <>
-            <Text style={[styles.moneyAmount, !isWideDesktop && styles.moneyAmountPhone]}>
+            <Text
+              style={[
+                styles.moneyAmount,
+                !isWideDesktop && styles.moneyAmountPhone,
+                moneyAction !== undefined && styles.moneyAmountRoomy,
+              ]}
+            >
               {formatCurrencyRound(lifetime, currency, true)}
             </Text>
-            {lifetime === 0 ? (
-              <Text style={styles.subline}>Your first sale will show here</Text>
+            {hasOtherSales ? (
+              <Text style={styles.subline} testID="business-pulse-card-sales">From card sales</Text>
+            ) : lifetime === 0 ? (
+              <Text style={styles.subline} testID="business-pulse-first-sale">Your first sale will show here</Text>
             ) : null}
             {otherCurrencies.map(([code, amount]) => (
               <Text key={code} style={styles.subline}>
@@ -755,6 +765,11 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
           </>
         )}
       </View> : null}
+      {moneyAction !== undefined ? (
+        <View style={styles.moneyAction} testID="business-pulse-money-action">
+          {moneyAction}
+        </View>
+      ) : null}
     </Pressable>
   ) : null;
 
@@ -985,7 +1000,6 @@ const styles = StyleSheet.create({
   },
   moneyRowsOnly: { flex: 1, marginTop: 0, paddingLeft: spacing.lg, borderTopWidth: 0, borderLeftWidth: 1 },
   eyebrow: { ...typography.labelCap, color: textTokens.tertiary },
-  eyebrowGroup: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexShrink: 1 },
   zoneHeading: {
     minHeight: 20,
     flexDirection: "row",
@@ -1009,6 +1023,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   moneyAmountPhone: { fontSize: 38, lineHeight: 44, letterSpacing: -0.76 },
+  // #4389 HT — breathing room around the figure when the panel carries
+  // Take a payment (Seth: "more breathing room").
+  moneyAmountRoomy: { marginTop: spacing.md, marginBottom: spacing.xs },
+  // Full width inside the panel's padding, spacing.lg under the door line.
+  moneyAction: { alignSelf: "stretch", marginTop: spacing.lg, paddingBottom: spacing.md },
   moneySkeleton: { marginTop: spacing.sm },
   subline: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.xs },
   moneyRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
