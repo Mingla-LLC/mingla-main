@@ -114,6 +114,9 @@ import {
   type WriteError,
 } from "./BrandSetupInterruptions";
 
+/** #4389 design .ttph .vis: a 186pt band; the 720×559 art is 330pt wide, cropped. */
+const TTP_BAND_HEIGHT = 186;
+const TTP_ART_WIDTH = 330;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TTP_VISUAL: number | null = (() => {
   try {
@@ -955,7 +958,10 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
         <View style={styles.ttpCard} testID="brand-setup-ttp-card">
           {/* Apple's in-app tile visual (Tap to Pay on iPhone marketing art). */}
           {TTP_VISUAL !== null ? (
-            <Image source={TTP_VISUAL} style={styles.ttpVisual} resizeMode="cover" accessible={false} />
+            // #4389 — a short cropped band (design: 186pt), never the full-height art.
+            <View style={styles.ttpBand} testID="brand-setup-ttp-band">
+              <Image source={TTP_VISUAL} style={styles.ttpVisual} resizeMode="cover" accessible={false} />
+            </View>
           ) : null}
           <Text style={styles.cardTitle} numberOfLines={1}>{C.f4.ttpTitle}</Text>
           <Text style={styles.cardText}>{C.f4.ttpBody}</Text>
@@ -1150,7 +1156,8 @@ const styles = StyleSheet.create({
   box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" },
   boxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
   ttpCard: { marginTop: spacing.md, padding: spacing.md, gap: spacing.sm, borderRadius: radius.lg, backgroundColor: "rgba(255,255,255,0.06)", overflow: "hidden" },
-  ttpVisual: { width: "100%", aspectRatio: 720 / 559, borderRadius: radius.md },
+  ttpBand: { height: TTP_BAND_HEIGHT, overflow: "hidden", borderRadius: radius.md },
+  ttpVisual: { position: "absolute", right: -26, top: -6, width: TTP_ART_WIDTH, height: TTP_ART_WIDTH * (559 / 720) },
   gap8: { height: spacing.sm },
 });
 
