@@ -30,7 +30,7 @@ import { flushDraftVenuePersistence, useDraftVenueStore } from "../../../store/d
 import { ThemeControlRow } from "../../theme/ThemeControlRow";
 import { ThemeSheet } from "../../theme/ThemeSheetLazy";
 import { useVenueThemeControl } from "../useVenueThemeControl";
-import { CoverPickerSheet } from "../../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../../ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../../ui/CoverPicker";
 
 const EMPTY_COVER: CoverPatch = {

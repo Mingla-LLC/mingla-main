@@ -137,7 +137,7 @@ import {
   BRAND_PAYMENTS_DENIED_BODY,
   BRAND_PAYMENTS_DENIED_TITLE,
 } from "../../utils/brandPaymentsPermission";
-import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import { BrandPaystackOnboardView } from "./LazyBrandPaystackOnboardView";
 import {
   resolveBankConnectRail,
   resolveBankConnectRailForCountry,

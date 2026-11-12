@@ -43,7 +43,7 @@ import {
 import { AriOrb } from "./AriOrb";
 import { isToolProposalEditable, ToolEditForm } from "./ToolEditForm";
 import { GlassChrome } from "../ui/GlassChrome";
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";

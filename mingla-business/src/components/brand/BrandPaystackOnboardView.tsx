@@ -71,7 +71,7 @@ import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 import { DONE_BAR_PRESENT_IN_RAW_MODAL } from "../../wrappers/keyboardClearance";
 import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 
-interface Props {
+export interface BrandPaystackOnboardViewProps {
   brandId: string;
   brandName: string;
   /** "create" = first-time onboarding; "update" = change the settlement bank. */
@@ -101,7 +101,7 @@ const BANK_PICKER_MAX_HEIGHT = 720;
 const BANK_PICKER_ROW_MIN_HEIGHT = 56;
 const BANK_PICKER_SCRIM = "rgba(0, 0, 0, 0.50)";
 
-export const BrandPaystackOnboardView: React.FC<Props> = ({
+export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> = ({
   brandId,
   brandName,
   mode = "create",

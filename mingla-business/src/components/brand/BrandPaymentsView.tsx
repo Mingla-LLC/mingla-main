@@ -57,7 +57,7 @@ import { BrandStripeOrphanedRefundsSection } from "./BrandStripeOrphanedRefundsS
 // UI surface).
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding surface.
-import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import { BrandPaystackOnboardView } from "./LazyBrandPaystackOnboardView";
 import {
   healRememberedPayoutCountry,
   rememberBrandPayoutCountry,

@@ -70,7 +70,7 @@ import {
   TRIP_DESTINATION_PICK_ERROR,
 } from "./tripLocationValidated";
 import { type CoverPatch } from "../ui/CoverPicker";
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
 import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";

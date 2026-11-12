@@ -58,7 +58,7 @@ import { Input } from "../ui/Input";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
 import type { OfferingKind } from "./OfferingChooser";
-import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 // META-ORCH-1009 Sub-F (WS1+WS2): validated address autocomplete + cover preview.
 // ORCH-1079 [Business-venue address sweep]: the shared address picker. The
 // picked `placeId` is never written into `brands.google_place_id` (that column

@@ -31,7 +31,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 // than repeating #1834's bug. #1834 §2 named this file and deferred it here.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
-import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import { BrandPaystackOnboardView } from "./LazyBrandPaystackOnboardView";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
 import { BusinessAppDownloadCta } from "../invite/BusinessAppDownloadCta";
 import { Button } from "../ui/Button";
