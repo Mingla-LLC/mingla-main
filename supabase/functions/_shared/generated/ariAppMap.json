@@ -1365,6 +1365,14 @@
       "capability_keys": []
     },
     {
+      "pattern": "/pay/callback",
+      "params": [],
+      "title": "Pay callback",
+      "title_source": "path",
+      "file": "mingla-business/app/pay/callback.tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/pay/door/[code]",
       "params": [
         "code"
