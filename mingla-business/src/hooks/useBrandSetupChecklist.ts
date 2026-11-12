@@ -1,6 +1,9 @@
 /**
  * #4389 — the brand setup checklist (`brand_readiness(brand_setup)`) and the
- * writes behind F1–F4, K1, T1 and N1.
+ * K1 "free events only" write (setup flow and Ari). The writes only one screen
+ * makes live with it: F1/F2 in useBrandSetupFlowWrites.ts, T1 in
+ * useSetTapLocationAddress.ts (what more than one web chunk imports is hoisted
+ * into the eager __common chunk).
  *
  * The checklist is cached under the readiness key for (brand, "brand_setup"),
  * nested in the brand detail key, so every brand write already refreshes it.
@@ -16,12 +19,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
-import type {
-  BrandSetupChecklist,
-  CreateSetupBrandResult,
-  PayoutCountrySaved,
-  TapLocationAddressInput,
-} from "../services/brandSetupService";
+import type { BrandSetupChecklist } from "../services/brandSetupService";
 import { brandKeys } from "./brandKeys";
 import { brandReadinessKeys } from "./brandReadinessKeys";
 
@@ -49,45 +47,12 @@ export function useBrandSetupChecklist(
 }
 
 /** Refresh everything a setup write can change for one brand. */
-function invalidateBrand(
+export function invalidateBrand(
   queryClient: ReturnType<typeof useQueryClient>,
   brandId: string,
 ): void {
   queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
   queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
-}
-
-export function useCreateSetupBrand(): UseMutationResult<
-  CreateSetupBrandResult,
-  Error,
-  { brandId: string; name: string; partnerSetup?: boolean }
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input) => {
-      const { createSetupBrand } = await import("../services/brandSetupService");
-      return createSetupBrand(input);
-    },
-    onSuccess: (result) => {
-      invalidateBrand(queryClient, result.brandId);
-    },
-  });
-}
-
-export function useSetBrandPayoutCountry(
-  brandId: string | null,
-): UseMutationResult<PayoutCountrySaved, Error, string> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (country) => {
-      if (brandId === null) throw new Error("useSetBrandPayoutCountry: no brand");
-      const { setBrandPayoutCountry } = await import("../services/brandSetupService");
-      return setBrandPayoutCountry(brandId, country);
-    },
-    onSettled: () => {
-      if (brandId !== null) invalidateBrand(queryClient, brandId);
-    },
-  });
 }
 
 export function useMarkBrandSetupFreeOnly(
@@ -106,18 +71,3 @@ export function useMarkBrandSetupFreeOnly(
   });
 }
 
-export function useSetTapLocationAddress(
-  brandId: string | null,
-): UseMutationResult<void, Error, TapLocationAddressInput> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (address) => {
-      if (brandId === null) throw new Error("useSetTapLocationAddress: no brand");
-      const { setTapLocationAddress } = await import("../services/brandSetupService");
-      await setTapLocationAddress(brandId, address);
-    },
-    onSettled: () => {
-      if (brandId !== null) invalidateBrand(queryClient, brandId);
-    },
-  });
-}

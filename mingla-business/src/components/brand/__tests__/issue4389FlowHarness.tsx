@@ -107,9 +107,13 @@ jest.mock("../../../hooks/useBrandSetupChecklist", () => ({
       return Promise.resolve();
     },
   }),
+  useMarkBrandSetupFreeOnly: () => ({ mutate: harness.markFreeOnlyMutate, mutateAsync: harness.markFreeOnly, isPending: false }),
+}));
+jest.mock("../../../hooks/useBrandSetupFlowWrites", () => ({
   useCreateSetupBrand: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
   useSetBrandPayoutCountry: () => ({ mutate: harness.saveCountry, isPending: false }),
-  useMarkBrandSetupFreeOnly: () => ({ mutate: harness.markFreeOnlyMutate, mutateAsync: harness.markFreeOnly, isPending: false }),
+  adoptBrandIntoCaches: jest.fn(),
+  useDiscardDraftBrand: () => jest.fn(),
 }));
 jest.mock("../../../hooks/useMinglaToSAcceptance", () => ({
   CURRENT_MINGLA_TOS_VERSION: "v1",
@@ -128,10 +132,6 @@ jest.mock("../../../hooks/useBrandTeamMemberDirectory", () => ({
 }));
 jest.mock("../../../hooks/useCreatorAccount", () => ({
   useUpdateCreatorAccount: () => ({ mutateAsync: jest.fn(() => Promise.resolve()) }),
-}));
-jest.mock("../../../hooks/useBrands", () => ({
-  adoptBrandIntoCaches: jest.fn(),
-  useDiscardDraftBrand: () => jest.fn(),
 }));
 jest.mock("../../../services/brandsService", () => ({ getBrand: jest.fn(() => Promise.resolve(null)) }));
 jest.mock("../../../store/currentBrandStore", () => ({

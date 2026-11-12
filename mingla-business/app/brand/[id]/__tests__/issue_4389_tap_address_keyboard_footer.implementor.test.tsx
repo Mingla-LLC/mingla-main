@@ -27,6 +27,8 @@ jest.mock("../../../../src/components/ui/Button", () => {
 });
 jest.mock("../../../../src/hooks/useBrandSetupChecklist", () => ({
   useBrandSetupChecklist: () => ({ data: { facts: { payoutCountry: "US" } }, isLoading: false, isError: false }),
+}));
+jest.mock("../../../../src/hooks/useSetTapLocationAddress", () => ({
   useSetTapLocationAddress: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock("../../../../src/lib/netinfoSafe", () => ({ useNetInfoSafe: () => ({ isConnected: true }) }));

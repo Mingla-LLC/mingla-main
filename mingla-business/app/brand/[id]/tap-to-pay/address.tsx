@@ -26,7 +26,8 @@ import {
   type TapAddressDraft,
 } from "../../../../src/components/brand/tapLocationAddress";
 import { canvas, radius, semantic, spacing, text as textTokens, typography } from "../../../../src/constants/designSystem";
-import { useBrandSetupChecklist, useSetTapLocationAddress } from "../../../../src/hooks/useBrandSetupChecklist";
+import { useBrandSetupChecklist } from "../../../../src/hooks/useBrandSetupChecklist";
+import { useSetTapLocationAddress } from "../../../../src/hooks/useSetTapLocationAddress";
 import { useNetInfoSafe } from "../../../../src/lib/netinfoSafe";
 
 export default function TapToPayAddressRoute(): React.ReactElement {

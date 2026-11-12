@@ -19,13 +19,86 @@ import { awaitSessionAttached } from "../utils/authReadyGate";
 export * from "./brandSetupCore";
 import {
   BrandSetupError,
-  classifySetupError,
-  isObject,
-  parseBrandSetupChecklist,
-  slugForBrandName,
   type BrandSetupChecklist,
-  type Json,
+  type BrandSetupErrorCode,
+  type BrandSetupFacts,
 } from "./brandSetupCore";
+import type { BrandReadiness } from "./brandReadinessService";
+
+// ── Parsers, error classification, slug (this service's alone) ─────────────
+
+export type Json = Record<string, unknown>;
+export const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
+const optStr = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+
+export function parseBrandSetupFacts(raw: unknown): BrandSetupFacts {
+  const s = isObject(raw) ? raw : {};
+  const stripe = s.stripe_state;
+  return {
+    payoutCountry: optStr(s.payout_country),
+    currency: optStr(s.currency),
+    provider: s.provider === "paystack" ? "paystack" : "stripe",
+    market: s.market === true,
+    terms: s.terms === true,
+    details: s.details === true,
+    stripeState:
+      stripe === "started" || stripe === "submitted" || stripe === "action_needed" ? stripe : "none",
+    waitingFor: optStr(s.waiting_for),
+    complete: s.complete === true,
+    freeOnlyAt: optStr(s.free_only_at),
+    paymentsSetupStartedAt: optStr(s.payments_setup_started_at),
+    published: s.published === true,
+    isDraft: s.is_draft === true,
+  };
+}
+
+export function parseBrandSetupChecklist(
+  raw: unknown,
+  parseBrandReadiness: (raw: unknown) => BrandReadiness,
+): BrandSetupChecklist {
+  const readiness = parseBrandReadiness(raw);
+  const facts = parseBrandSetupFacts(isObject(raw) ? raw.setup : null);
+  const doneCount = readiness.items.filter(
+    (i) => i.state === "verified" || i.state === "not_applicable",
+  ).length;
+  return { readiness, facts, doneCount };
+}
+
+const KNOWN_CODES: readonly BrandSetupErrorCode[] = [
+  "draft_exists",
+  "slug_taken",
+  "brand_not_found",
+  "forbidden",
+  "requires_owner",
+  "payout_country_locked",
+  "payout_country_unsupported",
+  "payout_country_required",
+  "terms_required",
+  "invalid_address",
+  "address_country_mismatch",
+];
+
+export function classifySetupError(error: { message?: string; code?: string } | null | undefined): BrandSetupError {
+  const message = error?.message ?? "";
+  const code = KNOWN_CODES.find((c) => message.includes(c));
+  if (code) return new BrandSetupError(code, message);
+  if (/network|fetch|Failed to fetch|timeout/i.test(message)) {
+    return new BrandSetupError("network", message);
+  }
+  return new BrandSetupError("unknown", message || "brand setup failed");
+}
+
+
+export function slugForBrandName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/g, "");
+}
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 

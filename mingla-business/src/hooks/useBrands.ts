@@ -55,7 +55,6 @@ import {
   type SoftDeleteResult,
 } from "../services/brandsService";
 import type { Brand } from "../store/currentBrandStore";
-import type { BrandDeleteOutcome } from "../services/brandSetupService";
 // Issue #1835 — brand-delete failures must leave a trace.
 import { captureException } from "../diagnostics/sentry";
 // ORCH-0740 Cycle 1: import the existing brandRoleKeys factory to replace
@@ -547,7 +546,7 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
 
 // ----- cache eviction / adoption (ORCH-1062, #4389) ----------------------
 
-type BrandQueryClient = ReturnType<typeof useQueryClient>;
+export type BrandQueryClient = ReturnType<typeof useQueryClient>;
 
 /**
  * ORCH-1062 — ROOT-CAUSE fix for the "Maximum update depth exceeded" crash when
@@ -584,51 +583,6 @@ export const evictDeletedBrandFromCaches = (
   // ORCH-0740 Cycle 1: brandRoleKeys factory (Constitutional #4).
   queryClient.removeQueries({ queryKey: brandRoleKeys.allForBrand(brandId) });
   queryClient.removeQueries({ queryKey: brandKeys.cascadePreview(brandId) });
-};
-
-/**
- * #4389 — a brand created outside useCreateBrand (the setup RPC) is written
- * into the list, detail and default-brand caches BEFORE it is made current, so
- * `useCurrentBrandRecovery` sees it at once and never resolves the pointer
- * back to a stale default or "none" while the list refetch is in flight.
- */
-export const adoptBrandIntoCaches = (
-  queryClient: BrandQueryClient,
-  brand: Brand,
-  accountId: string,
-): void => {
-  queryClient.setQueryData<Brand[]>(brandKeys.list(accountId), (prev) =>
-    prev === undefined
-      ? [brand]
-      : prev.some((b) => b.id === brand.id)
-        ? prev.map((b) => (b.id === brand.id ? brand : b))
-        : [brand, ...prev],
-  );
-  queryClient.setQueryData<Brand>(brandKeys.detail(brand.id), brand);
-  queryClient.setQueryData<CreatorAccountRow | null>(
-    creatorAccountKeys.byId(accountId),
-    (prev) => (prev != null ? { ...prev, default_brand_id: brand.id } : prev),
-  );
-};
-
-/**
- * #4389 N1 — "Discard and start new". Same cache contract as delete.
- */
-export const useDiscardDraftBrand = (
-  accountId: string | null,
-): ((brandId: string) => Promise<BrandDeleteOutcome>) => {
-  const queryClient = useQueryClient();
-  return useCallback(
-    async (brandId: string): Promise<BrandDeleteOutcome> => {
-      const { discardDraftBrand } = await import("../services/brandSetupService");
-      const outcome = await discardDraftBrand(brandId);
-      if (outcome.ok && accountId !== null) {
-        evictDeletedBrandFromCaches(queryClient, brandId, accountId);
-      }
-      return outcome;
-    },
-    [accountId, queryClient],
-  );
 };
 
 // ----- useSoftDeleteBrand (PESSIMISTIC) ---------------------------------

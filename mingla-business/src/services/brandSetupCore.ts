@@ -1,8 +1,10 @@
 /**
- * #4389 — the pure half of brand setup (types, step rules, error codes, ids).
- * Split from brandSetupService.ts so routes and the setup screen can use the
- * rules without loading the service's Supabase reads and writes up front
- * (those load on first use, keeping them out of the eager web __common).
+ * #4389 — the pure half of brand setup the routes and the setup screen share
+ * with the service (types, step rules, the error class, ids). Split from
+ * brandSetupService.ts so they can use the rules without loading the service's
+ * Supabase reads and writes up front. The parsers, error classification and
+ * slug rule are the service's alone and live there: what more than one chunk
+ * imports is hoisted into the eager web __common chunk, so keep this small.
  */
 // Types only: the readiness parser loads with the first read.
 import type { BrandReadiness } from "./brandReadinessService";
@@ -40,43 +42,6 @@ export interface BrandSetupChecklist {
   facts: BrandSetupFacts;
   /** Items done, out of 4. */
   doneCount: number;
-}
-
-export type Json = Record<string, unknown>;
-export const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
-const optStr = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
-
-export function parseBrandSetupFacts(raw: unknown): BrandSetupFacts {
-  const s = isObject(raw) ? raw : {};
-  const stripe = s.stripe_state;
-  return {
-    payoutCountry: optStr(s.payout_country),
-    currency: optStr(s.currency),
-    provider: s.provider === "paystack" ? "paystack" : "stripe",
-    market: s.market === true,
-    terms: s.terms === true,
-    details: s.details === true,
-    stripeState:
-      stripe === "started" || stripe === "submitted" || stripe === "action_needed" ? stripe : "none",
-    waitingFor: optStr(s.waiting_for),
-    complete: s.complete === true,
-    freeOnlyAt: optStr(s.free_only_at),
-    paymentsSetupStartedAt: optStr(s.payments_setup_started_at),
-    published: s.published === true,
-    isDraft: s.is_draft === true,
-  };
-}
-
-export function parseBrandSetupChecklist(
-  raw: unknown,
-  parseBrandReadiness: (raw: unknown) => BrandReadiness,
-): BrandSetupChecklist {
-  const readiness = parseBrandReadiness(raw);
-  const facts = parseBrandSetupFacts(isObject(raw) ? raw.setup : null);
-  const doneCount = readiness.items.filter(
-    (i) => i.state === "verified" || i.state === "not_applicable",
-  ).length;
-  return { readiness, facts, doneCount };
 }
 
 /**
@@ -152,31 +117,6 @@ export class BrandSetupError extends Error {
   }
 }
 
-const KNOWN_CODES: readonly BrandSetupErrorCode[] = [
-  "draft_exists",
-  "slug_taken",
-  "brand_not_found",
-  "forbidden",
-  "requires_owner",
-  "payout_country_locked",
-  "payout_country_unsupported",
-  "payout_country_required",
-  "terms_required",
-  "invalid_address",
-  "address_country_mismatch",
-];
-
-export function classifySetupError(error: { message?: string; code?: string } | null | undefined): BrandSetupError {
-  const message = error?.message ?? "";
-  const code = KNOWN_CODES.find((c) => message.includes(c));
-  if (code) return new BrandSetupError(code, message);
-  if (/network|fetch|Failed to fetch|timeout/i.test(message)) {
-    return new BrandSetupError("network", message);
-  }
-  return new BrandSetupError("unknown", message || "brand setup failed");
-}
-
-
 /** RFC 4122 v4, generated once when F1 mounts (R-1 idempotent create). */
 export function newBrandId(): string {
   const cryptoObj = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
@@ -191,15 +131,3 @@ export function newBrandId(): string {
   }
   return out;
 }
-
-export function slugForBrandName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-    .replace(/-+$/g, "");
-}
-

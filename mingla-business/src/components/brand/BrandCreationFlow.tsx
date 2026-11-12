@@ -57,12 +57,13 @@ import {
   type BrandSetupStep,
 } from "../../services/brandSetupCore";
 import type { StripeSetupStatus } from "../../services/brandSetupService";
+import { useBrandSetupChecklist, useMarkBrandSetupFreeOnly } from "../../hooks/useBrandSetupChecklist";
 import {
-  useBrandSetupChecklist,
+  adoptBrandIntoCaches,
   useCreateSetupBrand,
-  useMarkBrandSetupFreeOnly,
+  useDiscardDraftBrand,
   useSetBrandPayoutCountry,
-} from "../../hooks/useBrandSetupChecklist";
+} from "../../hooks/useBrandSetupFlowWrites";
 import {
   CURRENT_MINGLA_TOS_VERSION,
   ORGANISER_TERMS_URL,
@@ -77,7 +78,7 @@ import { Toast } from "../ui/Toast";
 import type { OfferingChooserProps } from "./OfferingChooser";
 import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import { LazyF4TapToPayCard } from "../door/LazyDoorSaleScreens";
-import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import { BrandPaystackOnboardView } from "./LazyBrandPaystackOnboardView";
 import { BRAND_SETUP_COPY as C } from "./brandSetupCopy";
 import { PayoutCountryList, payoutCountryOption } from "./PayoutCountryList";
 import { trackBrandSetup } from "./brandSetupAnalytics";
@@ -85,7 +86,6 @@ import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore"
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import { getBrand } from "../../services/brandsService";
 import { useQueryClient } from "@tanstack/react-query";
-import { adoptBrandIntoCaches, useDiscardDraftBrand } from "../../hooks/useBrands";
 import { brandKeys } from "../../hooks/brandKeys";
 import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
 import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutState";

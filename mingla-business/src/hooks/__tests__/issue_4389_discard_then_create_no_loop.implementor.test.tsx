@@ -48,7 +48,7 @@ jest.mock("../../services/brandSetupService", () => ({
 }));
 
 /* eslint-disable import/first */
-import { adoptBrandIntoCaches, useDiscardDraftBrand } from "../useBrands";
+import { adoptBrandIntoCaches, useDiscardDraftBrand } from "../useBrandSetupFlowWrites";
 import { brandKeys } from "../brandKeys";
 import { creatorAccountKeys } from "../creatorAccountKeys";
 import type { CreatorAccountRow } from "../useCreatorAccount";
