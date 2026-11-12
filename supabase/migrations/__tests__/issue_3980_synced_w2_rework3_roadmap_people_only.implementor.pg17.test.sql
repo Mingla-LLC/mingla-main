@@ -75,6 +75,10 @@ insert into public.admin_team_members (email, role, status, accepted_at) values
   ('kim.w2r3i3980@test.local', 'growth', 'active', now()),
   ('sue.w2r3i3980@test.local', 'growth', 'active', now()),
   ('oli.w2r3i3980@test.local', 'growth', 'active', now());
+-- [TEST-MOD-APPROVED #4398] an automatic card takes its main task's owner and
+-- watcher: this suite's main task is Oz's (the owner), watched by Ivy.
+update public.ops_work_people w set email = case w.role when 'owner' then 'oz.w2r3i3980@test.local' else 'ivy.w2r3i3980@test.local' end
+ where w.card_id = (select (value->>'fallback')::uuid from public.ops_settings where key = 'auto_card_routes');
 set local session_replication_role = replica;
 insert into public.support_staff (user_id, enabled, available, role) values
   ('39880000-0000-4000-a000-000000000004', true, true, 'staff'),
@@ -302,6 +306,7 @@ begin
   perform pg_temp.t3980w2r3i_check('R6', 'an agent can still note a result', (select result from public.ops_work_cards where id = v_card), 'Suggested wording: hosts can now see the report.');
   -- R5: a person closes the sent-back card with proof.
   v := pg_temp.t3980w2r3i_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Read the draft, publishing it next week"}]'::jsonb, null, %s)::text$q$, v_card, pg_temp.t3980w2r3i_rev(v_card::text)));
+  v := pg_temp.t3980w2r3i_person('admin', format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card, pg_temp.t3980w2r3i_rev(v_card::text))); -- [TEST-MOD-APPROVED #4398] the watcher, Ivy, confirms
   perform pg_temp.t3980w2r3i_check('R5', 'a person closes the sent-back card with proof',
     (select status || ':' || close_kind || ':' || closed_by || ':' || coalesce(closed_via, '-') from public.ops_work_cards where id = v_card), 'done:done:oz.w2r3i3980@test.local:-');
 
@@ -316,11 +321,13 @@ begin
   -- R5: a person pushes back another one as not needed, straight from To review.
   v_card2 := pg_temp.t3980w2r3i_bridge_d(7932, '39880000-0000-4000-c100-000000000032', 'R5 hosts can pause a listing');
   v := pg_temp.t3980w2r3i_person('owner', format($q$select public.ops_work_push_back(%L, 'declined', 'Hosts do not need to hear about this one.', '[]'::jsonb, %s)::text$q$, v_card2, pg_temp.t3980w2r3i_rev(v_card2::text)));
+  v := pg_temp.t3980w2r3i_person('admin', format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card2, pg_temp.t3980w2r3i_rev(v_card2::text))); -- [TEST-MOD-APPROVED #4398] the watcher, Ivy, confirms
   perform pg_temp.t3980w2r3i_check('R5', 'a person pushes another back as not needed',
     (select status || ':' || close_kind || ':' || coalesce(closed_via, '-') from public.ops_work_cards where id = v_card2), 'done:declined:-');
   -- A plain agent card is unaffected: the agent closes its own To do card.
   v_card3 := pg_temp.t3980w2r3i_card('owner', 'R5 plain card the agent may close', '[]'::jsonb, 'w2r3i-plain-1');
   v := pg_temp.t3980w2r3i_agent('growth', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Done by the agent"}]'::jsonb, null, %s)::text$q$, v_card3, pg_temp.t3980w2r3i_rev(v_card3::text)));
+  v := pg_temp.t3980w2r3i_person('admin', format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card3, pg_temp.t3980w2r3i_rev(v_card3::text))); -- [TEST-MOD-APPROVED #4398] the watcher, Ivy, confirms
   perform pg_temp.t3980w2r3i_check('R5', 'a plain card is still the agent''s to close', (select status || ':' || coalesce(closed_via, '-') from public.ops_work_cards where id = v_card3), 'done:claude');
 end $r$;
 

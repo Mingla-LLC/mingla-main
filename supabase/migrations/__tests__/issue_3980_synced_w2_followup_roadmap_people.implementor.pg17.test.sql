@@ -45,6 +45,10 @@ $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
 SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
 SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+-- [TEST-MOD-APPROVED #4398] an automatic card takes its main task's owner and
+-- watcher: this suite's main task is the owner's (Oz), watched by the admin (Ivy).
+update public.ops_work_people w set email = case w.role when 'owner' then 'oz.w2fu3980@test.local' else 'ivy.w2fu3980@test.local' end
+ where w.card_id = (select (value->>'fallback')::uuid from public.ops_settings where key = 'auto_card_routes');
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -377,16 +381,17 @@ begin
   perform pg_temp.t3980w2fu_like('P1', 'MCP replacing the owner is people_only', v, c_po);
   perform pg_temp.t3980w2fu_like('P1', 'the refusal says who owns or watches', v, c_words);
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_c, 'expected_revision', pg_temp.t3980w2fu_rev(v_c::text),
-         'changes', jsonb_build_object('owners', jsonb_build_array('oz.w2fu3980@test.local', 'kim.w2fu3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */)));
-  perform pg_temp.t3980w2fu_like('P1', 'MCP adding a second owner is people_only', v, c_po);
+         'changes', jsonb_build_object('owners', jsonb_build_array('sue.w2fu3980@test.local'), 'watchers', jsonb_build_array('oz.w2fu3980@test.local'))));
+  -- [TEST-MOD-APPROVED #4398] a card has one owner and one watcher, so each people change the agent tries is a valid one-and-one shape.
+  perform pg_temp.t3980w2fu_like('P1', 'MCP swapping the owner and the watcher is people_only', v, c_po);
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_c, 'expected_revision', pg_temp.t3980w2fu_rev(v_c::text),
-         'changes', jsonb_build_object('watchers', jsonb_build_array('sue.w2fu3980@test.local', 'ivy.w2fu3980@test.local'))));
-  perform pg_temp.t3980w2fu_like('P1', 'MCP adding a watcher is people_only', v, c_po);
+         'changes', jsonb_build_object('watchers', jsonb_build_array('ivy.w2fu3980@test.local'))));
+  perform pg_temp.t3980w2fu_like('P1', 'MCP replacing the watcher is people_only', v, c_po);
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_c, 'expected_revision', pg_temp.t3980w2fu_rev(v_c::text),
          'changes', jsonb_build_object('watchers', '[]'::jsonb)));
   perform pg_temp.t3980w2fu_like('P1', 'MCP removing the watcher is people_only', v, c_po);
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_c, 'expected_revision', pg_temp.t3980w2fu_rev(v_c::text),
-         'changes', jsonb_build_object('owners', jsonb_build_array('oz.w2fu3980@test.local', 'sue.w2fu3980@test.local'), 'watchers', '[]'::jsonb)));
+         'changes', jsonb_build_object('owners', jsonb_build_array('sue.w2fu3980@test.local'), 'watchers', jsonb_build_array('kim.w2fu3980@test.local'))));
   perform pg_temp.t3980w2fu_like('P1', 'MCP turning the watcher into an owner is people_only', v, c_po);
   perform pg_temp.t3980w2fu_check('P1', 'after every gateway attempt its people are unchanged', pg_temp.t3980w2fu_people(v_c), v_before);
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_c, 'expected_revision', pg_temp.t3980w2fu_rev(v_c::text),
@@ -412,22 +417,22 @@ begin
   v_before := pg_temp.t3980w2fu_people(v_c2);
   v := pg_temp.t3980w2fu_raw_agent('owner', format($q$insert into public.ops_work_people (card_id, email, role, added_by, added_via) values (%L, 'kim.w2fu3980@test.local', 'owner', 'oz.w2fu3980@test.local', 'claude')$q$, v_c2));
   perform pg_temp.t3980w2fu_like('P3', 'a raw agent insert of an owner is refused', v, 'ERR:42501:people_only:%');
-  v := pg_temp.t3980w2fu_raw_agent('owner', format($q$insert into public.ops_work_people (card_id, email, role, added_by, added_via) values (%L, 'ivy.w2fu3980@test.local', 'watcher', 'oz.w2fu3980@test.local', 'claude')$q$, v_c2));
+  v := pg_temp.t3980w2fu_raw_agent('owner', format($q$insert into public.ops_work_people (card_id, email, role, added_by, added_via) values (%L, 'sue.w2fu3980@test.local', 'watcher', 'oz.w2fu3980@test.local', 'claude')$q$, v_c2)); -- [TEST-MOD-APPROVED #4398] Sue: Ivy watches the routed card already
   perform pg_temp.t3980w2fu_like('P3', 'a raw agent insert of a watcher is refused', v, 'ERR:42501:people_only:%');
   v := pg_temp.t3980w2fu_raw_agent('owner', format($q$delete from public.ops_work_people where card_id = %L$q$, v_c2));
   perform pg_temp.t3980w2fu_like('P3', 'a raw agent delete is refused', v, 'ERR:42501:people_only:%');
   v := pg_temp.t3980w2fu_raw_agent('owner', format($q$update public.ops_work_people set role = 'watcher' where card_id = %L$q$, v_c2));
   perform pg_temp.t3980w2fu_like('P3', 'a raw agent role change is refused', v, 'ERR:42501:people_only:%');
-  v := pg_temp.t3980w2fu_raw_agent('owner', format($q$update public.ops_work_people set email = 'kim.w2fu3980@test.local' where card_id = %L$q$, v_c2));
+  v := pg_temp.t3980w2fu_raw_agent('owner', format($q$update public.ops_work_people set email = 'kim.w2fu3980@test.local' where card_id = %L and role = 'owner'$q$, v_c2)); -- [TEST-MOD-APPROVED #4398] the owner row
   perform pg_temp.t3980w2fu_like('P3', 'a raw agent swap of the person is refused', v, 'ERR:42501:people_only:%');
   v := pg_temp.t3980w2fu_raw_agent('owner', format($q$select public.ops_people_set(%L, ARRAY['kim.w2fu3980@test.local'], ARRAY[]::text[], 'oz.w2fu3980@test.local', 'claude')$q$, v_c2));
   perform pg_temp.t3980w2fu_like('P3', 'ops_people_set in an agent''s request is refused', v, 'ERR:42501:people_only:%');
   v := pg_temp.t3980w2fu_raw_agent('owner', format($q$update public.ops_work_people set role = role, added_at = added_at where card_id = %L$q$, v_c2));
   perform pg_temp.t3980w2fu_check('P3', 'a raw agent rewrite that changes nothing is not refused', v, 'OK');
   perform pg_temp.t3980w2fu_check('P3', 'after every raw agent write its people are unchanged', pg_temp.t3980w2fu_people(v_c2), v_before);
-  v := pg_temp.t3980w2fu_raw_person('owner', format($q$insert into public.ops_work_people (card_id, email, role, added_by) values (%L, 'ivy.w2fu3980@test.local', 'watcher', 'oz.w2fu3980@test.local')$q$, v_c2));
+  v := pg_temp.t3980w2fu_raw_person('owner', format($q$insert into public.ops_work_people (card_id, email, role, added_by) values (%L, 'sue.w2fu3980@test.local', 'watcher', 'oz.w2fu3980@test.local')$q$, v_c2)); -- [TEST-MOD-APPROVED #4398] Sue
   perform pg_temp.t3980w2fu_check('P3', 'the same insert as a person is not refused', v, 'OK');
-  v := pg_temp.t3980w2fu_raw_person(null, format($q$delete from public.ops_work_people where card_id = %L and email = 'ivy.w2fu3980@test.local'$q$, v_c2));
+  v := pg_temp.t3980w2fu_raw_person(null, format($q$delete from public.ops_work_people where card_id = %L and email = 'sue.w2fu3980@test.local'$q$, v_c2)); -- [TEST-MOD-APPROVED #4398] Sue
   perform pg_temp.t3980w2fu_check('P3', 'a delete with no signed-in person (housekeeping) is not refused', v, 'OK');
   v := pg_temp.t3980w2fu_raw_person(null, format($q$select public.ops_people_set(%L, ARRAY['kim.w2fu3980@test.local'], ARRAY['ivy.w2fu3980@test.local'], 'system@usemingla.com', null)$q$, v_c2));
   perform pg_temp.t3980w2fu_check('P3', 'ops_people_set with no signed-in person is not refused', v, 'OK');
@@ -440,11 +445,11 @@ begin
   v_plain := (pg_temp.t3980w2fu_j(v) #>> '{result,results,0,card,id}')::uuid;
   perform pg_temp.t3980w2fu_check('P4', 'the agent added its plain card', (v_plain is not null)::text, 'true');
   v := pg_temp.t3980w2fu_mcp('owner', 'update_work', jsonb_build_object('id', v_plain, 'expected_revision', pg_temp.t3980w2fu_rev(v_plain::text),
-         'changes', jsonb_build_object('owners', jsonb_build_array('oz.w2fu3980@test.local', 'kim.w2fu3980@test.local'),
-                                       'watchers', jsonb_build_array('ivy.w2fu3980@test.local'))));
+         'changes', jsonb_build_object('owners', jsonb_build_array('kim.w2fu3980@test.local'),
+                                       'watchers', jsonb_build_array('ivy.w2fu3980@test.local')))); -- [TEST-MOD-APPROVED #4398] one owner
   perform pg_temp.t3980w2fu_like('P4', 'MCP changing the plain card''s people is allowed', v, '%"ok": true%');
   perform pg_temp.t3980w2fu_check('P4', 'the plain card''s people changed', pg_temp.t3980w2fu_people(v_plain),
-    'owner:kim.w2fu3980@test.local,owner:oz.w2fu3980@test.local,watcher:ivy.w2fu3980@test.local');
+    'owner:kim.w2fu3980@test.local,watcher:ivy.w2fu3980@test.local');
 end $r$;
 
 select count(*) as t3980w2fu_total, count(*) filter (where not ok) as t3980w2fu_failed,

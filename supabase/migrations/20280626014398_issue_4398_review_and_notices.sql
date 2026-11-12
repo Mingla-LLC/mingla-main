@@ -264,6 +264,25 @@ REVOKE ALL ON FUNCTION public.ops_notify_push(text, text) FROM PUBLIC, anon, aut
 COMMENT ON FUNCTION public.ops_notify_push(text, text) IS
   'Issue #4398. The one table for Work notices: push (Host app + email) for mention, review, sent_back, status and assigned by a person or their agent; Admin-only for bot, guide, edit, alert and anything system@usemingla.com does.';
 
+-- #4398 (B2): the watcher for a card a person did not pick people for (a
+-- launch-kit step, a record's next step, a Host app brand plan card): the
+-- first of the preferred people still on the team who is not the owner, else
+-- the board owner, else the first other active admin.
+CREATE FUNCTION public.ops_default_watcher(p_owner text, p_prefer text[] DEFAULT ARRAY[]::text[]) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $function$
+  SELECT COALESCE(
+    (SELECT public.ops_team_email(x) FROM unnest(COALESCE(p_prefer, ARRAY[]::text[])) WITH ORDINALITY u(x, o)
+      WHERE public.ops_team_email(x) IS NOT NULL AND public.ops_team_email(x) IS DISTINCT FROM lower(btrim(p_owner))
+      ORDER BY u.o LIMIT 1),
+    (SELECT lower(btrim(au.email)) FROM public.admin_users au
+      WHERE au.status = 'active' AND lower(btrim(au.email)) IS DISTINCT FROM lower(btrim(p_owner)) AND public.ops_team_email(au.email) IS NOT NULL
+      ORDER BY (au.role = 'owner') DESC, au.accepted_at NULLS LAST, au.created_at LIMIT 1));
+$function$;
+REVOKE ALL ON FUNCTION public.ops_default_watcher(text, text[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_default_watcher(text, text[]) TO service_role;
+
+
 -- From 20280624064255 (rework 2). #4398 (S3): the caller says what happened
 -- (p_kind) and ops_notify_push decides: push rows get the email and the Host
 -- app push as before; Admin-only rows are a team_mentions row with
@@ -2711,13 +2730,8 @@ BEGIN
     v_owner := (SELECT x FROM unnest(v_owners) WITH ORDINALITY u(x, o) WHERE public.ops_team_email(x) IS NOT NULL ORDER BY u.o LIMIT 1);
     v_owner := COALESCE(v_owner, v_route->>'owner', public.ops_owner_email());
     v_watcher := CASE WHEN v_route->>'watcher' IS DISTINCT FROM v_owner THEN v_route->>'watcher' ELSE v_route->>'owner' END;
-    IF v_watcher IS NULL OR v_watcher = v_owner THEN
-      v_watcher := (SELECT x FROM unnest(v_watchers || v_owners) x WHERE x IS DISTINCT FROM v_owner AND public.ops_team_email(x) IS NOT NULL LIMIT 1);
-    END IF;
-    IF v_watcher IS NULL THEN  -- nobody else on the host card and no route: the board owner, or the first other active admin
-      v_watcher := (SELECT lower(btrim(au.email)) FROM public.admin_users au
-                     WHERE au.status = 'active' AND lower(btrim(au.email)) IS DISTINCT FROM v_owner AND public.ops_team_email(au.email) IS NOT NULL
-                     ORDER BY (au.role = 'owner') DESC, au.accepted_at NULLS LAST, au.created_at LIMIT 1);
+    IF v_watcher IS NULL OR v_watcher = v_owner THEN  -- someone else on the host card, else the board owner or first other active admin
+      v_watcher := public.ops_default_watcher(v_owner, v_watchers || v_owners);
     END IF;
     v_owners := ARRAY[v_owner]; v_watchers := CASE WHEN v_watcher IS NOT NULL THEN ARRAY[v_watcher] ELSE ARRAY[]::text[] END;
     PERFORM public.ops_people_set(c.id, v_owners, v_watchers, v_actor, NULL);
@@ -2739,6 +2753,208 @@ EXCEPTION WHEN unique_violation THEN
   RAISE EXCEPTION 'duplicate_title: Something with this name is already planned. Change the name a little.' USING ERRCODE = '23505';
 END;
 $function$;
+
+-- From 20271118003980 (wave 3). #4398 (B2): one owner and one watcher.
+CREATE OR REPLACE FUNCTION public.ops_launch_kit_preview(p_anchor_kind text, p_anchor_id uuid, p_options jsonb DEFAULT '{}'::jsonb,
+                                              p_today date DEFAULT NULL) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v record; v_today date := public.ops_today(p_today); a jsonb; v_opt jsonb; v_bad text; v_rec uuid; v_host jsonb;
+  v_host_owners text[]; v_mkt text[]; v_watch text[]; v_rec_owners text[]; v_start date; v_public boolean; v_band text;
+  v_title text; v_hostname text; v_d28 text; v_d21 text; k jsonb; v_step integer; v_due date; v_owners text[]; v_watchers text[];
+  v_links jsonb; v_cards jsonb := '[]'::jsonb; v_skipped jsonb := '[]'::jsonb; v_fill_title text;
+  w_id uuid; w_number bigint; w_title text; w_status text;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  IF p_anchor_kind IS NULL OR p_anchor_kind NOT IN ('event', 'expected') OR p_anchor_id IS NULL THEN
+    RAISE EXCEPTION 'invalid_anchor: Name the event or the expected event to plan.' USING ERRCODE = '22023';
+  END IF;
+  v_opt := CASE WHEN p_options IS NULL OR jsonb_typeof(p_options) = 'null' THEN '{}'::jsonb ELSE p_options END;
+  IF jsonb_typeof(v_opt) <> 'object' THEN
+    RAISE EXCEPTION 'invalid_options: Plan options take host_owner_emails, marketing_owner_emails and watcher_emails.' USING ERRCODE = '22023';
+  END IF;
+  SELECT o INTO v_bad FROM jsonb_object_keys(v_opt) o
+   WHERE o NOT IN ('host_owner_emails', 'marketing_owner_emails', 'watcher_emails') ORDER BY o LIMIT 1;
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'invalid_options: Plan options take host_owner_emails, marketing_owner_emails and watcher_emails.' USING ERRCODE = '22023';
+  END IF;
+  v_host_owners := public.ops_kit_people(v_opt->'host_owner_emails', 'host_owner_emails');
+  v_mkt := public.ops_kit_people(v_opt->'marketing_owner_emails', 'marketing_owner_emails');
+  v_watch := public.ops_kit_people(v_opt->'watcher_emails', 'watcher_emails');
+
+  a := public.ops_anchor(p_anchor_kind, p_anchor_id, v_today);
+  IF a IS NULL THEN
+    RAISE EXCEPTION 'not_found: That event is not on Mingla or not visible to the team.' USING ERRCODE = 'P0002';
+  END IF;
+  v_host := public.ops_host_json((a->>'record_id')::uuid);
+  v_rec := CASE WHEN v_host IS NOT NULL THEN (a->>'record_id')::uuid END;
+  v_rec_owners := CASE WHEN v_rec IS NOT NULL THEN public.ops_record_team_owners(v_rec) ELSE ARRAY[]::text[] END;
+  v_start := (a->>'start_on')::date;
+  v_public := COALESCE((a->>'is_public')::boolean, false);
+  v_band := a->'runway'->>'band';
+  v_title := COALESCE(a->>'title', 'the event');
+  v_hostname := COALESCE(v_host->>'name', a->>'brand_name', 'the host');
+  v_d28 := COALESCE(public.ops_day_words(v_start - 28), 'its go-live date');
+  v_d21 := COALESCE(public.ops_day_words(v_start - 21), 'its promo date');
+  v_links := jsonb_build_array(jsonb_build_object('kind', p_anchor_kind, 'id', p_anchor_id));
+  IF v_rec IS NOT NULL THEN v_links := v_links || jsonb_build_array(jsonb_build_object('kind', 'host', 'id', v_rec)); END IF;
+
+  FOR k IN SELECT e FROM jsonb_array_elements(public.ops_kit_template()) e ORDER BY (e->>'step')::integer LOOP
+    v_step := (k->>'step')::integer;
+    v_fill_title := left(replace(replace(replace(replace(k->>'title_template', '{title}', v_title), '{host}', v_hostname),
+                                         '{date21}', v_d21), '{date}', v_d28), 160);
+    SELECT c.id, c.number, c.title, c.status INTO w_id, w_number, w_title, w_status
+      FROM public.ops_work_cards c
+     WHERE c.anchor_kind = p_anchor_kind AND c.anchor_id = p_anchor_id AND c.kit_step = v_step AND c.archived_at IS NULL
+     ORDER BY c.created_at DESC LIMIT 1;
+    IF FOUND THEN
+      v_skipped := v_skipped || jsonb_build_array(jsonb_build_object('kit_step', v_step, 'title', v_fill_title, 'reason', 'card_exists',
+        'card', jsonb_build_object('id', w_id, 'number', w_number, 'title', w_title, 'status', w_status)));
+      CONTINUE;
+    END IF;
+    IF v_start IS NULL THEN
+      v_skipped := v_skipped || jsonb_build_array(jsonb_build_object('kit_step', v_step, 'title', v_fill_title, 'reason', 'no_date'));
+      CONTINUE;
+    END IF;
+    IF v_public AND v_step IN (-35, -31, -28) THEN
+      v_skipped := v_skipped || jsonb_build_array(jsonb_build_object('kit_step', v_step, 'title', v_fill_title, 'reason', 'already_public'));
+      CONTINUE;
+    END IF;
+    v_due := v_start + v_step;
+    IF v_due < v_today AND v_step <> 2 AND NOT (v_step = -28 AND NOT v_public AND v_band IS DISTINCT FROM 'missed') THEN
+      v_skipped := v_skipped || jsonb_build_array(jsonb_build_object('kit_step', v_step, 'title', v_fill_title, 'reason', 'date_passed', 'due_on', v_due));
+      CONTINUE;
+    END IF;
+    v_owners := CASE WHEN k->>'who' = 'host_owner'
+                     THEN COALESCE(NULLIF(v_rec_owners, ARRAY[]::text[]), NULLIF(v_host_owners, ARRAY[]::text[]), ARRAY[v.actor_email])
+                     ELSE COALESCE(NULLIF(v_mkt, ARRAY[]::text[]), ARRAY[v.actor_email]) END;
+    -- #4398 (B2): one owner (the first named) and one watcher (the first
+    -- watcher named, else another owner, else the default watcher).
+    v_watchers := ARRAY[public.ops_default_watcher(v_owners[1], v_watch || v_owners[2:])];
+    v_owners := v_owners[1:1];
+    v_cards := v_cards || jsonb_build_array(jsonb_build_object(
+      'kit_step', v_step, 'kind', k->>'kind', 'title', v_fill_title,
+      'instructions', left(replace(replace(replace(replace(k->>'instructions_template', '{title}', v_title), '{host}', v_hostname),
+                                           '{date21}', v_d21), '{date}', v_d28), 4000),
+      'done_means', left(replace(replace(replace(replace(k->>'done_means_template', '{title}', v_title), '{host}', v_hostname),
+                                         '{date21}', v_d21), '{date}', v_d28), 300),
+      'owners', to_jsonb(v_owners), 'watchers', to_jsonb(v_watchers), 'due_on', v_due,
+      'anchor', jsonb_build_object('kind', p_anchor_kind, 'id', p_anchor_id), 'links', v_links));
+  END LOOP;
+  RETURN jsonb_build_object('anchor', a, 'runway', a->'runway', 'host', v_host,
+    'promo_gate', public.ops_promo_gate(a, v_today), 'cards', v_cards, 'skipped', v_skipped);
+END;
+$$;
+
+-- From 20271118003980 (wave 3). #4398 (B2): one owner and one watcher.
+CREATE OR REPLACE FUNCTION public.ops_next_action_convert(p_record_ids uuid[], p_fallback_owner text, p_request_key text) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v record; v_today date := public.ops_today(NULL); v_ids uuid[]; v_fb text; v_replay jsonb; v_rows jsonb; r jsonb; v_id uuid;
+  v_results jsonb := '[]'::jsonb; v_added integer := 0; v_skipped integer := 0; v_refused integer := 0; v_item jsonb; v_res jsonb;
+  v_first jsonb; v_out jsonb; v_owners jsonb; v_card uuid;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  IF v.via IS NOT NULL OR public.admin_team_role() IS DISTINCT FROM 'owner' THEN
+    RAISE EXCEPTION 'owner_only: Only the owner can turn next steps into cards.' USING ERRCODE = '42501';
+  END IF;
+  IF p_request_key IS NULL OR p_request_key !~ '^[A-Za-z0-9_-]{8,70}$' THEN
+    RAISE EXCEPTION 'request_key_required: Send a request key of 8 to 70 letters, digits, - or _, new for a new request and unchanged for a repeat.' USING ERRCODE = '22023';
+  END IF;
+  v_ids := ARRAY(SELECT DISTINCT x FROM unnest(COALESCE(p_record_ids, ARRAY[]::uuid[])) x WHERE x IS NOT NULL ORDER BY x);
+  IF cardinality(v_ids) NOT BETWEEN 1 AND 600 THEN
+    RAISE EXCEPTION 'invalid_records: Choose 1 to 600 records.' USING ERRCODE = '22023';
+  END IF;
+  IF btrim(COALESCE(p_fallback_owner, '')) <> '' THEN
+    v_fb := public.ops_team_email(p_fallback_owner);
+    IF v_fb IS NULL THEN
+      RAISE EXCEPTION '%', format('invalid_owner: "%s" is not on the team. Pick from %s.', left(p_fallback_owner, 80), public.ops_team_names())
+        USING ERRCODE = '22023';
+    END IF;
+  END IF;
+  v_replay := public.ops_request_begin(v.actor_email, p_request_key || '-convert', 'convert',
+    jsonb_build_object('ids', to_jsonb(v_ids), 'fallback', v_fb));
+  IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
+
+  v_rows := public.ops_next_action_rows(v_ids, 600, v_today);
+  FOREACH v_id IN ARRAY v_ids LOOP
+    CONTINUE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) e WHERE e->>'record_id' = v_id::text);
+    v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused', 'fixes', jsonb_build_array(
+      jsonb_build_object('field', 'record', 'message', 'This record has no next step to turn into a card, or it is closed or removed.'))));
+    v_refused := v_refused + 1;
+  END LOOP;
+  -- In the preview's order, so the record a repeat points at is done first.
+  FOR r IN SELECT e FROM jsonb_array_elements(v_rows) e LOOP
+    v_id := (r->>'record_id')::uuid;
+    IF r->>'issue' = 'duplicate_record' THEN
+      -- Same name and next step as a record above: one card for both. When
+      -- that record's card exists, this record is recorded against it too,
+      -- so it is never turned into a second card.
+      v_card := (SELECT x.card_id FROM public.ops_next_action_conversions x WHERE x.record_id = (r->'duplicate_of'->>'record_id')::uuid);
+      IF v_card IS NOT NULL THEN
+        INSERT INTO public.ops_next_action_conversions (record_id, card_id, next_action_text, converted_by)
+        VALUES (v_id, v_card, r->>'next_action', v.actor_email);
+      END IF;
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'skipped', 'reason', 'duplicate_record',
+        'message', r->>'reason', 'duplicate_of', r->'duplicate_of', 'card_id', v_card));
+      v_skipped := v_skipped + 1;
+      CONTINUE;
+    ELSIF r->>'issue' = 'already_converted' THEN
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'skipped', 'reason', 'already_converted'));
+      v_skipped := v_skipped + 1;
+      CONTINUE;
+    ELSIF r->>'issue' = 'too_short' THEN
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused', 'fixes', jsonb_build_array(
+        jsonb_build_object('field', 'title', 'message', 'The next step is too short to be a card title. Write it out on the record first.'))));
+      v_refused := v_refused + 1;
+      CONTINUE;
+    ELSIF r->>'issue' = 'duplicate_title' THEN
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused', 'fixes', jsonb_build_array(
+        jsonb_build_object('field', 'title', 'message', format('Card %s already has the title "%s" and is still open. Change the next step on the record, or update that card.',
+          r->'duplicate_of'->>'card_number', r->'proposed'->>'title')))));
+      v_refused := v_refused + 1;
+      CONTINUE;
+    ELSIF r->>'issue' = 'no_owner' AND v_fb IS NULL THEN
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused', 'fixes', jsonb_build_array(
+        jsonb_build_object('field', 'owners', 'message', 'Nobody on the team owns this record. Pick a fallback owner.'))));
+      v_refused := v_refused + 1;
+      CONTINUE;
+    END IF;
+    v_owners := CASE WHEN r->>'issue' = 'no_owner' THEN jsonb_build_array(v_fb) ELSE r->'proposed'->'owners' END;
+    -- #4398 (B2): one owner (the record's first) and one watcher (another of
+    -- its owners, else the default watcher).
+    v_item := (r->'proposed') || jsonb_build_object('owners', jsonb_build_array(v_owners->>0),
+      'watchers', jsonb_build_array(public.ops_default_watcher(v_owners->>0,
+        ARRAY(SELECT e FROM jsonb_array_elements_text(v_owners) WITH ORDINALITY u(e, o) WHERE o > 1 ORDER BY o))));
+    v_res := public.ops_work_add(jsonb_build_array(v_item), 'nac' || substr(md5(p_request_key || ':' || v_id::text), 1, 24));
+    v_first := v_res->'results'->0;
+    IF v_first->>'status' = 'added' THEN
+      v_card := (v_first->'card'->>'id')::uuid;
+      INSERT INTO public.ops_next_action_conversions (record_id, card_id, next_action_text, converted_by)
+      VALUES (v_id, v_card, r->>'next_action', v.actor_email);
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'added', 'card_id', v_card,
+        'card_number', v_first->'card'->'number', 'title', v_first->'card'->'title'));
+      v_added := v_added + 1;
+    ELSIF v_first->>'status' = 'duplicate' THEN
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused', 'fixes', jsonb_build_array(
+        jsonb_build_object('field', 'title', 'message', v_first->>'message'))));
+      v_refused := v_refused + 1;
+    ELSE
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused',
+        'fixes', COALESCE(v_first->'fixes', '[]'::jsonb)));
+      v_refused := v_refused + 1;
+    END IF;
+  END LOOP;
+  PERFORM public.ops_log_write(v.actor_email, NULL, 'converted', 'info', NULL, NULL, NULL,
+    format('Turned %s next steps into cards (%s skipped as already a card, %s not turned).', v_added, v_skipped, v_refused),
+    jsonb_build_object('added', v_added, 'skipped', v_skipped, 'refused', v_refused));
+  v_out := jsonb_build_object('results', v_results, 'added', v_added, 'skipped', v_skipped, 'refused', v_refused, 'replayed', false);
+  PERFORM public.ops_request_finish(v.actor_email, p_request_key || '-convert', 'convert', v_out);
+  RETURN v_out;
+END;
+$$;
 
 -- From its latest definition. #4398 (A3, subtract before adding): an
 -- automatic card takes its route's owner and watcher when it is made, and the

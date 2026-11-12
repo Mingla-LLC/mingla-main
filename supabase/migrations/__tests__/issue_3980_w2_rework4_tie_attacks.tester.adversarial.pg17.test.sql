@@ -44,6 +44,10 @@ $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
 SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
 SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+-- [TEST-MOD-APPROVED #4398] an automatic card takes its main task's owner and
+-- watcher: this suite's main task is the owner's (Oz), watched by the admin (Ivy).
+update public.ops_work_people w set email = case w.role when 'owner' then 'oz.w2r4t3980@test.local' else 'ivy.w2r4t3980@test.local' end
+ where w.card_id = (select (value->>'fallback')::uuid from public.ops_settings where key = 'auto_card_routes');
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -420,6 +424,7 @@ begin
   -- X3: a closed approval card. The close cannot be rewritten by an agent, and
   -- the gateway gives an agent no way to reopen it.
   v := pg_temp.t3980w2r4t_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Read it; will publish later"}]'::jsonb, null, %s)::text$q$, v_a, pg_temp.t3980w2r4t_rev(v_a::text)));
+  v := pg_temp.t3980w2r4t_person((select w.who from t3980w2r4t_people w where w.email = (public.ops_card_people(v_a::uuid, 'watcher'))[1]), format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_a, pg_temp.t3980w2r4t_rev(v_a::text))); -- [TEST-MOD-APPROVED #4398] the watcher confirms the close
   perform pg_temp.t3980w2r4t_check('X3', 'a person closes the approval card', pg_temp.t3980w2r4t_state(v_a), 'done:done:-');
   v := pg_temp.t3980w2r4t_raw_agent('owner', format($q$update public.ops_work_cards set close_reason = 'A person published the Recently shipped card.', proof = '[{"kind":"text","text":"Agent wrote this"}]'::jsonb where id = %L$q$, v_a));
   perform pg_temp.t3980w2r4t_like('X3', 'an agent cannot rewrite the close of a done approval card (raw)', v, 'ERR:42501:people_only:%');
@@ -523,6 +528,7 @@ begin
   perform pg_temp.t3980w2r4t_bridges();
   perform pg_temp.t3980w2r4t_check('X6', 'a deleted draft never closes its approval card as published', pg_temp.t3980w2r4t_state(v_d), 'todo:-:-'); -- #4270: tagged in To do
   v := pg_temp.t3980w2r4t_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"The draft was removed"}]'::jsonb, null, %s)::text$q$, v_d, pg_temp.t3980w2r4t_rev(v_d::text)));
+  v := pg_temp.t3980w2r4t_person((select w.who from t3980w2r4t_people w where w.email = (public.ops_card_people(v_d::uuid, 'watcher'))[1]), format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_d, pg_temp.t3980w2r4t_rev(v_d::text))); -- [TEST-MOD-APPROVED #4398] the watcher confirms the close
   perform pg_temp.t3980w2r4t_check('X6', 'a person can still close it', pg_temp.t3980w2r4t_state(v_d), 'done:done:-');
 
   -- X7: people, bridges, housekeeping and sprint rollover are not affected.

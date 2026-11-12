@@ -39,6 +39,10 @@ $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
 SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
 SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+-- [TEST-MOD-APPROVED #4398] an automatic card takes its main task's owner and
+-- watcher: this suite's main task is the owner's (Oz), watched by the admin (Ivy).
+update public.ops_work_people w set email = case w.role when 'owner' then 'oz.r3t3980@test.local' else 'ivy.r3t3980@test.local' end
+ where w.card_id = (select (value->>'fallback')::uuid from public.ops_settings where key = 'auto_card_routes');
 
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
@@ -325,16 +329,18 @@ begin
   -- M5: the agent's own plain card is unaffected through MCP.
   v := pg_temp.t3980r3t_mcp('owner', 'add_work', jsonb_build_object('request_key', 'r3t-plain-mcp-1', 'cards', jsonb_build_array(jsonb_build_object(
          'title', 'M5 plain card the agent may finish', 'instructions', 'Do the plain thing.', 'done_means', 'It is done.',
-         'owners', jsonb_build_array('oz.r3t3980@test.local'), 'watchers', jsonb_build_array('route-watch.r4398@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
+         'owners', jsonb_build_array('oz.r3t3980@test.local'), 'watchers', jsonb_build_array('ivy.r3t3980@test.local') /* #4398 one watcher */, 'due_on', ((now() AT TIME ZONE 'UTC')::date + 3)::text))));
     v_plain := coalesce(pg_temp.t3980r3t_j(v) #>> '{result,results,0,card,id}', pg_temp.t3980r3t_j(v) #>> '{results,0,card,id}')::uuid;
   v := pg_temp.t3980r3t_mcp('owner', 'start_work', jsonb_build_object('id', v_plain, 'expected_revision', pg_temp.t3980r3t_rev(v_plain::text)));
   perform pg_temp.t3980r3t_check('M5', 'the agent starts its plain card', (select status from public.ops_work_cards where id = v_plain), 'doing');
   v := pg_temp.t3980r3t_mcp('owner', 'close_work', jsonb_build_object('id', v_plain, 'expected_revision', pg_temp.t3980r3t_rev(v_plain::text),
          'proof', '[{"kind":"text","text":"Done by the agent"}]'::jsonb));
+  v := pg_temp.t3980r3t_person((select w.who from t3980r3t_people w where w.email = (public.ops_card_people(v_plain::uuid, 'watcher'))[1]), format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_plain, pg_temp.t3980r3t_rev(v_plain::text))); -- [TEST-MOD-APPROVED #4398] the watcher confirms the close
   perform pg_temp.t3980r3t_check('M5', 'the agent closes its plain card through MCP', pg_temp.t3980r3t_state(v_plain), 'done:done:claude');
 
   -- M6: a person still closes the sent-back approval card .
   v := pg_temp.t3980r3t_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Read it, will publish"}]'::jsonb, null, %s)::text$q$, v_card, pg_temp.t3980r3t_rev(v_card::text)));
+  v := pg_temp.t3980r3t_person((select w.who from t3980r3t_people w where w.email = (public.ops_card_people(v_card::uuid, 'watcher'))[1]), format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card, pg_temp.t3980r3t_rev(v_card::text))); -- [TEST-MOD-APPROVED #4398] the watcher confirms the close
   perform pg_temp.t3980r3t_check('M6', 'a person closes the approval card', pg_temp.t3980r3t_state(v_card), 'done:done:-');
 end $r$;
 
