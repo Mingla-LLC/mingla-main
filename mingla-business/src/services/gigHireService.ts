@@ -39,6 +39,7 @@ export type GigHireStart =
 export type GigPaymentCheck =
   | "paid"
   | "pending"
+  | "unfinished"
   | "not_paid"
   | "mismatch"
   | "refunded";
@@ -55,6 +56,7 @@ export type GigHireFailure = {
 const PAYMENT_CHECKS: readonly string[] = [
   "paid",
   "pending",
+  "unfinished",
   "not_paid",
   "mismatch",
   "refunded",

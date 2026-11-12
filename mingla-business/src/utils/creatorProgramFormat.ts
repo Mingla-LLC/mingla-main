@@ -541,6 +541,9 @@ const ERROR_WORDS: Record<string, string> = {
   payment_pending:
     "Your last payment for this creator is still being confirmed. You won't be charged twice. Open the offer to check it.",
   payment_failed: "The payment didn't go through. Nothing was charged.",
+  payment_unfinished:
+    "This payment wasn't finished. You can start again; you won't be charged twice.",
+  refund_in_progress: "A refund for this offer is already on its way.",
   payment_mismatch:
     "We couldn't match this payment. Our team has been alerted.",
   payment_check_failed:

@@ -25,7 +25,7 @@ DECLARE
     '44020000-0000-4000-8000-0000000000b5'::uuid];
   v_contracts uuid[] := '{}';
   v_a uuid; v_b uuid; v_c uuid; v_d uuid; v_e uuid;
-  v_answer jsonb; v_failed boolean; v_total bigint; v_quote jsonb; v_fn text; i integer;
+  v_answer jsonb; v_failed boolean; v_total bigint; v_quote jsonb; v_fn text; i integer; v_claim uuid;
 BEGIN
   UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'creator_gigs_enabled';
   INSERT INTO auth.users(id, email) VALUES
@@ -111,6 +111,9 @@ BEGIN
   END IF;
   v_answer := public.gig_pending_offer_sweep(now(), NULL);
   IF (v_answer->>'retired')::integer <> 0 THEN RAISE EXCEPTION 'a sweep with no proven ids retired something: %', v_answer; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.gig_interest WHERE id = v_interests[4] AND status = 'shortlisted') THEN
+    RAISE EXCEPTION 'a proven-unpaid retire must let the host offer again';
+  END IF;
   IF to_regprocedure('public.gig_pending_offer_sweep(timestamptz)') IS NOT NULL THEN
     RAISE EXCEPTION '#4402 the unproven one-argument sweep still exists';
   END IF;
@@ -137,6 +140,29 @@ BEGIN
     RAISE EXCEPTION 'a captured live hold is not a reconcile candidate: %', v_answer;
   END IF;
 
+  -- F2: a checked row goes behind never-checked rows (no starvation), and a
+  -- row proven unpaid long enough becomes terminal and is never probed again.
+  v_answer := public.gig_payment_check_record(v_c, 'gig_hold', 1, 'pending', 'ongoing');
+  IF (v_answer->>'terminal')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'a pending check made a row terminal: %', v_answer; END IF;
+  v_answer := public.gig_payment_reconcile_candidates(interval '0 seconds', 1);
+  IF jsonb_array_length(v_answer->'candidates') <> 1
+     OR (v_answer->'candidates'->0->>'contract_id')::uuid = v_c THEN
+    RAISE EXCEPTION '#4402 a recently checked row starved a never-checked one: %', v_answer;
+  END IF;
+  v_answer := public.gig_payment_check_record(v_c, 'gig_hold', 1, 'not_paid', 'abandoned', interval '1 day');
+  IF (v_answer->>'terminal')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'a fresh not-paid row became terminal: %', v_answer; END IF;
+  v_answer := public.gig_payment_check_record(v_c, 'gig_hold', 1, 'not_paid', 'abandoned', interval '0 seconds');
+  IF (v_answer->>'terminal')::boolean IS DISTINCT FROM true OR (v_answer->>'checks')::integer <> 3 THEN
+    RAISE EXCEPTION 'an old not-paid row must become terminal: %', v_answer;
+  END IF;
+  v_answer := public.gig_payment_reconcile_candidates(interval '0 seconds', 100);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_answer->'candidates') e WHERE (e->>'contract_id')::uuid = v_c) THEN
+    RAISE EXCEPTION '#4402 a terminal row is still re-checked: %', v_answer;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.gig_payment_checks WHERE contract_id = v_c AND terminal_proof->>'provider_status' = 'abandoned') THEN
+    RAISE EXCEPTION 'terminal rows must keep the provider proof';
+  END IF;
+
   -- 3. A payment that lands after the offer was retired is recorded for refund.
   v_answer := public.gig_hold_mark_captured(v_b, 1, 'pi_4402_b');
   IF (v_answer->>'late_capture')::boolean IS DISTINCT FROM true OR v_answer->>'status' <> 'captured' THEN
@@ -149,13 +175,60 @@ BEGIN
     RAISE EXCEPTION 'late capture must not announce the offer to the creator';
   END IF;
   v_answer := public.gig_hold_mark_captured(v_b, 1, 'pi_4402_b');
-  IF (v_answer->>'replayed')::boolean IS DISTINCT FROM true OR (v_answer->>'late_capture')::boolean IS DISTINCT FROM true THEN
-    RAISE EXCEPTION 'late capture replay must still say a refund is due: %', v_answer;
+  -- F3: only the first recorder asks for the refund; a replay says retired.
+  IF (v_answer->>'replayed')::boolean IS DISTINCT FROM true OR (v_answer->>'late_capture')::boolean IS DISTINCT FROM false
+     OR (v_answer->>'retired')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION '#4402 a late capture replay asked for a second refund: %', v_answer;
+  END IF;
+  -- F3: the host's cancel cannot refund an offer retired as unpaid.
+  IF public.issue_3872_gig_refund_branch_allowed(v_b, 'host_before_accept') THEN
+    RAISE EXCEPTION '#4402 host_before_accept is open on a retired offer';
   END IF;
   v_answer := public.gig_payment_reconcile_candidates(interval '0 seconds', 100);
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_answer->'candidates') e
                   WHERE (e->>'contract_id')::uuid = v_b AND e->>'reason' = 'refund_due' AND e->>'reference' = 'pi_4402_b') THEN
     RAISE EXCEPTION 'reconcile candidates missing the refund-due late payment: %', v_answer;
+  END IF;
+
+  -- F3: one refund claim per hold. A second recorder is in flight; a failure
+  -- backs off; a retaken claim counts attempts; the last attempt gives up and
+  -- leaves the reconcile set.
+  v_answer := public.gig_refund_claim(v_b, 'payment_late');
+  IF (v_answer->>'claimed')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'first claim: %', v_answer; END IF;
+  v_claim := (v_answer->>'claim_id')::uuid;
+  v_answer := public.gig_refund_claim(v_b, 'payment_late');
+  IF (v_answer->>'claimed')::boolean IS DISTINCT FROM false OR v_answer->>'reason' <> 'in_flight' THEN
+    RAISE EXCEPTION '#4402 two refunds were claimed for one hold: %', v_answer;
+  END IF;
+  v_answer := public.gig_refund_claim(v_b, 'host_before_accept');
+  IF (v_answer->>'claimed')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION '#4402 a second branch claimed the same hold: %', v_answer;
+  END IF;
+  v_answer := public.gig_refund_claim_finish(v_claim, false, NULL, 'paystack 502', 2);
+  IF v_answer->>'status' <> 'failed' OR (v_answer->>'next_attempt_at')::timestamptz <= now() THEN
+    RAISE EXCEPTION 'a failed refund must back off: %', v_answer;
+  END IF;
+  v_answer := public.gig_refund_claim(v_b, 'payment_late');
+  IF v_answer->>'reason' <> 'backoff' THEN RAISE EXCEPTION 'claim inside the backoff: %', v_answer; END IF;
+  UPDATE public.gig_refund_claims SET next_attempt_at = now() - interval '1 second' WHERE id = v_claim;
+  v_answer := public.gig_refund_claim(v_b, 'payment_late');
+  IF (v_answer->>'claimed')::boolean IS DISTINCT FROM true OR (v_answer->>'attempt')::integer <> 2 THEN
+    RAISE EXCEPTION 'retaking a claim after its backoff: %', v_answer;
+  END IF;
+  v_answer := public.gig_refund_claim_finish(v_claim, false, NULL, 'paystack 502', 2);
+  IF v_answer->>'status' <> 'gave_up' THEN RAISE EXCEPTION 'the last attempt must give up: %', v_answer; END IF;
+  v_answer := public.gig_payment_reconcile_candidates(interval '0 seconds', 100);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_answer->'candidates') e
+              WHERE (e->>'contract_id')::uuid = v_b AND e->>'reason' = 'refund_due') THEN
+    RAISE EXCEPTION 'a given-up refund is still retried: %', v_answer;
+  END IF;
+  -- A completed claim is a replay, never a second provider refund.
+  v_answer := public.gig_refund_claim(v_e, 'host_before_accept');
+  IF (v_answer->>'claimed')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'claim e: %', v_answer; END IF;
+  PERFORM public.gig_refund_claim_finish((v_answer->>'claim_id')::uuid, true, 're_4402_e');
+  v_answer := public.gig_refund_claim(v_e, 'host_before_accept');
+  IF v_answer->>'reason' <> 'completed' OR v_answer->>'provider_ref' <> 're_4402_e' THEN
+    RAISE EXCEPTION 'a completed refund must replay: %', v_answer;
   END IF;
 
   -- The payment_late refund is a full refund and keeps the offer retired.
@@ -201,6 +274,40 @@ BEGIN
   EXCEPTION WHEN others THEN v_failed := SQLERRM = 'hold_not_pending'; END;
   IF NOT v_failed THEN RAISE EXCEPTION 'a failed hold under another cancel reason was captured'; END IF;
 
+  -- F1 (tester repro): a signed-in host calling gig_offer_prepare directly on
+  -- an unpaid offer must not retire it; only the proven service path can.
+  PERFORM set_config('request.jwt.claim.sub', v_host::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_host, 'role', 'authenticated')::text, true);
+  v_answer := public.gig_offer_prepare(v_interests[3], '{"fee_minor":10000,"rights_accepted":true}'::jsonb, '4402-offer-direct-retry');
+  IF v_answer->>'error' IS DISTINCT FROM 'payment_unverified' OR (v_answer->>'contract_id')::uuid IS DISTINCT FROM v_c THEN
+    RAISE EXCEPTION '#4402 F1 a direct prepare was not refused: %', v_answer;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.gig_holds WHERE contract_id = v_c AND status = 'pending')
+     OR NOT EXISTS (SELECT 1 FROM public.gig_contracts WHERE id = v_c AND state = 'offered') THEN
+    RAISE EXCEPTION '#4402 F1 a direct prepare retired an unproven hold';
+  END IF;
+  v_failed := false;
+  BEGIN PERFORM public.gig_offer_retire_unpaid(v_c, '{"provider_status":"not_found"}'::jsonb);
+  EXCEPTION WHEN others THEN v_failed := SQLERRM = 'service_role_only'; END;
+  IF NOT v_failed THEN RAISE EXCEPTION '#4402 F1 a host could retire an offer'; END IF;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+  v_failed := false;
+  BEGIN PERFORM public.gig_offer_retire_unpaid(v_c, '{}'::jsonb);
+  EXCEPTION WHEN others THEN v_failed := SQLERRM = 'provider_proof_required'; END;
+  IF NOT v_failed THEN RAISE EXCEPTION '#4402 F1 retire without provider proof'; END IF;
+  v_answer := public.gig_offer_retire_unpaid(v_c, '{"provider_status":"not_found","source":"test"}'::jsonb);
+  IF (v_answer->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'proven retire: %', v_answer; END IF;
+  IF (public.gig_offer_retire_unpaid(v_a, '{"provider_status":"not_found"}'::jsonb)->>'error') IS DISTINCT FROM 'not_retirable' THEN
+    RAISE EXCEPTION '#4402 F1 a captured offer was retirable';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', v_host::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_host, 'role', 'authenticated')::text, true);
+  v_answer := public.gig_offer_prepare(v_interests[3], '{"fee_minor":10000,"rights_accepted":true}'::jsonb, '4402-offer-after-proof');
+  IF (v_answer->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'retry after a proven retire: %', v_answer; END IF;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+
   -- Every new or replaced money function refuses anon and authenticated.
   FOREACH v_fn IN ARRAY ARRAY[
     'public.gig_hold_set_provider_ref(uuid,integer,text,text)',
@@ -210,7 +317,11 @@ BEGIN
     'public.issue_4402_gig_refund_record_impl(uuid,text,bigint,bigint,text)',
     'public.gig_pending_offer_sweep(timestamptz,uuid[])',
     'public.gig_pending_offer_candidates(timestamptz)',
-    'public.gig_payment_reconcile_candidates(interval,integer)'] LOOP
+    'public.gig_payment_reconcile_candidates(interval,integer)',
+    'public.gig_payment_check_record(uuid,text,integer,text,text,interval)',
+    'public.gig_refund_claim(uuid,text)',
+    'public.gig_refund_claim_finish(uuid,boolean,text,text,integer)',
+    'public.gig_offer_retire_unpaid(uuid,jsonb)'] LOOP
     IF has_function_privilege('anon', v_fn, 'execute') OR has_function_privilege('authenticated', v_fn, 'execute') THEN
       RAISE EXCEPTION '#4402 % is executable by a client role', v_fn;
     END IF;

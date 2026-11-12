@@ -42,7 +42,13 @@ import {
   supabaseGigCaptureStore,
 } from "../_shared/gigPaymentCapture.ts";
 
+/** Reconcile caps (#4402 F2): provider calls per run and wall time. */
+export const RECONCILE_MAX_PROVIDER_CALLS = 25;
+export const RECONCILE_TIME_BUDGET_MS = 40_000;
+
 export interface GigHireDeps {
+  /** Clock seam for the reconcile time budget (tests). */
+  now?: () => number;
   /** Business web origin for the Paystack return page (null → default). */
   webOrigin: string | null;
   userClient(authorization: string): SupabaseClient;
@@ -116,7 +122,7 @@ async function ledgerTarget(
 ): Promise<(GigProbeTarget & { status: string }) | null> {
   if (kind !== "gig_hold") {
     const { data: adj, error } = await db.from("gig_hold_adjustments")
-      .select("terms_version,rail,status,provider_ref")
+      .select("terms_version,rail,status,provider_ref,created_at")
       .eq("contract_id", contractId).eq("kind", "topup")
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (error) throw new Error(`topup_read_failed:${error.message}`);
@@ -128,6 +134,7 @@ async function ledgerTarget(
         rail: adj.rail === "stripe" ? "stripe" : "paystack",
         reference: adj.rail === "stripe" ? (adj.provider_ref ?? null) : null,
         status: String(adj.status),
+        createdAt: typeof adj.created_at === "string" ? adj.created_at : null,
       };
     }
     if (kind === "gig_topup") return null;
@@ -141,7 +148,7 @@ async function ledgerTarget(
   }
   if (!contract) return null;
   const { data: hold, error } = await db.from("gig_holds")
-    .select("terms_version,rail,status,provider_ref")
+    .select("terms_version,rail,status,provider_ref,created_at")
     .eq("contract_id", contractId)
     .eq("terms_version", Number(contract.current_terms_version)).maybeSingle();
   if (error) throw new Error(`hold_read_failed:${error.message}`);
@@ -153,6 +160,7 @@ async function ledgerTarget(
     rail: hold.rail === "stripe" ? "stripe" : "paystack",
     reference: hold.rail === "stripe" ? (hold.provider_ref ?? null) : null,
     status: String(hold.status),
+    createdAt: typeof hold.created_at === "string" ? hold.created_at : null,
   };
 }
 
@@ -165,12 +173,22 @@ export function paymentCheckAnswer(
     case "replayed":
       return { ok: true, status: outcome.status, payment_check: "paid" };
     case "late_capture_refund_due":
+    case "late_replayed":
       return {
         ok: false,
         error: "payment_late_refunded",
         payment_check: "refunded",
       };
     case "pending":
+      // An open, unfinished Paystack checkout: not final, not "still
+      // confirming" either (#4402 P3).
+      if (outcome.providerStatus === "abandoned") {
+        return {
+          ok: false,
+          error: "payment_unfinished",
+          payment_check: "unfinished",
+        };
+      }
       return { ok: false, error: "payment_pending", payment_check: "pending" };
     case "not_paid":
       return { ok: false, error: "payment_failed", payment_check: "not_paid" };
@@ -239,7 +257,7 @@ export function createGigHireHandler(
       }
       const { data, error } = await serviceDb.rpc(
         "gig_payment_reconcile_candidates",
-        { p_older_than: "30 minutes", p_limit: 100 },
+        { p_older_than: "30 minutes", p_limit: RECONCILE_MAX_PROVIDER_CALLS },
       );
       if (error) {
         console.error("[gig-hire] reconcile candidates failed", error);
@@ -261,10 +279,18 @@ export function createGigHireHandler(
         still_pending: 0,
         not_paid: 0,
         mismatched: 0,
+        terminal: 0,
         errors: 0,
+        stopped_for_time: false,
       };
       const rows: Array<Record<string, unknown>> = [];
+      const startedAt = deps.now?.() ?? Date.now();
       for (const candidate of candidates) {
+        // pg_net gives the cron call 55 s; stop well before it.
+        if ((deps.now?.() ?? Date.now()) - startedAt > RECONCILE_TIME_BUDGET_MS) {
+          summary.stopped_for_time = true;
+          break;
+        }
         const kind = candidate.kind;
         const contractId = String(candidate.contract_id ?? "");
         if (!isGigPaymentKind(kind) || !uuid.test(contractId)) continue;
@@ -303,9 +329,35 @@ export function createGigHireHandler(
             reference: typeof candidate.reference === "string"
               ? candidate.reference
               : null,
+            createdAt: typeof candidate.created_at === "string"
+              ? candidate.created_at
+              : null,
           }, "gig-hire-reconcile");
+          // Remember the check (#4402 F2): rotation, and a terminal mark with
+          // the provider's answer once a row has been unpaid long enough.
+          const providerStatus =
+            outcome.status === "pending" || outcome.status === "not_paid"
+              ? outcome.providerStatus
+              : outcome.status;
+          const { data: check, error: checkError } = await serviceDb.rpc(
+            "gig_payment_check_record",
+            {
+              p_contract_id: contractId,
+              p_kind: kind,
+              p_terms_version: Number(candidate.terms_version),
+              p_outcome: outcome.status,
+              p_provider_status: providerStatus,
+            },
+          );
+          if (checkError) {
+            console.error("[gig-hire] reconcile check record failed", checkError);
+          } else if ((check as { terminal?: boolean } | null)?.terminal) {
+            summary.terminal += 1;
+          }
           if (outcome.status === "captured") summary.captured += 1;
-          else if (outcome.status === "replayed") summary.replayed += 1;
+          else if (
+            outcome.status === "replayed" || outcome.status === "late_replayed"
+          ) summary.replayed += 1;
           else if (outcome.status === "late_capture_refund_due") {
             summary.late_capture_refund_due += 1;
             if (effects.refundOk === true) summary.refunds_requested += 1;
@@ -507,7 +559,12 @@ export function createGigHireHandler(
               "gig_hold",
             );
             if (!target || target.status !== "pending") continue;
-            const { outcome } = await probe(target, "gig-hire-start");
+            // The host is starting again: an abandoned checkout counts as
+            // unpaid now (a later payment on the old tab is refunded in full).
+            const { outcome } = await probe(
+              { ...target, abandonedIsFinal: true },
+              "gig-hire-start",
+            );
             if (
               outcome.status === "captured" || outcome.status === "replayed"
             ) {
@@ -530,6 +587,36 @@ export function createGigHireHandler(
                 error: "payment_mismatch",
                 contract_id: contract.id,
               }, 409);
+            }
+            if (outcome.status === "not_paid") {
+              // #4402 F1: the only retire outside the sweep, with the proof.
+              const { data: retired, error: retireError } = await serviceDb
+                .rpc("gig_offer_retire_unpaid", {
+                  p_contract_id: contract.id,
+                  p_proof: {
+                    provider_status: outcome.providerStatus,
+                    rail: target.rail,
+                    reference: target.reference ??
+                      gigPaystackReference(
+                        target.kind,
+                        target.contractId,
+                        target.termsVersion,
+                      ),
+                    source: "gig-hire-start",
+                  },
+                });
+              if (retireError && !isMissingFunction(retireError)) {
+                throw new Error(`retire_failed:${retireError.message}`);
+              }
+              if (
+                (retired as { ok?: boolean; error?: string } | null)?.ok ===
+                  false
+              ) {
+                console.warn("[gig-hire] offer not retirable", {
+                  contract: contract.id,
+                  answer: retired,
+                });
+              }
             }
           }
         }
@@ -561,6 +648,14 @@ export function createGigHireHandler(
       // Validation failures (gig_full, interest_not_open, already_offered...)
       // come back as {ok:false}; never start a payment for them.
       if (prepared.ok === false) {
+        // The database refused to retire an unproven unpaid offer (F1).
+        if (prepared.error === "payment_unverified") {
+          return json({
+            ok: false,
+            error: "payment_pending",
+            contract_id: prepared.contract_id ?? null,
+          }, 409);
+        }
         return json({
           error: String(prepared.error),
           field: prepared.field ?? null,

@@ -66,6 +66,8 @@ serve(async (req: Request) => {
         termsVersion: Number(row.terms_version),
         rail: row.rail === "stripe" ? "stripe" as const : "paystack" as const,
         reference: typeof row.reference === "string" ? row.reference : null,
+        // An abandoned Paystack checkout younger than a day is not final.
+        createdAt: typeof row.created_at === "string" ? row.created_at : null,
       };
       try {
         const outcome = await probeGigPayment(probeDeps, target);

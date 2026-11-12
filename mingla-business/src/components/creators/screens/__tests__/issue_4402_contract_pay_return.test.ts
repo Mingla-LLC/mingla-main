@@ -32,6 +32,7 @@ const ALL: HostPaymentCheckState[] = [
   "checking",
   "paid",
   "pending",
+  "unfinished",
   "not_paid",
   "mismatch",
   "refunded",
@@ -82,6 +83,13 @@ describe("#4402 payment card copy", () => {
       action: null,
     });
     expect(hostPaymentCard("paid", { creatorName: "Ada", fromReturn: true })).toBeNull();
+    // An abandoned Paystack checkout can still be paid: never "nothing charged".
+    expect(hostPaymentCard("unfinished", { creatorName: "Ada", fromReturn: true })).toMatchObject({
+      title: "This payment wasn't finished",
+      action: "retry",
+      actionLabel: "Start again",
+    });
+    expect(nextPaymentCheckDelay("unfinished", 0)).toBeNull();
     for (const state of ["checking", "pending", "mismatch", "error"] as const) {
       expect(hostPaymentCard(state, { creatorName: "Ada", fromReturn: false })?.action).not.toBe("retry");
     }
@@ -91,6 +99,7 @@ describe("#4402 payment card copy", () => {
     expect(paymentCheckState({ ok: true, payment_check: "paid" })).toBe("paid");
     expect(paymentCheckState({ ok: false, payment_check: "pending" })).toBe("pending");
     expect(paymentCheckState({ ok: false, payment_check: "not_paid" })).toBe("not_paid");
+    expect(paymentCheckState({ ok: false, payment_check: "unfinished" })).toBe("unfinished");
     expect(paymentCheckState({ ok: false })).toBe("error");
     expect(paymentCheckState({ ok: false, payment_check: "something" })).toBe("error");
   });
@@ -144,6 +153,8 @@ describe("#4402 gig hire service", () => {
       "payment_mismatch",
       "payment_check_failed",
       "payment_late_refunded",
+      "payment_unfinished",
+      "refund_in_progress",
     ]) {
       expect(programErrorMessage(code, "FALLBACK")).not.toBe("FALLBACK");
     }

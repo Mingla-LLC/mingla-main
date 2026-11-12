@@ -346,6 +346,7 @@ export type HostPaymentCheckState =
   | "checking"
   | "paid"
   | "pending"
+  | "unfinished"
   | "not_paid"
   | "mismatch"
   | "refunded"
@@ -372,6 +373,7 @@ export function paymentCheckState(answer: {
   switch (answer.payment_check) {
     case "paid":
     case "pending":
+    case "unfinished":
     case "not_paid":
     case "mismatch":
     case "refunded":
@@ -416,6 +418,16 @@ export function hostPaymentCard(
         body: "We'll update this page when it lands. You won't be charged twice.",
         action: "check",
         actionLabel: "Check again",
+        busy: false,
+      };
+    case "unfinished":
+      // #4402: Paystack keeps an unfinished checkout payable, so this is not
+      // "nothing was charged" (that is only after the server says not_paid).
+      return {
+        title: "This payment wasn't finished",
+        body: "If you closed the payment page, you can start again. You won't be charged twice.",
+        action: "retry",
+        actionLabel: "Start again",
         busy: false,
       };
     case "not_paid":

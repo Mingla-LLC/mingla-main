@@ -153,6 +153,7 @@ export async function handleGigPaystackCharge(
     ((input: GigMismatchAlertInput) => notifyGigPaymentMismatch(input));
   // A transient store error throws, so the inbox keeps the row retryable.
   const outcome = await captureGigPaystackCharge(store, reference, txn);
+  if (outcome.status === "late_replayed") return { status: "gig_replayed" };
   if (outcome.status === "captured" || outcome.status === "replayed") {
     if (outcome.status === "captured") {
       await writeAudit(supabase, {

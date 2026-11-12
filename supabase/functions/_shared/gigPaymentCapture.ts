@@ -79,6 +79,8 @@ export interface GigLedgerRow {
 export interface GigMarkResult {
   replayed: boolean;
   lateCapture: boolean;
+  /** The offer was retired as unpaid (a late payment, first or replayed). */
+  retired?: boolean;
 }
 
 export interface GigCaptureStore {
@@ -115,6 +117,9 @@ export type GigCaptureOutcome =
   | ({ status: "captured" } & GigTarget)
   | ({ status: "replayed" } & GigTarget)
   | ({ status: "late_capture_refund_due" } & GigTarget)
+  // A replay of a late payment: already recorded, its refund was asked for by
+  // the first recorder (single-flight, #4402 F3).
+  | ({ status: "late_replayed" } & GigTarget)
   | ({ status: "mismatch"; reason: GigMismatchReason } & Partial<GigTarget>)
   | ({ status: "pending"; providerStatus: string } & Partial<GigTarget>)
   | ({ status: "not_paid"; providerStatus: string } & Partial<GigTarget>);
@@ -178,6 +183,9 @@ async function verifyAndMark(
   }
   if (marked.lateCapture) {
     return { status: "late_capture_refund_due", ...target };
+  }
+  if (marked.replayed && marked.retired) {
+    return { status: "late_replayed", ...target };
   }
   return marked.replayed
     ? { status: "replayed", ...target }
@@ -319,6 +327,7 @@ export function supabaseGigCaptureStore(db: SupabaseClient): GigCaptureStore {
       return {
         replayed: row.replayed === true,
         lateCapture: row.late_capture === true,
+        retired: row.retired === true,
       };
     },
   };
@@ -341,8 +350,25 @@ export interface GigProbeDeps {
 
 export interface GigProbeTarget extends GigTarget {
   rail: GigRail;
+  /** When the hold or top-up row was created (ISO); drives the abandoned window. */
+  createdAt?: string | null;
+  /**
+   * A host explicitly starting a new payment: an abandoned Paystack checkout
+   * counts as unpaid now (if the old tab is paid later it is late-captured and
+   * refunded in full). Everyone else waits out ABANDONED_FINAL_MS.
+   */
+  abandonedIsFinal?: boolean;
   /** Paystack: the deterministic reference (derived when null). Stripe: the stored PaymentIntent id. */
   reference: string | null;
+}
+
+/** How long an abandoned Paystack checkout stays payable for our purposes. */
+export const ABANDONED_FINAL_MS = 24 * 60 * 60 * 1000;
+
+function abandonedIsFinal(target: GigProbeTarget, now = Date.now()): boolean {
+  if (target.abandonedIsFinal) return true;
+  const created = target.createdAt ? Date.parse(target.createdAt) : NaN;
+  return Number.isFinite(created) && now - created >= ABANDONED_FINAL_MS;
 }
 
 /**
@@ -367,11 +393,14 @@ export async function probeGigPayment(
       return { status: "not_paid", providerStatus: "not_found", ...base };
     }
     if (verified.state === "failed") {
-      return {
-        status: "not_paid",
-        providerStatus: String(verified.txn?.status ?? "failed"),
-        ...base,
-      };
+      const providerStatus = String(verified.txn?.status ?? "failed");
+      // #4402 P3: Paystack reports an open, unfinished checkout as
+      // "abandoned", and it can still be paid. It is not final until the
+      // window passes (or the host starts again).
+      if (providerStatus === "abandoned" && !abandonedIsFinal(target)) {
+        return { status: "pending", providerStatus, ...base };
+      }
+      return { status: "not_paid", providerStatus, ...base };
     }
     if (verified.state === "pending") {
       return {
@@ -543,6 +572,42 @@ export async function notifyGigPaymentMismatch(
   } catch (error) {
     console.error(
       "[gig-payment] mismatch alert failed",
+      error instanceof Error ? error.message : String(error),
+    );
+    return 0;
+  }
+}
+
+/** A refund that kept failing and was stopped (#4402 P3). Never throws. */
+export async function notifyGigRefundGaveUp(
+  input: { contractId: string; branch: string; attempts: number; error: string },
+  send: (input: OpsAlertEmailInput) => Promise<OpsAlertEmailResult> =
+    sendOpsAlertEmail,
+  recipients: () => string[] = gigAlertRecipients,
+): Promise<number> {
+  try {
+    const to = recipients();
+    if (to.length === 0) {
+      console.error("[gig-payment] refund alert has no recipients", input);
+      return 0;
+    }
+    const result = await send({
+      subject: "Creator hire refund failed and was stopped",
+      paragraphs: [
+        "A creator-hire refund failed every time it was tried, so automatic retries have stopped.",
+        `Contract: ${input.contractId}`,
+        `Refund branch: ${input.branch}`,
+        `Attempts: ${input.attempts}`,
+        `Last error: ${input.error}`,
+        "Action: refund the host from the provider dashboard, then record it on the contract.",
+      ],
+      recipients: to,
+      idempotencyKey: `gig_refund_gave_up:${input.contractId}:${input.branch}`,
+    });
+    return result.succeeded;
+  } catch (error) {
+    console.error(
+      "[gig-payment] refund alert failed",
       error instanceof Error ? error.message : String(error),
     );
     return 0;

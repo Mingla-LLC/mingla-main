@@ -192,6 +192,9 @@ export interface GigStripeWebhookDeps {
 
 /** A platform PaymentIntent created by gig-hire for a hold or a top-up. */
 export function isGigStripeEvent(event: StripeWebhookEvent): boolean {
+  // Gig holds are platform PaymentIntents; a connected account's event is
+  // never a gig payment, whatever its metadata says (#4402 P3).
+  if (event.account) return false;
   const metadata = (event.data?.object as { metadata?: unknown } | undefined)
     ?.metadata as Record<string, unknown> | null | undefined;
   return isGigPaymentKind(metadata?.mingla_kind);
@@ -264,7 +267,10 @@ export async function handleGigStripeEvent(
     }
     return {};
   }
-  if (outcome.status === "pending" || outcome.status === "not_paid") return {};
+  if (
+    outcome.status === "pending" || outcome.status === "not_paid" ||
+    outcome.status === "late_replayed"
+  ) return {};
   await writeAudit(supabase, {
     user_id: null,
     brand_id: null,
