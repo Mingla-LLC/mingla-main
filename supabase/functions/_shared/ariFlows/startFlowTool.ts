@@ -18,7 +18,7 @@
  * (provenance "owner"); the model's `prefills` are kept as engine hints and
  * never become a fact.
  *
- * MINGLA-INVARIANT: I-ARI-FLOWS-START-BY-TOOL | issue #3355 | A guided setup (create_event/trip/experience/venue/stay, website_setup, import_contacts) starts from typed words only when the model calls start_flow with a registered flow_key; no keyword classifier starts a setup or routes to the event slot planner before the model. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_e_start_flow.implementor.test.ts
+ * MINGLA-INVARIANT: I-ARI-FLOWS-START-BY-TOOL | issue #3355 | A guided setup (create_event/trip/experience/venue/stay, website_setup, import_contacts, brand_setup) starts from typed words only when the model calls start_flow with a registered flow_key; no keyword classifier starts a setup or routes to the event slot planner before the model. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_e_start_flow.implementor.test.ts
  */
 
 import { FLOW_DEFINITIONS } from "./index.ts";
@@ -39,6 +39,9 @@ const FLOW_WORDS: Readonly<Record<string, string>> = Object.freeze({
   create_stay: "a new stay (accommodation)",
   website_setup: "set up or continue the brand's Website",
   import_contacts: "import or upload a customer / contact list",
+  // #4389 (merged with #3355 D3a): no keyword front door; the model starts it.
+  brand_setup:
+    "finish setting up an existing brand to get paid: bank country, then Organiser Terms and payment details on the secure screen",
 });
 
 const MAX_PREFILLS = 8;

@@ -1,7 +1,7 @@
 // Issue #3355 Wave E (D3a) — guided setups start only when the model calls
 // start_flow; the keyword classifiers are hints, never the router.
 //
-// MINGLA-INVARIANT: I-ARI-FLOWS-START-BY-TOOL | issue #3355 | A guided setup (create_event/trip/experience/venue/stay, website_setup, import_contacts) starts from typed words only when the model calls start_flow with a registered flow_key; no keyword classifier starts a setup or routes to the event slot planner before the model.
+// MINGLA-INVARIANT: I-ARI-FLOWS-START-BY-TOOL | issue #3355 | A guided setup (create_event/trip/experience/venue/stay, website_setup, import_contacts, brand_setup) starts from typed words only when the model calls start_flow with a registered flow_key; no keyword classifier starts a setup or routes to the event slot planner before the model.
 // MINGLA-INVARIANT: I-ARI-FLOW-ACTION-PRIMARY | issue #3355 | Inside an open setup the intent read's flow_action (answer / park / resume / cancel, or a side question) decides what typed words do; the Wave A keyword re-read decides only when the intent read failed.
 //
 // Run: deno test --no-check --allow-read --allow-env \
