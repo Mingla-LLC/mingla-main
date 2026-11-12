@@ -53,6 +53,14 @@ import {
   paidCheckoutErrorMessage,
 } from "../services/ticketCheckoutService";
 import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview";
+// issue #3281 (bundle 6b) — the Paystack page this purchase was already sent to.
+import {
+  clearHeldHandoff,
+  handoffGeneration,
+  holdHandoff,
+  readHeldHandoff,
+  type HeldPaystackHandoff,
+} from "./paystackHeldHandoff";
 import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
 // issue #3281 — checkout contract v2: per-line plan choice, dates and extras,
 // one attempt id per logical submission. Same shared normalizer buyer web uses.
@@ -243,6 +251,25 @@ const CHECKOUT_TERMS_REQUIRED_MESSAGE =
 const CHECKOUT_UNAVAILABLE_MESSAGE =
   "This sale is no longer available — the organiser may have paused or changed this event. You have not been charged.";
 
+// issue #3281 (bundle 6b) — byte-identical to app-mobile's constants of the same
+// names; the parity test pins them.
+const CHECKOUT_NO_HANDOFF_MESSAGE =
+  "We couldn't open the secure payment page. You have not been charged — please try again.";
+
+// issue #3281 (bundle 6b) — Host-app only: an earlier payment for this order
+// (a Paystack page or a payment sheet) is still open on the server and cannot
+// be reopened from here. Paystack sessions last 15 minutes.
+const CHECKOUT_IN_PROGRESS_NATIVE_MESSAGE =
+  "Your last payment for this order hasn't finished yet. If you paid, your tickets will arrive here and by email within a few minutes — don't pay again. If you didn't, try again in up to 15 minutes.";
+
+// issue #3281 (bundle 6b) — Host-app only: the held page could not be checked
+// before reopening it, so it was not opened.
+const CHECKOUT_RECHECK_FAILED_MESSAGE =
+  "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
+
+const CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE =
+  "We couldn't issue your tickets for this sale. If your payment went through, we're sorting it out and will email you — please don't pay again. Contact support@usemingla.com and we'll pick it up from there.";
+
 /**
  * issue #2264 — map `ticket-checkout-status`'s TERMINAL token to buyer copy.
  * Mirror of app-mobile's `nativePaystackReturnMessage`. TOTAL by construction:
@@ -267,54 +294,260 @@ const paystackReturnMessage = (code: string | null): string => {
 type PaystackPollOutcome =
   | { kind: "finalized"; orderId: string }
   | { kind: "terminal"; code: string | null }
+  /**
+   * issue #3281 (bundle 6b) — the server REFUSED the sale: HTTP 409 (the
+   * session was revoked, or the payment is being reversed), or
+   * `checkout_unavailable` at HTTP 200 (#2198's `paid_reversal_pending`). No
+   * tickets will be issued; the held page must not be reopened. Mirror of
+   * Explorer's `refused` kind.
+   */
+  | { kind: "refused" }
   | { kind: "timeout" };
+
+/** What ONE `ticket-checkout-status` read told us. */
+type CheckoutStatusReading =
+  | Exclude<PaystackPollOutcome, { kind: "timeout" }>
+  /** The server answered and the payment is simply not settled yet. */
+  | { kind: "pending" }
+  /** No usable answer: a thrown call, an HTTP error other than 409, no body. */
+  | { kind: "no_answer" };
+
+async function readCheckoutStatusOnce(
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+): Promise<CheckoutStatusReading> {
+  let data:
+    | { status?: string; order: { orderId: string } | null; error?: string }
+    | null
+    | undefined;
+  let error: unknown = null;
+  try {
+    // #2264 — the response type MUST declare `status` and `error`. The
+    // previous generic named only `order`, so TypeScript hid the very fields
+    // the server was sending.
+    ({ data, error } = await supabase.functions.invoke<{
+      status?: string;
+      order: { orderId: string } | null;
+      error?: string;
+    }>("ticket-checkout-status", {
+      body: { checkoutSessionId, buyerStatusToken },
+    }));
+  } catch (err) {
+    // Transport failure is NOT an answer.
+    console.warn(
+      "[nativeCheckoutFlow:business] checkout-status poll failed",
+      err,
+    );
+    data = null;
+    error = null;
+  }
+  // A finalized order OUTRANKS any status string.
+  const orderId = data?.order?.orderId;
+  if (orderId) return { kind: "finalized", orderId };
+  // #2264 — the server ALREADY answered this. ticket-checkout-status runs
+  // #2198's Paystack verify on every poll and returns
+  // { status:"failed", order:null, error:"paystack_charge_abandoned" } at HTTP 200
+  // for a buyer who left without paying. Reading only `order` is what made the
+  // app tell an unpaid buyer "we couldn't confirm your payment" after 25 seconds.
+  // Do not narrow this response type again.
+  // Invariant: I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED.
+  if (data?.status === "failed") {
+    // #2264 — `checkout_unavailable` here is a sale being reversed under a
+    // payment: a refusal, never a page to reopen.
+    if (data.error === "checkout_unavailable") return { kind: "refused" };
+    return { kind: "terminal", code: data.error ?? null };
+  }
+  // A 409 is the server refusing the sale. Without this the buyer waited out
+  // the whole budget for a sale that was already refused.
+  if (
+    error != null &&
+    (error as { context?: { status?: number } })?.context?.status === 409
+  ) {
+    return { kind: "refused" };
+  }
+  if (error == null && typeof data?.status === "string") {
+    return { kind: "pending" };
+  }
+  return { kind: "no_answer" };
+}
 
 async function pollPaystackOrder(
   checkoutSessionId: string,
   buyerStatusToken: string,
 ): Promise<PaystackPollOutcome> {
   for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
-    let data:
-      | { status?: string; order: { orderId: string } | null; error?: string }
-      | null
-      | undefined;
-    try {
-      // #2264 — the response type MUST declare `status` and `error`. The
-      // previous generic named only `order`, so TypeScript hid the very fields
-      // the server was sending.
-      ({ data } = await supabase.functions.invoke<{
-        status?: string;
-        order: { orderId: string } | null;
-        error?: string;
-      }>("ticket-checkout-status", {
-        body: { checkoutSessionId, buyerStatusToken },
-      }));
-    } catch (err) {
-      // Transport failure is NOT an answer. Keep polling within the budget.
-      console.warn(
-        "[nativeCheckoutFlow:business] checkout-status poll failed",
-        err,
-      );
-      data = null;
-    }
-    // A finalized order OUTRANKS any status string.
-    const orderId = data?.order?.orderId;
-    if (orderId) return { kind: "finalized", orderId };
-    // #2264 — the server ALREADY answered this. ticket-checkout-status runs
-    // #2198's Paystack verify on every poll and returns
-    // { status:"failed", order:null, error:"paystack_charge_abandoned" } at HTTP 200
-    // for a buyer who left without paying. Reading only `order` is what made the
-    // app tell an unpaid buyer "we couldn't confirm your payment" after 25 seconds.
-    // Do not narrow this response type again.
-    // Invariant: I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED.
-    if (data?.status === "failed") {
-      return { kind: "terminal", code: data.error ?? null };
+    const reading = await readCheckoutStatusOnce(
+      checkoutSessionId,
+      buyerStatusToken,
+    );
+    if (reading.kind !== "no_answer" && reading.kind !== "pending") {
+      return reading;
     }
     await new Promise((resolve) =>
       setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS),
     );
   }
   return { kind: "timeout" };
+}
+
+/**
+ * issue #3281 (bundle 6b) — before a HELD page is reopened, ask the server
+ * whether it may still be paid. Returns null when it may; otherwise the
+ * outcome to show, having dropped the page if the answer was definitive.
+ *
+ *   1. One status read: an order that already finalized is returned as the
+ *      success it is; a refusal (revoked, or a payment being reversed) drops
+ *      the page.
+ *   2. The #1930 preflight: the same admission check the payment sheet runs
+ *      before presenting. A sale the organiser paused or cancelled since the
+ *      page was issued is refused here, before the buyer can pay into it.
+ *
+ * Either read getting no usable answer (offline, a server error, an empty
+ * body) keeps the page but does not open it: we could not prove it is still
+ * payable, or that it was not already paid.
+ */
+async function revalidateHeldHandoff(
+  eventId: string,
+  handoff: HeldPaystackHandoff,
+  generation: number,
+): Promise<NativeCheckoutOutcome | null> {
+  const reading = await readCheckoutStatusOnce(
+    handoff.checkoutSessionId,
+    handoff.buyerStatusToken,
+  );
+  if (reading.kind === "finalized") {
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "succeeded", orderId: reading.orderId };
+  }
+  if (reading.kind === "refused") {
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
+  }
+  if (
+    reading.kind === "terminal" &&
+    reading.code === "paystack_payment_mismatch"
+  ) {
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "failed", message: paystackReturnMessage(reading.code) };
+  }
+  // No usable answer: the preflight checks admission, not payment, so it
+  // cannot stand in for this read. Keep the page; do not open it.
+  if (reading.kind === "no_answer") {
+    return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
+  }
+  let preflight: { data: { status?: string } | null; error: unknown };
+  try {
+    preflight = await supabase.functions.invoke<{ status?: string }>(
+      "ticket-checkout-status",
+      {
+        body: {
+          checkoutSessionId: handoff.checkoutSessionId,
+          buyerStatusToken: handoff.buyerStatusToken,
+          preflight: true,
+        },
+      },
+    );
+  } catch (err) {
+    console.warn(
+      "[nativeCheckoutFlow:business] held page preflight failed",
+      err,
+    );
+    return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
+  }
+  if (preflight.error == null && preflight.data?.status === "present_allowed") {
+    return null;
+  }
+  const status =
+    (preflight.error as { context?: { status?: number } } | null)?.context
+      ?.status ?? null;
+  if (status === 403 || status === 404) {
+    // The session is gone or is not this buyer's: the page is spent.
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "failed", message: CHECKOUT_UNAVAILABLE_MESSAGE };
+  }
+  if (status === 409) {
+    // Not admitted right now. The server answers the same 409 for a sale the
+    // organiser paused or cancelled AND for a database hiccup in the admission
+    // check, so the page is NOT dropped: dropping a still-payable page would
+    // leave the next tap stuck on `checkout_in_progress`. It is not opened
+    // either; every later tap re-checks before opening.
+    return { outcome: "failed", message: CHECKOUT_UNAVAILABLE_MESSAGE };
+  }
+  return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
+}
+
+/**
+ * issue #3281 (bundle 6b) — send the buyer to Paystack, then poll the server
+ * for the finalized order. Used for a fresh checkout AND for reopening a held
+ * page, so both get identical browser handling and polling. Mirror of
+ * Explorer's `followPaystackHandoff`.
+ */
+async function followPaystackHandoff(
+  eventId: string,
+  handoff: HeldPaystackHandoff,
+  generation: number,
+): Promise<NativeCheckoutOutcome> {
+  let opened: WebBrowser.WebBrowserResult;
+  try {
+    // #2227 — openBrowserAsync, NOT openAuthSessionAsync. The redirect
+    // argument here was the server's https returnUrl, which makes
+    // expo-web-browser >= 15 ask iOS >= 17.4 for an
+    // ASWebAuthenticationSession .https callback; that requires a
+    // `webcredentials:` Associated Domain the app does not have, so iOS
+    // destroyed the session in <100ms and logged "cancelled by user" — the
+    // buyer never saw Paystack. The server still needs returnUrl for
+    // Paystack's own callback_url and for the web rail; only this native
+    // interception argument was fatal. Never reintroduce it.
+    // Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
+    opened = await WebBrowser.openBrowserAsync(handoff.authorizationUrl);
+  } catch (err) {
+    // #2227 F-2 — openBrowserAsync throws only for an invalid URL or an
+    // unavailable module: the page was provably never shown, so the buyer
+    // cannot have paid. Say so now instead of a 25-second poll they cannot
+    // win. The page stays held, so the next tap tries to open it again.
+    console.warn("[nativeCheckoutFlow:business] paystack browser error", err);
+    return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
+  }
+  // iOS refuses to present while another in-app browser is open. Same fact as
+  // a throw: the buyer never saw Paystack. Never poll on it.
+  if (opened?.type === WebBrowser.WebBrowserResultType.LOCKED) {
+    return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
+  }
+
+  // #2264 F-6 — this poll runs ONLY after the browser has closed, and that
+  // ordering is load-bearing. Paystack reports a transaction as `abandoned`
+  // from initialize onward, before the buyer has typed anything, so a poll
+  // running concurrently with an OPEN browser would tell a paying buyer they
+  // walked away. #2250's auto-close needs a concurrent poll: when it lands,
+  // it must ignore the terminal token until the browser is confirmed closed.
+  // Invariant: I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES.
+  const poll = await pollPaystackOrder(
+    handoff.checkoutSessionId,
+    handoff.buyerStatusToken,
+  );
+  if (poll.kind === "finalized") {
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "succeeded", orderId: poll.orderId };
+  }
+  if (poll.kind === "refused") {
+    // Reopening the page would ask the buyer to pay into a refused sale.
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
+  }
+  if (poll.kind === "terminal" && poll.code === "paystack_payment_mismatch") {
+    // Money moved and the server already failed the session: reopening the
+    // page would invite a second payment.
+    clearHeldHandoff(eventId, generation);
+    return { outcome: "failed", message: paystackReturnMessage(poll.code) };
+  }
+  // The page is DELIBERATELY kept on the remaining arms (#2264). An abandoned
+  // or failed charge leaves the session live and the page payable, and the
+  // abandoned copy tells the buyer to reopen it. After a timeout the buyer may
+  // have paid; Paystack refuses a second charge on the same reference.
+  if (poll.kind === "terminal") {
+    return { outcome: "failed", message: paystackReturnMessage(poll.code) };
+  }
+  return { outcome: "failed", message: CHECKOUT_AWAITING_CONFIRMATION_MESSAGE };
 }
 
 async function preflightPaymentSheet(
@@ -363,6 +596,12 @@ const BUSINESS_URL_SCHEME = "com.sethogieva.minglabusiness";
  */
 async function nativeCheckoutRefusalMessage(err: unknown): Promise<string> {
   const refusal = await readEdgeRefusal(err);
+  // issue #3281 (bundle 6b) — the shared copy points at "the payment window",
+  // which on this app is only true while the page is held. Reaching here means
+  // it is not (the app restarted, or the hold expired), so say what is true.
+  if (refusal.code === "checkout_in_progress") {
+    return CHECKOUT_IN_PROGRESS_NATIVE_MESSAGE;
+  }
   const raise = checkoutRefusalRaiseMessage(refusal.code, refusal.detail);
   if (raise !== undefined) return raise;
   return paidCheckoutErrorMessage({
@@ -422,76 +661,113 @@ export const useNativeCheckoutFlow = (): ((
       }
     }
 
-    // 1. Create the checkout session on the server.
+    // 1. Create the checkout session on the server. The request is built
+    // first because it is also the purchase's fingerprint: the identical
+    // request is the only one that may reopen a held Paystack page.
+    const createBody = {
+      eventId: input.eventId,
+      surface: "native",
+      returnContract: "host_v1",
+      ...(isCheckoutV2
+        ? {
+            checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
+            checkoutAttemptId: input.checkoutAttemptId,
+            purchaseTermsAccepted: true,
+          }
+        : {}),
+      ...(input.ticketLinkToken !== undefined &&
+      input.ticketLinkToken.length > 0
+        ? { ticketLinkToken: input.ticketLinkToken }
+        : {}),
+      buyer: {
+        name: input.buyer.name,
+        email: input.buyer.email,
+        phone: input.buyer.phone,
+        marketingOptIn: true, // #4273: buying opts in
+        // ORCH-1130 Fix #2 — only forward an address if a (legacy) caller
+        // still supplies one. The server ignores it (tax is venue-sourced);
+        // the no-address create computes the same all-in total.
+        ...(input.buyer.address ? { address: input.buyer.address } : {}),
+      },
+      // issue #3281 — v2 sends the normalized lines (plan choice, dates,
+      // extras); v1 keeps its body unchanged.
+      lines: v2Lines?.ok ? v2Lines.lines : input.lines,
+      ...(input.discountCode ? { discountCode: input.discountCode } : {}),
+      quoteDigest: input.quoteDigest ?? null,
+      quoteListDigest: input.quoteListDigest ?? null,
+      ...(input.taxCalculationId
+        ? { taxCalculationId: input.taxCalculationId }
+        : {}),
+      ...(!isCheckoutV2 && input.paymentPlanChoice !== undefined
+        ? { payment_plan_choice: input.paymentPlanChoice }
+        : {}),
+      ...(input.idempotencyKey !== undefined
+        ? { idempotencyKey: input.idempotencyKey }
+        : {}),
+      // ORCH-1138 Leg 3 — chosen occurrence ONLY when present (byte-identical
+      // on null). The edge fn validates the eventDateId FK (investigation Q5).
+      ...(input.eventDateId !== undefined && input.eventDateId.length > 0
+        ? { eventDateId: input.eventDateId }
+        : {}),
+      // issue #3281 — the chosen day SET. Without it a multi-date or
+      // recurring event is refused with `event_date_choice_required`
+      // (#3313). Empty => omitted => byte-identical single-date request.
+      ...(normalizedEventDateIds(input).length > 0
+        ? { eventDateIds: normalizedEventDateIds(input) }
+        : {}),
+      ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
+        ? { bookedStartAt: input.bookedStartAt }
+        : {}),
+      ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
+        ? { bookedEndAt: input.bookedEndAt }
+        : {}),
+      ...(typeof input.partySize === "number" &&
+      Number.isFinite(input.partySize) &&
+      input.partySize >= 1
+        ? { partySize: Math.floor(input.partySize) }
+        : {}),
+    };
+
+    // issue #3281 (bundle 6b) — this exact purchase was already sent to a
+    // Paystack page: reopen THAT page. The server refuses a second create for
+    // it (409 `checkout_in_progress`), and the abandoned-page copy tells the
+    // buyer to reopen the page; this is what makes that sentence true. Mirror
+    // of Explorer's #2227 replay.
+    //
+    // The buyer's display name is left out: the server's session key does not
+    // read it (v1), and v2's attempt id already changes with it. Leaving it in
+    // would send a name-only edit to a create the server refuses as in
+    // progress, which is the stuck state this exists to fix.
+    const fingerprint = JSON.stringify({
+      ...createBody,
+      buyer: { ...createBody.buyer, name: undefined },
+    });
+    const generation = handoffGeneration();
+    const heldForCart = readHeldHandoff(input.eventId, fingerprint);
+    if (heldForCart !== null) {
+      const refused = await revalidateHeldHandoff(
+        input.eventId,
+        heldForCart,
+        generation,
+      );
+      // Signed out while we were checking: whatever the check found (even a
+      // finalized order) belongs to that session, never to whoever is here now.
+      if (handoffGeneration() !== generation) return { outcome: "canceled" };
+      if (refused !== null) return refused;
+      return await followPaystackHandoff(
+        input.eventId,
+        heldForCart,
+        generation,
+      );
+    }
+
+    // Taken BEFORE the create: the server starts the session's 15 minutes when
+    // it writes the row, so the hold must never outlive it.
+    const requestedAt = Date.now();
     const { data, error } =
       await supabase.functions.invoke<CheckoutCreateResponse>(
         "ticket-checkout-create",
-        {
-          body: {
-            eventId: input.eventId,
-            surface: "native",
-            returnContract: "host_v1",
-            ...(isCheckoutV2
-              ? {
-                  checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
-                  checkoutAttemptId: input.checkoutAttemptId,
-                  purchaseTermsAccepted: true,
-                }
-              : {}),
-            ...(input.ticketLinkToken !== undefined &&
-            input.ticketLinkToken.length > 0
-              ? { ticketLinkToken: input.ticketLinkToken }
-              : {}),
-            buyer: {
-              name: input.buyer.name,
-              email: input.buyer.email,
-              phone: input.buyer.phone,
-              marketingOptIn: true, // #4273: buying opts in
-              // ORCH-1130 Fix #2 — only forward an address if a (legacy) caller
-              // still supplies one. The server ignores it (tax is venue-sourced);
-              // the no-address create computes the same all-in total.
-              ...(input.buyer.address ? { address: input.buyer.address } : {}),
-            },
-            // issue #3281 — v2 sends the normalized lines (plan choice, dates,
-            // extras); v1 keeps its body unchanged.
-            lines: v2Lines?.ok ? v2Lines.lines : input.lines,
-            ...(input.discountCode ? { discountCode: input.discountCode } : {}),
-            quoteDigest: input.quoteDigest ?? null,
-            quoteListDigest: input.quoteListDigest ?? null,
-            ...(input.taxCalculationId
-              ? { taxCalculationId: input.taxCalculationId }
-              : {}),
-            ...(!isCheckoutV2 && input.paymentPlanChoice !== undefined
-              ? { payment_plan_choice: input.paymentPlanChoice }
-              : {}),
-            ...(input.idempotencyKey !== undefined
-              ? { idempotencyKey: input.idempotencyKey }
-              : {}),
-            // ORCH-1138 Leg 3 — chosen occurrence ONLY when present (byte-identical
-            // on null). The edge fn validates the eventDateId FK (investigation Q5).
-            ...(input.eventDateId !== undefined && input.eventDateId.length > 0
-              ? { eventDateId: input.eventDateId }
-              : {}),
-            // issue #3281 — the chosen day SET. Without it a multi-date or
-            // recurring event is refused with `event_date_choice_required`
-            // (#3313). Empty => omitted => byte-identical single-date request.
-            ...(normalizedEventDateIds(input).length > 0
-              ? { eventDateIds: normalizedEventDateIds(input) }
-              : {}),
-            ...(input.bookedStartAt !== undefined &&
-            input.bookedStartAt.length > 0
-              ? { bookedStartAt: input.bookedStartAt }
-              : {}),
-            ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
-              ? { bookedEndAt: input.bookedEndAt }
-              : {}),
-            ...(typeof input.partySize === "number" &&
-            Number.isFinite(input.partySize) &&
-            input.partySize >= 1
-              ? { partySize: Math.floor(input.partySize) }
-              : {}),
-          },
-        },
+        { body: createBody },
       );
 
     if (error) {
@@ -521,6 +797,9 @@ export const useNativeCheckoutFlow = (): ((
 
     // 2a. Free ticket — already finalized on server.
     if (data.kind === "free_completed") {
+      // issue #3281 (bundle 6b) — this event is bought: an older cart's held
+      // Paystack page is spent too (Explorer parity).
+      clearHeldHandoff(input.eventId, generation);
       return { outcome: "succeeded", orderId: data.orderId };
     }
 
@@ -637,56 +916,27 @@ export const useNativeCheckoutFlow = (): ((
       // produce the order row asynchronously; we surface the checkoutSessionId
       // here so the caller can navigate to a confirmation surface that polls
       // for the finalized order.
+      clearHeldHandoff(input.eventId, generation); // #3281 6b — Explorer parity
       return { outcome: "succeeded", orderId: data.checkoutSessionId };
     }
 
     // 2c. META-ORCH-1076 — Paystack (NGN). Open Paystack's hosted checkout in
     // an in-app browser, then poll the server for the finalized order.
     if (data.kind === "requires_paystack_redirect") {
-      // #2227 — openBrowserAsync, NOT openAuthSessionAsync. The redirect
-      // argument here was the server's https returnUrl, which makes
-      // expo-web-browser >= 15 ask iOS >= 17.4 for an
-      // ASWebAuthenticationSession .https callback; that requires a
-      // `webcredentials:` Associated Domain the app does not have, so iOS
-      // destroyed the session in <100ms and logged "cancelled by user" — the
-      // buyer never saw Paystack. The server still needs returnUrl for
-      // Paystack's own callback_url and for the web rail; only this native
-      // interception argument was fatal. Never reintroduce it.
-      // Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
-      try {
-        await WebBrowser.openBrowserAsync(data.authorizationUrl);
-      } catch (err) {
-        console.warn(
-          "[nativeCheckoutFlow:business] paystack browser error",
-          err,
-        );
-        // Still poll — the buyer may have paid before the browser errored.
-      }
-
-      // #2264 F-6 — this poll runs ONLY after the browser has closed, and that
-      // ordering is load-bearing. Paystack reports a transaction as `abandoned`
-      // from initialize onward, before the buyer has typed anything, so a poll
-      // running concurrently with an OPEN browser would tell a paying buyer they
-      // walked away. #2250's auto-close needs a concurrent poll: when it lands,
-      // it must ignore the terminal token until the browser is confirmed closed.
-      // Invariant: I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES.
-      const poll = await pollPaystackOrder(
-        data.checkoutSessionId,
-        data.buyerStatusToken,
-      );
-      if (poll.kind === "finalized") {
-        return { outcome: "succeeded", orderId: poll.orderId };
-      }
-      if (poll.kind === "terminal") {
-        return {
-          outcome: "failed",
-          message: paystackReturnMessage(poll.code),
-        };
-      }
-      return {
-        outcome: "failed",
-        message: CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
+      // Signed out while the create was in flight: this page and its status
+      // token belong to the previous session. Never hold or open it.
+      if (handoffGeneration() !== generation) return { outcome: "canceled" };
+      // issue #3281 (bundle 6b) — held BEFORE the browser opens, so a buyer
+      // who closes the page and taps Pay again reopens this same page.
+      const handoff: HeldPaystackHandoff = {
+        fingerprint,
+        authorizationUrl: data.authorizationUrl,
+        checkoutSessionId: data.checkoutSessionId,
+        buyerStatusToken: data.buyerStatusToken,
+        cachedAt: requestedAt,
       };
+      holdHandoff(input.eventId, handoff);
+      return await followPaystackHandoff(input.eventId, handoff, generation);
     }
 
     // 2d. Web redirect from a native client is a server/client mismatch

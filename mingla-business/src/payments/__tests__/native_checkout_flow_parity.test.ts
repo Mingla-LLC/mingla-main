@@ -157,6 +157,9 @@ describe("#2264 — consumer/business terminal-token parity", () => {
     "CHECKOUT_PAYMENT_MISMATCH_MESSAGE",
     "CHECKOUT_AWAITING_CONFIRMATION_MESSAGE",
     "CHECKOUT_UNAVAILABLE_MESSAGE",
+    // issue #3281 (bundle 6b) — the held-page arms.
+    "CHECKOUT_NO_HANDOFF_MESSAGE",
+    "CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE",
   ] as const;
 
   /** The string literal a `const NAME =\n  "…";` declaration carries. */
