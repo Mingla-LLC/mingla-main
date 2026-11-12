@@ -1948,7 +1948,9 @@
         "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
         "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
         "mingla-business/src/components/offering/LazyOfferingManageSheet.tsx",
-        "mingla-business/src/components/offering/LazyOfferingManageSheet.web.tsx"
+        "mingla-business/src/components/offering/LazyOfferingManageSheet.web.tsx",
+        "mingla-business/app/(tabs)/hub/experiences.tsx",
+        "mingla-business/app/experience/[id]/index.tsx"
       ]
     },
     {
@@ -2580,7 +2582,8 @@
         "mingla-business/src/components/venue/VenueCoverStep.tsx",
         "mingla-business/src/components/venue/VenueStep7Review.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepCover.tsx",
-        "mingla-business/src/components/venue/claim/ClaimStepReview.tsx"
+        "mingla-business/src/components/venue/claim/ClaimStepReview.tsx",
+        "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx"
       ]
     },
     {
