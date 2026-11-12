@@ -5,6 +5,7 @@
  *
  * Every test here fails when its change is reverted (recorded on the issue).
  */
+// MINGLA-INVARIANT: I-4389-TAP-ADMIN-PATH-IS-REAL | issue #4389 | Apple 3.8.1: the "ask an admin" message names a place in the app that really opens Tap to Pay setup.
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import fs from "node:fs";
 import path from "node:path";
@@ -857,7 +858,6 @@ describe("override 7: never a second way to pay while the result is unknown", ()
   });
 });
 
-// MINGLA-INVARIANT: I-4389-TAP-ADMIN-PATH-IS-REAL | issue #4389 | Apple 3.8.1: the "ask an admin" message names a place in the app that really opens Tap to Pay setup.
 describe("Apple 3.8.1: the admin message points where Tap to Pay lives", () => {
   const read = (rel: string): string => fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
   const opensSetup = (rel: string): boolean => /\/account\/tap-to-pay/.test(read(rel));
