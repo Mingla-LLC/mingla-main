@@ -50,6 +50,25 @@ jest.mock(
   { virtual: true },
 );
 
+// issue #3281 (bundle 6c) — an AppState the tests drive, so the Android
+// "opened at once" return is exercised for real.
+const mockAppStateListeners = new Set<(state: string) => void>();
+const mockAppState = {
+  currentState: "active" as string,
+  addEventListener: (_type: string, listener: (state: string) => void) => {
+    mockAppStateListeners.add(listener);
+    return { remove: () => mockAppStateListeners.delete(listener) };
+  },
+};
+const setAppState = (state: string) => {
+  mockAppState.currentState = state;
+  for (const listener of [...mockAppStateListeners]) listener(state);
+};
+jest.mock("react-native", () => ({
+  ...jest.requireActual("react-native"),
+  AppState: mockAppState,
+}));
+
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { useNativeCheckoutFlow } =
   require("../nativeCheckoutFlow.native") as typeof import("../nativeCheckoutFlow.native");
@@ -189,6 +208,8 @@ const payWithTimers = async (input: NativeCheckoutInput) => {
 };
 
 beforeEach(() => {
+  mockAppState.currentState = "active";
+  mockAppStateListeners.clear();
   clearAllHeldHandoffs();
   sessionSeq = 0;
   invoke.mockReset();
@@ -755,7 +776,7 @@ describe("#3281 6b — the payment page never opened", () => {
     },
   );
 
-  it.each(["cancel", "dismiss", "opened"])(
+  it.each(["cancel", "dismiss"])(
     "a browser that closes with %s is asked about, never assumed",
     async (type) => {
       openBrowserAsync.mockResolvedValueOnce({ type });
@@ -763,6 +784,207 @@ describe("#3281 6b — the payment page never opened", () => {
       expect(calls("ticket-checkout-status")).toHaveLength(1);
     },
   );
+});
+
+describe("#3281 6c — Android: the browser call returns `opened` while the buyer is still paying", () => {
+  /** Let pending promise callbacks run without advancing any timer. */
+  const flush = async () => {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  };
+
+  it("no status read happens until the buyer is back in the app", async () => {
+    openBrowserAsync.mockResolvedValueOnce({ type: "opened" });
+    statusAnswers = [finalized];
+    const pending = pay(v2Input());
+    await flush();
+    expect(calls("ticket-checkout-status")).toHaveLength(0);
+
+    setAppState("background"); // the Custom Tab covers the app
+    await flush();
+    expect(calls("ticket-checkout-status")).toHaveLength(0);
+
+    setAppState("active"); // the buyer is back
+    expect(await pending).toEqual({ outcome: "succeeded", orderId: "ord-1" });
+    expect(calls("ticket-checkout-status")).toHaveLength(1);
+    expect(mockAppStateListeners.size).toBe(0);
+  });
+
+  it("an app already in the background when the call returns waits for the return", async () => {
+    openBrowserAsync.mockImplementationOnce(async () => {
+      mockAppState.currentState = "background";
+      return { type: "opened" };
+    });
+    const pending = pay(v2Input());
+    await flush();
+    expect(calls("ticket-checkout-status")).toHaveLength(0);
+    setAppState("active");
+    expect(await pending).toEqual({ outcome: "failed", message: ABANDONED });
+  });
+
+  it("after the buyer is back, Paystack's `abandoned` is believed", async () => {
+    openBrowserAsync.mockResolvedValueOnce({ type: "opened" });
+    const pending = pay(v2Input());
+    await flush();
+    setAppState("background");
+    setAppState("active");
+    expect(await pending).toEqual({ outcome: "failed", message: ABANDONED });
+  });
+
+  it("a page that never covers the app (split screen) never shows the abandoned copy", async () => {
+    jest.useFakeTimers();
+    openBrowserAsync.mockResolvedValueOnce({ type: "opened" });
+    statusAnswers = [abandoned];
+    const outcome = await payWithTimers(v2Input());
+    expect(outcome).toEqual({ outcome: "failed", message: AWAITING });
+    expect(calls("ticket-checkout-status")).toHaveLength(17);
+    // The page is kept: the buyer may still be paying on it.
+    jest.useRealTimers();
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+  });
+
+  it("a page that never covers the app still ends on a real order or a refusal", async () => {
+    jest.useFakeTimers();
+    openBrowserAsync.mockResolvedValueOnce({ type: "opened" });
+    statusAnswers = [abandoned, abandoned, finalized];
+    expect(await payWithTimers(v2Input())).toEqual({
+      outcome: "succeeded",
+      orderId: "ord-1",
+    });
+  });
+
+  it("a payment mismatch is still an answer while the page may be open", async () => {
+    jest.useFakeTimers();
+    openBrowserAsync.mockResolvedValueOnce({ type: "opened" });
+    statusAnswers = [
+      {
+        data: {
+          status: "failed",
+          order: null,
+          error: "paystack_payment_mismatch",
+        },
+        error: null,
+      },
+    ];
+    expect(await payWithTimers(v2Input())).toEqual({
+      outcome: "failed",
+      message: MISMATCH,
+    });
+  });
+
+  it("a sign-out while the payment is being checked returns nothing to whoever signs in", async () => {
+    invoke.mockImplementation(async (name: string) => {
+      if (name === "ticket-checkout-create") return createAnswer();
+      clearAllStores(); // signed out while the status read was in flight
+      return finalized;
+    });
+    expect(await pay(v2Input())).toEqual({ outcome: "canceled" });
+  });
+
+  it("a sign-out while the buyer is away returns nothing to whoever signs in", async () => {
+    openBrowserAsync.mockResolvedValueOnce({ type: "opened" });
+    statusAnswers = [finalized];
+    const pending = pay(v2Input());
+    await flush();
+    setAppState("background");
+    clearAllStores();
+    setAppState("active");
+    expect(await pending).toEqual({ outcome: "canceled" });
+    expect(calls("ticket-checkout-status")).toHaveLength(0);
+  });
+});
+
+describe("#3281 6c — the hold never outlives the server session", () => {
+  const T0 = new Date("2026-11-12T10:00:00Z").getTime();
+  const withSecondsLeft = (expiresInSeconds: unknown) => () => {
+    const page = paystackPage();
+    return { ...page, data: { ...page.data, expiresInSeconds } };
+  };
+
+  it("a session with 5 minutes left stops being reopened a minute before it ends", async () => {
+    jest.useFakeTimers({ now: T0 });
+    createAnswer = withSecondsLeft(300);
+    await pay(v2Input());
+
+    jest.setSystemTime(T0 + 240_000 - 1);
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+
+    jest.setSystemTime(T0 + 240_000);
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it("seconds left are counted from before the create call", async () => {
+    jest.useFakeTimers({ now: T0 });
+    createAnswer = () => {
+      jest.setSystemTime(T0 + 30_000); // the create took 30 s
+      return withSecondsLeft(300)();
+    };
+    await pay(v2Input());
+    jest.setSystemTime(T0 + 240_000);
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["not a number", "300"],
+    ["NaN", Number.NaN],
+    ["negative", -5],
+    ["infinite", Number.POSITIVE_INFINITY],
+    ["more than the client's own bound", 3600],
+  ])(
+    "seconds left that are %s leave the 14-minute bound in charge",
+    async (_label, value) => {
+      jest.useFakeTimers({ now: T0 });
+      createAnswer = withSecondsLeft(value);
+      await pay(v2Input());
+      jest.setSystemTime(T0 + PAYSTACK_HANDOFF_TTL_MS - 1);
+      await pay(v2Input());
+      expect(calls("ticket-checkout-create")).toHaveLength(1);
+      jest.setSystemTime(T0 + PAYSTACK_HANDOFF_TTL_MS);
+      await pay(v2Input());
+      expect(calls("ticket-checkout-create")).toHaveLength(2);
+    },
+  );
+
+  it("zero seconds left is never held", async () => {
+    jest.useFakeTimers({ now: T0 });
+    createAnswer = withSecondsLeft(0);
+    await pay(v2Input());
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it("a phone clock that is hours off changes nothing: only durations are used", async () => {
+    jest.useFakeTimers({ now: T0 + 6 * 3600_000 });
+    const start = Date.now();
+    createAnswer = withSecondsLeft(300);
+    await pay(v2Input());
+    jest.setSystemTime(start + 200_000);
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+  });
+});
+
+describe("#3281 6c — a failed admission check (503) keeps the page closed but held", () => {
+  it("the page is not opened, and is reopened once the check works", async () => {
+    await pay(v2Input());
+    preflightAnswer = () => http(503, { error: "checkout_check_failed" });
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: RECHECK_FAILED,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+    preflightAnswer = () => ({
+      data: { status: "present_allowed" },
+      error: null,
+    });
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+    expect(openBrowserAsync).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("#3281 6b — the poll only stops early on a real answer", () => {

@@ -28,7 +28,31 @@ export interface HeldPaystackHandoff {
   checkoutSessionId: string;
   buyerStatusToken: string;
   cachedAt: number;
+  /**
+   * issue #3281 (bundle 6c) — the latest moment (this device's clock) the
+   * page may be reopened, from the server's own seconds-left on the session.
+   * Absent when the server did not say (older servers); the TTL still binds.
+   */
+  expiresBy?: number;
 }
+
+/** Stop reopening a page this long before the server's session ends. */
+export const PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS = 60 * 1000;
+
+/**
+ * The `expiresBy` for a page created by a request sent at `requestedAt`, given
+ * the server's seconds-left on the session (any non-number or negative value
+ * is ignored). Counting from before the request can only shorten the hold.
+ */
+export const handoffExpiresBy = (
+  requestedAt: number,
+  expiresInSeconds: unknown,
+): number | undefined =>
+  typeof expiresInSeconds === "number" &&
+  Number.isFinite(expiresInSeconds) &&
+  expiresInSeconds >= 0
+    ? requestedAt + expiresInSeconds * 1000 - PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS
+    : undefined;
 
 /**
  * `ticket-checkout-create` gives the session 15 minutes from when it writes the
@@ -66,7 +90,12 @@ export const readHeldHandoff = (
   const forEvent = held.get(eventId);
   if (forEvent === undefined) return null;
   for (const [key, entry] of forEvent) {
-    if (now - entry.cachedAt >= PAYSTACK_HANDOFF_TTL_MS) forEvent.delete(key);
+    if (
+      now - entry.cachedAt >= PAYSTACK_HANDOFF_TTL_MS ||
+      (entry.expiresBy !== undefined && now >= entry.expiresBy)
+    ) {
+      forEvent.delete(key);
+    }
   }
   if (forEvent.size === 0) held.delete(eventId);
   return forEvent.get(fingerprint) ?? null;

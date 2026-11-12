@@ -54,8 +54,10 @@ import {
 } from "../services/ticketCheckoutService";
 import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview";
 // issue #3281 (bundle 6b) — the Paystack page this purchase was already sent to.
+import { waitForPaymentPageClosed } from "@mingla/payments-native/paymentPageReturn";
 import {
   clearHeldHandoff,
+  handoffExpiresBy,
   handoffGeneration,
   holdHandoff,
   readHeldHandoff,
@@ -210,6 +212,8 @@ type CheckoutCreateResponse =
       buyerStatusToken: string;
       authorizationUrl: string;
       returnUrl: string;
+      /** issue #3281 (bundle 6c) — seconds left on the session (newer servers). */
+      expiresInSeconds?: number;
       reference: string;
       totalCents: number;
       currency: string;
@@ -374,13 +378,28 @@ async function readCheckoutStatusOnce(
 async function pollPaystackOrder(
   checkoutSessionId: string,
   buyerStatusToken: string,
+  /**
+   * issue #3281 (bundle 6c) — the page may still be open (Android split
+   * screen). Paystack says `abandoned` / `failed` from initialize onward, so
+   * those are not answers then: only a finalized order, a refusal or a
+   * mismatch (money moved) end the wait.
+   */
+  pageMayBeOpen = false,
 ): Promise<PaystackPollOutcome> {
   for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
     const reading = await readCheckoutStatusOnce(
       checkoutSessionId,
       buyerStatusToken,
     );
-    if (reading.kind !== "no_answer" && reading.kind !== "pending") {
+    const stillPaying =
+      pageMayBeOpen &&
+      reading.kind === "terminal" &&
+      reading.code !== "paystack_payment_mismatch";
+    if (
+      reading.kind !== "no_answer" &&
+      reading.kind !== "pending" &&
+      !stillPaying
+    ) {
       return reading;
     }
     await new Promise((resolve) =>
@@ -513,6 +532,13 @@ async function followPaystackHandoff(
   if (opened?.type === WebBrowser.WebBrowserResultType.LOCKED) {
     return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
   }
+  // issue #3281 (bundle 6c) — on Android the browser call returns `opened`
+  // while the buyer is still on the page; wait until they are back before
+  // asking the server (the poll-after-close invariant below).
+  const pageReturn = await waitForPaymentPageClosed(opened);
+  // Signed out while the buyer was away: nothing below belongs to whoever is
+  // signed in now.
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
 
   // #2264 F-6 — this poll runs ONLY after the browser has closed, and that
   // ordering is load-bearing. Paystack reports a transaction as `abandoned`
@@ -524,7 +550,9 @@ async function followPaystackHandoff(
   const poll = await pollPaystackOrder(
     handoff.checkoutSessionId,
     handoff.buyerStatusToken,
+    pageReturn === "unconfirmed",
   );
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
   if (poll.kind === "finalized") {
     clearHeldHandoff(eventId, generation);
     return { outcome: "succeeded", orderId: poll.orderId };
@@ -934,6 +962,7 @@ export const useNativeCheckoutFlow = (): ((
         checkoutSessionId: data.checkoutSessionId,
         buyerStatusToken: data.buyerStatusToken,
         cachedAt: requestedAt,
+        expiresBy: handoffExpiresBy(requestedAt, data.expiresInSeconds),
       };
       holdHandoff(input.eventId, handoff);
       return await followPaystackHandoff(input.eventId, handoff, generation);

@@ -78,6 +78,15 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       checkoutSessionId,
       buyerStatusTokenHash: String(session.buyer_status_token_hash),
     });
+    if (outcome === "error") {
+      console.error(
+        "[ticket-checkout-status] preflight admission check failed",
+        checkoutSessionId,
+      );
+      // Issue #3281 (bundle 6c) — the admission check failed, not the sale.
+      // Clients treat it as "not allowed now" and keep what they hold.
+      return jsonResponse({ error: "checkout_check_failed" }, 503);
+    }
     if (outcome !== "present_allowed") {
       return jsonResponse(
         outcome === "forbidden"
