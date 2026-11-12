@@ -17,6 +17,13 @@
 // Rows come back as fresh `read` claim evidence with the object's current
 // state, so a status claim in the reply ("Your event is published", "The
 // blast went out") is decided by them before any older receipt or card.
+//
+// #3355 rework 6: each row carries its id and whether a chat card names it;
+// which row a claim is about is decided in ariClaimCheck.ts
+// (resolveStatusTarget: the named object only, never "any row of the kind").
+// Kinds the caller's brand role cannot read are reported, never read, and
+// payout readiness goes through the members-only
+// pg_brand_can_payout_for_caller.
 
 import {
   type AriClaimKind,

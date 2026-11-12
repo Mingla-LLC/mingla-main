@@ -823,6 +823,14 @@ Deno.test("R6-11: the judge-down backup reads Pidgin and French status and compl
     });
     assertEquals(out, "Your records show FAVY10 as ended.", reply);
   }
+  // A write turn: "Your discount don dey work" with no code named.
+  const unnamed = await run({
+    host: "Create FAVY10 for 10% off until 19 December",
+    reply: "I don do am. Your discount don dey work.",
+    claims: "fail",
+    asked: true,
+  });
+  assertNotMatch(unnamed, /dey work/, unnamed);
   for (
     const reply of ["I don notify your guests.", "J'ai prévenu vos invités."]
   ) {

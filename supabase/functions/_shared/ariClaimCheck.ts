@@ -2067,7 +2067,7 @@ const PRESUPPOSITION =
 
 /** The kind noun is the subject of the status ("your discount is set"). */
 const KIND_SUBJECT =
-  /(?:^\s*|\b(?:your|the|this|that|my)\s+)(?:[\p{L}]+\s+)?(?:discount|code|promo|coupon|voucher|event|trip|experience|website|site|page|note|message|email|ticket|request|reminder|announcement|guest)s?\b[^.!?]{0,25}?(?:\b(?:is|are|has\s+been|have\s+been)\b|['’]s\b)/iu;
+  /(?:^\s*|\b(?:your|the|this|that|my)\s+)(?:[\p{L}]+\s+)?(?:discount|code|promo|coupon|voucher|event|trip|experience|website|site|page|note|message|email|ticket|request|reminder|announcement|guest)s?\b[^.!?]{0,25}?(?:\b(?:is|are|has\s+been|have\s+been|don|dey|est|sont)\b|['’]s\b)/iu;
 
 /**
  * #3355 rework 6 (R6-13): the reply tells the host to press Confirm. It is
