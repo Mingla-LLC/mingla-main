@@ -644,6 +644,13 @@ Deno.test("#3355 R9-7 the demo's invented 'Manage > Scanners' steps become an ho
     guardReplyNavigation("Tap Manage > Scanners on the event page.").text,
     ARI_UNKNOWN_PATH_SENTENCE,
   );
+  // The demo re-run's wording: no ">" but the same invented screen.
+  const rerun = [
+    "To enable scanning at the door:",
+    '1. Go to the event\'s "Manage" screen and tap "Scanners"',
+    "2. Add the person you want to assign as a door scanner",
+  ].join("\n");
+  assertEquals(guardReplyNavigation(rerun).text, ARI_UNKNOWN_PATH_SENTENCE);
 });
 
 Deno.test("#3355 R9-7 real paths, numbers and prose are never touched", () => {
@@ -656,6 +663,7 @@ Deno.test("#3355 R9-7 real paths, numbers and prose are never touched", () => {
       "If the price > 1000 it shows a warning.",
       "Go to Account → your brand → Payments & Bank.",
       "Open Discounts from the brand page and create a code.",
+      'Open the "Guests" tile and tap "+" to add someone.',
     ]
   ) {
     assertEquals(guardReplyNavigation(text).text, text, text);

@@ -344,6 +344,12 @@ const THEN_CHAIN = new RegExp(
     .raw`\b(?:tap|open|go\s+to|select|choose|click)\s+(${STEP})\s*,?\s+(?:and\s+)?then\s+(?:tap\s+|open\s+|select\s+|choose\s+|click\s+|go\s+to\s+)?(${STEP})`,
   "giu",
 );
+/** "Go to the event's "Manage" screen and tap "Scanners"" (quoted steps). */
+const AND_TAP_CHAIN = new RegExp(
+  String
+    .raw`\b(?:go\s+to|open|head\s+to)\s+(?:the\s+|your\s+)?(?:[\p{L}]+['’]s\s+)?(["“][^"”\n]{1,60}["”]|\*\*[^*\n]{1,60}\*\*)\s+(?:screen|page|tab|menu|section|area|tile)?\s*,?\s*(?:and|then)\s+(?:tap|choose|select|open|press|click)\s+(?:on\s+)?(["“][^"”\n]{1,60}["”]|\*\*[^*\n]{1,60}\*\*)`,
+  "giu",
+);
 const PROSE_WORD =
   /^(?:on|in|to|and|then|for|at|with|from|under|of|or|if|when|so|which|where|inside|near|beside|next)$/i;
 
@@ -387,6 +393,12 @@ export function navigationPathsIn(
     // A comparison or number ("price > 1000") is not a path.
     if (steps.some((step) => /^\s*[\d₦£$€]/.test(step))) continue;
     out.push({ path: match[0], known: stepsKnown(steps, extra) });
+  }
+  for (const match of String(text ?? "").matchAll(AND_TAP_CHAIN)) {
+    out.push({
+      path: match[0],
+      known: stepsKnown([match[1], match[2]], extra),
+    });
   }
   for (const match of String(text ?? "").matchAll(THEN_CHAIN)) {
     out.push({
