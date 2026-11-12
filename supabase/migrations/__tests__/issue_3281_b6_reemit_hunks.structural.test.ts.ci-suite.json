@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3281_b6_reemit_hunks.structural.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3281-b6-reemit-hunks",
+  "profile": "deno-1.46-stripe"
+}

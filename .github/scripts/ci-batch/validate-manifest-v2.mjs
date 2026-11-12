@@ -465,7 +465,8 @@ export function phase3dContractDigest(manifest) {
 // #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
 // #4255: renumber the seven Work board v2 and Mingla team migrations to 20280624004255 to 20280624064255 (above production's applied 20280622004382) in the replay lanes.
 // #3355 rework 4: re-sealed after merging origin/main 3dc6c44093 (#4255 rows kept beside the #3355 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "64b8a251cd16b4c557af20b9e395b31c4fe6dae810e9810a426eb7b9c33a990f";
+// #3355 rework 6: re-sealed after merging origin/main 559e3e6902 (#3281 rows kept beside the #3355 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7bb5c0269e2ea203cac718c1d8fa213f99afa6bc0085a26130e4807eb3a75074";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
