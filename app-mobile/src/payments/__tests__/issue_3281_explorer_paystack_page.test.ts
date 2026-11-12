@@ -629,6 +629,37 @@ describe("#3281 6d — one held page per cart, timed by the server", () => {
     ]);
   });
 
+  it.each([
+    ["the status read refuses A (409)", () => {
+      statusAnswers = [http(409)];
+    }],
+    ["the status read says A's session is gone (404)", () => {
+      statusAnswers = [http(404)];
+    }],
+    ["the preflight says A is not this buyer's (403)", () => {
+      statusAnswers = [pending];
+      preflightAnswer = () => http(403);
+    }],
+  ])(
+    "a refused re-check of cart A (%s) drops only A: cart B's page still reopens",
+    async (_label, refuseA) => {
+      statusAnswers = [abandoned];
+      await pay(input(1)); // A held
+      await pay(input(2)); // B held
+      refuseA();
+      expect(await pay(input(1))).toMatchObject({ outcome: "failed" });
+      preflightAnswer = () => allowed();
+      statusAnswers = [pending, abandoned];
+      await pay(input(2)); // B reopens
+      expect(calls("ticket-checkout-create")).toHaveLength(2);
+      expect(opened()).toEqual([
+        "https://checkout.paystack.test/page-1",
+        "https://checkout.paystack.test/page-2",
+        "https://checkout.paystack.test/page-2",
+      ]);
+    },
+  );
+
   it("v1 (trip) cart A, then B, then back to A reopens A's page", async () => {
     await pay(v1Input(1));
     await pay(v1Input(2));

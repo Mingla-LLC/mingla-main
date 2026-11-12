@@ -727,7 +727,7 @@ async function followPaystackHandoff(
   // refused checkout, possibly a second time — so it is released and the next
   // tap starts fresh.
   if (poll.kind === "refused") {
-    clearHeldHandoff(eventId, generation);
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     await clearPointer();
     return {
       outcome: "failed",
@@ -815,7 +815,7 @@ async function revalidateHeldHandoff(
     };
   }
   if (reading.kind === "refused") {
-    clearHeldHandoff(eventId, generation);
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     await clearPointer();
     return {
       outcome: "failed",
@@ -882,8 +882,9 @@ async function revalidateHeldHandoff(
   // earlier payment went through (one can settle between the status read
   // and this check), so the copy never says "not charged".
   if (status === 403 || status === 404) {
-    // The session is gone or is not this buyer's: the page is spent.
-    clearHeldHandoff(eventId, generation);
+    // The session is gone or is not this buyer's: THIS cart's page is spent
+    // (bundle 6d: other carts' pages for the event are not this session's).
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     await clearPointer();
     return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }

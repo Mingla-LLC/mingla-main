@@ -455,14 +455,14 @@ async function revalidateHeldHandoff(
     return { outcome: "succeeded", orderId: reading.orderId };
   }
   if (reading.kind === "refused") {
-    clearHeldHandoff(eventId, generation);
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   if (
     reading.kind === "terminal" &&
     reading.code === "paystack_payment_mismatch"
   ) {
-    clearHeldHandoff(eventId, generation);
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     return { outcome: "failed", message: paystackReturnMessage(reading.code) };
   }
   // No usable answer: the preflight checks admission, not payment, so it
@@ -515,8 +515,9 @@ async function revalidateHeldHandoff(
   // reopen, not that no earlier payment went through (one can settle between
   // the status read and this check), so the copy never says "not charged".
   if (status === 403 || status === 404) {
-    // The session is gone or is not this buyer's: the page is spent.
-    clearHeldHandoff(eventId, generation);
+    // The session is gone or is not this buyer's: THIS cart's page is spent
+    // (bundle 6d: other carts' pages for the event are not this session's).
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   if (status === 409) {
@@ -601,13 +602,13 @@ async function followPaystackHandoff(
   }
   if (poll.kind === "refused") {
     // Reopening the page would ask the buyer to pay into a refused sale.
-    clearHeldHandoff(eventId, generation);
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   if (poll.kind === "terminal" && poll.code === "paystack_payment_mismatch") {
     // Money moved and the server already failed the session: reopening the
     // page would invite a second payment.
-    clearHeldHandoff(eventId, generation);
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
     return { outcome: "failed", message: paystackReturnMessage(poll.code) };
   }
   // The page is DELIBERATELY kept on the remaining arms (#2264). An abandoned
