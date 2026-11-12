@@ -148,7 +148,13 @@
       "cantDeleteYet": "Je kunt dit merk nog niet verwijderen",
       "nothingDeleted": "Er is niets verwijderd",
       "closeRefused": "Onze betaalpartner kon deze rekening niet sluiten, dus er is niets verwijderd. Neem contact op met support, dan lossen we het op.",
-      "close": "Sluiten"
+      "close": "Sluiten",
+      "restoreTitle": "Je kunt het 30 dagen lang herstellen",
+      "restoreBody": "Je merk verdwijnt uit je lijst. De evenementen, bestellingen en terugbetalingen blijven bewaard. Neem binnen 30 dagen contact op met support om het te herstellen.",
+      "undoTitle": "Je kunt dit niet ongedaan maken in de app",
+      "undoBody": "Na het verwijderen kan alleen support het terughalen.",
+      "previewErrorTitle": "Details konden niet worden geladen",
+      "previewErrorBody": "Je kunt doorgaan, maar de aantallen worden niet getoond."
     },
     "onboard": {
       "title": "Koppel je bank",

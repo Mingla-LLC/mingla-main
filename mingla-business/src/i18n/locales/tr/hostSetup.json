@@ -148,7 +148,13 @@
       "cantDeleteYet": "Bu markayı henüz silemezsin",
       "nothingDeleted": "Hiçbir şey silinmedi",
       "closeRefused": "Ödeme ortağımız bu hesabı kapatamadı, bu yüzden hiçbir şey silinmedi. Destekle iletişime geç, çözelim.",
-      "close": "Kapat"
+      "close": "Kapat",
+      "restoreTitle": "30 gün boyunca geri yükleyebilirsin",
+      "restoreBody": "Markan listenden kalkar. Etkinlikleri, siparişleri ve iadeleri saklanır. Geri yüklemek için 30 gün içinde destekle iletişime geç.",
+      "undoTitle": "Bunu uygulamada geri alamazsın",
+      "undoBody": "Silindikten sonra yalnızca destek geri getirebilir.",
+      "previewErrorTitle": "Ayrıntılar yüklenemedi",
+      "previewErrorBody": "Devam edebilirsin ama sayılar gösterilmez."
     },
     "onboard": {
       "title": "Bankanı bağla",

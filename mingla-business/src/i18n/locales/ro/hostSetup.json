@@ -148,7 +148,13 @@
       "cantDeleteYet": "Nu poți șterge încă acest brand",
       "nothingDeleted": "Nu s-a șters nimic",
       "closeRefused": "Partenerul nostru de plăți nu a putut închide acest cont, așa că nu s-a șters nimic. Contactează asistența și rezolvăm.",
-      "close": "Închide"
+      "close": "Închide",
+      "restoreTitle": "O poți restaura timp de 30 de zile",
+      "restoreBody": "Brandul dispare din lista ta. Evenimentele, comenzile și rambursările lui sunt păstrate. Ca să-l restaurezi, contactează asistența în 30 de zile.",
+      "undoTitle": "Nu poți anula asta în aplicație",
+      "undoBody": "După ștergere, doar asistența îl poate readuce.",
+      "previewErrorTitle": "Detaliile nu s-au putut încărca",
+      "previewErrorBody": "Poți continua, dar numerele nu sunt afișate."
     },
     "onboard": {
       "title": "Conectează-ți banca",

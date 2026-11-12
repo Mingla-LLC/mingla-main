@@ -148,7 +148,13 @@
       "cantDeleteYet": "Kamu belum bisa menghapus brand ini",
       "nothingDeleted": "Tidak ada yang dihapus",
       "closeRefused": "Mitra pembayaran kami tidak bisa menutup akun ini, jadi tidak ada yang dihapus. Hubungi dukungan dan kami akan menyelesaikannya.",
-      "close": "Tutup"
+      "close": "Tutup",
+      "restoreTitle": "Kamu bisa memulihkannya selama 30 hari",
+      "restoreBody": "Brand kamu hilang dari daftarmu. Acara, pesanan, dan pengembaliannya tetap disimpan. Untuk memulihkannya, hubungi dukungan dalam 30 hari.",
+      "undoTitle": "Kamu tidak bisa membatalkan ini di aplikasi",
+      "undoBody": "Setelah dihapus, hanya dukungan yang bisa mengembalikannya.",
+      "previewErrorTitle": "Detail tidak dapat dimuat",
+      "previewErrorBody": "Kamu tetap bisa lanjut, tetapi angkanya tidak ditampilkan."
     },
     "onboard": {
       "title": "Hubungkan bank Anda",

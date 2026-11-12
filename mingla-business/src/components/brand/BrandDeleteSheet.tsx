@@ -369,22 +369,16 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
             <View style={styles.warnCard}>
               <Icon name="flag" size={18} color={accent.warm} />
               <View style={styles.warnTextCol}>
-                <Text style={styles.warnTitle}>Recoverable for 30 days</Text>
-                <Text style={styles.warnBody}>
-                  Deleting hides this brand from your list. Your data
-                  (events, orders, refunds, audit logs) is preserved. Recovery
-                  within 30 days requires support intervention.
-                </Text>
+                {/* #4389 — host words (no internal terms), through i18n. */}
+                <Text style={styles.warnTitle}>{BRAND_SETUP_COPY.delete.restoreTitle}</Text>
+                <Text style={styles.warnBody}>{BRAND_SETUP_COPY.delete.restoreBody}</Text>
               </View>
             </View>
             <View style={styles.warnCard}>
               <Icon name="flag" size={18} color={textTokens.tertiary} />
               <View style={styles.warnTextCol}>
-                <Text style={styles.warnTitle}>One-way action in-app</Text>
-                <Text style={styles.warnBody}>
-                  Once you delete, you can&apos;t undo from inside the app.
-                  Future cycles may add a recovery UI.
-                </Text>
+                <Text style={styles.warnTitle}>{BRAND_SETUP_COPY.delete.undoTitle}</Text>
+                <Text style={styles.warnBody}>{BRAND_SETUP_COPY.delete.undoBody}</Text>
               </View>
             </View>
           </View>
@@ -402,11 +396,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
               <View style={[styles.warnCard, styles.warnCardDanger]}>
                 <Icon name="flag" size={18} color={semantic.error} />
                 <View style={styles.warnTextCol}>
-                  <Text style={styles.warnTitle}>Couldn&apos;t load details</Text>
-                  <Text style={styles.warnBody}>
-                    The cascade preview failed to load. You can still
-                    continue, but you won&apos;t see exact counts.
-                  </Text>
+                  <Text style={styles.warnTitle}>{BRAND_SETUP_COPY.delete.previewErrorTitle}</Text>
+                  <Text style={styles.warnBody}>{BRAND_SETUP_COPY.delete.previewErrorBody}</Text>
                 </View>
               </View>
             ) : counts !== null ? (

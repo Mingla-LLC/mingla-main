@@ -148,7 +148,13 @@
       "cantDeleteYet": "Vous ne pouvez pas encore supprimer cette marque",
       "nothingDeleted": "Rien n'a été supprimé",
       "closeRefused": "Notre partenaire de paiement n'a pas pu fermer ce compte, rien n'a donc été supprimé. Contactez le support et nous réglerons ça.",
-      "close": "Fermer"
+      "close": "Fermer",
+      "restoreTitle": "Tu peux la restaurer pendant 30 jours",
+      "restoreBody": "Ta marque disparaît de ta liste. Ses événements, commandes et remboursements sont conservés. Pour la restaurer, contacte le support sous 30 jours.",
+      "undoTitle": "Tu ne peux pas annuler cela dans l'app",
+      "undoBody": "Une fois supprimée, seul le support peut la récupérer.",
+      "previewErrorTitle": "Impossible de charger les détails",
+      "previewErrorBody": "Tu peux continuer, mais les chiffres ne s'affichent pas."
     },
     "onboard": {
       "title": "Connectez votre banque",

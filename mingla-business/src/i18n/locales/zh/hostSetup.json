@@ -148,7 +148,13 @@
       "cantDeleteYet": "你暂时无法删除此品牌",
       "nothingDeleted": "未删除任何内容",
       "closeRefused": "我们的支付合作伙伴无法关闭此账户，因此未删除任何内容。请联系客服，我们会处理。",
-      "close": "关闭"
+      "close": "关闭",
+      "restoreTitle": "30 天内可以恢复",
+      "restoreBody": "品牌会从你的列表中移除。它的活动、订单和退款记录都会保留。如需恢复，请在 30 天内联系支持团队。",
+      "undoTitle": "无法在应用内撤销",
+      "undoBody": "删除后只有支持团队可以恢复。",
+      "previewErrorTitle": "无法加载详情",
+      "previewErrorBody": "你仍可继续，但不会显示数量。"
     },
     "onboard": {
       "title": "连接你的银行",

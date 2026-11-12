@@ -148,7 +148,13 @@
       "cantDeleteYet": "You can't delete this brand yet",
       "nothingDeleted": "Nothing was deleted",
       "closeRefused": "Our payment partner couldn't close this account, so nothing was deleted. Contact support and we'll sort it.",
-      "close": "Close"
+      "close": "Close",
+      "restoreTitle": "You can restore it for 30 days",
+      "restoreBody": "Your brand leaves your list. Its events, orders and refunds are kept. To restore it, contact support within 30 days.",
+      "undoTitle": "You can't undo this in the app",
+      "undoBody": "Once it's deleted, only support can bring it back.",
+      "previewErrorTitle": "Couldn't load the details",
+      "previewErrorBody": "You can still continue, but the numbers aren't shown."
     },
     "onboard": {
       "title": "Connect your bank",

@@ -148,7 +148,13 @@
       "cantDeleteYet": "Non puoi ancora eliminare questo brand",
       "nothingDeleted": "Non è stato eliminato nulla",
       "closeRefused": "Il nostro partner di pagamento non ha potuto chiudere questo conto, quindi non è stato eliminato nulla. Contatta l'assistenza e risolveremo.",
-      "close": "Chiudi"
+      "close": "Chiudi",
+      "restoreTitle": "Puoi ripristinarlo per 30 giorni",
+      "restoreBody": "Il tuo brand esce dalla tua lista. Eventi, ordini e rimborsi vengono conservati. Per ripristinarlo, contatta l'assistenza entro 30 giorni.",
+      "undoTitle": "Non puoi annullare questa azione nell'app",
+      "undoBody": "Una volta eliminato, solo l'assistenza può recuperarlo.",
+      "previewErrorTitle": "Impossibile caricare i dettagli",
+      "previewErrorBody": "Puoi continuare, ma i numeri non vengono mostrati."
     },
     "onboard": {
       "title": "Collega la tua banca",

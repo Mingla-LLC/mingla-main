@@ -148,7 +148,13 @@
       "cantDeleteYet": "Nie możesz jeszcze usunąć tej marki",
       "nothingDeleted": "Nic nie zostało usunięte",
       "closeRefused": "Nasz partner płatniczy nie mógł zamknąć tego konta, więc nic nie zostało usunięte. Skontaktuj się z pomocą, a to załatwimy.",
-      "close": "Zamknij"
+      "close": "Zamknij",
+      "restoreTitle": "Możesz ją przywrócić przez 30 dni",
+      "restoreBody": "Marka zniknie z Twojej listy. Jej wydarzenia, zamówienia i zwroty zostaną zachowane. Aby ją przywrócić, skontaktuj się z pomocą w ciągu 30 dni.",
+      "undoTitle": "Nie możesz tego cofnąć w aplikacji",
+      "undoBody": "Po usunięciu przywrócić ją może tylko pomoc.",
+      "previewErrorTitle": "Nie udało się wczytać szczegółów",
+      "previewErrorBody": "Możesz kontynuować, ale liczby nie będą widoczne."
     },
     "onboard": {
       "title": "Połącz swój bank",

@@ -148,7 +148,13 @@
       "cantDeleteYet": "Bạn chưa thể xóa thương hiệu này",
       "nothingDeleted": "Không có gì bị xóa",
       "closeRefused": "Đối tác thanh toán của chúng tôi không đóng được tài khoản này, nên không có gì bị xóa. Hãy liên hệ hỗ trợ và chúng tôi sẽ xử lý.",
-      "close": "Đóng"
+      "close": "Đóng",
+      "restoreTitle": "Bạn có thể khôi phục trong 30 ngày",
+      "restoreBody": "Thương hiệu sẽ rời khỏi danh sách của bạn. Sự kiện, đơn hàng và khoản hoàn tiền vẫn được giữ. Để khôi phục, hãy liên hệ bộ phận hỗ trợ trong vòng 30 ngày.",
+      "undoTitle": "Bạn không thể hoàn tác điều này trong ứng dụng",
+      "undoBody": "Sau khi xóa, chỉ bộ phận hỗ trợ mới có thể khôi phục.",
+      "previewErrorTitle": "Không tải được chi tiết",
+      "previewErrorBody": "Bạn vẫn có thể tiếp tục, nhưng các con số sẽ không hiển thị."
     },
     "onboard": {
       "title": "Kết nối ngân hàng",

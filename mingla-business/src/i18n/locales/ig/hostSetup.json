@@ -148,7 +148,13 @@
       "cantDeleteYet": "Ị nweghị ike ihichapụ akara a ugbu a",
       "nothingDeleted": "Ọ dịghị ihe ehichapụrụ",
       "closeRefused": "Onye mmekọ ịkwụ ụgwọ anyị enweghị ike imechi akaụntụ a, ya mere ọ dịghị ihe ehichapụrụ. Kpọtụrụ nkwado, anyị ga-edozi ya.",
-      "close": "Mechie"
+      "close": "Mechie",
+      "restoreTitle": "Ị nwere ike iweghachi ya n'ime ụbọchị 30",
+      "restoreBody": "Akara gị ga-apụ na ndepụta gị. A na-edobe mmemme ya, ndenye ya na nkwụghachi ya. Iji weghachi ya, kpọtụrụ nkwado n'ime ụbọchị 30.",
+      "undoTitle": "Ị nweghị ike ịtụgharị nke a n'ime app",
+      "undoBody": "Ozugbo ehichapụrụ ya, ọ bụ naanị nkwado nwere ike iweghachi ya.",
+      "previewErrorTitle": "Enweghị ike ibunye nkọwa",
+      "previewErrorBody": "Ị ka nwere ike ịga n'ihu, mana agaghị egosi ọnụọgụ."
     },
     "onboard": {
       "title": "Jikọọ akụ gị",

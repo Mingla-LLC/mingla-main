@@ -148,7 +148,13 @@
       "cantDeleteYet": "Ba za ka iya goge wannan alamar ba tukuna",
       "nothingDeleted": "Ba a goge komai ba",
       "closeRefused": "Abokin biyan kuɗinmu bai iya rufe wannan asusun ba, don haka ba a goge komai ba. Tuntuɓi tallafi, za mu warware shi.",
-      "close": "Rufe"
+      "close": "Rufe",
+      "restoreTitle": "Za ka iya dawo da shi cikin kwana 30",
+      "restoreBody": "Alamar kasuwancinka za ta bar jerinka. Za a ajiye abubuwan da suka faru, oda da kuɗin da aka dawo. Don dawo da shi, tuntuɓi tallafi cikin kwana 30.",
+      "undoTitle": "Ba za ka iya soke wannan a cikin app ba",
+      "undoBody": "Bayan an goge shi, tallafi ne kawai zai iya dawo da shi.",
+      "previewErrorTitle": "An kasa loda bayanai",
+      "previewErrorBody": "Za ka iya ci gaba, amma ba za a nuna lambobin ba."
     },
     "onboard": {
       "title": "Haɗa bankinka",

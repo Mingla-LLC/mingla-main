@@ -148,7 +148,13 @@
       "cantDeleteYet": "O kò tíì lè pa àmì-ìdámọ̀ yìí rẹ́",
       "nothingDeleted": "Kò sí ohun tí a pa rẹ́",
       "closeRefused": "Alábàáṣiṣẹ́pọ̀ ìsanwó wa kò lè ti àkọọ́lẹ̀ yìí, nítorí náà kò sí ohun tí a pa rẹ́. Kàn sí ìrànlọ́wọ́, a sì máa yanjú rẹ̀.",
-      "close": "Tì"
+      "close": "Tì",
+      "restoreTitle": "O le dá a padà láàrin ọjọ́ 30",
+      "restoreBody": "Àmì ìdánimọ̀ rẹ yóò kúrò nínú àkójọ rẹ. A ó pa àwọn ìṣẹ̀lẹ̀, àṣẹ àti owó tí a dá padà mọ́. Láti dá a padà, kàn sí ìrànlọ́wọ́ láàrin ọjọ́ 30.",
+      "undoTitle": "O kò lè yí èyí padà nínú app",
+      "undoBody": "Lẹ́yìn tí a bá pa á rẹ́, ìrànlọ́wọ́ nìkan ló lè dá a padà.",
+      "previewErrorTitle": "A kò lè ṣí àwọn àlàyé",
+      "previewErrorBody": "O ṣì lè tẹ̀síwájú, ṣùgbọ́n a kò ní fi àwọn nọ́ńbà hàn."
     },
     "onboard": {
       "title": "So báǹkì rẹ pọ̀",

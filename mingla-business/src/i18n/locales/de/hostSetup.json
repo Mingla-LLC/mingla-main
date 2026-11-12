@@ -148,7 +148,13 @@
       "cantDeleteYet": "Du kannst diese Marke noch nicht löschen",
       "nothingDeleted": "Nichts wurde gelöscht",
       "closeRefused": "Unser Zahlungspartner konnte dieses Konto nicht schließen, daher wurde nichts gelöscht. Kontaktiere den Support, wir kümmern uns darum.",
-      "close": "Schließen"
+      "close": "Schließen",
+      "restoreTitle": "Du kannst sie 30 Tage lang wiederherstellen",
+      "restoreBody": "Deine Marke verschwindet aus deiner Liste. Ihre Events, Bestellungen und Erstattungen bleiben erhalten. Zum Wiederherstellen kontaktiere den Support innerhalb von 30 Tagen.",
+      "undoTitle": "Du kannst das in der App nicht rückgängig machen",
+      "undoBody": "Nach dem Löschen kann nur der Support sie wiederherstellen.",
+      "previewErrorTitle": "Details konnten nicht geladen werden",
+      "previewErrorBody": "Du kannst trotzdem fortfahren, aber die Zahlen werden nicht angezeigt."
     },
     "onboard": {
       "title": "Bank verbinden",

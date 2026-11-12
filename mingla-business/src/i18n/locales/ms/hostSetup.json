@@ -148,7 +148,13 @@
       "cantDeleteYet": "Anda belum boleh memadam jenama ini",
       "nothingDeleted": "Tiada apa yang dipadam",
       "closeRefused": "Rakan kongsi pembayaran kami tidak dapat menutup akaun ini, jadi tiada apa yang dipadam. Hubungi sokongan dan kami akan uruskan.",
-      "close": "Tutup"
+      "close": "Tutup",
+      "restoreTitle": "Anda boleh memulihkannya dalam masa 30 hari",
+      "restoreBody": "Jenama anda akan hilang daripada senarai anda. Acara, pesanan dan bayaran baliknya disimpan. Untuk memulihkannya, hubungi sokongan dalam masa 30 hari.",
+      "undoTitle": "Anda tidak boleh membatalkan ini dalam aplikasi",
+      "undoBody": "Selepas dipadam, hanya sokongan yang boleh memulihkannya.",
+      "previewErrorTitle": "Butiran tidak dapat dimuatkan",
+      "previewErrorBody": "Anda masih boleh teruskan, tetapi angka tidak ditunjukkan."
     },
     "onboard": {
       "title": "Sambungkan bank anda",

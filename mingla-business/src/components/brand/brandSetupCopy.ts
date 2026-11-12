@@ -179,6 +179,12 @@ export const BRAND_SETUP_COPY = {
     get nothingDeleted(): string { return t("delete.nothingDeleted"); },
     get closeRefused(): string { return t("delete.closeRefused"); },
     get close(): string { return t("delete.close"); },
+    get restoreTitle(): string { return t("delete.restoreTitle"); },
+    get restoreBody(): string { return t("delete.restoreBody"); },
+    get undoTitle(): string { return t("delete.undoTitle"); },
+    get undoBody(): string { return t("delete.undoBody"); },
+    get previewErrorTitle(): string { return t("delete.previewErrorTitle"); },
+    get previewErrorBody(): string { return t("delete.previewErrorBody"); },
   },
 };
 

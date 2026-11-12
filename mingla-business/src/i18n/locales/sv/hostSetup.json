@@ -148,7 +148,13 @@
       "cantDeleteYet": "Du kan inte radera det här varumärket än",
       "nothingDeleted": "Inget raderades",
       "closeRefused": "Vår betalpartner kunde inte stänga det här kontot, så inget raderades. Kontakta supporten så löser vi det.",
-      "close": "Stäng"
+      "close": "Stäng",
+      "restoreTitle": "Du kan återställa det i 30 dagar",
+      "restoreBody": "Ditt varumärke försvinner från din lista. Dess evenemang, beställningar och återbetalningar sparas. Kontakta supporten inom 30 dagar för att återställa det.",
+      "undoTitle": "Du kan inte ångra det här i appen",
+      "undoBody": "När det är raderat kan bara supporten ta tillbaka det.",
+      "previewErrorTitle": "Det gick inte att läsa in detaljerna",
+      "previewErrorBody": "Du kan fortsätta, men siffrorna visas inte."
     },
     "onboard": {
       "title": "Koppla din bank",

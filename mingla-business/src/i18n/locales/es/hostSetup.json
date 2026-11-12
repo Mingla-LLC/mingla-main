@@ -148,7 +148,13 @@
       "cantDeleteYet": "Aún no puedes eliminar esta marca",
       "nothingDeleted": "No se eliminó nada",
       "closeRefused": "Nuestro socio de pagos no pudo cerrar esta cuenta, así que no se eliminó nada. Contacta con soporte y lo solucionaremos.",
-      "close": "Cerrar"
+      "close": "Cerrar",
+      "restoreTitle": "Puedes restaurarla durante 30 días",
+      "restoreBody": "Tu marca sale de tu lista. Se conservan sus eventos, pedidos y reembolsos. Para restaurarla, contacta con soporte en un plazo de 30 días.",
+      "undoTitle": "No puedes deshacer esto en la app",
+      "undoBody": "Una vez eliminada, solo soporte puede recuperarla.",
+      "previewErrorTitle": "No se pudieron cargar los detalles",
+      "previewErrorBody": "Puedes continuar, pero no se muestran las cifras."
     },
     "onboard": {
       "title": "Conecta tu banco",
