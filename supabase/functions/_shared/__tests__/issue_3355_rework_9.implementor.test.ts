@@ -537,6 +537,14 @@ Deno.test("#3355 R9-6 never generic, never a duplicate, never contact details", 
     firstMessage: "Email the guest list to ada@example.com or call 08031234567",
   }) ?? "";
   assertNotMatch(scrubbed, /@|0803|\[email\]|\[phone\]/);
+  // A cut never ends on a dangling word ("…Suya Sunday Brunch so").
+  assertEquals(
+    ariChatTitle({
+      firstMessage:
+        "How do I add a co-host to Suya Sunday Brunch so they can scan tickets at the door?",
+    }),
+    "How do I add a co-host to Suya Sunday Brunch",
+  );
 });
 
 Deno.test("#3355 R9-6 retitle keeps a manual title and writes the generated one", async () => {

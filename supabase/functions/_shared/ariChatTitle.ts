@@ -67,7 +67,7 @@ function cutAtWord(text: string, max: number): string {
   // A cut never ends on "the", "at", "until" or a stray number.
   for (let index = 0; index < 4; index++) {
     const next = out.replace(
-      /\s+(?:the|a|an|at|to|of|for|in|on|and|or|until|till|from|with|by|my|our|your|that|\d{1,4})$/i,
+      /\s+(?:the|a|an|at|to|of|for|in|on|and|or|so|but|if|as|until|till|from|with|by|my|our|your|their|its|that|this|who|which|what|when|where|can|could|will|is|are|was|it|i|we|they|you|\d{1,4})$/i,
       "",
     );
     if (next === out) break;
@@ -200,7 +200,10 @@ export async function retitleAriChat(args: {
         row,
       ) => typeof row.title === "string" ? [row.title] : []),
     });
-    if (!title || title === chat.title) return title;
+    // Same words: nothing to write, unless a manual title becomes generated.
+    if (!title || (title === chat.title && chat.title_source !== "manual")) {
+      return title;
+    }
     const now = (args.now ?? new Date()).toISOString();
     const { error } = await args.service.from("agent_conversations")
       .update({

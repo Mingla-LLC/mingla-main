@@ -816,6 +816,7 @@
         "supabase/functions/_shared/ariChatTitle.ts",
         "supabase/functions/_shared/ariEventSales.ts",
         "supabase/functions/agent-conversation/index.ts",
+        "supabase/functions/agent-conversation/function-policy.issue-3355.patch.json",
         "mingla-business/src/components/ari/AriSetupCard.tsx",
         "mingla-business/src/components/ari/ariSetupCopy.ts",
         "mingla-business/src/components/ari/ariRedaction.ts",

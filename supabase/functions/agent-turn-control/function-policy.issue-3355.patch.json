@@ -31,8 +31,14 @@
       "classification": "optional_top_level",
       "name": "ARI_RENDITION_V2_ENABLED",
       "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_UNDERSTAND_FIRST",
+      "expectedAbsent": true
     }
   ],
-  "resultPolicySha256": "a93db7f7085b4d491926841522e793c10f1a264e9a05b119a67ba73cfb23b333",
-  "reason": "Issue #3355 flow_resume runs the flow engine only when ARI_FLOW_ENGINE=on, stamps rows with Ari's model identity (local only when ARI_LOCAL_MODEL_ENABLED is set), and shares the rendition type whose V2 switch defaults off; unset values keep each path disabled."
+  "resultPolicySha256": "7471ad9e4c5f4a2f09654f0882360a02735e9c833313cb43cb054c11a1673a18",
+  "reason": "Issue #3355 flow_resume runs the flow engine only when ARI_FLOW_ENGINE=on, stamps rows with Ari's model identity (local only when ARI_LOCAL_MODEL_ENABLED is set), and shares the rendition type whose V2 switch defaults off; unset values keep each path disabled. ARI_UNDERSTAND_FIRST=on|off overrides the staged \"Ari understands first\" rollout (ariRollout.ts) for a local stack or an eval run; unset, the rollout rows decide."
 }
