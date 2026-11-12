@@ -43,6 +43,10 @@ insert into v_people (who, id, email) values
   ('bob',   '42750000-0000-4000-a0a1-000000000006', 'bob.v4270@test.local');
 insert into auth.users (id, email, email_confirmed_at) select id, email, now() from v_people;
 insert into public.admin_team_members (email, role, status, accepted_at) values ('gia.v4270@test.local', 'growth', 'active', now());
+-- [TEST-MOD-APPROVED #4398] a card has one owner and one different watcher, so the team needs a second
+-- person: an admin who watches the cards hosts add (brand_plan_host_add's watcher with no route).
+insert into auth.users (id, email, email_confirmed_at) values ('42750000-0000-4000-a0a0-0000000000f1', 'wat.v4270@test.local', now());
+insert into public.admin_users (email, role, status, accepted_at) values ('wat.v4270@test.local', 'admin', 'active', now());
 insert into public.ops_team_profiles (email, display_name, updated_by) values ('gia.v4270@test.local', 'Gia Okafor-Ade', 'system@usemingla.com')
   on conflict (email) do update set display_name = excluded.display_name;
 
@@ -311,6 +315,8 @@ begin
   v_n := pg_temp.v_lines(CA);
   update public.ops_work_cards set instructions = 'Do this task carefully and say what changed again.' where id = (select id from v_ids where k = 'A');
   perform pg_temp.v_check('F-FLAG', 'another edit: no line', pg_temp.v_lines(CA)::text, v_n::text);
+  -- [TEST-MOD-APPROVED #4398] the close counts as confirmed by the watcher (the review rule); every other trigger still runs.
+  perform set_config('ops.review_confirmed', (select id from v_ids where k = 'A')::text, true);
   update public.ops_work_cards set status = 'done', closed_at = now(), closed_by = 'gia.v4270@test.local', close_kind = 'done', on_brand_plan = false where id = (select id from v_ids where k = 'A');
   perform pg_temp.v_check('F-FLAG', 'a done card switched off: no line', pg_temp.v_lines(CA)::text, v_n::text);
 

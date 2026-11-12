@@ -2709,6 +2709,11 @@ BEGIN
     IF v_watcher IS NULL OR v_watcher = v_owner THEN
       v_watcher := (SELECT x FROM unnest(v_watchers || v_owners) x WHERE x IS DISTINCT FROM v_owner AND public.ops_team_email(x) IS NOT NULL LIMIT 1);
     END IF;
+    IF v_watcher IS NULL THEN  -- nobody else on the host card and no route: the board owner, or the first other active admin
+      v_watcher := (SELECT lower(btrim(au.email)) FROM public.admin_users au
+                     WHERE au.status = 'active' AND lower(btrim(au.email)) IS DISTINCT FROM v_owner AND public.ops_team_email(au.email) IS NOT NULL
+                     ORDER BY (au.role = 'owner') DESC, au.accepted_at NULLS LAST, au.created_at LIMIT 1);
+    END IF;
     v_owners := ARRAY[v_owner]; v_watchers := CASE WHEN v_watcher IS NOT NULL THEN ARRAY[v_watcher] ELSE ARRAY[]::text[] END;
     PERFORM public.ops_people_set(c.id, v_owners, v_watchers, v_actor, NULL);
     PERFORM public.ops_links_set(c.id, jsonb_build_array(jsonb_build_object('kind', 'host', 'id', v_record, 'label', v_record_name)), v_actor, NULL);

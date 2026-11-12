@@ -312,7 +312,7 @@ insert into public.content_calendar_items (id, title, stage, owner_emails, publi
 -- Cards. K1 seen, on the second record; K2 not seen; K3 seen but archived;
 -- K4 seen but only on the deleted record; K5 brand B; K6 seen and done.
 do $cards$
-declare v_id uuid; v_k text; v_t text; v_r uuid; v_on boolean; v_due integer; v_status text;
+declare v_id uuid; v_k text; v_t text; v_r uuid; v_on boolean; v_due integer; v_status text; v_new4398 uuid;
 begin
   for v_k, v_t, v_r, v_on, v_due, v_status in values
     ('K1', 'T4270 Print the menus', '42740000-0000-4000-c0a0-000000000002'::uuid, true, 6, 'todo'),
@@ -321,9 +321,12 @@ begin
     ('K4', 'T4270 Deleted record task', '42740000-0000-4000-c0a0-000000000003'::uuid, true, 4, 'todo'),
     ('K5', 'T4270 Cedar task', '42740000-0000-4000-c0a0-000000000004'::uuid, true, 4, 'todo'),
     ('K6', 'T4270 Finished task', '42740000-0000-4000-c0a0-000000000001'::uuid, true, 2, 'done') loop
-    insert into public.ops_work_cards (title, instructions, done_means, status, due_on, due_source, sprint_id, files_url, on_brand_plan, brand_plan_source,
+    -- [TEST-MOD-APPROVED #4398] the finished fixture card counts as confirmed by its watcher (the review rule).
+    v_new4398 := gen_random_uuid();
+    perform set_config('ops.review_confirmed', v_new4398::text, true);
+    insert into public.ops_work_cards (id, title, instructions, done_means, status, due_on, due_source, sprint_id, files_url, on_brand_plan, brand_plan_source,
       created_by, updated_by, archived_at, archived_by, archive_reason, closed_at, closed_by, close_kind, proof)
-    values (v_t, 'SECRET-INSTRUCTIONS-T4270 do this well and say what changed.', 'SECRET-DONE-T4270 it is done and checked.', v_status, pg_temp.ta_day(v_due), 'explicit',
+    values (v_new4398, v_t, 'SECRET-INSTRUCTIONS-T4270 do this well and say what changed.', 'SECRET-DONE-T4270 it is done and checked.', v_status, pg_temp.ta_day(v_due), 'explicit',
       public.ops_sprint_ensure(pg_temp.ta_day(0)), case when v_k = 'K1' then 'https://dropbox.com/t4270-files' end, v_on, 'host_card',
       'gia.t4270@test.local', 'gia.t4270@test.local',
       case when v_k = 'K3' then now() end, case when v_k = 'K3' then 'gia.t4270@test.local' end, case when v_k = 'K3' then 'T4270 fixture' end,
@@ -331,6 +334,7 @@ begin
       case when v_status = 'done' then jsonb_build_array(jsonb_build_object('kind','note','text','SECRET-PROOF-T4270 sent and confirmed by the host.')) else '[]'::jsonb end)
     returning id into v_id;
     insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'gia.t4270@test.local', 'owner', 'gia.t4270@test.local');
+    insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'kunle.t4270@test.local', 'watcher', 'gia.t4270@test.local');  -- [TEST-MOD-APPROVED #4398] one watcher
     insert into public.ops_work_links (card_id, kind, target_id, label, added_by) values (v_id, 'host', v_r, 'host', 'gia.t4270@test.local');
     insert into ta_ids (k, id) values (v_k, v_id);
   end loop;
