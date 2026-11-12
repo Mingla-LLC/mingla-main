@@ -46,6 +46,11 @@
 --            role is still authenticated, as every PostgREST request does
 --            (Admin and the Host app): the deferred invariant must be able to
 --            run at commit in that role.
+--   UNDO     undo of a Confirm that closed a child and a grandchild reopens
+--            both to their columns; a non-watcher and the 61st second are
+--            refused; a subtask changed since makes the whole undo refuse
+--            (no half undo); the undo commits as the signed-in role with
+--            every card at 1 owner and 1 watcher.
 --   NOTICE   a bot close is Admin-only with no outbox; an owner's agent
 --            moving a card pushes to the watcher, never the owner; a reopen
 --            pushes to the other person; a due-date change is Admin-only; a
@@ -741,6 +746,63 @@ begin
       'due_on', (now() at time zone 'UTC')::date + 3)), pg_temp.rk())), 'OK');
   perform pg_temp.chk('AUTH', 'A2 a signed-in owner starts a card and the request commits (PostgREST role)',
     pg_temp.commit_as('tao', format('select public.ops_work_start(%L, %s)::text', pg_temp.id('CA'), pg_temp.rev('CA'))), 'OK');
+end;
+$t$;
+
+-- ───────────────────────── UNDO OF A CONFIRM THAT CLOSED SUBTASKS ─────────────────────────
+-- (retest 2) Undo of a Confirm reopens the subtasks it closed (child and
+-- grandchild), refuses the whole undo if a subtask changed since, refuses a
+-- non-watcher and the 61st second, and the people invariant holds at commit
+-- for the signed-in role.
+do $t$
+declare v text; v_ev text; v_c_col uuid; v_late text; v_done uuid := public.ops_status_default('done');
+begin
+  v := pg_temp.add('UP', 'ADV4398 Undo parent', 'tao', 'seth');
+  v := pg_temp.add('UC', 'ADV4398 Undo child', 'kun', 'tao', 'UP');
+  v := pg_temp.add('UG', 'ADV4398 Undo grandchild', 'ola', 'kun', 'UC');
+  v := pg_temp.person('kun', format('select public.ops_work_start(%L, %s)::text', pg_temp.id('UC'), pg_temp.rev('UC')));
+  v_c_col := (select status_id from public.ops_work_cards where id = pg_temp.id('UC'));
+  v := pg_temp.person('tao', format('select public.ops_work_move(%L, %L, %s, %L::jsonb, null, true)::text', pg_temp.id('UP'), v_done,
+         pg_temp.rev('UP'), '[{"kind":"text","text":"All of it is done."}]'));
+  v := pg_temp.person('seth', format('select public.ops_work_confirm(%L, %s)::text', pg_temp.id('UP'), pg_temp.rev('UP')));
+  v_ev := (v::jsonb)->>'event_id';
+  perform pg_temp.chk('UNDO', 'U0 setup: the confirm closed parent, child and grandchild',
+    pg_temp.st('UP') || '|' || pg_temp.st('UC') || '|' || pg_temp.st('UG'), 'done/Done|done/Done|done/Done');
+  -- U1. Non-watchers are refused.
+  v := pg_temp.person('tao', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.lk('UNDO', 'U1 the owner cannot undo the watcher''s confirm', v, 'ERR:22023:undo_expired:%');
+  v := pg_temp.person('abi', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.lk('UNDO', 'U1 an admin who is not the watcher cannot undo it', v, 'ERR:22023:undo_expired:%');
+  -- U2. Past 60 seconds: refused (tried in a subtransaction, then put back).
+  begin
+    update public.ops_work_events set at = at - interval '61 seconds' where id = v_ev::uuid;
+    v_late := pg_temp.person('seth', format('select public.ops_work_undo(%L)::text', v_ev));
+    raise exception 'put_back' using errcode = 'P0001';
+  exception when others then
+    if sqlerrm <> 'put_back' then raise; end if;
+  end;
+  perform pg_temp.lk('UNDO', 'U2 after 60 seconds the undo is refused', v_late, 'ERR:22023:undo_expired:%');
+  perform pg_temp.chk('UNDO', 'U2 and nothing moved', pg_temp.st('UP') || '|' || pg_temp.st('UC') || '|' || pg_temp.st('UG'), 'done/Done|done/Done|done/Done');
+  -- U3. The undo, committed as the signed-in watcher: the deferred people check passes in that role.
+  perform pg_temp.chk('UNDO', 'U3 the undo commits as the signed-in watcher (people invariant at COMMIT)',
+    pg_temp.commit_as('seth', format('select public.ops_work_undo(%L)::text', v_ev)), 'OK');
+  v := pg_temp.person('seth', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.chk('UNDO', 'U3 parent back In review, child back In progress in its own column, grandchild back To do',
+    pg_temp.st('UP') || '|' || (select status || '/' || (status_id = v_c_col)::text from public.ops_work_cards where id = pg_temp.id('UC')) || '|' || pg_temp.st('UG'),
+    'doing/In review|doing/true|todo/To do');
+  perform pg_temp.chk('UNDO', 'U3 every reopened card has exactly 1 owner and 1 watcher, unchanged',
+    pg_temp.people(pg_temp.id('UP')) || '|' || pg_temp.people(pg_temp.id('UC')) || '|' || pg_temp.people(pg_temp.id('UG')),
+    'tao:owner,seth:watcher|kun:owner,tao:watcher|ola:owner,kun:watcher');
+  -- U4. Confirm again, then change a subtask in the meantime: the undo is refused whole (atomic).
+  v := pg_temp.person('seth', format('select public.ops_work_confirm(%L, %s)::text', pg_temp.id('UP'), pg_temp.rev('UP')));
+  v_ev := (v::jsonb)->>'event_id';
+  perform pg_temp.chk('UNDO', 'U4 setup: confirmed again, all three Done', pg_temp.st('UP') || '|' || pg_temp.st('UC') || '|' || pg_temp.st('UG'),
+    'done/Done|done/Done|done/Done');
+  update public.ops_work_cards set result = 'Changed by someone after the confirm.', revision = revision + 1 where id = pg_temp.id('UG');
+  v := pg_temp.person('seth', format('select public.ops_work_undo(%L)::text', v_ev));
+  perform pg_temp.lk('UNDO', 'U4 a subtask changed since the confirm: the undo is refused', v, 'ERR:22023:undo_expired:%');
+  perform pg_temp.chk('UNDO', 'U4 refused whole: parent, child and grandchild all still Done (no half undo)',
+    pg_temp.st('UP') || '|' || pg_temp.st('UC') || '|' || pg_temp.st('UG'), 'done/Done|done/Done|done/Done');
 end;
 $t$;
 
