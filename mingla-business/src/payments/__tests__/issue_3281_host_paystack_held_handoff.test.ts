@@ -127,6 +127,8 @@ let sessionSeq = 0;
 let createAnswer: () => { data: unknown; error: unknown };
 /** What `ticket-checkout-status` answers, one per poll; the last repeats. */
 let statusAnswers: ({ data: unknown; error: unknown } | "throw")[];
+/** What the #1930 preflight answers before a held page is reopened. */
+let preflightAnswer: () => { data: unknown; error: unknown };
 
 const paystackPage = () => {
   sessionSeq += 1;
@@ -155,8 +157,16 @@ const http = (status: number, body: unknown = {}) => ({
   error: { context: { status, json: async () => body } },
 });
 
+const isPreflight = (call: unknown[]) =>
+  (call[1] as { body?: { preflight?: boolean } } | undefined)?.body
+    ?.preflight === true;
+/** Calls to a function; status reads exclude the #1930 preflight. */
 const calls = (name: string) =>
-  invoke.mock.calls.filter((call) => call[0] === name);
+  invoke.mock.calls.filter((call) => call[0] === name && !isPreflight(call));
+const preflights = () =>
+  invoke.mock.calls.filter(
+    (call) => call[0] === "ticket-checkout-status" && isPreflight(call),
+  );
 const statusBodies = () =>
   calls("ticket-checkout-status").map(
     (call) =>
@@ -186,9 +196,20 @@ beforeEach(() => {
   openBrowserAsync.mockResolvedValue({ type: "cancel" });
   createAnswer = paystackPage;
   statusAnswers = [abandoned];
+  preflightAnswer = () => ({
+    data: { status: "present_allowed" },
+    error: null,
+  });
   let statusIndex = 0;
-  invoke.mockImplementation(async (name: string) => {
+  invoke.mockImplementation(async (name: string, options?: unknown) => {
     if (name === "ticket-checkout-create") return createAnswer();
+    if (
+      name === "ticket-checkout-status" &&
+      (options as { body?: { preflight?: boolean } } | undefined)?.body
+        ?.preflight === true
+    ) {
+      return preflightAnswer();
+    }
     if (name === "ticket-checkout-status") {
       const answer =
         statusAnswers[Math.min(statusIndex, statusAnswers.length - 1)];
@@ -222,7 +243,9 @@ describe("#3281 6b — reopening the held Paystack page", () => {
       "https://checkout.paystack.test/page-1",
       "https://checkout.paystack.test/page-1",
     ]);
-    expect(statusBodies()).toEqual(["sess-1", "sess-1"]);
+    // The poll, the re-check before reopening, then the poll again.
+    expect(statusBodies()).toEqual(["sess-1", "sess-1", "sess-1"]);
+    expect(preflights()).toHaveLength(1);
   });
 
   it("a reopened page that is then paid succeeds, and the next Pay starts fresh", async () => {
@@ -309,11 +332,28 @@ describe("#3281 6b — reopening the held Paystack page", () => {
     },
   );
 
-  it("a different purchase replaces the held page; the first page is not reopened afterwards", async () => {
+  it("cart A, then cart B, then back to A reopens A's page (each cart keeps its own)", async () => {
     await pay(v2Input());
     await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 }));
     await pay(v2Input());
-    expect(calls("ticket-checkout-create")).toHaveLength(3);
+    await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 }));
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+    expect(openBrowserAsync.mock.calls.map((c) => c[0])).toEqual([
+      "https://checkout.paystack.test/page-1",
+      "https://checkout.paystack.test/page-2",
+      "https://checkout.paystack.test/page-1",
+      "https://checkout.paystack.test/page-2",
+    ]);
+  });
+
+  it("v1 (trip) cart A, then B, then back to A reopens A's page", async () => {
+    await pay(v1Input());
+    await pay(v1Input({ lines: [{ ticketTypeId: GENERAL, quantity: 2 }] }));
+    await pay(v1Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+    expect(openBrowserAsync.mock.calls[2][0]).toBe(
+      "https://checkout.paystack.test/page-1",
+    );
   });
 
   it("another event is never served this event's page", async () => {
@@ -340,7 +380,9 @@ describe("#3281 6b — reopening the held Paystack page", () => {
     await pay(v1Input());
     await pay(v1Input());
     expect(calls("ticket-checkout-create")).toHaveLength(1);
-    expect(statusBodies()).toEqual(["sess-1", "sess-1"]);
+    // The poll, the re-check before reopening, then the poll again.
+    expect(statusBodies()).toEqual(["sess-1", "sess-1", "sess-1"]);
+    expect(preflights()).toHaveLength(1);
   });
 });
 
@@ -446,6 +488,140 @@ describe("#3281 6b — when the held page is dropped", () => {
     jest.setSystemTime(start + PAYSTACK_HANDOFF_TTL_MS);
     await pay(v2Input());
     expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+});
+
+const RECHECK_FAILED =
+  "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
+const UNAVAILABLE =
+  "This sale is no longer available — the organiser may have paused or changed this event. You have not been charged.";
+
+describe("#3281 6b — a held page is re-checked before it is reopened", () => {
+  it("a session revoked between visits is refused and never reopened", async () => {
+    statusAnswers = [abandoned, http(409, { error: "checkout_unavailable" })];
+    await pay(v2Input());
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: NOT_ISSUED,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+    expect(preflights()).toHaveLength(0);
+
+    statusAnswers = [abandoned];
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it.each([
+    ["paused or cancelled (409)", 409],
+    ["no longer this buyer's (403)", 403],
+    ["gone (404)", 404],
+  ])(
+    "a sale the preflight refuses — %s — is never reopened, and the page is dropped",
+    async (_label, status) => {
+      await pay(v2Input());
+      preflightAnswer = () => http(status, { error: "checkout_unavailable" });
+      expect(await pay(v2Input())).toEqual({
+        outcome: "failed",
+        message: UNAVAILABLE,
+      });
+      expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+
+      preflightAnswer = () => ({
+        data: { status: "present_allowed" },
+        error: null,
+      });
+      await pay(v2Input());
+      expect(calls("ticket-checkout-create")).toHaveLength(2);
+    },
+  );
+
+  it.each([
+    [
+      "the preflight throws",
+      () => {
+        throw new Error("offline");
+      },
+    ],
+    ["the preflight answers 500", () => http(500)],
+    [
+      "the preflight answers nothing useful",
+      () => ({ data: null, error: null }),
+    ],
+  ])("%s: the page is kept but not opened", async (_label, answer) => {
+    await pay(v2Input());
+    preflightAnswer = answer as () => { data: unknown; error: unknown };
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: RECHECK_FAILED,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+
+    preflightAnswer = () => ({
+      data: { status: "present_allowed" },
+      error: null,
+    });
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+    expect(openBrowserAsync.mock.calls[1][0]).toBe(
+      "https://checkout.paystack.test/page-1",
+    );
+  });
+
+  it("an order that already finalized is returned, not reopened", async () => {
+    statusAnswers = [abandoned, finalized];
+    await pay(v2Input());
+    expect(await pay(v2Input())).toEqual({
+      outcome: "succeeded",
+      orderId: "ord-1",
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+    expect(preflights()).toHaveLength(0);
+  });
+
+  it("a mismatch found on the re-check drops the page without opening it", async () => {
+    statusAnswers = [
+      abandoned,
+      {
+        data: {
+          status: "failed",
+          order: null,
+          error: "paystack_payment_mismatch",
+        },
+        error: null,
+      },
+    ];
+    await pay(v2Input());
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: MISMATCH,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#3281 6b — signing out mid-checkout", () => {
+  it("a create that answers after sign-out never holds or opens the old account's page", async () => {
+    createAnswer = () => {
+      clearAllStores();
+      return paystackPage();
+    };
+    expect(await pay(v2Input())).toEqual({ outcome: "canceled" });
+    expect(openBrowserAsync).not.toHaveBeenCalled();
+
+    createAnswer = paystackPage;
+    await pay(v2Input());
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it("a sign-out during the re-check never reopens the old account's page", async () => {
+    await pay(v2Input());
+    preflightAnswer = () => {
+      clearAllStores();
+      return { data: { status: "present_allowed" }, error: null };
+    };
+    expect(await pay(v2Input())).toEqual({ outcome: "canceled" });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -37,40 +37,61 @@ export interface HeldPaystackHandoff {
  */
 export const PAYSTACK_HANDOFF_TTL_MS = 14 * 60 * 1000;
 
-const held = new Map<string, HeldPaystackHandoff>();
+/**
+ * Held pages per event, then per purchase fingerprint. More than one per event
+ * on purpose: a buyer who leaves cart A for cart B and comes back to A must
+ * reopen A's page, because A's server session is still live and a new create
+ * for it is refused as in progress.
+ */
+const held = new Map<string, Map<string, HeldPaystackHandoff>>();
 
 /**
- * The held page for this event when it belongs to the identical purchase and
- * has not expired; otherwise null. An expired page is deleted.
+ * Bumped by every sign-out. A checkout captures it before its network calls
+ * and refuses to hold or open a page if it moved: that page and its status
+ * token belong to the session that just ended.
+ */
+let generation = 0;
+
+export const handoffGeneration = (): number => generation;
+
+/**
+ * The held page for this purchase when it has not expired; otherwise null.
+ * Expired pages for the event are deleted.
  */
 export const readHeldHandoff = (
   eventId: string,
   fingerprint: string,
   now: number = Date.now(),
 ): HeldPaystackHandoff | null => {
-  const entry = held.get(eventId);
-  if (entry === undefined) return null;
-  if (now - entry.cachedAt >= PAYSTACK_HANDOFF_TTL_MS) {
-    held.delete(eventId);
-    return null;
+  const forEvent = held.get(eventId);
+  if (forEvent === undefined) return null;
+  for (const [key, entry] of forEvent) {
+    if (now - entry.cachedAt >= PAYSTACK_HANDOFF_TTL_MS) forEvent.delete(key);
   }
-  return entry.fingerprint === fingerprint ? entry : null;
+  if (forEvent.size === 0) held.delete(eventId);
+  return forEvent.get(fingerprint) ?? null;
 };
 
 export const holdHandoff = (
   eventId: string,
   entry: HeldPaystackHandoff,
 ): void => {
-  held.set(eventId, entry);
+  const forEvent = held.get(eventId) ?? new Map<string, HeldPaystackHandoff>();
+  forEvent.set(entry.fingerprint, entry);
+  held.set(eventId, forEvent);
 };
 
-/** The order finalized or the sale was refused: the page is spent. */
+/**
+ * The event was bought, or a sale on it was refused: every page held for it
+ * is spent.
+ */
 export const clearHeldHandoff = (eventId: string): void => {
   held.delete(eventId);
 };
 
 export const clearAllHeldHandoffs = (): void => {
   held.clear();
+  generation += 1;
 };
 
 registerSignOutCleanup(clearAllHeldHandoffs);
