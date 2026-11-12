@@ -31,8 +31,10 @@ INSERT INTO public.admin_users(email, status) VALUES
   ('issue4187-admin-one@mingla.test', 'active'),
   ('issue4187-admin-two@mingla.test', 'active');
 
-INSERT INTO public.creator_accounts(id, email, display_name) VALUES
-  ('41870000-0000-4000-8000-000000000003', 'issue4187-creator@mingla.test', 'Ada Creator');
+-- #4402: a creator target is a person with a creator profile; no Host
+-- account (creator_accounts row) is needed.
+INSERT INTO public.creator_profiles(creator_account_id, display_name) VALUES
+  ('41870000-0000-4000-8000-000000000003', 'Ada Creator');
 
 INSERT INTO public.seeding_cities(
   id, google_place_id, name, country, country_code, center_lat, center_lng,
