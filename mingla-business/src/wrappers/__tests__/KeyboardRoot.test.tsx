@@ -388,10 +388,19 @@ describe("ORCH-0892-B v2 sheet-consumer migrations — SmartScrollView contract"
     "src/components/trip/RefundPreviewSheet.tsx",
   ];
 
+  // #4389: a sheet may scroll through SheetScrollLayout instead; that layout's
+  // body is the same SmartScrollView wrapper (pinned below).
   it.each(SHEET_CONSUMERS)("T-V2-SHEET-CONSUMER: %s imports ScrollView from SmartScrollView wrapper", (path) => {
     const source = read(path);
-    expect(source).toMatch(
-      /import\s+\{\s*ScrollView\s*\}\s+from\s+["'][^"']*wrappers\/SmartScrollView["']/,
+    const direct = /import\s+\{\s*ScrollView\s*\}\s+from\s+["'][^"']*wrappers\/SmartScrollView["']/.test(source);
+    const viaLayout = /import\s+\{\s*SheetScrollLayout\s*\}\s+from\s+["'][^"']*ui\/SheetScrollLayout["']/.test(source);
+    expect({ path, direct, viaLayout }).toEqual(expect.objectContaining({ path }));
+    expect(direct || viaLayout).toBe(true);
+  });
+
+  it("T-V2-SHEET-CONSUMER: SheetScrollLayout's body is the SmartScrollView wrapper", () => {
+    expect(read("src/components/ui/SheetScrollLayout.tsx")).toMatch(
+      /import\s+\{[^}]*\bScrollView\b[^}]*\}\s+from\s+["'][^"']*wrappers\/SmartScrollView["']/,
     );
   });
 });
