@@ -13,6 +13,7 @@ import type { DoorModeScreenProps } from "./DoorModeScreen";
 import type { DoorPayCodeScreenProps } from "./DoorPayCodeScreen";
 import type { TapToPaySaleScreenProps } from "./tap/TapToPaySaleScreen";
 import type { TapToPaySetupScreenProps } from "./tap/TapToPaySetupScreen";
+import type { F4TapToPayCardProps } from "./tap/F4TapToPayCard";
 
 type DoorSaleScreensModule = typeof import("./doorSaleScreens");
 
@@ -47,4 +48,10 @@ export const LazyDoorPayCodeScreen = createRetryableLazyErrorBoundary<DoorPayCod
 export const LazyDoorModeScreen = createRetryableLazyErrorBoundary<DoorModeScreenProps>(
   async () => ({ default: (await loadDoorSaleScreens()).DoorModeScreen }),
   { loadingLabel: "Loading the door" },
+);
+
+/** #4389 — F4's Tap to Pay on iPhone card (same chunk as the door screens). */
+export const LazyF4TapToPayCard = createRetryableLazyErrorBoundary<F4TapToPayCardProps>(
+  async () => ({ default: (await loadDoorSaleScreens()).F4TapToPayCard }),
+  { loadingLabel: `Loading ${tapToPayName(Platform.OS)}` },
 );

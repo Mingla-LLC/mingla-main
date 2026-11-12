@@ -19,7 +19,7 @@ import { KeyboardAvoidingView } from "../../../../src/wrappers/SmartKeyboardAvoi
 import { Button } from "../../../../src/components/ui/Button";
 import { CenteredState } from "../../../../src/components/ui/CenteredState";
 import { BRAND_SETUP_COPY as C } from "../../../../src/components/brand/brandSetupCopy";
-import { payoutCountryOption } from "../../../../src/components/brand/PayoutCountryList";
+import { payoutCountryOption } from "../../../../src/components/brand/payoutCountryOptions";
 import {
   tapAddressFromPlace,
   withBuildingNumber,

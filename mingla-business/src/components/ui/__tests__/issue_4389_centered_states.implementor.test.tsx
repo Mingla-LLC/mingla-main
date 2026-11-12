@@ -78,9 +78,12 @@ describe("#4389 centred empty / error / no-match states", () => {
   });
 
   test("C3: F2 has no load-error state to misalign: the bank-country list is bundled, never read from the server", () => {
-    const list = read("src/components/brand/PayoutCountryList.tsx");
-    expect(list).toContain('from "../../constants/stripeSupportedCountries"');
-    expect(list).not.toMatch(/supabase|useQuery|payout_country_rails/);
+    // The options moved to payoutCountryOptions.ts (kept out of __common); both are bundled.
+    const options = read("src/components/brand/payoutCountryOptions.ts");
+    expect(options).toContain('from "../../constants/stripeSupportedCountries"');
+    for (const file of ["src/components/brand/PayoutCountryList.tsx", "src/components/brand/payoutCountryOptions.ts"]) {
+      expect(read(file)).not.toMatch(/supabase|useQuery|payout_country_rails/);
+    }
   });
 
   test("C4: the #4389 states use CenteredState, and no button inside one is fullWidth", () => {

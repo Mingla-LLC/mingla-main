@@ -12,3 +12,4 @@ export { DoorPayCodeScreen } from "./DoorPayCodeScreen";
 export { DoorModeScreen } from "./DoorModeScreen";
 export { TapToPaySaleScreen } from "./tap/TapToPaySaleScreen";
 export { TapToPaySetupScreen } from "./tap/TapToPaySetupScreen";
+export { F4TapToPayCard } from "./tap/F4TapToPayCard";

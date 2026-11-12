@@ -11,7 +11,7 @@
 import { queryClient } from "../config/queryClient";
 import { businessEventKeys } from "../hooks/useBusinessEvents";
 import { fetchBusinessEventsForBrand } from "../services/businessEvents";
-import { doorSaleCandidates } from "../components/door/doorModeState";
+import { doorSaleCandidates } from "../components/door/doorSaleCandidates";
 
 export type OpenDoorSaleResult = "opened" | "picker" | "none";
 
@@ -19,17 +19,8 @@ interface RouterLike {
   push: (href: never) => void;
 }
 
-/** The door sale route for an event (query values are encoded). */
-export const doorSaleHref = (
-  eventId: string,
-  options: { pick?: boolean; source?: string | null; draft?: string | null } = {},
-): string => {
-  const query: string[] = [];
-  if (options.pick === true) query.push("pick=1");
-  if (options.source) query.push(`source=${encodeURIComponent(options.source)}`);
-  if (options.draft) query.push(`draft=${encodeURIComponent(options.draft)}`);
-  return `/event/${eventId}/door/sell${query.length > 0 ? `?${query.join("&")}` : ""}`;
-};
+export { doorSaleHref } from "./doorSaleHref";
+import { doorSaleHref } from "./doorSaleHref";
 
 export const openDoorSale = async (
   router: RouterLike,

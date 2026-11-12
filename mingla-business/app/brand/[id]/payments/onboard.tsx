@@ -24,7 +24,7 @@ import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/Br
 import { canvas } from "../../../../src/constants/designSystem";
 import { useBrand } from "../../../../src/hooks/useBrands";
 import { sanitizeBankSetupReturnPath } from "../../../../src/utils/bankSetupReturn";
-import { setupFlowHop } from "../../../../src/services/brandSetupService";
+import { setupFlowHop } from "../../../../src/services/brandSetupCore";
 
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();

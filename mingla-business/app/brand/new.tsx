@@ -28,7 +28,7 @@ import { useBrandListState } from "../../src/hooks/useBrandListShim";
 import { useBrandSetupStates } from "../../src/hooks/useBrandSetupStates";
 import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 import { decideBrandNewEntry } from "../../src/components/brand/brandNewEntry";
-import { setupFlowHop } from "../../src/services/brandSetupService";
+import { setupFlowHop } from "../../src/services/brandSetupCore";
 
 const first = (v: string | string[] | undefined): string | null => {
   const x = Array.isArray(v) ? v[0] : v;

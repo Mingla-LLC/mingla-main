@@ -15,7 +15,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Linking,
   Platform,
   Pressable,
@@ -55,10 +54,9 @@ import {
   deriveSetupStep,
   setupFlowHop,
   newBrandId,
-  refreshStripeSetupStatus,
   type BrandSetupStep,
-  type StripeSetupStatus,
-} from "../../services/brandSetupService";
+} from "../../services/brandSetupCore";
+import type { StripeSetupStatus } from "../../services/brandSetupService";
 import {
   useBrandSetupChecklist,
   useCreateSetupBrand,
@@ -72,14 +70,13 @@ import {
 } from "../../hooks/useMinglaToSAcceptance";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
-import { tapToPayBrandEligible } from "../../utils/tapToPayBrandEligible";
-import { useTapToPaySettingsEntry } from "../../hooks/useTapToPaySettingsEntry";
-import { useTapToPayOnForBrand } from "../../hooks/useTapToPayAvailability";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Toast } from "../ui/Toast";
-import { OfferingChooser, routeForOffering } from "./OfferingChooser";
+import type { OfferingChooserProps } from "./OfferingChooser";
+import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
+import { LazyF4TapToPayCard } from "../door/LazyDoorSaleScreens";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { BRAND_SETUP_COPY as C } from "./brandSetupCopy";
 import { PayoutCountryList, payoutCountryOption } from "./PayoutCountryList";
@@ -115,18 +112,12 @@ import {
   type WriteError,
 } from "./BrandSetupInterruptions";
 
-/** #4389 design .ttph .vis: a 186pt band; the 720×559 art is 330pt wide, cropped. */
-const TTP_BAND_HEIGHT = 186;
-const TTP_ART_WIDTH = 330;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const TTP_VISUAL: number | null = (() => {
-  try {
-    return require("../../../assets/tap-to-pay/ttp-visual.png") as number;
-  } catch {
-    // A plain node test run has no asset transform; the card draws without art.
-    return null;
-  }
-})();
+// #4389 — F4's "What do you want to make first?" list (and its clips) loads
+// with F4, not with the app: one on-intent chunk keeps it out of __common.
+const LazyOfferingChooser = createRetryableLazyErrorBoundary<OfferingChooserProps>(
+  async () => ({ default: (await import("./OfferingChooser")).OfferingChooser }),
+  { loadingLabel: "Loading" },
+);
 
 export interface BrandCreationFlowProps {
   /** null = a new brand (/brand/new). */
@@ -903,27 +894,6 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
   const router = useRouter();
   const [status, setStatus] = useState<StripeSetupStatus | null>(null);
   const [failed, setFailed] = useState(false);
-  const ttpEntry = useTapToPaySettingsEntry(brandId);
-  const showTtp = Platform.OS === "ios" && ttpEntry !== null &&
-    tapToPayBrandEligible({ paymentProvider: provider, payoutCountry: country });
-  const ttpOn = useTapToPayOnForBrand(showTtp ? brandId : null);
-  // Take a payment only when there is an event to sell for now (read on demand,
-  // so the door modules stay out of this screen's chunk).
-  const [hasDoorSaleEvent, setHasDoorSaleEvent] = useState(false);
-  useEffect(() => {
-    if (!ttpOn) return undefined;
-    let alive = true;
-    void import("../../utils/openDoorSale")
-      .then(({ hasDoorSaleEvent: check }) => check(brandId))
-      .then((has) => {
-        if (alive) setHasDoorSaleEvent(has);
-      })
-      .catch((error: unknown) => console.warn("[BrandCreationFlow] could not read events for Take a payment", error));
-    return () => {
-      alive = false;
-    };
-  }, [ttpOn, brandId]);
-
   useEffect(() => {
     if (provider !== "stripe") return;
     let cancelled = false;
@@ -931,7 +901,7 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
       setTimeout(async () => {
         if (cancelled) return;
         try {
-          const s = await refreshStripeSetupStatus(brandId);
+          const s = await (await import("../../services/brandSetupService")).refreshStripeSetupStatus(brandId);
           if (cancelled) return;
           setFailed(false);
           setStatus(s);
@@ -972,55 +942,22 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
           <Text style={styles.sub}>{C.f4.checkingBody}</Text>
         </>
       )}
-      {showTtp ? (
-        <View style={styles.ttpCard} testID="brand-setup-ttp-card">
-          {/* Apple's in-app tile visual (Tap to Pay on iPhone marketing art). */}
-          {TTP_VISUAL !== null ? (
-            // #4389 — a short cropped band (design: 186pt), never the full-height art.
-            <View style={styles.ttpBand} testID="brand-setup-ttp-band">
-              <Image source={TTP_VISUAL} style={styles.ttpVisual} resizeMode="cover" accessible={false} />
-            </View>
-          ) : null}
-          {ttpOn ? (
-            // #4389 — on for this brand on this phone: the ready state, never "Set up" again.
-            <>
-              <Text style={styles.cardTitle} numberOfLines={1} testID="brand-setup-ttp-on">{C.f4.ttpOn}</Text>
-              {hasDoorSaleEvent ? (
-                <Button
-                  label={C.f4.takePayment}
-                  onPress={() => {
-                    // Loaded on press, as Home's Take a payment does (keeps the query client out of this chunk).
-                    void import("../../utils/openDoorSale")
-                      .then(({ openDoorSale }) => openDoorSale(router, brandId, null, { source: "brand_setup" }))
-                      .catch((error: unknown) => console.warn("[BrandCreationFlow] Take a payment failed to open", error));
-                  }}
-                  variant="primary"
-                  size="md"
-                  fullWidth
-                  testID="brand-setup-ttp-take-payment"
-                />
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Text style={styles.cardTitle} numberOfLines={1}>{C.f4.ttpTitle}</Text>
-              <Text style={styles.cardText}>{C.f4.ttpBody}</Text>
-              <Text style={styles.helper}>{C.f4.ttpTerms}</Text>
-              <Button label={C.f4.ttpCta} onPress={() => router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}` as never)} variant="primary" size="md" fullWidth testID="brand-setup-ttp-setup" />
-            </>
-          )}
-        </View>
-      ) : null}
+      {/* #4389 — Tap to Pay on iPhone (iPhone only; loaded with the door chunk). */}
+      {Platform.OS === "ios" ? <LazyF4TapToPayCard brandId={brandId} provider={provider} country={country} /> : null}
       {/* The list of 5 carries its own "What do you want to make first?" heading. */}
       <View style={styles.gap8} />
-      <OfferingChooser
+      <LazyOfferingChooser
         variant="brand-create-welcome"
         headline={C.f4.makeFirst}
         subhead=""
         // #4389 P2 — the payout line comes from the same live read as the
         // heading above (it used to default to "not connected").
         payoutState={f4PayoutState(provider, status, failed)}
-        onSelect={(o) => router.replace(routeForOffering(o) as never)}
+        onSelect={(o) => {
+          void import("./OfferingChooser")
+            .then(({ routeForOffering }) => router.replace(routeForOffering(o) as never))
+            .catch((error: unknown) => console.warn("[BrandCreationFlow] could not open the offering", error));
+        }}
       />
     </ScrollView>
   );
@@ -1197,9 +1134,6 @@ const styles = StyleSheet.create({
   cardText: { ...typography.body, color: textTokens.primary },
   box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" },
   boxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
-  ttpCard: { marginTop: spacing.md, padding: spacing.md, gap: spacing.sm, borderRadius: radius.lg, backgroundColor: "rgba(255,255,255,0.06)", overflow: "hidden" },
-  ttpBand: { height: TTP_BAND_HEIGHT, overflow: "hidden", borderRadius: radius.md },
-  ttpVisual: { position: "absolute", right: -26, top: -6, width: TTP_ART_WIDTH, height: TTP_ART_WIDTH * (559 / 720) },
   gap8: { height: spacing.sm },
 });
 

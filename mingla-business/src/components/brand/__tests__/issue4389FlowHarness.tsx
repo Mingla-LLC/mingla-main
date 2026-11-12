@@ -138,6 +138,30 @@ jest.mock("../../../store/currentBrandStore", () => ({
   useCurrentBrandStore: (sel: (s: { setCurrentBrand: () => void }) => unknown) => sel({ setCurrentBrand: jest.fn() }),
 }));
 jest.mock("../brandSetupAnalytics", () => ({ trackBrandSetup: jest.fn() }));
+// #4389 — F4's offering list loads on intent; here the loader resolves the
+// mocked module and renders it (no error-boundary/Icon tree in node tests).
+jest.mock("../../ui/RetryableLazyBoundary", () => {
+  const R = jest.requireActual("react") as typeof React;
+  return {
+    createRetryableLazyErrorBoundary:
+      (loader: () => Promise<{ default: React.ComponentType<Record<string, unknown>> }>) =>
+      (props: Record<string, unknown>) => {
+        const [C, setC] = R.useState<React.ComponentType<Record<string, unknown>> | null>(null);
+        R.useEffect(() => {
+          let alive = true;
+          void loader().then((m) => {
+            if (alive) setC(() => m.default);
+          });
+          return () => {
+            alive = false;
+          };
+        }, []);
+        return C ? R.createElement(C, props) : null;
+      },
+  };
+});
+// F4's Tap to Pay card lives in the door chunk (tested on its own).
+jest.mock("../../door/LazyDoorSaleScreens", () => ({ LazyF4TapToPayCard: () => null }));
 jest.mock("../OfferingChooser", () => ({
   OfferingChooser: (p: Record<string, unknown>) => {
     harness.offeringProps = p;

@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LazyBrandCreationFlow } from "../../../src/components/brand/LazyBrandCreationFlow";
 import { canvas } from "../../../src/constants/designSystem";
-import { isSetupFlowHop, parseSetupStep } from "../../../src/services/brandSetupService";
+import { isSetupFlowHop, parseSetupStep } from "../../../src/services/brandSetupCore";
 
 export default function BrandSetupRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();

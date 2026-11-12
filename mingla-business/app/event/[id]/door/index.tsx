@@ -58,7 +58,7 @@ import {
 } from "../../../../src/utils/paymentMethodLabels";
 import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
 import { Button } from "../../../../src/components/ui/Button";
-import { doorSaleHref, openDoorSale } from "../../../../src/utils/openDoorSale";
+import { doorSaleHref } from "../../../../src/utils/doorSaleHref";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -284,7 +284,9 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
 
   const handleNewSale = useCallback((): void => {
     if (typeof eventId !== "string") return;
-    void openDoorSale(router, brand?.id ?? null, eventId, { source: "event_door" });
+    void import("../../../../src/utils/openDoorSale")
+      .then(({ openDoorSale }) => openDoorSale(router, brand?.id ?? null, eventId, { source: "event_door" }))
+      .catch((error: unknown) => console.warn("[door] could not open the door sale", error));
   }, [router, brand?.id, eventId]);
 
   // Cycle 13 — D-CYCLE13-RECON-FOR-4 polish: navigate to full cross-source reconciliation.

@@ -13,18 +13,19 @@ import { describe, expect, test } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 
-const src = fs.readFileSync(path.join(__dirname, "..", "BrandCreationFlow.tsx"), "utf8");
+// The card moved into the door chunk (F4TapToPayCard.tsx) to keep __common small.
+const src = fs.readFileSync(path.join(__dirname, "..", "..", "door", "tap", "F4TapToPayCard.tsx"), "utf8");
 
 describe("#4389 — F4 Tap to Pay visual is a short cropped band", () => {
   test("B1: the band is 186pt and clips the art", () => {
-    expect(src).toMatch(/const TTP_BAND_HEIGHT = 186;/);
-    expect(src).toMatch(/ttpBand: \{ height: TTP_BAND_HEIGHT, overflow: "hidden"/);
+    expect(src).toMatch(/export const TTP_BAND_HEIGHT = 186;/);
+    expect(src).toMatch(/band: \{ height: TTP_BAND_HEIGHT, overflow: "hidden"/);
   });
 
   test("B2: the art sits inside the band, 330pt wide, never full-width by aspect ratio", () => {
-    expect(src).toMatch(/<View style=\{styles\.ttpBand\}[^>]*>\s*<Image source=\{TTP_VISUAL\} style=\{styles\.ttpVisual\}/);
-    expect(src).toMatch(/const TTP_ART_WIDTH = 330;/);
-    expect(src).toMatch(/ttpVisual: \{ position: "absolute", right: -26, top: -6, width: TTP_ART_WIDTH/);
+    expect(src).toMatch(/<View style=\{styles\.band\}[^>]*>\s*<Image source=\{TTP_VISUAL\} style=\{styles\.visual\}/);
+    expect(src).toMatch(/export const TTP_ART_WIDTH = 330;/);
+    expect(src).toMatch(/visual: \{ position: "absolute", right: -26, top: -6, width: TTP_ART_WIDTH/);
     expect(src).not.toMatch(/aspectRatio: 720 \/ 559/);
   });
 });

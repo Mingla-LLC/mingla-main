@@ -56,7 +56,7 @@ import {
   useMinglaToSAcceptance,
 } from "../../hooks/useMinglaToSAcceptance";
 import { BRAND_SETUP_COPY } from "./brandSetupCopy";
-import { payoutCountryOption } from "./PayoutCountryList";
+import { payoutCountryOption } from "./payoutCountryOptions";
 import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
 import { useBrand } from "../../hooks/useBrands";
 import {

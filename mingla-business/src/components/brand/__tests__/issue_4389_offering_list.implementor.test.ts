@@ -55,10 +55,14 @@ describe("#4389 offering list of 5", () => {
     expect(read("offeringRowVisibility.tsx")).toContain("active={appActive && onScreen}");
   });
   test("F4: Tap to Pay on iPhone card (iOS, eligible brands) sits above the list", () => {
+    // The card moved into the door chunk (F4TapToPayCard) to keep __common small;
+    // F4 renders it on iPhone above the (lazy) offering list.
     const flow = read("BrandCreationFlow.tsx");
-    expect(flow).toContain('const showTtp = Platform.OS === "ios" && ttpEntry !== null &&');
-    expect(flow.indexOf('testID="brand-setup-ttp-card"')).toBeLessThan(flow.indexOf("<OfferingChooser"));
-    expect(flow).toContain("{C.f4.ttpCta}".replace("{C.f4.ttpCta}", "label={C.f4.ttpCta}"));
+    expect(flow).toContain('{Platform.OS === "ios" ? <LazyF4TapToPayCard');
+    expect(flow.indexOf("<LazyF4TapToPayCard")).toBeLessThan(flow.indexOf("<LazyOfferingChooser"));
+    const card = fs.readFileSync(path.join(__dirname, "..", "..", "door", "tap", "F4TapToPayCard.tsx"), "utf8");
+    expect(card).toContain('const show = Platform.OS === "ios" && entry !== null &&');
+    expect(card).toContain("label={C.f4.ttpCta}");
   });
 });
 

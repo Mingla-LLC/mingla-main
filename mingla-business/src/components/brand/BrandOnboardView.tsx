@@ -108,7 +108,7 @@ import { Icon } from "../ui/Icon";
 import { Spinner } from "../ui/Spinner";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
 import { BRAND_SETUP_COPY } from "./brandSetupCopy";
-import { flagEmoji, payoutCountryOption } from "./PayoutCountryList";
+import { flagEmoji, payoutCountryOption } from "./payoutCountryOptions";
 import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 import { useAuth } from "../../context/AuthContext";
 import {
