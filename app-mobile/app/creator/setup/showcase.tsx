@@ -29,6 +29,7 @@ export default function CreatorShowcaseStep(): React.ReactElement {
   const queryClient = useQueryClient();
   const media = useQuery({ queryKey: ['creator', 'showcase'], queryFn: () => myShowcaseMedia(), refetchInterval: (q) => (q.state.data ?? []).some((m) => m.status === 'processing') ? 8000 : false });
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [aspect, setAspect] = useState(false);
@@ -38,14 +39,20 @@ export default function CreatorShowcaseStep(): React.ReactElement {
   const processing = items.some((m) => m.status === 'processing' || m.status === 'awaiting_upload');
 
   const upload = async (): Promise<void> => {
-    setBusy(true); setProgress(0); setError(null); setAspect(false);
+    setPicking(true); setError(null); setAspect(false);
     try {
-      const result = await chooseAndUploadCreatorMedia({ purpose: 'showcase', onProgress: setProgress });
+      // #4402 C16: the upload bar appears only after a video is picked; a
+      // cancelled picker never shows "Uploading 0%".
+      const result = await chooseAndUploadCreatorMedia({
+        purpose: 'showcase',
+        onProgress: setProgress,
+        onPicked: () => { setProgress(0); setBusy(true); },
+      });
       setAspect(result.aspectWarning);
       await queryClient.invalidateQueries({ queryKey: ['creator'] });
     } catch (e) {
       if (!isPickerCancel(e)) setError(programErrorText(e));
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setPicking(false); }
   };
 
   return <ProgramScreen title={stepTitle('showcase')}
@@ -70,7 +77,7 @@ export default function CreatorShowcaseStep(): React.ReactElement {
     {processing && !busy ? <ProgramNotice text="Processing your video. This usually takes a minute or two; you can continue meanwhile." /> : null}
     {aspect ? <ProgramNotice tone="warning" text="This video looks wide. It will still process, but a vertical video looks better to hosts." /> : null}
     {error ? <ProgramNotice tone="error" text={error} /> : null}
-    <ProgramButton label={items.length ? 'Add another video' : 'Choose a video'} variant={items.length ? 'secondary' : 'primary'} icon="cloud-upload-outline" busy={busy} onPress={() => void upload()} />
+    <ProgramButton label={items.length ? 'Add another video' : 'Choose a video'} variant={items.length ? 'secondary' : 'primary'} icon="cloud-upload-outline" busy={busy} disabled={picking && !busy} onPress={() => void upload()} />
   </ProgramScreen>;
 }
 

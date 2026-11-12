@@ -163,5 +163,9 @@ module.exports = {
     // issue #4402 — Creator setup errors land beside the button: a refused
     // profile Save, the Rates step before a profile exists, a refused Save rate.
     "**/__tests__/issue_4402_creator_setup_errors.implementor.render.test.tsx",
+    // issue #4402 — Socials handle states from the server (pending, review,
+    // expired, rejected, verified), no X, Local prefill; showcase progress
+    // only after a pick.
+    "**/__tests__/issue_4402_creator_socials_states.implementor.render.test.tsx",
   ],
 };
