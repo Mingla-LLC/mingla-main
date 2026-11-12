@@ -291,7 +291,8 @@
         "supabase/functions/paystack-webhook/index.ts",
         "supabase/functions/stripe-webhook/index.ts",
         "supabase/migrations/20280702204402_issue_4402_gig_payment_capture.sql",
-        "supabase/functions/gig-refund/function-policy.json"
+        "supabase/functions/gig-refund/function-policy.json",
+        "supabase/functions/gig-refund/handler.ts"
       ]
     },
     {
