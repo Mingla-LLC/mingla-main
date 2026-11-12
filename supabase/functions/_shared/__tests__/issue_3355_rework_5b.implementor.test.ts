@@ -297,7 +297,7 @@ Deno.test("5b: 'Your website is published' when the website is not provisioned",
   });
   assertEquals(
     provisioning.text,
-    "Your records show your website as still being set up.",
+    "Your records show your website is still being set up.",
   );
   // Published: kept.
   const published = await check({
@@ -524,7 +524,7 @@ Deno.test("5b: venues, stays, tiers, sold out, refunds and payouts are each read
       },
     }).client,
   });
-  assertEquals(stay.text, "Your records show Bar Rumba as in review.");
+  assertEquals(stay.text, "Your records show Bar Rumba is in review.");
 
   const tier = await check({
     host: "is VIP on sale?",
@@ -593,7 +593,7 @@ Deno.test("5b: venues, stays, tiers, sold out, refunds and payouts are each read
   });
   assertEquals(
     refund.text,
-    "Your records show the refund as still processing.",
+    "Your records show the refund is still processing.",
   );
 
   const payout = await check({

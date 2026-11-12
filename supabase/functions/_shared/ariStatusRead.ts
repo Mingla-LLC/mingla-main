@@ -67,6 +67,28 @@ const TITLE_RUN =
 const OFFERINGS: readonly AriClaimKind[] = ["event", "trip", "experience"];
 
 /**
+ * Rework 7 (R7-16): the titles a turn may name ("Lagos Night Out" in "Is
+ * Lagos Night Out live?"): every run of two or more capitalised words, and
+ * each run without its first word (a sentence-start "Is" or "Yes"). Exact
+ * strings only; the read matches them exactly.
+ */
+export function titleCandidates(text: string): string[] {
+  const out: string[] = [];
+  for (
+    const match of text.matchAll(
+      /(?:[A-Z][\p{L}\p{N}'’&-]*\s+){1,5}[A-Z][\p{L}\p{N}'’&-]*/gu,
+    )
+  ) {
+    const words = match[0].trim().split(/\s+/);
+    for (let start = 0; start < words.length - 1 && start < 2; start++) {
+      const title = words.slice(start).join(" ");
+      if (title.length >= 4 && !out.includes(title)) out.push(title);
+    }
+  }
+  return out.slice(0, 12);
+}
+
+/**
  * #3355 rework 6 (Seth's rule 3): the kinds read BESIDE the judge call —
  * what the turn mentions: the kinds the reply and the host's message name,
  * the kinds of the chat's cards, and the brand's offerings when a title is
@@ -326,7 +348,7 @@ function row(
   tool: string,
   names: string[],
   readState: ReadState,
-  identity: { id?: unknown; onCard: boolean },
+  identity: { id?: unknown; onCard: boolean; byId?: boolean },
 ): ClaimEvidence {
   return {
     status: "read",
@@ -342,6 +364,9 @@ function row(
       ? { objectId: identity.id }
       : {}),
     onCard: identity.onCard,
+    // Rework 7 (R7-7): a card names this row by its id (twins by title are
+    // told apart by it).
+    ...(identity.byId ? { cardById: true } : {}),
   };
 }
 
@@ -362,6 +387,8 @@ export async function readObjectStatuses(args: {
   brandRole?: string | null;
   /** The reply mentions "sold out" (reads remaining inventory). */
   soldOut?: boolean;
+  /** Rework 7 (R7-16): offering titles the turn says (read by title too). */
+  titles?: readonly string[];
   now?: Date;
 }): Promise<StatusReadResult> {
   const now = args.now ?? new Date();
@@ -386,8 +413,10 @@ export async function readObjectStatuses(args: {
   const has = (kind: AriClaimKind) => wanted.includes(kind);
   const named = cardNames(args.cards, new Set(wanted));
   const offeringIds = idsOf(args.cards, "offering");
+  const idOnCard = (id: unknown, ids: readonly string[]) =>
+    ids.includes(String(id));
   const onCard = (id: unknown, names: string[], ids: readonly string[]) =>
-    ids.includes(String(id)) ||
+    idOnCard(id, ids) ||
     names.some((name) => name.trim() && named.has(identityKey(name)));
   const client = args.client;
   const reads: KindRead[] = [];
@@ -399,7 +428,8 @@ export async function readObjectStatuses(args: {
       kinds: [...offeringKinds, ...(tiersWanted ? ["ticket" as const] : [])],
       run: async () => {
         const select = "id,title,status,event_type,updated_at";
-        const [recent, byId] = await Promise.all([
+        const titles = [...new Set(args.titles ?? [])].slice(0, 12);
+        const [recent, byIds, byTitle] = await Promise.all([
           client.from("events").select(select).eq("brand_id", brandId)
             .is("deleted_at", null).order("updated_at", { ascending: false })
             .limit(25),
@@ -407,9 +437,21 @@ export async function readObjectStatuses(args: {
             ? client.from("events").select(select).eq("brand_id", brandId)
               .is("deleted_at", null).in("id", offeringIds)
             : Promise.resolve({ data: [], error: null }),
+          // Rework 7 (R7-16): an older offering the turn names by title,
+          // beyond the 25 most recently changed.
+          titles.length > 0
+            ? client.from("events").select(select).eq("brand_id", brandId)
+              .is("deleted_at", null).in("title", titles).limit(20)
+            : Promise.resolve({ data: [], error: null }),
         ]);
         const seen = new Map<string, Record<string, unknown>>();
-        for (const item of [...rowsOf(byId), ...rowsOf(recent)]) {
+        for (
+          const item of [
+            ...rowsOf(byIds),
+            ...rowsOf(byTitle),
+            ...rowsOf(recent),
+          ]
+        ) {
           if (typeof item.id === "string") seen.set(item.id, item);
         }
         const offerings = [...seen.values()];
@@ -445,7 +487,11 @@ export async function readObjectStatuses(args: {
             row(kind, "status_read_offering", [title], {
               ...state,
               ...(sold !== undefined ? { soldOut: sold } : {}),
-            }, { id: item.id, onCard: onCard(item.id, [title], offeringIds) }),
+            }, {
+              id: item.id,
+              onCard: onCard(item.id, [title], offeringIds),
+              byId: idOnCard(item.id, offeringIds),
+            }),
           );
         }
         if (tiersWanted) {
@@ -472,7 +518,11 @@ export async function readObjectStatuses(args: {
               out.push(
                 row("ticket", "status_read_tier", [name], {
                   ...tierReadState(tier, now),
-                }, { id: tier.id, onCard: onCard(tier.id, [name], tierIds) }),
+                }, {
+                  id: tier.id,
+                  onCard: onCard(tier.id, [name], tierIds),
+                  byId: idOnCard(tier.id, tierIds),
+                }),
               );
             }
           }
@@ -506,7 +556,11 @@ export async function readObjectStatuses(args: {
             out.push(
               row("venue", "status_read_venue", [name], {
                 ...venueReadState(item),
-              }, { id: item.id, onCard: onCard(item.id, [name], venueIds) }),
+              }, {
+                id: item.id,
+                onCard: onCard(item.id, [name], venueIds),
+                byId: idOnCard(item.id, venueIds),
+              }),
             );
           }
         }
@@ -549,7 +603,11 @@ export async function readObjectStatuses(args: {
           const name = String(item.name ?? "");
           return row("message", "status_read_campaign", [name], {
             ...campaignReadState(item),
-          }, { id: item.id, onCard: onCard(item.id, [name], ids) });
+          }, {
+            id: item.id,
+            onCard: onCard(item.id, [name], ids),
+            byId: idOnCard(item.id, ids),
+          });
         });
       },
     });
@@ -669,12 +727,17 @@ export function objectStatusReadPlan(args: {
   cards: readonly StatusCard[];
   hostMessage?: string;
   brandRole?: string | null;
+  /** Rework 7 (R7-5): the previous turn's words ("is it live?" names it). */
+  previousTurn?: string;
 }): StatusReadPlan {
   const kinds = statusKindsWanted({
     text: args.text,
     cards: args.cards,
-    hostMessage: args.hostMessage,
+    hostMessage: [args.hostMessage ?? "", args.previousTurn ?? ""].join("\n"),
   });
+  const titles = titleCandidates(
+    [args.text, args.hostMessage ?? "", args.previousTurn ?? ""].join("\n"),
+  );
   return {
     kinds,
     read: (wanted?: ReadonlySet<AriClaimKind>) =>
@@ -685,6 +748,7 @@ export function objectStatusReadPlan(args: {
         cards: args.cards,
         brandRole: args.brandRole,
         soldOut: /\bsold\s+out\b/i.test(args.text),
+        titles,
       }),
   };
 }

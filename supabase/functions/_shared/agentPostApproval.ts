@@ -34,6 +34,7 @@ import {
   recentRecordEvidence,
 } from "./ariClaimCheck.ts";
 import { objectStatusReadPlan } from "./ariStatusRead.ts";
+import { resolveAccessibleAgentBrands } from "./agentTenantScope.ts";
 import {
   AGENT_TOOLS,
   findTool,
@@ -414,6 +415,29 @@ export function repeatsApprovedWrite(args: {
 }
 
 /**
+ * #3355 rework 7 (R7-15): the caller's role on one brand (owner when they own
+ * it), read as the caller. Null when unknown or the read fails: no kind is
+ * hidden, and RLS still decides what the status read sees.
+ */
+export async function readCallerBrandRole(
+  client: SupabaseClient,
+  userId: string,
+  brandId: string | null,
+): Promise<string | null> {
+  if (!brandId) return null;
+  try {
+    const brands = await resolveAccessibleAgentBrands(client, userId);
+    return brands.find((brand) => brand.id === brandId)?.role ?? null;
+  } catch (error) {
+    console.warn(
+      "[agent-post-approval] brand role read failed",
+      error instanceof Error ? error.name : "unknown",
+    );
+    return null;
+  }
+}
+
+/**
  * #3355 rework 3 (R3-4, I-ARI-CLAIM-MATCHES-RECEIPT): the continuation's
  * words right after a confirmed write are checked against the records like
  * every other model text. The approved write is the one executed record of
@@ -434,6 +458,11 @@ export async function checkPostApprovalClaims(args: {
   brandId?: string | null;
   /** Where this conversation's records start (ISO). */
   since?: string;
+  /**
+   * #3355 rework 7 (R7-15): the caller's role on the brand; read as the
+   * caller when not given (null: unknown, no kind hidden).
+   */
+  brandRole?: string | null;
   call?: AriClaimModelCall;
 }): Promise<ClaimCheckResult> {
   const executed = buildClaimEvidence({
@@ -454,6 +483,15 @@ export async function checkPostApprovalClaims(args: {
   const objects = executed.flatMap((item) =>
     item.objects.filter((name) => name.length <= 80)
   );
+  const statusBrandId = args.brandId ??
+    (typeof args.toolArgs.brand_id === "string"
+      ? args.toolArgs.brand_id
+      : null);
+  // #3355 rework 7 (R7-15): the caller's role on the brand, so kinds RLS
+  // hides from them are said so here too (the same rule as agent-chat).
+  const brandRole = args.brandRole !== undefined
+    ? args.brandRole
+    : await readCallerBrandRole(args.client, args.userId, statusBrandId);
   return await checkReplyClaims({
     text: args.text,
     hostMessage: args.hostMessage,
@@ -478,10 +516,7 @@ export async function checkPostApprovalClaims(args: {
     // object (and anything else the reply's status words name).
     statusRead: objectStatusReadPlan({
       client: args.client,
-      brandId: args.brandId ??
-        (typeof args.toolArgs.brand_id === "string"
-          ? args.toolArgs.brand_id
-          : null),
+      brandId: statusBrandId,
       text: args.text,
       cards: [{
         toolName: args.toolName,
@@ -490,6 +525,7 @@ export async function checkPostApprovalClaims(args: {
       }],
       // #3355 rework 6: the request the host just approved.
       hostMessage: args.hostMessage,
+      brandRole,
     }),
     askedWriteThisTurn: false,
     // The host's message is the request they just approved, not a new one.

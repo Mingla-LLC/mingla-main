@@ -260,6 +260,8 @@ export interface ClaimEvidence {
   objectId?: string;
   /** Rework 6: one of the chat's cards names this row (by id or title). */
   onCard?: boolean;
+  /** Rework 7 (R7-7): a chat card names this row by its id. */
+  cardById?: boolean;
 }
 
 /** The state one read row shows. */
@@ -422,6 +424,48 @@ function rowsInResult(
   }
 }
 
+const OBJECT_ID_KEYS = [
+  "event_id",
+  "trip_id",
+  "experience_id",
+  "rsvp_id",
+  "campaign_id",
+  "venue_id",
+  "ticket_type_id",
+  "tier_id",
+  "order_id",
+] as const;
+const ID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Rework 7 (R7-2): the id of the object a write is about — its args' object
+ * id, else its result's (`{ event: { id } }`, `{ id }`, `{ event_id }`).
+ */
+export function writeObjectId(
+  args: Record<string, unknown> | null,
+  result: unknown,
+): string | null {
+  const pick = (record: Record<string, unknown> | null, own: boolean) => {
+    if (!record) return null;
+    for (const key of [...OBJECT_ID_KEYS, ...(own ? ["id"] : [])]) {
+      const value = record[key];
+      if (typeof value === "string" && ID_SHAPE.test(value)) return value;
+    }
+    return null;
+  };
+  const fromArgs = pick(args, false);
+  if (fromArgs) return fromArgs;
+  const top = recordOf(result);
+  const direct = pick(top, true);
+  if (direct) return direct;
+  for (const nested of Object.values(top ?? {})) {
+    const found = pick(recordOf(nested), true);
+    if (found) return found;
+  }
+  return null;
+}
+
 export interface ClaimObservation {
   tool: string;
   args: Record<string, unknown>;
@@ -446,17 +490,21 @@ export function buildClaimEvidence(args: {
 }): ClaimEvidence[] {
   const now = args.now ?? new Date();
   const thisTurn = new Set(args.thisTurnActionIds ?? []);
-  const out: ClaimEvidence[] = args.states.map((state) => ({
-    status: STATUS_OF_STATE[state.status],
-    kind: claimKindOfTool(state.toolName),
-    toolName: state.toolName,
-    objects: [
-      ...(state.object ? [state.object] : []),
-      ...stringsOf(state.args),
-    ],
-    state,
-    thisTurn: thisTurn.has(state.actionId),
-  }));
+  const out: ClaimEvidence[] = args.states.map((state) => {
+    const id = writeObjectId(state.args, null);
+    return {
+      status: STATUS_OF_STATE[state.status],
+      kind: claimKindOfTool(state.toolName),
+      toolName: state.toolName,
+      objects: [
+        ...(state.object ? [state.object] : []),
+        ...stringsOf(state.args),
+      ],
+      state,
+      thisTurn: thisTurn.has(state.actionId),
+      ...(id ? { objectId: id } : {}),
+    };
+  });
   for (const observation of args.observations ?? []) {
     if (
       observation.error || observation.tool === "request_tools" ||
@@ -470,6 +518,7 @@ export function buildClaimEvidence(args: {
     if (!read) {
       const names = new Set<string>(stringsOf(observation.args));
       for (const row of rows) for (const name of row.names) names.add(name);
+      const id = writeObjectId(observation.args, observation.result);
       out.push({
         status: "done",
         kind,
@@ -477,6 +526,9 @@ export function buildClaimEvidence(args: {
         objects: [...names],
         state: null,
         thisTurn: true,
+        // Rework 7 (R7-2): the written object's id, so a receipt backs only
+        // a claim about that same object.
+        ...(id ? { objectId: id } : {}),
       });
       continue;
     }
@@ -687,12 +739,171 @@ const FUTURE_STATE =
 
 /**
  * R5-15: the words say the object is live / active / on NOW ("Done! FAVY10
- * is live again"), whatever action word the judge gave the claim.
+ * is live again"), whatever action word the judge gave the claim. Rework 7
+ * (R7-1 / R7-4): decided per clause — "FAVY10 is live, so you don't need to
+ * do anything" asserts it live; a negation, plan or condition in ANOTHER
+ * clause never turns the assertion off.
  */
 export function quoteAssertsLive(text: string): boolean {
-  const plain = text.replace(/[*_`]/g, "");
-  return POSITIVE_STATE.test(plain) && !NEGATED_STATE.test(plain) &&
-    !FUTURE_STATE.test(plain);
+  return clauseAsserts(text, [POSITIVE_STATE]);
+}
+
+// ── #3355 rework 7: one assertion per clause ────────────────────────────────
+
+/**
+ * Where a reply sentence is cut into clauses for the status rule: commas,
+ * semicolons, colons, slashes, dashes, contrast words and the joining words
+ * "and", "so", "because", "which", "then", "plus". Titles the reads know and
+ * fixed phrases ("up and running") are kept whole.
+ */
+const STATUS_CLAUSE_CUT =
+  /\s*(?:[,;:/]|\s[-–—]\s|\b(?:but|while|whereas|however|though|although|except|whilst|and|so|because|which|then|plus)\b)\s*/i;
+const GLUED_PHRASES: readonly RegExp[] = [/\bup\s+and\s+running\b/gi];
+
+/**
+ * Words before a state word that make it a plan, a possibility or a
+ * condition, not a current fact: a modal governing it ("will be live", "can
+ * now be published", "you'll be live") or a condition anywhere before it in
+ * the clause ("once published", "if it's live"). A modal elsewhere ("Should
+ * I tell your guests FAVY10 now works?") does not.
+ */
+const MODAL_NEAR =
+  /(?:\b(?:will|would|could|should|can|may|might|shall|must|going\s+to|about\s+to|ready\s+to|needs?\s+to|has\s+to|have\s+to|wants?\s+to)|['’]ll)\s+(?:[\p{L}'’]+\s+){0,2}$/iu;
+const CONDITION_BEFORE =
+  /\b(?:once|when|whenever|after|if|until|before|as\s+soon\s+as|unless)\b/i;
+/** Any plan or condition word (the no-state-word fallback reads the whole quote). */
+const NOT_YET_ANY =
+  /\b(?:will|would|could|should|can|may|might|once|if|when|until|before|unless|as\s+soon\s+as)\b|['’]ll\b/i;
+
+/** A current non-live state said as fact ("still a draft", "in review"). */
+const NONLIVE_STATE =
+  /\b(?:drafts?|unpublished|paused|in\s+review|pending(?:\s+review)?|not\s+(?:yet\s+)?(?:live|published|sent|approved|on\s+sale|ready|out)|hidden|offline|turned\s+off|switched\s+off|no\s+longer\s+(?:live|on\s+sale|active)|ended|expired|not\s+yet)\b/i;
+
+/** One clause of a reply sentence and the clause whose state it carries. */
+export interface StatusClause {
+  text: string;
+  /** Index of the clause whose state this one carries (itself when stated). */
+  owner: number;
+}
+
+/**
+ * #3355 rework 7 (R7-1 / R7-4, the tester's root cause): a sentence's
+ * clauses for the status rule. A clause that says no state of its own
+ * ("Lagos Night Out" in "Lagos Night Out and Abuja Brunch are both live")
+ * carries the state of the next clause that says one, else of the last one
+ * before it.
+ */
+export function statusClauses(
+  quote: string,
+  titles: readonly string[] = [],
+): StatusClause[] {
+  let plain = quote.replace(/[*_`]/g, "");
+  const masks: string[] = [];
+  const mask = (value: string) => {
+    masks.push(value);
+    return `\uE000${masks.length - 1}\uE001`;
+  };
+  for (const pattern of GLUED_PHRASES) plain = plain.replace(pattern, mask);
+  const known = [
+    ...new Set(
+      titles.map((title) => title.trim()).filter((title) => title.length >= 3),
+    ),
+  ].sort((a, b) => b.length - a.length);
+  for (const title of known) {
+    plain = plain.replace(
+      new RegExp(
+        `(?<![\\p{L}\\p{N}])${escapeRegExp(title)}(?![\\p{L}\\p{N}])`,
+        "giu",
+      ),
+      mask,
+    );
+  }
+  const unmask = (text: string): string =>
+    text.replace(
+      /\uE000(\d+)\uE001/g,
+      (_whole, index: string) => masks[Number(index)] ?? "",
+    );
+  const parts = plain.split(STATUS_CLAUSE_CUT).map((part) =>
+    unmask(part).trim()
+  ).filter(Boolean);
+  const stated = parts.map((part) =>
+    ANY_STATE.test(part) || OTHER_STATE.test(part) ||
+    POSITIVE_STATE.test(part) || NONLIVE_STATE.test(part) ||
+    ML_STATE.test(part) ||
+    Object.values(STATUS_WORDS).some((words) => words?.test(part))
+  );
+  return parts.map((text, index) => {
+    let owner = -1;
+    for (let next = index; next < parts.length; next++) {
+      if (stated[next]) {
+        owner = next;
+        break;
+      }
+    }
+    if (owner < 0) {
+      for (let prev = index - 1; prev >= 0; prev--) {
+        if (stated[prev]) {
+          owner = prev;
+          break;
+        }
+      }
+    }
+    return { text, owner: owner < 0 ? index : owner };
+  });
+}
+
+/** What one clause says about a state. */
+export type ClauseMood = "positive" | "negative" | "future" | "none";
+
+/**
+ * The mood of one clause for the given state words: a state word with a
+ * plan, modal or condition before it (or a "goes live on …" phrase) is
+ * "future"; with a negation before it, "negative"; otherwise "positive". No
+ * state word, but a non-live state said ("still a draft"): "negative".
+ */
+export function clauseMood(
+  clause: string,
+  words: readonly RegExp[],
+): ClauseMood {
+  let at = -1;
+  for (const pattern of words) {
+    const flags = pattern.flags.replace("g", "");
+    const hit = new RegExp(pattern.source, flags).exec(clause);
+    if (hit && (at < 0 || hit.index < at)) at = hit.index;
+  }
+  if (at < 0) return NONLIVE_STATE.test(clause) ? "negative" : "none";
+  const before = clause.slice(0, at);
+  if (
+    FUTURE_STATE.test(clause) || CONDITION_BEFORE.test(before) ||
+    MODAL_NEAR.test(before)
+  ) {
+    return "future";
+  }
+  if (
+    NEGATED_STATE.test(before) || /^\s*no\b/i.test(before) ||
+    /\b(?:no|neva)\s+$/i.test(before)
+  ) {
+    return "negative";
+  }
+  return "positive";
+}
+
+/** The mood of every clause, each from the clause whose state it carries. */
+export function clauseMoods(
+  clauses: readonly StatusClause[],
+  words: readonly RegExp[],
+): ClauseMood[] {
+  const own = clauses.map((clause) => clauseMood(clause.text, words));
+  return clauses.map((clause) => own[clause.owner] ?? "none");
+}
+
+/** Some clause of the text asserts one of the state words as current fact. */
+export function clauseAsserts(
+  text: string,
+  words: readonly RegExp[],
+  titles: readonly string[] = [],
+): boolean {
+  return clauseMoods(statusClauses(text, titles), words).includes("positive");
 }
 
 /** A claim about an object's current state (live, published, on again). */
@@ -828,6 +1039,15 @@ export interface ClaimContext {
    * their message is that request, not a new one.
    */
   approved?: boolean;
+  /**
+   * Rework 7 (R7-3): the model's intent read was valid this turn (true), or
+   * failed and the keyword hints routed it (false). Undefined: not known.
+   */
+  intentRead?: boolean;
+  /** Rework 7 (R7-5): the previous turn's words (Ari's reply, the host's). */
+  previousTurn?: string;
+  /** Rework 7 (R7-5): the whole reply being checked. */
+  replyText?: string;
 }
 
 /**
@@ -871,18 +1091,42 @@ export function isStatusQuestion(text: string): boolean {
   return /\?/.test(trimmed) && !hostAsksForWrite(trimmed);
 }
 
+/** A new object named in the host's words ("a 15% code", "another one"). */
+const NEW_OBJECT =
+  /\b(?:a|an|another|one\s+more|some|new)\s+(?:[\p{L}\p{N}%'’-]+\s+){0,3}?(?:codes?|discounts?|promos?|coupons?|vouchers?|events?|parties|party|trips?|experiences?|blasts?|campaigns?|messages?|reminders?|tiers?|tickets?|notes?|requests?|invites?|stays?|venues?|pages?|sites?|websites?|refunds?)\b|\banother\b|\bone\s+more\b/iu;
+/** A question about what already exists ("Did it…", "Is it…", "Has my…"). */
+const EXISTING_OPENER =
+  /^\s*(?:(?:so|and|ok(?:ay)?|hey|ari|great|thanks)[,!.\s]+)*(?:did|does|do|has|have|had|was|were|is|are)\b/i;
+
 /**
- * The host asked for a new write this turn. Rework 6 (R6-5, Seth's rule 4):
- * the intent read (the model) is primary; the host's own words are the
- * fallback when it says no write. A question that asks for no action at all
- * (isStatusQuestion: no write verb in an action position) is a follow-up
- * even when the intent read misfires on it ("Did it go through?" read as a
- * write, rework 4 live run 7).
+ * Rework 7 (R7-3): the host asks about an object that already exists (its
+ * outcome), not for a new one: a question with no write verb in an action
+ * position that either opens on a past / present auxiliary ("Did it go
+ * through?", "Is it live?", "Has my blast gone out?") or names no new object
+ * ("Can guests see it?"). "Can I get a 15% code for students?" names one: it
+ * is a request.
+ */
+export function asksAboutExisting(text: string): boolean {
+  const host = text.trim();
+  if (!isStatusQuestion(host)) return false;
+  return EXISTING_OPENER.test(host) || !NEW_OBJECT.test(host);
+}
+
+/**
+ * The host asked for a new write this turn. Rework 7 (R7-3, Seth's rule 4):
+ * the intent read (the model) is authoritative when it is valid — when it
+ * names a write, the turn is a write unless the host asks about an existing
+ * object's outcome (asksAboutExisting); when it says no write, there is
+ * none. The grammar rule (a write verb in an action position) decides only
+ * when the intent read failed or is unknown.
  */
 function askedForWrite(context: ClaimContext): boolean {
   const host = context.hostMessage ?? "";
-  if (isStatusQuestion(host)) return false;
-  if (context.askedWriteThisTurn) return true;
+  if (context.intentRead === false) {
+    return !context.approved && hostAsksForWrite(host);
+  }
+  if (context.askedWriteThisTurn) return !asksAboutExisting(host);
+  if (context.intentRead === true) return false;
   return !context.approved && hostAsksForWrite(host);
 }
 
@@ -1125,8 +1369,6 @@ const STATUS_WORDS: Partial<Record<AriClaimKind, RegExp>> = {
 };
 
 const SOLD_OUT = /\bsold\s+out\b/i;
-const CONDITIONAL =
-  /\b(?:once|when|whenever|after|if|until|before|as\s+soon\s+as)\b/i;
 const DESCRIBED_OBJECT =
   /^(?:your|the|this|that|my|our|it|its)\b|^(?:event|trip|experience|stay|venue|tier|ticket|blast|campaign|website|site|refund|payouts?)s?$/i;
 
@@ -1159,40 +1401,127 @@ export function statusKindsOf(claim: AriClaim): Set<AriClaimKind> {
 }
 
 /**
- * The status a claim asserts about an object of a status kind ("Your event
- * is published": live; "The blast went out": sent; "It's sold out":
- * sold_out; "Your trip has been cancelled": cancelled), or null when it
- * asserts none (a proposal, a plan, a negation, an instruction).
+ * #3355 rework 7: what a status claim asserts, decided per clause.
+ *   - `positive`: some clause asserts the state as current fact ("Your event
+ *     is published, so you don't need to do anything else"); `clauses` are
+ *     those clauses (the objects they name are the claim's objects).
+ *   - not `positive`: no clause asserts it, but a clause says the object is
+ *     NOT in it now ("Not yet — your event is still a draft"); the claim is
+ *     backed only when the row is not in `wanted` either.
+ * Null: no clause says a current state at all (a plan, a condition, an
+ * instruction, a proposal) — that is not a status claim.
+ */
+export interface StatusAssertion {
+  wanted: WantedStatus;
+  positive: boolean;
+  clauses: string[];
+}
+
+const CANCEL_WORDS =
+  /\b(?:cancell?ed|called\s+off|deleted|removed|ended|taken\s+down|archived)\b/i;
+const SENT_ACTIONS: ReadonlySet<AriClaimAction> = new Set([
+  "sent",
+  "notified",
+  "shared",
+]);
+const COMPLETION_ACTIONS: ReadonlySet<AriClaimAction> = new Set([
+  "created",
+  "saved",
+  "added",
+  "updated",
+  "completed",
+]);
+
+export function statusAssertion(
+  claim: AriClaim,
+  kindsOfClaim?: ReadonlySet<AriClaimKind>,
+  titles: readonly string[] = [],
+): StatusAssertion | null {
+  const kinds = kindsOfClaim ?? statusKindsOf(claim);
+  if (kinds.size === 0 || claim.action === "proposed") return null;
+  const clauses = statusClauses(claim.quote, titles);
+  const cancelling = claim.action === "cancelled" ||
+    claim.action === "deleted";
+  const words: RegExp[] = cancelling ? [CANCEL_WORDS] : [ML_STATE];
+  if (!cancelling) {
+    for (const kind of kinds) {
+      const own = STATUS_WORDS[kind];
+      if (own) words.push(own);
+    }
+    if ([...kinds].some((kind) => kind !== "message" && kind !== "payout")) {
+      words.push(SOLD_OUT);
+    }
+  }
+  const moods = clauseMoods(clauses, words);
+  const positive = clauses.filter((_clause, index) =>
+    moods[index] === "positive"
+  ).map((clause) => clause.text);
+  const negative = clauses.filter((_clause, index) =>
+    moods[index] === "negative"
+  ).map((clause) => clause.text);
+  const said = (texts: readonly string[], pattern: RegExp | undefined) =>
+    Boolean(pattern) && texts.some((text) => (pattern as RegExp).test(text));
+  const wantedOf = (texts: readonly string[]): WantedStatus => {
+    if (cancelling) return "cancelled";
+    if (said(texts, SOLD_OUT)) return "sold_out";
+    if (
+      kinds.has("message") &&
+      (said(texts, STATUS_WORDS.message) || SENT_ACTIONS.has(claim.action) ||
+        [...kinds].every((kind) => kind === "message"))
+    ) return "sent";
+    return "live";
+  };
+  if (positive.length > 0) {
+    if (claim.action === "scheduled" && !said(positive, SOLD_OUT)) return null;
+    return { wanted: wantedOf(positive), positive: true, clauses: positive };
+  }
+  if (negative.length > 0) {
+    // "I've created Lagos Night Out as a draft" is a write claim: its
+    // receipt decides it, not the draft state it mentions.
+    if (COMPLETION_ACTIONS.has(claim.action) || claim.action === "scheduled") {
+      return null;
+    }
+    return { wanted: wantedOf(negative), positive: false, clauses: negative };
+  }
+  // No clause says a state in words ("Yes!", "Done — Lagos Night Out."): the
+  // judge's own action word asserts it, unless the claim is a plan or a
+  // condition anywhere.
+  if (moods.some((mood) => mood !== "none")) return null;
+  const plain = claim.quote.replace(/[*_`]/g, "");
+  if (
+    NEGATED_STATE.test(plain) || FUTURE_STATE.test(plain) ||
+    NOT_YET_ANY.test(plain)
+  ) return null;
+  const all = clauses.map((clause) => clause.text);
+  if (cancelling) return { wanted: "cancelled", positive: true, clauses: all };
+  if (claim.action === "scheduled") return null;
+  for (const kind of kinds) {
+    if (kind === "message") {
+      if (SENT_ACTIONS.has(claim.action)) {
+        return { wanted: "sent", positive: true, clauses: all };
+      }
+      continue;
+    }
+    if (
+      kind === "refund" ||
+      ((claim.action === "live" || claim.action === "published") &&
+        kind !== "payout")
+    ) return { wanted: "live", positive: true, clauses: all };
+  }
+  return null;
+}
+
+/**
+ * The status a claim asserts as current fact ("Your event is published":
+ * live; "The blast went out": sent; "It's sold out": sold_out; "Your trip
+ * has been cancelled": cancelled), or null when no clause asserts one.
  */
 export function statusWanted(
   claim: AriClaim,
   kindsOfClaim?: ReadonlySet<AriClaimKind>,
 ): WantedStatus | null {
-  const kinds = kindsOfClaim ?? statusKindsOf(claim);
-  if (kinds.size === 0 || claim.action === "proposed") return null;
-  const words = claim.quote.replace(/[*_`]/g, "");
-  if (NEGATED_STATE.test(words) || FUTURE_STATE.test(words)) return null;
-  if (SOLD_OUT.test(words)) return "sold_out";
-  if (claim.action === "cancelled" || claim.action === "deleted") {
-    return "cancelled";
-  }
-  if (claim.action === "scheduled") return null;
-  for (const kind of kinds) {
-    if (kind === "message") {
-      if (
-        claim.action === "sent" || claim.action === "notified" ||
-        claim.action === "shared" || STATUS_WORDS.message?.test(words)
-      ) return "sent";
-      continue;
-    }
-    if (kind === "refund") return "live";
-    if (
-      STATUS_WORDS[kind]?.test(words) ||
-      ((claim.action === "live" || claim.action === "published") &&
-        kind !== "payout")
-    ) return "live";
-  }
-  return null;
+  const assertion = statusAssertion(claim, kindsOfClaim);
+  return assertion?.positive ? assertion.wanted : null;
 }
 
 /** Whether a row's current state shows what the claim asserts. */
@@ -1259,11 +1588,36 @@ function statusSentence(
     ? name.charAt(0).toUpperCase() + name.slice(1)
     : name;
   if (wanted === "sold_out" && state.live) {
+    if (state.soldOut === true) return `${subject} is sold out.`;
     return state.soldOut === false
       ? `${subject} still has tickets available.`
       : `I couldn't check whether ${name} is sold out just now.`;
   }
-  return `Your records show ${name} as ${state.label}.`;
+  return recordsShowSentence(name, state.label);
+}
+
+/**
+ * Rework 7 (R7-12): "Your records show Lagos Night Out as a draft."; a label
+ * that opens on a preposition or "still" reads "Your records show Ikoyi
+ * Loft is in review."
+ */
+export function recordsShowSentence(name: string, label: string): string {
+  if (!/^(?:in|on|still)\s/i.test(label.trim())) {
+    return `Your records show ${name} as ${label}.`;
+  }
+  const verb = /\b(?:payouts|refunds|tickets|events|codes)$/i.test(name)
+    ? "are"
+    : "is";
+  return `Your records show ${name} ${verb} ${label}.`;
+}
+
+/**
+ * Rework 7 (R7-7): two rows share the title and nothing in the chat says
+ * which one the reply is about.
+ */
+export function twinTitleSentence(name: string, kind: AriClaimKind): string {
+  const noun = (KIND_NOUN[kind] ?? "item").replace(/^(?:your|the)\s+/, "");
+  return `You have more than one ${noun} called ${name} — which one do you mean?`;
 }
 
 /**
@@ -1356,38 +1710,111 @@ function distinctObjects(rows: readonly ClaimEvidence[]): number {
 
 /** What one status claim is about, resolved to the brand's rows. */
 type StatusTarget =
-  | { rows: ClaimEvidence[] }
+  | {
+    rows: ClaimEvidence[];
+    /** Rework 7 (R7-7): a title two rows share, with no card to tell them apart. */
+    twin?: string | null;
+  }
   | { missing: string; checkable: boolean; named: boolean };
 
 /**
- * #3355 rework 6 (Seth's rule 1–2, R6-1 / R6-2 / R6-6 / R6-7): the specific
- * object(s) a status claim is about, as rows of this turn's read:
+ * Rework 7 (R7-7): rows that share a title are told apart by the chat's card
+ * id; with no card id, all of them stay and the title is flagged.
+ */
+function narrowTwins(
+  items: readonly ClaimEvidence[],
+): { rows: ClaimEvidence[]; twin: string | null } {
+  const groups = new Map<string, ClaimEvidence[]>();
+  for (const item of items) {
+    const key = titleKey(rowTitles(item)[0] ?? objectOf(item));
+    const group = groups.get(key);
+    if (group) {
+      if (!group.includes(item)) group.push(item);
+    } else groups.set(key, [item]);
+  }
+  const rows: ClaimEvidence[] = [];
+  let twin: string | null = null;
+  for (const [key, group] of groups) {
+    if (distinctObjects(group) <= 1) {
+      rows.push(...group);
+      continue;
+    }
+    const byId = group.filter((item) => item.cardById);
+    if (byId.length > 0 && distinctObjects(byId) === 1) {
+      rows.push(...byId);
+      continue;
+    }
+    rows.push(...group);
+    twin ??= displayName(group[0], key);
+  }
+  return { rows, twin };
+}
+
+/** Rework 7 (R7-5): a claim about every object of the kind. */
+const PLURAL_CLAIM =
+  /\b(?:both|every|each\s+of|all\s+(?:of\s+)?(?:your|the|my|these|those|them|\d+))\b|\b(?:they|they['’]re|they\s+are)\s+(?:all|both)\b|\b(?:your|the|my)\s+(?:[\p{L}]+\s+)?(?:events|trips|experiences|stays|venues|tiers|blasts|campaigns|refunds)\b/iu;
+/** At most this many objects are checked for a claim about all of them. */
+const PLURAL_MAX = 5;
+
+/** Rows still current (not ended or cancelled) for a live/sent claim. */
+function currentRows(
+  rows: readonly ClaimEvidence[],
+  wanted: WantedStatus,
+): ClaimEvidence[] {
+  if (wanted === "cancelled") return [...rows];
+  return rows.filter((item) =>
+    !/^(?:ended|cancelled|canceled|archived|deleted)$/.test(
+      item.readState?.label ?? "",
+    )
+  );
+}
+
+/**
+ * #3355 rework 6 / 7 (Seth's rule 1–2): the specific object(s) a status
+ * claim is about, as rows of this turn's brand-scoped status read:
  *   1. a title the claim names, matched by exact normalised title (its
  *      determiner and kind noun removed; never a fuzzy or partial match);
- *   2. every row title said in the claim's asserted clauses (a list);
- *   3. unnamed ("your event"): a row title the host's message says;
- *   4. else the one object the chat's cards name (by id or title);
- *   5. else the brand's only row of the kind.
+ *      rows sharing that title are told apart by the chat card's id;
+ *   2. every row title said in the claim's ASSERTED clauses (a list);
+ *   3. a claim about all of them ("both your events"): every current row of
+ *      the kind, up to five;
+ *   4. unnamed ("your event", "it"): a row title the host's message says;
+ *      else the one object the rest of the reply names; else the one
+ *      object the previous turn named; else the one object the chat's cards
+ *      name (by id or title);
+ *   5. else the brand's only CURRENT row of the kind (ended or cancelled
+ *      rows and other offering kinds are not candidates).
  * Anything else — a title no row has, no row at all, several candidates —
  * is missing: never "any live row of the kind", never an older card.
  */
 function resolveStatusTarget(
   claim: AriClaim,
+  assertion: StatusAssertion,
   rows: readonly ClaimEvidence[],
   evidence: readonly ClaimEvidence[],
   kinds: ReadonlySet<AriClaimKind>,
+  claimed: ReadonlySet<AriClaimKind>,
   context: ClaimContext,
 ): StatusTarget {
-  const kind = [...kinds][0];
+  const kind = [...claimed][0];
   const noun = KIND_NOUN[kind] ?? "it";
-  const asserted = assertedClauses(claim.quote).join(" , ");
+  const asserted = assertion.clauses.join(" , ");
   const said = rowsTitledIn(asserted, rows);
-  const named = claim.object && !DESCRIBED_OBJECT.test(claim.object.trim())
+  const named = claim.object && !DESCRIBED_OBJECT.test(claim.object.trim()) &&
+      !BARE_PRONOUN.test(claim.object.trim())
     ? claim.object.replace(/^["“'‘]|["”'’]$/g, "").trim()
     : null;
   const cardHere = evidence.some((item) =>
     item.state !== null && kinds.has(statusKindOfTool(item.toolName) ?? "other")
   );
+  const single = (found: readonly ClaimEvidence[]): StatusTarget | null => {
+    if (found.length === 0) return null;
+    const narrowed = narrowTwins(found);
+    const titles = new Set(
+      narrowed.rows.map((item) => titleKey(rowTitles(item)[0] ?? "")),
+    );
+    return titles.size === 1 ? narrowed : null;
+  };
   if (named) {
     const key = titleKey(named);
     const matched = rows.filter((item) =>
@@ -1406,19 +1833,33 @@ function resolveStatusTarget(
       );
       return { missing: named, checkable: known, named: true };
     }
-    return { rows: [...new Set([...matched, ...said])] };
+    return narrowTwins([...matched, ...said]);
   }
-  if (said.length > 0) return { rows: said };
+  if (said.length > 0) return narrowTwins(said);
+  const current = currentRows(rows, assertion.wanted);
+  const ofKind = current.filter((item) => claimed.has(item.kind));
+  const pool = ofKind.length > 0 ? ofKind : current;
+  if (PLURAL_CLAIM.test(claim.quote) && !BARE_SINGULAR.test(asserted)) {
+    const count = distinctObjects(pool);
+    if (count >= 1 && count <= PLURAL_MAX) return { rows: [...pool] };
+    return { missing: noun, checkable: false, named: false };
+  }
   const fromHost = rowsTitledIn(context.hostMessage ?? "", rows);
-  if (fromHost.length > 0) return { rows: fromHost };
+  if (fromHost.length > 0) return narrowTwins(fromHost);
+  const inReply = single(rowsTitledIn(context.replyText ?? "", rows));
+  if (inReply) return inReply;
+  const before = single(rowsTitledIn(context.previousTurn ?? "", rows));
+  if (before) return before;
   const carded = rows.filter((item) => item.onCard);
   if (carded.length > 0) {
+    const byId = carded.filter((item) => item.cardById);
+    if (byId.length > 0 && distinctObjects(byId) === 1) return { rows: byId };
     return distinctObjects(carded) === 1
       ? { rows: carded }
       : { missing: noun, checkable: false, named: false };
   }
-  if (rows.length > 0 && distinctObjects(rows) === 1) {
-    return { rows: [...rows] };
+  if (pool.length > 0 && distinctObjects(pool) === 1) {
+    return { rows: [...pool] };
   }
   return {
     missing: noun,
@@ -1427,6 +1868,12 @@ function resolveStatusTarget(
     named: false,
   };
 }
+
+/** "it", "that", "this one", "they" as a claim's object. */
+const BARE_PRONOUN =
+  /^(?:it|its|it['’]s|that|that\s+one|this|this\s+one|they|them|both)$/i;
+/** "it's live" in the asserted clauses: one object, not all of them. */
+const BARE_SINGULAR = /^\s*(?:it|it['’]s|that|this\s+one)\b/i;
 
 /** Rework 6: said when a status claim's object cannot be resolved. */
 export function cantFindSentence(thing: string): string {
@@ -1442,19 +1889,120 @@ export function hiddenKindSentence(kind: AriClaimKind): string {
 }
 
 /**
- * #3355 rework 6 (Seth 2026-11-11, one structural rule; replaces the rework
- * 5b "any live row of the kind" pool and its fall-through to older cards):
- * a status claim about an event, RSVP, trip, experience, stay, venue, tier,
- * blast, website, refund or payout readiness is backed ONLY by a row of
- * that kind read in THIS turn for the specific object the claim — or the
- * host — names (resolveStatusTarget). Every object a list names must be
- * backed. A title no row has, no row, several candidates: "I can't find X
- * to check. Which one do you mean?". A kind whose read failed, ran late or
- * never ran, or a card's object with no row (RLS-hidden): "I couldn't check
- * X's current status just now." A kind the caller's role cannot read: said
- * so. Never kept positive; never decided by an older card or another row.
- * Null: not a status claim of these kinds (codes, notes and tickets keep
- * their own rules), or no status read is wired.
+ * Rework 7 (R7-2): the state a write leaves its object in. A create or an
+ * edit saves; only a publish makes it live, a send sends it, a cancel ends
+ * it.
+ */
+export function stateProducedBy(toolName: string): WantedStatus | null {
+  const name = toolName.toLowerCase();
+  if (/unpublish|pause|draft/.test(name)) return null;
+  if (/cancel|delete|archive|(?:^|_)end(?:_|$)/.test(name)) return "cancelled";
+  if (/publish|go_live|make_live|resume|reactivate|activate/.test(name)) {
+    return "live";
+  }
+  if (/send|blast|broadcast/.test(name)) return "sent";
+  return null;
+}
+
+/** Two or more capitalised words in a row: a title. */
+const TITLE_WORDS = /(?:[A-Z][\p{L}\p{N}'’&-]*\s+)+[A-Z][\p{L}\p{N}'’&-]*/u;
+
+/**
+ * Rework 7 (R7-2): when the status read could not run, the one write saved
+ * in THIS turn for the SAME object (by id, else title) backs the claim, and
+ * only for the state that write produced (a create saves a draft and never
+ * backs "live"). Anything else: null ("couldn't check").
+ */
+function receiptBacking(
+  claim: AriClaim,
+  assertion: StatusAssertion,
+  evidence: readonly ClaimEvidence[],
+  kinds: ReadonlySet<AriClaimKind>,
+): ClaimEvidence | null {
+  if (!assertion.positive) return null;
+  const receipts = evidence.filter((item) =>
+    item.thisTurn && item.status === "done" &&
+    kinds.has(statusKindOfTool(item.toolName) ?? item.kind) &&
+    stateProducedBy(item.toolName) === assertion.wanted
+  );
+  if (receipts.length === 0) return null;
+  const named = claim.object && !DESCRIBED_OBJECT.test(claim.object.trim()) &&
+      !BARE_PRONOUN.test(claim.object.trim())
+    ? claim.object
+    : null;
+  let pool = receipts;
+  if (named) {
+    const key = titleKey(named);
+    pool = receipts.filter((item) =>
+      item.objects.some((name) => titleKey(name) === key)
+    );
+  } else {
+    const text = assertion.clauses.join(" , ");
+    const said = rowsTitledIn(text, receipts);
+    if (said.length > 0) pool = said;
+    else {
+      // A title the receipts do not carry is another object.
+      let rest = text;
+      for (const item of receipts) {
+        for (const name of item.objects) {
+          if (name.trim().length >= 3) rest = rest.split(name).join(" ");
+        }
+      }
+      if (TITLE_WORDS.test(rest)) return null;
+    }
+  }
+  const ids = new Set(
+    pool.map((item) => item.objectId ?? titleKey(item.objects[0] ?? "")),
+  );
+  return ids.size === 1 ? pool[pool.length - 1] : null;
+}
+
+/**
+ * Rework 7 (R7-8): the kinds of the status rows a claim names by title when
+ * its own kind is not a status kind (the judge called "Lagos Night Out" a
+ * discount). Never for a code.
+ */
+function titledStatusKinds(
+  claim: AriClaim,
+  statusRows: readonly ClaimEvidence[],
+): Set<AriClaimKind> {
+  if (claim.object && isCodeObject(claim.object)) return new Set();
+  if (claim.kind === "other") {
+    return new Set(
+      rowsTitledIn(`${claim.quote} ${claim.object ?? ""}`, statusRows).map((
+        item,
+      ) => item.kind),
+    );
+  }
+  if (!claim.object || DESCRIBED_OBJECT.test(claim.object.trim())) {
+    return new Set();
+  }
+  const key = titleKey(claim.object);
+  if (key.length < 3) return new Set();
+  return new Set(
+    statusRows.filter((item) =>
+      item.objects.some((name) => titleKey(name) === key)
+    ).map((item) => item.kind),
+  );
+}
+
+/**
+ * #3355 rework 6 / 7 (Seth 2026-11-11, one structural rule): a status claim
+ * about an event, RSVP, trip, experience, stay, venue, tier, blast, website,
+ * refund or payout readiness is backed ONLY by a row of that kind read in
+ * THIS turn by the brand-scoped status read (never a loop read, which is
+ * not filtered to the active brand) for the specific object the claim — or
+ * the host — names (resolveStatusTarget). Rework 7: decided per asserted
+ * clause (statusAssertion) — a negation, plan, date or condition in another
+ * clause never turns it off — and once a claim is a status claim, it is
+ * never handed to the card rules. Every object a list names must be backed.
+ * A title no row has, no row, several candidates: "I can't find X to check.
+ * Which one do you mean?". A kind whose read failed, ran late or never ran,
+ * or a card's object with no row (RLS-hidden): "I couldn't check X's
+ * current status just now." — unless THIS turn's write receipt for the same
+ * object produced the claimed state. A kind the caller's role cannot read:
+ * said so. Null: not a status claim of these kinds (codes, notes and
+ * tickets keep their own rules), or no status read is wired.
  */
 function statusJudgement(
   claim: AriClaim,
@@ -1462,20 +2010,25 @@ function statusJudgement(
   context: ClaimContext,
 ): ClaimJudgement | null {
   if (!context.status) return null;
+  const statusRows = evidence.filter((item) =>
+    item.statusRow === true && item.status === "read" && item.readState
+  );
   let claimed = statusKindsOf(claim);
-  if (claimed.size === 0 && claim.kind === "other") {
-    // "Lagos Night Out is up on Mingla" with no kind word: the kind of the
-    // read row whose title the claim says.
-    const titled = rowsTitledIn(
-      `${claim.quote} ${claim.object ?? ""}`,
-      evidence.filter((item) => item.statusRow && item.readState),
-    );
-    claimed = new Set(titled.map((item) => item.kind));
-  }
-  const wanted = statusWanted(claim, claimed);
-  if (!wanted) return null;
-  const kind = [...claimed][0];
+  if (claimed.size === 0) claimed = titledStatusKinds(claim, statusRows);
+  if (claimed.size === 0) return null;
   const kinds = readKindsOf(claimed);
+  const rows = statusRows.filter((item) => kinds.has(item.kind));
+  const titles = [
+    ...new Set(
+      [...rows, ...evidence.filter((item) => item.state !== null)].flatMap(
+        rowTitles,
+      ),
+    ),
+  ];
+  const assertion = statusAssertion(claim, claimed, titles);
+  if (!assertion) return null;
+  const wanted = assertion.wanted;
+  const kind = [...claimed][0];
   const status = context.status;
   if ([...claimed].every((item) => status.hidden?.has(item))) {
     return {
@@ -1486,10 +2039,6 @@ function statusJudgement(
       dropsFollowing: true,
     };
   }
-  const rows = evidence.filter((item) =>
-    item.status === "read" && item.fresh && item.readState &&
-    kinds.has(item.kind)
-  );
   const read = [...kinds].some((item) => status.ok.has(item));
   const failed = !read ||
     [...claimed].some((item) => status.failed.has(item));
@@ -1502,15 +2051,9 @@ function statusJudgement(
     dropsFollowing: true,
   });
   if (failed && rows.length === 0) {
-    // A write saved in this very turn is this turn's record of the object.
-    const savedNow = evidence.some((item) =>
-      item.thisTurn && item.status === "done" &&
-      kinds.has(statusKindOfTool(item.toolName) ?? item.kind)
-    );
-    if (savedNow && wanted !== "cancelled") {
-      return { backed: true, found: null, object: claim.object };
-    }
-    const titles = [
+    const receipt = receiptBacking(claim, assertion, evidence, kinds);
+    if (receipt) return { backed: true, found: receipt, object: claim.object };
+    const titlesOnCards = [
       ...new Set(
         evidence.flatMap((item) =>
           item.state?.object && kinds.has(item.kind) ? [item.state.object] : []
@@ -1519,12 +2062,20 @@ function statusJudgement(
     ];
     const object = claim.object && !DESCRIBED_OBJECT.test(claim.object.trim())
       ? claim.object
-      : titles.length === 1
-      ? titles[0]
+      : titlesOnCards.length === 1
+      ? titlesOnCards[0]
       : claim.object;
     return unverified(object);
   }
-  const target = resolveStatusTarget(claim, rows, evidence, kinds, context);
+  const target = resolveStatusTarget(
+    claim,
+    assertion,
+    rows,
+    evidence,
+    kinds,
+    claimed,
+    context,
+  );
   if ("missing" in target) {
     if (target.checkable || failed) {
       return unverified(target.named ? target.missing : claim.object);
@@ -1537,11 +2088,22 @@ function statusJudgement(
       dropsFollowing: true,
     };
   }
-  const against = target.rows.find((item) =>
-    !statusBacks(wanted, item.readState as ReadState)
-  );
+  // A positive claim needs every row in the state; a negative one ("still a
+  // draft") needs every row out of it (R7-6).
+  const fits = (item: ClaimEvidence) =>
+    statusBacks(wanted, item.readState as ReadState) === assertion.positive;
+  const against = target.rows.find((item) => !fits(item));
   if (!against) {
     return { backed: true, found: target.rows[0], object: claim.object };
+  }
+  if (target.twin && target.rows.some(fits)) {
+    return {
+      backed: false,
+      found: null,
+      object: claim.object,
+      say: twinTitleSentence(target.twin, kind),
+      dropsFollowing: true,
+    };
   }
   return {
     backed: false,
@@ -1813,9 +2375,10 @@ function trueStateSentence(args: {
   if (found?.state) return writeStateText(found.state);
   // R4-4: the read shows another state ("expired"): say what it shows.
   if (found?.readState) {
-    return named
-      ? `Your records show ${named} as ${found.readState.label}.`
-      : `Your records show it as ${found.readState.label}.`;
+    // Rework 7 (R7-12): the record's own name, never "it", when it has one.
+    const shown = named ?? namedObject(displayName(found, "")) ??
+      (displayName(found, "") || "it");
+    return recordsShowSentence(shown, found.readState.label);
   }
   if (found) return "";
   const proven = named !== null && absence.objects.has(identityKey(named));
@@ -2149,26 +2712,28 @@ const ML_SENT =
 /**
  * Rework 5b: a status said as fact about an object of a status kind ("Your
  * event is published", "The blast went out", "Lagos Night Out is sold
- * out"), when this turn's object status read is wired. Negations, plans,
- * conditions ("once published, …") and questions are never a fact.
+ * out"), when this turn's object status read is wired. Questions are never a
+ * fact. Rework 7 (R7-4 / R7-13 / R7-14): decided per clause — "Yes, Lagos
+ * Night Out is published and starts on Friday" asserts it published (the
+ * date clause does not turn it off); "Abuja Brunch is published, but Lagos
+ * Night Out is still a draft" asserts only Abuja Brunch; "Yes, it's live!"
+ * is about the one object kind the turn is about (`pronounKind`).
  */
 function statusFact(
   plain: string,
   names: ReadonlyArray<{ name: string; kind: AriClaimKind }>,
+  pronounKind?: AriClaimKind | null,
 ):
   | { action: AriClaimAction; kind: AriClaimKind; object: string | null }
   | null {
-  if (
-    /\?\s*$/.test(plain) || NEGATED_STATE.test(plain) ||
-    FUTURE_STATE.test(plain) || CONDITIONAL.test(plain) ||
-    (!STATUS_VERB.test(plain) && !ML_STATE.test(plain))
-  ) return null;
-  let kind: AriClaimKind | null = null;
-  let object: string | null = null;
-  const subject = STATUS_SUBJECT.exec(plain)?.[0];
-  if (subject) {
-    kind = [...statusKindsInText(subject)][0] ?? null;
-  } else {
+  if (/\?\s*$/.test(plain)) return null;
+  const clauses = statusClauses(plain, names.map((item) => item.name));
+  const subjects = clauses.map((clause) => {
+    const subject = STATUS_SUBJECT.exec(clause.text)?.[0];
+    if (subject) {
+      const kind = [...statusKindsInText(subject)][0] ?? null;
+      return kind ? { kind, object: null as string | null } : null;
+    }
     const hit = names.find((item) =>
       item.name.trim().length >= 4 &&
       new RegExp(
@@ -2176,19 +2741,41 @@ function statusFact(
           escapeRegExp(item.name.trim())
         }(?![\\p{L}\\p{N}])`,
         "iu",
-      ).test(plain)
+      ).test(clause.text)
     );
-    if (hit) {
-      kind = hit.kind;
-      object = hit.name.trim();
+    if (hit) return { kind: hit.kind, object: hit.name.trim() };
+    if (pronounKind && BARE_SUBJECT.test(clause.text)) {
+      return { kind: pronounKind, object: null as string | null };
     }
-  }
-  if (!kind) return null;
-  const words = STATUS_WORDS[kind];
-  if (SOLD_OUT.test(plain) && (kind !== "message" && kind !== "payout")) {
-    return { action: "live", kind, object };
-  }
-  if (!words?.test(plain) && !ML_STATE.test(plain)) return null;
+    return null;
+  });
+  const asserted: Array<{ kind: AriClaimKind; object: string | null }> = [];
+  clauses.forEach((clause, index) => {
+    const subject = subjects[index];
+    if (!subject) return;
+    const owner = clauses[clause.owner]?.text ?? clause.text;
+    if (!STATUS_VERB.test(owner) && !ML_STATE.test(owner)) return;
+    const words: RegExp[] = [ML_STATE];
+    const own = STATUS_WORDS[subject.kind];
+    if (own) words.push(own);
+    if (subject.kind !== "message" && subject.kind !== "payout") {
+      words.push(SOLD_OUT);
+    }
+    if (clauseMood(owner, words) === "positive") asserted.push(subject);
+  });
+  if (asserted.length === 0) return null;
+  const kind = asserted[0].kind;
+  const objects = [
+    ...new Set(
+      asserted.filter((item) => item.kind === kind && item.object).map((
+        item,
+      ) => item.object as string),
+    ),
+  ];
+  const object = objects.length === 1 &&
+      asserted.every((item) => item.kind !== kind || item.object)
+    ? objects[0]
+    : null;
   return {
     action: kind === "message"
       ? "sent"
@@ -2235,6 +2822,8 @@ export function deterministicClaims(args: {
   status?: StatusFresh;
   /** Rework 5b: the names that read found, with their kind. */
   statusNames?: ReadonlyArray<{ name: string; kind: AriClaimKind }>;
+  /** Rework 7 (R7-14): the one status kind "it" is about this turn. */
+  pronounKind?: AriClaimKind | null;
 }): SentenceClaim[] {
   const objects = args.objects.filter((object) => object.trim().length >= 3);
   const skip = args.skip.map(normalise).filter((item) => item.length >= 3);
@@ -2308,7 +2897,11 @@ export function deterministicClaims(args: {
       // Rework 5b: an object's status said as fact, held to this turn's
       // object status read (codes keep their own rule below).
       if (args.status && codes.length === 0) {
-        const fact = statusFact(plain, args.statusNames ?? []);
+        const fact = statusFact(
+          plain,
+          args.statusNames ?? [],
+          args.asked ? null : args.pronounKind,
+        );
         if (fact) {
           claim(fact.action, fact.kind, fact.object);
           continue;
@@ -2331,10 +2924,11 @@ export function deterministicClaims(args: {
         claim(actionOfSentence(plain));
         continue;
       }
-      const stated = ((STATE_ASSERTION.test(plain) &&
-        (quoteAssertsLive(plain) || /\bpublished\b/i.test(plain))) ||
-        ML_STATE.test(plain)) &&
-        !NEGATED_STATE.test(plain);
+      // Rework 7 (R7-4): asserted in some clause, whatever another clause
+      // negates or plans ("FAVY10 is live, so you don't need a new code").
+      const stated = (STATE_ASSERTION.test(plain) &&
+        clauseAsserts(plain, [POSITIVE_STATE, /\bpublished\b/i], objects)) ||
+        clauseAsserts(plain, [ML_STATE], objects);
       if (stated && codes.length > 0 && args.fresh) {
         claim("live", "discount");
         continue;
@@ -2422,6 +3016,12 @@ export function fallbackStripClaims(args: {
   approved?: boolean;
   /** Rework 5b: this turn's object status read, when wired. */
   status?: StatusFresh;
+  /** Rework 7 (R7-3): the model's intent read was valid (see ClaimContext). */
+  intentRead?: boolean;
+  /** Rework 7 (R7-5): the previous turn's words. */
+  previousTurn?: string;
+  /** Rework 7 (R7-14): the one status kind "it" is about this turn. */
+  pronounKind?: AriClaimKind | null;
 }): { text: string; removed: string[] } {
   const context: ClaimContext = {
     hostNamed: hostNamedCodes(args.hostMessage ?? "", args.objects),
@@ -2429,8 +3029,11 @@ export function fallbackStripClaims(args: {
     askedWriteThisTurn: args.askedWriteThisTurn ?? false,
     hostMessage: args.hostMessage ?? "",
     fresh: args.fresh,
+    replyText: args.text,
     ...(args.status ? { status: args.status } : {}),
     ...(args.approved ? { approved: true } : {}),
+    ...(args.intentRead !== undefined ? { intentRead: args.intentRead } : {}),
+    ...(args.previousTurn ? { previousTurn: args.previousTurn } : {}),
   };
   const claims = deterministicClaims({
     text: args.text,
@@ -2441,12 +3044,20 @@ export function fallbackStripClaims(args: {
     hostCodes: context.hostNamed ?? [],
     askedKinds: askedKindsOf(args.askedKinds, args.hostMessage ?? ""),
     status: args.status,
-    statusNames: args.evidence.flatMap((item) =>
-      item.statusRow
-        ? item.objects.filter((name) => !DESCRIBED_OBJECT.test(name.trim()))
-          .map((name) => ({ name, kind: item.kind }))
-        : []
-    ),
+    statusNames: args.evidence.flatMap((item) => {
+      if (item.statusRow) {
+        return item.objects.filter((name) =>
+          !DESCRIBED_OBJECT.test(name.trim())
+        )
+          .map((name) => ({ name, kind: item.kind }));
+      }
+      // Rework 7: a card's title is checked too (its read may have failed).
+      const kind = item.state ? statusKindOfTool(item.toolName) : null;
+      return kind && item.state?.object
+        ? [{ name: item.state.object, kind }]
+        : [];
+    }),
+    pronounKind: args.pronounKind ?? null,
   });
   if (claims.length === 0) return { text: args.text, removed: [] };
   const savedNow = args.evidence.some((item) =>
@@ -2493,7 +3104,12 @@ const CLOCK_PAIR =
  * can be trusted, so the pair becomes "at the time shown on the card"; a
  * pair that agrees ("18:00 (6:00 PM)") is left as written.
  */
-export function fixClockPairs(text: string): string {
+export function fixClockPairs(text: string, hasCard = true): string {
+  // Rework 7 (R7-18): with no card in the chat, the time is where the host
+  // sees it in Mingla Host.
+  const instead = hasCard
+    ? "at the time shown on the card"
+    : "at the time shown in Mingla Host";
   return text.replace(
     CLOCK_PAIR,
     (whole, hour24: string, minute24: string, hour12: string, minute12, ap) => {
@@ -2501,7 +3117,7 @@ export function fixClockPairs(text: string): string {
       if (String(ap).toLowerCase() === "p") hour += 12;
       const agree = hour === Number(hour24) &&
         Number(minute12 ?? "0") === Number(minute24);
-      return agree ? whole : "at the time shown on the card";
+      return agree ? whole : instead;
     },
   );
 }
@@ -2753,14 +3369,20 @@ function claimedStatusKinds(
   const out = new Set<AriClaimKind>();
   for (const claim of claims) {
     const kinds = statusKindsOf(claim);
-    if (kinds.size === 0 && claim.kind === "other") {
-      // A title with no kind word: the offerings read decides.
-      if (statusWanted(claim, OFFERING_KINDS)) {
+    // A title with no kind word, or a title the judge gave another kind
+    // ("Lagos Night Out" called a discount, R7-8): the offerings read decides.
+    const titled = kinds.size === 0 &&
+      (claim.kind === "other" ||
+        (claim.object !== null && !isCodeObject(claim.object) &&
+          !DESCRIBED_OBJECT.test(claim.object.trim()) &&
+          TITLE_WORDS.test(claim.object.trim())));
+    if (titled) {
+      if (statusAssertion(claim, OFFERING_KINDS)) {
         for (const kind of OFFERING_KINDS) out.add(kind);
       }
       continue;
     }
-    if (!statusWanted(claim, kinds)) continue;
+    if (!statusAssertion(claim, kinds)) continue;
     for (const kind of readKindsOf(kinds)) {
       if (STATUS_READ_KINDS.has(kind)) out.add(kind);
     }
@@ -2786,6 +3408,38 @@ function claimedCodes(
     }
   }
   return out;
+}
+
+/**
+ * Rework 7 (R7-14): the one status kind "it" / "they" is about this turn —
+ * the kinds the turn mentions (the chat's cards, the host's words, titles
+ * said this or the previous turn), with the offering family as one. Null
+ * when the turn mentions none or several.
+ */
+function pronounKindOf(
+  planKinds: ReadonlySet<AriClaimKind> | undefined,
+  evidence: readonly ClaimEvidence[],
+  hostMessage: string,
+): AriClaimKind | null {
+  if (!planKinds || planKinds.size === 0) return null;
+  const families = new Set<string>();
+  for (const kind of planKinds) {
+    families.add(OFFERING_KINDS.has(kind) ? "offering" : kind);
+  }
+  if (families.size !== 1) return null;
+  const [family] = [...families];
+  if (family !== "offering") return family as AriClaimKind;
+  const named = [
+    ...evidence.flatMap((item) => {
+      const kind = item.state ? statusKindOfTool(item.toolName) : null;
+      return kind && OFFERING_KINDS.has(kind) ? [kind] : [];
+    }),
+    ...[...statusKindsInText(hostMessage)].filter((kind) =>
+      OFFERING_KINDS.has(kind)
+    ),
+  ];
+  const distinct = new Set(named);
+  return distinct.size === 1 ? [...distinct][0] : "event";
 }
 
 /**
@@ -2832,6 +3486,14 @@ export async function checkReplyClaims(args: {
   approved?: boolean;
   /** What the host asked for this turn (the intent's tool); all when unset. */
   askedKinds?: ReadonlySet<AriClaimKind>;
+  /**
+   * Rework 7 (R7-3): the model's intent read was valid (true) or failed and
+   * the hints routed the turn (false). It decides write vs status when
+   * valid; the grammar rule only when it failed.
+   */
+  intentRead?: boolean;
+  /** Rework 7 (R7-5): the previous turn's words ("is it live?" names it). */
+  previousTurn?: string;
   call: AriClaimModelCall;
   /** Time left in the turn; the check never runs past it. */
   timeoutMs?: number;
@@ -2898,8 +3560,17 @@ export async function checkReplyClaims(args: {
     chatObjects: args.objects,
     askedWriteThisTurn: args.askedWriteThisTurn,
     hostMessage: args.hostMessage,
+    replyText: args.text,
     ...(args.approved ? { approved: true } : {}),
+    ...(args.intentRead !== undefined ? { intentRead: args.intentRead } : {}),
+    ...(args.previousTurn ? { previousTurn: args.previousTurn } : {}),
   };
+  const pronounKind = pronounKindOf(
+    args.statusRead?.kinds,
+    args.evidence,
+    args.hostMessage,
+  );
+  const hasCard = args.evidence.some((item) => item.state !== null);
   const budgetLeft = () =>
     Math.min(ARI_CLAIM_RECORDS_TIMEOUT_MS, timeoutMs - elapsed() - 100);
   /** The names the deterministic pass can find a status fact about. */
@@ -2932,6 +3603,7 @@ export async function checkReplyClaims(args: {
         ? { ok: new Set(), failed: new Set() }
         : undefined,
       statusNames: namesOf(status),
+      pronounKind,
     }).filter((claim) => !claim.bare);
   /**
    * Rule 3: read every kind and code the claims assert a status about that
@@ -3036,9 +3708,12 @@ export async function checkReplyClaims(args: {
       absence: read?.ok ? read.absence : undefined,
       approved: args.approved,
       status: statusFreshOf(status, Boolean(args.statusRead)),
+      intentRead: args.intentRead,
+      previousTurn: args.previousTurn,
+      pronounKind,
     });
     return {
-      text: fixClockPairs(stripped.text),
+      text: fixClockPairs(stripped.text, hasCard),
       source: "fallback",
       reason,
       claims: [],
@@ -3185,13 +3860,16 @@ export async function checkReplyClaims(args: {
     absence,
     approved: args.approved,
     status: context.status,
+    intentRead: args.intentRead,
+    previousTurn: args.previousTurn,
+    pronounKind,
     skip: [
       ...claims.map((claim) => claim.quote),
       ...result.replaced.map((item) => item.with),
     ],
   });
   return {
-    text: fixClockPairs(strip.text),
+    text: fixClockPairs(strip.text, hasCard),
     source: "model",
     reason: "ok",
     claims,
@@ -3231,6 +3909,30 @@ export function conversationSince(
     Number.isFinite(Date.parse(row.created_at))
   )?.created_at as string | undefined;
   return first ?? new Date(turnStartedAt).toISOString();
+}
+
+/**
+ * #3355 rework 7 (R7-5): the previous turn's words — Ari's last reply and
+ * the host's last message before this one — so "is it live?" resolves to the
+ * object the previous turn named even with no card. History rows are
+ * oldest first; the current message is not among them.
+ */
+export function previousTurnText(
+  history: ReadonlyArray<{ role?: unknown; content?: unknown }>,
+): string {
+  const textOf = (row: { content?: unknown }): string | null => {
+    const text = (row.content as { text?: unknown } | null)?.text;
+    return typeof text === "string" && text.trim() ? text.trim() : null;
+  };
+  let reply: string | null = null;
+  let host: string | null = null;
+  for (let index = history.length - 1; index >= 0; index--) {
+    const row = history[index];
+    if (!reply && row.role === "assistant") reply = textOf(row);
+    if (!host && row.role === "user") host = textOf(row);
+    if (reply && host) break;
+  }
+  return [host, reply].filter(Boolean).join("\n").slice(0, 2_000);
 }
 
 const UUID_SHAPE =

@@ -260,7 +260,7 @@ Deno.test("retest6 4: a tier whose sale ended is not on sale; a sending blast is
   });
   assertEquals(
     sending.text,
-    "Your records show Friday Lineup as still sending.",
+    "Your records show Friday Lineup is still sending.",
   );
 });
 

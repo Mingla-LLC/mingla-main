@@ -257,6 +257,7 @@ import {
   classifyAriOwnerTurn,
   classifyAriReplyGaps,
   decideAriEscalation,
+  readAriAskTeamDeclined,
   readAriPriorOwnerServed,
   readAriPriorOwnerTexts,
   readAriRecentGaps,
@@ -286,9 +287,11 @@ import {
   claimKindOfTool,
   conversationSince,
   dedupeReplySentences,
+  previousTurnText,
   recentRecordEvidence,
 } from "../_shared/ariClaimCheck.ts";
 import { objectStatusReadPlan } from "../_shared/ariStatusRead.ts";
+import { withHostStatedDiscountCode } from "../_shared/ariDiscountArgs.ts";
 import {
   buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
@@ -2032,30 +2035,38 @@ async function handle(req: Request): Promise<Response> {
     const ownerTurnText = !choiceSubmission && !flowAnswer && !websiteKickoff
       ? semanticMessage
       : "";
-    const [priorOwnerTexts, recentGaps, priorServed] = ownerTurnText
-      ? await Promise.all([
-        readAriPriorOwnerTexts({
-          caller: userClient,
-          conversationId,
-          excludeMessageId: userMessageId,
-        }),
-        readAriRecentGaps({ caller: userClient, conversationId }),
-        // #3355 Wave F: a request Ari already answered with a card is not
-        // repeated by the next one of its kind.
-        readAriPriorOwnerServed({
-          caller: userClient,
-          conversationId,
-          excludeMessageId: userMessageId,
-        }),
-      ])
-      : [[], [], []];
+    const [priorOwnerTexts, recentGaps, priorServed, askTeamDeclined] =
+      ownerTurnText
+        ? await Promise.all([
+          readAriPriorOwnerTexts({
+            caller: userClient,
+            conversationId,
+            excludeMessageId: userMessageId,
+          }),
+          readAriRecentGaps({ caller: userClient, conversationId }),
+          // #3355 Wave F: a request Ari already answered with a card is not
+          // repeated by the next one of its kind.
+          readAriPriorOwnerServed({
+            caller: userClient,
+            conversationId,
+            excludeMessageId: userMessageId,
+          }),
+          // #3355 rework 7 (R7-10): a just-cancelled "Ask the Mingla team"
+          // card is not offered again on the next turn.
+          readAriAskTeamDeclined({ caller: userClient, conversationId }),
+        ])
+        : [[], [], [], false];
     const ownerGapSignals = classifyAriOwnerTurn({
       text: ownerTurnText,
       priorOwnerTexts,
       priorServed,
     });
     const escalation = activeBrand && ownerTurnText
-      ? decideAriEscalation({ ownerSignals: ownerGapSignals, recentGaps })
+      ? decideAriEscalation({
+        ownerSignals: ownerGapSignals,
+        recentGaps,
+        askTeamDeclined,
+      })
       : { escalate: false, reason: null };
     await recordAriTurnGaps({
       service: serviceClient,
@@ -4230,6 +4241,13 @@ ${boundedAgentContext}
             semanticMessage,
           );
           proposalStage = "canonicalize";
+          // #3355 rework 7 (R7-11): the host's own valid code beats a
+          // mangled one in the proposal.
+          loopResult.toolCall.args = withHostStatedDiscountCode(
+            tool.name,
+            loopResult.toolCall.args,
+            extractStatedSlots([semanticMessage]).code,
+          );
           loopResult.toolCall.args = canonicalizeAgentProposalArgs(
             tool.name,
             loopResult.toolCall.args,
@@ -4520,6 +4538,7 @@ ${boundedAgentContext}
           brandId: activeBrand?.id ?? null,
           brandRole: activeBrand?.role ?? null,
           intent: intentResult.read,
+          intentFromModel: intentResult.source === "model",
           observations: loopResult.observations,
           turnStartedAt,
         })
@@ -4926,6 +4945,7 @@ ${boundedAgentContext}
               brandId: activeBrand?.id ?? null,
               brandRole: activeBrand?.role ?? null,
               intent: intentResult.read,
+              intentFromModel: intentResult.source === "model",
               observations: [{
                 tool: tool.name,
                 args: gemini.toolCall.args,
@@ -5129,6 +5149,12 @@ ${boundedAgentContext}
           gemini.toolCall.args,
           userClient,
           semanticMessage,
+        );
+        // #3355 rework 7 (R7-11): as on the loop path.
+        gemini.toolCall.args = withHostStatedDiscountCode(
+          tool.name,
+          gemini.toolCall.args,
+          extractStatedSlots([semanticMessage]).code,
         );
         gemini.toolCall.args = canonicalizeAgentProposalArgs(
           tool.name,
@@ -5350,6 +5376,7 @@ ${boundedAgentContext}
       brandId: activeBrand?.id ?? null,
       brandRole: activeBrand?.role ?? null,
       intent: intentResult.read,
+      intentFromModel: intentResult.source === "model",
       turnStartedAt,
     });
     const resumedState = interruptionState.status === "interrupted"
@@ -5485,6 +5512,11 @@ async function guardReplyClaims(args: {
   /** #3355 rework 6: the caller's role on that brand. */
   brandRole?: string | null;
   intent: { intent: string; target: string | null } | null;
+  /**
+   * #3355 rework 7 (R7-3): the intent came from the model's read (true) or
+   * from the keyword hints after the read failed (false).
+   */
+  intentFromModel?: boolean;
   observations?: readonly AgentLoopObservation[];
   turnStartedAt: number;
 }): Promise<string> {
@@ -5561,6 +5593,8 @@ async function guardReplyClaims(args: {
   const target = args.intent?.target ?? null;
   const askedWriteThisTurn = (intentKind === "tool" || intentKind === "flow") &&
     !(target && isRead(target, {}));
+  // #3355 rework 7 (R7-5): "is it live?" names what the previous turn named.
+  const previousTurn = previousTurnText(args.history);
   const check = await checkReplyClaims({
     text: args.text,
     hostMessage: args.current,
@@ -5595,8 +5629,14 @@ async function guardReplyClaims(args: {
       // the caller's role says which kinds RLS hides from them.
       hostMessage: args.current,
       brandRole: args.brandRole ?? null,
+      previousTurn,
     }),
     askedWriteThisTurn,
+    // #3355 rework 7 (R7-3): a valid intent read decides write vs status.
+    ...(args.intentFromModel !== undefined
+      ? { intentRead: args.intentFromModel }
+      : {}),
+    previousTurn,
     // The tool the host asked for names what "nothing saved" may be about.
     ...(target ? { askedKinds: new Set([claimKindOfTool(target)]) } : {}),
     timeoutMs: ARI_TURN_DEADLINE_MS - (Date.now() - args.turnStartedAt),
