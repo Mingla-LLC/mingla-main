@@ -12,14 +12,16 @@
  * - Anything else, or no session: a neutral page. It never says the payment
  *   failed.
  *
- * Public `/pay/` route: anon-tolerant, so no useAuth here. The service is
- * loaded on demand so this page adds almost nothing to the web bundle.
+ * Public `/pay/` route: anon-tolerant, so no useAuth here. It calls gig-hire
+ * through the already-eager supabase client (not gigHireService, which lives
+ * in the lazy creator-program chunk and would be hoisted into the boot chunk).
  */
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
+import { supabase } from "../../src/services/supabase";
 import {
   canvas,
   spacing,
@@ -45,12 +47,15 @@ export default function PayCallback(): React.ReactElement {
     let live = true;
     void (async () => {
       try {
-        const { confirmGigReference } = await import(
-          "../../src/services/gigHireService"
-        );
-        const answer = await confirmGigReference({ reference });
-        const brandId = answer.brand_id;
-        const contractId = answer.contract_id;
+        // The server checks the provider, records the payment and says which
+        // contract it belongs to (host-only; a stranger gets a 403).
+        const { data } = await supabase.functions.invoke("gig-hire", {
+          body: { action: "confirm_reference", reference },
+        });
+        const answer = (data ?? {}) as { brand_id?: unknown; contract_id?: unknown };
+        const brandId = typeof answer.brand_id === "string" ? answer.brand_id : "";
+        const contractId =
+          typeof answer.contract_id === "string" ? answer.contract_id : "";
         if (live && brandId && contractId) {
           router.replace(
             `/brand/${brandId}/creators/contract/${contractId}?reference=${encodeURIComponent(reference)}` as never,

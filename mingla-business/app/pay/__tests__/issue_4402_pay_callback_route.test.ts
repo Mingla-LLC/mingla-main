@@ -47,7 +47,7 @@ describe("#4402 /pay/callback", () => {
   });
 
   it("routes a gig reference to its contract with the reference kept", () => {
-    expect(source).toContain("confirmGigReference({ reference })");
+    expect(source).toContain('action: "confirm_reference", reference');
     expect(source).toMatch(/\/brand\/\$\{brandId\}\/creators\/contract\/\$\{contractId\}\?reference=\$\{encodeURIComponent\(reference\)\}/);
     expect(source).toContain("router.replace(");
   });
@@ -57,8 +57,8 @@ describe("#4402 /pay/callback", () => {
     expect(rendered).not.toMatch(/failed|went wrong|couldn't/i);
     expect(rendered).toContain("Payment received. You can close this tab.");
     expect(rendered).not.toMatch(/useAuth/);
-    // The service is imported on demand, not at module scope.
-    expect(source).not.toMatch(/^import .*gigHireService/m);
-    expect(source).toContain('await import(\n          "../../src/services/gigHireService"');
+    // gigHireService lives in the lazy creator-program chunk; importing it
+    // here would hoist it into the boot chunk.
+    expect(source).not.toMatch(/gigHireService"/);
   });
 });
