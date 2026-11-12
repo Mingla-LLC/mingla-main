@@ -167,6 +167,8 @@ async function run(a: {
   asked?: boolean;
   intentRead?: boolean;
   previousTurn?: string;
+  /** The status read's plan is told the previous turn (agent-chat does). */
+  planSeesPreviousTurn?: boolean;
 }): Promise<string> {
   const states = a.states ?? [];
   const out = await checkReplyClaims({
@@ -188,7 +190,9 @@ async function run(a: {
       cards: states,
       hostMessage: a.host,
       brandRole: null,
-      ...(a.previousTurn ? { previousTurn: a.previousTurn } : {}),
+      ...(a.previousTurn && a.planSeesPreviousTurn !== false
+        ? { previousTurn: a.previousTurn }
+        : {}),
     }),
     ...(a.read ? { moreEvidence: a.read } : {}),
     askedWriteThisTurn: a.asked ?? false,
@@ -621,14 +625,23 @@ Deno.test("R8-4: 'no longer a draft' and 'not only is … published' assert live
 
 Deno.test("R8-7: judge empty or down — 'Yes, it's live now!' after the previous turn named the draft", async () => {
   for (const judge of [[], "fail"] as const) {
-    const out = await run({
-      host: "is it live yet?",
-      reply: "Yes, it's live now!",
-      previousTurn: "Lagos Night Out is saved as a draft.",
-      tables: EV,
-      claims: judge,
-    });
-    assertEquals(out, "Your records show Lagos Night Out as a draft.");
+    // Whether or not the status read's plan was told the previous turn, the
+    // check's own pronoun rule reads it.
+    for (const planSeesPreviousTurn of [true, false]) {
+      const out = await run({
+        host: "is it live yet?",
+        reply: "Yes, it's live now!",
+        previousTurn: "Lagos Night Out is saved as a draft.",
+        planSeesPreviousTurn,
+        tables: EV,
+        claims: judge,
+      });
+      assertEquals(
+        out,
+        "Your records show Lagos Night Out as a draft.",
+        `${JSON.stringify(judge)} ${planSeesPreviousTurn}`,
+      );
+    }
   }
 });
 
