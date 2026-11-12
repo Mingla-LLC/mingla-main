@@ -20,7 +20,7 @@ import { trackBrandSetup } from "../brand/brandSetupAnalytics";
 import { TapToPayIcon } from "../door/tap/TapToPayIcon";
 import { useBrandTeamMemberDirectory } from "../../hooks/useBrandTeamMemberDirectory";
 import { Button } from "../ui/Button";
-import { HOME_SETUP_COPY as C } from "./homeSetupCopy";
+import { HOME_SETUP_TAP_COPY as C } from "./homeSetupTapCopy";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TTP_VISUAL: number | null = (() => {

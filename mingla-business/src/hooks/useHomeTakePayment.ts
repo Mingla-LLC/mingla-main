@@ -1,47 +1,17 @@
 /**
  * #4389 (screen HT) — the reads behind Home's "Take a payment" and the Tap to
  * Pay card. Kept light for Home's boot path: no Terminal session, no door
- * screens. The Tap to Pay "set up on this phone" answer is the existing warm
- * hint (the same flag the door reads before Apple has been asked).
+ * screens. The Tap to Pay "set up on this phone" answer lives in
+ * useTapToPayWarmHint.ts (native only).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import { fetchEventDoorSales } from "../services/doorSalesService";
-import {
-  readTapToPayWarmHint,
-  subscribeTapToPayWarmHint,
-} from "../services/terminal/tapToPaySetupStore";
 import type { DoorSaleRecord } from "../types/doorSales";
 import { doorTodaySummary } from "../utils/homeTakePayment";
 import { doorSaleKeys } from "./useEventDoorSales";
-
-/** null while unknown; true once Tap to Pay was set up for this brand on this phone. */
-export function useTapToPayWarmHint(brandId: string | null): boolean | null {
-  const [hint, setHint] = useState<boolean | null>(null);
-  useEffect(() => {
-    setHint(null);
-    if (brandId === null) return undefined;
-    let alive = true;
-    readTapToPayWarmHint(brandId)
-      .then((value) => {
-        if (alive) setHint(value);
-      })
-      .catch((error: unknown) => {
-        console.warn("[home-take-payment] could not read the Tap to Pay hint", error);
-        if (alive) setHint(false);
-      });
-    const unsubscribe = subscribeTapToPayWarmHint((changed, value) => {
-      if (alive && changed === brandId) setHint(value);
-    });
-    return () => {
-      alive = false;
-      unsubscribe();
-    };
-  }, [brandId]);
-  return hint;
-}
 
 /** "At the door today" over today's events, from the existing door order read. */
 export function useDoorTodaySummary(eventIds: readonly string[]): {

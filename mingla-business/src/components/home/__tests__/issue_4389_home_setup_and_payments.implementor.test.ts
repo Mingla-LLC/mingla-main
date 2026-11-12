@@ -13,6 +13,8 @@ import {
   homeTapCardMode,
 } from "../../../utils/homeTakePayment";
 import { HOME_SETUP_COPY } from "../homeSetupCopy";
+import { HOME_SETUP_PROMPT_COPY } from "../homeSetupPromptCopy";
+import { HOME_SETUP_TAP_COPY } from "../homeSetupTapCopy";
 import { BRAND_SETUP_BANNED_WORDS } from "../../brand/brandSetupCopy";
 import type { DoorSaleRecord } from "../../../types/doorSales";
 import type { UpcomingItem } from "../../../utils/upcomingBuilder";
@@ -142,13 +144,13 @@ describe("#4389 HT rules", () => {
     expect(homeTapCardMode({ ...ok, mayAcceptTerms: false })).toBe("owner");
   });
   test("Apple's exact words and naming; no banned words in Home copy", () => {
-    expect(HOME_SETUP_COPY.ht.iosBody).toBe(
+    expect(HOME_SETUP_TAP_COPY.ht.iosBody).toBe(
       "Accept physical debit and credit cards as well as Apple Pay and other digital wallets. Right on your iPhone.",
     );
-    expect(HOME_SETUP_COPY.ht.terms).toBe("Terms apply.");
-    expect(HOME_SETUP_COPY.ht.iosTitle).toBe("Tap to Pay on iPhone");
-    const all = JSON.stringify(HOME_SETUP_COPY) +
-      [HOME_SETUP_COPY.h1.title("B"), HOME_SETUP_COPY.h2.title("B"), HOME_SETUP_COPY.ht.notOwner("o", "b")].join(" ");
+    expect(HOME_SETUP_TAP_COPY.ht.terms).toBe("Terms apply.");
+    expect(HOME_SETUP_TAP_COPY.ht.iosTitle).toBe("Tap to Pay on iPhone");
+    const all = JSON.stringify([HOME_SETUP_COPY, HOME_SETUP_PROMPT_COPY, HOME_SETUP_TAP_COPY]) +
+      [HOME_SETUP_COPY.h1.title("B"), HOME_SETUP_PROMPT_COPY.h2.title("B"), HOME_SETUP_TAP_COPY.ht.notOwner("o", "b")].join(" ");
     for (const word of BRAND_SETUP_BANNED_WORDS) expect(all).not.toMatch(word);
   });
 });
@@ -171,7 +173,9 @@ describe("#4389 Home wiring", () => {
     expect(home.match(/<TakePaymentButton/g)).toHaveLength(1);
     expect(home).not.toContain('variant="chip"');
     expect(button).not.toContain("home-take-payment-chip");
-    expect(JSON.stringify(require("../../../i18n/locales/en/homeSetup.json"))).not.toContain('"chip"');
+    for (const part of ["homeSetup", "homeSetup.prompt", "homeSetup.tap"]) {
+      expect(JSON.stringify(require(`../../../i18n/locales/en/${part}.json`))).not.toContain('"chip"');
+    }
     expect(read("../supabase/functions/_shared/agentBrandSetupTools.ts")).toContain("start_door_sale");
   });
   test("H2 is once per device per brand, owners and admins only, after hydration", () => {

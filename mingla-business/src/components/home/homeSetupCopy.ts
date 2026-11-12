@@ -1,7 +1,8 @@
 /**
- * #4389 (screens H1, H2, HT) — host copy for Home's setup card, the one-time
- * sheet and Taking payments from Home. Never "business", never a provider
- * name; always "Tap to Pay on iPhone" on iOS (Apple naming, every language).
+ * #4389 (screens H1, HT) — host copy for Home's setup card and Taking payments
+ * from Home. Never "business", never a provider name. The one-time sheet (H2)
+ * and the Tap to Pay card (HT) carry their own words (homeSetupPromptCopy.ts,
+ * homeSetupTapCopy.ts) so each loads with its own chunk, not with the app.
  * The words live in src/i18n/locales/<lang>/ (English: homeSetup.json, other
  * languages: hostSetup.json); each property reads the current language.
  */
@@ -22,29 +23,6 @@ export const HOME_SETUP_COPY = {
     get cta(): string { return t("h1.cta"); },
     todoSub: (done: number): string => t("h1.todoSub", { done }),
     get progressLabel(): string { return t("h1.progressLabel"); },
-  },
-  h2: {
-    title: (brand: string): string => t("h2.title", { brand }),
-    get country(): string { return t("h2.country"); },
-    get terms(): string { return t("h2.terms"); },
-    get payments(): string { return t("h2.payments"); },
-    get later(): string { return t("h2.later"); },
-    get finish(): string { return t("h2.finish"); },
-  },
-  ht: {
-    get iosTitle(): string { return t("ht.iosTitle"); },
-    get iosBody(): string { return t("ht.iosBody"); },
-    get terms(): string { return t("ht.terms"); },
-    get androidTitle(): string { return t("ht.androidTitle"); },
-    get androidBody(): string { return t("ht.androidBody"); },
-    get getStarted(): string { return t("ht.getStarted"); },
-    get notNow(): string { return t("ht.notNow"); },
-    notOwner: (owner: string, brand: string): string => t("ht.notOwner", { owner, brand }),
-    notOwnerIos: (owner: string, brand: string): string => t("ht.notOwnerIos", { owner, brand }),
-    get ownerFallback(): string { return t("ht.ownerFallback"); },
-    get todoIos(): string { return t("ht.todoIos"); },
-    get todoAndroid(): string { return t("ht.todoAndroid"); },
-    get todoSub(): string { return t("ht.todoSub"); },
   },
   takePayment: {
     get pill(): string { return t("takePayment.pill"); },

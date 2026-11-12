@@ -1,0 +1,19 @@
+{
+  "homeSetup": {
+    "ht": {
+      "iosTitle": "Tap to Pay on iPhone",
+      "iosBody": "Accept physical debit and credit cards as well as Apple Pay and other digital wallets. Right on your iPhone.",
+      "terms": "Terms apply.",
+      "androidTitle": "Tap to Pay",
+      "androidBody": "Guests tap a card or phone on your Android phone to pay at the door.",
+      "getStarted": "Get started",
+      "notNow": "Not now",
+      "notOwner": "Only {{owner}} can turn this on for {{brand}}.",
+      "notOwnerIos": "Only {{owner}} can turn this on for {{brand}}. We've let them know.",
+      "ownerFallback": "the owner",
+      "todoIos": "Set up Tap to Pay on iPhone",
+      "todoAndroid": "Set up Tap to Pay",
+      "todoSub": "Take card payments at the door"
+    }
+  }
+}

@@ -108,14 +108,27 @@ function translate(
 /**
  * #4389 — host setup screens (brand setup, Door mode, Ari setup cards, Home
  * setup) keep their English words next to the screens that use them, so the
- * eager bundle does not grow. Each copy module registers its namespace here
- * as it loads (the same English object the lookups and the fallback use);
- * other languages carry the words in their own lazy hostSetup.json.
+ * eager bundle does not grow. Each copy module registers its namespace (or
+ * its part of one) here as it loads, into the same English object the
+ * lookups and the fallback use; other languages carry the words in their own
+ * lazy hostSetup.json.
  */
-export function registerBusinessEnglish(tree: TranslationTree): void {
-  const target = en as unknown as TranslationTree;
-  for (const [namespace, words] of Object.entries(tree)) {
-    if (target[namespace] === undefined) target[namespace] = words;
+export function registerBusinessEnglish(
+  tree: TranslationTree,
+  target: TranslationTree = en as unknown as TranslationTree,
+): void {
+  // A namespace may arrive in parts (one per screen chunk): merge, never replace.
+  for (const [key, words] of Object.entries(tree)) {
+    const current = target[key];
+    if (typeof words === "string") {
+      if (current === undefined) target[key] = words;
+    } else if (current === undefined) {
+      const part: TranslationTree = {};
+      target[key] = part;
+      registerBusinessEnglish(words, part);
+    } else if (typeof current !== "string") {
+      registerBusinessEnglish(words, current);
+    }
   }
 }
 

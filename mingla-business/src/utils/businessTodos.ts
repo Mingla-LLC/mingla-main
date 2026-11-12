@@ -335,7 +335,14 @@ export interface BusinessTodoInput {
    * #4389 HT — "Not now" on Home's Tap to Pay card moves it here, at the top
    * of the brand's rows. Null/absent → no row (web never passes one).
    */
-  tapToPayTodo?: { label: string; sublabel: string; route: string } | null;
+  tapToPayTodo?: TapToPayTodoRow | null;
+}
+
+/** #4389 HT — the Tap to Pay row Home's "Not now" leaves behind. */
+export interface TapToPayTodoRow {
+  label: string;
+  sublabel: string;
+  route: string;
 }
 
 /** #4389 — the setup checklist as the to-do list needs it. */

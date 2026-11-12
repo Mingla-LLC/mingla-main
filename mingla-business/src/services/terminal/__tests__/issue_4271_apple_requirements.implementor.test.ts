@@ -555,7 +555,9 @@ describe("B9 every Android string stays clear of the iPhone", () => {
     const home = read("app/(tabs)/home.tsx");
     expect(home).toContain("const tapEntry = useTapToPaySettingsEntry(homeBrandId);");
     expect(home).toContain("`/account/tap-to-pay?brandId=${encodeURIComponent(currentBrand.id)}`");
-    expect(read("src/hooks/useBusinessTodos.ts")).toContain("`/account/tap-to-pay?brandId=${encodeURIComponent(setupBrandId)}`");
+    // #4389 — the To do row is native only (the web has no Tap to Pay).
+    expect(read("src/hooks/useBusinessTodos.ts")).toContain("useTapToPayTodoRow({");
+    expect(read("src/hooks/useTapToPayTodoRow.ts")).toContain("`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}`");
     expect(read("src/components/brand/BrandPaymentsView.tsx")).toContain("tapToPayBrandEligible(brand)");
     expect(fs.existsSync(path.join(BIZ_ROOT, "app/account/tap-to-pay.tsx"))).toBe(true);
   });

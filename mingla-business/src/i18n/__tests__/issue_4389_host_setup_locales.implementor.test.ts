@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4389-HOST-SETUP-ALL-LOCALES | issue #4389 | Every host string of brand setup, Door mode, Ari's setup cards and Home setup ships in all 29 locales (English in locales/en/{brandSetup,doorMode,ariSetup,homeSetup}.json, others in locales/<lang>/hostSetup.json) with matching placeholders; "Tap to Pay on iPhone" and "Tap to Pay" stay in English (Apple naming); no partner name.
+// MINGLA-INVARIANT: I-4389-HOST-SETUP-ALL-LOCALES | issue #4389 | Every host string of brand setup, Door mode, Ari's setup cards and Home setup ships in all 29 locales (English in locales/en/{brandSetup,doorMode,ariSetup,homeSetup}[.<part>].json, split by screen chunk, others in locales/<lang>/hostSetup.json) with matching placeholders; "Tap to Pay on iPhone" and "Tap to Pay" stay in English (Apple naming); no partner name.
 /**
  * FAILS-ON-REVERT: deleting any key from any hostSetup.json (or adding an
  * English key without translating it) fails test 1; translating "Tap to Pay
@@ -26,8 +26,18 @@ function flatten(value: Tree, prefix = "", out: Record<string, string> = {}): Re
 const read = (file: string): Tree => JSON.parse(fs.readFileSync(path.join(LOCALES, file), "utf8")) as Tree;
 const placeholders = (s: string): string[] => [...s.matchAll(/{{(\w+)}}/g)].map((m) => m[1]).sort();
 
+// A namespace's English may be split by screen chunk: en/<ns>.json plus en/<ns>.<part>.json.
+const englishParts = (ns: string): string[] =>
+  fs.readdirSync(path.join(LOCALES, "en")).filter((f) => f === `${ns}.json` || (f.startsWith(`${ns}.`) && f.endsWith(".json")));
 const english: Record<string, string> = {};
-for (const ns of NAMESPACES) Object.assign(english, flatten(read(`en/${ns}.json`)));
+for (const ns of NAMESPACES) {
+  expect(englishParts(ns)).toContain(`${ns}.json`);
+  for (const part of englishParts(ns)) {
+    const words = flatten(read(`en/${part}`));
+    for (const key of Object.keys(words)) if (key in english) throw new Error(`${key} is in two English parts`);
+    Object.assign(english, words);
+  }
+}
 const englishKeys = Object.keys(english).sort();
 
 describe("#4389 host setup words in every shipped language", () => {

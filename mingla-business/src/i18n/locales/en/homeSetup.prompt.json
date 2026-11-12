@@ -1,0 +1,12 @@
+{
+  "homeSetup": {
+    "h2": {
+      "title": "{{brand}} needs a few details before it can take payments.",
+      "country": "Bank country",
+      "terms": "Organiser Terms",
+      "payments": "Payment details",
+      "later": "Later",
+      "finish": "Finish now"
+    }
+  }
+}

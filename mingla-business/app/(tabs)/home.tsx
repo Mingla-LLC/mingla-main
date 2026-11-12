@@ -130,10 +130,8 @@ import {
 } from "../../src/components/home/HomeTakePayment";
 import { BRAND_SETUP_COPY } from "../../src/components/brand/brandSetupCopy";
 import { useBrandSetupChecklist } from "../../src/hooks/useBrandSetupChecklist";
-import {
-  useDoorTodaySummary,
-  useTapToPayWarmHint,
-} from "../../src/hooks/useHomeTakePayment";
+import { useDoorTodaySummary } from "../../src/hooks/useHomeTakePayment";
+import { useTapToPayWarmHint } from "../../src/hooks/useTapToPayWarmHint";
 import { useTapToPaySettingsEntry } from "../../src/hooks/useTapToPaySettingsEntry";
 import { openTapToPayAwareness } from "../../src/components/door/tap/TapToPayAwarenessModal";
 import {

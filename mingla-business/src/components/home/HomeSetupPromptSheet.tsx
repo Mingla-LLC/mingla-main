@@ -12,7 +12,7 @@ import { Button } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
-import { HOME_SETUP_COPY as C } from "./homeSetupCopy";
+import { HOME_SETUP_PROMPT_COPY as C } from "./homeSetupPromptCopy";
 
 /** The missing items, in checklist order. */
 export function homeSetupMissing(

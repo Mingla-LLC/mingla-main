@@ -57,17 +57,9 @@ import { canViewBrandPayments } from "../utils/brandPaymentsPermission";
 import { useWebsiteTodo } from "./useWebsiteTodo";
 import { useBrandEnquiries } from "./useBrandEnquiries";
 import { brandEnquiryTodos } from "../utils/brandEnquiryWaiting";
-// #4389 — the setup checklist and the Tap to Pay "Not now" row.
-import { Platform } from "react-native";
+// #4389 — the setup checklist and the Tap to Pay "Not now" row (native only).
 import { useBrandSetupChecklist } from "./useBrandSetupChecklist";
-import { useTapToPaySettingsEntry } from "./useTapToPaySettingsEntry";
-import { tapToPayBrandEligible } from "../utils/tapToPayBrandEligible";
-import { useTapToPayWarmHint } from "./useHomeTakePayment";
-import {
-  homeSetupPromptKey,
-  useHomeSetupPromptStore,
-} from "../store/homeSetupPromptStore";
-import { HOME_SETUP_COPY } from "../components/home/homeSetupCopy";
+import { useTapToPayTodoRow } from "./useTapToPayTodoRow";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user, isAuthReady } = useAuth();
@@ -380,32 +372,13 @@ export function useBusinessTodos(): BusinessTodo[] {
     [currentBrand, setupData],
   );
   // #4389 HT — "Not now" on the Home Tap to Pay card becomes a row here,
-  // until Tap to Pay is set up on this phone. Web: the entry is always null.
-  const tapEntry = useTapToPaySettingsEntry(setupBrandId);
-  const tapHint = useTapToPayWarmHint(tapEntry !== null ? setupBrandId : null);
-  const promptHydrated = useHomeSetupPromptStore((st) => st.hasHydrated);
-  const tapNotNow = useHomeSetupPromptStore((st) =>
-    user?.id != null && setupBrandId !== null
-      ? st.tapNotNow[homeSetupPromptKey(user.id, setupBrandId)] === true
-      : false,
-  );
-  const tapToPayTodo =
-    promptHydrated &&
-    tapNotNow &&
-    tapEntry !== null &&
-    tapHint === false &&
-    setupData?.facts.complete === true &&
-    tapToPayBrandEligible(currentBrand) &&
-    setupBrandId !== null
-      ? {
-          label:
-            Platform.OS === "ios"
-              ? HOME_SETUP_COPY.ht.todoIos
-              : HOME_SETUP_COPY.ht.todoAndroid,
-          sublabel: HOME_SETUP_COPY.ht.todoSub,
-          route: `/account/tap-to-pay?brandId=${encodeURIComponent(setupBrandId)}`,
-        }
-      : null;
+  // until Tap to Pay is set up on this phone. Web: never (no Tap to Pay).
+  const tapToPayTodo = useTapToPayTodoRow({
+    userId: user?.id ?? null,
+    brandId: setupBrandId,
+    setupComplete: setupData?.facts.complete === true,
+    brand: currentBrand,
+  });
 
   return useMemo(
     () =>
