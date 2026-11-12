@@ -513,7 +513,10 @@ Deno.test("C1: 'How is FAVY10 doing?' is answered from the snapshot without an e
   assertEquals(modelCalls, 1);
   if (result.kind === "text") {
     // Rework 7 (R7-17): the snapshot says the end in Lagos time alone.
-    assertStringIncludes(result.text, "ends Sat 19 Dec 2026, 11:59 pm Lagos time");
+    assertStringIncludes(
+      result.text,
+      "ends Sat 19 Dec 2026, 11:59 pm Lagos time",
+    );
     assertStringIncludes(result.text, "used 3 of 100");
   }
 });

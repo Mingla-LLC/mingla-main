@@ -3426,6 +3426,9 @@ function pronounKindOf(
   for (const kind of planKinds) {
     families.add(OFFERING_KINDS.has(kind) ? "offering" : kind);
   }
+  // A tier belongs to its offering: "it" beside an event and its tickets is
+  // the offering.
+  if (families.has("offering")) families.delete("ticket");
   if (families.size !== 1) return null;
   const [family] = [...families];
   if (family !== "offering") return family as AriClaimKind;
