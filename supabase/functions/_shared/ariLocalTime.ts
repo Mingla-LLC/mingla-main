@@ -8,7 +8,8 @@
 // I-ARI-READS-IN-BRAND-TIME: before tool results, history tool rows and the
 // brand snapshot reach the model, every instant gets a brand-local rendering
 // beside it ("ends_at_local": "Sat 19 Dec 2026, 11:59 pm Lagos time"). The
-// raw ISO stays for machines. The zone is the brand's time zone, then its
+// raw ISO stays for machines in tool results; rework 7 (R7-17): the brand
+// snapshot, which only the model reads, carries the local rendering alone. The zone is the brand's time zone, then its
 // country's single zone, then UTC labelled "UTC".
 // Enforced by supabase/functions/_shared/__tests__/issue_3355_rework_3b.implementor.test.ts.
 
@@ -106,6 +107,23 @@ export function withAriLocalTimesInText(
     const local = ariLocalInstant(iso, zone);
     return local ? `${iso} (${local})` : iso;
   });
+}
+
+/**
+ * #3355 rework 7 (R7-17): running text with every ISO instant REPLACED by its
+ * brand-local rendering. For text only the model reads (the brand
+ * snapshot): with "2026-12-05T10:00:00.000Z (Sat 5 Dec 2026, 11:00 am Lagos
+ * time)" side by side, a model said "10:00 AM (Lagos time)"; with the local
+ * rendering alone there is one hour to repeat.
+ */
+export function withAriLocalTimesOnlyInText(
+  text: string,
+  zone: string | null,
+): string {
+  return text.replace(
+    ISO_INSTANT_IN_TEXT,
+    (iso) => ariLocalInstant(iso, zone) ?? iso,
+  );
 }
 
 interface ModelPart {

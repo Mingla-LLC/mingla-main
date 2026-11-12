@@ -321,6 +321,12 @@ export interface AriEscalation {
 export function decideAriEscalation(args: {
   ownerSignals: readonly AriGapSignal[];
   recentGaps: readonly AriRecentGap[];
+  /**
+   * #3355 rework 7 (R7-10): the host cancelled the "Ask the Mingla team"
+   * card a moment ago. The earlier failures that led to it are not counted
+   * again; only a new strong frustration signal offers it again.
+   */
+  askTeamDeclined?: boolean;
 }): AriEscalation {
   if (
     args.ownerSignals.some((signal) =>
@@ -329,6 +335,7 @@ export function decideAriEscalation(args: {
   ) {
     return { escalate: true, reason: "strong_frustration" };
   }
+  if (args.askTeamDeclined) return { escalate: false, reason: null };
   const failures = [
     ...args.recentGaps.filter((gap) =>
       ARI_ESCALATION_FAILURE_TYPES.has(gap.type as AriGapType)
@@ -449,6 +456,38 @@ export async function readAriRecentGaps(args: {
     );
   } catch (_error) {
     return [];
+  }
+}
+
+/** How long a cancelled "Ask the Mingla team" card holds the offer back. */
+export const ARI_ASK_TEAM_DECLINE_HOLD_MS = 30 * 60 * 1000;
+
+/**
+ * #3355 rework 7 (R7-10): the host cancelled this conversation's latest
+ * "Ask the Mingla team" card (the tell-owner card) within the hold window.
+ * Read as the caller (RLS: their own pending actions). Fail-soft: false.
+ */
+export async function readAriAskTeamDeclined(args: {
+  caller: SupabaseClient;
+  conversationId: string;
+  now?: number;
+}): Promise<boolean> {
+  try {
+    const { data, error } = await args.caller.from("agent_pending_actions")
+      .select("status,created_at")
+      .eq("conversation_id", args.conversationId)
+      .eq("tool_name", "tell_owner_in_brand_group")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (error || !Array.isArray(data) || data.length === 0) return false;
+    const row = data[0] as { status?: unknown; created_at?: unknown };
+    const created = typeof row.created_at === "string"
+      ? Date.parse(row.created_at)
+      : NaN;
+    return row.status === "cancelled" && Number.isFinite(created) &&
+      (args.now ?? Date.now()) - created <= ARI_ASK_TEAM_DECLINE_HOLD_MS;
+  } catch (_error) {
+    return false;
   }
 }
 

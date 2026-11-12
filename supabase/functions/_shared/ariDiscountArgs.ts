@@ -612,6 +612,28 @@ function canonicalTarget(raw: unknown): Record<string, unknown> {
 }
 
 /**
+ * #3355 rework 7 (R7-11): the host typed a valid code ("Create a discount
+ * code FAVY10…") but the model's proposal carries a code that is not one
+ * (mangled, with a symbol, too long). The host's own code is used, exactly
+ * as they wrote it (normalised the way the SQL writer does), so the refusal
+ * never tells the host their valid code is invalid. Any other proposal is
+ * unchanged.
+ */
+export function withHostStatedDiscountCode(
+  toolName: string,
+  args: Record<string, unknown>,
+  hostCode: string | null | undefined,
+): Record<string, unknown> {
+  if (toolName !== "create_discount" || args.kind !== "code") return args;
+  const host = normaliseAriDiscountCode(hostCode);
+  if (!DISCOUNT_CODE_PATTERN.test(host)) return args;
+  if (DISCOUNT_CODE_PATTERN.test(normaliseAriDiscountCode(args.code))) {
+    return args;
+  }
+  return { ...args, code: host };
+}
+
+/**
  * Canonical `create_discount` args. Throws DISCOUNT_PROPOSAL_INVALID with an
  * owner sentence when the proposal cannot be made valid without guessing.
  */

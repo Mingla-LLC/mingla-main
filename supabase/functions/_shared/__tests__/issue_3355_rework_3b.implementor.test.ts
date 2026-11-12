@@ -512,11 +512,11 @@ Deno.test("3b-2: the brand snapshot reads its instants in the brand's zone too",
   });
   assertStringIncludes(
     snapshot.text,
-    `FAVY10: 10% off, ends 2026-12-19T22:59:59.000Z (${LAGOS_END_LOCAL})`,
+    `FAVY10: 10% off, ends ${LAGOS_END_LOCAL}`,
   );
   assertStringIncludes(
     snapshot.text,
-    "read 2026-11-11T14:08:00.000Z (Wed 11 Nov 2026, 3:08 pm Lagos time)",
+    "read Wed 11 Nov 2026, 3:08 pm Lagos time",
   );
   assertEquals(
     withAriLocalTimesInText("ends 2026-12-19T22:59:59Z, used 0", null),

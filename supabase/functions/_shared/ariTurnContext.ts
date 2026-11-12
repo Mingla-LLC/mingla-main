@@ -20,7 +20,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
   ariBrandDisplayZone,
-  withAriLocalTimesInText,
+  withAriLocalTimesOnlyInText,
 } from "./ariLocalTime.ts";
 
 import { readBrandReadiness } from "./agentReadinessTools.ts";
@@ -426,7 +426,9 @@ export async function buildAriBrandSnapshot(args: {
     brand_id: brandId,
     built_at: now,
     text: capAriSnapshotText(
-      lines.map((line) => withAriLocalTimesInText(line, zone)),
+      // #3355 rework 7 (R7-17): the local time alone, never beside the UTC
+      // hour the model could repeat as local.
+      lines.map((line) => withAriLocalTimesOnlyInText(line, zone)),
     ),
     unavailable,
   };
