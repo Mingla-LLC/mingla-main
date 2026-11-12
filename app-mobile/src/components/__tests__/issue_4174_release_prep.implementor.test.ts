@@ -55,7 +55,9 @@ Deno.test("#4174 — native permission copy describes the features that request 
   assertMatch(explorerPlist.NSMicrophoneUsageDescription, /sound.*videos.*chats/i);
   assertMatch(hostPlist.NSCameraUsageDescription, /tickets.*photos or videos.*event covers.*brand group chats/i);
   assertMatch(hostPlist.NSMicrophoneUsageDescription, /sound.*videos.*event covers.*brand group chats/i);
-  assertMatch(hostPlist.NSLocationWhenInUseUsageDescription, /location.*marketing.*services/i);
+  // #4389 — the Host location prompt is for Tap to Pay on iPhone payments only (Apple onboarding rule).
+  assertMatch(hostPlist.NSLocationWhenInUseUsageDescription, /location.*card payments.*Tap to Pay on iPhone/i);
+  assertEquals(/marketing/i.test(hostPlist.NSLocationWhenInUseUsageDescription), false);
 });
 
 Deno.test("#4174 — Nigerian payout banks render one choice per Paystack bank code", () => {
