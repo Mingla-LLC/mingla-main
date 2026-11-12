@@ -568,6 +568,38 @@ describe("#3281 6b — a held page is re-checked before it is reopened", () => {
     );
   });
 
+  it.each([
+    ["the status read throws", "throw" as const],
+    ["the status read answers 500", http(500)],
+    ["the status read answers nothing", { data: null, error: null }],
+  ])(
+    "%s: the page is kept but not opened, even when the preflight would pass",
+    async (_label, answer) => {
+      statusAnswers = [abandoned, answer, abandoned];
+      await pay(v2Input());
+      expect(await pay(v2Input())).toEqual({
+        outcome: "failed",
+        message: RECHECK_FAILED,
+      });
+      expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+      expect(preflights()).toHaveLength(0);
+
+      await pay(v2Input());
+      expect(calls("ticket-checkout-create")).toHaveLength(1);
+      expect(openBrowserAsync.mock.calls[1][0]).toBe(
+        "https://checkout.paystack.test/page-1",
+      );
+    },
+  );
+
+  it("a payment the server says is still pending is reopened after the preflight", async () => {
+    statusAnswers = [abandoned, noAnswer, abandoned];
+    await pay(v2Input());
+    await pay(v2Input());
+    expect(preflights()).toHaveLength(1);
+    expect(openBrowserAsync).toHaveBeenCalledTimes(2);
+  });
+
   it("an order that already finalized is returned, not reopened", async () => {
     statusAnswers = [abandoned, finalized];
     await pay(v2Input());
@@ -612,6 +644,20 @@ describe("#3281 6b — signing out mid-checkout", () => {
     createAnswer = paystackPage;
     await pay(v2Input());
     expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it("a finalized order found after sign-out is never confirmed for whoever is signed in now", async () => {
+    await pay(v2Input());
+    let reads = 0;
+    invoke.mockImplementation(async (name: string) => {
+      if (name !== "ticket-checkout-status") return createAnswer();
+      reads += 1;
+      clearAllStores();
+      return finalized;
+    });
+    expect(await pay(v2Input())).toEqual({ outcome: "canceled" });
+    expect(reads).toBe(1);
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
   });
 
   it("a sign-out during the re-check never reopens the old account's page", async () => {

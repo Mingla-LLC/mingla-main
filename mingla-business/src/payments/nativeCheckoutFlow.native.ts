@@ -306,7 +306,11 @@ type PaystackPollOutcome =
 
 /** What ONE `ticket-checkout-status` read told us. */
 type CheckoutStatusReading =
-  Exclude<PaystackPollOutcome, { kind: "timeout" }> | { kind: "no_answer" };
+  | Exclude<PaystackPollOutcome, { kind: "timeout" }>
+  /** The server answered and the payment is simply not settled yet. */
+  | { kind: "pending" }
+  /** No usable answer: a thrown call, an HTTP error other than 409, no body. */
+  | { kind: "no_answer" };
 
 async function readCheckoutStatusOnce(
   checkoutSessionId: string,
@@ -361,6 +365,9 @@ async function readCheckoutStatusOnce(
   ) {
     return { kind: "refused" };
   }
+  if (error == null && typeof data?.status === "string") {
+    return { kind: "pending" };
+  }
   return { kind: "no_answer" };
 }
 
@@ -373,7 +380,9 @@ async function pollPaystackOrder(
       checkoutSessionId,
       buyerStatusToken,
     );
-    if (reading.kind !== "no_answer") return reading;
+    if (reading.kind !== "no_answer" && reading.kind !== "pending") {
+      return reading;
+    }
     await new Promise((resolve) =>
       setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS),
     );
@@ -393,8 +402,9 @@ async function pollPaystackOrder(
  *      before presenting. A sale the organiser paused or cancelled since the
  *      page was issued is refused here, before the buyer can pay into it.
  *
- * A read that gets no answer (offline, a server hiccup) keeps the page but
- * does not open it: we could not prove it is still payable.
+ * Either read getting no usable answer (offline, a server error, an empty
+ * body) keeps the page but does not open it: we could not prove it is still
+ * payable, or that it was not already paid.
  */
 async function revalidateHeldHandoff(
   eventId: string,
@@ -418,6 +428,11 @@ async function revalidateHeldHandoff(
   ) {
     clearHeldHandoff(eventId);
     return { outcome: "failed", message: paystackReturnMessage(reading.code) };
+  }
+  // No usable answer: the preflight checks admission, not payment, so it
+  // cannot stand in for this read. Keep the page; do not open it.
+  if (reading.kind === "no_answer") {
+    return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
   }
   let preflight: { data: { status?: string } | null; error: unknown };
   try {
@@ -722,9 +737,10 @@ export const useNativeCheckoutFlow = (): ((
     const heldForCart = readHeldHandoff(input.eventId, fingerprint);
     if (heldForCart !== null) {
       const refused = await revalidateHeldHandoff(input.eventId, heldForCart);
-      if (refused !== null) return refused;
-      // Signed out while we were checking: this page belongs to that session.
+      // Signed out while we were checking: whatever the check found (even a
+      // finalized order) belongs to that session, never to whoever is here now.
       if (handoffGeneration() !== generation) return { outcome: "canceled" };
+      if (refused !== null) return refused;
       return await followPaystackHandoff(input.eventId, heldForCart);
     }
 
