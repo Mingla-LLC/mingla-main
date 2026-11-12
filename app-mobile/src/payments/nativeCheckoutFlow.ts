@@ -52,6 +52,8 @@ import {
   CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
   CHECKOUT_DETAILS_INCOMPLETE_MESSAGE,
   CHECKOUT_NO_HANDOFF_MESSAGE,
+  CHECKOUT_PAGE_EXPIRED_MESSAGE,
+  CHECKOUT_RECHECK_FAILED_MESSAGE,
   CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
   nativeCheckoutBookedStartRaiseMessage,
   nativeCheckoutErrorMessage,
@@ -59,7 +61,7 @@ import {
   nativePaystackReturnMessage,
 } from "./checkoutErrorMessages";
 import {
-  clearNativeCheckoutRecovery,
+  clearNativeCheckoutRecoveryFor,
   createNativeCheckoutRecoveryPointer,
   isNativeCheckoutRecoveryAvailable,
   NATIVE_CHECKOUT_PENDING_BODY,
@@ -71,6 +73,29 @@ import {
 } from "./nativeCheckoutRecovery";
 
 export type { NativeCheckoutOutcome } from "./nativeCheckoutRecovery";
+
+// issue #3281 (bundle 6d) — the held-page store and the Android return wait
+// are shared with the Host app (packages/payments-native), so both apps keep
+// one implementation of: one page per cart, the server's own session expiry,
+// wall-clock-and-monotonic elapsed time, and a sign-out generation.
+import {
+  waitForPaymentPageClosed,
+  type AppStateLike,
+} from "@mingla/payments-native/paymentPageReturn";
+import {
+  clearAllHeldHandoffs as clearSharedHeldHandoffs,
+  clearHeldHandoff,
+  dropHeldHandoff,
+  handoffClockNow,
+  handoffGeneration,
+  handoffLifetimeMs,
+  holdHandoff,
+  isHandoffLive,
+  monotonicNow,
+  readHeldHandoff,
+  tightenHandoffLifetime,
+  type HeldPaystackHandoff,
+} from "@mingla/payments-native/paystackHeldHandoff";
 
 /**
  * issue #2265 — what the flow is doing RIGHT NOW, so the surface the buyer
@@ -244,6 +269,8 @@ type CheckoutCreateResponse =
       authorizationUrl: string;
       returnUrl: string;
       reference: string;
+      /** issue #3281 (bundle 6c server) — seconds left on the session. */
+      expiresInSeconds?: number;
       totalCents: number;
       currency: string;
     };
@@ -279,9 +306,12 @@ type PaystackPollOutcome =
   | { kind: "timeout" };
 
 /** What ONE `ticket-checkout-status` read told us. */
-type CheckoutStatusReading = Exclude<PaystackPollOutcome, { kind: "timeout" }> | {
-  kind: "no_answer";
-};
+type CheckoutStatusReading =
+  | Exclude<PaystackPollOutcome, { kind: "timeout" }>
+  /** issue #3281 (bundle 6d) — the server answered: not settled yet. */
+  | { kind: "pending" }
+  /** No usable answer: a thrown call, an HTTP error other than 409, no body. */
+  | { kind: "no_answer" };
 
 /**
  * Ask `ticket-checkout-status` once and say what the answer means.
@@ -373,10 +403,15 @@ async function readCheckoutStatusOnce(
   if (error != null) {
     const status =
       (error as { context?: { status?: number } })?.context?.status ?? null;
-    if (status === 409) {
+    // issue #3281 (bundle 6d) — 403 (not this buyer's token) and 404 (no
+    // such session) are definitive too: the session cannot be paid here.
+    if (status === 409 || status === 403 || status === 404) {
       const raw = await extractFunctionError(error, "");
       return { kind: "refused", code: raw.length > 0 ? raw : null };
     }
+  }
+  if (error == null && typeof data?.status === "string") {
+    return { kind: "pending" };
   }
   return { kind: "no_answer" };
 }
@@ -387,6 +422,13 @@ async function pollPaystackOrder(
   checkoutSessionId: string,
   buyerStatusToken: string,
   requireIssuedTicket: boolean,
+  /**
+   * issue #3281 (bundle 6d) — the page may still be open (Android split
+   * screen). Paystack says `abandoned` / `failed` from initialize onward, so
+   * those are not answers then: only an order, a refusal or a mismatch (money
+   * moved) end the wait.
+   */
+  pageMayBeOpen = false,
 ): Promise<PaystackPollOutcome> {
   for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
     const reading = await readCheckoutStatusOnce(
@@ -394,7 +436,17 @@ async function pollPaystackOrder(
       buyerStatusToken,
       requireIssuedTicket,
     );
-    if (reading.kind !== "no_answer") return reading;
+    const stillPaying =
+      pageMayBeOpen &&
+      reading.kind === "terminal" &&
+      reading.code !== "paystack_payment_mismatch";
+    if (
+      reading.kind !== "no_answer" &&
+      reading.kind !== "pending" &&
+      !stillPaying
+    ) {
+      return reading;
+    }
     await new Promise((resolve) => setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS));
   }
   return { kind: "timeout" };
@@ -420,22 +472,11 @@ async function pollPaystackOrder(
  * and a fresh create runs — correct, because that is a different purchase with
  * a different server-side idempotency key.
  */
-interface HeldPaystackHandoff {
-  fingerprint: string;
-  authorizationUrl: string;
-  checkoutSessionId: string;
-  buyerStatusToken: string;
-  cachedAt: number;
-}
-
-/**
- * `ticket-checkout-create` sets the session's `p_expires_at` to now + 15 min.
- * An entry older than that can no longer be paid, so it is deleted rather than
- * served — a dead payment page is worse than no offer at all.
- */
-const PAYSTACK_HANDOFF_TTL_MS = 15 * 60 * 1000;
-
-const heldPaystackHandoffs = new Map<string, HeldPaystackHandoff>();
+// issue #3281 (bundle 6d) — the held pages now live in the shared store
+// (packages/payments-native/paystackHeldHandoff.ts): per event AND per
+// purchase fingerprint, bounded by the server's own seconds left (14 minutes
+// at most), timed on the wall clock and the monotonic clock, and dropped on
+// sign-out through a generation that stale continuations respect.
 
 // #3859 — one in-memory UUID is retained through an unchanged logical retry,
 // rotated when canonical checkout input changes, and cleared on success/sign-out.
@@ -487,26 +528,6 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
   });
 };
 
-/** The live held hand-off for an event, or null. Expired entries are deleted. */
-const readHeldHandoff = (eventId: string): HeldPaystackHandoff | null => {
-  const held = heldPaystackHandoffs.get(eventId);
-  if (held === undefined) return null;
-  if (Date.now() - held.cachedAt >= PAYSTACK_HANDOFF_TTL_MS) {
-    heldPaystackHandoffs.delete(eventId);
-    return null;
-  }
-  return held;
-};
-
-const holdHandoff = (eventId: string, held: HeldPaystackHandoff): void => {
-  heldPaystackHandoffs.set(eventId, held);
-};
-
-/** The order finalized (or the buyer moved on) — the held page is spent. */
-const clearHeldHandoff = (eventId: string): void => {
-  heldPaystackHandoffs.delete(eventId);
-};
-
 /**
  * issue #2253 (absorbed into #2264) — THE single-flight guard.
  *
@@ -525,6 +546,7 @@ const clearHeldHandoff = (eventId: string): void => {
  * Invariant: I-PROPOSED-NATIVE-CHECKOUT-SINGLE-FLIGHT.
  */
 let activeCheckoutFingerprint: string | null = null;
+let singleFlightSeq = 0;
 
 /**
  * issue #2227 QA F-3 — Constitution #6, *logout clears everything*.
@@ -543,7 +565,10 @@ let activeCheckoutFingerprint: string | null = null;
  * buy tap for the life of the process.
  */
 export const clearAllHeldHandoffs = (): void => {
-  heldPaystackHandoffs.clear();
+  // issue #3281 (bundle 6d) — also bumps the shared sign-out generation, so a
+  // checkout still in flight can no longer hold, open, report or clear
+  // anything for the account that just left.
+  clearSharedHeldHandoffs();
   checkoutAttemptTracker.reset();
   activeCheckoutFingerprint = null;
 };
@@ -553,15 +578,46 @@ export const clearAllHeldHandoffs = (): void => {
  *
  * Used both for a freshly created checkout AND for replaying a held one, so
  * both paths get identical browser handling and identical polling.
+ *
+ * issue #3281 (bundle 6d) — `generation` is the sign-out generation captured
+ * before this checkout's first network call: once it moves, nothing below may
+ * hold, clear or report for the account that left. Recovery-pointer clears
+ * only ever delete THIS session's pointer.
  */
+/** react-native's AppState, or undefined if it cannot be loaded here. */
+const appStateForPaymentPage = () => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const rn = require("react-native") as { AppState?: AppStateLike };
+    return rn.AppState ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 async function followPaystackHandoff(
   eventId: string,
-  authorizationUrl: string,
-  checkoutSessionId: string,
-  buyerStatusToken: string,
+  handoff: HeldPaystackHandoff,
+  generation: number,
   onPhase?: (phase: NativeCheckoutPhase) => void,
   includeProvider = false,
 ): Promise<NativeCheckoutOutcome> {
+  const clearPointer = async () => {
+    if (includeProvider) {
+      await clearNativeCheckoutRecoveryFor(handoff.checkoutSessionId);
+    }
+  };
+  // Every caller checks this first; checked here too so no path can open a
+  // page for an account that has left.
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
+  // issue #3281 (bundle 6d) — the session can run out between being held (or
+  // re-checked) and here. An expired page is never opened; only THIS cart's
+  // page is dropped. The pointer is cleared: nothing was opened against it.
+  if (!isHandoffLive(handoff)) {
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
+    await clearPointer();
+    return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
+  }
   emitPhase(onPhase, "opening_payment_page");
   let opened: WebBrowser.WebBrowserResult;
   try {
@@ -572,23 +628,33 @@ async function followPaystackHandoff(
     // iOS destroys the session in <100ms and logs it as "cancelled by user", so the
     // buyer never sees Paystack. Proven 2026-08-18; see issue #2227.
     // Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
-    opened = await WebBrowser.openBrowserAsync(authorizationUrl);
+    opened = await WebBrowser.openBrowserAsync(handoff.authorizationUrl);
   } catch (err) {
     // #2227 F-2 — openBrowserAsync throws only for an invalid URL or an
     // unavailable module, i.e. states in which the page was PROVABLY never
     // shown. The buyer cannot have paid, so do NOT walk into a 25-second poll
     // they cannot win: tell them now.
     console.warn("[nativeCheckoutFlow] paystack browser did not open", err);
-    if (includeProvider) await clearNativeCheckoutRecovery();
+    await clearPointer();
     return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
   }
 
   // iOS refuses to present when another in-app browser session is already open.
   // Same fact as a throw: the buyer never saw Paystack. Never poll on it.
   if (opened.type === WebBrowser.WebBrowserResultType.LOCKED) {
-    if (includeProvider) await clearNativeCheckoutRecovery();
+    await clearPointer();
     return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
   }
+
+  // issue #3281 (bundle 6d) — on Android `openBrowserAsync` returns `opened`
+  // while the buyer is still on the page: wait until they are back.
+  // This app's own AppState is passed in: the shared module cannot resolve
+  // react-native from packages/ in every runner. Loaded only when needed
+  // (`opened`, i.e. Android), so the flow module itself never loads it.
+  const pageReturn = await waitForPaymentPageClosed(opened, {
+    appState: opened.type === "opened" ? appStateForPaymentPage() : undefined,
+  });
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
 
   // Any other resolution (dismiss / cancel / opened) is indistinguishable from
   // "the buyer closed the page after paying", so the server decides — the
@@ -603,13 +669,15 @@ async function followPaystackHandoff(
   // Invariant: I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES.
   emitPhase(onPhase, "confirming_payment");
   const poll = await pollPaystackOrder(
-    checkoutSessionId,
-    buyerStatusToken,
+    handoff.checkoutSessionId,
+    handoff.buyerStatusToken,
     includeProvider,
+    pageReturn === "unconfirmed",
   );
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
   if (poll.kind === "finalized") {
-    clearHeldHandoff(eventId);
-    if (includeProvider) await clearNativeCheckoutRecovery();
+    clearHeldHandoff(eventId, generation);
+    await clearPointer();
     return {
       outcome: "succeeded",
       orderId: poll.orderId,
@@ -621,11 +689,22 @@ async function followPaystackHandoff(
     // A real order without issued tickets is not success. It is also unsafe to
     // reopen the provider page: money may already have moved. Keep the minimal
     // recovery pointer so restart/server reconciliation can finish the booking.
-    clearHeldHandoff(eventId);
+    clearHeldHandoff(eventId, generation);
     return {
       outcome: "pending",
       title: NATIVE_CHECKOUT_PENDING_TITLE,
       message: NATIVE_CHECKOUT_PENDING_BODY,
+    };
+  }
+  // issue #3281 (bundle 6d) — a mismatch means money moved and the server
+  // failed the session: reopening this page would invite a second payment.
+  if (poll.kind === "terminal" && poll.code === "paystack_payment_mismatch") {
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
+    await clearPointer();
+    return {
+      outcome: "failed",
+      message: nativePaystackReturnMessage(poll.code),
+      token: poll.code,
     };
   }
   // #2264 — the held page is DELIBERATELY kept on both remaining arms. The
@@ -636,7 +715,7 @@ async function followPaystackHandoff(
   // clearHeldHandoff here would make that sentence a lie and force a second
   // create the server would refuse with 409 `checkout_in_progress`.
   if (poll.kind === "terminal") {
-    if (includeProvider) await clearNativeCheckoutRecovery();
+    await clearPointer();
     return {
       outcome: "failed",
       message: nativePaystackReturnMessage(poll.code),
@@ -648,8 +727,8 @@ async function followPaystackHandoff(
   // refused checkout, possibly a second time — so it is released and the next
   // tap starts fresh.
   if (poll.kind === "refused") {
-    clearHeldHandoff(eventId);
-    if (includeProvider) await clearNativeCheckoutRecovery();
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
+    await clearPointer();
     return {
       outcome: "failed",
       message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
@@ -668,6 +747,154 @@ async function followPaystackHandoff(
     message: CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
     token: null,
   };
+}
+
+/**
+ * issue #3281 (bundle 6d) — before a HELD page is reopened, ask the server
+ * whether it may still be paid (mirror of the Host app's re-check, 6b/6c).
+ * Returns null when it may; otherwise the outcome to show, having dropped the
+ * page when the answer was definitive.
+ *
+ *   1. One status read: an order that already finalized is the success it is;
+ *      an order without issued tickets is pending (and keeps the recovery
+ *      pointer so a restart can finish it); a refusal or a mismatch drops the
+ *      page; no usable answer keeps the page but does not open it.
+ *   2. The #1930 preflight: a sale paused or cancelled since (409) is not
+ *      reopened but kept; a session that is gone or not this buyer's (403/404)
+ *      drops the page; the server's own seconds left (60 s or less) drop it as
+ *      expired; anything else keeps it closed.
+ */
+async function revalidateHeldHandoff(
+  eventId: string,
+  handoff: HeldPaystackHandoff,
+  generation: number,
+  requireIssuedTicket: boolean,
+  includeProvider: boolean,
+  persistPointer: () => Promise<boolean>,
+): Promise<NativeCheckoutOutcome | null> {
+  const reading = await readCheckoutStatusOnce(
+    handoff.checkoutSessionId,
+    handoff.buyerStatusToken,
+    requireIssuedTicket,
+  );
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
+  const clearPointer = async () => {
+    if (includeProvider) {
+      await clearNativeCheckoutRecoveryFor(handoff.checkoutSessionId);
+    }
+  };
+  if (reading.kind === "finalized") {
+    clearHeldHandoff(eventId, generation);
+    await clearPointer();
+    return {
+      outcome: "succeeded",
+      orderId: reading.orderId,
+      attachedToAccount: reading.attachedToAccount,
+      ...(includeProvider ? { provider: "paystack" as const } : {}),
+    };
+  }
+  if (reading.kind === "order_pending") {
+    // Money moved; tickets are not out yet. Never reopen the page, and keep a
+    // recovery pointer so a restart can finish the booking. The page is only
+    // released once the pointer is safely written: if the write fails, the
+    // held page stays as the way back to this session (its next re-check
+    // answers "pending" again; it is never reopened while an order exists).
+    if (includeProvider && !(await persistPointer())) {
+      if (handoffGeneration() !== generation) return { outcome: "canceled" };
+      return {
+        outcome: "pending",
+        title: NATIVE_CHECKOUT_PENDING_TITLE,
+        message: NATIVE_CHECKOUT_PENDING_BODY,
+      };
+    }
+    clearHeldHandoff(eventId, generation);
+    return {
+      outcome: "pending",
+      title: NATIVE_CHECKOUT_PENDING_TITLE,
+      message: NATIVE_CHECKOUT_PENDING_BODY,
+    };
+  }
+  if (reading.kind === "refused") {
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
+    await clearPointer();
+    return {
+      outcome: "failed",
+      message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+      token: reading.code,
+    };
+  }
+  if (
+    reading.kind === "terminal" &&
+    reading.code === "paystack_payment_mismatch"
+  ) {
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
+    await clearPointer();
+    return {
+      outcome: "failed",
+      message: nativePaystackReturnMessage(reading.code),
+      token: reading.code,
+    };
+  }
+  // No usable answer: the preflight checks admission, not payment, so it
+  // cannot stand in for this read. Keep the page; do not open it.
+  if (reading.kind === "no_answer") {
+    return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
+  }
+  let preflight: {
+    data: { status?: string; expiresInSeconds?: unknown } | null;
+    error: unknown;
+  };
+  // How old the page was when we asked: the server's seconds left are counted
+  // from no earlier than this, so the tightened deadline can only be early.
+  const askedAt = handoffClockNow();
+  try {
+    preflight = await supabase.functions.invoke<{
+      status?: string;
+      expiresInSeconds?: unknown;
+    }>("ticket-checkout-status", {
+      body: {
+        checkoutSessionId: handoff.checkoutSessionId,
+        buyerStatusToken: handoff.buyerStatusToken,
+        preflight: true,
+      },
+    });
+  } catch (err) {
+    console.warn("[nativeCheckoutFlow] held page preflight failed", err);
+    return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
+  }
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
+  if (preflight.error == null && preflight.data?.status === "present_allowed") {
+    // The server's own seconds left: a hold timed on this device can be
+    // longer than the real session (a failed expiry read, a reused session).
+    // The hold is shortened to match, and the caller checks it again before
+    // writing the recovery pointer and right before opening the page.
+    tightenHandoffLifetime(handoff, preflight.data.expiresInSeconds, askedAt);
+    if (!isHandoffLive(handoff)) {
+      dropHeldHandoff(eventId, handoff.fingerprint, generation);
+      return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
+    }
+    return null;
+  }
+  const status =
+    (preflight.error as { context?: { status?: number } } | null)?.context
+      ?.status ?? null;
+  // A refusal here proves only that the page will not reopen, not that no
+  // earlier payment went through (one can settle between the status read
+  // and this check), so the copy never says "not charged".
+  if (status === 403 || status === 404) {
+    // The session is gone or is not this buyer's: THIS cart's page is spent
+    // (bundle 6d: other carts' pages for the event are not this session's).
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
+    await clearPointer();
+    return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
+  }
+  if (status === 409) {
+    // Not admitted right now (paused, cancelled, or the provider attempt is
+    // not ready). Kept, not opened: every later tap re-checks first. A failed
+    // check is a 503 and falls to the copy below.
+    return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
+  }
+  return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
 }
 
 async function preflightPaymentSheet(
@@ -712,9 +939,18 @@ export const useNativeCheckoutFlow = (): ((
     if (activeCheckoutFingerprint !== null) {
       return { outcome: "canceled" };
     }
-    activeCheckoutFingerprint = fingerprint;
+    // issue #3281 (bundle 6d) — the claim is unique to THIS checkout, so a
+    // checkout that outlived a sign-out never releases a newer one's claim.
+    singleFlightSeq += 1;
+    const claim = `${singleFlightSeq}:${fingerprint}`;
+    activeCheckoutFingerprint = claim;
+    // Captured before the first network call (recovery included): once a
+    // sign-out moves it, nothing this checkout learns belongs to whoever is
+    // signed in now.
+    const generation = handoffGeneration();
     try {
-      const result = await runCheckout(input, fingerprint);
+      const result = await runCheckout(input, fingerprint, generation);
+      if (handoffGeneration() !== generation) return { outcome: "canceled" };
       if (
         input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION &&
         (result.outcome === "succeeded" || result.outcome === "review")
@@ -724,8 +960,8 @@ export const useNativeCheckoutFlow = (): ((
       return result;
     } finally {
       // Cleared on EVERY path, including a throw, or the buy control is dead
-      // for the life of the process.
-      activeCheckoutFingerprint = null;
+      // for the life of the process — but only if the claim is still ours.
+      if (activeCheckoutFingerprint === claim) activeCheckoutFingerprint = null;
     }
   };
 
@@ -737,6 +973,7 @@ export const useNativeCheckoutFlow = (): ((
   async function runCheckout(
     input: NativeCheckoutInput,
     fingerprint: string,
+    generation: number,
   ): Promise<NativeCheckoutOutcome> {
     const onPhase = input.onPhase;
 
@@ -749,6 +986,7 @@ export const useNativeCheckoutFlow = (): ((
         accountId: input.accountId,
         eventId: input.eventId,
       });
+      if (handoffGeneration() !== generation) return { outcome: "canceled" };
       if (recovered !== null) return recovered;
     }
 
@@ -759,41 +997,72 @@ export const useNativeCheckoutFlow = (): ((
     // wants, and it is what makes "Reopen it to finish" true without a second
     // control. Structurally: one checkout produces exactly one create call
     // (#2188's property, carried onto native).
-    const heldForCart = readHeldHandoff(input.eventId);
-    if (heldForCart !== null && heldForCart.fingerprint === fingerprint) {
-      if (input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION) {
-        if (!input.accountId || !isNativeCheckoutRecoveryAvailable()) {
-          return {
-            outcome: "failed",
-            message:
-              "Update Mingla before paying so your booking can be recovered safely.",
-          };
+    const heldForCart = readHeldHandoff(input.eventId, fingerprint);
+    if (heldForCart !== null) {
+      const isV2 =
+        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION;
+      if (isV2 && (!input.accountId || !isNativeCheckoutRecoveryAvailable())) {
+        return {
+          outcome: "failed",
+          message:
+            "Update Mingla before paying so your booking can be recovered safely.",
+        };
+      }
+      const persistPointer = async (): Promise<boolean> => {
+        if (!isV2) return true;
+        if (handoffGeneration() !== generation) return false;
+        const written = await persistNativeCheckoutRecovery(
+          createNativeCheckoutRecoveryPointer({
+            checkoutSessionId: heldForCart.checkoutSessionId,
+            buyerStatusToken: heldForCart.buyerStatusToken,
+            accountId: input.accountId as string,
+            eventId: input.eventId,
+            provider: "paystack",
+          }),
+        );
+        // A sign-out that landed during the write (its purge may already
+        // have run): remove THIS pointer, never leave it for the next account.
+        if (handoffGeneration() !== generation) {
+          await clearNativeCheckoutRecoveryFor(heldForCart.checkoutSessionId);
+          return false;
         }
-        const pointer = createNativeCheckoutRecoveryPointer({
-          checkoutSessionId: heldForCart.checkoutSessionId,
-          buyerStatusToken: heldForCart.buyerStatusToken,
-          accountId: input.accountId,
-          eventId: input.eventId,
-          provider: "paystack",
-        });
-        if (!(await persistNativeCheckoutRecovery(pointer))) {
-          return {
-            outcome: "failed",
-            message:
-              "Payment could not start safely. Try again after reopening Mingla.",
-          };
-        }
+        return written;
+      };
+      // issue #3281 (bundle 6d) — ask the server first: a sale refused, paused
+      // or already paid since the page was held is never reopened.
+      const refused = await revalidateHeldHandoff(
+        input.eventId,
+        heldForCart,
+        generation,
+        isV2,
+        isV2,
+        persistPointer,
+      );
+      if (handoffGeneration() !== generation) return { outcome: "canceled" };
+      if (refused !== null) return refused;
+      // Then the deadline, BEFORE a recovery pointer is written: a page that
+      // will not open must not leave a pointer that answers "pending" forever.
+      if (!isHandoffLive(heldForCart)) {
+        dropHeldHandoff(input.eventId, heldForCart.fingerprint, generation);
+        return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
+      }
+      if (!(await persistPointer())) {
+        if (handoffGeneration() !== generation) return { outcome: "canceled" };
+        return {
+          outcome: "failed",
+          message:
+            "Payment could not start safely. Try again after reopening Mingla.",
+        };
       }
       // The replay path skips `ticket-checkout-create` entirely, so it never
       // emits "creating" — `followPaystackHandoff` opens with
       // "opening_payment_page", which is the honest first phase here.
       return await followPaystackHandoff(
         input.eventId,
-        heldForCart.authorizationUrl,
-        heldForCart.checkoutSessionId,
-        heldForCart.buyerStatusToken,
+        heldForCart,
+        generation,
         onPhase,
-        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION,
+        isV2,
       );
     }
 
@@ -858,6 +1127,11 @@ export const useNativeCheckoutFlow = (): ((
 
     // 1. Create the checkout session on the server.
     emitPhase(onPhase, "creating");
+    // issue #3281 (bundle 6d) — taken BEFORE the create: the server starts the
+    // session's clock when it writes the row, so a hold timed from here can
+    // only be shorter than the session.
+    const requestedAt = Date.now();
+    const requestedAtMono = monotonicNow();
     const { data, error } = await supabase.functions.invoke<CheckoutCreateResponse>(
       "ticket-checkout-create",
       {
@@ -942,6 +1216,10 @@ export const useNativeCheckoutFlow = (): ((
       },
     );
 
+    // Signed out while the create was in flight: whatever it answered belongs
+    // to the account that left. Never present, hold, persist or open it.
+    if (handoffGeneration() !== generation) return { outcome: "canceled" };
+
     if (error) {
       // issue #2229 — read the HTTP status off error.context BEFORE
       // extractFunctionError: that helper CONSUMES the Response body and a body
@@ -1007,7 +1285,7 @@ export const useNativeCheckoutFlow = (): ((
 
     // 2a. Free ticket — already finalized on server.
     if (data.kind === "free_completed") {
-      clearHeldHandoff(input.eventId);
+      clearHeldHandoff(input.eventId, generation);
       return {
         outcome: "succeeded",
         orderId: data.orderId,
@@ -1049,6 +1327,14 @@ export const useNativeCheckoutFlow = (): ((
           message: "Payment could not start safely. Try again after reopening Mingla.",
         };
       }
+      // issue #3281 (bundle 6d) — a sign-out during the write: remove THIS
+      // pointer and present nothing for the account that left.
+      if (handoffGeneration() !== generation) {
+        if (recoveryPointer !== null) {
+          await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
+        }
+        return { outcome: "canceled" };
+      }
       // ORCH-0844 — Connect direct-charge: re-initialise the native Stripe
       // SDK for THIS PaymentIntent's connected account. Without this, the
       // SDK's mid-PaymentSheet confirm call hits Stripe under the platform
@@ -1075,7 +1361,7 @@ export const useNativeCheckoutFlow = (): ((
           });
         } catch (error) {
           if (recoveryPointer === null) throw error;
-          await clearNativeCheckoutRecovery();
+          await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
           return {
             outcome: "failed",
             message: "Payment could not start safely. Review your booking and try again.",
@@ -1150,14 +1436,14 @@ export const useNativeCheckoutFlow = (): ((
         });
       } catch (error) {
         if (recoveryPointer === null) throw error;
-        await clearNativeCheckoutRecovery();
+        await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
         return {
           outcome: "failed",
           message: "Couldn't open payment sheet.",
         };
       }
       if (initResult.error) {
-        if (recoveryPointer !== null) await clearNativeCheckoutRecovery();
+        if (recoveryPointer !== null) await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
         return {
           outcome: "failed",
           message:
@@ -1177,11 +1463,19 @@ export const useNativeCheckoutFlow = (): ((
           recoveryPointer !== null,
         )
       ) {
-        if (recoveryPointer !== null) await clearNativeCheckoutRecovery();
+        if (recoveryPointer !== null) await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
         return {
           outcome: "failed",
           message: "This sale is no longer available.",
         };
+      }
+      // issue #3281 (bundle 6d) — the SDK set-up and preflight are awaits a
+      // sign-out can land in; never present the old account's payment sheet.
+      if (handoffGeneration() !== generation) {
+        if (recoveryPointer !== null) {
+          await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
+        }
+        return { outcome: "canceled" };
       }
       emitPhase(onPhase, "presenting_sheet");
       let presentResult: Awaited<ReturnType<typeof presentPaymentSheet>>;
@@ -1212,7 +1506,7 @@ export const useNativeCheckoutFlow = (): ((
             : "payment_completed",
         );
         if (reconciled.outcome === "succeeded") {
-          clearHeldHandoff(input.eventId);
+          clearHeldHandoff(input.eventId, generation);
         }
         return reconciled;
       }
@@ -1228,14 +1522,16 @@ export const useNativeCheckoutFlow = (): ((
             "Payment failed.",
         };
       }
-      clearHeldHandoff(input.eventId);
+      clearHeldHandoff(input.eventId, generation);
       return { outcome: "succeeded", orderId: data.checkoutSessionId };
     }
 
     // 2c. META-ORCH-1076 — Paystack (NGN). Open Paystack's hosted checkout in
     // an in-app browser, then poll the server for the finalized order.
     if (data.kind === "requires_paystack_redirect") {
-      if (input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION) {
+      const isV2 =
+        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION;
+      if (isV2) {
         if (!input.accountId || !isNativeCheckoutRecoveryAvailable()) {
           return {
             outcome: "failed",
@@ -1257,6 +1553,11 @@ export const useNativeCheckoutFlow = (): ((
               "Payment could not start safely. Try again after reopening Mingla.",
           };
         }
+        // A sign-out that landed during the write: remove THIS pointer.
+        if (handoffGeneration() !== generation) {
+          await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
+          return { outcome: "canceled" };
+        }
       }
       // Hold the page BEFORE opening it: if the browser cannot present, or the
       // buyer closes it and taps again, the next tap re-opens THIS page instead
@@ -1266,20 +1567,24 @@ export const useNativeCheckoutFlow = (): ((
       // protective comment on followPaystackHandoff. The server still needs it
       // for Paystack's own callback_url and for the buyer-web rail; it is only
       // the NATIVE redirect-interception argument that was fatal.
-      holdHandoff(input.eventId, {
+      const handoff: HeldPaystackHandoff = {
         fingerprint,
         authorizationUrl: data.authorizationUrl,
         checkoutSessionId: data.checkoutSessionId,
         buyerStatusToken: data.buyerStatusToken,
-        cachedAt: Date.now(),
-      });
+        cachedAt: requestedAt,
+        cachedAtMono: requestedAtMono,
+        // issue #3281 (bundle 6d) — the server's own seconds left (6c),
+        // bounded by 14 minutes; missing on older servers.
+        lifetimeMs: handoffLifetimeMs(data.expiresInSeconds),
+      };
+      holdHandoff(input.eventId, handoff);
       return await followPaystackHandoff(
         input.eventId,
-        data.authorizationUrl,
-        data.checkoutSessionId,
-        data.buyerStatusToken,
+        handoff,
+        generation,
         onPhase,
-        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION,
+        isV2,
       );
     }
 
