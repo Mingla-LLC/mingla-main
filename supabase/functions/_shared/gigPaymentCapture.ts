@@ -580,7 +580,12 @@ export async function notifyGigPaymentMismatch(
 
 /** A refund that kept failing and was stopped (#4402 P3). Never throws. */
 export async function notifyGigRefundGaveUp(
-  input: { contractId: string; branch: string; attempts: number; error: string },
+  input: {
+    contractId: string;
+    branch: string;
+    attempts: number;
+    error: string;
+  },
   send: (input: OpsAlertEmailInput) => Promise<OpsAlertEmailResult> =
     sendOpsAlertEmail,
   recipients: () => string[] = gigAlertRecipients,

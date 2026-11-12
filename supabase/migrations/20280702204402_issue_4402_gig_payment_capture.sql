@@ -324,8 +324,8 @@ CREATE TABLE public.gig_payment_checks (
   terms_version integer NOT NULL CHECK (terms_version > 0),
   checks integer NOT NULL DEFAULT 0 CHECK (checks >= 0),
   last_checked_at timestamptz,
-  last_outcome text,
-  last_provider_status text,
+  last_check_outcome text,
+  last_check_provider_status text,
   -- Set once the provider has proven the row unpaid for long enough; a
   -- terminal row is never probed again (a later payment still arrives by
   -- webhook and is late-captured and refunded).
@@ -382,13 +382,13 @@ BEGIN
   IF v_created IS NULL THEN RAISE EXCEPTION 'hold_not_found' USING ERRCODE = 'P0002'; END IF;
   v_terminal := p_outcome = 'not_paid' AND v_created <= now() - coalesce(p_terminal_after, interval '72 hours');
   INSERT INTO public.gig_payment_checks AS g (contract_id, kind, terms_version, checks, last_checked_at,
-    last_outcome, last_provider_status, terminal_at, terminal_proof)
+    last_check_outcome, last_check_provider_status, terminal_at, terminal_proof)
   VALUES (p_contract_id, p_kind, p_terms_version, 1, now(), p_outcome, p_provider_status,
     CASE WHEN v_terminal THEN now() END,
     CASE WHEN v_terminal THEN jsonb_build_object('outcome', p_outcome, 'provider_status', p_provider_status, 'hold_created_at', v_created) END)
   ON CONFLICT (contract_id, kind, terms_version) DO UPDATE SET
-    checks = g.checks + 1, last_checked_at = now(), last_outcome = EXCLUDED.last_outcome,
-    last_provider_status = EXCLUDED.last_provider_status,
+    checks = g.checks + 1, last_checked_at = now(), last_check_outcome = EXCLUDED.last_check_outcome,
+    last_check_provider_status = EXCLUDED.last_check_provider_status,
     terminal_at = coalesce(g.terminal_at, EXCLUDED.terminal_at),
     terminal_proof = coalesce(g.terminal_proof, EXCLUDED.terminal_proof)
   RETURNING * INTO v_row;

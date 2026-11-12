@@ -361,3 +361,52 @@ Deno.test("#4402 mismatch alerts go to the existing Stripe webhook failure list"
     } else Deno.env.set("STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS", previousLegacy);
   }
 });
+
+Deno.test("#4402 F3: a replayed late payment never asks for a second refund", async () => {
+  const replay = store(hold({ status: "captured" }), {
+    replayed: true,
+    lateCapture: false,
+    retired: true,
+  });
+  assertEquals(
+    (await captureGigPaystackCharge(replay, REF, txn())).status,
+    "late_replayed",
+  );
+});
+
+Deno.test("#4402 P3: an abandoned checkout stays open for a day unless the host starts again", async () => {
+  const base = {
+    kind: "gig_hold" as const,
+    contractId: CONTRACT,
+    termsVersion: 1,
+    rail: "paystack" as const,
+    reference: null,
+  };
+  const deps = {
+    store: store(hold()),
+    paystackVerifyOutcome: () =>
+      Promise.resolve({
+        state: "failed" as const,
+        txn: { status: "abandoned" },
+      }),
+    stripeRetrieve: () => Promise.reject(new Error("unused")),
+  };
+  const now = new Date().toISOString();
+  const old = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+  assertEquals(
+    (await probeGigPayment(deps, { ...base, createdAt: now })).status,
+    "pending",
+  );
+  assertEquals(
+    (await probeGigPayment(deps, { ...base, createdAt: old })).status,
+    "not_paid",
+  );
+  assertEquals(
+    (await probeGigPayment(deps, {
+      ...base,
+      createdAt: now,
+      abandonedIsFinal: true,
+    })).status,
+    "not_paid",
+  );
+});

@@ -163,3 +163,13 @@ Deno.test("#4402 a transient ledger error asks Stripe to redeliver", async () =>
   );
   assertEquals((err as Error).name, "StripeWebhookRetryableError");
 });
+
+Deno.test("#4402 P3: a connected account's event is never treated as a gig payment", () => {
+  assertEquals(
+    isGigStripeEvent({
+      ...event("payment_intent.succeeded"),
+      account: "acct_123",
+    }),
+    false,
+  );
+});

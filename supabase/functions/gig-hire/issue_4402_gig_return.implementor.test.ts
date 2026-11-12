@@ -88,6 +88,9 @@ interface World {
   calls: string[];
   inits: Row[];
   prepares: number;
+  retires: Row[];
+  checksRecorded: Row[];
+  candidates?: Row[];
 }
 
 function world(over: Partial<World> = {}): World {
@@ -122,22 +125,32 @@ function world(over: Partial<World> = {}): World {
     calls: [],
     inits: [],
     prepares: 0,
+    retires: [],
+    checksRecorded: [],
     ...over,
   };
 }
 
-function deps(w: World, cron = false): GigHireDeps {
+function deps(w: World, cron = false, now?: () => number): GigHireDeps {
   const rpcs = {
     issue_3872_gig_host_writer: (args: Row) => ({
       data: args.p_actor === HOST,
     }),
     gig_hold_set_provider_ref: () => ({ data: { ok: true } }),
+    gig_offer_retire_unpaid: (args: Row) => {
+      w.retires.push(args);
+      return { data: { ok: true } };
+    },
+    gig_payment_check_record: (args: Row) => {
+      w.checksRecorded.push(args);
+      return { data: { ok: true, terminal: args.p_outcome === "not_paid" } };
+    },
     gig_hold_mark_captured: () => ({
       data: { replayed: false, late_capture: false },
     }),
     gig_payment_reconcile_candidates: () => ({
       data: {
-        candidates: [
+        candidates: w.candidates ?? [
           {
             reason: "pending",
             kind: "gig_hold",
@@ -153,6 +166,7 @@ function deps(w: World, cron = false): GigHireDeps {
   const service = fakeDb(w.tables, rpcs, w.calls);
   return {
     webOrigin: "https://host.usemingla.com",
+    now,
     serviceClient: () => service as never,
     userClient: () => {
       const user = fakeDb(w.tables, {
@@ -339,7 +353,7 @@ Deno.test("#4402 confirm_reference answers pending and not-paid without recordin
   assertEquals((await a.json()).payment_check, "pending");
   const unpaid = world({
     verify: () =>
-      Promise.resolve({ state: "failed", txn: { status: "abandoned" } }),
+      Promise.resolve({ state: "failed", txn: { status: "failed" } }),
   });
   const b = await createGigHireHandler(deps(unpaid))(
     post({ action: "confirm_reference", contract_id: CONTRACT }),
@@ -370,4 +384,125 @@ Deno.test("#4402 reconcile needs the machine credential and records stranded pay
   assertEquals(summary.checked, 1);
   assertEquals(summary.captured, 1);
   assertEquals(w.calls.includes("insert:audit_log:gig.payment_captured"), true);
+});
+
+Deno.test("#4402 F1: a proven-unpaid retry retires the old offer through the service RPC with proof", async () => {
+  const w = world({ verify: () => Promise.resolve({ state: "not_found" }) });
+  const response = await createGigHireHandler(deps(w))(post({
+    action: "start",
+    interest_id: INTEREST,
+    fee_minor: 10000,
+    idempotency_key: "key-retry-0005",
+  }));
+  assertEquals(response.status, 200);
+  assertEquals(w.retires.length, 1);
+  assertEquals(w.retires[0].p_contract_id, CONTRACT);
+  assertEquals((w.retires[0].p_proof as Row).provider_status, "not_found");
+  // The retire happens before the new offer is prepared.
+  assertEquals(
+    w.calls.indexOf("rpc:gig_offer_retire_unpaid") <
+      w.calls.indexOf("rpc:gig_offer_prepare"),
+    true,
+  );
+});
+
+Deno.test("#4402 F1: the database refusing an unproven retire reads as payment_pending", async () => {
+  const w = world({ verify: () => Promise.resolve({ state: "not_found" }) });
+  const d = deps(w);
+  const userClient = d.userClient;
+  d.userClient = (auth) => {
+    const client = userClient(auth) as unknown as {
+      rpc: (n: string, a: Row) => Promise<unknown>;
+    };
+    return {
+      ...client,
+      rpc: (name: string) =>
+        Promise.resolve(
+          name === "gig_offer_prepare"
+            ? {
+              data: {
+                ok: false,
+                error: "payment_unverified",
+                contract_id: CONTRACT,
+              },
+              error: null,
+            }
+            : { data: null, error: null },
+        ),
+    } as never;
+  };
+  const response = await createGigHireHandler(d)(post({
+    action: "start",
+    interest_id: INTEREST,
+    fee_minor: 10000,
+    idempotency_key: "key-retry-0006",
+  }));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), {
+    ok: false,
+    error: "payment_pending",
+    contract_id: CONTRACT,
+  });
+});
+
+Deno.test("#4402 P3: an abandoned checkout is unfinished, not unpaid, until a day passes", async () => {
+  const w = world({
+    verify: () =>
+      Promise.resolve({ state: "failed", txn: { status: "abandoned" } }),
+  });
+  w.tables.gig_holds[0].created_at = new Date().toISOString();
+  const fresh = await createGigHireHandler(deps(w))(
+    post({ action: "confirm_reference", contract_id: CONTRACT }),
+  );
+  assertEquals((await fresh.json()).payment_check, "unfinished");
+  w.tables.gig_holds[0].created_at = new Date(Date.now() - 25 * 3600 * 1000)
+    .toISOString();
+  const old = await createGigHireHandler(deps(w))(
+    post({ action: "confirm_reference", contract_id: CONTRACT }),
+  );
+  assertEquals((await old.json()).payment_check, "not_paid");
+  // A host starting again may replace the open checkout at once.
+  w.tables.gig_holds[0].created_at = new Date().toISOString();
+  const restart = await createGigHireHandler(deps(w))(post({
+    action: "start",
+    interest_id: INTEREST,
+    fee_minor: 10000,
+    idempotency_key: "key-retry-0007",
+  }));
+  assertEquals(restart.status, 200);
+  assertEquals((w.retires[0].p_proof as Row).provider_status, "abandoned");
+});
+
+Deno.test("#4402 F2: reconcile records every check and stops before its time budget", async () => {
+  const many = Array.from({ length: 5 }, (_, i) => ({
+    reason: "pending",
+    kind: "gig_hold",
+    contract_id: CONTRACT,
+    terms_version: 1,
+    rail: "paystack",
+    reference: REF,
+    created_at: new Date(Date.now() - i * 1000).toISOString(),
+  }));
+  const w = world({
+    candidates: many,
+    verify: () => Promise.resolve({ state: "not_found" }),
+  });
+  const answer = await (await createGigHireHandler(deps(w, true))(
+    post({ action: "reconcile" }),
+  )).json();
+  assertEquals(answer.checked, 5);
+  assertEquals(w.checksRecorded.length, 5);
+  assertEquals(w.checksRecorded[0].p_outcome, "not_paid");
+  assertEquals(answer.terminal, 5);
+  // A slow run stops instead of being killed by the 55 s pg_net timeout.
+  let clock = 0;
+  const slow = world({
+    candidates: many,
+    verify: () => Promise.resolve({ state: "not_found" }),
+  });
+  const stopped = await (await createGigHireHandler(
+    deps(slow, true, () => (clock += 15_000)),
+  )(post({ action: "reconcile" }))).json();
+  assertEquals(stopped.stopped_for_time, true);
+  assertEquals(stopped.checked < 5, true);
 });

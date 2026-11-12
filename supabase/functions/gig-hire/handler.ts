@@ -287,7 +287,9 @@ export function createGigHireHandler(
       const startedAt = deps.now?.() ?? Date.now();
       for (const candidate of candidates) {
         // pg_net gives the cron call 55 s; stop well before it.
-        if ((deps.now?.() ?? Date.now()) - startedAt > RECONCILE_TIME_BUDGET_MS) {
+        if (
+          (deps.now?.() ?? Date.now()) - startedAt > RECONCILE_TIME_BUDGET_MS
+        ) {
           summary.stopped_for_time = true;
           break;
         }
@@ -350,7 +352,10 @@ export function createGigHireHandler(
             },
           );
           if (checkError) {
-            console.error("[gig-hire] reconcile check record failed", checkError);
+            console.error(
+              "[gig-hire] reconcile check record failed",
+              checkError,
+            );
           } else if ((check as { terminal?: boolean } | null)?.terminal) {
             summary.terminal += 1;
           }
