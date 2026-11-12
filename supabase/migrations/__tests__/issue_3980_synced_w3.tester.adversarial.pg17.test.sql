@@ -446,8 +446,9 @@ begin
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000003', 'title', 'W3T December Menu', 'event_type', 'promo_moment',
                        'expected_on', v_today + 40), 'w3t-promo-1'));
   v_id := pg_temp.w3t_j(v)->'expected'->>'id';
-  perform pg_temp.w3t_check('T-PROMO', 'saving a promo moment makes its go-live card at once, owned by the host owner',
-    pg_temp.w3t_card('golive:expected:' || v_id), '1/Get W3T December Menu live by ' || to_char(v_today + 12, 'FMDD Mon') || '/12/ada.w3t3980@test.local');
+  -- [TEST-MOD-APPROVED #4398] A3: an automatic card takes its route's owner (this suite's fallback main task).
+  perform pg_temp.w3t_check('T-PROMO', 'saving a promo moment makes its go-live card at once, owned by its route''s owner',
+    pg_temp.w3t_card('golive:expected:' || v_id), '1/Get W3T December Menu live by ' || to_char(v_today + 12, 'FMDD Mon') || '/12/route-owner.r4398@test.local');
   perform pg_temp.w3t_check('T-PROMO', 'it is the host''s next dated thing, flagged as a promo moment, Not live yet',
     (select (r->'next'->>'promo_moment') || '/' || (r->'next'->'state'->>'name')
        from jsonb_array_elements(pg_temp.w3t_j(pg_temp.w3t_person('growth', 'select public.ops_host_next(''{39870000-0000-4000-c100-000000000003}''::uuid[])::text'))->'hosts') r),
@@ -611,9 +612,9 @@ begin
   perform pg_temp.w3t_check('T-X3', 'a merge one second before switch-on makes no card',
     (select count(*) from public.ops_work_cards where auto_key like 'eng\_%:pr-990301%')::text, '0');
   perform pg_temp.w3t_check('T-X3', 'a merge exactly at switch-on does',
-    (select count(*) from public.ops_work_cards where auto_key = 'eng_no_issue:pr-990302' and status <> 'done')::text, '1');
+    (select count(*) from public.ops_work_cards where auto_key = 'eng_release:pr-990302' and status <> 'done')::text, '1'); -- [TEST-MOD-APPROVED #4398] S2: the release card
   perform pg_temp.w3t_check('T-X3', 'a merge one second after does',
-    (select count(*) from public.ops_work_cards where auto_key = 'eng_no_issue:pr-990303' and status <> 'done')::text, '1');
+    (select count(*) from public.ops_work_cards where auto_key = 'eng_release:pr-990303' and status <> 'done')::text, '1'); -- [TEST-MOD-APPROVED #4398] S2
   perform pg_temp.w3t_check('T-X3', 'an issue Done one second before switch-on makes no "Done but not Live" card',
     (select count(*) from public.ops_work_cards where auto_key = 'eng_done_not_live:issue-990311')::text, '0');
   perform pg_temp.w3t_check('T-X3', 'an issue Done exactly at switch-on, and one after, each get one',
@@ -624,7 +625,7 @@ begin
   perform public.ops_engineering_cards_sync();
   perform pg_temp.w3t_check('T-X3', 'a second run adds nothing and never revives the old ones',
     (select count(*) from public.ops_work_cards where auto_key ~ '^eng_.*(990301|990311|1111111)')::text
-      || '/' || (select count(*) from public.ops_work_cards where auto_key in ('eng_no_issue:pr-990302', 'eng_no_issue:pr-990303',
+      || '/' || (select count(*) from public.ops_work_cards where auto_key in ('eng_release:pr-990302', 'eng_release:pr-990303', -- [TEST-MOD-APPROVED #4398] S2
                  'eng_done_not_live:issue-990312', 'eng_done_not_live:issue-990313', 'eng_no_pr_push:2222222'))::text, '0/5');
 end;
 $x3$;
@@ -641,12 +642,18 @@ begin
   select id into v_person from public.ops_work_cards where auto_key = 'ask:39870000-0000-4000-c100-000000000004' and status <> 'done';
   if v_person is null then
     select id into v_person from public.ops_work_cards where status <> 'done' and archived_at is null
-       and not exists (select 1 from public.ops_work_people p where p.card_id = ops_work_cards.id and p.role = 'owner') limit 1;
+       -- [TEST-MOD-APPROVED #4398] no open card is ownerless now: take any open card that is not a main task.
+       and not exists (select 1 from public.ops_work_cards ch where ch.parent_id = ops_work_cards.id) limit 1;
   end if;
   update public.ops_work_cards set status = 'todo', person_reason = 'other' where id = v_person;
+  -- [TEST-MOD-APPROVED #4398] every open card now has an owner; a card from before #4398 with none is
+  -- written straight to the table so the No owner list is still checked.
+  delete from public.ops_work_people where card_id = v_person and role = 'owner';
   select id into v_done from public.ops_work_cards where status = 'done' and archived_at is null limit 1;
   update public.ops_work_cards set due_on = v_today - 9 where id = v_done;
-  select id into v_card from public.ops_work_cards where auto_key like 'series:%' or (status = 'todo' and archived_at is null) order by status = 'todo' desc limit 1;
+  -- [TEST-MOD-APPROVED #4398] never the #4398 fixture's main task, which holds this suite's automatic cards.
+  select id into v_card from public.ops_work_cards where (auto_key like 'series:%' or (status = 'todo' and archived_at is null))
+     and not exists (select 1 from public.ops_work_cards ch where ch.parent_id = ops_work_cards.id) order by status = 'todo' desc limit 1;
   update public.ops_work_cards set due_on = v_today - 3, status = 'todo' where id = v_card and status <> 'done';
   j := pg_temp.w3t_j(pg_temp.w3t_person('growth', format('select public.ops_attention(%L)::text', v_today)));
   foreach g in array array['noowner','overdue','missing','stuck','nonext','engineering'] loop

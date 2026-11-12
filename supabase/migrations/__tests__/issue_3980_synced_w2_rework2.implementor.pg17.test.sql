@@ -41,6 +41,10 @@ $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
 SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
 SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+-- [TEST-MOD-APPROVED #4398] an automatic card takes its main task's owner and
+-- watcher: this suite's main task is the owner's (Oz), watched by the admin (Ivy).
+update public.ops_work_people w set email = case w.role when 'owner' then 'oz.w2rr3980@test.local' else 'ivy.w2rr3980@test.local' end
+ where w.card_id = (select (value->>'fallback')::uuid from public.ops_settings where key = 'auto_card_routes');
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -285,6 +289,7 @@ begin
   v := pg_temp.t3980w2r2_person('owner', format($q$select public.ops_work_close(%L, '[]'::jsonb, null, %s)::text$q$, v_card, pg_temp.t3980w2r2_rev(v_card::text)));
   perform pg_temp.t3980w2r2_like('H2', 'closing needs at least one line of proof', v, 'ERR:22023:proof_required:%');
   v := pg_temp.t3980w2r2_person('owner', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Published the Recently shipped card on the roadmap"}]'::jsonb, 'Checked the wording first.', %s)::text$q$, v_card, pg_temp.t3980w2r2_rev(v_card::text)));
+  v := pg_temp.t3980w2r2_person((select w.who from t3980w2r2_people w where w.email = (public.ops_card_people(v_card::uuid, 'watcher'))[1]), format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card, pg_temp.t3980w2r2_rev(v_card::text))); -- [TEST-MOD-APPROVED #4398] the watcher confirms the close
   perform pg_temp.t3980w2r2_check('H2', 'a person closes it with proof',
     pg_temp.t3980w2r2_get(v, 'card', 'status') || ':' || (select close_kind || ':' || closed_by || ':' || coalesce(closed_via, 'person') || ':' || (proof->0->>'text') from public.ops_work_cards where id = v_card),
     'done:done:oz.w2rr3980@test.local:person:Published the Recently shipped card on the roadmap');

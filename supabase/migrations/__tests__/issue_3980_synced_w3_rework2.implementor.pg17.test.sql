@@ -270,14 +270,20 @@ $n2$;
 
 -- P3-B: a brand the run could not settle backs off.
 do $p3b$
-declare v jsonb; w record;
+declare v jsonb; w record; v_fb jsonb;
 begin
-  delete from public.ops_brand_autolink_waits where brand_id <> '39910000-0000-4000-b100-000000000010';
-  update public.ops_brand_autolink_waits set tries = 1, next_at = now() + interval '1 hour' where brand_id = '39910000-0000-4000-b100-000000000010';
+  -- [TEST-MOD-APPROVED #4398] every automatic card is a subtask now and subtasks may share a title (#4255),
+  -- so the held title no longer leaves the backoff brand unsettled. A missing route does: its pick card is
+  -- put away and the fallback main task is unset, so the next run cannot make the card.
+  update public.ops_work_cards set archived_at = now(), archived_by = 'w3b', archive_reason = 'Test: put away.' where auto_key = 'brand_pick:39910000-0000-4000-b100-000000000010';
+  select value->'fallback' into v_fb from public.ops_settings where key = 'auto_card_routes';
+  update public.ops_settings set value = jsonb_set(value, '{fallback}', 'null'::jsonb) where key = 'auto_card_routes';
+  delete from public.ops_brand_autolink_waits;
+  v := public.ops_brand_autolink();
   select * into w from public.ops_brand_autolink_waits where brand_id = '39910000-0000-4000-b100-000000000010';
   perform pg_temp.w3b_check('P3-B', 'an unsettled brand waits an hour before its next try',
     coalesce(w.tries::text, 'none') || '/' || coalesce(w.last_status, '') || '/' ||
-    ((w.next_at - now()) between interval '59 minutes' and interval '61 minutes')::text, '1/pick:duplicate/true');
+    ((w.next_at - now()) between interval '59 minutes' and interval '61 minutes')::text, '1/pick:refused/true');
   v := public.ops_brand_autolink();
   select * into w from public.ops_brand_autolink_waits where brand_id = '39910000-0000-4000-b100-000000000010';
   perform pg_temp.w3b_check('P3-B', 'a run before then leaves it alone', w.tries::text, '1');
@@ -289,6 +295,7 @@ begin
   perform pg_temp.w3b_check('P3-B', 'no client can read the waits',
     has_table_privilege('authenticated', 'public.ops_brand_autolink_waits', 'SELECT')::text || '/' ||
     has_table_privilege('anon', 'public.ops_brand_autolink_waits', 'SELECT')::text, 'false/false');
+  update public.ops_settings set value = jsonb_set(value, '{fallback}', v_fb) where key = 'auto_card_routes';  -- #4398: the fallback back
 end;
 $p3b$;
 
