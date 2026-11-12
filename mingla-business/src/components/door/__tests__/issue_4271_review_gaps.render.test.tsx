@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4389-TTP-SPLASH-HOME-ONLY | issue #4389 | TapToPayAwarenessModal shows by itself only on Home once brand setup is complete; a host request still opens it anywhere.
 /**
  * #4271 — Tap to Pay on iPhone review gaps, against Apple's Human Interface
  * Guidelines, before the publishing-review videos:

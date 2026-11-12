@@ -1,7 +1,8 @@
+// MINGLA-INVARIANT: I-4389-NATIVE-CONNECT-KILL-SWITCH | issue #4389 | The native secure setup screen opens only when the server switch biz_native_connect_onboarding is on for the platform and the native module is linked; off, missing or a load error falls back to the browser sheet.
 /**
  * #4389 (decision S-11) — native secure setup behind a kill switch.
  *
- * MINGLA-INVARIANT: I-4389-NATIVE-CONNECT-KILL-SWITCH | issue #4389 | The native secure setup opens only when biz_native_connect_onboarding is on for the platform (or the local non-EAS dev override), the native module is linked and no load error has fired; every other branch uses the browser sheet. Host web keeps the web component.
+ * Invariant I-4389-NATIVE-CONNECT-KILL-SWITCH | issue #4389 | The native secure setup opens only when biz_native_connect_onboarding is on for the platform (or the local non-EAS dev override), the native module is linked and no load error has fired; every other branch uses the browser sheet. Host web keeps the web component.
  *
  * FAILS-ON-REVERT: deleting any guard in decideConnectOnboardingSurface fails
  * block 1; deleting the onLoadError → browser sheet hand-off in

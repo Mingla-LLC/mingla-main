@@ -3,7 +3,7 @@
  * partner's secure setup on a phone: the NATIVE in-app screen or today's
  * pop-up browser sheet.
  *
- * MINGLA-INVARIANT: I-4389-NATIVE-CONNECT-KILL-SWITCH | issue #4389 | The native secure setup screen opens only when the server switch biz_native_connect_onboarding is on for the phone's platform (or a local, non-EAS dev override), the native module is linked, and the screen has not reported a load error. Every other case (web, flag off, flag unread, module missing, load error) uses the browser sheet. Enforced by issue_4389_native_connect_onboarding.implementor.test.ts.
+ * Invariant I-4389-NATIVE-CONNECT-KILL-SWITCH | issue #4389 | The native secure setup screen opens only when the server switch biz_native_connect_onboarding is on for the phone's platform (or a local, non-EAS dev override), the native module is linked, and the screen has not reported a load error. Every other case (web, flag off, flag unread, module missing, load error) uses the browser sheet. Enforced by issue_4389_native_connect_onboarding.implementor.test.ts.
  *
  * Pure: no React, no native imports, so every fallback branch is unit-tested.
  */

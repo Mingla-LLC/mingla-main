@@ -18,7 +18,7 @@
  * the panel is a fixed-height, bottom-docked box), so Back / Delete brand and
  * Save sat behind the keyboard.
  *
- * MINGLA-INVARIANT: I-4389-SHEET-BOUNDED-SCROLL-BODY | issue #4389 | Every bottom sheet #4389 added or changed renders its content in SheetScrollLayout (or its own ScrollView body) inside a snap point of "half" or "full", with its buttons in the pinned footer. Enforced by issue_4389_sheets_bounded.implementor.test.tsx.
+ * Invariant I-4389-SHEET-BOUNDED-SCROLL-BODY | issue #4389 | Every bottom sheet #4389 added or changed renders its content in SheetScrollLayout (or its own ScrollView body) inside a snap point of "half" or "full", with its buttons in the pinned footer. Enforced by issue_4389_sheets_bounded.implementor.test.tsx.
  */
 import React from "react";
 import { StyleSheet, View } from "react-native";

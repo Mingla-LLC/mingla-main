@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-881-PARTNER-INTENT | issue #4389 | A partner host on /brand/new sees the partner Step 0 while untouched; once the host typed a brand name or chose Myself, Step 0 never appears late.
 // #881 unresolved partner intent. #4389 moved the old wizard (with Step 0)
 // to PartnerClientBrandCreationFlow; the blocks below still run against it.
 // On /brand/new the same boundaries are now decided BEFORE either flow mounts

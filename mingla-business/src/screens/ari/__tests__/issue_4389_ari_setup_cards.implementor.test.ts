@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4389-ARI-CLIENT-REDACTS-DIGITS | issue #4389 | The Ari composer redacts every run of 8 or more digits, and card-style groups of three or more 4-digit blocks, before a message is sent, so bank, card and ID numbers reach neither Ari nor the server.
 /**
  * #4389 A1–A5 — Ari's setup cards and the client redaction (AR-3).
  */

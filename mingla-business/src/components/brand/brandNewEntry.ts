@@ -6,7 +6,7 @@
  * of PartnerClientBrandCreationFlow). "Myself" hands over to the setup; "A
  * client" stays in the partner client flow (invite step).
  *
- * MINGLA-INVARIANT: I-881-PARTNER-INTENT | issue #881, #4389 | a partner host on /brand/new sees Step 0 while untouched; late partner status reveals it only while nothing is typed and it was not already answered; once shown it is never hidden by a later status read; "Myself" is final for this visit; unknown or failed partner status opens the self setup.
+ * Invariant I-881-PARTNER-INTENT | issue #881, #4389 | a partner host on /brand/new sees Step 0 while untouched; late partner status reveals it only while nothing is typed and it was not already answered; once shown it is never hidden by a later status read; "Myself" is final for this visit; unknown or failed partner status opens the self setup.
  */
 
 export type BrandNewEntry = "self" | "partner-intent" | "client";

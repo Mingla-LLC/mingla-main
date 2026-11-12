@@ -9,7 +9,7 @@
  * strings never name a card reader, a terminal or hardware, and never call
  * the app the business app.
  *
- * MINGLA-INVARIANT: I-4389-DOOR-MODE-APPLE-NAMING | issue #4389 | Door mode copy names Tap to Pay only through tapToPayName(os) and never says reader, terminal, hardware or business; pinned by issue_4389_door_mode.implementor.test.ts.
+ * Invariant I-4389-DOOR-MODE-APPLE-NAMING | issue #4389 | Door mode copy names Tap to Pay only through tapToPayName(os) and never says reader, terminal, hardware or business; pinned by issue_4389_door_mode.implementor.test.ts.
  */
 import { tapToPayName } from "../../constants/tapToPayName";
 import english from "../../i18n/locales/en/doorMode.json";

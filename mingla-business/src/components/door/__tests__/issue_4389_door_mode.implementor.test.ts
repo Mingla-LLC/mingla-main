@@ -1,3 +1,6 @@
+// MINGLA-INVARIANT: I-4389-DOOR-MODE-APPLE-NAMING | issue #4389 | Door mode copy names Tap to Pay only through tapToPayName(os): iPhone screens say "Tap to Pay on iPhone" and Android screens never say iPhone.
+// MINGLA-INVARIANT: I-4389-DOOR-MODE-FULL-SCREEN | issue #4389 | The door sale cart is a full-screen route (app/event/[id]/door/sell), never a sheet over another screen.
+// MINGLA-INVARIANT: I-4389-DOOR-MODE-ONE-ORDER-PER-ATTEMPT | issue #4389 | A door sale attempt carries one clientRequestId, and a second press while that attempt is in flight never creates a second order.
 /**
  * #4389 Door mode — regression tests for the full-screen door sale
  * (/event/[id]/door/sell, design "DM", approved 2026-11-11).

@@ -3,7 +3,7 @@
  *
  *   F1 Name your brand → F2 Where will you collect funds? → F3 Get paid → F4 You're all set
  *
- * MINGLA-INVARIANT: I-4389-NO-MODAL-ON-OVERLAY | issue #4389 | BrandCreationFlow mounts only on the full-screen routes app/brand/new.tsx and app/brand/[id]/setup.tsx; its bank-country step renders PayoutCountryList inline (no Sheet, no RN Modal). The K1 confirmation is the flow's only sheet and opens over this route, never over another sheet.
+ * Invariant I-4389-NO-MODAL-ON-OVERLAY | issue #4389 | BrandCreationFlow mounts only on the full-screen routes app/brand/new.tsx and app/brand/[id]/setup.tsx; its bank-country step renders PayoutCountryList inline (no Sheet, no RN Modal). The K1 confirmation is the flow's only sheet and opens over this route, never over another sheet.
  *
  * - The step is DERIVED from `brand_readiness(brand_setup)` on mount and on
  *   focus, never stored (R-9, R-13). Every Continue writes to the server
@@ -164,7 +164,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const checklistQuery = useBrandSetupChecklist(brandId);
   const checklist = checklistQuery.data ?? null;
 
-  // A new brand becomes the current brand and the saved default (I-0756A),
+  // A new brand becomes the current brand and the saved default (the ORCH-0756 rule),
   // so Home, Ari and the switcher open on it.
   const setCurrentBrand = useCurrentBrandStore((st) => st.setCurrentBrand);
   const updateCreatorAccountMutation = useUpdateCreatorAccount();

@@ -4,7 +4,7 @@
  * replaced with dots before send, so the number reaches neither Ari nor the
  * server.
  *
- * MINGLA-INVARIANT: I-4389-ARI-CLIENT-REDACTS-DIGITS | issue #4389 | the Ari composer redacts every run of 8+ digits (and 4-digit groups of 3+) before a message is sent | issue_4389_ari_setup_cards.implementor.test.ts
+ * Invariant I-4389-ARI-CLIENT-REDACTS-DIGITS | issue #4389 | the Ari composer redacts every run of 8+ digits (and 4-digit groups of 3+) before a message is sent | issue_4389_ari_setup_cards.implementor.test.ts
  */
 const LONG_DIGITS = /\d{8,}/g;
 const GROUPED_DIGITS = /\b\d{4}(?:[ -]\d{4}){2,}\b/g;

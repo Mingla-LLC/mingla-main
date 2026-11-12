@@ -28,7 +28,7 @@
  * own finance-manager flow, and cash refunds need a written reason, so there is
  * no clean one-tap undo. Recent sales (header menu) opens the sale to refund it.
  *
- * MINGLA-INVARIANT: I-4389-DOOR-MODE-FULL-SCREEN | issue #4389 | The door sale cart is a full-screen route (app/event/[id]/door/sell.tsx), never inside a Sheet or Modal; at most one sheet (cash confirm, pay code, menu, add buyer, which event) is open at a time over it; pinned by issue_4389_door_mode.implementor.test.ts.
+ * Invariant I-4389-DOOR-MODE-FULL-SCREEN | issue #4389 | The door sale cart is a full-screen route (app/event/[id]/door/sell.tsx), never inside a Sheet or Modal; at most one sheet (cash confirm, pay code, menu, add buyer, which event) is open at a time over it; pinned by issue_4389_door_mode.implementor.test.ts.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";

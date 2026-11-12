@@ -1,6 +1,7 @@
+// MINGLA-INVARIANT: I-4389-NO-MODAL-ON-OVERLAY | issue #4389 | BrandCreationFlow mounts only on its full-screen routes (app/brand/new and the brand setup route), never embedded in the brand switcher or any other sheet or overlay.
 /**
  * #4389 — structure of the brand setup flow.
- * MINGLA-INVARIANT: I-4389-NO-MODAL-ON-OVERLAY | issue #4389 | BrandCreationFlow is reached only through LazyBrandCreationFlow from app/brand/new.tsx and app/brand/[id]/setup.tsx; the brand switcher never embeds it; the bank-country step renders no Sheet or RN Modal.
+ * Invariant I-4389-NO-MODAL-ON-OVERLAY | issue #4389 | BrandCreationFlow is reached only through LazyBrandCreationFlow from app/brand/new.tsx and app/brand/[id]/setup.tsx; the brand switcher never embeds it; the bank-country step renders no Sheet or RN Modal.
  * FAILS-ON-REVERT: re-mounting LazyBrandCreationFlow in BrandSwitcherSheet
  * fails test 1; rendering PayoutCountryList inside a Sheet/Modal fails test 2.
  */

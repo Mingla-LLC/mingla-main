@@ -65,7 +65,7 @@ export function openTapToPayAwareness(brandId: string): boolean {
  * checkout or Ari's first-run lock (no Home tab then). A host's own request
  * (Home "Get started", F4 "Set up Tap to Pay on iPhone") opens it anywhere.
  *
- * MINGLA-INVARIANT: I-4389-TTP-SPLASH-HOME-ONLY | issue #4389 | TapToPayAwarenessModal auto-shows only when the focused route is the Home tab and brand_setup is complete; openTapToPayAwareness works anywhere; the seen flag is written only after the splash was shown. Enforced by issue_4389_ttp_splash_home_only.implementor.test.tsx.
+ * Invariant I-4389-TTP-SPLASH-HOME-ONLY | issue #4389 | TapToPayAwarenessModal auto-shows only when the focused route is the Home tab and brand_setup is complete; openTapToPayAwareness works anywhere; the seen flag is written only after the splash was shown. Enforced by issue_4389_ttp_splash_home_only.implementor.test.tsx.
  */
 export function tapAwarenessAutoShowAllowed(input: {
   pathname: string | null;

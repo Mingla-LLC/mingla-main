@@ -14,7 +14,7 @@
  *   a changed basket or a completed sale gets a new one. A second press while a
  *   sale is in flight is dropped.
  *
- * MINGLA-INVARIANT: I-4389-DOOR-MODE-ONE-ORDER-PER-ATTEMPT | issue #4389 | A door sale attempt carries one clientRequestId and a press while one is in flight is dropped (DoorAttemptGate); pinned by issue_4389_door_mode.implementor.test.ts.
+ * Invariant I-4389-DOOR-MODE-ONE-ORDER-PER-ATTEMPT | issue #4389 | A door sale attempt carries one clientRequestId and a press while one is in flight is dropped (DoorAttemptGate); pinned by issue_4389_door_mode.implementor.test.ts.
  */
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";

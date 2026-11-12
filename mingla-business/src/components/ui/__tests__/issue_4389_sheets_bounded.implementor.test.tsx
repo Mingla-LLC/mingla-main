@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4389-SHEET-BOUNDED-SCROLL-BODY | issue #4389 | Every bottom sheet #4389 added or changed renders its content in SheetScrollLayout: a bounded scroll body with its buttons pinned, so no button is ever pushed off screen.
 /**
  * #4389 (Seth: "make sure sheets are not being pushed out of the screen").
  *
