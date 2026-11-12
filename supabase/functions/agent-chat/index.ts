@@ -199,6 +199,7 @@ import {
   assertOwnerCopy,
   OWNER_PROSE_FALLBACK,
   reconciledApprovalLine,
+  speakToHost,
 } from "../_shared/ariOwnerCopy.ts";
 import {
   sweepIdleAriFlowRunsForUser,
@@ -282,7 +283,10 @@ import {
   latestAriWriteReceiptAt,
   resolveAriScreenContext,
 } from "../_shared/ariTurnContext.ts";
-import { readAriUnderstandFirst } from "../_shared/ariRollout.ts";
+import {
+  pendingActionBrandId,
+  readAriUnderstandFirst,
+} from "../_shared/ariRollout.ts";
 import {
   announcesWriteWithoutCall,
   claimEvidenceFromHistory,
@@ -299,6 +303,7 @@ import {
   buildClaimEvidence,
   checkReplyClaims,
   claimKindOfTool,
+  completionClaimWithoutProposal,
   conversationSince,
   dedupeReplySentences,
   previousTurnText,
@@ -2272,6 +2277,9 @@ async function handle(req: Request): Promise<Response> {
       }
       return await commitPendingTurn({
         understandFirst,
+        // #3355 final fix (C-2): the card keeps its brand for the
+        // post-approval switch read (tools without a brand_id).
+        brandId: activeBrand?.id ?? null,
         client: serviceClient,
         pendingClient: serviceClient,
         userId,
@@ -2520,6 +2528,11 @@ async function handle(req: Request): Promise<Response> {
     let modelFlowDecision: FlowTurnDecision | null = null;
     let setupTextBounced = false;
     let announcedWriteBounced = false;
+    // #3355 final fix (C-1): one bounce for "done" with no write or card.
+    let completionClaimBounced = false;
+    let completionClaimIssue: ReturnType<
+      typeof completionClaimWithoutProposal
+    > = null;
     let modelFlowDelegated = false;
     const resolveModelFlowStart = async (
       call: { args: Record<string, unknown> },
@@ -2661,6 +2674,9 @@ async function handle(req: Request): Promise<Response> {
         const commitAskTeamCard = async (): Promise<Response> => {
           return await commitPendingTurn({
             understandFirst,
+            // #3355 final fix (C-2): the card keeps its brand for the
+            // post-approval switch read (tools without a brand_id).
+            brandId: activeBrand?.id ?? null,
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -3234,6 +3250,9 @@ async function handle(req: Request): Promise<Response> {
           }
           return await commitPendingTurn({
             understandFirst,
+            // #3355 final fix (C-2): the card keeps its brand for the
+            // post-approval switch read (tools without a brand_id).
+            brandId: activeBrand?.id ?? null,
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -3339,6 +3358,9 @@ async function handle(req: Request): Promise<Response> {
           }
           return await commitPendingTurn({
             understandFirst,
+            // #3355 final fix (C-2): the card keeps its brand for the
+            // post-approval switch read (tools without a brand_id).
+            brandId: activeBrand?.id ?? null,
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -3543,6 +3565,9 @@ async function handle(req: Request): Promise<Response> {
         );
         return await commitPendingTurn({
           understandFirst,
+          // #3355 final fix (C-2): the card keeps its brand for the
+          // post-approval switch read (tools without a brand_id).
+          brandId: activeBrand?.id ?? null,
           client: serviceClient,
           pendingClient: serviceClient,
           userId,
@@ -4139,7 +4164,7 @@ ${boundedAgentContext}
             };
           }
         },
-        validateFinalText: (text) =>
+        validateFinalText: (text, loopObservations) =>
           // #3355 Wave F: at most once per turn, so a second plain answer
           // stands instead of stopping the turn.
           (!modelFlowDelegated && !setupTextBounced &&
@@ -4163,6 +4188,19 @@ ${boundedAgentContext}
               message:
                 "Your reply says you are about to propose or create something, but you made no tool call. Make that proposal now as a tool call (one card; the next one after it is confirmed), or ask the one question you need.",
             }
+            : understandFirst && !completionClaimBounced &&
+                (completionClaimIssue = completionClaimWithoutProposal({
+                  text,
+                  hostMessage: semanticMessage,
+                  intentRead: intentResult.source === "model",
+                  askedWriteThisTurn: (intentResult.read.intent === "tool" ||
+                    intentResult.read.intent === "flow") &&
+                    !(intentResult.read.target &&
+                      isReadOnlyAgentToolCall(intentResult.read.target, {})),
+                  observations: loopObservations,
+                  isReadTool: isReadOnlyAgentToolCall,
+                })) && (completionClaimBounced = true)
+            ? completionClaimIssue
             : ticketTierTextBypassesApproval(semanticMessage, text)
             ? {
               code: "WRITE_PROPOSAL_REQUIRED",
@@ -4499,6 +4537,9 @@ ${boundedAgentContext}
           proposalStage = "commit_pending";
           return await commitPendingTurn({
             understandFirst,
+            // #3355 final fix (C-2): the card keeps its brand for the
+            // post-approval switch read (tools without a brand_id).
+            brandId: activeBrand?.id ?? null,
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -5512,6 +5553,9 @@ ${boundedAgentContext}
 
       return await commitPendingTurn({
         understandFirst,
+        // #3355 final fix (C-2): the card keeps its brand for the
+        // post-approval switch read (tools without a brand_id).
+        brandId: activeBrand?.id ?? null,
         client: serviceClient,
         pendingClient: serviceClient,
         userId,
@@ -5868,7 +5912,8 @@ async function guardReplyClaims(args: {
       status_read: check.statusRead ?? "none",
     }),
   );
-  return check.text;
+  // #3355 final fix (P3): to the host as "you", and no invented steps.
+  return speakToHost(check.text);
 }
 
 /**
@@ -5986,6 +6031,12 @@ async function commitPendingTurn(args: {
    * brand time zone, currency or discount titles added). Unset: on.
    */
   understandFirst?: boolean;
+  /**
+   * #3355 final fix (C-2): the turn's active brand, stored on the card
+   * (`related_brand_id`) so agent-confirm-action reads the rollout switch
+   * for it after approval, also for tools whose args carry no brand_id.
+   */
+  brandId?: string | null;
 }): Promise<Response> {
   const pendingActionId = crypto.randomUUID();
   const assistantMessageId = crypto.randomUUID();
@@ -6014,6 +6065,9 @@ async function commitPendingTurn(args: {
     tool_args: args.toolArgs,
     status: "pending",
     server_proposed_at: new Date().toISOString(),
+    ...(pendingActionBrandId(args.brandId)
+      ? { related_brand_id: pendingActionBrandId(args.brandId) }
+      : {}),
   });
   if (pendingError) {
     return errorResponse(

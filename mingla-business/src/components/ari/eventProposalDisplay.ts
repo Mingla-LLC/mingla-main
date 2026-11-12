@@ -170,7 +170,12 @@ export function discountProposalFields(
     out.push({ label: "Discount", value: args.name });
   }
   if (typeof args.kind === "string") {
-    out.push({ label: "Type", value: args.kind.replace(/_/g, " ") });
+    // #3355 final fix (P3): sentence case, like every other value ("Code").
+    const kind = args.kind.replace(/_/g, " ").trim();
+    out.push({
+      label: "Type",
+      value: kind.charAt(0).toUpperCase() + kind.slice(1),
+    });
   }
   if (typeof args.code === "string") {
     out.push({ label: "Code", value: args.code });

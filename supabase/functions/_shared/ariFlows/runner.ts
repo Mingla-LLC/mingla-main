@@ -249,6 +249,13 @@ export function textChoiceFor(
   }
 }
 
+/** The open step, said in a sentence that fits its title. */
+export function stepLine(title: string): string {
+  const clean = title.trim().replace(/[\s:;,.]+$/, "");
+  if (/\?$/.test(clean)) return `Here's the question again: ${clean}`;
+  return `We're on ${clean}:`;
+}
+
 /**
  * #3355 — typed words that are not an answer to the open card: say plainly
  * what Ari is waiting for; the same card comes back under the words.
@@ -262,7 +269,9 @@ export function waitingText(
     : intent === "done"
     ? "There's nothing for me to check on this step — it's answered right here in the chat."
     : "I didn't catch that as an answer to this step, so nothing was changed.";
-  return `${lead} We're on ${artefact.title}:\n\n${artefact.text}`;
+  // #3355 final fix (P3): a step title that is a question ("Where is it?")
+  // is asked again, never pasted into a sentence ("We're on Where is it?:").
+  return `${lead} ${stepLine(artefact.title)}\n\n${artefact.text}`;
 }
 
 /** #3355 — a protected change is waiting on its confirmation card. */

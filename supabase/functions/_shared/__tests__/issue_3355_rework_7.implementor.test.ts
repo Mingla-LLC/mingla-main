@@ -35,10 +35,7 @@ import {
   type StatusClient,
   titleCandidates,
 } from "../ariStatusRead.ts";
-import {
-  TRUE_STATE_NOTHING_SAVED,
-  type WriteState,
-} from "../ariTruthGuards.ts";
+import { type WriteState } from "../ariTruthGuards.ts";
 import {
   type AriGapSignal,
   decideAriEscalation,
@@ -517,9 +514,10 @@ Deno.test("R7-3: a valid intent read that says no write is not overridden by the
   // ("Can you make…"), the reply says "Done!" and nothing was written or
   // proposed this turn — corrected, whatever the intent read said (it used
   // to keep the reply on FAVY10's older card).
+  // Final fix (C-1): the true state names what was not done and offers it.
   assertEquals(
     await run({ ...base, asked: false, intentRead: true }),
-    TRUE_STATE_NOTHING_SAVED,
+    "I haven't created it yet — want me to prepare it for you to approve?",
   );
   // The read failed: the grammar rule says write, and no record backs it.
   assert(

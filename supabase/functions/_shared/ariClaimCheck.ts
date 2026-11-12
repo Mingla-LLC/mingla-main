@@ -1132,13 +1132,13 @@ const WRITE_VERB =
 const WRITE_ACTION = new RegExp(
   [
     // A message or clause that starts with the verb (after fillers).
-    `(?:^|[.!?;:]\\s+)(?:(?:please|pls|ok(?:ay)?|so|and|now|also|hey|ari|then|yes|great|perfect|cool|thanks)\\b[\\s,!]*)*${WRITE_VERB}\\b`,
+    `(?:^|[.!?;:]\\s+)(?:(?:please|pls|plz|kindly|abeg|biko|oya|ok(?:ay)?|so|and|now|also|hey|ari|then|yes|great|perfect|cool|thanks)\\b[\\s,!]*)*${WRITE_VERB}\\b`,
     // "to make …" (never "to make sure").
     `\\bto\\s+(?:please\\s+)?(?:also\\s+|just\\s+)?${WRITE_VERB}\\b(?!\\s+sure\\b)`,
     // A modal addressed to Ari: "can you send …", "would you create …".
     `\\b(?:can|could|would|will|should|won['’]?t|wouldn['’]?t)\\s+(?:you|ari|u)\\s+(?:please\\s+)?(?:also\\s+|just\\s+|quickly\\s+)?${WRITE_VERB}\\b`,
     // "please send …", "do you mind creating …", "help me make …".
-    `\\b(?:please|mind|help\\s+me|let['’]?s|go\\s+ahead\\s+and)\\s+(?:also\\s+|just\\s+)?${WRITE_VERB}\\b`,
+    `\\b(?:please|kindly|abeg|biko|mind|help\\s+me|let['’]?s|go\\s+ahead\\s+and)\\s+(?:also\\s+|just\\s+)?${WRITE_VERB}\\b`,
   ].join("|"),
   "i",
 );
@@ -1206,10 +1206,53 @@ const DONE_OPENER =
 const PRONOUN_LIVE =
   /(?:^|[.!?]\s+|\n\s*)(?:(?:yes|great|perfect|ok(?:ay)?)[,!.]?\s+)?(?:it|it['’]s|it\s+is|that['’]s|they['’]re|they\s+are)\s+(?:now\s+|all\s+|already\s+|been\s+)*(?:live|published|created|sent|active|ready|up)\b/i;
 
+/**
+ * #3355 final fix (C-1): a one-word completion opener ("Created!",
+ * "Published!", "Updated!"), a "now" completion ("is now saved", "is live
+ * now", "now updated") and a described subject's done state ("Your rooftop
+ * party is live!", "Your student discount is live").
+ */
+const BANG_DONE =
+  /(?:^|[.!?]\s+|\n\s*)(?:created|published|updated|saved|sent|added|changed|scheduled|launched|activated|reactivated|posted|shared|booked|cancell?ed|deleted|removed|edited|moved|renamed|set\s+up)\s*!/i;
+const NOW_DONE =
+  /\b(?:is|are|['’]s|['’]re|has|have)\s+(?:now\s+|also\s+|all\s+)*(?:saved|updated|changed|edited|published|live|created|sent|scheduled|active|activated|set\s+up|in\s+place|added|moved|renamed)\s+now\b|\b(?:is|are|['’]s|['’]re)\s+(?:also\s+|all\s+)*now\s+(?:saved|updated|changed|edited|published|live|created|sent|scheduled|active|activated|set\s+up|in\s+place|added|moved|renamed|on\s+sale)\b|\bnow\s+(?:saved|updated|published)\b/i;
+const PRONOUN_DONE =
+  /(?:^|[.!?]\s+|\n\s*)(?:(?:yes|great|perfect|ok(?:ay)?)[,!.]?\s+)?(?:it|it['’]s|it\s+is|that['’]s|that\s+is|this\s+is|they['’]re|they\s+are)\s+(?:now\s+|all\s+|already\s+|been\s+)*(?:saved|updated|changed|edited|scheduled|set\s+up|in\s+place|added|moved|renamed)\b/i;
+const DESCRIBED_DONE =
+  /(?:^|[.!?,]\s+|\n\s*)your\s+(?:[\p{L}\p{N}%'’-]+\s+){0,4}?(?:is|are|['’]s)\s+(?:now\s+|all\s+|officially\s+)*(?:live|published|saved|updated|created|sent|scheduled|active|set\s+up)\b/iu;
+
 export function replyClaimsCompletion(text: string): boolean {
   const plain = text.replace(/[*_`]/g, "");
   return DONE_OPENER.test(plain) || FIRST_PERSON_PAST.test(plain) ||
-    PASSIVE_DONE.test(plain) || ML_DONE.test(plain) || PRONOUN_LIVE.test(plain);
+    PASSIVE_DONE.test(plain) || ML_DONE.test(plain) ||
+    PRONOUN_LIVE.test(plain) || BANG_DONE.test(plain) ||
+    NOW_DONE.test(plain) || DESCRIBED_DONE.test(plain) ||
+    PRONOUN_DONE.test(plain);
+}
+
+/**
+ * #3355 final fix (C-1): a question that asks how, what, where or why, or
+ * asks Ari to tell or show something, is a read or a how-to — never a write
+ * request, whatever verb follows ("How do I make a code?", "Tell me how to
+ * publish").
+ */
+const NOT_A_WRITE_ASK =
+  /^\s*(?:(?:hey|hi|ok(?:ay)?|so|and|ari|thanks)[,!.\s]+)*(?:how|what|where|when|which|who|why(?!\s+(?:don['’]?t|not)\b))\b|^\s*(?:(?:please|pls|kindly|can\s+you|could\s+you)\s+)?(?:tell|show)\s+me\b/i;
+
+/**
+ * #3355 final fix (C-1, Seth's tie-break, binding): this turn's host
+ * message is a write request — a write verb in an action position (any
+ * intent read), or a valid intent read that names a write for a message
+ * that does not ask about an existing object. Never after an approval, and
+ * never for a how / what / where question or "tell me / show me".
+ */
+export function writeRequestThisTurn(context: ClaimContext): boolean {
+  if (context.approved) return false;
+  const host = (context.hostMessage ?? "").trim();
+  if (!host || NOT_A_WRITE_ASK.test(host)) return false;
+  if (hostAsksForWrite(host)) return true;
+  return context.intentRead === true && context.askedWriteThisTurn === true &&
+    !asksAboutExisting(host);
 }
 
 /**
@@ -1226,8 +1269,7 @@ export function completionWithoutWrite(
   context: ClaimContext,
   evidence: readonly ClaimEvidence[],
 ): boolean {
-  if (context.approved) return false;
-  if (!hostAsksForWrite(context.hostMessage ?? "")) return false;
+  if (!writeRequestThisTurn(context)) return false;
   if (!replyClaimsCompletion(context.replyText ?? "")) return false;
   return !evidence.some((item) => item.thisTurn && item.status !== "read");
 }
@@ -2366,7 +2408,7 @@ export function judgeClaim(
       backed: false,
       found: null,
       object: null,
-      say: TRUE_STATE_NOTHING_SAVED,
+      say: writeRequestTrueState(context.hostMessage ?? ""),
       dropsFollowing: true,
     };
   }
@@ -3343,6 +3385,211 @@ export function fallbackStripClaims(args: {
   };
 }
 
+// ── #3355 final fix (C-1): Seth's tie-break, deterministic ─────────────────
+
+/**
+ * What Ari says instead of a completion claim on a write request with no
+ * write and no card this turn: the true state, and the offer to prepare it.
+ */
+export function writeRequestTrueState(hostMessage: string): string {
+  const host = hostMessage.toLowerCase();
+  if (
+    /\b(?:un-?publish|take\s+(?:it\s+)?down|cancel|delete|remove|end|pause)\w*\b/
+      .test(host)
+  ) {
+    return "I haven't changed it yet — want me to prepare that for you to approve?";
+  }
+  if (/\b(?:publish\w*|go\s+live|live|launch\w*)\b/.test(host)) {
+    return "I haven't published it yet — want me to prepare it for you to approve?";
+  }
+  if (
+    /\b(?:send\w*|message|messaging|email\w*|text|texting|notify\w*|tell|invite\w*|blast|post\w*|share\w*|remind\w*)\b/
+      .test(host)
+  ) {
+    return "I haven't sent anything yet — want me to prepare it for you to approve?";
+  }
+  if (
+    /\b(?:change\w*|updat\w*|edit\w*|move|moving|renam\w*|fix|switch\w*|turn\w*|extend\w*|raise|resume|reactivate|activate|enable|disable)\b/
+      .test(host)
+  ) {
+    return "I haven't changed it yet — want me to prepare the update?";
+  }
+  if (
+    /\b(?:make|making|creat\w*|set\s*up|setting\s+up|add\w*|start\w*|open\w*|book\w*|schedul\w*|log|save|saving|remember)\b/
+      .test(host)
+  ) {
+    return "I haven't created it yet — want me to prepare it for you to approve?";
+  }
+  return "I haven't changed anything yet — want me to prepare the update?";
+}
+
+/** One sentence says the work is done (any tense, voice or opener). */
+function sentenceClaimsCompletion(sentence: string): boolean {
+  const plain = sentence.replace(/[*_`]/g, "").trim();
+  if (!plain || /\?\s*$/.test(plain)) return false;
+  // "Nothing has been saved", "It isn't live yet", "not published".
+  if (/\b(?:nothing|not|never|no\s+longer)\b|n['’]t\b/i.test(plain)) {
+    return false;
+  }
+  return replyClaimsCompletion(plain);
+}
+
+/** A leading "Done!", "All set,", "Published!" opener, without its sentence. */
+const LEADING_OPENER =
+  /^\s*(?:[*_`]*)(?:(?:[\p{L}]+,\s*)?(?:done|all\s+done|all\s+set|you['’]?re\s+all\s+set|sorted|it['’]?s\s+done|that['’]?s\s+done)|created|published|updated|saved|sent|added|changed|scheduled|launched|activated|posted|shared)\s*[!,.:-]*\s*[✅✔🎉👍]*\s*(?:[*_`]*)\s*/iu;
+
+/**
+ * #3355 final fix (C-1, I-ARI-WRITE-REQUEST-DONE-NEEDS-WRITE): the last
+ * word on every checked reply, whatever the judge did (listed the claim,
+ * listed nothing, timed out or failed). When the host's message is a write
+ * request (writeRequestThisTurn) and nothing was written or proposed in this
+ * turn, every sentence that says the work is done is replaced, once, by the
+ * true state ("I haven't changed it yet — want me to prepare the update?"),
+ * and the rest of its line (what the done claim implied: "Guests can now
+ * buy tickets") goes with it. A sentence about ANOTHER object a record of
+ * this chat names (the host did not name it: "FAVY10 is live" on a request
+ * for a new student code) stays for the ordinary rules, without its "Done!"
+ * opener. Questions and offers are never touched.
+ */
+export function correctCompletionWithoutWrite(args: {
+  text: string;
+  context: ClaimContext;
+  evidence: readonly ClaimEvidence[];
+}): { text: string; corrected: string[] } {
+  const unchanged = { text: args.text, corrected: [] as string[] };
+  if (!writeRequestThisTurn(args.context)) return unchanged;
+  if (args.evidence.some((item) => item.thisTurn && item.status !== "read")) {
+    return unchanged;
+  }
+  if (!replyClaimsCompletion(args.text)) return unchanged;
+  const host = (args.context.hostMessage ?? "").toLowerCase();
+  const mentions = (plain: string, name: string) =>
+    new RegExp(
+      `(?:^|[^\\p{L}\\p{N}])${escapeRegExp(name)}(?![\\p{L}\\p{N}])`,
+      "iu",
+    ).test(plain);
+  const otherNames = [
+    ...new Set([
+      ...args.evidence.flatMap((item) => item.objects),
+      ...(args.context.chatObjects ?? []),
+    ].map((name) => name.trim())),
+  ].filter((name) =>
+    name.length >= 3 && name.length <= 60 && !DESCRIBED_OBJECT.test(name) &&
+    !BARE_PRONOUN.test(name) && !mentions(host, name)
+  );
+  // The host's request names an object a card, receipt or live read of
+  // this chat records ("Create FAVY10" when FAVY10 was already created or
+  // waits on its card): that record is the truth about it, and the ordinary
+  // rules (card state, read state) say it.
+  const hostRecorded = args.evidence.some((item) =>
+    ((item.status === "done" || item.status === "pending") &&
+        !item.statusRow) || item.readState?.live === true
+      ? item.objects.some((name) =>
+        name.trim().length >= 3 && !DESCRIBED_OBJECT.test(name.trim()) &&
+        !BARE_PRONOUN.test(name.trim()) && mentions(host, name.trim())
+      )
+      : false
+  );
+  if (hostRecorded) return unchanged;
+  const namesOther = (plain: string) =>
+    otherNames.some((name) => mentions(plain, name));
+  const say = writeRequestTrueState(args.context.hostMessage ?? "");
+  const corrected: string[] = [];
+  let said = false;
+  const lines: string[] = [];
+  for (const line of args.text.split("\n")) {
+    if (!line.trim()) {
+      lines.push(line);
+      continue;
+    }
+    const parts: string[] = [];
+    let dropRest = false;
+    const sentences = lineSentences(line);
+    for (const [index, sentence] of sentences.entries()) {
+      const plain = sentence.replace(/[*_`]/g, "").trim();
+      const question = /\?\s*$/.test(plain);
+      const other = namesOther(plain);
+      // A bare "Done!" / "Published!" before a sentence about another
+      // recorded object goes alone (that sentence is the ordinary rules').
+      const next = sentences[index + 1];
+      if (
+        next && namesOther(next.replace(/[*_`]/g, "")) &&
+        sentence.replace(LEADING_OPENER, "").trim() === ""
+      ) {
+        corrected.push(sentence.trim());
+        continue;
+      }
+      if (sentenceClaimsCompletion(sentence)) {
+        if (other) {
+          const rest = sentence.replace(LEADING_OPENER, "");
+          if (rest !== sentence) corrected.push(sentence.trim());
+          if (rest.trim()) parts.push(rest.trim());
+          continue;
+        }
+        corrected.push(sentence.trim());
+        if (!said) parts.push(say);
+        said = true;
+        dropRest = true;
+        continue;
+      }
+      if (dropRest && !question && !other) {
+        corrected.push(sentence.trim());
+        continue;
+      }
+      // A later line's present-state claim ("Guests can now buy tickets")
+      // goes once the completion was corrected.
+      if (
+        said && !question && !other &&
+        (STATE_ASSERTION.test(plain) || /\bcan\s+now\b/i.test(plain))
+      ) {
+        corrected.push(sentence.trim());
+        continue;
+      }
+      parts.push(sentence);
+    }
+    if (parts.length > 0) lines.push(parts.join(" "));
+  }
+  if (corrected.length === 0) return unchanged;
+  return {
+    text: dedupeReplySentences(lines.join("\n")) || say,
+    corrected,
+  };
+}
+
+/**
+ * #3355 final fix (C-1): the agent loop's final-text check. A write request
+ * answered "it's done" with no write or proposal in this turn goes back to
+ * the model once, so it makes the proposal (the card the host approves)
+ * instead; the claim check still corrects whatever comes back.
+ */
+export function completionClaimWithoutProposal(args: {
+  text: string;
+  hostMessage: string;
+  intentRead?: boolean;
+  askedWriteThisTurn?: boolean;
+  observations: readonly ClaimObservation[];
+  isReadTool: (tool: string, toolArgs: Record<string, unknown>) => boolean;
+}): { code: "WRITE_PROPOSAL_REQUIRED"; message: string } | null {
+  if (
+    !writeRequestThisTurn({
+      hostMessage: args.hostMessage,
+      askedWriteThisTurn: args.askedWriteThisTurn ?? false,
+      ...(args.intentRead !== undefined ? { intentRead: args.intentRead } : {}),
+    })
+  ) return null;
+  if (!replyClaimsCompletion(args.text)) return null;
+  const wrote = args.observations.some((item) =>
+    !item.error && item.tool !== "request_tools" && item.tool !== "reasoning" &&
+    !args.isReadTool(item.tool, item.args)
+  );
+  if (wrote) return null;
+  return {
+    code: "WRITE_PROPOSAL_REQUIRED",
+    message:
+      "Your reply says the change is done, but nothing was saved or proposed in this turn. Never say it is done. Make the change now as a tool call (one card the owner approves), or, if you cannot, say plainly that it has not been changed yet and ask the one question you need.",
+  };
+}
+
 // ── R6-19: one moment, two clock times ──────────────────────────────────────
 
 const CLOCK_PAIR =
@@ -3983,13 +4230,23 @@ export async function checkReplyClaims(args: {
       previousTurn: args.previousTurn,
       pronounKind,
     });
+    // #3355 final fix (C-1): Seth's tie-break never waits on the judge.
+    const tieBreak = correctCompletionWithoutWrite({
+      text: stripped.text,
+      context,
+      evidence: [
+        ...args.evidence,
+        ...(read?.records ?? []),
+        ...(status?.records ?? []),
+      ],
+    });
     return {
-      text: fixClockPairs(stripped.text, hasCard),
+      text: fixClockPairs(tieBreak.text, hasCard),
       source: "fallback",
       reason,
       claims: [],
       replaced: [],
-      removed: stripped.removed,
+      removed: [...stripped.removed, ...tieBreak.corrected],
       elapsedMs: elapsed(),
       modelCalls,
       freshRead: freshLabel(read),
@@ -4139,13 +4396,19 @@ export async function checkReplyClaims(args: {
       ...result.replaced.map((item) => item.with),
     ],
   });
+  // #3355 final fix (C-1): the tie-break holds whatever the judge listed.
+  const tieBreak = correctCompletionWithoutWrite({
+    text: strip.text,
+    context,
+    evidence,
+  });
   return {
-    text: fixClockPairs(strip.text, hasCard),
+    text: fixClockPairs(tieBreak.text, hasCard),
     source: "model",
     reason: "ok",
     claims,
     replaced: result.replaced,
-    removed: strip.removed,
+    removed: [...strip.removed, ...tieBreak.corrected],
     elapsedMs: elapsed(),
     modelCalls: 1,
     freshRead: freshLabel(read),

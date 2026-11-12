@@ -96,7 +96,8 @@ export function stripPromptEcho(text: string): string {
       lines.push("");
       continue;
     }
-    const kept = line.split(/(?<=[.!?])\s+/).filter((sentence) => {
+    if (INVENTED_CODE_STEP.test(line.replace(/[*_`]/g, ""))) continue;
+    const kept = line.split(/(?<=[.!?])\s+(?=[A-Z])/).filter((sentence) => {
       const plain = sentence.replace(/[*_`]/g, "").replace(/^\s*[-•]\s*/, "")
         .trim();
       if (!plain) return false;
@@ -340,3 +341,46 @@ export const OWNER_PROSE_FALLBACK =
 /** Post-approval budget stop. Never claims anything was saved for later. */
 export const ARI_STOPPED_HERE_LINE =
   "I stopped here. Say 'continue' when you're ready.";
+
+/**
+ * #3355 final fix (P3): Ari speaks to the host, never about them ("The host
+ * still needs to share this code" → "You still need to share this code"),
+ * and never adds a step the product does not have: a discount code is live
+ * once it is saved, so "Publish the code" is dropped.
+ */
+const HOST_THIRD_PERSON: ReadonlyArray<[RegExp, string]> = [
+  [/\bThe host still needs to\b/g, "You still need to"],
+  [/\bthe host still needs to\b/g, "you still need to"],
+  [/\bThe host needs to\b/g, "You need to"],
+  [/\bthe host needs to\b/g, "you need to"],
+  [/\bThe host has\b/g, "You have"],
+  [/\bthe host has\b/g, "you have"],
+  [/\bThe host is\b/g, "You are"],
+  [/\bthe host is\b/g, "you are"],
+  [/\bThe host(?:'|’)s\b/g, "Your"],
+  [/\bthe host(?:'|’)s\b/g, "your"],
+  [/\bThe host (can|should|will|must|may)\b/g, "You $1"],
+  [/\bthe host (can|should|will|must|may)\b/g, "you $1"],
+];
+const INVENTED_CODE_STEP =
+  /^(?:\s*(?:\d+[.)]|[-•*])\s*)?(?:(?:then|next|finally|and)[,\s]+)?(?:you\s+(?:still\s+)?(?:need|have)\s+to\s+)?publish\s+(?:the|your|this)\s+(?:discount\s+|promo\s+)?codes?\b[^.!?\n]*[.!]?\s*$/i;
+
+export function speakToHost(text: string): string {
+  let out = String(text ?? "");
+  for (const [pattern, words] of HOST_THIRD_PERSON) {
+    out = out.replace(pattern, words);
+  }
+  const lines: string[] = [];
+  for (const line of out.split("\n")) {
+    if (!line.trim()) {
+      lines.push(line);
+      continue;
+    }
+    if (INVENTED_CODE_STEP.test(line.replace(/[*_`]/g, ""))) continue;
+    const kept = line.split(/(?<=[.!?])\s+(?=[A-Z])/).filter((sentence) =>
+      !INVENTED_CODE_STEP.test(sentence.replace(/[*_`]/g, ""))
+    );
+    if (kept.length > 0) lines.push(kept.join(" "));
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}

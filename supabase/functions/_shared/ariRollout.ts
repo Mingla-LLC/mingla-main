@@ -7,15 +7,17 @@
  * The switch is the existing Ari rollout mechanism: a row in
  * `public.ari_runtime_versions` with `version_key = 'ari-understand-first-3355'`
  * and a row in `public.ari_rollouts` for it (both service-role only, from
- * migration 20280209003355). Nothing in a migration creates either row, so
- * production starts OFF and every turn keeps the earlier behaviour.
+ * migration 20280209003355). Migration 20280628153355 creates both, on for
+ * every brand; with no rows a brand keeps the earlier behaviour.
  *
  *   - Per brand (allow-list): a rollout with status `pilot`, `expanding` or
  *     `active` whose `audience.brand_ids` lists the brand.
  *   - A share of brands: the same rollout with `rollout_percent` 1–99; a
  *     brand is in when its stable bucket (0–99, from its id) is below it.
  *   - Everyone: status `active` with `rollout_percent = 100`, or
- *     `audience.all = true`.
+ *     `audience.all = true`. Migration 20280628153355 seeds this (Seth,
+ *     2026-11-12: on for all brands at launch).
+ *   - `completed` (the Improvement Lab's Complete) keeps its audience on.
  *   - Off again: set the rollout's status to `paused` or `rolled_back`.
  *
  * `ARI_UNDERSTAND_FIRST=on|off` overrides it (a local stack or an eval run).
@@ -26,7 +28,15 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 export const ARI_UNDERSTAND_FIRST_VERSION_KEY = "ari-understand-first-3355";
-const LIVE_ROLLOUT_STATUSES = ["pilot", "expanding", "active"] as const;
+// #3355 final fix (C-3): the Improvement Lab's "Complete" (status
+// `completed`, only from an active 100% rollout) ships the version: it keeps
+// the rollout's last audience on, never switches it off.
+const LIVE_ROLLOUT_STATUSES = [
+  "pilot",
+  "expanding",
+  "active",
+  "completed",
+] as const;
 const ROLLOUT_TTL_MS = 15_000;
 
 /** One rollout row, as the switch reads it. */
@@ -81,7 +91,10 @@ export function ariRolloutCovers(
       ? row.rollout_percent
       : 0;
     if (audience.all === true) return true;
-    if (row.status === "active" && percent >= 100) return true;
+    if (
+      (row.status === "active" || row.status === "completed") &&
+      percent >= 100
+    ) return true;
     if (!brandId) continue;
     const listed = Array.isArray(audience.brand_ids) &&
       audience.brand_ids.some((id) =>
@@ -162,4 +175,54 @@ export async function readAriUnderstandFirst(
   if (override !== null) return override;
   const rows = await readRolloutRows(service, options.now ?? Date.now());
   return ariRolloutCovers(rows, brandId);
+}
+
+const UUID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** #3355 final fix (C-2): a brand id fit for `related_brand_id`, else null. */
+export function pendingActionBrandId(value: unknown): string | null {
+  return typeof value === "string" && UUID_SHAPE.test(value.trim())
+    ? value.trim()
+    : null;
+}
+
+/**
+ * #3355 final fix (C-2): the brand an approved Ari card belongs to, for the
+ * post-approval switch read: the card's stored brand (`related_brand_id`),
+ * else its args' `brand_id`, else the brand of the event or trip it changes
+ * (`event_id`, read with the service client). Null when none resolves.
+ */
+export async function resolveApprovedActionBrandId(args: {
+  brandId?: string | null;
+  toolArgs?: Record<string, unknown>;
+  service: Pick<SupabaseClient, "from">;
+}): Promise<string | null> {
+  const stored = pendingActionBrandId(args.brandId) ??
+    pendingActionBrandId(args.toolArgs?.brand_id);
+  if (stored) return stored;
+  const eventId = pendingActionBrandId(args.toolArgs?.event_id);
+  if (!eventId) return null;
+  try {
+    const { data, error } = await args.service.from("events")
+      .select("brand_id")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (error) {
+      console.warn(
+        "[ari-rollout] approved card brand read failed",
+        JSON.stringify({ code: error.code ?? null }),
+      );
+      return null;
+    }
+    return pendingActionBrandId(
+      (data as { brand_id?: unknown } | null)?.brand_id,
+    );
+  } catch (error) {
+    console.warn(
+      "[ari-rollout] approved card brand read threw",
+      error instanceof Error ? error.message.slice(0, 120) : "unknown",
+    );
+    return null;
+  }
 }

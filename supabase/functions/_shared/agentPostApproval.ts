@@ -3,8 +3,15 @@
 // perform bounded reads and Ari-owned state updates, then either explains the
 // verified result or returns the next protected write as a proposal.
 
-import { ARI_STOPPED_HERE_LINE, stripPromptEcho } from "./ariOwnerCopy.ts";
-import { readAriUnderstandFirst } from "./ariRollout.ts";
+import {
+  ARI_STOPPED_HERE_LINE,
+  speakToHost,
+  stripPromptEcho,
+} from "./ariOwnerCopy.ts";
+import {
+  readAriUnderstandFirst,
+  resolveApprovedActionBrandId,
+} from "./ariRollout.ts";
 import { continueAfterApprovedActionLegacy } from "./agentPostApprovalLegacy.ts";
 import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -132,12 +139,17 @@ export async function continueAfterApprovedAction(args: {
 }): Promise<PostApprovalContinuation | null> {
   // #3355 ship-prep: with the switch off for this brand, origin/main's
   // continuation runs unchanged (agentPostApprovalLegacy.ts).
-  const switchBrandId = args.brandId ??
-    (typeof args.toolArgs?.brand_id === "string"
-      ? args.toolArgs.brand_id
-      : null);
+  // #3355 final fix (C-2): the card's stored brand, its args' brand_id, or
+  // the brand of the event / trip it changed (update_event, publish_trip).
   const understandFirst = args.understandFirst ??
-    await readAriUnderstandFirst(args.serviceClient, switchBrandId);
+    await readAriUnderstandFirst(
+      args.serviceClient,
+      await resolveApprovedActionBrandId({
+        brandId: args.brandId,
+        toolArgs: args.toolArgs,
+        service: args.serviceClient,
+      }),
+    );
   if (!understandFirst) {
     const legacy = await continueAfterApprovedActionLegacy(args);
     return legacy?.kind === "proposal" ? { ...legacy, legacy: true } : legacy;
@@ -197,7 +209,7 @@ export async function continueAfterApprovedAction(args: {
         toolOwnerCopy(args.toolName).verb
       }. The saved result from Mingla is:\n${
         boundedJson(withAriLocalTimes(args.result, zone))
-      }\n\nContinue the existing goal now. Check the result, complete safe reads and your own plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, reply in one or two short, plain sentences: what was saved, and anything the host still needs to do. Never describe how you checked, and never list empty categories.`,
+      }\n\nContinue the existing goal now. Check the result, complete safe reads and your own plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, reply in one or two short, plain sentences: what was saved, and anything they still need to do, said to them as “you” (never “the host”). Never add a step the result does not show (a discount code is live once saved). Never describe how you checked, and never list empty categories.`,
     }],
   };
   const systemPrompt = `You are Ari continuing an already-approved Mingla plan.
@@ -408,7 +420,8 @@ export async function continueAfterApprovedAction(args: {
     };
   }
   const check = await checkPostApprovalClaims({
-    text: continuationText,
+    // #3355 final fix (P3): to the host as "you", and no invented steps.
+    text: speakToHost(continuationText),
     hostMessage: recentGoalText,
     toolName: args.toolName,
     toolArgs: args.toolArgs ?? {},

@@ -36,7 +36,6 @@ import { objectStatusReadPlan, type StatusClient } from "../ariStatusRead.ts";
 import {
   checkStatedSlots,
   statedSlotsAskedBefore,
-  TRUE_STATE_NOTHING_SAVED,
   type WriteState,
 } from "../ariTruthGuards.ts";
 import { ownerCopyViolations, stripPromptEcho } from "../ariOwnerCopy.ts";
@@ -402,9 +401,10 @@ Deno.test("R8-2: a write request + 'Done!' with nothing written this turn is cor
         states: AB,
         claims: [claim(ev, "published", "event", "it")],
       });
+      // Final fix (C-1): the true state names the write and offers it.
       assertEquals(
         out,
-        TRUE_STATE_NOTHING_SAVED,
+        "I haven't published it yet — want me to prepare it for you to approve?",
         `asked=${asked} read=${intentRead}`,
       );
     }
