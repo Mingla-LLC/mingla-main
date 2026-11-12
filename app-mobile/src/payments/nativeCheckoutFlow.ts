@@ -605,6 +605,9 @@ async function followPaystackHandoff(
       await clearNativeCheckoutRecoveryFor(handoff.checkoutSessionId);
     }
   };
+  // Every caller checks this first; checked here too so no path can open a
+  // page for an account that has left.
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
   // issue #3281 (bundle 6d) — the session can run out between being held (or
   // re-checked) and here. An expired page is never opened; only THIS cart's
   // page is dropped. The pointer is cleared: nothing was opened against it.
@@ -991,7 +994,7 @@ export const useNativeCheckoutFlow = (): ((
       const persistPointer = async (): Promise<boolean> => {
         if (!isV2) return true;
         if (handoffGeneration() !== generation) return false;
-        return await persistNativeCheckoutRecovery(
+        const written = await persistNativeCheckoutRecovery(
           createNativeCheckoutRecoveryPointer({
             checkoutSessionId: heldForCart.checkoutSessionId,
             buyerStatusToken: heldForCart.buyerStatusToken,
@@ -1000,6 +1003,13 @@ export const useNativeCheckoutFlow = (): ((
             provider: "paystack",
           }),
         );
+        // A sign-out that landed during the write (its purge may already
+        // have run): remove THIS pointer, never leave it for the next account.
+        if (handoffGeneration() !== generation) {
+          await clearNativeCheckoutRecoveryFor(heldForCart.checkoutSessionId);
+          return false;
+        }
+        return written;
       };
       // issue #3281 (bundle 6d) — ask the server first: a sale refused, paused
       // or already paid since the page was held is never reopened.
@@ -1300,6 +1310,14 @@ export const useNativeCheckoutFlow = (): ((
           message: "Payment could not start safely. Try again after reopening Mingla.",
         };
       }
+      // issue #3281 (bundle 6d) — a sign-out during the write: remove THIS
+      // pointer and present nothing for the account that left.
+      if (handoffGeneration() !== generation) {
+        if (recoveryPointer !== null) {
+          await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
+        }
+        return { outcome: "canceled" };
+      }
       // ORCH-0844 — Connect direct-charge: re-initialise the native Stripe
       // SDK for THIS PaymentIntent's connected account. Without this, the
       // SDK's mid-PaymentSheet confirm call hits Stripe under the platform
@@ -1433,6 +1451,14 @@ export const useNativeCheckoutFlow = (): ((
           outcome: "failed",
           message: "This sale is no longer available.",
         };
+      }
+      // issue #3281 (bundle 6d) — the SDK set-up and preflight are awaits a
+      // sign-out can land in; never present the old account's payment sheet.
+      if (handoffGeneration() !== generation) {
+        if (recoveryPointer !== null) {
+          await clearNativeCheckoutRecoveryFor(data.checkoutSessionId);
+        }
+        return { outcome: "canceled" };
       }
       emitPhase(onPhase, "presenting_sheet");
       let presentResult: Awaited<ReturnType<typeof presentPaymentSheet>>;

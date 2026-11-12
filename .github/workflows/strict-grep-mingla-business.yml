@@ -1104,6 +1104,14 @@ jobs:
             | sort -u)
           echo "Suites matched:"
           echo "$suites"
+          # Literal (non-glob) entries survive nullglob even when the file is
+          # gone, so each must exist or the floor would count a ghost.
+          while IFS= read -r suite; do
+            if [ ! -f "$suite" ]; then
+              echo "FAIL: listed suite is missing: $suite"
+              exit 1
+            fi
+          done <<< "$suites"
           matched=$(printf '%s\n' "$suites" | grep -c '\.test\.ts$' || true)
           if [ "$matched" -lt 17 ]; then
             echo "FAIL: the suite globs matched $matched files, expected at least 17."

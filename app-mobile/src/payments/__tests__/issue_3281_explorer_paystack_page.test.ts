@@ -270,6 +270,28 @@ describe("#3281 6d — Android: the buyer is still paying when the browser call 
     expect(calls("ticket-checkout-status")).toHaveLength(17);
   });
 
+  it("a trip or experience (v1) page that never covers the app never shows the abandoned copy either", async () => {
+    jest.useFakeTimers({ doNotFake: ["performance", "nextTick"] });
+    mockOpenBrowserAsync.mockResolvedValueOnce({ type: "opened" });
+    statusAnswers = [abandoned];
+    const run = pay(v1Input());
+    let outcome;
+    run.then((o) => {
+      outcome = o;
+    });
+    for (let i = 0; i < 60 && outcome === undefined; i += 1) {
+      await flush();
+      jest.advanceTimersByTime(1500);
+    }
+    await flush();
+    expect(outcome).toEqual({
+      outcome: "failed",
+      message: CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
+      token: null,
+    });
+    expect(calls("ticket-checkout-status")).toHaveLength(17);
+  });
+
   it("a payment mismatch still ends the wait while the page may be open", async () => {
     jest.useFakeTimers({ doNotFake: ["performance", "nextTick"] });
     mockOpenBrowserAsync.mockResolvedValueOnce({ type: "opened" });
@@ -342,6 +364,45 @@ describe("#3281 6d — a held page is re-checked before it reopens", () => {
       checkoutSessionId: "sess-1",
       provider: "paystack",
     });
+  });
+
+  it("a trip or experience (v1) re-check: an order is the success it is, tickets or not", async () => {
+    await pay(v1Input());
+    statusAnswers = [
+      { data: { status: "paid", order: { orderId: "ord-v1", tickets: [] } }, error: null },
+    ];
+    const outcome = await pay(v1Input());
+    expect(outcome).toMatchObject({ outcome: "succeeded", orderId: "ord-v1" });
+    expect("provider" in outcome).toBe(false);
+    expect(opened()).toHaveLength(1);
+  });
+
+  it("after a v2 timeout the next tap is answered by recovery, then the page is reopened, never created twice", async () => {
+    jest.useFakeTimers({ doNotFake: ["performance", "nextTick"] });
+    statusAnswers = [pending];
+    const run = pay();
+    let first;
+    run.then((o) => {
+      first = o;
+    });
+    for (let i = 0; i < 60 && first === undefined; i += 1) {
+      await flush();
+      jest.advanceTimersByTime(1500);
+    }
+    await flush();
+    jest.useRealTimers();
+    // Timed out: "Confirming payment", with the pointer and the page kept.
+    expect(first).toMatchObject({ outcome: "pending" });
+    expect(pointer()).toMatchObject({ checkoutSessionId: "sess-1" });
+    // The next tap asks the server through restart recovery first.
+    const recovered = await pay();
+    expect(recovered.outcome).toBeDefined();
+    // Once the session has an answer that is not "still settling", the held
+    // page is what the buyer gets back, not a second checkout.
+    statusAnswers = [abandoned, pending, abandoned];
+    mockSecureValue = null; // the recovery pointer has been resolved
+    await pay();
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
   });
 
   it("a mismatch found on the re-check drops the page without opening it", async () => {
@@ -581,6 +642,38 @@ describe("#3281 6d — a sign-out mid-checkout leaves nothing behind for the nex
     };
     expect(await pay()).toEqual({ outcome: "canceled" });
     expect(opened()).toHaveLength(1);
+    expect(pointer()).toBeNull();
+  });
+
+  it("a sign-out while the held page's recovery pointer is being written: nothing opens, nothing is left", async () => {
+    await pay(); // held, abandoned: pointer cleared
+    statusAnswers = [pending, abandoned];
+    const secure = jest.requireMock("../../lib/secureStoreSafe");
+    secure.secureSetItem.mockImplementationOnce(async (_key, value) => {
+      // The sign-out runs (generation bump, then the purge) while the write
+      // is in flight, and the write lands after it.
+      clearAllHeldHandoffs();
+      await purgeNativeCheckoutRecovery();
+      mockSecureWrites += 1;
+      mockSecureValue = value;
+    });
+    expect(await pay()).toEqual({ outcome: "canceled" });
+    expect(opened()).toHaveLength(1);
+    expect(pointer()).toBeNull();
+  });
+
+  it("a sign-out while an order-pending pointer is being written leaves nothing behind", async () => {
+    await pay();
+    statusAnswers = [
+      { data: { status: "paid", order: { orderId: "ord-1", tickets: [] } }, error: null },
+    ];
+    const secure = jest.requireMock("../../lib/secureStoreSafe");
+    secure.secureSetItem.mockImplementationOnce(async (_key, value) => {
+      clearAllHeldHandoffs();
+      await purgeNativeCheckoutRecovery();
+      mockSecureValue = value;
+    });
+    expect(await pay()).toEqual({ outcome: "canceled" });
     expect(pointer()).toBeNull();
   });
 
