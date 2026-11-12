@@ -27,6 +27,7 @@ import {
 import { secureLegacyAgentTools } from "./agentToolAuthorization.ts";
 import { ariToolDeclarations } from "./ariToolDescriptions.ts";
 import type { AgentLoopNormalizedError } from "./agentLoop.ts";
+import { withTicketsSold } from "./ariEventSales.ts";
 
 /** Tools that exist only on the switch's on path. */
 export const ARI_UNDERSTAND_FIRST_ONLY_TOOLS: ReadonlySet<string> = new Set([
@@ -102,9 +103,35 @@ const LEGACY_AGENT_TOOLS: readonly AgentTool[] = Object.freeze(
   }),
 );
 
+/**
+ * #3355 rework 9 (fix 5, I-ARI-SOLD-COUNT-FROM-TICKETS): on the on path,
+ * list_events labels each row's ticket numbers (ticket types vs tickets
+ * sold, read as the caller). Same name, schema and authorization; only the
+ * result is labelled (ariEventSales.ts). The off path keeps main's row.
+ */
+function withLabelledTickets(tool: AgentTool): AgentTool {
+  return {
+    ...tool,
+    executor: async (args, client, userId, context) =>
+      await withTicketsSold(
+        await tool.executor(args, client, userId, context),
+        client,
+      ),
+  };
+}
+
+/** The on path's registry: AGENT_TOOLS, with list_events labelled. */
+const UNDERSTAND_FIRST_AGENT_TOOLS: readonly AgentTool[] = Object.freeze(
+  AGENT_TOOLS.map((tool) =>
+    tool.name === "list_events" ? withLabelledTickets(tool) : tool
+  ),
+);
+
 /** The registry this turn's model may see and call. */
 export function ariTurnAgentTools(understandFirst: boolean): AgentTool[] {
-  return understandFirst ? AGENT_TOOLS : [...LEGACY_AGENT_TOOLS];
+  return understandFirst
+    ? [...UNDERSTAND_FIRST_AGENT_TOOLS]
+    : [...LEGACY_AGENT_TOOLS];
 }
 
 /** A tool by name, from this turn's registry. */
@@ -113,7 +140,9 @@ export function findAriTurnTool(
   understandFirst: boolean,
 ): AgentTool | undefined {
   return understandFirst
-    ? findTool(name)
+    ? (name === "list_events"
+      ? UNDERSTAND_FIRST_AGENT_TOOLS.find((tool) => tool.name === name)
+      : findTool(name))
     : LEGACY_AGENT_TOOLS.find((tool) => tool.name === name);
 }
 

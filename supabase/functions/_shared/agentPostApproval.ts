@@ -8,6 +8,7 @@ import {
   speakToHost,
   stripPromptEcho,
 } from "./ariOwnerCopy.ts";
+import { guardReplyNavigation } from "./ariAppMap.ts";
 import {
   readAriUnderstandFirst,
   resolveApprovedActionBrandId,
@@ -421,7 +422,8 @@ export async function continueAfterApprovedAction(args: {
   }
   const check = await checkPostApprovalClaims({
     // #3355 final fix (P3): to the host as "you", and no invented steps.
-    text: speakToHost(continuationText),
+    // #3355 rework 9 (fix 7): no screen path the App Map does not know.
+    text: guardReplyNavigation(speakToHost(continuationText)).text,
     hostMessage: recentGoalText,
     toolName: args.toolName,
     toolArgs: args.toolArgs ?? {},

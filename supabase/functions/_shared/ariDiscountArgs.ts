@@ -693,3 +693,72 @@ export function canonicalizeCreateDiscountArgs(
   }
   return out;
 }
+
+// ── #3355 rework 9 (fix 2): "from now" is as soon as the host confirms ──────
+
+/**
+ * MINGLA-INVARIANT: I-ARI-NOW-MEANS-ON-CONFIRM | issue #3355 | On a create_discount or create_referral_offer proposal (both start when saved when no start is given), a starts_at that is already past, a bare date of the current day, or any start when the host's words say now / immediately / from today (with no start day stated) is removed, so the card says "Starts: As soon as you confirm"; a future start the host stated is kept exactly (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts).
+ */
+export const ARI_START_ON_SAVE_TOOLS: ReadonlySet<string> = new Set([
+  "create_discount",
+  "create_referral_offer",
+]);
+
+const START_NOW_WORDS =
+  /\b(?:from|starting|starts?|beginning|begins?|effective|valid|live|running|runs?|active)\s+(?:from\s+)?(?:right\s+)?(?:now|today|immediately|straight\s+away|right\s+away|tonight)\b|\b(?:as\s+of|effective)\s+(?:right\s+)?(?:now|today)\b|\b(?:immediately|right\s+away|straight\s+away|right\s+now)\b/i;
+
+/** The host's words say the thing starts now (or today, with no time). */
+export function hostMeansStartNow(messages: readonly string[]): boolean {
+  return messages.some((message) => START_NOW_WORDS.test(String(message)));
+}
+
+const BARE_DATE =
+  /^(\d{4}-\d{2}-\d{2})(?:T00:00(?::00(?:\.0+)?)?(?:Z|[+-]00:?00)?)?$/;
+
+function dayIn(ms: number, timezone: string | null | undefined): string {
+  const date = new Date(ms);
+  if (!timezone) return date.toISOString().slice(0, 10);
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch (_error) {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * A start that means "as soon as you confirm" is removed: already past, a
+ * bare date (or midnight) of today, or any start when the host said now
+ * and stated no start day. `statedStart`: the host's words name a start
+ * day (preserveStatedSlots already bound it); then only a past or bare
+ * today start goes. Any other tool, or no start, is unchanged.
+ */
+export function withImmediateStart(args: {
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  ownerMessages: readonly string[];
+  statedStart: boolean;
+  timezone?: string | null;
+  now?: Date;
+}): { args: Record<string, unknown>; dropped: boolean } {
+  const unchanged = { args: args.toolArgs, dropped: false };
+  if (!ARI_START_ON_SAVE_TOOLS.has(args.toolName)) return unchanged;
+  const raw = args.toolArgs.starts_at;
+  if (raw === undefined || raw === null || raw === "") return unchanged;
+  if (typeof raw !== "string") return unchanged;
+  const nowMs = (args.now ?? new Date()).getTime();
+  const at = Date.parse(raw.trim());
+  const bare = BARE_DATE.exec(raw.trim());
+  const today = bare !== null && (
+    bare[1] === dayIn(nowMs, null) || bare[1] === dayIn(nowMs, args.timezone)
+  );
+  const past = Number.isFinite(at) && at <= nowMs;
+  const saidNow = !args.statedStart && hostMeansStartNow(args.ownerMessages);
+  if (!past && !today && !saidNow) return unchanged;
+  const { starts_at: _dropped, ...rest } = args.toolArgs;
+  return { args: rest, dropped: true };
+}

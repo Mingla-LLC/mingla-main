@@ -364,6 +364,17 @@ const HOST_THIRD_PERSON: ReadonlyArray<[RegExp, string]> = [
 ];
 const INVENTED_CODE_STEP =
   /^(?:\s*(?:\d+[.)]|[-•*])\s*)?(?:(?:then|next|finally|and)[,\s]+)?(?:you\s+(?:still\s+)?(?:need|have)\s+to\s+)?publish\s+(?:the|your|this)\s+(?:discount\s+|promo\s+)?codes?\b[^.!?\n]*[.!]?\s*$/i;
+/**
+ * #3355 rework 9 (fix 4, I-ARI-HOST-IS-YOU): a step that sends the reader
+ * to "the host" ("You still need to confirm with the host that the discount
+ * is live", "Let the host know…") is about a third person who is the reader
+ * themself, so the sentence goes. "As the host, you…" is kept.
+ */
+const HOST_THIRD_PARTY_STEP =
+  /\b(?:confirm|check|verify|coordinate|discuss|share|agree|follow\s+up|double[-\s]check|talk|speak|work|sync|align)\s+(?:[\p{L}'’]+\s+){0,4}?with\s+the\s+host\b|\b(?:let|tell|ask|remind|notify|inform|message|email|contact|text|ping|update)\s+the\s+host\b|\b(?:send|forward|pass|give|show)\s+(?:[\p{L}'’]+\s+){0,4}?to\s+the\s+host\b/iu;
+/** "the host" left mid-sentence is the reader ("Mingla pays the host" → "pays you"). */
+const HOST_OBJECT =
+  /(?<!\b[Aa]s\s)\bthe host\b(?!\s*(?:app|web|portal|dashboard)\b)(?!['’]s)/g;
 
 export function speakToHost(text: string): string {
   let out = String(text ?? "");
@@ -376,11 +387,19 @@ export function speakToHost(text: string): string {
       lines.push(line);
       continue;
     }
-    if (INVENTED_CODE_STEP.test(line.replace(/[*_`]/g, ""))) continue;
-    const kept = line.split(/(?<=[.!?])\s+(?=[A-Z])/).filter((sentence) =>
-      !INVENTED_CODE_STEP.test(sentence.replace(/[*_`]/g, ""))
-    );
+    const plainLine = line.replace(/[*_`]/g, "");
+    if (INVENTED_CODE_STEP.test(plainLine)) continue;
+    if (HOST_THIRD_PARTY_STEP.test(plainLine) && !/[.!?]\s+\S/.test(line)) {
+      continue;
+    }
+    const kept = line.split(/(?<=[.!?])\s+(?=[A-Z])/).filter((sentence) => {
+      const plain = sentence.replace(/[*_`]/g, "");
+      return !INVENTED_CODE_STEP.test(plain) &&
+        !HOST_THIRD_PARTY_STEP.test(plain);
+    }).map((sentence) => sentence.replace(HOST_OBJECT, "you"));
     if (kept.length > 0) lines.push(kept.join(" "));
   }
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  // Nothing left (the whole reply was a step for "the host"): say it as is.
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() ||
+    String(text ?? "").trim();
 }

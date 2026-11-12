@@ -18,6 +18,7 @@
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import type { SoldCountFact } from "./ariEventSales.ts";
 import {
   TRUE_STATE_NOTHING_SAVED,
   type WriteState,
@@ -3393,6 +3394,8 @@ export function fallbackStripClaims(args: {
  */
 export function writeRequestTrueState(hostMessage: string): string {
   const host = hostMessage.toLowerCase();
+  // #3355 rework 9 (fix 1): a note to remember needs no card.
+  if (hostAsksToRemember(hostMessage)) return MEMORY_NOT_SAVED_SENTENCE;
   if (
     /\b(?:un-?publish|take\s+(?:it\s+)?down|cancel|delete|remove|end|pause)\w*\b/
       .test(host)
@@ -3587,6 +3590,359 @@ export function completionClaimWithoutProposal(args: {
     code: "WRITE_PROPOSAL_REQUIRED",
     message:
       "Your reply says the change is done, but nothing was saved or proposed in this turn. Never say it is done. Make the change now as a tool call (one card the owner approves), or, if you cannot, say plainly that it has not been changed yet and ask the one question you need.",
+  };
+}
+
+// ── #3355 rework 9 (fix 1): a memory claim needs this turn's memory save ────
+
+/**
+ * MINGLA-INVARIANT: I-ARI-MEMORY-CLAIM-NEEDS-SAVE | issue #3355 | A reply that says Ari saved, noted or will remember something ("I remember that…", "I've saved that", "I'll keep that in mind", "Noted!") with no successful remember_note / save_memory_note in the same turn is corrected to "I haven't saved that yet — want me to remember it?", whatever the AI judge did (listed it, timed out or failed); the agent loop first sends it back once so the model can call the tool. Recalling a note the host already has (a note read backs the words) is never corrected (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts).
+ */
+export const ARI_MEMORY_WRITE_TOOLS: ReadonlySet<string> = new Set([
+  "remember_note",
+  "save_memory_note",
+]);
+
+/** What Ari says instead of a memory claim nothing backs. */
+export const MEMORY_NOT_SAVED_SENTENCE =
+  "I haven't saved that yet — want me to remember it?";
+
+/**
+ * The host asks Ari to keep something for later ("Remember that…", "Note
+ * that…", "Keep in mind…", "Don't forget…"). "Do you remember…?" asks
+ * about what Ari already has: not a save request.
+ */
+const HOST_REMEMBER =
+  /\b(?:remember|memori[sz]e|make\s+a\s+note|take\s+(?:a\s+)?note|note\s+(?:that|this|it|down)|keep\s+(?:that\s+|this\s+|it\s+)?in\s+mind|bear\s+(?:that\s+|this\s+|it\s+)?in\s+mind|don['’]?t\s+forget|never\s+forget|save\s+(?:that|this|it)\s+(?:as\s+a\s+note|for\s+(?:later|next\s+time)|to\s+(?:your\s+)?memory)|for\s+future\s+reference)\b/i;
+const HOST_RECALL_QUESTION =
+  /^\s*(?:(?:hey|hi|ok(?:ay)?|so|ari)[,!.\s]+)*(?:do|did|can|could|what|which|how\s+much)\b[^?]*\bremember\b[^?]*\?\s*$/i;
+
+export function hostAsksToRemember(text: string): boolean {
+  const host = String(text ?? "").trim();
+  return HOST_REMEMBER.test(host) && !HOST_RECALL_QUESTION.test(host);
+}
+
+/** Memory words that claim a save on any turn ("I'll remember", "saved to my memory"). */
+const MEMORY_CLAIM_STRONG = new RegExp(
+  [
+    String
+      .raw`\bI(?:['’]ll|\s+will)\s+(?:always\s+|definitely\s+|now\s+|also\s+)?(?:remember|keep\s+(?:that|this|it)\s+in\s+mind|bear\s+(?:that|this|it)\s+in\s+mind|make\s+(?:a\s+)?note|note\s+(?:that|this|it|down)|not\s+forget)\b`,
+    String
+      .raw`\bI(?:['’]ve|\s+have)\s+(?:now\s+|also\s+|just\s+)?(?:remembered|memori[sz]ed|made\s+(?:a\s+)?note|taken\s+note|jotted\s+(?:that|this|it)\s+down)\b`,
+    String
+      .raw`\b(?:saved|stored|added|kept|noted)\s+(?:that\s+|this\s+|it\s+)?(?:to|in|into)\s+(?:my\s+|your\s+|Ari['’]s\s+)?(?:memory|memories|notes)\b`,
+    String
+      .raw`\b(?:that|this|it)(?:['’]s|\s+is|\s+has\s+been)\s+(?:now\s+)?(?:in\s+my\s+memory|in\s+my\s+notes)\b`,
+  ].join("|"),
+  "i",
+);
+
+/** Words that claim a save only on a turn the host asked Ari to remember. */
+const MEMORY_CLAIM_ON_REQUEST = new RegExp(
+  [
+    String
+      .raw`\bI(?:['’]ve|\s+have)\s+(?:now\s+|also\s+|just\s+)?(?:noted|saved|stored|recorded|kept|added)\b`,
+    String.raw`\bI\s+(?:just\s+)?(?:noted|saved|stored|recorded)\b`,
+    String.raw`\bI\s+(?:do\s+)?remember\s+(?:that|this|it|your|how|when)\b`,
+    String
+      .raw`\bI(?:['’]ll|\s+will)\s+(?:save|store|keep)\s+(?:that|this|it)\b`,
+    String
+      .raw`^(?:(?:got\s+it|okay|ok|great|sure|thanks|perfect)[,!.]?\s+)?(?:noted|saved|remembered|got\s+it,\s+noted)\s*(?:[!.,:—–-]|$)`,
+    String
+      .raw`\b(?:that|this|it)(?:['’]s|\s+is|\s+has\s+been)\s+(?:now\s+)?(?:been\s+)?(?:noted|saved|stored|remembered)\b`,
+  ].join("|"),
+  "i",
+);
+
+/** "You told me earlier…", "from your notes": a recall, never a save claim. */
+const MEMORY_RECALL_WORDS =
+  /\b(?:you\s+(?:told|said|mentioned|asked)\s+me|you(?:['’]ve|\s+have)\s+(?:told|said|mentioned)|from\s+(?:your|my)\s+(?:notes|memory)|in\s+your\s+notes|as\s+you\s+(?:said|mentioned|noted))\b/i;
+
+/** One sentence claims Ari saved or will remember something. */
+export function sentenceClaimsMemorySave(
+  sentence: string,
+  hostAsked: boolean,
+): boolean {
+  const plain = sentence.replace(/[*_`]/g, "").trim();
+  if (!plain || /\?\s*$/.test(plain)) return false;
+  if (
+    /\b(?:haven['’]?t|hasn['’]?t|didn['’]?t|not|never|couldn['’]?t|can['’]?t|cannot|won['’]?t|unable)\b/i
+      .test(plain) && !/\bnot\s+forget\b/i.test(plain)
+  ) {
+    return false;
+  }
+  if (MEMORY_RECALL_WORDS.test(plain)) return false;
+  if (MEMORY_CLAIM_STRONG.test(plain)) return true;
+  return hostAsked && MEMORY_CLAIM_ON_REQUEST.test(plain);
+}
+
+/** The reply claims a memory save somewhere. */
+export function replyClaimsMemorySave(
+  text: string,
+  hostMessage: string,
+): boolean {
+  const hostAsked = hostAsksToRemember(hostMessage);
+  return String(text ?? "").split("\n").some((line) =>
+    lineSentences(line).some((sentence) =>
+      sentenceClaimsMemorySave(sentence, hostAsked)
+    )
+  );
+}
+
+/** A memory write of this turn succeeded (its receipt). */
+export function memorySavedThisTurn(
+  evidence: readonly ClaimEvidence[],
+): boolean {
+  return evidence.some((item) =>
+    item.thisTurn && item.status === "done" &&
+    ARI_MEMORY_WRITE_TOOLS.has(item.toolName)
+  );
+}
+
+const NOTE_STOPWORDS = new Set([
+  "that",
+  "this",
+  "with",
+  "from",
+  "they",
+  "them",
+  "their",
+  "your",
+  "have",
+  "will",
+  "always",
+  "never",
+  "into",
+  "about",
+  "when",
+  "what",
+  "should",
+  "would",
+  "remember",
+]);
+
+function noteWords(text: string): string[] {
+  return (text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []).filter((
+    word,
+  ) => !NOTE_STOPWORDS.has(word));
+}
+
+/** The sentence restates a note the host already has (a recall it can back). */
+function recallsKnownNote(
+  sentence: string,
+  notes: readonly string[],
+): boolean {
+  const said = new Set(noteWords(sentence));
+  return notes.some((note) => {
+    const words = [...new Set(noteWords(note))];
+    if (words.length === 0) return false;
+    const shared = words.filter((word) => said.has(word)).length;
+    return shared >= Math.min(3, words.length) &&
+      shared / words.length >= 0.5;
+  });
+}
+
+/** The ordinary true states a judged memory claim becomes. */
+const NOTE_TRUE_STATES: ReadonlySet<string> = new Set([
+  "I haven't saved that as a note yet.",
+  "I haven't saved or sent anything for that yet.",
+]);
+
+/**
+ * #3355 rework 9 (fix 1, I-ARI-MEMORY-CLAIM-NEEDS-SAVE): the deterministic
+ * memory tie-break. Every sentence that claims a save (or a promise to
+ * remember) with no successful memory write this turn is replaced, once, by
+ * MEMORY_NOT_SAVED_SENTENCE. A sentence that restates a note the host
+ * already has (`memoryNotes`, read with the caller's login) is a recall and
+ * stays.
+ */
+export function correctMemoryClaimWithoutSave(args: {
+  text: string;
+  hostMessage: string;
+  evidence: readonly ClaimEvidence[];
+  /** The host's existing notes (contents), when read; recall backing. */
+  memoryNotes?: readonly string[];
+}): { text: string; corrected: string[] } {
+  const unchanged = { text: args.text, corrected: [] as string[] };
+  if (memorySavedThisTurn(args.evidence)) return unchanged;
+  const hostAsked = hostAsksToRemember(args.hostMessage);
+  const notes = [
+    ...(args.memoryNotes ?? []),
+    // Notes a records read of this chat found (kind note, not this turn's).
+    ...args.evidence.filter((item) => item.kind === "note" && !item.thisTurn)
+      .flatMap((item) => item.objects),
+  ];
+  const corrected: string[] = [];
+  let said = false;
+  const lines: string[] = [];
+  for (const line of args.text.split("\n")) {
+    if (!line.trim()) {
+      lines.push(line);
+      continue;
+    }
+    const parts: string[] = [];
+    for (const sentence of lineSentences(line)) {
+      // On a remember request the ordinary note true state ("I haven't
+      // saved that as a note yet.") says the same thing: one wording.
+      if (hostAsked && NOTE_TRUE_STATES.has(sentence.trim())) {
+        if (!said) parts.push(MEMORY_NOT_SAVED_SENTENCE);
+        said = true;
+        continue;
+      }
+      if (
+        sentenceClaimsMemorySave(sentence, hostAsked) &&
+        !(notes.length > 0 && recallsKnownNote(sentence, notes))
+      ) {
+        corrected.push(sentence.trim());
+        if (!said) parts.push(MEMORY_NOT_SAVED_SENTENCE);
+        said = true;
+        continue;
+      }
+      parts.push(sentence);
+    }
+    if (parts.length > 0) lines.push(parts.join(" "));
+  }
+  if (corrected.length === 0 && lines.join("\n") === args.text) {
+    return unchanged;
+  }
+  return {
+    text: dedupeReplySentences(lines.join("\n")) || MEMORY_NOT_SAVED_SENTENCE,
+    corrected,
+  };
+}
+
+/**
+ * #3355 rework 9 (fix 1): the agent loop's final-text check for memory. A
+ * reply that claims a save with no successful memory write in this turn
+ * goes back to the model once, so it calls the tool; the claim check still
+ * corrects whatever comes back.
+ */
+export function memoryClaimWithoutSave(args: {
+  text: string;
+  hostMessage: string;
+  observations: readonly ClaimObservation[];
+}): { code: "MEMORY_SAVE_REQUIRED"; message: string } | null {
+  if (!replyClaimsMemorySave(args.text, args.hostMessage)) return null;
+  const saved = args.observations.some((item) =>
+    !item.error && ARI_MEMORY_WRITE_TOOLS.has(item.tool)
+  );
+  if (saved) return null;
+  return {
+    code: "MEMORY_SAVE_REQUIRED",
+    message:
+      "Your reply says you saved, noted or will remember something, but nothing was saved this turn. If the host asked you to keep it, call remember_note now with the note. Otherwise say plainly that it is not saved yet. Never say you remember or saved it without the tool call.",
+  };
+}
+
+// ── #3355 rework 9 (fix 5): a sold count is a fact a read must back ─────────
+
+const NUMBER_WORDS: Readonly<Record<string, number>> = Object.freeze({
+  no: 0,
+  zero: 0,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+});
+const SOLD_NUMBER =
+  "(\\d{1,3}(?:,\\d{3})+|\\d{1,6}|no|zero|one|two|three|four|five|six|seven|eight|nine|ten)";
+const SOLD_UNIT = "(tickets?|seats?|spots?|places?|passes)";
+/** "1 ticket sold", "40 tickets have been sold", "sold 12 tickets". */
+const SOLD_CLAIM = new RegExp(
+  `\\b${SOLD_NUMBER}\\s+${SOLD_UNIT}\\s+(?:have\\s+|has\\s+)?(?:already\\s+)?(?:been\\s+)?sold\\b|\\bsold\\s+${SOLD_NUMBER}\\s+${SOLD_UNIT}\\b`,
+  "giu",
+);
+
+/** What Ari says when no read of this turn says how many were sold. */
+export const SOLD_NOT_READ_SENTENCE =
+  "I haven't checked the ticket sales for that yet — want me to look?";
+
+function soldNumber(word: string): number | null {
+  const lower = word.toLowerCase().replace(/,/g, "");
+  if (lower in NUMBER_WORDS) return NUMBER_WORDS[lower];
+  const value = Number(lower);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+/**
+ * #3355 rework 9 (fix 5, I-ARI-SOLD-COUNT-FROM-TICKETS): a sold count in
+ * the reply is a fact. It stays when a read of this turn returned that
+ * count for the event the sentence names (or for the only event read); a
+ * different number is replaced by the read's; with no read that knows it,
+ * the sentence becomes SOLD_NOT_READ_SENTENCE. Ticket types, capacity and
+ * every other number are never touched.
+ */
+export function correctSoldCountClaims(args: {
+  text: string;
+  facts: readonly SoldCountFact[];
+}): { text: string; corrected: string[] } {
+  const unchanged = { text: args.text, corrected: [] as string[] };
+  SOLD_CLAIM.lastIndex = 0;
+  if (!SOLD_CLAIM.test(args.text)) return unchanged;
+  const corrected: string[] = [];
+  let said = false;
+  const lines: string[] = [];
+  const factFor = (sentence: string): SoldCountFact | null => {
+    const lower = sentence.toLowerCase();
+    const named = args.facts.filter((fact) =>
+      fact.title && lower.includes(fact.title.toLowerCase())
+    );
+    if (named.length === 1) return named[0];
+    if (named.length > 1) return null;
+    return args.facts.length === 1 ? args.facts[0] : null;
+  };
+  for (const line of args.text.split("\n")) {
+    if (!line.trim()) {
+      lines.push(line);
+      continue;
+    }
+    const parts: string[] = [];
+    for (const sentence of lineSentences(line)) {
+      SOLD_CLAIM.lastIndex = 0;
+      if (!SOLD_CLAIM.test(sentence) || /\?\s*$/.test(sentence.trim())) {
+        parts.push(sentence);
+        continue;
+      }
+      const fact = factFor(sentence);
+      if (!fact || fact.sold === null) {
+        corrected.push(sentence.trim());
+        if (!said) parts.push(SOLD_NOT_READ_SENTENCE);
+        said = true;
+        continue;
+      }
+      const sold = fact.sold;
+      const fixed = sentence.replace(
+        SOLD_CLAIM,
+        (match, n1, u1, n2, u2) => {
+          const word = (n1 ?? n2) as string;
+          const unit = (u1 ?? u2) as string;
+          if (soldNumber(word) === sold) return match;
+          const base = unit.toLowerCase().replace(/(?:es|s)$/, "");
+          const noun = base === "pass"
+            ? (sold === 1 ? "pass" : "passes")
+            : sold === 1
+            ? base
+            : `${base}s`;
+          return n1 !== undefined
+            ? match.replace(word, String(sold)).replace(unit, noun)
+            : match.replace(word, String(sold)).replace(unit, noun);
+        },
+      );
+      if (fixed !== sentence) corrected.push(sentence.trim());
+      parts.push(fixed);
+    }
+    if (parts.length > 0) lines.push(parts.join(" "));
+  }
+  if (corrected.length === 0) return unchanged;
+  return {
+    text: dedupeReplySentences(lines.join("\n")) || SOLD_NOT_READ_SENTENCE,
+    corrected,
   };
 }
 
@@ -4009,6 +4365,16 @@ export async function checkReplyClaims(args: {
   intentRead?: boolean;
   /** Rework 7 (R7-5): the previous turn's words ("is it live?" names it). */
   previousTurn?: string;
+  /**
+   * #3355 rework 9 (fix 1): the host's existing memory notes (contents),
+   * read only when the reply claims a memory save; they back a recall.
+   */
+  memoryNotes?: readonly string[];
+  /**
+   * #3355 rework 9 (fix 5): ticket-sales facts this turn's reads returned
+   * (event title and tickets sold); a sold count in the reply must match.
+   */
+  soldCounts?: readonly SoldCountFact[];
   call: AriClaimModelCall;
   /** Time left in the turn; the check never runs past it. */
   timeoutMs?: number;
@@ -4087,6 +4453,26 @@ export async function checkReplyClaims(args: {
     args.previousTurn,
   );
   const hasCard = args.evidence.some((item) => item.state !== null);
+  /** #3355 rework 9: the memory (fix 1) and sold-count (fix 5) tie-breaks. */
+  const deterministicTieBreaks = (
+    text: string,
+    evidence: readonly ClaimEvidence[],
+  ): { text: string; corrected: string[] } => {
+    const memory = correctMemoryClaimWithoutSave({
+      text,
+      hostMessage: args.hostMessage,
+      evidence,
+      ...(args.memoryNotes ? { memoryNotes: args.memoryNotes } : {}),
+    });
+    const sold = correctSoldCountClaims({
+      text: memory.text,
+      facts: args.soldCounts ?? [],
+    });
+    return {
+      text: sold.text,
+      corrected: [...memory.corrected, ...sold.corrected],
+    };
+  };
   const budgetLeft = () =>
     Math.min(ARI_CLAIM_RECORDS_TIMEOUT_MS, timeoutMs - elapsed() - 100);
   /** The names the deterministic pass can find a status fact about. */
@@ -4230,10 +4616,17 @@ export async function checkReplyClaims(args: {
       previousTurn: args.previousTurn,
       pronounKind,
     });
+    // #3355 rework 9 (fix 1 / fix 5): memory and sold-count claims never
+    // wait on the judge either.
+    const facts = deterministicTieBreaks(stripped.text, [
+      ...args.evidence,
+      ...(read?.records ?? []),
+      ...(status?.records ?? []),
+    ]);
     // #3355 final fix (C-1): Seth's tie-break never waits on the judge.
     const tieBreak = correctCompletionWithoutWrite({
-      text: stripped.text,
-      context,
+      text: facts.text,
+      context: { ...context, replyText: facts.text },
       evidence: [
         ...args.evidence,
         ...(read?.records ?? []),
@@ -4246,7 +4639,7 @@ export async function checkReplyClaims(args: {
       reason,
       claims: [],
       replaced: [],
-      removed: [...stripped.removed, ...tieBreak.corrected],
+      removed: [...stripped.removed, ...facts.corrected, ...tieBreak.corrected],
       elapsedMs: elapsed(),
       modelCalls,
       freshRead: freshLabel(read),
@@ -4396,10 +4789,12 @@ export async function checkReplyClaims(args: {
       ...result.replaced.map((item) => item.with),
     ],
   });
+  // #3355 rework 9 (fix 1 / fix 5): memory and sold-count claims.
+  const facts = deterministicTieBreaks(strip.text, evidence);
   // #3355 final fix (C-1): the tie-break holds whatever the judge listed.
   const tieBreak = correctCompletionWithoutWrite({
-    text: strip.text,
-    context,
+    text: facts.text,
+    context: { ...context, replyText: facts.text },
     evidence,
   });
   return {
@@ -4408,7 +4803,7 @@ export async function checkReplyClaims(args: {
     reason: "ok",
     claims,
     replaced: result.replaced,
-    removed: [...strip.removed, ...tieBreak.corrected],
+    removed: [...strip.removed, ...facts.corrected, ...tieBreak.corrected],
     elapsedMs: elapsed(),
     modelCalls: 1,
     freshRead: freshLabel(read),

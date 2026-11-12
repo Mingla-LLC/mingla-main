@@ -19,7 +19,10 @@ import {
   isValidIanaTimezone,
   localDateTimeToInstants,
 } from "./agentRelativeTime.ts";
-import { normaliseAriDiscountCode } from "./ariDiscountArgs.ts";
+import {
+  normaliseAriDiscountCode,
+  withImmediateStart,
+} from "./ariDiscountArgs.ts";
 import { marketDefaultTimezone } from "./payoutCountries.ts";
 import { formatMinor, minorFromMajor } from "./money/formatMinor.ts";
 import { assertOwnerCopy } from "./ariOwnerCopy.ts";
@@ -2420,7 +2423,33 @@ export async function preserveStatedSlots(args: {
     (anyStated("starts_on") && schemaKeys.has("starts_at")) ||
     (anyStated("max_total_uses") && schemaKeys.has("max_total_uses")) ||
     (anyStated("max_uses_per_buyer") && schemaKeys.has("max_uses_per_buyer"));
-  if (!relevant) return { kind: "ok", args: args.toolArgs, bound: [] };
+  // #3355 rework 9 (fix 2): "from now" / a past start is "as soon as you
+  // confirm" (I-ARI-NOW-MEANS-ON-CONFIRM). A stated start day is kept.
+  const immediate = (
+    check: StatedSlotCheck,
+    zone: string | null,
+  ): StatedSlotCheck => {
+    if (check.kind !== "ok") return check;
+    const start = withImmediateStart({
+      toolName: args.toolName,
+      toolArgs: check.args,
+      ownerMessages: args.ownerMessages,
+      statedStart: anyStated("starts_on"),
+      timezone: zone,
+      now: args.now,
+    });
+    if (!start.dropped) return check;
+    return {
+      ...check,
+      args: start.args,
+      bound: check.bound.includes("starts_at")
+        ? check.bound
+        : [...check.bound, "starts_at"],
+    };
+  };
+  if (!relevant) {
+    return immediate({ kind: "ok", args: args.toolArgs, bound: [] }, null);
+  }
   let timezone: string | null = null;
   let country: string | null = null;
   let currency: string | null = null;
@@ -2452,17 +2481,20 @@ export async function preserveStatedSlots(args: {
         : null;
     }
   }
-  return checkStatedSlots({
-    toolName: args.toolName,
-    toolArgs: args.toolArgs,
-    schemaKeys,
-    stated,
+  return immediate(
+    checkStatedSlots({
+      toolName: args.toolName,
+      toolArgs: args.toolArgs,
+      schemaKeys,
+      stated,
+      timezone,
+      country,
+      currency,
+      now: args.now,
+      ...(args.askedBefore ? { askedBefore: args.askedBefore } : {}),
+    }),
     timezone,
-    country,
-    currency,
-    now: args.now,
-    ...(args.askedBefore ? { askedBefore: args.askedBefore } : {}),
-  });
+  );
 }
 
 /**

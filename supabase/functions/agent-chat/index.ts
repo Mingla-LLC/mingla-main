@@ -251,7 +251,12 @@ import {
   readAriIntent,
   routeAriTurn,
 } from "../_shared/ariIntentRead.ts";
-import { guardAriReplyRoutes } from "../_shared/ariAppMap.ts";
+import {
+  guardAriReplyRoutes,
+  guardReplyNavigation,
+} from "../_shared/ariAppMap.ts";
+import { retitleAriChat } from "../_shared/ariChatTitle.ts";
+import { soldCountFacts } from "../_shared/ariEventSales.ts";
 import {
   ariGuideCitations,
   ariGuideForcedCalls,
@@ -307,8 +312,10 @@ import {
   completionClaimWithoutProposal,
   conversationSince,
   dedupeReplySentences,
+  memoryClaimWithoutSave,
   previousTurnText,
   recentRecordEvidence,
+  replyClaimsMemorySave,
 } from "../_shared/ariClaimCheck.ts";
 import { objectStatusReadPlan } from "../_shared/ariStatusRead.ts";
 import { withHostStatedDiscountCode } from "../_shared/ariDiscountArgs.ts";
@@ -2080,6 +2087,19 @@ async function handle(req: Request): Promise<Response> {
       serviceClient,
       activeBrand?.id ?? null,
     );
+    // #3355 rework 9 (fix 6, I-ARI-CHAT-TITLE-SPECIFIC): a new chat is
+    // titled from the host's first message, never a generic or duplicate
+    // phrase. Off: the #3429 taxonomy title stays.
+    if (understandFirst && !body.conversation_id && ownerTurnText.trim()) {
+      const retitled = await retitleAriChat({
+        service: serviceClient,
+        userId,
+        conversationId,
+        brandId: activeBrand?.id ?? null,
+        firstMessage: ownerTurnText,
+      });
+      if (retitled) conversationTitle = retitled;
+    }
     const [priorOwnerTexts, recentGaps, priorServed, askTeamDeclined] =
       ownerTurnText
         ? await Promise.all([
@@ -2529,6 +2549,9 @@ async function handle(req: Request): Promise<Response> {
     let modelFlowDecision: FlowTurnDecision | null = null;
     let setupTextBounced = false;
     let announcedWriteBounced = false;
+    // #3355 rework 9 (fix 1): one bounce for a memory claim with no save.
+    let memoryClaimBounced = false;
+    let memoryClaimIssue: ReturnType<typeof memoryClaimWithoutSave> = null;
     // #3355 final fix (C-1): one bounce for "done" with no write or card.
     let completionClaimBounced = false;
     let completionClaimIssue: ReturnType<
@@ -4186,6 +4209,15 @@ ${boundedAgentContext}
               message:
                 "Your reply was a tool-call marker written as text. Call the tool as a real function call, or answer the owner in plain words. Never write [mingla_tool_call ...] in a reply.",
             }
+            // #3355 rework 9 (fix 1): "I'll remember that" with no memory
+            // save goes back once, so the model calls remember_note.
+            : understandFirst && !memoryClaimBounced &&
+                (memoryClaimIssue = memoryClaimWithoutSave({
+                  text,
+                  hostMessage: semanticMessage,
+                  observations: loopObservations,
+                })) && (memoryClaimBounced = true)
+            ? memoryClaimIssue
             // #3355 ship-prep: origin/main never bounced an announced write.
             : understandFirst && announcesWriteWithoutCall(text) &&
                 !announcedWriteBounced &&
@@ -5848,6 +5880,15 @@ async function guardReplyClaims(args: {
     !(target && isRead(target, {}));
   // #3355 rework 7 (R7-5): "is it live?" names what the previous turn named.
   const previousTurn = previousTurnText(args.history);
+  // #3355 rework 9 (fix 1): the host's notes back a recall ("I remember you
+  // said…"); read only when the reply claims a memory save.
+  const memoryNotes = replyClaimsMemorySave(args.text, args.current)
+    ? (await readAriMemoryForTurn({
+      caller: args.userClient,
+      brandId: args.brandId,
+      message: args.current,
+    })).map((note) => String(note.content ?? ""))
+    : undefined;
   const check = await checkReplyClaims({
     text: args.text,
     hostMessage: args.current,
@@ -5890,6 +5931,9 @@ async function guardReplyClaims(args: {
       ? { intentRead: args.intentFromModel }
       : {}),
     previousTurn,
+    ...(memoryNotes ? { memoryNotes } : {}),
+    // #3355 rework 9 (fix 5): sold counts this turn's reads returned.
+    soldCounts: soldCountFacts(observations),
     // The tool the host asked for names what "nothing saved" may be about.
     ...(target ? { askedKinds: new Set([claimKindOfTool(target)]) } : {}),
     timeoutMs: ARI_TURN_DEADLINE_MS - (Date.now() - args.turnStartedAt),
@@ -5920,7 +5964,26 @@ async function guardReplyClaims(args: {
     }),
   );
   // #3355 final fix (P3): to the host as "you", and no invented steps.
-  return speakToHost(check.text);
+  // #3355 rework 9 (fix 7): no screen path the App Map does not know.
+  return guardReplyNavigation(
+    speakToHost(check.text),
+    [...objects, ...eventTitlesOf(observations)],
+  ).text;
+}
+
+/** #3355 rework 9 (fix 7): event titles this turn's reads named. */
+function eventTitlesOf(
+  observations: readonly { tool: string; result?: unknown }[],
+): string[] {
+  return observations.flatMap((item) => {
+    const events = (item.result as { events?: unknown } | null)?.events;
+    return Array.isArray(events)
+      ? events.flatMap((row) => {
+        const title = (row as { title?: unknown } | null)?.title;
+        return typeof title === "string" ? [title] : [];
+      })
+      : [];
+  });
 }
 
 /**

@@ -241,3 +241,233 @@ export function guardAriReplyRoutes<
     dropped,
   };
 }
+
+// ── #3355 rework 9 (fix 7): screen paths in a reply are real ───────────────
+
+/**
+ * MINGLA-INVARIANT: I-ARI-PATHS-FROM-APP-MAP | issue #3355 | A navigation path in Ari's reply ("Manage > Scanners", "go to Account → Your brands", "tap "Guests" then "+"") is kept only when every step is a screen title of the generated App Map, a label the Feature Guide how_to names, or an object of this chat; otherwise the path's step (and the steps after it) is replaced by an honest pointer. Correct paths are never touched; prose, numbers and comparisons are not paths (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_9.implementor.test.ts).
+ */
+export const ARI_UNKNOWN_PATH_SENTENCE =
+  "I'm not sure where that is in Mingla Host — want me to ask the Mingla team?";
+
+const LABEL_LEADS = /^(?:(?:the|your|a|an|my|its|their|this|that)\s+)+/i;
+const LABEL_TAILS =
+  /\s+(?:tab|tabs|screen|page|button|menu|tile|section|row|pill|option|link|icon|card|area|list|module|sheet|step)$/i;
+const NAV_LEADS =
+  /^(?:(?:then|and|next|first|now|just|simply|finally|also|please|or)\s+)*(?:(?:tap|tapping|open|opening|go\s+to|head\s+to|navigate\s+to|select|choose|click|press|find|visit|use|in|from|under|on|via|into|at)\s+)+/i;
+
+/** A label as the map compares it: no quotes, articles or "tab". */
+export function normaliseNavLabel(raw: string): string {
+  let out = raw.replace(/[*_`"“”‘’]/g, "").replace(/'/g, "’").trim();
+  out = out.replace(/[.,;:!?)(]+$/g, "").replace(/^[.,;:!?)(]+/g, "").trim();
+  for (let index = 0; index < 3; index++) {
+    const next = out.replace(LABEL_LEADS, "").replace(LABEL_TAILS, "").trim();
+    if (next === out) break;
+    out = next;
+  }
+  return out.replace(/\s+/g, " ").toLowerCase();
+}
+
+function labelVariants(label: string): string[] {
+  const out = [label];
+  if (label.endsWith("s")) out.push(label.slice(0, -1));
+  else out.push(`${label}s`);
+  return out;
+}
+
+const CHAIN_SEPARATOR = /\s*(?:->|→|›|»|>)\s*/;
+
+let knownLabels: Set<string> | null = null;
+
+/** Screen titles and Feature Guide labels, normalised, built once. */
+export function ariKnownNavLabels(): ReadonlySet<string> {
+  if (knownLabels) return knownLabels;
+  const labels = new Set<string>([
+    "mingla",
+    "mingla host",
+    "mingla host app",
+    "host app",
+    "the app",
+    "app",
+    "+",
+  ]);
+  const add = (raw: string) => {
+    const label = normaliseNavLabel(raw);
+    if (label && label.length <= 60) labels.add(label);
+  };
+  for (const route of ARI_APP_ROUTES) add(route.title);
+  for (const howTo of Object.values(MAP.guide_how_to)) {
+    for (const match of howTo.matchAll(/["“]([^"”\n]{1,60})["”]/g)) {
+      add(match[1]);
+    }
+    for (const sentence of howTo.split(/[.;\n|]|\s\d+\)\s/)) {
+      if (CHAIN_SEPARATOR.test(sentence) && /->|→|›|»|>/.test(sentence)) {
+        for (const part of sentence.split(CHAIN_SEPARATOR)) {
+          add(part.replace(NAV_LEADS, ""));
+          // The last step may run on into prose ("Payments & Bank. The…").
+          add(
+            part.replace(NAV_LEADS, "").split(/\s+(?:and|to|then|or|\()\s*/)[0],
+          );
+        }
+      }
+    }
+    for (
+      const match of howTo.matchAll(
+        /\b(?:tap|open|choose|select|go\s+to|then)\s+(?:the\s+)?([A-Z][^,.;:()\n"“”]{0,40}?)(?=\s+(?:to|and|then|tab|button|on|in|from|for|or|at|under|with)\b|[,.;:(]|$)/g,
+      )
+    ) {
+      add(match[1]);
+    }
+  }
+  knownLabels = labels;
+  return labels;
+}
+
+function isKnownLabel(raw: string, extra: ReadonlySet<string>): boolean {
+  const label = normaliseNavLabel(raw);
+  if (!label) return false;
+  const known = ariKnownNavLabels();
+  return labelVariants(label).some((item) =>
+    known.has(item) || extra.has(item)
+  );
+}
+
+/** One step of a written path: quoted, bold, or Capitalised words. */
+const STEP = String
+  .raw`(?:\*\*[^*\n]{1,60}\*\*|["“][^"”\n]{1,60}["”]|\+|[\p{Lu}][\p{L}\p{N}&'’+\-]*(?:[ ](?:&[ ])?[\p{L}\p{N}&'’+\-]+){0,5})`;
+const CHAIN = new RegExp(
+  `${STEP}(?:\\s*(?:->|→|›|»|>)\\s*${STEP})+`,
+  "gu",
+);
+const THEN_CHAIN = new RegExp(
+  String
+    .raw`\b(?:tap|open|go\s+to|select|choose|click)\s+(${STEP})\s*,?\s+(?:and\s+)?then\s+(?:tap\s+|open\s+|select\s+|choose\s+|click\s+|go\s+to\s+)?(${STEP})`,
+  "giu",
+);
+const PROSE_WORD =
+  /^(?:on|in|to|and|then|for|at|with|from|under|of|or|if|when|so|which|where|inside|near|beside|next)$/i;
+
+/** A chain's steps are known: the first may carry its verb, the last its prose. */
+function stepsKnown(steps: string[], extra: ReadonlySet<string>): boolean {
+  return steps.every((raw, index) => {
+    let step = raw.trim();
+    if (index === 0) step = step.replace(NAV_LEADS, "");
+    if (isKnownLabel(step, extra)) return true;
+    const words = step.replace(/[*"“”]/g, " ").trim().split(/\s+/);
+    if (index === 0) {
+      // "Open the Hub" style: a known label at the end of the first step.
+      for (let start = 1; start < words.length; start++) {
+        if (isKnownLabel(words.slice(start).join(" "), extra)) return true;
+      }
+    }
+    if (index === steps.length - 1) {
+      // "Scanners on the event page": a known label, then prose.
+      for (let end = words.length - 1; end >= 1; end--) {
+        if (
+          PROSE_WORD.test(words[end]) &&
+          isKnownLabel(words.slice(0, end).join(" "), extra)
+        ) return true;
+      }
+    }
+    return false;
+  });
+}
+
+/** Every path written in the text, and whether each is real. */
+export function navigationPathsIn(
+  text: string,
+  extraLabels: readonly string[] = [],
+): Array<{ path: string; known: boolean }> {
+  const extra = new Set(
+    extraLabels.flatMap((label) => labelVariants(normaliseNavLabel(label))),
+  );
+  const out: Array<{ path: string; known: boolean }> = [];
+  for (const match of String(text ?? "").matchAll(CHAIN)) {
+    const steps = match[0].split(CHAIN_SEPARATOR);
+    // A comparison or number ("price > 1000") is not a path.
+    if (steps.some((step) => /^\s*[\d₦£$€]/.test(step))) continue;
+    out.push({ path: match[0], known: stepsKnown(steps, extra) });
+  }
+  for (const match of String(text ?? "").matchAll(THEN_CHAIN)) {
+    out.push({
+      path: match[0],
+      known: stepsKnown([match[1], match[2]], extra),
+    });
+  }
+  return out;
+}
+
+const LIST_ITEM = /^\s*(?:\d+[.)]|[-•*])\s+/;
+
+/**
+ * #3355 rework 9 (fix 7, I-ARI-PATHS-FROM-APP-MAP): a step with a screen
+ * path the App Map and the Feature Guide do not know is replaced by
+ * ARI_UNKNOWN_PATH_SENTENCE, once. In a numbered or bulleted list the steps
+ * after it go too (they happen on that screen); an intro line ending in ":"
+ * with nothing left under it goes as well. Known paths are never touched.
+ */
+export function guardReplyNavigation(
+  text: string,
+  extraLabels: readonly string[] = [],
+): { text: string; removed: string[] } {
+  const source = String(text ?? "");
+  const unknown = navigationPathsIn(source, extraLabels).filter((item) =>
+    !item.known
+  );
+  if (unknown.length === 0) return { text: source, removed: [] };
+  const bad = (part: string) =>
+    unknown.some((item) => part.includes(item.path));
+  const lines = source.split("\n");
+  const out: string[] = [];
+  const removed: string[] = [];
+  let said = false;
+  let droppingList = false;
+  const say = () => {
+    if (!said) out.push(ARI_UNKNOWN_PATH_SENTENCE);
+    said = true;
+  };
+  for (const line of lines) {
+    const isItem = LIST_ITEM.test(line);
+    if (droppingList) {
+      if (isItem || (line.trim() && /^\s{2,}/.test(line))) {
+        removed.push(line.trim());
+        continue;
+      }
+      droppingList = false;
+    }
+    if (!bad(line)) {
+      out.push(line);
+      continue;
+    }
+    if (isItem) {
+      removed.push(line.trim());
+      droppingList = true;
+      // The intro ("To add a scanner:") has no step left under it.
+      let back = out.length - 1;
+      while (back >= 0 && !out[back].trim()) back--;
+      if (back >= 0 && /:\s*$/.test(out[back]) && !LIST_ITEM.test(out[back])) {
+        removed.push(out[back].trim());
+        out.splice(back, 1);
+      } else if (back >= 0 && LIST_ITEM.test(out[back])) {
+        // Earlier steps stay; the pointer follows them.
+      }
+      say();
+      continue;
+    }
+    const kept: string[] = [];
+    let replaced = false;
+    for (const sentence of line.split(/(?<=[.!?])\s+(?=[A-Z“"*(\d])/)) {
+      if (bad(sentence)) {
+        removed.push(sentence.trim());
+        if (!said && !replaced) kept.push(ARI_UNKNOWN_PATH_SENTENCE);
+        said = true;
+        replaced = true;
+        continue;
+      }
+      kept.push(sentence);
+    }
+    if (kept.length > 0) out.push(kept.join(" "));
+  }
+  const joined = out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { text: joined || ARI_UNKNOWN_PATH_SENTENCE, removed };
+}

@@ -2,6 +2,8 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
+import { readAriUnderstandFirst } from "../_shared/ariRollout.ts";
+import { retitleAriChat } from "../_shared/ariChatTitle.ts";
 
 type ConversationAction = "rename" | "regenerate" | "delete" | "delete_all";
 interface RequestBody {
@@ -120,6 +122,30 @@ Deno.serve(async (request) => {
     ? (earliest?.content as { text: string }).text
     : "";
   const attachmentTypes = (attachments ?? []).map((row) => String(row.file_type));
+  // #3355 rework 9 (fix 6, I-ARI-CHAT-TITLE-SPECIFIC): with "Ari understands
+  // first" on for the chat's brand, the title comes from the first message,
+  // never a generic or duplicate phrase. Off, or nothing to say: as before.
+  const understandFirst = await readAriUnderstandFirst(
+    admin,
+    typeof owned.brand_id === "string" ? owned.brand_id : null,
+  ).catch(() => false);
+  if (understandFirst && firstText.trim()) {
+    const retitled = await retitleAriChat({
+      service: admin,
+      userId,
+      conversationId: owned.id,
+      brandId: typeof owned.brand_id === "string" ? owned.brand_id : null,
+      firstMessage: firstText,
+      replaceManual: true,
+    });
+    if (retitled) {
+      const { data: row } = await admin.from("agent_conversations")
+        .select("id,title,title_source,title_generation_version,title_generated_at")
+        .eq("id", owned.id).eq("user_id", userId)
+        .single();
+      if (row) return response(200, { conversation: row });
+    }
+  }
   const { data: generated, error: generateError } = await admin.rpc(
     "agent_safe_provisional_title",
     { p_text: firstText, p_attachment_types: attachmentTypes },
