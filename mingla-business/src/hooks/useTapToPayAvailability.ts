@@ -30,6 +30,7 @@ import { Platform } from "react-native";
 import type { Brand } from "../types/brand";
 import { isBrandChargeReady } from "../utils/brandPayout";
 import {
+  peekTapToPayWarmHint,
   readTapToPayWarmHint,
   subscribeTapToPayWarmHint,
 } from "../services/terminal/tapToPaySetupStore";
@@ -73,6 +74,12 @@ export interface TapToPayAvailability {
   available: boolean;
   needsSetup: boolean;
   reason: TapToPayReason;
+  /**
+   * #4389 — true while this phone's per-brand setup hint is still being read
+   * and nothing else answers yet: `needsSetup` is not known, so nothing may
+   * route to setup on it.
+   */
+  checking?: boolean;
 }
 
 export type TapToPayBrandFacts = Pick<
@@ -161,11 +168,18 @@ export const useTapToPayAvailability = (
   // that already carries its card facts is used as is and fetches nothing.
   const slimBrandId = givenBrand !== null && !hasTapToPayCardFacts(givenBrand) ? brandId : null;
   const fullBrand = useTapToPayBrandFacts(slimBrandId);
-  const [hint, setHint] = useState<boolean>(false);
+  // null = not read yet. Seeded from what this runtime already read, so a
+  // screen opened after setup never starts out "needs setup".
+  const [hint, setHint] = useState<boolean | null>(() =>
+    brandId === null ? false : peekTapToPayWarmHint(brandId) ?? null,
+  );
 
   useEffect(() => {
-    setHint(false);
-    if (brandId === null) return undefined;
+    if (brandId === null) {
+      setHint(false);
+      return undefined;
+    }
+    setHint(peekTapToPayWarmHint(brandId) ?? null);
     let alive = true;
     void readTapToPayWarmHint(brandId).then((value) => {
       if (alive) setHint(value);
@@ -181,14 +195,19 @@ export const useTapToPayAvailability = (
 
   const session = useTapToPayTerminal();
   const acceptance = tapToPayAcceptanceFor(session, brandId);
-  const needsSetup = tapToPayNeedsSetup(Platform.OS, acceptance, hint);
+  const needsSetup = tapToPayNeedsSetup(Platform.OS, acceptance, hint === true);
+  // Apple's answer (iPhone) decides without the hint; otherwise wait for it.
+  const checking = hint === null && (Platform.OS !== "ios" || acceptance === "unknown");
 
   const brand = slimBrandId !== null ? fullBrand ?? givenBrand : givenBrand;
   const currency = input?.currency ?? null;
   const hasBrand = brand !== null;
   const { live } = useTapToPayRelease(brand?.id ?? null);
   return useMemo(
-    () => resolveTapToPayAvailability({ brand, currency, released: live }, currentTapToPayDevice(), !needsSetup),
+    () => {
+      const resolved = resolveTapToPayAvailability({ brand, currency, released: live }, currentTapToPayDevice(), !needsSetup);
+      return checking && resolved.needsSetup ? { ...resolved, checking: true } : resolved;
+    },
     // Brand facts that matter are listed so a fresh brand object does not recompute needlessly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -201,6 +220,7 @@ export const useTapToPayAvailability = (
       currency,
       live,
       needsSetup,
+      checking,
     ],
   );
 };

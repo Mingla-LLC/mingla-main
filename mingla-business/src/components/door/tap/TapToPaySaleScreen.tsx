@@ -148,13 +148,19 @@ export const TapToPaySaleScreen = ({
 
   // Setup comes first, once per phone. The draft travels with it.
   useEffect(() => {
-    if (draft !== null && availability.available && (availability.needsSetup || state.kind === "needs_setup")) {
+    // #4389 — never on a setup answer that is still being read (a phone that
+    // set up this brand would be sent back to setup on every cold open).
+    if (
+      draft !== null &&
+      availability.available &&
+      ((availability.needsSetup && availability.checking !== true) || state.kind === "needs_setup")
+    ) {
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(
         `/event/${eventId}/door/tap/setup?draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
       );
     }
-  }, [draft, availability.available, availability.needsSetup, state.kind, router, eventId]);
+  }, [draft, availability.available, availability.needsSetup, availability.checking, state.kind, router, eventId]);
 
   // Start the sale once the reader session is ready.
   useEffect(() => {
