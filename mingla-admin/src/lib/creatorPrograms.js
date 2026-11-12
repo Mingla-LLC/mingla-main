@@ -349,11 +349,16 @@ const HISTORY_WORDS = {
   handle_approve: "Approved handle",
   handle_reject: "Rejected handle",
   handle_reopen: "Reopened handle",
+  handle_band_change: "Changed audience band",
 };
 
 export function historyLine(event) {
   if (!event) return "";
   const base = HISTORY_WORDS[event.action] ?? sentenceFromKey(event.action);
+  if (event.action === "handle_band_change") {
+    const from = event.previous_follower_band ? `${bandWord(event.previous_follower_band)} → ` : "";
+    return `${base} · ${platformWord(event.platform)} · ${from}${bandWord(event.follower_band)}`;
+  }
   if (["handle_approve", "handle_reject", "handle_reopen"].includes(event.action)) {
     const band = event.follower_band ? ` · band ${bandWord(event.follower_band)}` : "";
     return `${base} · ${platformWord(event.platform)}${band}`;
@@ -804,6 +809,8 @@ const ERROR_WORDS = {
   handle_not_found: "This social account was removed. Refresh the creator.",
   invalid_band: "Choose an audience band from the list.",
   band_required: "Choose the audience band you saw before approving.",
+  band_unchanged: "That is already the recorded band. Choose a different one.",
+  handle_not_approved: "Only an approved social account's band can be changed. Refresh the creator.",
   not_rejected: "This social account isn't rejected, so there is nothing to reopen. Refresh the creator.",
   note_too_long: "Keep the note shorter.",
   creator_not_reviewable: "This creator's state changed. Refresh the list.",

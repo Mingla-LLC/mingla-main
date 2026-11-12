@@ -95,14 +95,24 @@ export function CreatorShowcasePlayer({ job, onRefresh = null, refreshing = fals
           referrerPolicy="strict-origin-when-cross-origin"
         />
       ) : (
+        // #4402 L2: a playback error shows inside the frame, where the admin is
+        // looking, not below it under the sticky decision bar.
         <div className={FRAME} aria-busy={loading}>
-          <span className="px-6 text-sm">
-            {loading ? <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Video className="mx-auto mb-2 h-6 w-6" aria-hidden="true" />}
-            {loading ? "Loading the private video…" : "Private showcase video"}
-          </span>
+          {error ? (
+            <span role="alert" className="px-6 text-sm">
+              <AlertTriangle className="mx-auto mb-2 h-6 w-6 text-[var(--color-error-50)]" aria-hidden="true" />
+              <b className="block">Couldn't play this video</b>
+              <span className="mt-1 block text-xs">{error}</span>
+            </span>
+          ) : (
+            <span className="px-6 text-sm">
+              {loading ? <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Video className="mx-auto mb-2 h-6 w-6" aria-hidden="true" />}
+              {loading ? "Loading the private video…" : "Private showcase video"}
+            </span>
+          )}
         </div>
       )}
-      {error ? <p role="alert" className="text-center text-xs text-[var(--color-error-700)]">{error}</p> : null}
+      {error && grant?.url ? <p role="alert" className="text-center text-xs text-[var(--color-error-700)]">{error}</p> : null}
       {!loading && (error || grant?.url) ? (
         <Button className="w-full" size="sm" variant="secondary" icon={RefreshCw} onClick={load}>
           {error ? "Try again" : "Refresh video"}

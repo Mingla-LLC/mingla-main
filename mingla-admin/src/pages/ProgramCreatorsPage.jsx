@@ -31,7 +31,7 @@ import { CreatorShowcasePlayer } from "../components/programs/CreatorShowcasePla
 import { CreatorStepMeter } from "../components/programs/CreatorStepMeter";
 import { useToast } from "../context/ToastContext";
 import {
-  decideCreator, decideCreatorHandle, getCreatorDetail, listCreatorQueue,
+  changeCreatorHandleBand, decideCreator, decideCreatorHandle, getCreatorDetail, listCreatorQueue,
 } from "../services/creatorProgramsService";
 import {
   CREATOR_COLUMNS,
@@ -360,6 +360,56 @@ function ApproveHandleDialog({ handle, onClose, onConfirm }) {
   );
 }
 
+// #4402 (Seth's live pass): fix a band recorded by mistake. Same picker,
+// prefilled; a reason is required; the handle stays approved.
+export function ChangeAudienceDialog({ handle, onClose, onConfirm }) {
+  const compare = audienceCompare(handle);
+  const [band, setBand] = useState(handle.follower_band ?? "");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const unchanged = band === (handle.follower_band ?? "");
+  const submit = async () => {
+    if (!reason.trim()) { setError("Say why you're changing it, in a few words."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      await onConfirm({ band, note: reason.trim() });
+    } catch (cause) {
+      setError(programErrorMessage(cause));
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal open onClose={saving ? () => {} : onClose} title={`Change audience for @${handle.handle}?`} size="sm">
+      <ModalBody className="space-y-4">
+        <p className="text-sm text-[var(--color-text-secondary)]">The handle stays approved. Hosts see the band you record, and History keeps the old one.</p>
+        <label className="block text-sm">
+          <span className="mb-1.5 block font-medium text-[var(--color-text-primary)]">Audience band you saw</span>
+          <select aria-label="Audience band you saw" className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm" value={band} onChange={(e) => { setBand(e.target.value); setError(""); }} autoFocus>
+            {FOLLOWER_BANDS.map((b) => <option key={b} value={b}>{bandWord(b)}</option>)}
+          </select>
+          <span className="mt-1 block text-xs text-[var(--color-text-tertiary)]">
+            Now recorded: {bandWord(handle.follower_band)}. The creator said "{bandWord(compare.selfReported)}".
+          </span>
+        </label>
+        <Textarea
+          label="Reason (required)"
+          className="font-sans"
+          maxLength={500}
+          value={reason}
+          onChange={(e) => { setReason(e.target.value); setError(""); }}
+          error={error || undefined}
+        />
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button loading={saving} disabled={unchanged || !reason.trim()} onClick={() => void submit()}>Change audience</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
 function RejectHandleDialog({ handle, onClose, onConfirm }) {
   const [reason, setReason] = useState(HANDLE_REJECT_REASONS[0]);
   const [extra, setExtra] = useState("");
@@ -382,7 +432,7 @@ function RejectHandleDialog({ handle, onClose, onConfirm }) {
   return (
     <Modal open onClose={saving ? () => {} : onClose} title={`${verified ? "Revoke" : "Reject"} @${handle.handle}?`} destructive size="sm">
       <ModalBody className="space-y-4">
-        <p className="text-sm text-[var(--color-text-secondary)]">The creator sees standard wording with the reason below, and can add the handle again with a new code.</p>
+        <p className="text-sm text-[var(--color-text-secondary)]">The creator sees standard wording with the reason below. It stays rejected until you reopen it.</p>
         <fieldset className="space-y-2">
           <legend className="mb-1 text-sm font-medium text-[var(--color-text-primary)]">Reason</legend>
           {HANDLE_REJECT_REASONS.map((r, i) => (
@@ -447,7 +497,7 @@ function SetupSteps({ detail }) {
   );
 }
 
-function HandleRow({ handle, canAct, onApprove, onReject, onReopen }) {
+export function HandleRow({ handle, canAct, onApprove, onReject, onReopen, onChangeBand }) {
   const state = handleState(handle);
   const rejected = handle.last_check_status === "rejected";
   const compare = audienceCompare(handle);
@@ -485,6 +535,7 @@ function HandleRow({ handle, canAct, onApprove, onReject, onReopen }) {
         ) : null}
         {canAct && !verified && !rejected ? <Button size="sm" icon={Check} onClick={() => onApprove(handle)}>Approve handle</Button> : null}
         {canAct && rejected ? <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => onReopen(handle)}>Reopen handle</Button> : null}
+        {canAct && verified ? <Button size="sm" variant="secondary" onClick={() => onChangeBand(handle)}>Change audience</Button> : null}
         {canAct && !rejected ? (
           <Button size="sm" variant="ghost" className="text-[var(--color-error-700)]" icon={XIcon} onClick={() => onReject(handle)}>{verified ? "Revoke handle" : "Reject handle"}</Button>
         ) : null}
@@ -495,14 +546,14 @@ function HandleRow({ handle, canAct, onApprove, onReject, onReopen }) {
   );
 }
 
-function SocialAccounts({ detail, onApprove, onReject, onReopen }) {
+function SocialAccounts({ detail, onApprove, onReject, onReopen, onChangeBand }) {
   const handles = Array.isArray(detail.handles) ? detail.handles : [];
   const canAct = !["declined", "suspended"].includes(detail.verification);
   return (
     <SectionCard title="Social accounts" subtitle={`${handles.length} added`}>
       {handles.length ? (
         <ul className="divide-y divide-[var(--gray-200)]">
-          {handles.map((h) => <HandleRow key={h.id} handle={h} canAct={canAct} onApprove={onApprove} onReject={onReject} onReopen={onReopen} />)}
+          {handles.map((h) => <HandleRow key={h.id} handle={h} canAct={canAct} onApprove={onApprove} onReject={onReject} onReopen={onReopen} onChangeBand={onChangeBand} />)}
         </ul>
       ) : <p className="text-sm text-[var(--color-text-secondary)]">No social account added yet. The creator adds one in Creator setup.</p>}
     </SectionCard>
@@ -781,6 +832,7 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
   const [tab, setTab] = useState("review");
   const [approving, setApproving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
+  const [changingBand, setChangingBand] = useState(null);
   const detail = record.data;
 
   const refresh = useCallback(() => { record.reload(); onChanged(); }, [record, onChanged]);
@@ -831,6 +883,12 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
     await decideCreatorHandle(rejecting.id, "reject", { note });
     setRejecting(null);
     addToast({ variant: "success", title: "Handle rejected. The creator sees why. It stays rejected until you reopen it." });
+    refresh();
+  };
+  const changeBand = async ({ band, note }) => {
+    await changeCreatorHandleBand(changingBand.id, band, note);
+    setChangingBand(null);
+    addToast({ variant: "success", title: "Audience band changed. Hosts now see the new band." });
     refresh();
   };
   const reopen = async (handle) => {
@@ -893,7 +951,7 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
               </AlertCard>
             ) : null}
             <SetupSteps detail={detail} />
-            <SocialAccounts detail={detail} onApprove={setApproving} onReject={setRejecting} onReopen={(h) => void reopen(h)} />
+            <SocialAccounts detail={detail} onApprove={setApproving} onReject={setRejecting} onReopen={(h) => void reopen(h)} onChangeBand={setChangingBand} />
             <Rates detail={detail} />
             <About detail={detail} />
             <LocalAndPerson detail={detail} />
@@ -915,6 +973,7 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
 
       {approving ? <ApproveHandleDialog handle={approving} onClose={() => setApproving(null)} onConfirm={approve} /> : null}
       {rejecting ? <RejectHandleDialog handle={rejecting} onClose={() => setRejecting(null)} onConfirm={reject} /> : null}
+      {changingBand ? <ChangeAudienceDialog handle={changingBand} onClose={() => setChangingBand(null)} onConfirm={changeBand} /> : null}
     </div>
   );
 }

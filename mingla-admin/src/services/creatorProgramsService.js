@@ -62,6 +62,15 @@ export function decideCreatorHandle(handleId, decision, { note = null, band = nu
   });
 }
 
+// #4402 — correct the audience band on an approved handle (a reason is required).
+export function changeCreatorHandleBand(handleId, band, note) {
+  return write("admin_creator_handle_band_change", {
+    p_handle_id: handleId,
+    p_band: band || null,
+    p_note: note && String(note).trim() ? String(note).trim() : null,
+  });
+}
+
 // ── Program conversations (#4187) ─────────────────────────────────────────
 
 export async function listLocalProgramPeople() {
