@@ -56,6 +56,10 @@ describe("H-2 filters", () => {
     expect(filterWorkUpdates(list, "mentions").map((r) => r.id)).toEqual(["b"]);
     expect(filterWorkUpdates(list, "all")).toHaveLength(5);
     expect(needsYou({ event_kind: "status", needs_you: false })).toBe(false);
+    // #4398 retest (P3): a resolved review stops asking, read or not.
+    expect(needsYou({ event_kind: "review", needs_you: false })).toBe(false);
+    expect(needsYou({ event_kind: "sent_back", needs_you: false })).toBe(false);
+    expect(needsYou({ event_kind: "review" })).toBe(true);
   });
   test("the chips count what is unread", () => {
     expect(workUpdateCounts(list)).toEqual({ all: 3, needs: 1, mentions: 1 });

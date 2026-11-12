@@ -4004,7 +4004,14 @@ BEGIN
     WITH m AS MATERIALIZED (
       SELECT tm.id, tm.source_kind, tm.created_at, tm.read_at, tm.body_excerpt, tm.deep_link,
              e.card_id, e.action,
-             tm.decision, -- #4255 Retest 2 (P3b)
+             -- #4398 retest (P3): a decision or an ask stands only while it is still open: a review ask
+             -- while the card waits In review, a send back until the card is asked again or closed, any
+             -- other decision until the card closes. Resolved, it stops asking, read or not.
+             tm.decision AND wc.status IS DISTINCT FROM 'done'
+               AND (tm.event_kind IS DISTINCT FROM 'review' OR wc.review_requested_at IS NOT NULL) AS decision,
+             CASE WHEN tm.event_kind = 'review' THEN wc.status IS DISTINCT FROM 'done' AND wc.review_requested_at IS NOT NULL
+                  WHEN tm.event_kind = 'sent_back' THEN wc.status IS DISTINCT FROM 'done' AND wc.review_requested_at IS NULL
+                  ELSE false END AS needs_you,
              tm.event_kind, -- #4398
              tmsg.thread_id, tmsg.id AS message_id, -- #4255 W1b
              public.team_inbox_kind(tm.source_kind, e.action) AS kind,
@@ -4015,6 +4022,7 @@ BEGIN
                'A teammate') AS actor
         FROM public.team_mentions tm
         LEFT JOIN public.ops_work_events e ON tm.source_kind = 'work_card' AND e.id = tm.source_id
+        LEFT JOIN public.ops_work_cards wc ON wc.id = e.card_id  -- #4398 retest (P3)
         LEFT JOIN public.team_messages tmsg ON tm.source_kind = 'team_message' AND tmsg.id = tm.source_id -- #4255 W1b
         LEFT JOIN auth.users u ON u.id = tm.actor_user_id
        WHERE tm.target_user_id = v_me
@@ -4034,7 +4042,7 @@ BEGIN
           'thread_id', x.thread_id, 'message_id', x.message_id, -- #4255 W1b
           'decision', x.decision, -- #4255 Retest 2 (P3b): the one decision flag
           -- #4398: what happened, whether it needs you, and the card as it is now (the Host app's read-only sheet)
-          'event_kind', x.event_kind, 'needs_you', x.event_kind IN ('review', 'sent_back'),
+          'event_kind', x.event_kind, 'needs_you', x.needs_you,
           'card', (SELECT jsonb_build_object('number', w.number, 'title', w.title, 'status', w.status, 'due_on', w.due_on,
                      'closed_at', w.closed_at, 'column', s.name, 'in_review', w.review_requested_at IS NOT NULL,
                      'owner', public.ops_name((public.ops_card_people(w.id, 'owner'))[1]),

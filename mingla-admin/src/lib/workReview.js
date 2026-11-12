@@ -32,3 +32,14 @@ export function reviewRole(card, me) {
   else words = `${ownerName} owns this. ${watcherName.charAt(0).toUpperCase()}${watcherName.slice(1)} confirms it.`;
   return { isOwner, isWatcher, inReview, canConfirm: inReview && isWatcher, words };
 }
+
+// #4398 retest (P3): the close form's words. The watcher's own close is the
+// confirm, so it closes the card; anyone else's goes to the watcher first.
+export function closeFormWords(card, me, columnName) {
+  const role = reviewRole(card, me);
+  const watcherName = firstName(card?.watchers) || "its watcher";
+  if (role.isWatcher) {
+    return { line: columnName ? `Moving to ${columnName} closes this card.` : "Your close counts as the confirm.", submit: "Close card", busy: "Closing…" };
+  }
+  return { line: `Sends it to ${watcherName} to confirm.`, submit: "Mark done", busy: "Sending…" };
+}

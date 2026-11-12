@@ -155,6 +155,17 @@ language sql as $fn$
   select coalesce((select string_agg(t.who || ':' || p.role, ',' order by p.role, t.who) from public.ops_work_people p
                      join tx_people t on t.email = p.email where p.card_id = p_id), '<none>')
 $fn$;
+-- The watcher's review ask for a card in team_inbox: decision/needs_you/read.
+create function pg_temp.ask_state(p_who text, p_k text) returns text
+language plpgsql as $fn$
+declare v text;
+begin
+  v := pg_temp.person(p_who, 'select public.team_inbox()::text');
+  return (select string_agg(coalesce(m->>'decision', '-') || '/' || coalesce(m->>'needs_you', '-'), ',')
+            from jsonb_array_elements((v::jsonb)->'mentions') m
+           where m->>'card_id' = pg_temp.id(p_k)::text and m->>'event_kind' = 'review');
+end;
+$fn$;
 create function pg_temp.add(p_k text, p_title text, p_owner text, p_watcher text, p_parent text default null) returns text
 language plpgsql as $fn$
 declare v text; v_item jsonb;
@@ -660,6 +671,7 @@ begin
   v := pg_temp.person('seth', format('select public.ops_work_confirm(%L, %s)::text', pg_temp.id('U'), pg_temp.rev('U')));
   v_ev := (v::jsonb)->>'event_id';
   perform pg_temp.chk('UNDO', 'the watcher confirms it', (select status from public.ops_work_cards where id = pg_temp.id('U')), 'done');
+  perform pg_temp.chk('UNDO', 'a confirmed review stops asking the watcher, though unread', pg_temp.ask_state('seth', 'U'), 'false/false');
   v := pg_temp.person('tao', format('select public.ops_work_undo(%L)::text', v_ev));
   perform pg_temp.lk('UNDO', 'only the watcher who confirmed can undo it', v, 'ERR:22023:undo_expired:%');
   v := pg_temp.person('seth', format('select public.ops_work_undo(%L)::text', v_ev));
@@ -667,6 +679,7 @@ begin
     (select status || '/' || (status_id = public.ops_review_status_id())::text || '/' || coalesce(review_requested_by, '-') || '/'
             || coalesce(confirmed_by, '-') || '/' || coalesce(closed_by, '-') from public.ops_work_cards where id = pg_temp.id('U')),
     'doing/true/' || pg_temp.email('tao') || '/-/-');
+  perform pg_temp.chk('UNDO', 'back In review, the ask stands again', pg_temp.ask_state('seth', 'U'), 'true/true');
   v := pg_temp.person('seth', format('select public.ops_work_send_back(%L, %L, %s)::text', pg_temp.id('U'), 'Add the second link too.', pg_temp.rev('U')));
   v_ev := (v::jsonb)->>'event_id';
   perform pg_temp.chk('UNDO', 'then the watcher sends it back', (select (status_id = public.ops_status_in_progress())::text || '/' || coalesce(sent_back_reason, '-')

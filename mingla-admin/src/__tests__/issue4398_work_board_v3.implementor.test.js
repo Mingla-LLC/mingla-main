@@ -34,7 +34,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dueLabel, waitingWords, workingDaysSince } from "../lib/dueLabel.js";
-import { SEND_BACK_MAX, SEND_BACK_MIN, reviewRole } from "../lib/workReview.js";
+import { SEND_BACK_MAX, SEND_BACK_MIN, closeFormWords, reviewRole } from "../lib/workReview.js";
 import { activityDayLabel, activityDays, activityGroupWords } from "../lib/activityModel.js";
 import { changePerson } from "../lib/peopleField.js";
 
@@ -78,11 +78,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { BoardCardFace } from "../components/ops/WorkBoard.jsx";
 import { CardSubtasks } from "../components/ops/CardSubtasks.jsx";
 import { PeopleField } from "../components/people/PeopleField.jsx";
+import { CloseCardDialog } from "../components/ops/BoardDialogs.jsx";
 import * as ops from "../services/opsService.js";
 import * as dash from "../services/dashboardService.js";
 export { ops, dash };
 export function face(card) { return renderToStaticMarkup(<BoardCardFace card={card} today="${TODAY}" />); }
 export function subtasks(props) { return renderToStaticMarkup(<CardSubtasks columns={[]} onOpenCard={() => {}} onChanged={() => {}} offerUndo={() => {}} onError={() => {}} {...props} />); }
+export function closeDialog(props) { return renderToStaticMarkup(<CloseCardDialog column={{ name: "Done" }} busy={false} onCancel={() => {}} onClose={() => {}} {...props} />); }
 export function people(props) { return renderToStaticMarkup(<PeopleField id="p" label="Owner" team={[{ email: "seth@x.test", name: "Seth", role: "Owner", open: 1 }, { email: "tao@x.test", name: "Taofeek", role: "Growth", open: 2 }]} onChange={() => {}} {...props} />); }
 `;
   const out = await esbuild.build({
@@ -167,8 +169,10 @@ describe("R-1 the buttons follow the review step", () => {
   });
   it("the card detail shows Confirm done and Send back only when reviewRole says so; a release card has no Mark done", () => {
     const src = code("components/ops/WorkDetail.jsx");
-    assert.match(src, /card\.review && role\.canConfirm\) primary = <Button[^>]*data-confirm=""/);
-    assert.match(src, /card\.review && role\.canConfirm\) more\.push\(\{ id: "reviewback"/);
+    assert.match(src, /card\.review && role\.canConfirm\) primary = \([\s\S]{0,200}<Button[^>]*data-confirm=""/);
+    // #4398 retest (P2): Send back is a visible button beside Confirm done, never under More.
+    assert.match(src, /data-confirm=""[^\n]*Confirm done<\/Button>\s*<Button[^\n]*data-send-back=""[^\n]*>Send back<\/Button>/);
+    assert.doesNotMatch(src, /id: "reviewback"/);
     assert.match(src, /else if \(releaseItems\) primary = null;/);
     assert.match(src, /role\.isWatcher \? "Close as done" : "Mark done"/);
   });
@@ -270,5 +274,32 @@ describe("R-3 reopening is never a dead end", () => {
       { p_id: "c1", p_reason: null, p_expected_revision: 5 },
       { p_id: "c1", p_reason: null, p_expected_revision: 6, p_owner: "tao@x.test", p_watcher: "seth@x.test" },
     ]);
+  });
+});
+
+describe("R-4 the Mark done form and Undo after a review (retest P3, P1)", () => {
+  it("the owner's form says Mark done and who confirms; the watcher's says Close card", () => {
+    assert.deepEqual(closeFormWords(card(), "tao@x.test"), { line: "Sends it to Seth to confirm.", submit: "Mark done", busy: "Sending…" });
+    assert.equal(closeFormWords(card(), "seth@x.test", "Done").submit, "Close card");
+    assert.equal(closeFormWords(card(), "seth@x.test", "Done").line, "Moving to Done closes this card.");
+    const src = code("components/ops/WorkDetail.jsx");
+    assert.match(src, /<ProofForm[^>]*submitLabel=\{closeWords\.submit\}/);
+    assert.match(src, /data-close-line=""[^>]*>\{closeWords\.line\}/);
+  });
+  it("dragging a card to a Closed column: the owner is told it goes to the watcher", () => {
+    const owner = h.closeDialog({ card: card(), me: "tao@x.test" });
+    assert.match(owner, /Sends it to Seth to confirm\./);
+    assert.match(owner, />Mark done</);
+    assert.doesNotMatch(owner, /Close card/);
+    const watcher = h.closeDialog({ card: card(), me: "seth@x.test" });
+    assert.match(watcher, /Moving to Done closes this card\./);
+    assert.match(watcher, />Close card</);
+  });
+  it("Confirm and Send back offer Undo with the server's event (ops_work_undo takes confirmed and sent_back)", () => {
+    const src = code("components/ops/WorkDetail.jsx");
+    assert.match(src, /run\("confirm", \(\) => ops\.confirmWork\(card\.id, card\.revision\), "Confirmed\. Done\."\)/);
+    assert.match(src, /run\("reviewback", \(\) => ops\.sendBackWork\(/);
+    const sql = fs.readFileSync(path.resolve(SRC, "../../supabase/migrations/20280626014398_issue_4398_review_and_notices.sql"), "utf8");
+    assert.match(sql, /'review','confirmed','sent_back'\) THEN/);
   });
 });

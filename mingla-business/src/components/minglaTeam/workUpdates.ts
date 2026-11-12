@@ -77,9 +77,14 @@ export function workDueLabel(card: Pick<WorkUpdateCard, "status" | "due_on" | "c
   return { text: t("team.due_on", { date: dateWords(dueT, language, false) }), tone: "later" };
 }
 
-/** A notice that asks this person to act: confirm a card, or a card sent back to them. */
+/**
+ * A notice that still asks this person to act: confirm a card, or a card sent back to them.
+ * The server's needs_you turns false once the ask is resolved (#4398 retest P3), read or not;
+ * only a payload without it falls back to the kind.
+ */
 export function needsYou(update: Pick<WorkUpdate, "event_kind" | "needs_you">): boolean {
-  return update.needs_you === true || update.event_kind === "review" || update.event_kind === "sent_back";
+  if (typeof update.needs_you === "boolean") return update.needs_you;
+  return update.event_kind === "review" || update.event_kind === "sent_back";
 }
 
 export function isMention(update: Pick<WorkUpdate, "event_kind" | "kind">): boolean {

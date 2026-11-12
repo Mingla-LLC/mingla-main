@@ -56,7 +56,7 @@ import {
 } from "../../lib/opsModel";
 import { GROUP_LABELS, hoursLabel, liveColumns, parseEstimate, writeShowChanges } from "../../lib/workBoardModel";
 import { DUE_TONE, dueLabel, waitingWords } from "../../lib/dueLabel";
-import { reviewRole, SEND_BACK_MAX, SEND_BACK_MIN } from "../../lib/workReview";
+import { closeFormWords, reviewRole, SEND_BACK_MAX, SEND_BACK_MIN } from "../../lib/workReview";
 import { OpsChip } from "./OpsChip";
 import { PeopleField, PersonAvatar } from "../people/PeopleField";
 import { suggestedPeople } from "../../lib/peopleField";
@@ -310,6 +310,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const canEdit = !locked && !closed;
   // #4398: who this person is on the card, and what the review step lets them do.
   const role = reviewRole(card, directory.me);
+  const closeWords = closeFormWords(card, directory.me, closeTo?.name);  // #4398 retest (P3)
   const due = dueLabel(card, today);
   const releaseItems = Array.isArray(card.release_items) ? card.release_items : null;
   const closedWords = (a) => (a?.review ? `Sent to ${a.review.watcher_name} to confirm` : "Card closed");
@@ -351,7 +352,13 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   let primary = null;
   if (!card.archived) {
     if (closed) primary = <Button className="h-9" data-reopen="" disabled={locked || !!busy} onClick={reopen}>Reopen</Button>;
-    else if (card.review && role.canConfirm) primary = <Button className="h-9" data-confirm="" disabled={locked || !!busy} onClick={() => run("confirm", () => ops.confirmWork(card.id, card.revision), "Confirmed. Done.")}>Confirm done</Button>;
+    else if (card.review && role.canConfirm) primary = (
+      // #4398 retest (P2): Send back sits beside Confirm done, as in design v3.
+      <>
+        <Button className="h-9" data-confirm="" disabled={locked || !!busy} onClick={() => run("confirm", () => ops.confirmWork(card.id, card.revision), "Confirmed. Done.")}>Confirm done</Button>
+        <Button variant="secondary" className="h-9" data-send-back="" aria-expanded={form === "reviewback"} disabled={locked || !!busy} onClick={() => setForm(form === "reviewback" ? "" : "reviewback")}>Send back</Button>
+      </>
+    );
     else if (card.review) primary = null;
     else if (releaseItems) primary = null;
     else if (tagged && action) primary = <Button className="h-9" disabled={locked || !!busy} onClick={() => setForm(form === action.action ? "" : action.action)}>{action.label}</Button>;
@@ -359,7 +366,6 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
     else primary = <Button className="h-9" data-mark-done="" disabled={locked || !!busy} onClick={startClose}>{role.isWatcher ? "Close as done" : "Mark done"}</Button>;
   }
   const more = [];
-  if (!card.archived && !closed && card.review && role.canConfirm) more.push({ id: "reviewback", label: "Send back", run: () => setForm("reviewback") });
   if (!card.archived && !closed && !card.review) {
     if (card.status === "todo" && !tagged && !releaseItems) more.push({ id: "close", label: role.isWatcher ? "Close as done" : "Mark done", run: startClose });
     if (tagged) more.push({ id: "sendback", label: "Send back", run: () => setForm("sendback") });
@@ -535,14 +541,14 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             )}
             {form === "close" && (
               <div className="flex min-w-0 flex-col gap-2">
-                {closeTo && <p className="text-[12.5px] text-[var(--color-text-secondary)]">{role.isWatcher ? `Moving to ${closeTo.name} closes this card.` : `Moving to ${closeTo.name} sends this card to ${watchers[0]?.name || "its watcher"} to confirm.`}</p>}
+                <p data-close-line="" className="text-[12.5px] text-[var(--color-text-secondary)]">{closeWords.line}</p>
                 {openSubs > 0 && (
                   <label className="flex min-h-10 items-start gap-2 text-[13px] text-[var(--color-text-primary)]">
                     <input type="checkbox" checked={closeChildren} onChange={(e) => setCloseChildren(e.target.checked)} className="mt-0.5 h-5 w-5 accent-[var(--color-brand-700)]" />
                     <span>Close the {openSubs} open {openSubs === 1 ? "subtask" : "subtasks"} too</span>
                   </label>
                 )}
-                <ProofForm busy={busy === "close"} disabled={locked} onCancel={() => { setForm(""); setCloseTo(null); }} onSubmit={submitClose} />
+                <ProofForm busy={busy === "close"} disabled={locked} submitLabel={closeWords.submit} busyLabel={closeWords.busy} onCancel={() => { setForm(""); setCloseTo(null); }} onSubmit={submitClose} />
               </div>
             )}
             {form === "push" && <PushBackForm busy={busy === "push"} disabled={locked} onCancel={() => setForm("")} onSubmit={async (kind, reason, proof) => { const a = await run("push", () => ops.pushBackWork(card.id, kind, reason, proof, card.revision), kind === "declined" ? "Pushed back: not needed" : "Closed: already done"); if (a) setForm(""); }} />}

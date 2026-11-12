@@ -29,7 +29,7 @@ export function ProofLines({ lines, setLines, disabled, label = "Proof" }) {
   );
 }
 
-export function ProofForm({ busy, disabled, onSubmit, onCancel }) {
+export function ProofForm({ busy, disabled, onSubmit, onCancel, submitLabel = "Close card", busyLabel = "Closing…" }) {
   const [lines, setLines] = useState([""]);
   const [result, setResult] = useState("");
   const proof = proofFromLines(lines);
@@ -45,7 +45,7 @@ export function ProofForm({ busy, disabled, onSubmit, onCancel }) {
       </label>
       {proof.length === 0 && <p className="text-[12px] text-[var(--color-text-tertiary)]">Add at least one line of proof (3 characters or more).</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={disabled || busy || proof.length === 0} className={`min-h-11 rounded-lg bg-[var(--color-brand-800)] px-4 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-900)] disabled:opacity-50 ${FOCUS}`}>{busy ? "Closing…" : "Close card"}</button>
+        <button type="submit" disabled={disabled || busy || proof.length === 0} className={`min-h-11 rounded-lg bg-[var(--color-brand-800)] px-4 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-900)] disabled:opacity-50 ${FOCUS}`}>{busy ? busyLabel : submitLabel}</button>
         <button type="button" onClick={onCancel} className={`min-h-11 rounded-lg px-3 text-[13px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`}>Cancel</button>
       </div>
     </form>
