@@ -1027,6 +1027,44 @@ describe("#3281 6c — the hold never outlives the server session", () => {
     );
   });
 
+  it.each([
+    ["a minute", 60],
+    ["no time", 0],
+  ])(
+    "the server saying %s is left on the session stops the reopen, whatever the device thinks",
+    async (_label, secondsLeft) => {
+      // The create's expiry read failed: the device would allow 14 minutes.
+      await pay(v2Input());
+      preflightAnswer = () => ({
+        data: { status: "present_allowed", expiresInSeconds: secondsLeft },
+        error: null,
+      });
+      expect(await pay(v2Input())).toEqual({
+        outcome: "failed",
+        message: PAGE_EXPIRED,
+      });
+      expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+      // Only that page is dropped; the next tap creates again.
+      preflightAnswer = () => ({
+        data: { status: "present_allowed" },
+        error: null,
+      });
+      await pay(v2Input());
+      expect(calls("ticket-checkout-create")).toHaveLength(2);
+    },
+  );
+
+  it("the server saying more than a minute is left lets the page reopen", async () => {
+    await pay(v2Input());
+    preflightAnswer = () => ({
+      data: { status: "present_allowed", expiresInSeconds: 61 },
+      error: null,
+    });
+    await pay(v2Input());
+    expect(openBrowserAsync).toHaveBeenCalledTimes(2);
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+  });
+
   it("a phone clock moved back during the hold cannot stretch it", async () => {
     jest.useFakeTimers({ now: T0 });
     createAnswer = withSecondsLeft(300); // reopenable for 240 s

@@ -70,3 +70,17 @@ Deno.test("#3281 6c a failed admission check is 503, never the refused-sale 409"
     'jsonResponse({ error: "checkout_check_failed" }, 503)',
   );
 });
+
+Deno.test("#3281 6c an admitted preflight also carries the session's seconds left", () => {
+  assertStringIncludes(
+    status,
+    "reversal_state, stripe_payment_intent_id, expires_at",
+  );
+  const allowed = status.slice(
+    status.indexOf("if (body.preflight === true)"),
+    status.indexOf("if (\n    session.revoked_at != null"),
+  );
+  assertStringIncludes(allowed, 'status: "present_allowed"');
+  assertStringIncludes(allowed, "expiresInSeconds: Math.max(");
+  assertStringIncludes(allowed, "Number.isFinite(preflightExpiresMs)");
+});

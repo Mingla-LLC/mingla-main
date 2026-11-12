@@ -63,6 +63,7 @@ import {
   holdHandoff,
   isHandoffLive,
   monotonicNow,
+  PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS,
   readHeldHandoff,
   type HeldPaystackHandoff,
 } from "./paystackHeldHandoff";
@@ -464,7 +465,10 @@ async function revalidateHeldHandoff(
   if (reading.kind === "no_answer") {
     return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
   }
-  let preflight: { data: { status?: string } | null; error: unknown };
+  let preflight: {
+    data: { status?: string; expiresInSeconds?: unknown } | null;
+    error: unknown;
+  };
   try {
     preflight = await supabase.functions.invoke<{ status?: string }>(
       "ticket-checkout-status",
@@ -484,6 +488,18 @@ async function revalidateHeldHandoff(
     return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
   }
   if (preflight.error == null && preflight.data?.status === "present_allowed") {
+    // issue #3281 (bundle 6c) — the server's own seconds left. The hold was
+    // timed on this device; if the create's expiry read failed, or the
+    // session was an older one reused, the real limit can be shorter.
+    const secondsLeft = preflight.data.expiresInSeconds;
+    if (
+      typeof secondsLeft === "number" &&
+      Number.isFinite(secondsLeft) &&
+      secondsLeft * 1000 <= PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS
+    ) {
+      dropHeldHandoff(eventId, handoff.fingerprint, generation);
+      return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
+    }
     return null;
   }
   const status =
