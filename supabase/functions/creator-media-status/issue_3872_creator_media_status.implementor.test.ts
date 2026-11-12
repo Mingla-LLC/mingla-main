@@ -128,3 +128,21 @@ Deno.test("#3872 a host cannot read a creator's private showcase through this ro
   );
   assertEquals(res.status, 404);
 });
+
+Deno.test("#4402 an admin can play a creator's showcase to review them, with no download", async () => {
+  const res = await createCreatorMediaStatusHandler(
+    deps(STRANGER, "showcase", true),
+  )(request());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.playback.url, "https://video.example/play");
+  assertEquals(body.download, null);
+});
+
+Deno.test("#4402 a signed-in non-admin stranger still gets not_found for a showcase", async () => {
+  const res = await createCreatorMediaStatusHandler(
+    deps(STRANGER, "showcase", false),
+  )(request());
+  assertEquals(res.status, 404);
+  assertEquals((await res.json()).error, "not_found");
+});

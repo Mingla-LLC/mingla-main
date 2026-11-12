@@ -45,7 +45,13 @@ Deno.test("#3872 handle proof requires the exact code and takes provider followe
   assertEquals(
     decideHandleVerification(
       { verify_code: "MINGLA-A1B2", verify_expires_at: future },
-      { ok: true, blocked: false, body: "a different biography" },
+      {
+        ok: true,
+        blocked: false,
+        // #4402: "pending" now needs a readable profile page (its og line).
+        body:
+          '<meta property="og:description" content="120 Followers, 3 Following - a different biography">',
+      },
     ).status,
     "pending",
   );
