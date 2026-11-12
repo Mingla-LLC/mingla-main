@@ -446,6 +446,9 @@ module.exports = {
     // tree; in CI the workspace symlink already points here, so it is the
     // identity. The bare barrel keeps its manual mock above.
     "^@mingla/offering-rendering/(.+)$": "<rootDir>/../packages/offering-rendering/$1",
+    // issue #3281 (bundle 6c) — pure deep modules of the native payments
+    // package (the bare package stays mocked per test).
+    "^@mingla/payments-native/(.+)$": "<rootDir>/../packages/payments-native/$1",
     // #1559 — resolution repair, NOT a mock. `node_modules/@mingla/*` is a
     // workspace symlink; inside a git worktree it points at the ANCHOR
     // checkout, so a DEEP `@mingla/brand-rendering/<sub>` specifier resolved

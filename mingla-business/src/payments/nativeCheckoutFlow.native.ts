@@ -54,10 +54,16 @@ import {
 } from "../services/ticketCheckoutService";
 import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview";
 // issue #3281 (bundle 6b) — the Paystack page this purchase was already sent to.
+import { waitForPaymentPageClosed } from "@mingla/payments-native/paymentPageReturn";
 import {
   clearHeldHandoff,
+  dropHeldHandoff,
   handoffGeneration,
+  handoffLifetimeMs,
   holdHandoff,
+  isHandoffLive,
+  monotonicNow,
+  PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS,
   readHeldHandoff,
   type HeldPaystackHandoff,
 } from "./paystackHeldHandoff";
@@ -210,6 +216,8 @@ type CheckoutCreateResponse =
       buyerStatusToken: string;
       authorizationUrl: string;
       returnUrl: string;
+      /** issue #3281 (bundle 6c) — seconds left on the session (newer servers). */
+      expiresInSeconds?: number;
       reference: string;
       totalCents: number;
       currency: string;
@@ -266,6 +274,13 @@ const CHECKOUT_IN_PROGRESS_NATIVE_MESSAGE =
 // before reopening it, so it was not opened.
 const CHECKOUT_RECHECK_FAILED_MESSAGE =
   "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
+
+// issue #3281 (bundle 6c) — Host-app only: the held or new page's session had
+// run out before the page could be opened. A held page may already have been
+// paid (the payment can still be settling), so this never says "not charged"
+// or invites paying again without that warning.
+const CHECKOUT_PAGE_EXPIRED_MESSAGE =
+  "This payment page has expired, so we didn't reopen it. If you already paid, your tickets will arrive here and by email within a few minutes — don't pay again. If you didn't, start the payment again.";
 
 const CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE =
   "We couldn't issue your tickets for this sale. If your payment went through, we're sorting it out and will email you — please don't pay again. Contact support@usemingla.com and we'll pick it up from there.";
@@ -374,13 +389,28 @@ async function readCheckoutStatusOnce(
 async function pollPaystackOrder(
   checkoutSessionId: string,
   buyerStatusToken: string,
+  /**
+   * issue #3281 (bundle 6c) — the page may still be open (Android split
+   * screen). Paystack says `abandoned` / `failed` from initialize onward, so
+   * those are not answers then: only a finalized order, a refusal or a
+   * mismatch (money moved) end the wait.
+   */
+  pageMayBeOpen = false,
 ): Promise<PaystackPollOutcome> {
   for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
     const reading = await readCheckoutStatusOnce(
       checkoutSessionId,
       buyerStatusToken,
     );
-    if (reading.kind !== "no_answer" && reading.kind !== "pending") {
+    const stillPaying =
+      pageMayBeOpen &&
+      reading.kind === "terminal" &&
+      reading.code !== "paystack_payment_mismatch";
+    if (
+      reading.kind !== "no_answer" &&
+      reading.kind !== "pending" &&
+      !stillPaying
+    ) {
       return reading;
     }
     await new Promise((resolve) =>
@@ -435,7 +465,10 @@ async function revalidateHeldHandoff(
   if (reading.kind === "no_answer") {
     return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
   }
-  let preflight: { data: { status?: string } | null; error: unknown };
+  let preflight: {
+    data: { status?: string; expiresInSeconds?: unknown } | null;
+    error: unknown;
+  };
   try {
     preflight = await supabase.functions.invoke<{ status?: string }>(
       "ticket-checkout-status",
@@ -455,6 +488,18 @@ async function revalidateHeldHandoff(
     return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
   }
   if (preflight.error == null && preflight.data?.status === "present_allowed") {
+    // issue #3281 (bundle 6c) — the server's own seconds left. The hold was
+    // timed on this device; if the create's expiry read failed, or the
+    // session was an older one reused, the real limit can be shorter.
+    const secondsLeft = preflight.data.expiresInSeconds;
+    if (
+      typeof secondsLeft === "number" &&
+      Number.isFinite(secondsLeft) &&
+      secondsLeft * 1000 <= PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS
+    ) {
+      dropHeldHandoff(eventId, handoff.fingerprint, generation);
+      return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
+    }
     return null;
   }
   const status =
@@ -487,6 +532,14 @@ async function followPaystackHandoff(
   handoff: HeldPaystackHandoff,
   generation: number,
 ): Promise<NativeCheckoutOutcome> {
+  // issue #3281 (bundle 6c) — re-checked right before opening: the deadline
+  // can pass during the re-check's network calls, and a fresh session can
+  // arrive with no time left. An expired page is never opened.
+  if (!isHandoffLive(handoff)) {
+    // Only THIS purchase's page ran out; other carts' pages stay held.
+    dropHeldHandoff(eventId, handoff.fingerprint, generation);
+    return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
+  }
   let opened: WebBrowser.WebBrowserResult;
   try {
     // #2227 — openBrowserAsync, NOT openAuthSessionAsync. The redirect
@@ -513,6 +566,13 @@ async function followPaystackHandoff(
   if (opened?.type === WebBrowser.WebBrowserResultType.LOCKED) {
     return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
   }
+  // issue #3281 (bundle 6c) — on Android the browser call returns `opened`
+  // while the buyer is still on the page; wait until they are back before
+  // asking the server (the poll-after-close invariant below).
+  const pageReturn = await waitForPaymentPageClosed(opened);
+  // Signed out while the buyer was away: nothing below belongs to whoever is
+  // signed in now.
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
 
   // #2264 F-6 — this poll runs ONLY after the browser has closed, and that
   // ordering is load-bearing. Paystack reports a transaction as `abandoned`
@@ -524,7 +584,9 @@ async function followPaystackHandoff(
   const poll = await pollPaystackOrder(
     handoff.checkoutSessionId,
     handoff.buyerStatusToken,
+    pageReturn === "unconfirmed",
   );
+  if (handoffGeneration() !== generation) return { outcome: "canceled" };
   if (poll.kind === "finalized") {
     clearHeldHandoff(eventId, generation);
     return { outcome: "succeeded", orderId: poll.orderId };
@@ -764,6 +826,7 @@ export const useNativeCheckoutFlow = (): ((
     // Taken BEFORE the create: the server starts the session's 15 minutes when
     // it writes the row, so the hold must never outlive it.
     const requestedAt = Date.now();
+    const requestedAtMono = monotonicNow();
     const { data, error } =
       await supabase.functions.invoke<CheckoutCreateResponse>(
         "ticket-checkout-create",
@@ -934,6 +997,8 @@ export const useNativeCheckoutFlow = (): ((
         checkoutSessionId: data.checkoutSessionId,
         buyerStatusToken: data.buyerStatusToken,
         cachedAt: requestedAt,
+        cachedAtMono: requestedAtMono,
+        lifetimeMs: handoffLifetimeMs(data.expiresInSeconds),
       };
       holdHandoff(input.eventId, handoff);
       return await followPaystackHandoff(input.eventId, handoff, generation);

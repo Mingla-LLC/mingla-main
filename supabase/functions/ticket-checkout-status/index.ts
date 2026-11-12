@@ -49,7 +49,7 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
   const { data: session, error } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, revoked_at, reversal_state, stripe_payment_intent_id",
+      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, revoked_at, reversal_state, stripe_payment_intent_id, expires_at",
     )
     .eq("id", checkoutSessionId)
     .maybeSingle();
@@ -78,6 +78,15 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       checkoutSessionId,
       buyerStatusTokenHash: String(session.buyer_status_token_hash),
     });
+    if (outcome === "error") {
+      console.error(
+        "[ticket-checkout-status] preflight admission check failed",
+        checkoutSessionId,
+      );
+      // Issue #3281 (bundle 6c) — the admission check failed, not the sale.
+      // Clients treat it as "not allowed now" and keep what they hold.
+      return jsonResponse({ error: "checkout_check_failed" }, 503);
+    }
     if (outcome !== "present_allowed") {
       return jsonResponse(
         outcome === "forbidden"
@@ -86,7 +95,24 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
         outcome === "forbidden" ? 403 : 409,
       );
     }
-    return jsonResponse({ checkoutSessionId, status: "present_allowed" });
+    // Issue #3281 (bundle 6c) — the session's own seconds left, by the
+    // server's clock, so a client reopening a held page it timed itself (for
+    // example after the create's expiry read failed) learns the real limit.
+    const preflightExpiresMs = typeof session.expires_at === "string"
+      ? Date.parse(session.expires_at)
+      : NaN;
+    return jsonResponse({
+      checkoutSessionId,
+      status: "present_allowed",
+      ...(Number.isFinite(preflightExpiresMs)
+        ? {
+          expiresInSeconds: Math.max(
+            0,
+            Math.floor((preflightExpiresMs - Date.now()) / 1000),
+          ),
+        }
+        : {}),
+    });
   }
 
   if (
