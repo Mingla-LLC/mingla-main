@@ -148,7 +148,16 @@ const REACT_NATIVE_REANIMATED_WEB_STUB = path.join(
 );
 
 const originalResolveRequest = config.resolver.resolveRequest;
-const WORKSPACE_LAZY_PACKAGES = ["offering-rendering", "theme-animations", "brand-rendering"];
+// #4334 — `location-input` joins the list: the Host web address field
+// (`sharedAddressField.web.tsx`) lazy-loads `@mingla/location-input/src/AddressInput`,
+// which the dev server requests as "./packages/location-input/src/AddressInput".
+// Without this entry the "In person" step of event creation failed to load.
+const WORKSPACE_LAZY_PACKAGES = [
+  "offering-rendering",
+  "theme-animations",
+  "brand-rendering",
+  "location-input",
+];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Public offering pages lazy-load
@@ -189,7 +198,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     };
   }
 
-  // issue #1023 — every other lazy `import()` inside these two workspace
+  // issue #1023 — every other lazy `import()` inside these workspace
   // packages (the web motion player, the 58 theme-motion Lottie files, the
   // refund ladder's deferred pieces) reaches the dev server as an
   // app-relative "./packages/<pkg>/<file>" request, which would 404 against
