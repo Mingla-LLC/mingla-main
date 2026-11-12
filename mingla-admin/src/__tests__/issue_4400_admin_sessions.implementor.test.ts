@@ -82,6 +82,11 @@ const httpError = (status: number, body: unknown, name = "FunctionsHttpError") =
 Deno.test("readTeamInviteResult reads every answer honestly", async () => {
   assertEquals(await readTeamInviteResult({ data: null, error: httpError(401, { ok: false, code: "not_authenticated" }) }), { outcome: "session" });
   assertEquals(await readTeamInviteResult({ data: null, error: httpError(403, { ok: false, code: "not_authenticated" }) }), { outcome: "session" });
+  // Tester (#4400): admin-team-invite has verify_jwt = true, so the gateway can answer the 401 itself,
+  // with a body that is not the function's own. HTTP 401 alone must still mean "sign in again".
+  assertEquals(await readTeamInviteResult({ data: null, error: httpError(401, { code: 401, message: "Invalid JWT" }) }), { outcome: "session" });
+  assertEquals(await readTeamInviteResult({ data: null, error: httpError(401, { code: "UNAUTHORIZED_INVALID_JWT_FORMAT", message: "x" }) }), { outcome: "session" });
+  assertEquals(await readTeamInviteResult({ data: null, error: httpError(401, "") }), { outcome: "session" });
   assertEquals(await readTeamInviteResult({ data: null, error: httpError(400, { ok: false, code: "bad_request" }) }), { outcome: "refused", code: "bad_request" });
   assertEquals(await readTeamInviteResult({ data: null, error: httpError(500, "<!doctype html>oops") }), { outcome: "failed" });
   assertEquals(await readTeamInviteResult({ data: null, error: { name: "FunctionsRelayError", context: new Response("", { status: 502 }) } }), { outcome: "failed" });
