@@ -77,14 +77,41 @@ export const monotonicNow = (): number => {
     : Date.now();
 };
 
+/** How long ago this page's create was sent (the larger of both clocks). */
+export const handoffElapsedMs = (entry: HeldPaystackHandoff): number =>
+  Math.max(Date.now() - entry.cachedAt, monotonicNow() - entry.cachedAtMono);
+
+/**
+ * issue #3281 (bundle 6d) — the server said the session has `secondsLeft`,
+ * measured when `elapsedAtAsk` (this page's elapsed time just before asking)
+ * had passed. Shorten the hold to match, never lengthen it: the deadline is
+ * counted from before the question, so it can only be early.
+ */
+export const tightenHandoffLifetime = (
+  entry: HeldPaystackHandoff,
+  secondsLeft: unknown,
+  elapsedAtAsk: number,
+): void => {
+  if (
+    typeof secondsLeft !== "number" ||
+    !Number.isFinite(secondsLeft) ||
+    secondsLeft < 0
+  ) {
+    return;
+  }
+  entry.lifetimeMs = Math.min(
+    entry.lifetimeMs,
+    elapsedAtAsk + secondsLeft * 1000 - PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS,
+  );
+};
+
 /**
  * Whether the page may still be reopened. Elapsed time is the larger of the
  * wall-clock and monotonic readings: a wall clock moved back cannot extend
  * the hold, and a monotonic clock that pauses in deep sleep cannot either.
  */
 export const isHandoffLive = (entry: HeldPaystackHandoff): boolean =>
-  Math.max(Date.now() - entry.cachedAt, monotonicNow() - entry.cachedAtMono) <
-  entry.lifetimeMs;
+  handoffElapsedMs(entry) < entry.lifetimeMs;
 
 /**
  * Held pages per event, then per purchase fingerprint. More than one per event

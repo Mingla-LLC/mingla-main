@@ -58,13 +58,14 @@ import { waitForPaymentPageClosed } from "@mingla/payments-native/paymentPageRet
 import {
   clearHeldHandoff,
   dropHeldHandoff,
+  handoffElapsedMs,
   handoffGeneration,
   handoffLifetimeMs,
   holdHandoff,
   isHandoffLive,
   monotonicNow,
-  PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS,
   readHeldHandoff,
+  tightenHandoffLifetime,
   type HeldPaystackHandoff,
 } from "./paystackHeldHandoff";
 import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
@@ -469,6 +470,9 @@ async function revalidateHeldHandoff(
     data: { status?: string; expiresInSeconds?: unknown } | null;
     error: unknown;
   };
+  // issue #3281 (bundle 6d) — how old the page was when we asked; the
+  // server's seconds left count from no earlier than this.
+  const elapsedAtAsk = handoffElapsedMs(handoff);
   try {
     preflight = await supabase.functions.invoke<{ status?: string }>(
       "ticket-checkout-status",
@@ -491,12 +495,14 @@ async function revalidateHeldHandoff(
     // issue #3281 (bundle 6c) — the server's own seconds left. The hold was
     // timed on this device; if the create's expiry read failed, or the
     // session was an older one reused, the real limit can be shorter.
-    const secondsLeft = preflight.data.expiresInSeconds;
-    if (
-      typeof secondsLeft === "number" &&
-      Number.isFinite(secondsLeft) &&
-      secondsLeft * 1000 <= PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS
-    ) {
+    // bundle 6d: the hold is shortened to match (never lengthened), and the
+    // live check right before opening enforces it.
+    tightenHandoffLifetime(
+      handoff,
+      preflight.data.expiresInSeconds,
+      elapsedAtAsk,
+    );
+    if (!isHandoffLive(handoff)) {
       dropHeldHandoff(eventId, handoff.fingerprint, generation);
       return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
     }
@@ -505,18 +511,20 @@ async function revalidateHeldHandoff(
   const status =
     (preflight.error as { context?: { status?: number } } | null)?.context
       ?.status ?? null;
+  // issue #3281 (bundle 6d) — a refusal proves only that the page will not
+  // reopen, not that no earlier payment went through (one can settle between
+  // the status read and this check), so the copy never says "not charged".
   if (status === 403 || status === 404) {
     // The session is gone or is not this buyer's: the page is spent.
     clearHeldHandoff(eventId, generation);
-    return { outcome: "failed", message: CHECKOUT_UNAVAILABLE_MESSAGE };
+    return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   if (status === 409) {
-    // Not admitted right now. The server answers the same 409 for a sale the
-    // organiser paused or cancelled AND for a database hiccup in the admission
-    // check, so the page is NOT dropped: dropping a still-payable page would
-    // leave the next tap stuck on `checkout_in_progress`. It is not opened
-    // either; every later tap re-checks before opening.
-    return { outcome: "failed", message: CHECKOUT_UNAVAILABLE_MESSAGE };
+    // Not admitted right now: the organiser paused or cancelled the sale, or
+    // the provider attempt is not ready. The page is NOT dropped (a sale can
+    // be resumed) and NOT opened; every later tap re-checks first. A failed
+    // check is a 503 and falls to the copy below.
+    return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
 }

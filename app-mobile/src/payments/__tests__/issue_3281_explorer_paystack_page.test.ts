@@ -94,7 +94,6 @@ import {
   CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
   CHECKOUT_RECHECK_FAILED_MESSAGE,
   CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
-  CHECKOUT_UNAVAILABLE_MESSAGE,
 } from "../checkoutErrorMessages";
 
 const EVENT = "32810000-0000-4000-8000-0000000006d1";
@@ -445,9 +444,10 @@ describe("#3281 6d — a held page is re-checked before it reopens", () => {
     await abandonFirst();
     statusAnswers = [pending];
     preflightAnswer = () => http(409);
+    // A refusal never says "not charged": a payment could have settled since.
     expect(await pay()).toEqual({
       outcome: "failed",
-      message: CHECKOUT_UNAVAILABLE_MESSAGE,
+      message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
     });
     expect(opened()).toHaveLength(1);
     preflightAnswer = () => allowed();
@@ -465,7 +465,7 @@ describe("#3281 6d — a held page is re-checked before it reopens", () => {
       preflightAnswer = () => http(status);
       expect(await pay()).toEqual({
         outcome: "failed",
-        message: CHECKOUT_UNAVAILABLE_MESSAGE,
+        message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
       });
       preflightAnswer = () => allowed();
       statusAnswers = [abandoned];
@@ -506,6 +506,47 @@ describe("#3281 6d — a held page is re-checked before it reopens", () => {
       }
     },
   );
+
+  it("the server's seconds left shorten the hold: a slow pointer write past that deadline never opens", async () => {
+    const t0 = 1_900_000_000_000;
+    const now = jest.spyOn(Date, "now").mockReturnValue(t0);
+    await abandonFirst(); // held with the 14-minute fallback
+    now.mockReturnValue(t0 + 10_000);
+    statusAnswers = [pending, abandoned];
+    preflightAnswer = () => allowed(65); // 5 s inside the margin
+    const secure = jest.requireMock("../../lib/secureStoreSafe");
+    secure.secureSetItem.mockImplementationOnce(async (_key, value) => {
+      now.mockReturnValue(t0 + 20_000); // the write took 10 s
+      mockSecureValue = value;
+    });
+    expect(await pay()).toEqual({
+      outcome: "failed",
+      message: CHECKOUT_PAGE_EXPIRED_MESSAGE,
+    });
+    expect(opened()).toHaveLength(1);
+    expect(pointer()).toBeNull();
+  });
+
+  it("a recovery pointer that cannot be written for a pending order keeps the held page, and never reopens it", async () => {
+    await abandonFirst();
+    const unpaidTickets = {
+      data: { status: "paid", order: { orderId: "ord-1", tickets: [] } },
+      error: null,
+    };
+    statusAnswers = [unpaidTickets];
+    const secure = jest.requireMock("../../lib/secureStoreSafe");
+    secure.secureSetItem.mockImplementationOnce(async () => {
+      throw new Error("secure store full");
+    });
+    expect(await pay()).toMatchObject({ outcome: "pending" });
+    expect(pointer()).toBeNull();
+    // The page is still the way back to this session: the next tap re-checks
+    // it (no second create), and with the write working the pointer lands.
+    expect(await pay()).toMatchObject({ outcome: "pending" });
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+    expect(opened()).toHaveLength(1);
+    expect(pointer()).toMatchObject({ checkoutSessionId: "sess-1" });
+  });
 
   it("the recovery pointer is written only after the re-check passes, and before the page opens", async () => {
     await abandonFirst();
@@ -653,7 +694,9 @@ describe("#3281 6d — a sign-out mid-checkout leaves nothing behind for the nex
       // The sign-out runs (generation bump, then the purge) while the write
       // is in flight, and the write lands after it.
       clearAllHeldHandoffs();
-      await purgeNativeCheckoutRecovery();
+      // The sign-out's purge queues behind this write (recovery-key ops run
+      // one at a time), so it runs after the write lands.
+      void purgeNativeCheckoutRecovery();
       mockSecureWrites += 1;
       mockSecureValue = value;
     });
@@ -670,7 +713,9 @@ describe("#3281 6d — a sign-out mid-checkout leaves nothing behind for the nex
     const secure = jest.requireMock("../../lib/secureStoreSafe");
     secure.secureSetItem.mockImplementationOnce(async (_key, value) => {
       clearAllHeldHandoffs();
-      await purgeNativeCheckoutRecovery();
+      // The sign-out's purge queues behind this write (recovery-key ops run
+      // one at a time), so it runs after the write lands.
+      void purgeNativeCheckoutRecovery();
       mockSecureValue = value;
     });
     expect(await pay()).toEqual({ outcome: "canceled" });
@@ -704,6 +749,41 @@ describe("#3281 6d — a sign-out mid-checkout leaves nothing behind for the nex
 
     releaseSecond();
     await second;
+  });
+
+  it("a newer pointer written while an old checkout's clear is reading survives", async () => {
+    mockSecureValue = JSON.stringify({
+      version: 1, checkoutSessionId: "old-session", buyerStatusToken: "t",
+      accountId: ACCOUNT, eventId: EVENT, provider: "paystack",
+      createdAt: Date.now(), expiresAt: Date.now() + 60_000,
+    });
+    const secure = jest.requireMock("../../lib/secureStoreSafe");
+    let releaseRead;
+    secure.secureGetItem.mockImplementationOnce(() => {
+      // The read sees the store as it was when it started.
+      const seen = mockSecureValue;
+      return new Promise((resolve) => {
+        releaseRead = () => resolve(seen);
+      });
+    });
+    // The old checkout starts clearing its own pointer; its read is slow.
+    const clearing = clearNativeCheckoutRecoveryFor("old-session");
+    await flush();
+    // Meanwhile a newer checkout writes its pointer (queued behind the clear,
+    // so it lands after the clear has finished).
+    const { persistNativeCheckoutRecovery, createNativeCheckoutRecoveryPointer } =
+      jest.requireActual("../nativeCheckoutRecovery");
+    const writing = persistNativeCheckoutRecovery(
+      createNativeCheckoutRecoveryPointer({
+        checkoutSessionId: "new-session", buyerStatusToken: "t2",
+        accountId: ACCOUNT, eventId: EVENT, provider: "paystack",
+      }),
+    );
+    await flush();
+    releaseRead();
+    await clearing;
+    await writing;
+    expect(pointer()).toMatchObject({ checkoutSessionId: "new-session" });
   });
 
   it("a recovery pointer is only ever deleted for its own session", async () => {

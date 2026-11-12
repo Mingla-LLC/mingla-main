@@ -55,7 +55,6 @@ import {
   CHECKOUT_PAGE_EXPIRED_MESSAGE,
   CHECKOUT_RECHECK_FAILED_MESSAGE,
   CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
-  CHECKOUT_UNAVAILABLE_MESSAGE,
   nativeCheckoutBookedStartRaiseMessage,
   nativeCheckoutErrorMessage,
   nativeCheckoutExtrasRaiseMessage,
@@ -87,13 +86,14 @@ import {
   clearAllHeldHandoffs as clearSharedHeldHandoffs,
   clearHeldHandoff,
   dropHeldHandoff,
+  handoffElapsedMs,
   handoffGeneration,
   handoffLifetimeMs,
   holdHandoff,
   isHandoffLive,
   monotonicNow,
-  PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS,
   readHeldHandoff,
+  tightenHandoffLifetime,
   type HeldPaystackHandoff,
 } from "@mingla/payments-native/paystackHeldHandoff";
 
@@ -793,9 +793,19 @@ async function revalidateHeldHandoff(
   }
   if (reading.kind === "order_pending") {
     // Money moved; tickets are not out yet. Never reopen the page, and keep a
-    // recovery pointer so a restart can finish the booking.
+    // recovery pointer so a restart can finish the booking. The page is only
+    // released once the pointer is safely written: if the write fails, the
+    // held page stays as the way back to this session (its next re-check
+    // answers "pending" again; it is never reopened while an order exists).
+    if (includeProvider && !(await persistPointer())) {
+      if (handoffGeneration() !== generation) return { outcome: "canceled" };
+      return {
+        outcome: "pending",
+        title: NATIVE_CHECKOUT_PENDING_TITLE,
+        message: NATIVE_CHECKOUT_PENDING_BODY,
+      };
+    }
     clearHeldHandoff(eventId, generation);
-    if (includeProvider) await persistPointer();
     return {
       outcome: "pending",
       title: NATIVE_CHECKOUT_PENDING_TITLE,
@@ -832,6 +842,9 @@ async function revalidateHeldHandoff(
     data: { status?: string; expiresInSeconds?: unknown } | null;
     error: unknown;
   };
+  // How old the page was when we asked: the server's seconds left are counted
+  // from no earlier than this, so the tightened deadline can only be early.
+  const elapsedAtAsk = handoffElapsedMs(handoff);
   try {
     preflight = await supabase.functions.invoke<{
       status?: string;
@@ -851,12 +864,10 @@ async function revalidateHeldHandoff(
   if (preflight.error == null && preflight.data?.status === "present_allowed") {
     // The server's own seconds left: a hold timed on this device can be
     // longer than the real session (a failed expiry read, a reused session).
-    const secondsLeft = preflight.data.expiresInSeconds;
-    if (
-      typeof secondsLeft === "number" &&
-      Number.isFinite(secondsLeft) &&
-      secondsLeft * 1000 <= PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS
-    ) {
+    // The hold is shortened to match, and the caller checks it again before
+    // writing the recovery pointer and right before opening the page.
+    tightenHandoffLifetime(handoff, preflight.data.expiresInSeconds, elapsedAtAsk);
+    if (!isHandoffLive(handoff)) {
       dropHeldHandoff(eventId, handoff.fingerprint, generation);
       return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };
     }
@@ -865,17 +876,20 @@ async function revalidateHeldHandoff(
   const status =
     (preflight.error as { context?: { status?: number } } | null)?.context
       ?.status ?? null;
+  // A refusal here proves only that the page will not reopen, not that no
+  // earlier payment went through (one can settle between the status read
+  // and this check), so the copy never says "not charged".
   if (status === 403 || status === 404) {
     // The session is gone or is not this buyer's: the page is spent.
     clearHeldHandoff(eventId, generation);
     await clearPointer();
-    return { outcome: "failed", message: CHECKOUT_UNAVAILABLE_MESSAGE };
+    return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   if (status === 409) {
     // Not admitted right now (paused, cancelled, or the provider attempt is
     // not ready). Kept, not opened: every later tap re-checks first. A failed
     // check is a 503 and falls to the copy below.
-    return { outcome: "failed", message: CHECKOUT_UNAVAILABLE_MESSAGE };
+    return { outcome: "failed", message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE };
   }
   return { outcome: "failed", message: CHECKOUT_RECHECK_FAILED_MESSAGE };
 }

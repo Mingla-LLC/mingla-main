@@ -163,47 +163,66 @@ export const createNativeCheckoutRecoveryPointer = (input: {
   };
 };
 
-export const persistNativeCheckoutRecovery = async (
-  pointer: NativeCheckoutRecoveryPointer,
-): Promise<boolean> => {
-  if (!isSecureStoreAvailable()) return false;
-  try {
-    await secureSetItem(RECOVERY_KEY, JSON.stringify(pointer));
-    return true;
-  } catch {
-    return false;
-  }
+/**
+ * issue #3281 (bundle 6d) — every read, write and delete of the recovery key
+ * runs one at a time. A compare-and-delete (`clearNativeCheckoutRecoveryFor`)
+ * is a read then a delete; without this, a newer checkout's write landing
+ * between them would be deleted, losing its restart recovery.
+ */
+let recoveryKeyQueue: Promise<unknown> = Promise.resolve();
+const onRecoveryKey = <T>(operation: () => Promise<T>): Promise<T> => {
+  const run = recoveryKeyQueue.then(operation, operation);
+  recoveryKeyQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 };
+
+export const persistNativeCheckoutRecovery = (
+  pointer: NativeCheckoutRecoveryPointer,
+): Promise<boolean> =>
+  onRecoveryKey(async () => {
+    if (!isSecureStoreAvailable()) return false;
+    try {
+      await secureSetItem(RECOVERY_KEY, JSON.stringify(pointer));
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
 export const isNativeCheckoutRecoveryAvailable = (): boolean =>
   isSecureStoreAvailable();
 
-export const readNativeCheckoutRecovery = async (): Promise<
+export const readNativeCheckoutRecovery = (): Promise<
   NativeCheckoutRecoveryPointer | null
-> => {
-  try {
-    const raw = await secureGetItem(RECOVERY_KEY);
-    const parsed = parseNativeCheckoutRecoveryPointer(raw);
-    if (
-      raw !== null &&
-      (parsed === null || parsed.expiresAt <= Date.now())
-    ) {
-      await secureDeleteItem(RECOVERY_KEY);
+> =>
+  onRecoveryKey(async () => {
+    try {
+      const raw = await secureGetItem(RECOVERY_KEY);
+      const parsed = parseNativeCheckoutRecoveryPointer(raw);
+      if (
+        raw !== null &&
+        (parsed === null || parsed.expiresAt <= Date.now())
+      ) {
+        await secureDeleteItem(RECOVERY_KEY);
+        return null;
+      }
+      return parsed;
+    } catch {
       return null;
     }
-    return parsed;
-  } catch {
-    return null;
-  }
-};
+  });
 
-export const clearNativeCheckoutRecovery = async (): Promise<void> => {
-  try {
-    await secureDeleteItem(RECOVERY_KEY);
-  } catch {
-    // Secure-store failure cannot be allowed to break sign-out or confirmation.
-  }
-};
+export const clearNativeCheckoutRecovery = (): Promise<void> =>
+  onRecoveryKey(async () => {
+    try {
+      await secureDeleteItem(RECOVERY_KEY);
+    } catch {
+      // Secure-store failure cannot be allowed to break sign-out or confirmation.
+    }
+  });
 
 /**
  * issue #3281 (bundle 6d) — delete the recovery pointer ONLY if it is for this
@@ -211,21 +230,22 @@ export const clearNativeCheckoutRecovery = async (): Promise<void> => {
  * that outlived a sign-out (or any other checkout) must never delete a newer
  * checkout's pointer. Sign-out itself uses `purgeNativeCheckoutRecovery`.
  */
-export const clearNativeCheckoutRecoveryFor = async (
+export const clearNativeCheckoutRecoveryFor = (
   checkoutSessionId: string,
-): Promise<void> => {
-  try {
-    const parsed = parseNativeCheckoutRecoveryPointer(
-      await secureGetItem(RECOVERY_KEY),
-    );
-    if (parsed !== null && parsed.checkoutSessionId !== checkoutSessionId) {
-      return;
+): Promise<void> =>
+  onRecoveryKey(async () => {
+    try {
+      const parsed = parseNativeCheckoutRecoveryPointer(
+        await secureGetItem(RECOVERY_KEY),
+      );
+      if (parsed !== null && parsed.checkoutSessionId !== checkoutSessionId) {
+        return;
+      }
+      await secureDeleteItem(RECOVERY_KEY);
+    } catch {
+      // Secure-store failure cannot be allowed to break confirmation.
     }
-    await secureDeleteItem(RECOVERY_KEY);
-  } catch {
-    // Secure-store failure cannot be allowed to break confirmation.
-  }
-};
+  });
 
 export const purgeNativeCheckoutRecovery = async (): Promise<void> => {
   await clearNativeCheckoutRecovery();

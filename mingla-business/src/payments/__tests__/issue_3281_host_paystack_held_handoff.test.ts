@@ -516,8 +516,6 @@ const PAGE_EXPIRED =
   "This payment page has expired, so we didn't reopen it. If you already paid, your tickets will arrive here and by email within a few minutes — don't pay again. If you didn't, start the payment again.";
 const RECHECK_FAILED =
   "We couldn't check your payment page just now, so we didn't reopen it. Check your connection and try again.";
-const UNAVAILABLE =
-  "This sale is no longer available — the organiser may have paused or changed this event. You have not been charged.";
 
 describe("#3281 6b — a held page is re-checked before it is reopened", () => {
   it("a session revoked between visits is refused and never reopened", async () => {
@@ -545,7 +543,7 @@ describe("#3281 6b — a held page is re-checked before it is reopened", () => {
       preflightAnswer = () => http(status, { error: "checkout_unavailable" });
       expect(await pay(v2Input())).toEqual({
         outcome: "failed",
-        message: UNAVAILABLE,
+        message: NOT_ISSUED,
       });
       expect(openBrowserAsync).toHaveBeenCalledTimes(1);
 
@@ -627,7 +625,7 @@ describe("#3281 6b — a held page is re-checked before it is reopened", () => {
     preflightAnswer = () => http(409, { error: "checkout_unavailable" });
     expect(await pay(v2Input())).toEqual({
       outcome: "failed",
-      message: UNAVAILABLE,
+      message: NOT_ISSUED,
     });
     expect(openBrowserAsync).toHaveBeenCalledTimes(1);
 
@@ -1053,6 +1051,26 @@ describe("#3281 6c — the hold never outlives the server session", () => {
       expect(calls("ticket-checkout-create")).toHaveLength(2);
     },
   );
+
+  it("the server's seconds left shorten the hold even when the page opens later", async () => {
+    const T0 = new Date("2026-11-12T10:00:00Z").getTime();
+    jest.useFakeTimers({ now: T0 });
+    await pay(v2Input()); // the 14-minute fallback
+    jest.setSystemTime(T0 + 10_000);
+    preflightAnswer = () => {
+      // 65 s left, then 10 s pass before the page would open: inside the margin.
+      jest.setSystemTime(T0 + 20_000);
+      return {
+        data: { status: "present_allowed", expiresInSeconds: 65 },
+        error: null,
+      };
+    };
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: PAGE_EXPIRED,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
 
   it("the server saying more than a minute is left lets the page reopen", async () => {
     await pay(v2Input());
