@@ -1204,7 +1204,7 @@ function askedForWrite(context: ClaimContext): boolean {
 const DONE_OPENER =
   /(?:^|[.!?]\s+|\n\s*)(?:[\p{L}]+,\s*)?(?:done|all\s+done|all\s+set|you['’]?re\s+all\s+set|sorted|it['’]?s\s+done|that['’]?s\s+done|c['’]est\s+fait|e\s+don\s+(?:set|do|finish))\b/iu;
 const PRONOUN_LIVE =
-  /(?:^|[.!?]\s+|\n\s*)(?:(?:yes|great|perfect|ok(?:ay)?)[,!.]?\s+)?(?:it|it['’]s|it\s+is|that['’]s|they['’]re|they\s+are)\s+(?:now\s+|all\s+|already\s+)*(?:live|published|created|sent|active|ready|up)\b/i;
+  /(?:^|[.!?]\s+|\n\s*)(?:(?:yes|great|perfect|ok(?:ay)?)[,!.]?\s+)?(?:it|it['’]s|it\s+is|that['’]s|they['’]re|they\s+are)\s+(?:now\s+|all\s+|already\s+|been\s+)*(?:live|published|created|sent|active|ready|up)\b/i;
 
 export function replyClaimsCompletion(text: string): boolean {
   const plain = text.replace(/[*_`]/g, "");
@@ -1636,7 +1636,10 @@ export function statusAssertion(
     const future = clauses.filter((_clause, index) => moods[index] === "future")
       .map((clause) => clause.text);
     if (
-      future.some((text) => NOW_WORD.test(text)) &&
+      // A possibility ("can now be published") is never a present claim.
+      future.some((text) =>
+        NOW_WORD.test(text) && !/\b(?:can|could|may|might)\b/i.test(text)
+      ) &&
       !future.some((text) => CONDITION_BEFORE.test(text))
     ) return { wanted: wantedOf(future), positive: true, clauses: future };
     return plan;
@@ -2904,7 +2907,7 @@ function kindOfSentence(sentence: string): AriClaimKind {
 const STATUS_SUBJECT =
   /\b(?:your|the|this|votre|ton|ta|le|la)\s+(?:[\p{L}\p{N}'’-]+\s+){0,3}?(?:events?|rsvps?|trips?|experiences?|stays?|venues?|listings?|tiers?|tickets?|blasts?|campaigns?|newsletters?|website|site|refunds?|payouts?|événements?|evenements?)(?![\p{L}\p{N}])/iu;
 const STATUS_VERB =
-  /\b(?:is|are|was|were|has\s+been|have\s+been|now|went|has\s+gone|have\s+gone|got|est|sont|don|dey)\b|['’]s\b|['’]re\b/i;
+  /\b(?:is|are|was|were|isn['’]t|aren['’]t|wasn['’]t|has\s+been|have\s+been|now|went|has\s+gone|have\s+gone|got|est|sont|don|dey)\b|['’]s\b|['’]re\b/i;
 
 /**
  * #3355 rework 6 (R6-11): the judge-down backup also reads the two other

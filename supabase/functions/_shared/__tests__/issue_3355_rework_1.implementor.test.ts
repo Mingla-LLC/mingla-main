@@ -360,7 +360,8 @@ Deno.test("P1-4: the single-call path runs the stated-values stage and the claim
   // Rework 2: the guard reads the cards' state and the host's stated objects.
   assertMatch(
     single,
-    /const answer = await guardReplyClaims\(\{\s+text: gemini\.textResponse\.trim\(\),\s+history,/,
+    // Rework 8: the rollout switch rides along first.
+    /const answer = await guardReplyClaims\(\{\s+understandFirst,\s+text: gemini\.textResponse\.trim\(\),\s+history,/,
   );
   assertMatch(single, /classification: "stated_slot_ask"/);
   // One helper each (no second copy of the rules).

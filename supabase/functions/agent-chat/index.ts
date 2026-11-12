@@ -270,6 +270,7 @@ import {
   latestAriWriteReceiptAt,
   resolveAriScreenContext,
 } from "../_shared/ariTurnContext.ts";
+import { readAriUnderstandFirst } from "../_shared/ariRollout.ts";
 import {
   announcesWriteWithoutCall,
   claimEvidenceFromHistory,
@@ -2036,6 +2037,15 @@ async function handle(req: Request): Promise<Response> {
     const ownerTurnText = !choiceSubmission && !flowAnswer && !websiteKickoff
       ? semanticMessage
       : "";
+    // #3355 rework 8: the staged rollout switch (ari_rollouts, per brand
+    // and global; off in production until a rollout row covers the brand).
+    // Off: the turn runs as before #3355 — no intent read or start_flow, no
+    // brand snapshot, screen context or memory lines in the prompt, no
+    // reply claim check and no ask-the-team offer.
+    const understandFirst = await readAriUnderstandFirst(
+      serviceClient,
+      activeBrand?.id ?? null,
+    );
     const [priorOwnerTexts, recentGaps, priorServed, askTeamDeclined] =
       ownerTurnText
         ? await Promise.all([
@@ -2062,7 +2072,7 @@ async function handle(req: Request): Promise<Response> {
       priorOwnerTexts,
       priorServed,
     });
-    const escalation = activeBrand && ownerTurnText
+    const escalation = activeBrand && ownerTurnText && understandFirst
       ? decideAriEscalation({
         ownerSignals: ownerGapSignals,
         recentGaps,
@@ -2095,7 +2105,8 @@ async function handle(req: Request): Promise<Response> {
     const intentResult = await readAriIntent({
       input: {
         message: semanticMessage,
-        snapshotText: activeBrand && ownerTurnText && !injection.flagged
+        snapshotText: activeBrand && ownerTurnText && !injection.flagged &&
+            understandFirst
           ? await ariIntentSnapshotText(
             getAriBrandSnapshot({
               caller: userClient,
@@ -2112,6 +2123,8 @@ async function handle(req: Request): Promise<Response> {
       // The deterministic safety lanes are never routed through the model.
       skip: !ownerTurnText
         ? "structured_turn"
+        : !understandFirst
+        ? "rollout_off"
         : !activeBrand
         ? "no_brand"
         : injection.flagged
@@ -2417,7 +2430,8 @@ async function handle(req: Request): Promise<Response> {
     // start a guided setup this turn (start_flow), and what happens when it
     // does: the setup starts exactly as the keyword lane used to start it,
     // and its first card (or its one protected proposal) is the reply.
-    const startFlowAllowed = engineOn && activeBrand !== null && !flowSide &&
+    const startFlowAllowed = engineOn && understandFirst &&
+      activeBrand !== null && !flowSide &&
       !escalation.escalate && !intentSafetyReply &&
       (turnRoute.offerStartFlow || flowParked !== null);
     const startModelFlow = async (
@@ -2943,7 +2957,7 @@ async function handle(req: Request): Promise<Response> {
     // #3355 rework 3b (I-ARI-READS-IN-BRAND-TIME): the brand's display zone,
     // so every instant the model reads carries its brand-local rendering.
     const [turnSnapshot, turnScreen, turnMemory, turnZone] = await Promise.all([
-      activeBrand
+      activeBrand && understandFirst
         ? getAriBrandSnapshot({
           caller: userClient,
           brandId: activeBrand.id,
@@ -2957,18 +2971,20 @@ async function handle(req: Request): Promise<Response> {
           return null;
         })
         : Promise.resolve(null),
-      body.client_context === undefined
+      body.client_context === undefined || !understandFirst
         ? Promise.resolve(null)
         : resolveAriScreenContext({
           caller: userClient,
           raw: body.client_context,
           activeBrand,
         }).catch(() => null),
-      readAriMemoryForTurn({
-        caller: userClient,
-        brandId: activeBrand?.id ?? null,
-        message: semanticMessage,
-      }),
+      understandFirst
+        ? readAriMemoryForTurn({
+          caller: userClient,
+          brandId: activeBrand?.id ?? null,
+          message: semanticMessage,
+        })
+        : Promise.resolve([]),
       activeBrand
         ? readAriBrandDisplayZone(userClient, activeBrand.id)
         : Promise.resolve(null),
@@ -4529,6 +4545,7 @@ ${boundedAgentContext}
         loopResult.kind === "text" && copyLint.ok;
       const safeLoopText = modelAuthoredLoopText
         ? await guardReplyClaims({
+          understandFirst,
           text: lintedLoopText,
           history,
           current: semanticMessage,
@@ -4936,6 +4953,7 @@ ${boundedAgentContext}
           // state a write's status.
           const text = followup?.textResponse
             ? await guardReplyClaims({
+              understandFirst,
               text: followup.textResponse,
               history,
               current: semanticMessage,
@@ -5367,6 +5385,7 @@ ${boundedAgentContext}
     // #3355 rework 1 (tester P1-4, I-ARI-CLAIM-MATCHES-RECEIPT): the
     // single-call reply is held to the same receipts as the loop's.
     const answer = await guardReplyClaims({
+      understandFirst,
       text: gemini.textResponse.trim(),
       history,
       current: semanticMessage,
@@ -5515,6 +5534,8 @@ async function statedSlotStage(args: {
  * turn's model calls and runs inside the 55 s deadline.
  */
 async function guardReplyClaims(args: {
+  /** #3355 rework 8: the rollout switch; off returns the text unchecked. */
+  understandFirst: boolean;
   text: string;
   history: ReadonlyArray<
     {
@@ -5543,6 +5564,7 @@ async function guardReplyClaims(args: {
   observations?: readonly AgentLoopObservation[];
   turnStartedAt: number;
 }): Promise<string> {
+  if (!args.understandFirst) return args.text;
   const evidence = claimEvidenceFromHistory(args.history);
   const pendingIds = args.history.flatMap((row) => {
     const calls = row.role === "assistant" &&

@@ -4,6 +4,7 @@
 // verified result or returns the next protected write as a proposal.
 
 import { ARI_STOPPED_HERE_LINE, stripPromptEcho } from "./ariOwnerCopy.ts";
+import { readAriUnderstandFirst } from "./ariRollout.ts";
 import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
@@ -20,8 +21,8 @@ import { lintAriCopy, softenAriHeadings } from "./agentCopyLint.ts";
 import { DISCOUNT_PROPOSAL_REFUSED_CODE } from "./ariDiscountArgs.ts";
 import { bindDiscountTargetDefault } from "./agentAri10xTools.ts";
 import {
-  ARI_CLAIM_CHECK_RESERVE_MS,
   type AgentLoopResult,
+  ARI_CLAIM_CHECK_RESERVE_MS,
   runAgentLoop,
 } from "./agentLoop.ts";
 import {
@@ -111,6 +112,12 @@ export async function continueAfterApprovedAction(args: {
   toolArgs?: Record<string, unknown>;
   /** Test seam: the claim check's model call. */
   claimCall?: AriClaimModelCall;
+  /**
+   * #3355 rework 8: the rollout switch (ariRollout.ts). Off: the
+   * continuation's words are not claim-checked (the earlier behaviour).
+   * Unset: read for the approved card's brand.
+   */
+  understandFirst?: boolean;
 }): Promise<PostApprovalContinuation | null> {
   // Ticket pricing's confirmed operation returns the exact canonical tier
   // that its SQL executor read back. Use that receipt directly; a second model
@@ -163,12 +170,11 @@ export async function continueAfterApprovedAction(args: {
   const receiptMessage: GeminiContentMessage = {
     role: "user",
     parts: [{
-      text:
-        `The user approved this change: ${
-          toolOwnerCopy(args.toolName).verb
-        }. The saved result from Mingla is:\n${
-          boundedJson(withAriLocalTimes(args.result, zone))
-        }\n\nContinue the existing goal now. Check the result, complete safe reads and your own plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, reply in one or two short, plain sentences: what was saved, and anything the host still needs to do. Never describe how you checked, and never list empty categories.`,
+      text: `The user approved this change: ${
+        toolOwnerCopy(args.toolName).verb
+      }. The saved result from Mingla is:\n${
+        boundedJson(withAriLocalTimes(args.result, zone))
+      }\n\nContinue the existing goal now. Check the result, complete safe reads and your own plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, reply in one or two short, plain sentences: what was saved, and anything the host still needs to do. Never describe how you checked, and never list empty categories.`,
     }],
   };
   const systemPrompt = `You are Ari continuing an already-approved Mingla plan.
@@ -237,14 +243,22 @@ export async function continueAfterApprovedAction(args: {
       };
     },
     classifyTool: (call) => {
-      if (!findTool(call.name)) return "unknown";
-      if (isAgentStateToolCall(call.name)) return "agent_state";
-      if (isReadOnlyAgentToolCall(call.name, call.args)) return "read";
+      if (!findTool(call.name)) {
+        return "unknown";
+      }
+      if (isAgentStateToolCall(call.name)) {
+        return "agent_state";
+      }
+      if (isReadOnlyAgentToolCall(call.name, call.args)) {
+        return "read";
+      }
       return "write";
     },
     executeTool: async (call) => {
       const tool = findTool(call.name);
-      if (!tool) throw new ToolError("UNKNOWN_TOOL", "Capability unavailable.");
+      if (!tool) {
+        throw new ToolError("UNKNOWN_TOOL", "Capability unavailable.");
+      }
       const result = await tool.executor(call.args, args.client, args.userId, {
         operationId: null,
       });
@@ -267,7 +281,9 @@ export async function continueAfterApprovedAction(args: {
               "memory",
               "onboarding",
             ].includes(key)
-          ) toolsets.add(key as AriToolsetKey);
+          ) {
+            toolsets.add(key as AriToolsetKey);
+          }
         }
         tools = selectAriTools(
           AGENT_TOOLS,
@@ -313,8 +329,7 @@ export async function continueAfterApprovedAction(args: {
       kind: "proposal",
       toolName: loop.toolCall.name,
       toolArgs: loop.toolCall.args,
-      text:
-        "That's saved. The next change is ready for you to review.",
+      text: "That's saved. The next change is ready for you to review.",
       observations: loop.observations,
       goalText: recentGoalText,
     };
@@ -324,7 +339,9 @@ export async function continueAfterApprovedAction(args: {
     // happen here and reads as a stop. Server words, no check needed.
     return {
       kind: "text",
-      text: postApprovalStopText(loop.kind === "stopped" ? loop.reason : "errors"),
+      text: postApprovalStopText(
+        loop.kind === "stopped" ? loop.reason : "errors",
+      ),
       observations: loop.observations,
     };
   }
@@ -358,6 +375,19 @@ export async function continueAfterApprovedAction(args: {
     }));
     return { kind: "text", text: null, observations: loop.observations };
   }
+  const checked = args.understandFirst ??
+    await readAriUnderstandFirst(
+      args.serviceClient,
+      typeof brandId === "string" ? brandId : null,
+    );
+  if (!checked) {
+    const unchecked = dedupeReplySentences(continuationText);
+    return {
+      kind: "text",
+      text: unchecked || null,
+      observations: loop.observations,
+    };
+  }
   const check = await checkPostApprovalClaims({
     text: continuationText,
     hostMessage: recentGoalText,
@@ -389,7 +419,13 @@ export async function continueAfterApprovedAction(args: {
   };
 }
 
-const IDENTITY_KEYS = ["code", "subject", "title", "name", "ticket_id"] as const;
+const IDENTITY_KEYS = [
+  "code",
+  "subject",
+  "title",
+  "name",
+  "ticket_id",
+] as const;
 
 /**
  * The continuation's proposal is the write the host just approved, again:

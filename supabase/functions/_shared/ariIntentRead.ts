@@ -565,6 +565,8 @@ export type AriIntentFallbackReason =
   | "structured_turn"
   | "no_brand"
   | "injection"
+  // #3355 rework 8: the rollout switch is off for this brand.
+  | "rollout_off"
   | "timeout"
   | "error"
   | "invalid"
@@ -601,7 +603,7 @@ export async function readAriIntent(args: {
   skip?:
     | Extract<
       AriIntentFallbackReason,
-      "structured_turn" | "no_brand" | "injection"
+      "structured_turn" | "no_brand" | "injection" | "rollout_off"
     >
     | null;
   timeoutMs?: number;
