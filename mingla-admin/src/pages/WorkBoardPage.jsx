@@ -329,7 +329,7 @@ export function WorkBoardPage() {
       </div>
 
       {closing && (
-        <CloseCardDialog card={closing.card} column={closing.column} busy={closeBusy}
+        <CloseCardDialog card={closing.card} column={closing.column} me={people.me} busy={closeBusy}
           onCancel={() => setClosing(null)}
           onClose={async (proof, result, children) => {
             setCloseBusy(true);

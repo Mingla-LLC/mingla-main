@@ -799,11 +799,15 @@ export const BRAND_ROLE_WORDS = Object.freeze({
  * #4270 W2 (D4): what is wrong with a host card's "Add work item" before it
  * is sent, field by field, in the form's words. The server checks it again.
  */
-export function quickAddProblems({ title = "", owners = [], due = "", filesUrl = "" } = {}, today = todayIso()) {
+export function quickAddProblems({ title = "", owners = [], watchers = [], due = "", filesUrl = "" } = {}, today = todayIso()) {
   const out = [];
   const t = String(title || "").trim();
   if (t.length < 3 || t.length > 160) out.push({ field: "title", message: "Say what the work is in 3 to 160 characters." });
-  if (!Array.isArray(owners) || owners.length === 0) out.push({ field: "owners", message: "Pick at least one assignee" });
+  // #4398: one owner and one watcher, who is not the owner (the server refuses anything else).
+  if (!Array.isArray(owners) || owners.length !== 1) out.push({ field: "owners", message: "A card has one owner. Pick one person." });
+  if (!Array.isArray(watchers) || watchers.length !== 1 || (Array.isArray(owners) && watchers[0] === owners[0])) {
+    out.push({ field: "watchers", message: "A card has one watcher, who is not the owner." });
+  }
   if (!DATE_RE.test(String(due || ""))) out.push({ field: "due_on", message: "Pick a due date." });
   else if (String(due) < today) out.push({ field: "due_on", message: "The due date can’t be in the past." });
   const files = filesUrlProblem(filesUrl);

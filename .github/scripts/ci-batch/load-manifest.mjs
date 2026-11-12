@@ -256,7 +256,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 rework 6: re-sealed after merging origin/main 559e3e6902 (#3281 rows kept beside the #3355 rows).
 // #3355 rework 6: register 20280627003355 (payout readiness for brand members) in the #1857, #1931 and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #3355 rework 7: register the retest 7 payout readiness callers PostgreSQL proof in the #1931 and #2117 replay lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "e8535aba3accdfc0f88225dd77bce295c290fe5c7061717716d5d998e8bafd7f";
+export const BOOTSTRAP_SHA256 = "58d4b8a4cfd1a1ae88c68254a61951fdb5c87e79d2ea00e4ba8350857728db7f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

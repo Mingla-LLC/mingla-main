@@ -229,10 +229,115 @@ export function BrandCardsBackfill({ online }) {
   );
 }
 
+// #4398 (A5) — where each kind of automatic card goes: the kind in words,
+// the main task it goes under (number, title, owner, watcher) and its state
+// (Open, Closed: using #n, or Nowhere to go). The owner or an admin changes a
+// route by searching the board; the server refuses a card two levels down.
+const ROUTE_STATE = Object.freeze({
+  open: { tone: "success", words: () => "Open" },
+  using: { tone: "warning", words: (r) => `Closed: using #${r.using?.number}` },
+  nowhere: { tone: "error", words: () => "Nowhere to go" },
+});
+
+function CardSearch({ label, onPick, onCancel, disabled }) {
+  const [q, setQ] = useState("");
+  const [result, setResult] = useState({ q: "", cards: [], error: null });
+  const query = q.trim();
+  useEffect(() => {
+    if (query.length < 2) return undefined;
+    let live = true;
+    const t = setTimeout(async () => {
+      try {
+        const answer = await ops.listWork({ q: query, subtasks: true, limit: 20, done_days: 0 });
+        const cards = (answer?.cards || []).filter((c) => Number(c.depth || 0) <= 1 && c.status !== "done");
+        if (live) setResult({ q: query, cards, error: null });
+      } catch (error) { if (live) setResult({ q: query, cards: [], error }); }
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [query]);
+  // What is on screen belongs to the words it was searched for; anything else is still searching.
+  const found = { ...result, loading: result.q !== query };
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-secondary)] p-2">
+      <input type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)} disabled={disabled} aria-label={label}
+        placeholder="Search the board by title or number" className={`min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] ${FOCUS}`} />
+      {q.trim().length < 2 ? <p className="px-1 text-[12.5px] text-[var(--color-text-tertiary)]">Type two letters or more. Main tasks and their groups only.</p>
+        : found.loading ? <p role="status" className="px-1 text-[12.5px] text-[var(--color-text-tertiary)]">Searching…</p>
+        : found.error ? <p role="alert" className="px-1 text-[12.5px] text-[var(--color-error-700)]">{opsErrorWords(found.error)}</p>
+        : found.cards.length === 0 ? <p className="px-1 text-[12.5px] text-[var(--color-text-tertiary)]">No open main task matches “{found.q}”.</p>
+        : (
+          <ul className="flex min-w-0 flex-col">
+            {found.cards.map((c) => (
+              <li key={c.id}><button type="button" disabled={disabled} onClick={() => onPick(c)} className={`flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-left text-[13px] hover:bg-[var(--gray-100)] ${FOCUS}`}>
+                <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">#{c.number}</span>
+                <span className="min-w-0 flex-1 truncate text-[var(--color-text-primary)]">{c.title}</span>
+                <span className="shrink-0 text-[12px] text-[var(--color-text-tertiary)]">{c.owners?.[0]?.name || "No owner"} · {c.watchers?.[0]?.name || "no watcher"}</span>
+              </button></li>
+            ))}
+          </ul>
+        )}
+      <Button variant="ghost" className="min-h-11 self-start" onClick={onCancel}>Cancel</Button>
+    </div>
+  );
+}
+
+export function AutomaticCardRoutes({ online }) {
+  const { access } = useAuth();
+  const { addToast } = useToast();
+  const read = useOpsPoll(() => ops.fetchOpsSettings(), { key: `${access?.email || ""}|ops-settings`, intervalMs: 0 });
+  const [editing, setEditing] = useState("");
+  const [busy, setBusy] = useState(false);
+  const settings = read.data;
+  const routes = settings?.auto_card_routes;
+  if (!settings?.can_edit_routes || !routes) return null;
+  const value = () => ({
+    routes: Object.fromEntries((routes.routes || []).filter((r) => r.card?.id).map((r) => [r.kind, r.card.id])),
+    fallback: routes.fallback?.id || null,
+  });
+  const save = async (kind, card) => {
+    const next = value();
+    if (kind === "*fallback") next.fallback = card.id; else next.routes[kind] = card.id;
+    setBusy(true);
+    try {
+      await ops.setOpsSetting("auto_card_routes", next);
+      await read.refetch({ quiet: true });
+      addToast({ variant: "success", title: `Now goes under #${card.number}`, description: "New automatic cards take its owner and watcher." });
+      setEditing("");
+    } catch (error) { addToast({ variant: "error", title: "Not changed", description: opsErrorWords(error) }); }
+    finally { setBusy(false); }
+  };
+  const row = (key, words, card, state, r) => (
+    <li key={key} data-route={key} className="flex min-w-0 flex-col gap-1.5 border-b border-[var(--gray-100)] py-2.5 last:border-b-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="min-w-[12rem] flex-1 break-normal text-[13.5px] font-semibold text-[var(--color-text-primary)]">{words}</span>
+        {state && <OpsChip tone={ROUTE_STATE[state].tone}>{ROUTE_STATE[state].words(r)}</OpsChip>}
+        <Button variant="secondary" className="min-h-11" disabled={!online || busy} onClick={() => setEditing(editing === key ? "" : key)}>Change</Button>
+      </div>
+      <p className="break-words text-[12.5px] text-[var(--color-text-secondary)]">
+        {card ? <>Goes under <b>#{card.number} {card.title}</b> · {card.owner || "no owner"} owns · {card.watcher || "no watcher"} watches</> : "No card set: uses the fallback."}
+      </p>
+      {editing === key && <CardSearch label={`Pick the main task for ${words}`} disabled={!online || busy} onCancel={() => setEditing("")} onPick={(c) => save(key, c)} />}
+    </li>
+  );
+  return (
+    <section aria-labelledby="auto-cards-heading" data-auto-card-routes="" className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
+      <h3 id="auto-cards-heading" className="border-b border-[var(--gray-200)] px-4 py-3.5 text-[15px] font-semibold text-[var(--color-text-primary)] sm:px-5">Automatic cards</h3>
+      <div className="flex min-w-0 flex-col gap-2 px-4 py-3 sm:px-5">
+        <p className="break-normal text-[12.5px] text-[var(--color-text-tertiary)]">Every card Mingla makes goes under its main task and takes that task’s owner and watcher. A closed main task passes its cards up to its parent, then to the fallback; with nowhere to go, the owner gets one card asking to point it somewhere.</p>
+        <ul className="flex min-w-0 flex-col">
+          {(routes.routes || []).map((r) => row(r.kind, r.words, r.card, r.state, r))}
+          {row("*fallback", "Anything else (the fallback)", routes.fallback, routes.fallback ? (routes.fallback.open ? "open" : "nowhere") : "nowhere", null)}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 /** All three, in the order the old Team dashboard showed them. */
 export function TeamAutomationSettings({ online }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
+      <AutomaticCardRoutes online={online} />
       <AutomaticSteps online={online} />
       <BrandCardsBackfill online={online} />
       <NextStepsToCards online={online} />

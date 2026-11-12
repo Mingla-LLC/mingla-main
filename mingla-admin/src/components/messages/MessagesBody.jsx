@@ -6,12 +6,16 @@ import { MESSAGES_TABS } from "../../lib/messagesModel";
 import { MessagesNotifications } from "./MessagesNotifications";
 import { TeamChats } from "./TeamChats";
 import { MessagesSettings } from "./MessagesSettings";
+import { MessagesActivity } from "./MessagesActivity";
+import { useActivity } from "../../hooks/useActivity";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
 export function MessagesBody({ messages, tab, threadId, onChange }) {
   const base = useId();
+  const activity = useActivity();  // #4398: Mingla activity, Admin-only unread
   const counts = {
+    activity: Number(activity.data?.unread?.mingla || 0),
     notifications: Math.max(0, (messages.count ?? 0) - Number(messages.badge?.chats || 0)),
     chats: Number(messages.badge?.chats || 0),
     settings: 0,
@@ -31,6 +35,7 @@ export function MessagesBody({ messages, tab, threadId, onChange }) {
       </div>
       <div role="tabpanel" id={`${base}-panel`} aria-labelledby={`${base}-tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
         {tab === "notifications" && <MessagesNotifications messages={messages} onOpenChat={openChat} />}
+        {tab === "activity" && <MessagesActivity activity={activity} />}
         {tab === "chats" && <TeamChats threadId={threadId} onThreadChange={(id) => onChange("chats", id)} />}
         {tab === "settings" && <MessagesSettings />}
       </div>

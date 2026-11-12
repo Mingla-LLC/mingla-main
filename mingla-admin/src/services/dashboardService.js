@@ -42,6 +42,12 @@ export const getInbox = (alertTypes) => rpc("team_inbox", { p_alert_types: alert
 export const markInboxRead = (scope, alertTypes) =>
   rpc("team_inbox_mark_read", { p_scope: scope, p_alert_types: alertTypes });
 
+/** #4398: Messages > Mingla activity (Admin-only notices, grouped per kind per day) and For you. */
+export const getActivity = (days = 14) => rpc("team_activity", { p_days: days });
+
+/** #4398: Mark all read on "mingla" (Admin-only notices), "you" or "all". */
+export const markActivityRead = (tab) => rpc("team_activity_mark_read", { p_tab: tab });
+
 /** The Calendar's event runway in each event's own time, test brands marked. */
 export const getCalendarRunway = (from, to, today) =>
   rpc("calendar_runway", { p_from: from || null, p_to: to || null, p_today: today || null });

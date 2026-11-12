@@ -132,6 +132,18 @@ export function invitedWords(person) {
 export const LAST_OWNER_WORDS = "A card always keeps one owner. Add someone else first, then remove this one.";
 
 /** Add one person by email: never twice, never past max. */
+/**
+ * #4398: a one-person field (a card's owner, or its watcher). Picking someone
+ * else changes the person, never adds a second; picking the same person is
+ * nothing. { value, change } or null.
+ */
+export function changePerson(value, email) {
+  const list = Array.isArray(value) ? value.map((e) => String(e).toLowerCase()) : [];
+  const next = String(email || "").toLowerCase();
+  if (!next || (list.length === 1 && list[0] === next)) return null;
+  return { value: [next], change: { added: next, removed: list[0] || null, changed: list.length > 0 } };
+}
+
 export function addPerson(value, email, max = 10) {
   const list = (Array.isArray(value) ? value : []).map(lower);
   const e = lower(email);

@@ -76,6 +76,24 @@ language sql as $fn$
     'due_on', public.ops_today(NULL));
 $fn$;
 
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its people (the route's fallback here: Ade owns, Gem watches), and a
+-- bot's add or close is an Admin-only notice: no email, no Host app push
+-- (spec v3 section 3). The I-4255-AUTO-CARD-NO-EMAIL rule is now wider: no
+-- automatic card emails at all.
+do $routes$
+declare v jsonb;
+begin
+  insert into public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  values ('C4255 Main task for automatic cards', 'Where the suite''s automatic cards go.', 'Never closed.', current_date + 30, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com')
+  returning to_jsonb(ops_work_cards.*) into v;
+  insert into public.ops_work_people (card_id, email, role, added_by) values
+    ((v->>'id')::uuid, 'ade.c4255@test.local', 'owner', 'system@usemingla.com'), ((v->>'id')::uuid, 'gem.c4255@test.local', 'watcher', 'system@usemingla.com');
+  update public.ops_settings set value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v->>'id') where key = 'auto_card_routes';
+end;
+$routes$;
+
 -- ───────────────────────────── C-AUTO / C-OPEN ─────────────────────────────
 do $t$
 declare v jsonb; v_card uuid; v_guide uuid; v_open uuid; v_later uuid; v_n bigint;
@@ -84,9 +102,9 @@ begin
   v := public.ops_auto_card_upsert('eng_check:c4255-same-run', pg_temp.item('C4255 Same run card'), 'task', NULL);
   v_card := (v->>'id')::uuid;
   perform pg_temp.chk('C-AUTO', 'same-run card added', v->>'status' = 'added', v::text);
-  perform pg_temp.chk('C-AUTO', 'before close the owner email is queued', pg_temp.mails(v_card, 'admin') = 1, pg_temp.mails(v_card, 'admin')::text);
-  perform pg_temp.chk('C-AUTO', 'before close the owner push is queued too',
-    exists (select 1 from public.notification_outbox where category_key = 'business.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_card::text), NULL);
+  perform pg_temp.chk('C-AUTO', '#4398: a bot add queues no email', pg_temp.mails(v_card, 'admin') = 0, pg_temp.mails(v_card, 'admin')::text);
+  perform pg_temp.chk('C-AUTO', '#4398: and no Host app push',
+    not exists (select 1 from public.notification_outbox where category_key = 'business.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_card::text), NULL);
   perform public.ops_auto_card_close(v_card, 'Checked.', '[{"text":"Checked by Mingla."}]'::jsonb);
   perform pg_temp.chk('C-AUTO', 'same-run close: owner has no email', pg_temp.mails(v_card, 'admin') = 0, pg_temp.mails(v_card, 'admin')::text);
   perform pg_temp.chk('C-AUTO', 'same-run close: watcher has no email', pg_temp.mails(v_card, 'growth') = 0, pg_temp.mails(v_card, 'growth')::text);
@@ -106,15 +124,14 @@ begin
   -- an automatic card that stays open is a real assignment: it emails
   v := public.ops_auto_card_upsert('eng_check:c4255-open', pg_temp.item('C4255 Open card'), 'task', NULL);
   v_open := (v->>'id')::uuid;
-  perform pg_temp.chk('C-OPEN', 'open auto card emails its owner', pg_temp.mails(v_open, 'admin') = 1, pg_temp.mails(v_open, 'admin')::text);
-  perform pg_temp.chk('C-OPEN', 'subject names the card',
-    (select payload->>'title' from public.notification_outbox where category_key = 'admin.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text) = 'Mingla added: C4255 Open card',
-    (select payload::text from public.notification_outbox where category_key = 'admin.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text));
+  perform pg_temp.chk('C-OPEN', '#4398: an open auto card is an Admin-only notice for its owner, no email', pg_temp.mails(v_open, 'admin') = 0, pg_temp.mails(v_open, 'admin')::text);
+  perform pg_temp.chk('C-OPEN', '#4398: the owner''s notice names the card and is not pushed',
+    (select body_excerpt || '/' || push::text from public.team_mentions where target_user_id = pg_temp.uid('admin') and deep_link like '%card=' || v_open::text || '%') = 'Mingla added: C4255 Open card/false', NULL);
   -- [TEST-MOD-APPROVED #4255] W1b: each email is joined by one Host app push
   -- (business.team_mention); the email's subject check above now names its
   -- category, since the card has two outbox rows per person.
-  perform pg_temp.chk('C-OPEN', 'open auto card also pushes its owner once',
-    (select count(*) from public.notification_outbox where category_key = 'business.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text) = 1,
+  perform pg_temp.chk('C-OPEN', '#4398: open auto card never pushes',
+    (select count(*) from public.notification_outbox where category_key = 'business.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text) = 0,
     (select string_agg(category_key, ',') from public.notification_outbox where user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text));
 
   -- made in an earlier run, closed now: the close notice emails and the
@@ -124,11 +141,10 @@ begin
   update public.ops_work_cards set created_at = now() - interval '1 hour' where id = v_later;
   update public.notification_outbox set created_at = now() - interval '1 hour' where payload->>'card_id' = v_later::text;
   perform public.ops_auto_card_close(v_later, 'Checked.', '[{"text":"Checked by Mingla."}]'::jsonb);
-  perform pg_temp.chk('C-AUTO', 'later close: owner has added + closed emails', pg_temp.mails(v_later, 'admin') = 2, pg_temp.mails(v_later, 'admin')::text);
-  perform pg_temp.chk('C-AUTO', 'later close: subject names the card',
-    exists (select 1 from public.notification_outbox where payload->>'card_id' = v_later::text
-             and payload->>'title' like 'Mingla closed: C4255 Later card%'),
-    (select string_agg(payload->>'title', ' | ') from public.notification_outbox where payload->>'card_id' = v_later::text));
+  perform pg_temp.chk('C-AUTO', '#4398: a later bot close emails nobody either', pg_temp.mails(v_later, 'admin') = 0, pg_temp.mails(v_later, 'admin')::text);
+  perform pg_temp.chk('C-AUTO', '#4398: the close is an Admin-only notice naming the card',
+    exists (select 1 from public.team_mentions where target_user_id = pg_temp.uid('admin') and not push
+             and body_excerpt like 'Mingla closed: C4255 Later card%'), NULL);
 
   -- ─────────────────────────── C-SUBJECT ───────────────────────────
   -- a person's note on a person's card (auto_key cleared to make it one)
@@ -136,7 +152,7 @@ begin
   v_n := public.ops_notify_people(v_open,
     public.ops_card_event(v_open, 'oz.c4255@test.local', NULL, 'note', 'Can you check this today?', NULL, NULL, NULL, NULL),
     array['gem.c4255@test.local', 'oz.c4255@test.local'], 'oz.c4255@test.local',
-    format('%s on %s: %s', public.ops_actor_label('oz.c4255@test.local', NULL), 'C4255 Open card', 'Can you check this today?'));
+    format('%s on %s: %s', public.ops_actor_label('oz.c4255@test.local', NULL), 'C4255 Open card', 'Can you check this today?'), 'mention');
   perform pg_temp.chk('C-SUBJECT', 'note tells one teammate (never the actor)', v_n = 1, v_n::text);
   perform pg_temp.chk('C-SUBJECT', 'note subject is "<who> tagged you: <card>"',
     -- The note's own row (same-transaction rows share created_at, so match it
@@ -155,7 +171,7 @@ begin
   v_n := public.ops_notify_people(v_open,
     public.ops_card_event(v_open, 'oz.c4255@test.local', NULL, 'people', NULL, NULL, NULL, NULL, NULL),
     array['gem.c4255@test.local'], 'oz.c4255@test.local',
-    format('%s added you as owner: %s', public.ops_name('oz.c4255@test.local'), 'C4255 Open card'));
+    format('%s added you as owner: %s', public.ops_name('oz.c4255@test.local'), 'C4255 Open card'), 'assigned');
   perform pg_temp.chk('C-SUBJECT', 'owner add subject names the card',
     exists (select 1 from public.notification_outbox where user_id = pg_temp.uid('growth') and payload->>'card_id' = v_open::text
              and payload->>'title' = public.ops_name('oz.c4255@test.local') || ' added you as owner: C4255 Open card'),

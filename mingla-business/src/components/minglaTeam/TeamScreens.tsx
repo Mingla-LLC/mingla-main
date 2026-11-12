@@ -14,12 +14,13 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { accent, radius, spacing } from "../../constants/designSystem";
+import { accent, radius, semantic, spacing } from "../../constants/designSystem";
 import { teamChatKey } from "../../hooks/useBusinessNotifications";
 import { supabase } from "../../services/supabase";
 import {
   addTeamMembers,
   createTeamGroup,
+  markAllWorkUpdatesRead,
   markTeamMentionRead,
   openOutside,
   openTeamDm,
@@ -30,11 +31,13 @@ import {
 } from "../../services/teamChatService";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "../ui/Icon";
+import { Sheet } from "../ui/Sheet";
 import { SafeScreen } from "../ui/SafeScreen";
 import { Toast } from "../ui/Toast";
 import { teamTime, useTeamText, type TeamT } from "./teamText";
 import { PersonAvatar, TeamAccessGate, TeamAvatar, TeamHeader, useBack } from "./TeamCommon";
 import { useTeamMentions, useTeamPeople, useTeamRealtime, useTeamThreads } from "./useTeamChat";
+import { filterWorkUpdates, localDay, needsYou, workDueLabel, workUpdateCounts, type DueTone, type WorkUpdate, type WorkUpdateFilter } from "./workUpdates";
 
 import { TeamThreadScreen } from "./TeamThreadScreen";
 export { TeamLockedScreen } from "./TeamCommon";
@@ -103,28 +106,86 @@ export function mentionKindLabel(mention: Pick<TeamMention, "kind" | "action"> &
   return t("team.kind_update");
 }
 
-function MentionCard({ mention, highlighted, onOpen }: { mention: TeamMention; highlighted: boolean; onOpen: () => void }): React.ReactElement {
+const DUE_STYLE: Record<DueTone, { box: object; text: object }> = {
+  over: { box: { backgroundColor: semantic.errorTint }, text: { color: semantic.errorText } },
+  today: { box: { backgroundColor: semantic.warningTint }, text: { color: semantic.warning } },
+  soon: { box: { backgroundColor: brandGroupChat.accentSoft }, text: { color: brandGroupChat.mentionText } },
+  week: { box: { backgroundColor: brandGroupChat.strip }, text: { color: brandGroupChat.textPrimary } },
+  later: { box: { backgroundColor: brandGroupChat.strip }, text: { color: brandGroupChat.textSecondary } },
+  done: { box: { backgroundColor: semantic.successTint }, text: { color: semantic.success } },
+  none: { box: {}, text: {} },
+};
+
+/** #4398: the due pill, the same words as the Admin board. */
+function DuePill({ update }: { update: WorkUpdate }): React.ReactElement | null {
+  const { t, language } = useTeamText();
+  const due = workDueLabel(update.card ?? null, localDay(new Date().toISOString()) ?? "", t, language);
+  if (due.tone === "none") return null;
+  return (
+    <View style={[styles.duePill, DUE_STYLE[due.tone].box]}>
+      <Text style={[styles.duePillText, DUE_STYLE[due.tone].text]}>{due.text}</Text>
+    </View>
+  );
+}
+
+function MentionCard({ mention, highlighted, onOpen }: { mention: WorkUpdate; highlighted: boolean; onOpen: () => void }): React.ReactElement {
   const { t, language } = useTeamText();
   const unread = mention.read_at === null;
   return (
-    <View style={[styles.mentionCard, highlighted && styles.mentionCardHighlighted]} testID={`team-mention-${mention.id}`}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${mentionKindLabel(mention, t)}: ${mention.body_excerpt ?? ""}`}
+      onPress={onOpen}
+      style={({ pressed }) => [styles.mentionCard, highlighted && styles.mentionCardHighlighted, needsYou(mention) && unread && styles.mentionCardNeeds, pressed && styles.pressed]}
+      testID={`team-mention-${mention.id}`}
+    >
       <View style={styles.mentionTop}>
         <View style={[styles.dot, unread && styles.dotUnread]} />
         <Text style={styles.kindLabel}>{mentionKindLabel(mention, t)}</Text>
         <Text style={styles.mentionWho} numberOfLines={1}>{`${mention.actor_name} · ${teamTime(mention.created_at, language)}`}</Text>
       </View>
       {mention.body_excerpt ? <Text style={[styles.mentionQuote, unread && styles.bold]}>{mention.body_excerpt}</Text> : null}
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={t("team.open_admin")}
-        onPress={onOpen}
-        style={({ pressed }) => [styles.openAdmin, pressed && styles.pressed]}
-        testID={`team-open-admin-${mention.id}`}
-      >
-        <Text style={styles.openAdminText}>{t("team.open_admin")}</Text>
-        <Icon name="externalLink" size={14} color={brandGroupChat.mineText} />
-      </Pressable>
-    </View>
+      <DuePill update={mention} />
+    </Pressable>
+  );
+}
+
+/** #4398 (Q1 default): the card, read-only, with what changed and a way to Admin. */
+function WorkCardSheet({ update, onClose, onOpenAdmin }: { update: WorkUpdate | null; onClose: () => void; onOpenAdmin: (u: WorkUpdate) => void }): React.ReactElement {
+  const { t } = useTeamText();
+  const card = update?.card ?? null;
+  return (
+    <Sheet visible={update !== null} onClose={onClose} snapPoint="half" testID="team-card-sheet">
+      {update ? (
+        <View style={styles.sheetBody}>
+          <View style={styles.sheetTop}>
+            <Text style={styles.sheetCrumb} numberOfLines={2}>
+              {card ? `#${card.number}${card.parent ? ` · ↳ #${card.parent.number} ${card.parent.title}` : ""}` : mentionKindLabel(update, t)}
+            </Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={t("team.close")} onPress={onClose} hitSlop={8} style={styles.iconButton} testID="team-card-sheet-close">
+              <Icon name="close" size={18} color={brandGroupChat.textPrimary} />
+            </Pressable>
+          </View>
+          {card ? <Text style={styles.sheetTitle}>{card.title}</Text> : null}
+          {card ? (
+            <View style={styles.sheetMeta}>
+              <DuePill update={update} />
+              <Text style={styles.sheetPeople}>{t("team.card_people", { owner: card.owner ?? "—", watcher: card.watcher ?? "—" })}</Text>
+            </View>
+          ) : null}
+          <View style={styles.sheetChanged}>
+            <Text style={styles.sheetChangedLabel}>{t("team.what_changed")}</Text>
+            <Text style={styles.mentionQuote}>{update.body_excerpt ?? ""}</Text>
+          </View>
+          <Pressable accessibilityRole="link" accessibilityLabel={t("team.open_admin")} onPress={() => onOpenAdmin(update)}
+            style={({ pressed }) => [styles.openAdmin, pressed && styles.pressed]} testID="team-card-sheet-admin">
+            <Text style={styles.openAdminText}>{t("team.open_admin")}</Text>
+            <Icon name="externalLink" size={14} color={brandGroupChat.mineText} />
+          </Pressable>
+          <Text style={styles.footnote}>{t("team.sheet_read_only")}</Text>
+        </View>
+      ) : null}
+    </Sheet>
   );
 }
 
@@ -149,6 +210,8 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
   const [tab, setTab] = useState<"chats" | "mentions">(params.tab === "mentions" ? "mentions" : "chats");
   const [find, setFind] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [filter, setFilter] = useState<WorkUpdateFilter>("all");  // #4398
+  const [sheet, setSheet] = useState<WorkUpdate | null>(null);
   useEffect(() => { if (params.tab === "mentions") setTab("mentions"); }, [params.tab, params.mention]);
 
   const threads = useTeamThreads(userId, true);
@@ -174,13 +237,9 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
     onError: (error) => setToast(error instanceof Error ? error.message : t("team.try_again")),
   });
 
-  const openMention = useCallback(async (mention: TeamMention) => {
-    try {
-      await openOutside(teamAdminUrl(mention));
-    } catch {
-      setToast(t("team.open_admin_failed"));
-      return;
-    }
+  // #4398: a tap opens the read-only card sheet and marks the notice read.
+  const openMention = useCallback(async (mention: WorkUpdate) => {
+    setSheet(mention);
     if (mention.read_at !== null) return;
     try {
       await markTeamMentionRead(mention.id);
@@ -190,6 +249,24 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
       setToast(error instanceof Error ? error.message : t("team.try_again"));
     }
   }, [queryClient, t, userId]);
+  const openAdmin = useCallback(async (mention: TeamMention) => {
+    try {
+      await openOutside(teamAdminUrl(mention));
+    } catch {
+      setToast(t("team.open_admin_failed"));
+    }
+  }, [t]);
+  const markAll = useMutation({
+    mutationFn: markAllWorkUpdatesRead,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "mentions") });
+      void queryClient.invalidateQueries({ queryKey: teamChatKey(userId, "badge") });
+    },
+    onError: (error) => setToast(error instanceof Error ? error.message : t("team.try_again")),
+  });
+  const updates = (mentions.data ?? []) as WorkUpdate[];
+  const counts = workUpdateCounts(updates);
+  const shownUpdates = filterWorkUpdates(updates, filter);
 
   return (
     <SafeScreen edges={["top", "bottom"]} style={styles.screen} testID="team-home">
@@ -205,7 +282,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
       <View style={styles.segment} accessibilityRole="tablist">
         {(["chats", "mentions"] as const).map((key) => {
           const n = key === "chats" ? unreadChats : unreadMentions;
-          const label = key === "chats" ? t("team.tab_chats") : t("team.tab_mentions");
+          const label = key === "chats" ? t("team.tab_chats") : t("team.tab_updates");
           return (
             <Pressable
               key={key}
@@ -289,16 +366,38 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
                 <Text style={styles.chipButtonText}>{t("team.retry")}</Text>
               </Pressable>
             </View>
-          ) : (mentions.data ?? []).length === 0 ? (
+          ) : updates.length === 0 ? (
             <View style={styles.state}><Text style={styles.stateText}>{t("team.empty_mentions")}</Text></View>
           ) : (
-            (mentions.data ?? []).map((mention) => (
-              <MentionCard key={mention.id} mention={mention} highlighted={params.mention === mention.id} onOpen={() => void openMention(mention)} />
-            ))
+            <>
+              <View style={styles.filterRow}>
+                {(["all", "needs", "mentions"] as const).map((key) => {
+                  const label = key === "all" ? t("team.filter_all") : key === "needs" ? t("team.filter_needs") : t("team.tab_mentions");
+                  const n = counts[key];
+                  return (
+                    <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected: filter === key }} accessibilityLabel={n ? `${label}, ${n}` : label}
+                      onPress={() => setFilter(key)} style={[styles.filterChip, filter === key && styles.filterChipOn]} testID={`team-filter-${key}`}>
+                      <Text style={[styles.filterChipText, filter === key && styles.filterChipTextOn]}>{n ? `${label} ${n}` : label}</Text>
+                    </Pressable>
+                  );
+                })}
+                <Pressable accessibilityRole="button" accessibilityLabel={t("team.mark_all_read")} disabled={counts.all === 0 || markAll.isPending}
+                  onPress={() => markAll.mutate()} style={[styles.markAll, (counts.all === 0 || markAll.isPending) && styles.disabled]} testID="team-mark-all-read">
+                  <Text style={styles.markAllText}>{t("team.mark_all_read")}</Text>
+                </Pressable>
+              </View>
+              {shownUpdates.length === 0 ? (
+                <View style={styles.state}><Text style={styles.stateText}>{t("team.empty_filter")}</Text></View>
+              ) : shownUpdates.map((mention) => (
+                <MentionCard key={mention.id} mention={mention} highlighted={params.mention === mention.id} onOpen={() => void openMention(mention)} />
+              ))}
+            </>
           )}
+
           <Text style={styles.footnote}>{t("team.mentions_note")}</Text>
         </ScrollView>
       )}
+      <WorkCardSheet update={sheet} onClose={() => setSheet(null)} onOpenAdmin={(u) => void openAdmin(u)} />
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast visible={toast !== null} kind="error" message={toast ?? ""} onDismiss={() => setToast(null)} />
       </View>
@@ -608,6 +707,25 @@ const styles = StyleSheet.create({
   footnote: { color: brandGroupChat.textMuted, fontSize: 12, lineHeight: 17, paddingVertical: spacing.md },
   mentionCard: { borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, padding: spacing.md, gap: spacing.sm, marginBottom: spacing.sm },
   mentionCardHighlighted: { borderColor: accent.warm },
+  // #4398: Work updates
+  mentionCardNeeds: { borderColor: brandGroupChat.accentSoft, backgroundColor: brandGroupChat.surfaceRaised },
+  duePill: { alignSelf: "flex-start", borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 4 },
+  duePillText: { fontSize: 12, fontWeight: "700" },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.xs, marginBottom: spacing.sm },
+  filterChip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, alignItems: "center", justifyContent: "center" },
+  filterChipOn: { backgroundColor: brandGroupChat.textPrimary, borderColor: brandGroupChat.textPrimary },
+  filterChipText: { color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "600" },
+  filterChipTextOn: { color: brandGroupChat.mineText },
+  markAll: { marginLeft: "auto", minHeight: 36, paddingHorizontal: spacing.sm, alignItems: "center", justifyContent: "center" },
+  markAllText: { color: accent.warm, fontSize: 13, fontWeight: "700" },
+  sheetBody: { padding: spacing.md, gap: spacing.md },
+  sheetTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  sheetCrumb: { flex: 1, color: brandGroupChat.textSoft, fontSize: 12 },
+  sheetTitle: { color: brandGroupChat.textPrimary, fontSize: 18, fontWeight: "700", lineHeight: 24 },
+  sheetMeta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
+  sheetPeople: { color: brandGroupChat.textSecondary, fontSize: 13 },
+  sheetChanged: { borderRadius: radius.md, backgroundColor: brandGroupChat.strip, padding: spacing.md, gap: 4 },
+  sheetChangedLabel: { color: brandGroupChat.textPrimary, fontSize: 12, fontWeight: "700" },
   mentionTop: { flexDirection: "row", alignItems: "center", gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "transparent" },
   dotUnread: { backgroundColor: accent.warm },

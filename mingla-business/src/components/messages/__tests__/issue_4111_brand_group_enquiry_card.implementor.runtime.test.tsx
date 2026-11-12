@@ -19,6 +19,8 @@ const ENQUIRY = "4111c000-0000-4000-b800-0000000000e1";
 const CONVERSATION = "4111c000-0000-4000-b800-0000000000c9";
 
 jest.mock("react-native", () => jest.requireActual("react-native"));
+// #4398: the Team screen now imports the shared Sheet (expo-blur, untransformed ESM here).
+jest.mock("../../ui/Sheet", () => ({ Sheet: () => null }));
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ conversationId: "conversation-a" }),
   useRouter: () => ({ back: jest.fn(), push: mockPush, replace: jest.fn() }),

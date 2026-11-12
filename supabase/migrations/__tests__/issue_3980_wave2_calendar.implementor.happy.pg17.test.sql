@@ -29,6 +29,30 @@
 
 \set ON_ERROR_STOP on
 begin;
+
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
 -- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
 \ir issue_4270_promised_event_before_d16.fixture.sql
 
@@ -456,7 +480,7 @@ begin
   v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     format('{"record_id":"%s","title":"W3980 Far Party","event_type":"event","expected_on":"%s"}', pg_temp.t3980_id('host'), v_today + 70), 'w3980-exp-0011'));
   perform pg_temp.t3980_keep('x3', pg_temp.t3980_get(v, 'expected', 'id'));
-  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 harvest brief","instructions":"Write the content brief for the harvest party.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"anchor":{"kind":"expected","id":"%s"},"kit_step":-26}]'::jsonb, 'w3980-w2-add-01')::text$q$, pg_temp.t3980_id('x2')));
+  v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 harvest brief","instructions":"Write the content brief for the harvest party.","done_means":"The brief is on the card.","owners":["ada.w3980@test.local"],"watchers":["route-watch.r4398@test.local"],"anchor":{"kind":"expected","id":"%s"},"kit_step":-26}]'::jsonb, 'w3980-w2-add-01')::text$q$, pg_temp.t3980_id('x2')));
   perform pg_temp.t3980_check('W2-RECONCILE', 'a kit card counts from the expected date',
     pg_temp.t3980_get(v, 'results', '0', 'card', 'due_on'), (v_today + 24)::text);
   perform pg_temp.t3980_keep('ck', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));

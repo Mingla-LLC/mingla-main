@@ -27,6 +27,34 @@
 
 \set ON_ERROR_STOP on
 begin;
+
+-- [TEST-MOD-APPROVED #4398] cards this suite closes by writing the table straight away (fixtures for past
+-- decisions) count as confirmed by their watcher; every close through a function still goes through review.
+set local ops.review_confirmed = on;
+
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
 -- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
 \ir issue_4270_promised_event_before_d16.fixture.sql
 
@@ -242,14 +270,20 @@ $n2$;
 
 -- P3-B: a brand the run could not settle backs off.
 do $p3b$
-declare v jsonb; w record;
+declare v jsonb; w record; v_fb jsonb;
 begin
-  delete from public.ops_brand_autolink_waits where brand_id <> '39910000-0000-4000-b100-000000000010';
-  update public.ops_brand_autolink_waits set tries = 1, next_at = now() + interval '1 hour' where brand_id = '39910000-0000-4000-b100-000000000010';
+  -- [TEST-MOD-APPROVED #4398] every automatic card is a subtask now and subtasks may share a title (#4255),
+  -- so the held title no longer leaves the backoff brand unsettled. A missing route does: its pick card is
+  -- put away and the fallback main task is unset, so the next run cannot make the card.
+  update public.ops_work_cards set archived_at = now(), archived_by = 'w3b', archive_reason = 'Test: put away.' where auto_key = 'brand_pick:39910000-0000-4000-b100-000000000010';
+  select value->'fallback' into v_fb from public.ops_settings where key = 'auto_card_routes';
+  update public.ops_settings set value = jsonb_set(value, '{fallback}', 'null'::jsonb) where key = 'auto_card_routes';
+  delete from public.ops_brand_autolink_waits;
+  v := public.ops_brand_autolink();
   select * into w from public.ops_brand_autolink_waits where brand_id = '39910000-0000-4000-b100-000000000010';
   perform pg_temp.w3b_check('P3-B', 'an unsettled brand waits an hour before its next try',
     coalesce(w.tries::text, 'none') || '/' || coalesce(w.last_status, '') || '/' ||
-    ((w.next_at - now()) between interval '59 minutes' and interval '61 minutes')::text, '1/pick:duplicate/true');
+    ((w.next_at - now()) between interval '59 minutes' and interval '61 minutes')::text, '1/pick:refused/true');
   v := public.ops_brand_autolink();
   select * into w from public.ops_brand_autolink_waits where brand_id = '39910000-0000-4000-b100-000000000010';
   perform pg_temp.w3b_check('P3-B', 'a run before then leaves it alone', w.tries::text, '1');
@@ -261,6 +295,7 @@ begin
   perform pg_temp.w3b_check('P3-B', 'no client can read the waits',
     has_table_privilege('authenticated', 'public.ops_brand_autolink_waits', 'SELECT')::text || '/' ||
     has_table_privilege('anon', 'public.ops_brand_autolink_waits', 'SELECT')::text, 'false/false');
+  update public.ops_settings set value = jsonb_set(value, '{fallback}', v_fb) where key = 'auto_card_routes';  -- #4398: the fallback back
 end;
 $p3b$;
 

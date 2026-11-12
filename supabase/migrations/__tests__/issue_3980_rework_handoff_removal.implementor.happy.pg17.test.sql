@@ -16,6 +16,30 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
+-- takes its owner and watcher: this suite's cards go under one fallback main
+-- task (two fixture admins), so nothing lands at the top level.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $routes4398$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('43980000-0000-4000-afff-0000000000a1', 'route-owner.r4398@test.local', now()),
+    ('43980000-0000-4000-afff-0000000000a2', 'route-watch.r4398@test.local', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.admin_users (email, role, status, accepted_at) VALUES
+    ('route-owner.r4398@test.local', 'admin', 'active', now()), ('route-watch.r4398@test.local', 'admin', 'active', now()) ON CONFLICT DO NOTHING;
+  INSERT INTO public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  VALUES ('R4398 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') RETURNING id INTO v_id;
+  INSERT INTO public.ops_work_people (card_id, email, role, added_by) VALUES
+    (v_id, 'route-owner.r4398@test.local', 'owner', 'system@usemingla.com'), (v_id, 'route-watch.r4398@test.local', 'watcher', 'system@usemingla.com');
+  UPDATE public.ops_settings SET value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_id) WHERE key = 'auto_card_routes';
+END
+$routes4398$;
+-- The fixture's own checks run now, so nothing is left pending for later DDL.
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
 alter table auth.users add column if not exists banned_until timestamptz;
@@ -220,8 +244,15 @@ declare v text;
 begin
   v := pg_temp.ti_person(p_who, format('select public.ops_work_add(%L::jsonb, %L)::text',
     format('[{"title":"%s","instructions":"Do this adversarial tester task carefully.","done_means":"It is done and checked.","owners":%s,"watchers":%s,"due_on":"%s"%s}]',
-      p_title, p_owners, p_watchers, (now() AT TIME ZONE 'UTC')::date + 7, p_extra),
+      p_title, jsonb_build_array(p_owners::jsonb->0)::text /* [TEST-MOD-APPROVED #4398] added with one owner and one watcher; extra people are pre-#4398 rows below */, CASE WHEN p_watchers::jsonb = '[]'::jsonb THEN '["route-watch.r4398@test.local"]' ELSE jsonb_build_array(p_watchers::jsonb->0)::text END, (now() AT TIME ZONE 'UTC')::date + 7, p_extra),
     'y3980-' || substr(md5(p_title), 1, 16)));
+  if pg_temp.ti_get(v, 'results', '0', 'card', 'id') is not null then
+    insert into public.ops_work_people (card_id, email, role, added_by)
+    select (pg_temp.ti_get(v, 'results', '0', 'card', 'id'))::uuid, lower(e), 'owner', 'x-fixture' from jsonb_array_elements_text(p_owners::jsonb) with ordinality o(e, n) where n > 1
+    union all
+    select (pg_temp.ti_get(v, 'results', '0', 'card', 'id'))::uuid, lower(e), 'watcher', 'x-fixture' from jsonb_array_elements_text(p_watchers::jsonb) with ordinality o(e, n) where n > 1
+    on conflict do nothing;
+  end if;
   return coalesce(pg_temp.ti_get(v, 'results', '0', 'card', 'id'), v);
 end;
 $fn$;
@@ -307,49 +338,57 @@ begin
     pg_temp.ti_told('owner', '%took you off%'), '0');
 
   -- The agent closes the card with text proof: both people taken off hear.
+  -- [TEST-MOD-APPROVED #4398] a close waits In review for the watcher (Oona); the people taken off hear when she confirms.
   v := pg_temp.ti_work('GC', 'close_work', format('{"id":"%s","expected_revision":%s,"proof":[{"kind":"text","text":"Reviewed and done by Gia"}]}', v_card, pg_temp.ti_rev(v_card)));
   perform pg_temp.ti_check('R-REMOVED', 'the agent closes the card with text proof',
-    coalesce(pg_temp.ti_get(v, 'result', 'card', 'status'), v), 'done');
+    coalesce(pg_temp.ti_get(v, 'result', 'card', 'status'), v), 'doing');
+  v := pg_temp.ti_person('owner', format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
+  perform pg_temp.ti_check('R-REMOVED', 'the watcher confirms it', coalesce(pg_temp.ti_get(v, 'card', 'status'), v), 'done');
   perform pg_temp.ti_check('R-REMOVED', 'the watcher taken off is told it closed',
     pg_temp.ti_told('admin', '%closed a card you were taken off in the last 24 hours: Y3980 Reviewer taken off%'), '1');
   perform pg_temp.ti_check('R-REMOVED', 'the owner taken off is told it closed',
     pg_temp.ti_told('growth2', '%closed a card you were taken off in the last 24 hours: Y3980 Reviewer taken off%'), '1');
+  -- [TEST-MOD-APPROVED #4398] the watcher still on is asked to confirm (the ordinary close notice now).
   perform pg_temp.ti_check('R-REMOVED', 'the watcher still on hears the ordinary close',
-    pg_temp.ti_told('owner', '%closed: Y3980 Reviewer taken off%') || '/' || pg_temp.ti_told('owner', '%taken off in the last 24 hours%'), '1/0');
+    pg_temp.ti_told('owner', '%Confirm or send back: Y3980 Reviewer taken off%') || '/' || pg_temp.ti_told('owner', '%taken off in the last 24 hours%'), '1/0');
 
   -- A person taking a watcher off is not announced (the agent guardrail only).
   v_card := pg_temp.ti_card('growth', 'Y3980 Person tidies watchers', '["gia.y3980@test.local"]', '["abe.y3980@test.local"]');
-  v := pg_temp.ti_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":[]}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
+  -- [TEST-MOD-APPROVED #4398] a card keeps one watcher: Abe is taken off by swapping in Oona.
+  v := pg_temp.ti_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":["oona.y3980@test.local"]}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
   perform pg_temp.ti_check('R-REMOVED', 'a person taking a watcher off sends no notice',
     pg_temp.ti_told('admin', '%took you off this card: Y3980 Person tidies watchers%'), '0');
   -- ... but the close still reaches them within the day.
   v := pg_temp.ti_person('growth', format($q$select public.ops_work_push_back(%L, 'declined', 'Not needed after the call today', '[]'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
+  v := pg_temp.ti_person('owner', format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
   perform pg_temp.ti_check('R-REMOVED', 'a push back reaches the watcher taken off today',
     pg_temp.ti_told('admin', '%closed a card you were taken off in the last 24 hours: Y3980 Person tidies watchers%'), '1');
 
   -- Taken off more than a day ago: not told at close.
   v_card := pg_temp.ti_card('growth', 'Y3980 Old removal', '["gia.y3980@test.local"]', '["abe.y3980@test.local"]');
-  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":[]}}', v_card, pg_temp.ti_rev(v_card)));
+  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["oona.y3980@test.local"]}}', v_card, pg_temp.ti_rev(v_card))); -- [TEST-MOD-APPROVED #4398] one watcher: swap, not empty
   update public.ops_work_events set at = at - interval '25 hours' where card_id = v_card::uuid;
   v := pg_temp.ti_person('growth', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Finished it last week"}]'::jsonb, NULL, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
+  v := pg_temp.ti_person('owner', format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card, pg_temp.ti_rev(v_card))); -- [TEST-MOD-APPROVED #4398] the watcher confirms
   perform pg_temp.ti_check('R-REMOVED', 'a person closes the card', coalesce(pg_temp.ti_get(v, 'card', 'status'), v), 'done');
   perform pg_temp.ti_check('R-REMOVED', 'someone taken off more than 24 hours ago is not told at close',
     pg_temp.ti_told('admin', '%taken off in the last 24 hours: Y3980 Old removal%'), '0');
 
   -- Taken off and put back: told only the ordinary close.
   v_card := pg_temp.ti_card('growth', 'Y3980 Put back', '["gia.y3980@test.local"]', '["abe.y3980@test.local"]');
-  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":[]}}', v_card, pg_temp.ti_rev(v_card)));
+  v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["oona.y3980@test.local"]}}', v_card, pg_temp.ti_rev(v_card))); -- [TEST-MOD-APPROVED #4398] one watcher: swap, not empty
   v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["abe.y3980@test.local"]}}', v_card, pg_temp.ti_rev(v_card)));
   v := pg_temp.ti_person('growth', format($q$select public.ops_work_close(%L, '[{"kind":"text","text":"Done with Abe watching"}]'::jsonb, NULL, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
+  v := pg_temp.ti_person('admin', format($q$select public.ops_work_confirm(%L, %s)::text$q$, v_card, pg_temp.ti_rev(v_card))); -- [TEST-MOD-APPROVED #4398] the watcher confirms
   perform pg_temp.ti_check('R-REMOVED', 'someone put back on is told the ordinary close, not the removed one',
-    pg_temp.ti_told('admin', '%closed: Y3980 Put back%') || '/' || pg_temp.ti_told('admin', '%taken off in the last 24 hours: Y3980 Put back%'), '1/0');
+    pg_temp.ti_told('admin', '%Confirm or send back: Y3980 Put back%') /* [TEST-MOD-APPROVED #4398] asked to confirm */ || '/' || pg_temp.ti_told('admin', '%taken off in the last 24 hours: Y3980 Put back%'), '1/0');
 end;
 $removed$;
 
 do $words$
 declare v text; v_summary text;
 begin
-  v := pg_temp.ti_work('GC', 'add_work', '{"cards":[{"title":"Y3980 Half a card","instructions":"Do the half card task carefully.","owners":["gia.y3980@test.local"]}],"request_key":"y3980-half-card"}');
+  v := pg_temp.ti_work('GC', 'add_work', '{"cards":[{"title":"Y3980 Half a card","instructions":"Do the half card task carefully.","owners":["gia.y3980@test.local"],"watchers":["route-watch.r4398@test.local"]}],"request_key":"y3980-half-card"}');
   select summary into v_summary from public.ops_agent_log where action = 'card_refused' and summary like '%Y3980 Half a card%' order by at desc limit 1;
   perform pg_temp.ti_like('R-WORDS', 'the agent log names what to fix in plain words', v_summary, '%done means%due date%to fix.');
   perform pg_temp.ti_check('R-WORDS', 'the agent log carries no internal field name',

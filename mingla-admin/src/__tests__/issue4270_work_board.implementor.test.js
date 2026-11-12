@@ -201,7 +201,8 @@ describe("B-5 the Status dropdown", () => {
     const detail = code("components/ops/WorkDetail.jsx");
     assert.match(detail, /if \(to\.grp === "done" && !closed\) \{ setCloseTo\(to\); setForm\("close"\); return; \}/);
     assert.match(detail, /run\("move", \(\) => ops\.moveWork\(card\.id, to\.id, card\.revision\), `Moved to \$\{to\.name\}`\);/);
-    assert.match(detail, /<ProofForm busy=\{busy === "close"\} disabled=\{locked\} onCancel=\{\(\) => \{ setForm\(""\); setCloseTo\(null\); \}\} onSubmit=\{submitClose\} \/>/);
+    // [TEST-MOD-APPROVED #4398] the form's button names what happens (Mark done, or Close card for the watcher).
+    assert.match(detail, /<ProofForm busy=\{busy === "close"\} disabled=\{locked\} submitLabel=\{closeWords\.submit\} busyLabel=\{closeWords\.busy\} onCancel=\{\(\) => \{ setForm\(""\); setCloseTo\(null\); \}\} onSubmit=\{submitClose\} \/>/);
   });
   it("the card's order: header, title, status, people and dates, description, subtasks, files, linked", () => {
     const detail = code("components/ops/WorkDetail.jsx");

@@ -187,7 +187,7 @@ Deno.test("#3980 the new screens: two columns, Undo, offline words, tokens only,
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (R9): the last owner is kept by the people field, which says why.
   assertMatch(read("lib/peopleField.js"), /A card always keeps one owner\. Add someone else first, then remove this one\./);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D5): the last owner is kept on automatic cards too, once the card has an owner.
-  assertMatch(detail, /min=\{ownerEmails\.length \? 1 : 0\}/);
+  assertMatch(detail, /label="Owner" single[\s\S]{0,240}?min=\{1\}/  /* #4398: one owner, always kept */);
   assertMatch(detail, /Prompt copied\./);
   const opsFiles = [...Deno.readDirSync(new URL("components/ops/", SRC))].map((e) => read(`components/ops/${e.name}`));
   for (const source of [board, log, ...opsFiles]) {

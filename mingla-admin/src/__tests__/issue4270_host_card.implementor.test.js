@@ -136,10 +136,13 @@ describe("C-3 To do and Add work item (D4)", () => {
   it("the form checks what, assignees, due and the Files link before sending", () => {
     const today = "2026-11-04";
     const fields = (form) => quickAddProblems(form, today).map((p) => p.field);
-    assert.deepEqual(fields({ title: "ok", owners: [], due: "", filesUrl: "http://x.test" }), ["title", "owners", "due_on", "files_url"]);
-    assert.equal(quickAddProblems({ title: "Chase it", owners: [] , due: today }, today)[0].message, "Pick at least one assignee");
-    assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test"], due: "2026-11-03" }), ["due_on"]);
-    assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test"], due: today, filesUrl: "https://drive.google.com/x" }), []);
+    // #4398: one owner and one watcher, who is not the owner.
+    assert.deepEqual(fields({ title: "ok", owners: [], due: "", filesUrl: "http://x.test" }), ["title", "owners", "watchers", "due_on", "files_url"]);
+    assert.equal(quickAddProblems({ title: "Chase it", owners: [], watchers: ["w@x.test"], due: today }, today)[0].message, "A card has one owner. Pick one person.");
+    assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test"], watchers: ["w@x.test"], due: "2026-11-03" }), ["due_on"]);
+    assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test"], watchers: ["w@x.test"], due: today, filesUrl: "https://drive.google.com/x" }), []);
+    assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test", "b@x.test"], watchers: ["w@x.test"], due: today }), ["owners"]);
+    assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test"], watchers: ["a@x.test"], due: today }), ["watchers"]);
   });
   it("the item is a quick add linked to this host; Host can see this is off unless ticked", () => {
     const item = quickAddItem({ title: " Chase it ", owners: ["a@x.test"], watchers: ["b@x.test"], due: "2026-11-10", recordId: "r1" });

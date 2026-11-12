@@ -171,6 +171,9 @@ create function pg_temp.th_card(p_key text, p_title text, p_status text, p_owner
 language plpgsql as $fn$
 declare v_id uuid; v_today date := (now() AT TIME ZONE 'UTC')::date;
 begin
+  -- [TEST-MOD-APPROVED #4398 fixture] loaded as a fixture (replica mode), past the review and people checks.
+  perform set_config('ops.fx_srr', current_setting('session_replication_role'), true);
+  perform set_config('session_replication_role', 'replica', true);
   insert into public.ops_work_cards (title, instructions, done_means, status, due_on, due_source, sprint_id,
     created_by, created_via, updated_by, closed_at, closed_by, close_kind)
   values (p_title, 'Do this task carefully and say what changed.', 'It is done and checked.', p_status,
@@ -179,8 +182,10 @@ begin
     case when p_status = 'done' then now() end, case when p_status = 'done' then p_owner end, case when p_status = 'done' then 'done' end)
   returning id into v_id;
   insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, p_owner, 'owner', p_owner);
+  insert into public.ops_work_people (card_id, email, role, added_by) values (v_id, 'oona.h4270@test.local', 'watcher', p_owner) on conflict do nothing;  -- #4398: one watcher
   insert into public.ops_work_links (card_id, kind, target_id, label, added_by) values (v_id, 'host', p_host, 'host', p_owner);
   insert into th_ids (k, id) values (p_key, v_id);
+  perform set_config('session_replication_role', current_setting('ops.fx_srr'), true);
   return v_id;
 end;
 $fn$;
@@ -267,7 +272,7 @@ do $add$
 declare v jsonb; v_t text; v_due text := ((now() AT TIME ZONE 'UTC')::date + 3)::text; v_id uuid;
 begin
   v := pg_temp.th_j(pg_temp.th_person('growth', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object(
-    'quick', true, 'title', 'H4270 Chase the venue contract', 'owners', jsonb_build_array('gia.h4270@test.local'),
+    'quick', true, 'title', 'H4270 Chase the venue contract', 'owners', jsonb_build_array('gia.h4270@test.local'), 'watchers', jsonb_build_array('oona.h4270@test.local'),  /* #4398 */
     'due_on', %L, 'links', jsonb_build_array(jsonb_build_object('kind', 'host', 'id', '42700000-0000-4000-c0f0-000000000001')))), 'h4270-add-0001')::text$q$, v_due)));
   perform pg_temp.th_check('H-ADD', 'a quick add from the host card is added', v #>> '{results,0,status}', 'added');
   v_id := (v #>> '{results,0,card,id}')::uuid;
@@ -277,7 +282,7 @@ begin
     (select instructions || ' | ' || done_means from public.ops_work_cards where id = v_id),
     format('Added by %s from H4270 Palm Host''s host card. | Done with proof on this card.', public.ops_actor_label('gia.h4270@test.local', NULL)));
   v := pg_temp.th_j(pg_temp.th_person('growth', format($q$select public.ops_work_add(jsonb_build_array(jsonb_build_object(
-    'quick', true, 'title', 'H4270 Share the poster with the host', 'owners', jsonb_build_array('gia.h4270@test.local'), 'on_brand_plan', true,
+    'quick', true, 'title', 'H4270 Share the poster with the host', 'owners', jsonb_build_array('gia.h4270@test.local'), 'watchers', jsonb_build_array('oona.h4270@test.local'),  /* #4398 */ 'on_brand_plan', true,
     'due_on', %L, 'links', jsonb_build_array(jsonb_build_object('kind', 'host', 'id', '42700000-0000-4000-c0f0-000000000001')))), 'h4270-add-0002')::text$q$, v_due)));
   v_id := (v #>> '{results,0,card,id}')::uuid;
   perform pg_temp.th_check('H-ADD', 'with Host can see this on, the host is told when it is done',

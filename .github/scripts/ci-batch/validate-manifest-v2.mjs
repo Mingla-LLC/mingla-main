@@ -468,7 +468,7 @@ export function phase3dContractDigest(manifest) {
 // #3355 rework 6: re-sealed after merging origin/main 559e3e6902 (#3281 rows kept beside the #3355 rows).
 // #3355 rework 6: register 20280627003355 (payout readiness for brand members) in the #1857, #1931 and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #3355 rework 7: register the retest 7 payout readiness callers PostgreSQL proof in the #1931 and #2117 replay lanes; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "31d7ec2a93a4272b4fcc36159d92de4bffa2313d7cea169c292abc291bfead59";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c969057fb3a8e6c382155e46829d129df7318c6394328fafc7eb023da26d202b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
