@@ -237,7 +237,8 @@ begin
   -- Lagos, not at 09:00 New York.
   v := pg_temp.person('owner', format('select public.ops_work_add(%L::jsonb, %L)::text',
     jsonb_build_array(jsonb_build_object('title', 'R24255 Due today', 'instructions', 'Do the work carefully and say what changed.',
-      'done_means', 'It is done and checked.', 'owners', jsonb_build_array(pg_temp.email('ray')), 'due_on', v_d)), pg_temp.rk()));
+      'done_means', 'It is done and checked.', 'owners', jsonb_build_array(pg_temp.email('ray')),
+      'watchers', jsonb_build_array(pg_temp.email('gem')), 'due_on', v_d)), pg_temp.rk()));  -- #4398: one watcher
   perform pg_temp.chk('R2-TZ', 'control: the due card was added', (v::jsonb)->'results'->0->>'status', 'added');
   delete from public.team_mentions where source_kind = 'work_due';
   perform public.ops_due_digest(pg_temp.at_local('America/New_York', v_d, '09:10'));

@@ -82,7 +82,8 @@ CREATE CONSTRAINT TRIGGER ops_4398_card_people_cards
   AFTER INSERT OR UPDATE OF status, status_id, archived_at, parent_id ON public.ops_work_cards
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION public.ops_4398_card_people_check();
-ALTER TABLE public.ops_work_people ENABLE ALWAYS TRIGGER ops_4398_card_people_people;
-ALTER TABLE public.ops_work_cards ENABLE ALWAYS TRIGGER ops_4398_card_people_cards;
+-- Ordinary triggers (not ALWAYS): a superuser restore or fixture load in
+-- replica mode writes rows as they were; every function and client write is
+-- checked.
 
 COMMIT;

@@ -171,16 +171,24 @@ $fn$;
 create function pg_temp.item(p_title text, p_owner text default 'gem.v4255@test.local') returns jsonb
 language sql as $fn$
   select jsonb_build_object('title', p_title, 'instructions', 'Do the work carefully and say what changed.',
-    'done_means', 'It is done and checked.', 'owners', jsonb_build_array(p_owner), 'due_on', pg_temp.today() + 3);
+    'done_means', 'It is done and checked.', 'owners', jsonb_build_array(p_owner),
+    -- #4398: every card has one watcher, who is not the owner.
+    'watchers', jsonb_build_array(CASE WHEN p_owner = 'oz.v4255@test.local' THEN 'ade.v4255@test.local' ELSE 'oz.v4255@test.local' END),
+    'due_on', pg_temp.today() + 3);
 $fn$;
+
+-- #4398: Done needs the watcher. The suite's cards are watched by the owner
+-- (oz), who confirms what their owner closes.
+create function pg_temp.confirm(p_k text) returns text
+language sql as $fn$ select pg_temp.person('owner', format('select public.ops_work_confirm(%L, %s)::text', pg_temp.id(p_k), pg_temp.rev(p_k))) $fn$;
 
 -- ───────────────────────────── C-COLS ─────────────────────────────
 do $t$
 declare v text;
 begin
-  perform pg_temp.chk('C-COLS', 'three seeded columns, one per group, in order',
+  perform pg_temp.chk('C-COLS', 'the seeded columns, one per group, in order, plus In review (#4398)',
     (select string_agg(name || ':' || grp, ',' order by position) from public.ops_work_statuses where archived_at is null),
-    'To do:todo,In progress:doing,Done:done');
+    'To do:todo,In progress:doing,In review:doing,Done:done');
   v := pg_temp.add('A', 'growth', pg_temp.item('V4255 Column card'));
   perform pg_temp.chk('C-COLS', 'a new card lands in To do', pg_temp.col('A'), 'todo/To do');
   v := pg_temp.person('growth', format('select public.ops_work_update(%L, ''{"status":"doing"}''::jsonb, %s)::text', pg_temp.id('A'), pg_temp.rev('A')));
@@ -193,7 +201,7 @@ begin
   v := pg_temp.person('admin', $q$select public.ops_status_add('Review', '#C27A12', 'doing')::text$q$);
   perform pg_temp.chk('C-COLS', 'an admin adds Review after In progress, colour stored lower case',
     (select string_agg(name || ':' || grp || ':' || color, ',' order by position) from public.ops_work_statuses where archived_at is null),
-    'To do:todo:#8a847b,In progress:doing:#2f6fd6,Review:doing:#c27a12,Done:done:#1f8a5b');
+    'To do:todo:#8a847b,In progress:doing:#2f6fd6,In review:doing:#7a4fd1,Review:doing:#c27a12,Done:done:#1f8a5b');
   v := pg_temp.person('admin', $q$select public.ops_status_add('review', '#000000', 'todo')::text$q$);
   perform pg_temp.lk('C-COLS', 'a second column with the same name is refused', v, 'ERR:22023:duplicate_column:%');
   v := pg_temp.person('growth', format('select public.ops_work_move(%L, %L, %s)::text', pg_temp.id('A'), pg_temp.status_id('Review'), pg_temp.rev('A')));
@@ -213,9 +221,9 @@ begin
   update public.ops_work_cards set status_id = pg_temp.status_id('Review') where id = pg_temp.id('A');
   perform pg_temp.chk('C-COLS', 'a write of the column alone sets the status', pg_temp.col('A'), 'doing/Review');
   perform pg_temp.chk('C-COLS', 'ops_config lists the columns and says who may change them',
-    pg_temp.person('admin', $q$select (public.ops_config()->'me'->>'can_columns') || '/' || jsonb_array_length(public.ops_config()->'columns')$q$), 'true/4');
+    pg_temp.person('admin', $q$select (public.ops_config()->'me'->>'can_columns') || '/' || jsonb_array_length(public.ops_config()->'columns')$q$), 'true/5');
   perform pg_temp.chk('C-COLS', 'a teammate reads the columns but cannot change them',
-    pg_temp.person('growth', $q$select (public.ops_status_list()->>'can_change') || '/' || jsonb_array_length(public.ops_status_list()->'columns')$q$), 'false/4');
+    pg_temp.person('growth', $q$select (public.ops_status_list()->>'can_change') || '/' || jsonb_array_length(public.ops_status_list()->'columns')$q$), 'false/5');
 end;
 $t$;
 
@@ -232,6 +240,8 @@ begin
   v := pg_temp.person('admin', $q$select public.ops_status_add('Shipped', '#1f8a5b', 'done')::text$q$);
   v := pg_temp.person('growth', format('select public.ops_work_move(%L, %L, %s, ''[{"kind":"text","text":"Checked it by hand."}]''::jsonb, ''Done.'')::text',
     pg_temp.id('M'), pg_temp.status_id('Shipped'), pg_temp.rev('M')));
+  perform pg_temp.chk('C-MOVE', '#4398: the owner''s move waits In review for the watcher', pg_temp.col('M'), 'doing/In review');
+  v := pg_temp.confirm('M');
   perform pg_temp.chk('C-MOVE', 'with proof it closes into the chosen Closed column', pg_temp.col('M'), 'done/Shipped');
   perform pg_temp.chk('C-MOVE', 'the close is a real close (who, when, kind)',
     (select (closed_by = pg_temp.email('growth'))::text || '/' || close_kind from public.ops_work_cards where id = pg_temp.id('M')), 'true/done');
@@ -259,7 +269,7 @@ begin
     ((v::jsonb)->>'moved') || '/' || pg_temp.col('A') || '/' || pg_temp.col('M'), '2/doing/In progress/doing/In progress');
   perform pg_temp.chk('C-ARCH', 'the live columns are numbered again',
     (select string_agg(name || ':' || position, ',' order by position) from public.ops_work_statuses where archived_at is null),
-    'To do:0,In progress:1,Done:2,Shipped:3');
+    'To do:0,In progress:1,In review:2,Done:3,Shipped:4');
   v := pg_temp.person('admin', format('select public.ops_status_archive(%L, %L, %s)::text', pg_temp.status_id('To do'), pg_temp.status_id('In progress'),
     (select revision from public.ops_work_statuses where name = 'To do')));
   perform pg_temp.lk('C-ARCH', 'the last Not started column cannot be archived', v, 'ERR:22023:last_column:%');
@@ -318,6 +328,7 @@ begin
     jsonb_build_object('parent', pg_temp.id('P')), pg_temp.rev('Q')));
   perform pg_temp.lk('C-TREE', 'a card with a sub-subtask cannot go under another card (too deep)', v, 'ERR:22023:too_deep:%');
   v := pg_temp.person('growth', format('select public.ops_work_close(%L, ''[{"kind":"text","text":"Checked it by hand."}]''::jsonb, NULL, %s)::text', pg_temp.id('P'), pg_temp.rev('P')));
+  v := pg_temp.confirm('P');
   v := pg_temp.person('growth', format('select public.ops_subtask_add(%L, ''{"title":"Late step"}''::jsonb, %L)::text', pg_temp.id('P'), pg_temp.rk()));
   perform pg_temp.lk('C-TREE', 'no new open subtask under a closed card', v, '%The parent card is closed%');
   v := pg_temp.agent('ray', format('select public.ops_subtask_add(%L, ''{"title":"Agent step"}''::jsonb, %L)::text', pg_temp.id('Q'), pg_temp.rk()));
@@ -344,6 +355,7 @@ begin
   perform pg_temp.lk('C-CLOSE', 'a card with an open subtask does not close', v, 'ERR:22023:open_subtasks: This card has 1 open subtask.%');
   v := pg_temp.person('growth', format('select public.ops_work_move(%L, %L, %s, ''[{"kind":"text","text":"Checked it by hand."}]''::jsonb, NULL, true)::text',
     pg_temp.id('K'), pg_temp.status_id('Done'), pg_temp.rev('K')));
+  v := pg_temp.confirm('K');
   perform pg_temp.chk('C-CLOSE', 'close_children closes the card and its subtask',
     pg_temp.col('K') || '/' || (select status || ':' || close_kind || ':' || close_reason from public.ops_work_cards where id = v_sub),
     'done/Done/done:done:Closed with Card ' || (select number from public.ops_work_cards where id = pg_temp.id('K')) || '.');
@@ -353,12 +365,14 @@ begin
   v_sub := ((v::jsonb)->'subtask'->>'id')::uuid;
   v := pg_temp.person('growth', format('select public.ops_work_push_back(%L, ''declined'', ''Not needed any more, the host cancelled.'', ''[]''::jsonb, %s)::text',
     pg_temp.id('K2'), pg_temp.rev('K2')));
+  v := pg_temp.confirm('K2');
   perform pg_temp.chk('C-CLOSE', 'a push back closes the open subtasks with it',
     (select status || ':' || close_kind from public.ops_work_cards where id = v_sub), 'done:declined');
   -- An open step from a plan never blocks a close (closing never waited for
   -- plan steps); it closes with the card as a system close.
   v := pg_temp.add('K3', 'growth', pg_temp.item('V4255 Card with an open plan step') || '{"plan":[{"n":1,"text":"Check the venue","tool":"person"}]}'::jsonb);
   v := pg_temp.person('growth', format('select public.ops_work_close(%L, ''[{"kind":"text","text":"Checked it by hand."}]''::jsonb, NULL, %s)::text', pg_temp.id('K3'), pg_temp.rev('K3')));
+  v := pg_temp.confirm('K3');
   perform pg_temp.chk('C-CLOSE', 'an open plan step does not block the close and closes with it as a system close',
     pg_temp.col('K3') || '/' || (select status || ':' || close_kind from public.ops_work_cards where parent_id = pg_temp.id('K3')), 'done/Done/done:system');
 end;
@@ -379,7 +393,8 @@ begin
     'system@usemingla.com', 'system@usemingla.com')
   returning id into v_card;
   perform pg_temp.keep('L', v_card);
-  insert into public.ops_work_people (card_id, email, role, added_by) values (v_card, 'gem.v4255@test.local', 'owner', 'system@usemingla.com');
+  insert into public.ops_work_people (card_id, email, role, added_by) values (v_card, 'gem.v4255@test.local', 'owner', 'system@usemingla.com'),
+    (v_card, 'oz.v4255@test.local', 'watcher', 'system@usemingla.com');  -- #4398: one watcher
   v_rev := pg_temp.rev('L');
   v := public.ops_4255_plan_to_subtasks()::text;
   perform pg_temp.chk('C-PLAN', 'the backfill turns the legacy plan into three subtasks', (v::jsonb)->>'subtasks', '3');

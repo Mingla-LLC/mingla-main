@@ -128,6 +128,7 @@ ALTER TABLE public.ops_work_cards
   ADD COLUMN review_kind          text,
   ADD COLUMN review_reason        text,
   ADD COLUMN review_close_children boolean NOT NULL DEFAULT false,
+  ADD COLUMN review_close_status_id uuid REFERENCES public.ops_work_statuses(id),
   ADD COLUMN confirmed_by         text,
   ADD COLUMN confirmed_at         timestamptz,
   ADD COLUMN sent_back_reason     text,
@@ -185,7 +186,7 @@ BEGIN
         NEW.confirmed_at := COALESCE(NEW.confirmed_at, CASE WHEN NEW.confirmed_by IS NOT NULL THEN clock_timestamp() END);
       END IF;
       NEW.review_requested_at := NULL; NEW.review_requested_by := NULL; NEW.review_requested_via := NULL;
-      NEW.review_kind := NULL; NEW.review_reason := NULL; NEW.review_close_children := false;
+      NEW.review_kind := NULL; NEW.review_reason := NULL; NEW.review_close_children := false; NEW.review_close_status_id := NULL;
       NEW.sent_back_reason := NULL; NEW.sent_back_by := NULL; NEW.sent_back_at := NULL;
       RETURN NEW;
     END IF;
@@ -197,7 +198,7 @@ BEGIN
   IF TG_OP = 'UPDATE' AND OLD.status_id = v_review AND NEW.status_id IS DISTINCT FROM v_review AND NEW.status <> 'done'
      AND OLD.review_requested_at IS NOT NULL THEN
     NEW.review_requested_at := NULL; NEW.review_requested_by := NULL; NEW.review_requested_via := NULL;
-    NEW.review_kind := NULL; NEW.review_reason := NULL; NEW.review_close_children := false;
+    NEW.review_kind := NULL; NEW.review_reason := NULL; NEW.review_close_children := false; NEW.review_close_status_id := NULL;
   END IF;
   RETURN NEW;
 END;
@@ -206,7 +207,8 @@ REVOKE ALL ON FUNCTION public.ops_4398_review_guard() FROM PUBLIC, anon, authent
 CREATE TRIGGER ops_4398_review_guard
   BEFORE INSERT OR UPDATE OF status, status_id ON public.ops_work_cards
   FOR EACH ROW EXECUTE FUNCTION public.ops_4398_review_guard();
-ALTER TABLE public.ops_work_cards ENABLE ALWAYS TRIGGER ops_4398_review_guard;
+-- An ordinary trigger (not ALWAYS): only a superuser in replica mode (a
+-- restore or a fixture load) writes past it.
 
 -- A card waiting In review leaves it by the watcher's Confirm or Send back;
 -- its owner (or anyone else) may take it back out, which withdraws the ask.
@@ -450,6 +452,9 @@ BEGIN
   UPDATE public.ops_work_cards w SET status_id = v_col, person_reason = NULL,
     review_requested_at = clock_timestamp(), review_requested_by = p_actor, review_requested_via = CASE WHEN p_via IN ('claude','codex') THEN p_via END,
     review_kind = p_kind, review_reason = left(NULLIF(public.ops_one_line(p_reason), ''), 500), review_close_children = COALESCE(p_close_children, false),
+    -- the Closed column the owner chose (a move to a custom Closed column), kept for the confirm
+    review_close_status_id = (SELECT s.id FROM public.ops_work_statuses s
+                               WHERE s.id = NULLIF(current_setting('ops.close_to', true), '')::uuid AND s.grp = 'done' AND s.archived_at IS NULL),
     sent_back_reason = NULL, sent_back_by = NULL, sent_back_at = NULL,
     result = COALESCE(p_result, w.result), proof = COALESCE(p_proof, w.proof),
     working_by = NULL, working_via = NULL, working_chat = NULL, working_seen_at = NULL,
@@ -505,7 +510,10 @@ BEGIN
   PERFORM set_config('ops.review_confirmer', v.actor_email, true);
   IF c.review_close_children THEN PERFORM set_config('ops.close_children', 'on', true); END IF;
   v_before := public.ops_card_snapshot(c.id);
-  UPDATE public.ops_work_cards w SET status = 'done', person_reason = NULL, blocked = false, blocked_kind = NULL, blocked_reason = NULL,
+  UPDATE public.ops_work_cards w SET status = 'done',
+    status_id = COALESCE((SELECT s.id FROM public.ops_work_statuses s WHERE s.id = c.review_close_status_id AND s.archived_at IS NULL),
+                         public.ops_status_default('done')),
+    person_reason = NULL, blocked = false, blocked_kind = NULL, blocked_reason = NULL,
     close_kind = c.review_kind, close_reason = CASE WHEN c.review_kind <> 'done' THEN COALESCE(c.review_reason, 'Confirmed by the watcher.') END,
     closed_at = clock_timestamp(), closed_by = c.review_requested_by, closed_via = c.review_requested_via,
     confirmed_by = v.actor_email, confirmed_at = clock_timestamp(),
@@ -975,8 +983,10 @@ BEGIN
   END IF;
   IF s.grp = 'done' THEN
     IF COALESCE(p_close_children, false) THEN PERFORM set_config('ops.close_children', 'on', true); END IF;
+    PERFORM set_config('ops.close_to', s.id::text, true);  -- #4398: kept for the confirm
     v_out := public.ops_work_close(p_id, COALESCE(p_proof, '[]'::jsonb), p_result, p_expected_revision);
     PERFORM set_config('ops.close_children', '', true);
+    PERFORM set_config('ops.close_to', '', true);
   ELSIF c.status = 'done' THEN
     v_out := public.ops_work_reopen(p_id, NULL, p_expected_revision);
     IF s.grp = 'doing' THEN
