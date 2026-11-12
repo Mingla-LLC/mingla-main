@@ -771,6 +771,7 @@ export const useBrandCascadePreview = (
             .from("brands")
             .select("payment_provider, paystack_subaccount_code")
             .eq("id", brandId)
+            .is("deleted_at", null)
             .maybeSingle(),
           // Authorized SECURITY DEFINER helper (#3645): the recipients table
           // is RLS-blocked below payments managers.
