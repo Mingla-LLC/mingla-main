@@ -897,8 +897,14 @@ BEGIN
 END;
 $function$;
 
--- From 20271129003980 (synced w1). #4398 (B2): one owner and one watcher.
-CREATE OR REPLACE FUNCTION public.ops_work_reopen(p_id uuid, p_reason text, p_expected_revision bigint)
+-- From 20271129003980 (synced w1). #4398 (B2): reopening is never a dead end.
+-- Missing people come from the parent card (its owner and watcher); a card
+-- with no parent can be reopened with the owner and watcher the person picks
+-- (p_owner, p_watcher), and is otherwise refused with words that say exactly
+-- who to add.
+DROP FUNCTION public.ops_work_reopen(uuid, text, bigint);
+CREATE FUNCTION public.ops_work_reopen(p_id uuid, p_reason text, p_expected_revision bigint,
+                                       p_owner text DEFAULT NULL, p_watcher text DEFAULT NULL)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -906,6 +912,7 @@ CREATE OR REPLACE FUNCTION public.ops_work_reopen(p_id uuid, p_reason text, p_ex
 AS $function$
 DECLARE v record; c public.ops_work_cards; n public.ops_work_cards; v_today date := public.ops_today(NULL); v_before jsonb; v_event uuid;
         v_reason text := public.ops_one_line(p_reason);
+        v_owners text[]; v_watchers text[]; v_owner text; v_watcher text;  -- #4398
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   IF char_length(COALESCE(v_reason, '')) > 500 OR public.ops_has_control(v_reason) THEN
@@ -915,15 +922,36 @@ BEGIN
   IF c.status <> 'done' THEN RAISE EXCEPTION 'not_closed: This card is still open.' USING ERRCODE = '22023'; END IF;
   PERFORM public.ops_agent_owns(c, v.actor_email, v.via);
   PERFORM public.ops_claim_assert('work_card', c.id, v.actor_email, v.via);
-  -- #4398 (B2): an open card has one owner and one watcher. A subtask that
-  -- closed without them takes its parent's; any other card is refused.
-  IF cardinality(public.ops_card_people(c.id, 'owner')) <> 1 OR cardinality(public.ops_card_people(c.id, 'watcher')) <> 1 THEN
-    IF c.parent_id IS NOT NULL AND cardinality(public.ops_card_people(c.parent_id, 'owner')) = 1
-       AND cardinality(public.ops_card_people(c.parent_id, 'watcher')) = 1 THEN
-      PERFORM public.ops_people_set(c.id, public.ops_card_people(c.parent_id, 'owner'), public.ops_card_people(c.parent_id, 'watcher'), v.actor_email, v.via);
-    ELSE
-      RAISE EXCEPTION 'card_people: A card needs exactly one owner and one watcher, and they must be different people.' USING ERRCODE = '23514';
-    END IF;
+  -- #4398 (B2): an open card has one owner and one watcher.
+  v_owners := public.ops_card_people(c.id, 'owner'); v_watchers := public.ops_card_people(c.id, 'watcher');
+  IF p_owner IS NOT NULL THEN
+    v_owner := public.ops_team_email(p_owner);
+    IF v_owner IS NULL THEN RAISE EXCEPTION '%', format('invalid_card: Owner "%s" is not on the team. Pick from %s.', left(p_owner, 80), public.ops_team_names()) USING ERRCODE = '22023'; END IF;
+  ELSIF cardinality(v_owners) = 1 THEN v_owner := v_owners[1];
+  ELSIF cardinality(v_owners) = 0 AND c.parent_id IS NOT NULL THEN v_owner := (public.ops_card_people(c.parent_id, 'owner'))[1];
+  END IF;
+  IF p_watcher IS NOT NULL THEN
+    v_watcher := public.ops_team_email(p_watcher);
+    IF v_watcher IS NULL THEN RAISE EXCEPTION '%', format('invalid_card: Watcher "%s" is not on the team. Pick from %s.', left(p_watcher, 80), public.ops_team_names()) USING ERRCODE = '22023'; END IF;
+  ELSIF cardinality(v_watchers) = 1 AND v_watchers[1] IS DISTINCT FROM v_owner THEN v_watcher := v_watchers[1];
+  ELSIF cardinality(v_watchers) = 0 AND c.parent_id IS NOT NULL THEN
+    v_watcher := (public.ops_card_people(c.parent_id, 'watcher'))[1];
+    IF v_watcher IS NOT DISTINCT FROM v_owner THEN v_watcher := (public.ops_card_people(c.parent_id, 'owner'))[1]; END IF;
+  END IF;
+  IF v_owner IS NOT NULL AND v_owner = v_watcher THEN v_watcher := NULL; END IF;
+  IF v_owner IS NULL OR v_watcher IS NULL THEN
+    RAISE EXCEPTION '%', 'card_people: ' || CASE
+        WHEN v_owner IS NULL AND v_watcher IS NULL THEN
+          CASE WHEN cardinality(v_owners) > 1 THEN format('This card has %s owners and no watcher. Pick one owner and one watcher, then reopen it.', cardinality(v_owners))
+               ELSE 'This card has no owner and no watcher. Pick one owner and one watcher, then reopen it.' END
+        WHEN v_owner IS NULL AND cardinality(v_owners) > 1 THEN format('This card has %s owners. Pick the one owner (not %s, the watcher), then reopen it.', cardinality(v_owners), public.ops_name(v_watcher))
+        WHEN v_owner IS NULL THEN format('This card has no owner. Pick one owner (not %s, the watcher), then reopen it.', public.ops_name(v_watcher))
+        WHEN cardinality(v_watchers) > 1 THEN format('This card has %s watchers. Pick the one watcher (not %s, the owner), then reopen it.', cardinality(v_watchers), public.ops_name(v_owner))
+        ELSE format('This card has no watcher. Pick one watcher (not %s, the owner), then reopen it.', public.ops_name(v_owner)) END
+      USING ERRCODE = '23514';
+  END IF;
+  IF ARRAY[v_owner] IS DISTINCT FROM v_owners OR ARRAY[v_watcher] IS DISTINCT FROM v_watchers THEN
+    PERFORM public.ops_people_set(c.id, ARRAY[v_owner], ARRAY[v_watcher], v.actor_email, v.via);
   END IF;
   v_before := public.ops_card_snapshot(c.id);
   BEGIN
@@ -943,6 +971,9 @@ BEGIN
   RETURN jsonb_build_object('card', public.ops_card_json(n, v_today), 'event_id', v_event);
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.ops_work_reopen(uuid, text, bigint, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ops_work_reopen(uuid, text, bigint, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_work_reopen(uuid, text, bigint, text, text) TO service_role;
 
 -- From 20280624014255 (#4255 functions). #4398 (C): In review.
 CREATE OR REPLACE FUNCTION public.ops_work_move(p_id uuid, p_status_id uuid, p_expected_revision bigint, p_proof jsonb DEFAULT NULL::jsonb, p_result text DEFAULT NULL::text, p_close_children boolean DEFAULT false)

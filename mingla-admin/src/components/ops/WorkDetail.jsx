@@ -164,6 +164,10 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [description, setDescription, descriptionDraft] = usePanelDraft(`work:${cardId}:description`, savedDescription);
   const [blockReason, setBlockReason] = useState("");
   const [backReason, setBackReason] = useState("");  // #4398: Send back
+  // #4398: a closed card without one owner and one watcher reopens with the people picked here.
+  const [reopenNeed, setReopenNeed] = useState("");
+  const [reopenOwner, setReopenOwner] = useState([]);
+  const [reopenWatcher, setReopenWatcher] = useState([]);
   // The title and Done when grow with their text and never clip it.
   const titleGrow = useAutoGrow(title);
   const doneMeansGrow = useAutoGrow(doneMeans);
@@ -325,9 +329,28 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
     if (a) { setForm(""); setCloseTo(null); setCloseChildren(false); }
   };
 
+  // #4398: reopening is never a dead end. The server fills missing people from
+  // the parent; with no parent it says who to add, and the pickers below
+  // send them with the reopen.
+  const reopen = async () => {
+    setBusy("reopen");
+    try {
+      const answer = await ops.reopenWork(card.id, null, card.revision, reopenNeed ? { owner: reopenOwner[0], watcher: reopenWatcher[0] } : {});
+      setReopenNeed("");
+      await refresh();
+      offerUndo(answer, "Reopened");
+    } catch (error) {
+      if (error?.token === "card_people") {
+        setReopenNeed(opsErrorWords(error));
+        setReopenOwner(ownerEmails.length === 1 ? ownerEmails : []);
+        setReopenWatcher(watcherEmails.length === 1 ? watcherEmails : []);
+      } else await failed(error);
+    } finally { setBusy(""); }
+  };
+
   let primary = null;
   if (!card.archived) {
-    if (closed) primary = <Button className="h-9" disabled={locked || !!busy} onClick={() => run("reopen", () => ops.reopenWork(card.id, null, card.revision), "Reopened")}>Reopen</Button>;
+    if (closed) primary = <Button className="h-9" data-reopen="" disabled={locked || !!busy} onClick={reopen}>Reopen</Button>;
     else if (card.review && role.canConfirm) primary = <Button className="h-9" data-confirm="" disabled={locked || !!busy} onClick={() => run("confirm", () => ops.confirmWork(card.id, card.revision), "Confirmed. Done.")}>Confirm done</Button>;
     else if (card.review) primary = null;
     else if (releaseItems) primary = null;
@@ -465,6 +488,19 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 <span className="break-words text-[12.5px] text-[var(--color-text-secondary)]">{role.words}</span>
                 {card.review && <span data-review-wait="" className="text-[12px] font-semibold text-[var(--color-info-700)]">{waitingWords(card)}</span>}
                 {card.sent_back && !card.review && <span data-sent-back="" className="break-words text-[12px] font-semibold text-[var(--color-error-700)]">Sent back by {card.sent_back.by_name}: {card.sent_back.reason}</span>}
+              </div>
+            )}
+            {closed && reopenNeed && (
+              <div data-reopen-people="" className="flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--color-warning-100)] bg-[var(--color-warning-50)] p-3">
+                <p role="alert" className="break-words text-[13px] font-semibold text-[var(--color-warning-700)]">{reopenNeed}</p>
+                <PeopleField id={`card-${card.id}-reopen-owner`} label="Owner" single min={0} value={reopenOwner} team={team} me={directory.me}
+                  exclude={reopenWatcher} disabled={locked} busy={!!busy} onChange={(next) => setReopenOwner(next)} />
+                <PeopleField id={`card-${card.id}-reopen-watcher`} label="Watcher" single min={0} value={reopenWatcher} team={team} me={directory.me}
+                  exclude={reopenOwner} disabled={locked} busy={!!busy} onChange={(next) => setReopenWatcher(next)} />
+                <div className="flex flex-wrap gap-2">
+                  <Button className="min-h-11" data-reopen-with-people="" disabled={locked || !!busy || reopenOwner.length !== 1 || reopenWatcher.length !== 1} onClick={reopen}>Reopen with these people</Button>
+                  <Button variant="ghost" className="min-h-11" onClick={() => setReopenNeed("")}>Cancel</Button>
+                </div>
               </div>
             )}
             {closed && card.confirmed_by_name && <p className="text-[12.5px] text-[var(--color-text-secondary)]">Closed by {card.closed_by_name}, confirmed by {card.confirmed_by_name}.</p>}

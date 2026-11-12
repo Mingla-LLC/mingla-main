@@ -355,7 +355,20 @@ begin
     pg_temp.commit_check(format($q$update public.ops_work_cards set status = 'todo', close_kind = null, closed_at = null, closed_by = null, closed_via = null where id = %L$q$, v_id)),
     'ERR:23514:card_people:%');
   v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s)::text', v_id, (select revision from public.ops_work_cards where id = v_id)));
-  perform pg_temp.lk('PEOPLE', 'and ops_work_reopen refuses it with the same words', v, 'ERR:23514:card_people:%');
+  perform pg_temp.chk('PEOPLE', 'ops_work_reopen with no parent says exactly who to add', v,
+    'ERR:23514:card_people: This card has no watcher. Pick one watcher (not ' || public.ops_name(pg_temp.email('tao')) || ', the owner), then reopen it.');
+  v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s, null, %L)::text', v_id, (select revision from public.ops_work_cards where id = v_id), pg_temp.email('seth')));
+  perform pg_temp.chk('PEOPLE', 'and reopens with the watcher the person picked',
+    (select status from public.ops_work_cards where id = v_id) || '/' || pg_temp.people(v_id), 'todo/tao:owner,seth:watcher');
+  -- A closed subtask with nobody takes its parent's owner and watcher on reopen.
+  v := pg_temp.add('P2', 'V34398 Parent of a closed subtask', 'tao', 'seth');
+  insert into public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, status, close_kind, closed_at, closed_by, closed_via, parent_id, created_by, updated_by)
+  values ('V34398 Closed subtask with nobody', 'Written straight into the table.', 'It is done.', current_date + 2, 'explicit',
+          public.ops_sprint_ensure(current_date), 'done', 'system', now(), 'system@usemingla.com', 'system', pg_temp.id('P2'), 'system@usemingla.com', 'system@usemingla.com')
+  returning id into v_id;
+  v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s)::text', v_id, (select revision from public.ops_work_cards where id = v_id)));
+  perform pg_temp.chk('PEOPLE', 'a closed subtask with nobody reopens with its parent''s owner and watcher',
+    (select status from public.ops_work_cards where id = v_id) || '/' || pg_temp.people(v_id), 'todo/tao:owner,seth:watcher');
 
   -- Subtasks and plan steps carry one owner and one watcher.
   v := pg_temp.person('seth', format('select public.ops_subtask_add(%L, %L::jsonb, %L)::text', pg_temp.id('P'),

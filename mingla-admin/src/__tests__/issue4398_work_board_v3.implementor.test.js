@@ -251,3 +251,24 @@ describe("A-1 Messages > Mingla activity", () => {
     assert.match(code("lib/messagesModel.js"), /\{ id: "activity", label: "Mingla activity" \}/);
   });
 });
+
+describe("R-3 reopening is never a dead end", () => {
+  it("a card without one owner and one watcher shows the server's words and the single pickers, then reopens with them", () => {
+    const src = code("components/ops/WorkDetail.jsx");
+    assert.match(src, /error\?\.token === "card_people"/);
+    assert.match(src, /setReopenNeed\(opsErrorWords\(error\)\)/);
+    assert.match(src, /data-reopen-people=""[\s\S]{0,400}role="alert"[\s\S]{0,200}\{reopenNeed\}/);
+    assert.match(src, /reopen-owner`\} label="Owner" single/);
+    assert.match(src, /reopen-watcher`\} label="Watcher" single/);
+    assert.match(src, /reopenOwner\.length !== 1 \|\| reopenWatcher\.length !== 1/);
+  });
+  it("reopenWork sends the picked people only when there are some", async () => {
+    reset(() => ({ data: { card: {} }, error: null }));
+    await h.ops.reopenWork("c1", null, 5);
+    await h.ops.reopenWork("c1", null, 6, { owner: "tao@x.test", watcher: "seth@x.test" });
+    assert.deepEqual(globalThis.__calls.map((c) => c.params), [
+      { p_id: "c1", p_reason: null, p_expected_revision: 5 },
+      { p_id: "c1", p_reason: null, p_expected_revision: 6, p_owner: "tao@x.test", p_watcher: "seth@x.test" },
+    ]);
+  });
+});
