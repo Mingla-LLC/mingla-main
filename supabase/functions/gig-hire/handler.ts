@@ -631,6 +631,7 @@ export function createGigHireHandler(
       // Resolve which ledger row the caller is asking about.
       let target: GigProbeTarget | null = null;
       let settled = false;
+      let brandId = "";
       try {
         const reference = typeof body.reference === "string"
           ? body.reference
@@ -645,7 +646,14 @@ export function createGigHireHandler(
           if (!uuid.test(contractId)) {
             return json({ error: "validation_error" }, 400);
           }
-          const row = await ledgerTarget(serviceDb, contractId);
+          // The intent's own metadata says hold or top-up.
+          const pi = await deps.stripe().paymentIntents.retrieve(reference);
+          const piKind = pi.metadata?.mingla_kind;
+          const row = await ledgerTarget(
+            serviceDb,
+            contractId,
+            isGigPaymentKind(piKind) ? piKind : "gig_hold",
+          );
           if (!row || row.rail !== "stripe") {
             return json({ error: "validation_error" }, 400);
           }
@@ -675,12 +683,20 @@ export function createGigHireHandler(
           user.id,
         );
         if (!host.ok) return json({ error: "forbidden" }, 403);
+        brandId = host.brandId;
       } catch (lookupError) {
         console.error("[gig-hire] confirm lookup failed", lookupError);
         return json({ error: "payment_confirm_failed" }, 502);
       }
+      // The Host return page needs the brand to route to the contract.
+      const where = { contract_id: target.contractId, brand_id: brandId };
       if (settled) {
-        return json({ ok: true, status: "replayed", payment_check: "paid" });
+        return json({
+          ok: true,
+          status: "replayed",
+          payment_check: "paid",
+          ...where,
+        });
       }
       try {
         const { outcome } = await probe(target, `gig-hire-${action}`);
@@ -694,7 +710,7 @@ export function createGigHireHandler(
               : answer.error,
           }, 409);
         }
-        return json(answer);
+        return json({ ...answer, ...where });
       } catch (probeError) {
         console.error("[gig-hire] payment check failed", probeError);
         return json({ error: "payment_check_failed" }, 502);

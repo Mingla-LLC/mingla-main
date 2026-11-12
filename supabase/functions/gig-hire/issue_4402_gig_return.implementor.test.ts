@@ -313,6 +313,8 @@ Deno.test("#4402 confirm_reference records the payment for the host only", async
     ok: true,
     status: "captured",
     payment_check: "paid",
+    contract_id: CONTRACT,
+    brand_id: BRAND,
   });
   const stranger = world({
     user: STRANGER,
@@ -345,6 +347,8 @@ Deno.test("#4402 confirm_reference answers pending and not-paid without recordin
     ok: false,
     error: "payment_failed",
     payment_check: "not_paid",
+    contract_id: CONTRACT,
+    brand_id: BRAND,
   });
   assertEquals(unpaid.calls.includes("rpc:gig_hold_mark_captured"), false);
 });
