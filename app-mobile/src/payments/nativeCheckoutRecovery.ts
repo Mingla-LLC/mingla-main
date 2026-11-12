@@ -482,6 +482,12 @@ export const reconcileNativeCheckout = async (
   if (data.error === "paystack_payment_mismatch") {
     if (recovered) captureRecoveryOnce(pointer, "failed");
     await clearNativeCheckoutRecoveryFor(pointer.checkoutSessionId);
+    captureNativeCheckoutAnalytics("checkout_failed", {
+      event_id: pointer.eventId,
+      provider: pointer.provider,
+      surface: ANALYTICS_SURFACE,
+      outcome: "payment_mismatch",
+    });
     return {
       outcome: "failed",
       message: CHECKOUT_PAYMENT_MISMATCH_MESSAGE,

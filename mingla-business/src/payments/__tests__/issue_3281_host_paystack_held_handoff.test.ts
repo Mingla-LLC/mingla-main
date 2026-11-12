@@ -1307,6 +1307,8 @@ describe("#3281 6e — one checkout at a time (single flight)", () => {
     expect(await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 }))).toEqual({
       outcome: "canceled",
     });
+    // Refused before ANY edge call: only the first checkout's create so far.
+    expect(invoke).toHaveBeenCalledTimes(1);
     release();
     await first;
     expect(calls("ticket-checkout-create")).toHaveLength(1);
