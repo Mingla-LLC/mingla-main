@@ -224,17 +224,27 @@ export function platformLabel(platform: string | null | undefined): string {
 }
 
 /** "Instagram 10k–50k" — the band a host sees on an applicant row. */
+export const AUDIENCE_NOT_CHECKED = "Not checked yet";
+
+/**
+ * #4402: hosts see only a band a Mingla admin recorded; with none, "Not
+ * checked yet". The creator's own band is never shown to hosts.
+ */
 export function audienceLabel(
   bands:
-    | ReadonlyArray<{ platform?: string | null; band?: string | null }>
+    | ReadonlyArray<{ platform?: string | null; band?: string | null; source?: string | null }>
     | null
     | undefined,
 ): string {
-  if (!Array.isArray(bands)) return "";
-  return bands
-    .filter(
-      (item) => item && typeof item.band === "string" && item.band.length > 0,
-    )
+  const checked = (Array.isArray(bands) ? bands : []).filter(
+    (item) =>
+      item &&
+      item.source === "admin" &&
+      typeof item.band === "string" &&
+      item.band.length > 0,
+  );
+  if (checked.length === 0) return AUDIENCE_NOT_CHECKED;
+  return checked
     .map((item) =>
       `${platformLabel(item.platform)} ${followerBandLabel(item.band)}`.trim(),
     )

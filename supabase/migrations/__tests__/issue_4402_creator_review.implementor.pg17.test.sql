@@ -317,6 +317,9 @@ BEGIN
   IF pg_get_functiondef('public.prehire_creator_profile(uuid)'::regprocedure) NOT LIKE '%h.follower_source=''admin''%' THEN
     RAISE EXCEPTION '4402r.prehire_creator_profile lists bands no admin recorded';
   END IF;
+  IF pg_get_functiondef('public.gig_applicants(uuid)'::regprocedure) NOT LIKE '%h.follower_source=''admin''%' THEN
+    RAISE EXCEPTION '4402r.gig_applicants lists bands no admin recorded';
+  END IF;
 
   -- ── Widened audit table ──
   v_code:=NULL;

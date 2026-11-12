@@ -509,6 +509,28 @@ $fn$;
 REVOKE ALL ON FUNCTION public.prehire_creator_profile(uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.prehire_creator_profile(uuid) TO authenticated,service_role;
 
+-- 12b. Host Applicants: the round-2 body (20280102003872), but each
+--      applicant's audience lists only bands an admin recorded when approving
+--      the handle (Orchestrator, 12 Nov 2026). Never the creator's own band.
+CREATE OR REPLACE FUNCTION public.gig_applicants(p_gig_id uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+  -- FILTER keeps a gig with no interest at [] instead of one all-null row,
+  -- which crashed the Host Applicants screen (#6). Creators already hired on
+  -- the gig appear only under Hired (round 2).
+  SELECT CASE WHEN public.biz_is_brand_member_for_read(g.brand_id,auth.uid()) THEN coalesce(jsonb_agg(jsonb_build_object(
+    'interest_id',i.id,'creator_id',i.creator_account_id,'display_name',p.display_name,'niches',p.niches,
+    'follower_bands',(SELECT coalesce(jsonb_agg(jsonb_build_object('platform',h.platform,'band',h.follower_band,'verified',true,'source',h.follower_source)),'[]'::jsonb) FROM public.creator_handles h WHERE h.creator_account_id=i.creator_account_id AND h.verified_at IS NOT NULL AND NOT h.review_required AND h.follower_source='admin' AND h.follower_band IS NOT NULL),
+    'rating',CASE WHEN p.rating_count>0 THEN p.rating_avg_x100/100.0 END,'completed',p.completed_gigs,'reliability',p.reliability_bps,
+    'quote_minor',i.quoted_minor,'currency',g.currency,'package_id',i.package_id,'note',i.note,'status',i.status
+  ) ORDER BY i.created_at) FILTER (WHERE i.id IS NOT NULL),'[]'::jsonb) ELSE NULL END
+  FROM public.gigs g
+  LEFT JOIN public.gig_interest i ON i.gig_id=g.id AND NOT public.issue_3872_creator_hired_on_gig(g.id,i.creator_account_id)
+  LEFT JOIN public.creator_profiles p ON p.creator_account_id=i.creator_account_id
+  WHERE g.id=p_gig_id GROUP BY g.brand_id;
+$fn$;
+REVOKE ALL ON FUNCTION public.gig_applicants(uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.gig_applicants(uuid) TO authenticated,service_role;
+
 -- 13. Existing handles onto the admin-review rule: a handle no admin approved
 --     waits for one (a rejected one stays rejected), and a band no admin
 --     recorded goes back to what the creator said.
