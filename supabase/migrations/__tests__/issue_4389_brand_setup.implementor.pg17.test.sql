@@ -215,7 +215,7 @@ begin
   perform pg_temp.expect('T5 old-shape NG INSERT keeps NGN and paystack', exists (
     select 1 from public.brands where slug = 'old-build-ng-4389'
       and default_currency = 'NGN' and payment_provider = 'paystack' and payout_country is null));
-  update public.brands set setup_free_only_at = now() where slug = 'old-build-4389';
+  update public.brands set setup_free_only_at = now() where slug in ('old-build-4389', 'old-build-ng-4389');
   perform public.biz_mark_brand_setup_free_only('43890000-0000-4000-b000-000000000010');
   v := public.biz_create_setup_brand('43890000-0000-4000-b000-000000000011', 'Second', 'issue4389a');
   perform pg_temp.expect('T5 slug taken', v->>'error' = 'slug_taken', v::text);
