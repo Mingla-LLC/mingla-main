@@ -39,7 +39,7 @@ jest.mock("@tanstack/react-query", () => ({ useQuery: jest.fn() }));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { tapReaderProblemCopy } from "../../../constants/tapToPayCopy";
+import { TAP_ADMIN_ONLY_COPY, tapReaderProblemCopy } from "../../../constants/tapToPayCopy";
 import {
   resolveTapToPayAvailability,
   tapToPayNeedsSetup,
@@ -854,5 +854,22 @@ describe("override 7: never a second way to pay while the result is unknown", ()
     expect(flow.getState().kind).toBe("unknown_result");
     await expect(flow.abandonForPayCode()).resolves.toBe("blocked");
     expect(report).toHaveBeenCalled();
+  });
+});
+
+// MINGLA-INVARIANT: I-4389-TAP-ADMIN-PATH-IS-REAL | issue #4389 | Apple 3.8.1: the "ask an admin" message names a place in the app that really opens Tap to Pay setup.
+describe("Apple 3.8.1: the admin message points where Tap to Pay lives", () => {
+  const read = (rel: string): string => fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
+  const opensSetup = (rel: string): boolean => /\/account\/tap-to-pay/.test(read(rel));
+
+  test("it names Home, and Home opens Tap to Pay setup", () => {
+    expect(TAP_ADMIN_ONLY_COPY.body).toContain("from Home");
+    expect(opensSetup("app/(tabs)/home.tsx")).toBe(true);
+  });
+
+  test("it never sends an admin to the Account tab, which has no Tap to Pay row", () => {
+    // #4389 moved Tap to Pay out of the Account tab. If a row comes back there, update the message too.
+    expect(TAP_ADMIN_ONLY_COPY.body).not.toMatch(/\bAccount\b/);
+    expect(opensSetup("app/(tabs)/account.tsx")).toBe(false);
   });
 });
