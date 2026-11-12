@@ -52,6 +52,8 @@ import {
   TAP_CARD_NEEDS_INSERT_COPY,
   TAP_PROCESSING_TEXT,
   TAP_TIMED_OUT_COPY,
+  TAP_DECLINED_COPY,
+  tapDeclinedBody,
   TAP_UNKNOWN_RESULT_COPY,
   tapReaderProblemCopy,
   tapReaderProblemTitle,
@@ -752,7 +754,7 @@ export const DoorModeScreen = ({
     const state = tap.state;
     switch (state.kind) {
       case "declined":
-        return { title: "Card declined", body: "Their bank said no. Nothing was charged.", tone: tapSaleTone("declined") };
+        return { title: TAP_DECLINED_COPY.title, body: tapDeclinedBody(state.testModeLiveCard), tone: tapSaleTone("declined") };
       case "needs_pin":
         return { ...TAP_CARD_NEEDS_INSERT_COPY, tone: tapSaleTone("needs_pin") };
       case "timed_out":

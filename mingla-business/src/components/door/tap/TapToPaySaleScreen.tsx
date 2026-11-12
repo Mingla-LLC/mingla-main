@@ -33,6 +33,8 @@ import {
   TAP_PROCESSING_TEXT,
   TAP_SEND_RECEIPT,
   TAP_TIMED_OUT_COPY,
+  TAP_DECLINED_COPY,
+  tapDeclinedBody,
   TAP_UNKNOWN_RESULT_COPY,
   tapPaidAfterCloseCopy,
   tapToPayName,
@@ -481,8 +483,8 @@ export const TapToPaySaleScreen = ({
         return (
           <TapStatusView
             tone={tapSaleTone("declined")}
-            title="Card declined"
-            body="Their bank said no. Nothing was charged."
+            title={TAP_DECLINED_COPY.title}
+            body={tapDeclinedBody(state.testModeLiveCard)}
             primary={{
               label: "Try another card",
               onPress: () => void flowRef.current?.tryAnotherCard(),

@@ -126,6 +126,19 @@ export const TAP_TIMED_OUT_COPY = {
   body: "No card was read. Nothing was charged.",
 } as const;
 
+/** #4389 — a decline is known: nothing was charged; the cart stays. */
+export const TAP_DECLINED_COPY = {
+  title: "Card declined",
+  body: "Nothing was charged. Try again or pick another way to pay.",
+} as const;
+
+/** #4389 — only when Stripe test mode refused a real card (test_mode_live_card). */
+export const TAP_TEST_MODE_LIVE_CARD_HINT =
+  "Test mode: real cards are always declined here. Use a Stripe test card.";
+
+export const tapDeclinedBody = (testModeLiveCard: boolean | undefined): string =>
+  testModeLiveCard === true ? `${TAP_DECLINED_COPY.body} ${TAP_TEST_MODE_LIVE_CARD_HINT}` : TAP_DECLINED_COPY.body;
+
 export const TAP_UNKNOWN_RESULT_COPY = {
   title: "Checking the payment",
   body: "We don't know yet if this went through. Don't take another payment until this finishes.",
