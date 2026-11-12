@@ -252,6 +252,7 @@
         "mingla-business/src/components/gigs/HireSheet.tsx",
         "mingla-business/src/components/gigs/hireTerms.ts",
         "mingla-business/src/services/creatorGigsService.ts",
+        "mingla-business/src/utils/creatorProgramFormat.ts",
         "mingla-marketing/app/creator-agreement/page.tsx",
         "mingla-marketing/app/local-agreement/page.tsx",
         "mingla-marketing/lib/creatorAgreementContent.ts",
