@@ -69,7 +69,11 @@ BEGIN
             6.4300, 3.4200, 'ChIJ0Wq9hS_1OxARsFOw5qkW6Y0'),
            (v_gone, v_owner, 'Gone 4334', 'gone-4334', 'GBP', 'ACCT_gone4334',
             6.4300, 3.4200, NULL);
+  -- #4389: a brand holding a payment account is deleted only through the
+  -- provider-closing path; this fixture stands in for that path.
+  PERFORM set_config('mingla.brand_delete_via', 'issue_4389', true);
   UPDATE public.brands SET deleted_at = now() WHERE id = v_gone;
+  PERFORM set_config('mingla.brand_delete_via', '', true);
   INSERT INTO t4334x VALUES ('owner', v_owner), ('stranger', v_stranger), ('brand', v_brand),
     ('gone', v_gone), ('id1', 'ChIJ0Wq9hS_1OxARsFOw5qkW6Y0'), ('id2', 'ChIJ8bF1g3T1OxAR5Yx0Qn5pLk8');
 END $fx$;
