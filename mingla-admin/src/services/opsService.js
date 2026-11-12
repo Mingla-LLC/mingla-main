@@ -57,6 +57,10 @@ export const closeWork = (id, proof, result, revision) =>
   call(() => supabase.rpc("ops_work_close", { p_id: id, p_proof: proof, p_result: result || null, p_expected_revision: revision }));
 export const pushBackWork = (id, kind, reason, proof, revision) =>
   call(() => supabase.rpc("ops_work_push_back", { p_id: id, p_kind: kind, p_reason: reason, p_proof: proof || [], p_expected_revision: revision }));
+// #4398: the watcher confirms a card waiting In review, or sends it back with what is missing.
+export const confirmWork = (id, revision) => call(() => supabase.rpc("ops_work_confirm", { p_id: id, p_expected_revision: revision }));
+export const sendBackWork = (id, reason, revision) =>
+  call(() => supabase.rpc("ops_work_send_back", { p_id: id, p_reason: reason, p_expected_revision: revision }));
 export const reopenWork = (id, reason, revision) =>
   call(() => supabase.rpc("ops_work_reopen", { p_id: id, p_reason: reason || null, p_expected_revision: revision }));
 export const noteWork = (id, body, mentionEmails, requestKey) =>

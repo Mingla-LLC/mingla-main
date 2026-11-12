@@ -271,10 +271,12 @@ const CARD: ArgSchema = {
     plan: PLAN,
     person_reason: PERSON_REASON,
     github: GITHUB,
+    // #4398: the card this one goes under (a card id from Mingla).
+    parent: { ...ID, hint: "Send the id of the card this one goes under, as Mingla gave it" },
   },
   required: [],
   hint:
-    "Send one card with title, instructions, done_means, owners and due_on or a linked event",
+    "Send one card with title, instructions, done_means, one owner, one watcher and due_on or a linked event",
 };
 
 export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
@@ -387,7 +389,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "add_work",
     title: "Add work cards",
     description:
-      "Add 1 to 50 cards straight to the Work board. Each card is checked by the server: title, instructions, done-means line, at least one current teammate as owner, a due date (or a linked event), real links. A refused card comes back with the fixes. The same request_key repeats safely. A card that repeats an open card is refused with that card; update it instead. Owners and watchers are told. github: issue or pull request links like #3980. " +
+      "Add 1 to 50 cards straight to the Work board. Each card is checked by the server: title, instructions, done-means line, one current teammate as owner and one other as watcher (a card under a parent takes the parent's when you send none), a due date (or a linked event), real links. A refused card comes back with the fixes. The same request_key repeats safely. A card that repeats an open card is refused with that card; update it instead. Owners and watchers are told. github: issue or pull request links like #3980. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       cards: {
@@ -482,6 +484,8 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
           },
           person_reason: PERSON_REASON,
           github: GITHUB,
+          // #4398: move the card under another card (a card id from Mingla).
+          parent: { ...ID, hint: "Send the id of the card this one goes under, as Mingla gave it" },
           reason: {
             type: "string",
             minLength: 1,
@@ -531,7 +535,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "close_work",
     title: "Close a card with proof",
     description:
-      "Close a card your person owns, only with proof that names what you read back: a draft, a record, a public event, a content card or another card, each by its id, which Mingla checks. A line of text alone is shown as your word. You never close a card with a Send, Spend or Publish tag (a person does that step and closes it), a go-live gate card or a blocked card. Closing releases the card's claims and tells its owners and watchers. " +
+      "Close a card your person owns, only with proof that names what you read back: a draft, a record, a public event, a content card or another card, each by its id, which Mingla checks. A line of text alone is shown as your word. You never close a card with a Send, Spend or Publish tag (a person does that step and closes it), a go-live gate card or a blocked card. Your close does not make it Done: the card goes to In review and its watcher confirms it in Mingla Admin or sends it back (the answer says who). Closing releases the card's claims. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       id: ID,
@@ -780,6 +784,10 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_work_reopen: { excluded: "a person reopens a closed card" },
   ops_work_note: { tools: ["update_work"] },
   ops_work_person_action: { excluded: "a person sends, spends and publishes" },
+  // #4398: Done needs the watcher. Confirming and sending back are a
+  // person's steps; an agent's close_work only asks for the review.
+  ops_work_confirm: { excluded: "the watcher, in person, confirms a card is done" },
+  ops_work_send_back: { excluded: "the watcher, in person, sends a card back with what is missing" },
   ops_work_undo: { excluded: "a person undoes a recent change" },
   ops_work_archive: { excluded: "an agent cannot remove a card" },
   ops_my_counts: { tools: ["my_work"] },

@@ -77,6 +77,9 @@ export function PeopleField({
   placeholder,
   hint,
   exclude = [],
+  // #4398: one person only (a card's owner, or its watcher). Picking someone
+  // else changes the person instead of adding a second; the box says Change.
+  single = false,
 }) {
   const autoId = useId();
   const id = givenId || `people-${autoId.replace(/:/g, "")}`;
@@ -112,6 +115,13 @@ export function PeopleField({
 
   const tell = (words, person = null) => { setMessage(words || ""); setResendFor(person); };
   const add = (email) => {
+    if (single) {
+      if (emails.length === 1 && emails[0] === email) return;
+      tell("");
+      onChange?.([email], { added: email, removed: emails[0] || null, changed: emails.length > 0 });
+      setOpen(false);
+      return;
+    }
     const r = addPerson(emails, email, max);
     if (r.refused) { tell(r.refused); return; }
     if (r.value.length !== emails.length) { tell(""); onChange?.(r.value, { added: email }); }
@@ -125,7 +135,7 @@ export function PeopleField({
   const choose = (person) => {
     if (locked) return;
     if (!canPick(person)) { tell(invitedWords(person), person); return; }
-    if (emails.includes(person.email)) remove(person.email); else add(person.email);
+    if (emails.includes(person.email)) { if (!single) remove(person.email); } else add(person.email);
     setQuery("");
     setHi(0);
     inputRef.current?.focus();
@@ -179,7 +189,7 @@ export function PeopleField({
         onMouseDown={(event) => { if (event.target === event.currentTarget && !locked) { event.preventDefault(); inputRef.current?.focus(); setOpen(true); } }}
         className={`flex min-h-11 min-w-0 flex-wrap items-center gap-1.5 rounded-xl border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-1.5 focus-within:border-[var(--color-brand-500)] focus-within:ring-2 focus-within:ring-[var(--color-brand-100)] ${locked ? "opacity-70" : ""}`}
       >
-        {picked.map((p) => <Chip key={p.email} person={p} team={team} disabled={locked} onRemove={() => remove(p.email)} />)}
+        {picked.map((p) => <Chip key={p.email} person={p} team={team} disabled={locked || (single && min > 0)} onRemove={() => remove(p.email)} />)}
         <input
           ref={inputRef}
           id={id}
@@ -190,10 +200,10 @@ export function PeopleField({
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={open && options[hi] ? `${id}-opt-${hi}` : undefined}
-          aria-label={`Add a person to ${label}`}
+          aria-label={single ? `Change the ${label.toLowerCase()}` : `Add a person to ${label}`}
           disabled={locked}
           value={query}
-          placeholder={placeholder || (picked.length ? "Add someone" : "Type a name")}
+          placeholder={placeholder || (single ? (picked.length ? "Change" : "Pick one person") : picked.length ? "Add someone" : "Type a name")}
           onFocus={() => setOpen(true)}
           onClick={() => setOpen(true)}
           onChange={(event) => { setQuery(event.target.value); setOpen(true); setHi(0); }}

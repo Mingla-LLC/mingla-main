@@ -2839,6 +2839,29 @@ BEGIN
 END;
 $function$;
 
+-- From 20280624014255 (#4255 functions). #4398: close date and review for the subtask list.
+CREATE OR REPLACE FUNCTION public.ops_subtasks_json(p_card_id uuid, p_today date)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'pg_temp'
+AS $function$
+  SELECT COALESCE(jsonb_agg(public.ops_card_lite(c) || jsonb_build_object(
+      'owners', COALESCE((SELECT jsonb_agg(jsonb_build_object('email', p.email, 'name', public.ops_name(p.email)) ORDER BY p.added_at, p.email)
+                            FROM public.ops_work_people p WHERE p.card_id = c.id AND p.role = 'owner'), '[]'::jsonb),
+      'revision', c.revision, 'overdue', (c.due_on < p_today AND c.status <> 'done'), 'start_on', c.start_on,
+      'plan_step', c.plan_step,
+      -- #4398: the due label reads the close date; a subtask in review says so.
+      'closed_at', c.closed_at,
+      'review', CASE WHEN c.review_requested_at IS NOT NULL THEN jsonb_build_object('requested_at', c.review_requested_at,
+                  'waiting_on', public.ops_name((public.ops_card_people(c.id, 'watcher'))[1])) END,
+      'subtasks', (SELECT jsonb_build_object('total', count(*), 'done', count(*) FILTER (WHERE g.status = 'done'))
+                     FROM public.ops_work_cards g WHERE g.parent_id = c.id AND g.archived_at IS NULL),
+      'thread_count', (SELECT count(*) FROM public.ops_work_messages m WHERE m.card_id = c.id AND m.deleted_at IS NULL))
+    ORDER BY c.position, c.number), '[]'::jsonb)
+    FROM public.ops_work_cards c WHERE c.parent_id = p_card_id AND c.archived_at IS NULL
+$function$;
+
 -- From 20280624014255 (#4255 functions). #4398 (C): close_work lands in In review and says so.
 CREATE OR REPLACE FUNCTION public.ops_agent_call(p_key_hash text, p_tool text, p_args jsonb, p_client text)
  RETURNS jsonb
