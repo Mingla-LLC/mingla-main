@@ -93,6 +93,20 @@ export const ARI_REFUSAL_COPY: Readonly<Record<string, AriRefusalCopy>> = Object
       fixRoute: null,
       who: "anyone",
     },
+    // #3281 — a live edit would remove or move a date that holds bookings.
+    multi_date_remove_with_sales: {
+      message:
+        "That date already has bookings, so I can't remove or move it. Keep it, or cancel it from the event page so guests are told. Nothing was saved.",
+      fixRoute: null,
+      who: "anyone",
+    },
+    // #3281 bundle 6 — re-publishing would delete dates that hold bookings.
+    experience_dates_have_sales: {
+      message:
+        "This experience already has bookings, so I can't publish it again from scratch. I can change it in place instead. Nothing was saved.",
+      fixRoute: null,
+      who: "anyone",
+    },
     // #3355 P8 — the Ari trip create refuses what the owner hasn't given.
     trip_timezone_required: {
       message:
