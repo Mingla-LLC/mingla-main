@@ -20,12 +20,22 @@ import {
   AgentUserProfile,
   ARI_ESCALATION_GUIDANCE,
   BrandSummary,
-  buildSystemPrompt,
   BusinessContext,
   OfferingSummary,
   parseFirstRunHint,
   TENANT_CONTEXT_VERSION,
 } from "../_shared/agentSystemPrompt.ts";
+import {
+  ariPromptVersionFor,
+  buildAriTurnSystemPrompt,
+} from "../_shared/agentSystemPromptLegacy.ts";
+import {
+  ariTurnAgentTools,
+  ariTurnToolDeclarations,
+  ariTurnToolError,
+  findAriTurnTool,
+  isAriTurnAgentStateCall,
+} from "../_shared/ariRolloutTurn.ts";
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
 import {
   ARI_MODEL_VERSION,
@@ -47,7 +57,6 @@ import {
   bindAgentProposalState,
   canonicalizeAgentProposalArgs,
   findTool,
-  isAgentStateToolCall,
   isReadOnlyAgentToolCall,
   normalizeAriToolError,
   ToolError,
@@ -120,6 +129,7 @@ import {
 } from "../_shared/agentConversationState.ts";
 import {
   applyStoredChoice,
+  isCreateEventPlanningRequest,
   isReadInterruption,
   planEventTurn,
   PlannerClassification,
@@ -162,6 +172,7 @@ import {
   findAriCampaignDraftId,
   findAriRecentEventTitle,
   inferAriToolsets,
+  inferLegacyAriToolsets,
   isAriOnboardingPlanProgressMessage,
   needsAriCampaignDraftReview,
   needsAriCampaignPerformanceRead,
@@ -201,9 +212,11 @@ import {
   decideFlowTurn,
   flowChoices,
   flowReplyStructured,
+  flowRouteFromHints,
   flowSideFailureText,
   type FlowStateView,
   type FlowTurnDecision,
+  isWebsiteSetupRequest,
   markEngineOriginTurn,
   parseFlowAnswer,
   parseWebsiteSetupKickoff,
@@ -237,7 +250,6 @@ import {
   routeAriTurn,
 } from "../_shared/ariIntentRead.ts";
 import { guardAriReplyRoutes } from "../_shared/ariAppMap.ts";
-import { ariToolDeclarations } from "../_shared/ariToolDescriptions.ts";
 import {
   ariGuideCitations,
   ariGuideForcedCalls,
@@ -828,6 +840,11 @@ type CommitTextTurnArgs = {
   flowState?: FlowStateView | null;
   /** #3355 Wave D (D2): the owner's words, for the gap excerpt. */
   gapOwnerText?: string;
+  /**
+   * #3355 ship-prep: the rollout switch. False: origin/main's text (no App
+   * Map route guard, no repeated-sentence cut). Unset: on.
+   */
+  understandFirst?: boolean;
 };
 
 async function commitTextTurn(
@@ -836,12 +853,21 @@ async function commitTextTurn(
   // #3355 Wave B (I-ARI-HANDOFF-FIXABLE): every route this reply hands the
   // host must open a Host screen in the App Map; one that does not is
   // dropped and the text says how to get there instead.
-  const routeGuard = guardAriReplyRoutes({
-    text: unguardedArgs.text,
-    handoffRoute: unguardedArgs.handoffRoute,
-    choices: unguardedArgs.choices,
-    flowArtefact: unguardedArgs.flowArtefact,
-  });
+  const legacyText = unguardedArgs.understandFirst === false;
+  const routeGuard = legacyText
+    ? {
+      text: unguardedArgs.text,
+      handoffRoute: unguardedArgs.handoffRoute,
+      choices: unguardedArgs.choices,
+      flowArtefact: unguardedArgs.flowArtefact,
+      dropped: [] as string[],
+    }
+    : guardAriReplyRoutes({
+      text: unguardedArgs.text,
+      handoffRoute: unguardedArgs.handoffRoute,
+      choices: unguardedArgs.choices,
+      flowArtefact: unguardedArgs.flowArtefact,
+    });
   if (routeGuard.dropped.length > 0) {
     console.warn(
       `[agent-chat] dropped ${routeGuard.dropped.length} route(s) outside the App Map`,
@@ -865,7 +891,9 @@ async function commitTextTurn(
   // #3355 rework 3 (R3-11): a reply never says the same line twice (the
   // model echoing a state line the server also adds, a resume prompt …).
   const publicText = assertOwnerCopy(
-    dedupeReplySentences(sanitizeAriUserFacingDiagnostics(args.text)),
+    legacyText
+      ? sanitizeAriUserFacingDiagnostics(args.text)
+      : dedupeReplySentences(sanitizeAriUserFacingDiagnostics(args.text)),
     {
       fallback: OWNER_PROSE_FALLBACK,
       surface: "chat_text_turn",
@@ -2157,6 +2185,9 @@ async function handle(req: Request): Promise<Response> {
         confidence: intentResult.read.confidence,
         route: turnRoute.label,
         elapsed_ms: intentResult.elapsedMs,
+        // #3355 ship-prep: the prompt this turn runs (v29 with the switch off).
+        prompt_version: ariPromptVersionFor(understandFirst),
+        understand_first: understandFirst,
       }),
     );
     // #3355 Wave E — a flow decision that shows a card (reply) or proposes
@@ -2194,6 +2225,7 @@ async function handle(req: Request): Promise<Response> {
       } catch (err: unknown) {
         if (err instanceof ToolError) {
           return await commitTextTurn({
+            understandFirst,
             client: serviceClient,
             userId,
             conversationId,
@@ -2239,6 +2271,7 @@ async function handle(req: Request): Promise<Response> {
         });
       }
       return await commitPendingTurn({
+        understandFirst,
         client: serviceClient,
         pendingClient: serviceClient,
         userId,
@@ -2271,6 +2304,7 @@ async function handle(req: Request): Promise<Response> {
         ? flowChoices(decision.artefact)
         : undefined;
       return await commitTextTurn({
+        understandFirst,
         client: serviceClient,
         userId,
         conversationId,
@@ -2322,11 +2356,18 @@ async function handle(req: Request): Promise<Response> {
         // #3355 Wave D (D4): a stuck host's open setup is set aside.
         escalate: escalation.escalate,
         // #3355 Wave E: only the Website setup screen enters here; a typed
-        // "start Website setup" is the model's start_flow.
-        websiteSetup: body.workflow_context === "website_setup",
+        // "start Website setup" is the model's start_flow. #3355 ship-prep:
+        // with the switch off, origin/main's typed request enters too.
+        websiteSetup: body.workflow_context === "website_setup" ||
+          (!understandFirst && isWebsiteSetupRequest(semanticMessage)),
         // #3355 Wave E (E1): the intent read decides readiness answers and
         // what typed words do to an open card (hint route on fallback).
-        route: turnRoute.flow,
+        // #3355 ship-prep: off is origin/main's classifier route, and typed
+        // words start a setup as they do today (the engine's legacy path).
+        route: understandFirst
+          ? turnRoute.flow
+          : flowRouteFromHints(semanticMessage),
+        legacy: !understandFirst,
         // #3355: a contact list attached in the chat, read only when the
         // import flow needs it (same scope checks as the model's read).
         attachments: () =>
@@ -2383,6 +2424,7 @@ async function handle(req: Request): Promise<Response> {
         // Raced past the pre-claim check: nothing was applied. Close the turn
         // honestly with the card that is current now.
         return await commitTextTurn({
+          understandFirst,
           client: serviceClient,
           userId,
           conversationId,
@@ -2538,6 +2580,7 @@ async function handle(req: Request): Promise<Response> {
       }
       if (decision.kind === "reply") return await commitFlowReply(decision);
       return await commitTextTurn({
+        understandFirst,
         client: serviceClient,
         userId,
         conversationId,
@@ -2617,6 +2660,7 @@ async function handle(req: Request): Promise<Response> {
         });
         const commitAskTeamCard = async (): Promise<Response> => {
           return await commitPendingTurn({
+            understandFirst,
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -2866,16 +2910,23 @@ async function handle(req: Request): Promise<Response> {
     const userMsg = { id: userMessageId };
 
     // Build system prompt
-    const systemPrompt = buildSystemPrompt(profile, brandsList, {
-      injectStrictReminder: injection.flagged,
-      business,
-      // #4304: the hint is advisory; the brand list above stays the truth (a
-      // "no_brand" hint on an account that now has brands is ignored).
-      firstRun: firstRun &&
-          (firstRun.stage === "empty_brand" || brandsList.length === 0)
-        ? firstRun
-        : null,
-    });
+    // #3355 ship-prep: the switch off builds origin/main's prompt verbatim
+    // (PROMPT_VERSION v29, agentSystemPromptLegacy.ts).
+    const systemPrompt = buildAriTurnSystemPrompt(
+      understandFirst,
+      profile,
+      brandsList,
+      {
+        injectStrictReminder: injection.flagged,
+        business,
+        // #4304: the hint is advisory; the brand list above stays the truth (a
+        // "no_brand" hint on an account that now has brands is ignored).
+        firstRun: firstRun &&
+            (firstRun.stage === "empty_brand" || brandsList.length === 0)
+          ? firstRun
+          : null,
+      },
+    );
 
     let currentAttachmentParts: GeminiContentMessage["parts"] = [];
     if (attachmentIds.length > 0) {
@@ -3079,8 +3130,9 @@ async function handle(req: Request): Promise<Response> {
     // #3355 Wave E (D3a): the pre-engine Website lane (engine off) takes the
     // turn only when the intent route agrees; with the engine on, a typed
     // Website request is the model's start_flow.
+    // #3355 ship-prep: with the switch off, origin/main's lane (no route).
     const websiteSetupIntent = activeBrand && !websiteEngine &&
-        turnRoute.websiteLane
+        (!understandFirst || turnRoute.websiteLane)
       ? detectWebsiteSetupIntent(semanticMessage)
       : null;
     const websiteSetupWorkflow = body.workflow_context === "website_setup" &&
@@ -3181,6 +3233,7 @@ async function handle(req: Request): Promise<Response> {
             );
           }
           return await commitPendingTurn({
+            understandFirst,
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -3198,6 +3251,7 @@ async function handle(req: Request): Promise<Response> {
           });
         }
         return await commitTextTurn({
+          understandFirst,
           client: serviceClient,
           userId,
           conversationId,
@@ -3226,18 +3280,23 @@ async function handle(req: Request): Promise<Response> {
       }
     }
 
+    // #3355 ship-prep: with the switch off a NEW event request reaches the
+    // slot planner on origin/main's own classifier.
+    const eventPlannerRequest = understandFirst
+      ? turnRoute.planner
+      : isCreateEventPlanningRequest(semanticMessage);
     if (
       plannerContext && !websiteSetupBoundary &&
       !readInterruption && !questionInterruption &&
       // #3355 Wave E (D3a): a NEW event request reaches the slot planner only
       // when the intent route sends it (engine off); with the engine on the
       // model starts the create_event setup with start_flow.
-      (activeEventPlan || turnRoute.planner)
+      (activeEventPlan || eventPlannerRequest)
     ) {
       try {
         const baseState =
           ["completed", "cancelled"].includes(taskState.status) &&
-            turnRoute.planner
+            eventPlannerRequest
             ? {
               ...IDLE_TASK_STATE,
               last_completed_step: taskState.last_completed_step,
@@ -3279,6 +3338,7 @@ async function handle(req: Request): Promise<Response> {
             );
           }
           return await commitPendingTurn({
+            understandFirst,
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -3296,6 +3356,7 @@ async function handle(req: Request): Promise<Response> {
           });
         }
         return await commitTextTurn({
+          understandFirst,
           client: serviceClient,
           userId,
           conversationId,
@@ -3400,6 +3461,7 @@ async function handle(req: Request): Promise<Response> {
             completeness: contextResolution.completeness,
           });
           return await commitTextTurn({
+            understandFirst,
             client: serviceClient,
             userId,
             conversationId,
@@ -3425,6 +3487,7 @@ async function handle(req: Request): Promise<Response> {
           : null;
         if (storyRetry) {
           return await commitTextTurn({
+            understandFirst,
             client: serviceClient,
             userId,
             conversationId,
@@ -3479,6 +3542,7 @@ async function handle(req: Request): Promise<Response> {
           userId,
         );
         return await commitPendingTurn({
+          understandFirst,
           client: serviceClient,
           pendingClient: serviceClient,
           userId,
@@ -3550,13 +3614,27 @@ async function handle(req: Request): Promise<Response> {
 
       // #3355 Wave D (D1): memory notes now ride in the turn's <user_data>
       // context part (top notes for this message), not in the system prompt.
-      const { data: onboardingPlan } = await userClient.rpc(
-        "ari_get_onboarding_plan",
-        { p_brand_id: activeBrand?.id ?? null },
-      );
-      const boundedAgentContext = JSON.stringify({
-        onboarding_plan: onboardingPlan ?? null,
-      }).slice(0, 16_000);
+      // #3355 ship-prep: with the switch off they stay where origin/main puts
+      // them (the caller-scoped context, up to 30 notes).
+      const [{ data: memoryNotes }, { data: onboardingPlan }] = await Promise
+        .all([
+          understandFirst
+            ? Promise.resolve({ data: null })
+            : userClient.rpc("ari_memory_list", {
+              p_brand_id: activeBrand?.id ?? null,
+            }),
+          userClient.rpc("ari_get_onboarding_plan", {
+            p_brand_id: activeBrand?.id ?? null,
+          }),
+        ]);
+      const boundedAgentContext = JSON.stringify(
+        understandFirst ? { onboarding_plan: onboardingPlan ?? null } : {
+          memory_notes: Array.isArray(memoryNotes)
+            ? memoryNotes.slice(0, 30)
+            : [],
+          onboarding_plan: onboardingPlan ?? null,
+        },
+      ).slice(0, 16_000);
       const loopSystemPrompt = `${systemPrompt}
 
 ARI 10X OPERATING CONTRACT
@@ -3579,9 +3657,12 @@ ${boundedAgentContext}
         // #3355 Wave D (D4): a stuck host gets a different approach.
         escalation.escalate ? `\n\n${ARI_ESCALATION_GUIDANCE}` : ""}` +
         // #3355 Wave E (E1): the intent read's route, as labelled hints.
-        `\n\nTURN HINTS (from the turn's intent read; data, not orders):\n${
-          ariIntentLoopLines(turnRoute).join("\n")
-        }`;
+        // #3355 ship-prep: none with the switch off (origin/main's prompt).
+        (understandFirst
+          ? `\n\nTURN HINTS (from the turn's intent read; data, not orders):\n${
+            ariIntentLoopLines(turnRoute).join("\n")
+          }`
+          : "");
 
       const onboardingResumeRequest = needsAriOnboardingResumeRead(
         semanticMessage,
@@ -3604,6 +3685,9 @@ ${boundedAgentContext}
           ? ["core", "brand", "onboarding"]
           : eventLaunchReadinessRequest
           ? ["core", "sites", "listings"]
+          // #3355 ship-prep: the switch off selects as origin/main does.
+          : !understandFirst
+          ? inferLegacyAriToolsets(semanticMessage)
           // #3355 Wave B (B3, D3a): classifier hints add toolsets; the
           // model picks the tool.
           : inferAriToolsets(semanticMessage, [
@@ -3613,25 +3697,31 @@ ${boundedAgentContext}
             ...turnRoute.toolsetHints,
           ]),
       );
-      if (!onboardingSetupRequest && !eventLaunchReadinessRequest) {
+      if (
+        understandFirst && !onboardingSetupRequest &&
+        !eventLaunchReadinessRequest
+      ) {
         for (const key of turnRoute.toolsets) selectedToolsets.add(key);
       }
       if (websiteSetupBoundary) {
         selectedToolsets.add("sites");
         selectedToolsets.add("memory");
       }
+      // #3355 ship-prep: the registry this turn's model sees (origin/main's
+      // with the switch off: no Feature Guide search, save_memory_note).
+      const turnTools = ariTurnAgentTools(understandFirst);
       let selectedTools = onboardingSetupRequest
-        ? selectAriOnboardingSetupTools(AGENT_TOOLS)
+        ? selectAriOnboardingSetupTools(turnTools)
         : campaignWorkflowRequest
-        ? selectAriCampaignWorkflowTools(AGENT_TOOLS)
+        ? selectAriCampaignWorkflowTools(turnTools)
         : selectAriTools(
-          AGENT_TOOLS,
+          turnTools,
           [...selectedToolsets],
           websiteSetupBoundary ? 16 : 12,
           semanticMessage,
         );
       // #3355 Wave E (E1): the tool the intent read named is always offered.
-      const intentTargetTool = turnRoute.targetTool
+      const intentTargetTool = understandFirst && turnRoute.targetTool
         ? findTool(turnRoute.targetTool)
         : undefined;
       if (
@@ -3650,7 +3740,7 @@ ${boundedAgentContext}
         : [];
       try {
         compileGeminiToolDeclarations([
-          ...ariToolDeclarations(selectedTools),
+          ...ariTurnToolDeclarations(selectedTools, understandFirst),
           ...startFlowDeclarations,
         ]);
       } catch (err: unknown) {
@@ -3702,6 +3792,7 @@ ${boundedAgentContext}
           needsAriCampaignDraftReview(semanticMessage)
             ? findAriCampaignDraftId(history)
             : null,
+          { legacy: !understandFirst },
         );
       const deterministicSafetyReply = ariDeterministicSafetyReply(
         semanticMessage,
@@ -3777,6 +3868,10 @@ ${boundedAgentContext}
         }]
         : deterministicRead
         ? deterministicRead.calls
+        // #3355 ship-prep (I-ARI-GUIDE-ONLY-WHEN-ON): no guide reads with
+        // the switch off.
+        : !understandFirst
+        ? []
         // #3355 Wave D (D4): a stuck host's answer comes from the guide
         // and the App Map, read before the model.
         : escalation.escalate
@@ -3795,20 +3890,27 @@ ${boundedAgentContext}
         // #3355 Wave C (C3): production gets its own explicit budget (6
         // steps, 5 model-chosen tool calls on top of the required pre-reads,
         // 7 model calls, inside 55 s); the local lane keeps its own.
-        budget: ariChatLoopBudget({
-          localModelEnabled: Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true",
-          requiredReads: initialCalls.length +
-            (standaloneResearchRequest && !completeFromSearchIndex ? 2 : 0),
-          // #3355 Wave E (E1): the intent read is one of the turn's model
-          // calls, and its time comes out of the same 55 s.
-          intentRead: {
-            modelCalls: intentResult.modelCalls,
-            elapsedMs: intentResult.elapsedMs,
-          },
-          // #3355 rework 3: the claim check after the reply is one more of
-          // the turn's model calls, and its time is kept out of the loop's.
-          claimCheck: true,
-        }),
+        // #3355 ship-prep: the switch off keeps origin/main's budget (the
+        // loop default, or the local lane's own).
+        budget: !understandFirst
+          ? Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
+            ? { ...ARI_LOCAL_LOOP_BUDGET }
+            : undefined
+          : ariChatLoopBudget({
+            localModelEnabled:
+              Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true",
+            requiredReads: initialCalls.length +
+              (standaloneResearchRequest && !completeFromSearchIndex ? 2 : 0),
+            // #3355 Wave E (E1): the intent read is one of the turn's model
+            // calls, and its time comes out of the same 55 s.
+            intentRead: {
+              modelCalls: intentResult.modelCalls,
+              elapsedMs: intentResult.elapsedMs,
+            },
+            // #3355 rework 3: the claim check after the reply is one more of
+            // the turn's model calls, and its time is kept out of the loop's.
+            claimCheck: true,
+          }),
         initialCalls,
         completeAfterInitialReads: websiteSetupIntent
           ? (observations) =>
@@ -3887,12 +3989,18 @@ ${boundedAgentContext}
           : undefined,
         // #3355 Wave B (I-ARI-KNOWLEDGE-FROM-GUIDE): a "can't" reply with no
         // guide search this turn runs one, and the model answers again.
-        recoverReadsFromPrematureText: (text, observations) => [
-          ...(standaloneResearchRequest && !completeFromSearchIndex
-            ? requiredPublicPageReads(observations)
-            : []),
-          ...ariGuideRecoveryCalls(text, observations, semanticMessage),
-        ],
+        // #3355 ship-prep (I-ARI-GUIDE-ONLY-WHEN-ON): with the switch off,
+        // origin/main's recovery (public-page reads only).
+        recoverReadsFromPrematureText: !understandFirst
+          ? standaloneResearchRequest && !completeFromSearchIndex
+            ? (_text, observations) => requiredPublicPageReads(observations)
+            : undefined
+          : (text, observations) => [
+            ...(standaloneResearchRequest && !completeFromSearchIndex
+              ? requiredPublicPageReads(observations)
+              : []),
+            ...ariGuideRecoveryCalls(text, observations, semanticMessage),
+          ],
         callModel: async (observations, step) => {
           await assertAttemptRunning(
             serviceClient,
@@ -3936,13 +4044,17 @@ ${boundedAgentContext}
           try {
             model = await callGemini({
               systemPrompt: loopSystemPrompt,
-              contents: withAriLocalTimesForModel(
-                [...contents, ...observationContents],
-                turnZone,
-              ),
-              // #3355 Wave B (B3): generated per-tool descriptions.
+              // #3355 ship-prep: brand-local times only with the switch on.
+              contents: understandFirst
+                ? withAriLocalTimesForModel(
+                  [...contents, ...observationContents],
+                  turnZone,
+                )
+                : [...contents, ...observationContents],
+              // #3355 Wave B (B3): generated per-tool descriptions (the
+              // tools' own descriptions with the switch off).
               tools: [
-                ...ariToolDeclarations(selectedTools),
+                ...ariTurnToolDeclarations(selectedTools, understandFirst),
                 ...startFlowDeclarations,
               ],
             });
@@ -3966,9 +4078,11 @@ ${boundedAgentContext}
               ? "flow"
               : "unknown";
           }
-          const tool = findTool(call.name);
+          const tool = findAriTurnTool(call.name, understandFirst);
           if (!tool) return "unknown";
-          if (isAgentStateToolCall(call.name)) return "agent_state";
+          if (isAriTurnAgentStateCall(call.name, understandFirst)) {
+            return "agent_state";
+          }
           if (isReadOnlyAgentToolCall(call.name, call.args)) return "read";
           return "write";
         },
@@ -4040,7 +4154,9 @@ ${boundedAgentContext}
               message:
                 "Your reply was a tool-call marker written as text. Call the tool as a real function call, or answer the owner in plain words. Never write [mingla_tool_call ...] in a reply.",
             }
-            : announcesWriteWithoutCall(text) && !announcedWriteBounced &&
+            // #3355 ship-prep: origin/main never bounced an announced write.
+            : understandFirst && announcesWriteWithoutCall(text) &&
+                !announcedWriteBounced &&
                 (announcedWriteBounced = true)
             ? {
               code: "WRITE_PROPOSAL_REQUIRED",
@@ -4055,7 +4171,7 @@ ${boundedAgentContext}
             }
             : null),
         executeTool: async (call) => {
-          const tool = findTool(call.name);
+          const tool = findAriTurnTool(call.name, understandFirst);
           if (!tool) {
             throw new ToolError(
               "UNKNOWN_TOOL",
@@ -4098,13 +4214,13 @@ ${boundedAgentContext}
                 ) selectedToolsets.add(key as AriToolsetKey);
               }
               const candidateTools = selectAriTools(
-                AGENT_TOOLS,
+                turnTools,
                 [...selectedToolsets],
                 12,
                 semanticMessage,
               );
               compileGeminiToolDeclarations(
-                ariToolDeclarations(candidateTools),
+                ariTurnToolDeclarations(candidateTools, understandFirst),
               );
               selectedTools = candidateTools;
             }
@@ -4193,7 +4309,9 @@ ${boundedAgentContext}
         },
         // #3355 Wave B (B4): a failed call reaches the model with its
         // user_reason and next_step; only a stopped turn ends the loop.
-        normalizeError: normalizeAriToolError,
+        // #3355 ship-prep: origin/main's observation with the switch off.
+        normalizeError: (error) =>
+          ariTurnToolError(normalizeAriToolError(error), understandFirst),
         resolveFlowStart: resolveModelFlowStart,
       });
       let loopResult: Awaited<typeof loopRun>;
@@ -4224,6 +4342,7 @@ ${boundedAgentContext}
             pendingQuestionPrompt(resumedState) ??
             "finish the current event plan";
           return await commitTextTurn({
+            understandFirst,
             client: serviceClient,
             userId,
             conversationId,
@@ -4239,7 +4358,7 @@ ${boundedAgentContext}
             resumed: true,
           });
         }
-        const tool = findTool(loopResult.toolCall.name);
+        const tool = findAriTurnTool(loopResult.toolCall.name, understandFirst);
         if (!tool) {
           return errorResponse(
             500,
@@ -4247,24 +4366,31 @@ ${boundedAgentContext}
             `Unknown tool: ${loopResult.toolCall.name}`,
           );
         }
-        let proposalStage = "bind_discount_target";
+        let proposalStage = understandFirst
+          ? "bind_discount_target"
+          : "canonicalize";
         try {
-          // #3355 rework 3b: an unspecified discount target is resolved from
-          // the host's words and the brand's listings before #4304 refuses.
-          loopResult.toolCall.args = await bindDiscountTargetDefault(
-            tool.name,
-            loopResult.toolCall.args,
-            userClient,
-            semanticMessage,
-          );
-          proposalStage = "canonicalize";
-          // #3355 rework 7 (R7-11): the host's own valid code beats a
-          // mangled one in the proposal.
-          loopResult.toolCall.args = withHostStatedDiscountCode(
-            tool.name,
-            loopResult.toolCall.args,
-            hostStatedCode(history, tool.name, semanticMessage),
-          );
+          // #3355 ship-prep: the two fill-ins below and the stated-values
+          // stage run only with the switch on (origin/main has none).
+          if (understandFirst) {
+            // #3355 rework 3b: an unspecified discount target is resolved
+            // from the host's words and the brand's listings before #4304
+            // refuses.
+            loopResult.toolCall.args = await bindDiscountTargetDefault(
+              tool.name,
+              loopResult.toolCall.args,
+              userClient,
+              semanticMessage,
+            );
+            proposalStage = "canonicalize";
+            // #3355 rework 7 (R7-11): the host's own valid code beats a
+            // mangled one in the proposal.
+            loopResult.toolCall.args = withHostStatedDiscountCode(
+              tool.name,
+              loopResult.toolCall.args,
+              hostStatedCode(history, tool.name, semanticMessage),
+            );
+          }
           loopResult.toolCall.args = canonicalizeAgentProposalArgs(
             tool.name,
             loopResult.toolCall.args,
@@ -4304,19 +4430,22 @@ ${boundedAgentContext}
           // #3355 Wave A (A6, I-ARI-STATED-SLOTS-PRESERVED): what the host
           // stated (code, %, end date, limits) reaches the card, or Ari asks.
           proposalStage = "stated_slots";
-          const statedSlots = await statedSlotStage({
-            toolName: tool.name,
-            toolArgs: loopResult.toolCall.args,
-            parameters: tool.parameters,
-            history,
-            current: semanticMessage,
-            userClient,
-            // #3355 Wave E (E1): what the intent read heard the host state,
-            // grounded again in the host's own words.
-            modelStated: turnRoute.statedValues,
-          });
+          const statedSlots: StatedSlotCheck = !understandFirst
+            ? { kind: "ok", args: loopResult.toolCall.args, bound: [] }
+            : await statedSlotStage({
+              toolName: tool.name,
+              toolArgs: loopResult.toolCall.args,
+              parameters: tool.parameters,
+              history,
+              current: semanticMessage,
+              userClient,
+              // #3355 Wave E (E1): what the intent read heard the host state,
+              // grounded again in the host's own words.
+              modelStated: turnRoute.statedValues,
+            });
           if (statedSlots.kind === "ask") {
             return await commitTextTurn({
+              understandFirst,
               client: serviceClient,
               userId,
               conversationId,
@@ -4369,6 +4498,7 @@ ${boundedAgentContext}
           );
           proposalStage = "commit_pending";
           return await commitPendingTurn({
+            understandFirst,
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -4399,6 +4529,7 @@ ${boundedAgentContext}
             // #3355 P6 (D-11/D-26): a money-role refusal or a readiness
             // blocker is said to the owner in plain words before any card.
             return await commitTextTurn({
+              understandFirst,
               client: serviceClient,
               userId,
               conversationId,
@@ -4589,6 +4720,7 @@ ${boundedAgentContext}
         escalationNote = offer.note;
       }
       return await commitTextTurn({
+        understandFirst,
         client: serviceClient,
         userId,
         conversationId,
@@ -4680,9 +4812,15 @@ ${boundedAgentContext}
       );
       gemini = await callGemini({
         systemPrompt,
-        contents: withAriLocalTimesForModel(contents, turnZone),
+        // #3355 ship-prep: origin/main's contents and tools with the switch off.
+        contents: understandFirst
+          ? withAriLocalTimesForModel(contents, turnZone)
+          : contents,
         tools: [
-          ...ariToolDeclarations(AGENT_TOOLS),
+          ...ariTurnToolDeclarations(
+            ariTurnAgentTools(understandFirst),
+            understandFirst,
+          ),
           // #3355 Wave E (D3a): the legacy single-call path can start a
           // guided setup too.
           ...(startFlowAllowed ? [ARI_START_FLOW_DECLARATION] : []),
@@ -4797,7 +4935,7 @@ ${boundedAgentContext}
       return await commitModelFlowStart(gemini.toolCall.args);
     }
     if (gemini.toolCall) {
-      let tool = findTool(gemini.toolCall.name);
+      let tool = findAriTurnTool(gemini.toolCall.name, understandFirst);
       if (!tool) {
         return errorResponse(
           500,
@@ -4900,8 +5038,13 @@ ${boundedAgentContext}
           try {
             followup = await callGemini({
               systemPrompt,
-              contents: withAriLocalTimesForModel(followupContents, turnZone),
-              tools: ariToolDeclarations(AGENT_TOOLS),
+              contents: understandFirst
+                ? withAriLocalTimesForModel(followupContents, turnZone)
+                : followupContents,
+              tools: ariTurnToolDeclarations(
+                ariTurnAgentTools(understandFirst),
+                understandFirst,
+              ),
             });
           } catch (err: unknown) {
             const schemaResponse = schemaErrorResponse(err);
@@ -5001,6 +5144,7 @@ ${boundedAgentContext}
             checkedAt: new Date().toISOString(),
           });
           return await commitTextTurn({
+            understandFirst,
             client: serviceClient,
             userId,
             conversationId,
@@ -5073,6 +5217,7 @@ ${boundedAgentContext}
                 pendingQuestionPrompt(resumedState) ??
                 "continue where we left off";
               return await commitTextTurn({
+                understandFirst,
                 client: serviceClient,
                 userId,
                 conversationId,
@@ -5106,6 +5251,7 @@ ${boundedAgentContext}
               pendingQuestionPrompt(resumedState) ??
               "continue where we left off";
             return await commitTextTurn({
+              understandFirst,
               client: serviceClient,
               userId,
               conversationId,
@@ -5143,6 +5289,7 @@ ${boundedAgentContext}
           pendingQuestionPrompt(resumedState) ??
           "finish the current event plan";
         return await commitTextTurn({
+          understandFirst,
           client: serviceClient,
           userId,
           conversationId,
@@ -5162,19 +5309,22 @@ ${boundedAgentContext}
       // #2063: bind canonical optimistic state before authorization/persistence.
       // The proposal, confirmation, and SQL owner all receive the same version.
       try {
-        // #3355 rework 3b: same unspecified-target bind as the loop path.
-        gemini.toolCall.args = await bindDiscountTargetDefault(
-          tool.name,
-          gemini.toolCall.args,
-          userClient,
-          semanticMessage,
-        );
-        // #3355 rework 7 (R7-11): as on the loop path.
-        gemini.toolCall.args = withHostStatedDiscountCode(
-          tool.name,
-          gemini.toolCall.args,
-          hostStatedCode(history, tool.name, semanticMessage),
-        );
+        // #3355 ship-prep: as on the loop path, only with the switch on.
+        if (understandFirst) {
+          // #3355 rework 3b: same unspecified-target bind as the loop path.
+          gemini.toolCall.args = await bindDiscountTargetDefault(
+            tool.name,
+            gemini.toolCall.args,
+            userClient,
+            semanticMessage,
+          );
+          // #3355 rework 7 (R7-11): as on the loop path.
+          gemini.toolCall.args = withHostStatedDiscountCode(
+            tool.name,
+            gemini.toolCall.args,
+            hostStatedCode(history, tool.name, semanticMessage),
+          );
+        }
         gemini.toolCall.args = canonicalizeAgentProposalArgs(
           tool.name,
           gemini.toolCall.args,
@@ -5202,6 +5352,7 @@ ${boundedAgentContext}
           // #4304: a proposal canonicaliser's question (e.g. a discount code
           // that can't fit) is said in plain words before any card.
           return await commitTextTurn({
+            understandFirst,
             client: serviceClient,
             userId,
             conversationId,
@@ -5247,17 +5398,20 @@ ${boundedAgentContext}
         );
         // #3355 rework 1 (tester P1-4, I-ARI-STATED-SLOTS-PRESERVED): the
         // single-call path keeps what the host stated too, or asks.
-        const singleStatedSlots = await statedSlotStage({
-          toolName: tool.name,
-          toolArgs: gemini.toolCall.args,
-          parameters: tool.parameters,
-          history,
-          current: semanticMessage,
-          userClient,
-          modelStated: turnRoute.statedValues,
-        });
+        const singleStatedSlots: StatedSlotCheck = !understandFirst
+          ? { kind: "ok", args: gemini.toolCall.args, bound: [] }
+          : await statedSlotStage({
+            toolName: tool.name,
+            toolArgs: gemini.toolCall.args,
+            parameters: tool.parameters,
+            history,
+            current: semanticMessage,
+            userClient,
+            modelStated: turnRoute.statedValues,
+          });
         if (singleStatedSlots.kind === "ask") {
           return await commitTextTurn({
+            understandFirst,
             client: serviceClient,
             userId,
             conversationId,
@@ -5324,6 +5478,7 @@ ${boundedAgentContext}
         ) {
           // #3355 P6 (D-11/D-26): said in plain words before any card.
           return await commitTextTurn({
+            understandFirst,
             client: serviceClient,
             userId,
             conversationId,
@@ -5356,6 +5511,7 @@ ${boundedAgentContext}
       }
 
       return await commitPendingTurn({
+        understandFirst,
         client: serviceClient,
         pendingClient: serviceClient,
         userId,
@@ -5426,6 +5582,7 @@ ${boundedAgentContext}
       ? `${answer}\n\n${singleCallEscalationNote}`
       : answer;
     return await commitTextTurn({
+      understandFirst,
       client: serviceClient,
       userId,
       conversationId,
@@ -5824,6 +5981,11 @@ async function commitPendingTurn(args: {
   uiCapabilities?: AriUiCapabilitiesV2 | null;
   classification: string;
   startedAt: number;
+  /**
+   * #3355 ship-prep: the rollout switch. False: origin/main's card (no
+   * brand time zone, currency or discount titles added). Unset: on.
+   */
+  understandFirst?: boolean;
 }): Promise<Response> {
   const pendingActionId = crypto.randomUUID();
   const assistantMessageId = crypto.randomUUID();
@@ -5864,10 +6026,9 @@ async function commitPendingTurn(args: {
   const nowIso = new Date().toISOString();
   // #3355 rework 3 (R3-5): a card with a date or an amount shows it in the
   // brand's own time zone and currency before approval.
-  const brandDisplay = await brandDisplayContext(
-    args.pendingClient,
-    args.toolArgs,
-  );
+  const brandDisplay = args.understandFirst === false
+    ? null
+    : await brandDisplayContext(args.pendingClient, args.toolArgs);
   // #3355 P1 (D-5): the card and the rendition read the server's owner words
   // for this change; the presentation rides in server-owned proposal context,
   // which agent-confirm-action strips before authorization and execution.

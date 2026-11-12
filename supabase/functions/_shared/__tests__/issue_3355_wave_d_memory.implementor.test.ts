@@ -392,9 +392,16 @@ Deno.test("D1: agent-chat reads memory as the caller into <user_data>, not into 
     /readAriMemoryForTurn\(\{\s*caller: userClient,\s*brandId: activeBrand\?\.id \?\? null,\s*message: semanticMessage,\s*\}\)/,
   );
   assertMatch(chat, /memoryLines: ariMemoryContextLines\(turnMemory\)/);
-  assert(
-    !/memory_notes:/.test(chat),
-    "the 30-note dump left the system prompt",
+  // #3355 ship-prep: the 30-note dump is origin/main's, kept only on the
+  // rollout switch's off path; the on path's context has none.
+  assertMatch(
+    chat,
+    /understandFirst \? \{ onboarding_plan: onboardingPlan \?\? null \} : \{\s*memory_notes:/,
+  );
+  assertEquals(
+    [...chat.matchAll(/memory_notes:/g)].length,
+    1,
+    "the 30-note dump stays off-path only",
   );
   const memory = read("supabase/functions/_shared/ariMemory.ts");
   assert(!/service_role|serviceClient|SERVICE_ROLE/.test(memory));

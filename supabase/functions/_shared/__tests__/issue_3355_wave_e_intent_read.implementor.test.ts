@@ -532,7 +532,8 @@ Deno.test("E1: agent-chat reads intent once, before the flow engine, and feeds t
   assertEquals(chat.split("await readAriIntent(").length - 1, 1);
   assertMatch(chat, /\(await callGeminiStructured\(\{/);
   assertMatch(chat, /: injection\.flagged\s*\? "injection"/);
-  assertMatch(chat, /route: turnRoute\.flow,/);
+  // #3355 ship-prep: on the rollout switch's on path.
+  assertMatch(chat, /route: understandFirst\s*\? turnRoute\.flow\s*:/);
   assertMatch(chat, /\.\.\.turnRoute\.toolsetHints,/);
   assertMatch(chat, /intentRead: \{\s*modelCalls: intentResult\.modelCalls,/);
   assertMatch(chat, /modelStated: turnRoute\.statedValues,/);

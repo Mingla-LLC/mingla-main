@@ -74,6 +74,16 @@ export interface RunnerInput {
    * Undefined (the intent read failed): the Wave A re-read below decides.
    */
   flowAction?: "answer" | "park" | "cancel" | "side";
+  /**
+   * #3355 ship-prep — the "Ari understands first" rollout switch is off for
+   * this brand: origin/main's runner rules (811c033211). Typed words that are
+   * not the card's answer get the card's own notice (no parking), the "can
+   * wait" items are a card, a waiting change refuses a new request, and the
+   * run walks on past the draft instead of completing with a follow-up.
+   * [TRANSITIONAL] off path — exit: rollout ari-understand-first-3355 active
+   * at 100% for every brand.
+   */
+  legacy?: boolean;
 }
 
 export interface RunnerDeps {
@@ -643,6 +653,7 @@ async function advanceUnderLease(
     trigger: input.trigger,
     answered,
     ...(input.failed ? { failed: input.failed } : {}),
+    ...(input.legacy ? { legacy: true } : {}),
   });
 
   const commit = async (extra: Record<string, unknown>): Promise<FlowRun> => {
@@ -723,7 +734,7 @@ async function advanceUnderLease(
     // code, a refund, another kind of offering) is never taken as this form
     // card's answer (the FAVY10 sentence must not become an event's title or
     // start); it falls through to the re-read below, which parks the run.
-    const otherRequest = readFlowRequest(input.ownerText);
+    const otherRequest = input.legacy ? null : readFlowRequest(input.ownerText);
     const answersThisCard = input.flowAction === "answer" || !otherRequest ||
       otherRequest === "request" || otherRequest === def.key;
     if (
@@ -881,6 +892,7 @@ async function advanceUnderLease(
     // A run that already asked it (rec set) or a continuation run goes on.
     const follow = def.follow_up;
     if (
+      !input.legacy &&
       follow && step.key === follow.step && rec === undefined &&
       run.answers.follow_up_of === undefined && def.summarize
     ) {
@@ -968,7 +980,7 @@ async function advanceUnderLease(
       ) {
         // #3355 Wave A: a new request while a change waits on its card is
         // served, not refused; the pending card itself stays valid.
-        const request = readFlowRequest(input.ownerText);
+        const request = input.legacy ? null : readFlowRequest(input.ownerText);
         if (request) return await parkOrPass(request);
         return {
           kind: "notice",
@@ -1130,16 +1142,18 @@ async function advanceUnderLease(
         // #3355 Wave E: words the intent read called an answer are not
         // re-read as a request; the same words twice still never get the
         // same card twice.
-        const request = input.flowAction === "answer"
+        // #3355 ship-prep: the switch off keeps origin/main's notice.
+        const request = input.flowAction === "answer" || input.legacy
           ? null
           : readFlowRequest(input.ownerText);
         if (
-          request ||
-          sameOwnerText(openRecord?.data?.unmatched_text, input.ownerText)
+          !input.legacy &&
+          (request ||
+            sameOwnerText(openRecord?.data?.unmatched_text, input.ownerText))
         ) {
           return await parkOrPass(request ?? "repeated");
         }
-        if (openRecord) {
+        if (openRecord && !input.legacy) {
           setState(step.key, {
             ...openRecord,
             data: {
@@ -1195,7 +1209,9 @@ async function advanceUnderLease(
   // #3355 Wave A (A3): what can wait is one line here, with a link to Home
   // (a route-only button; it never posts an answer).
   const settledRun = { ...run, step_states: states };
-  const laterLine = canWaitLine(settledRun);
+  // #3355 ship-prep: the switch off keeps origin/main's summary (no line
+  // added here, no link).
+  const laterLine = input.legacy ? "" : canWaitLine(settledRun);
   const summaryLink = laterLine
     ? {
       question_id: newId(),

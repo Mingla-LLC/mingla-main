@@ -363,7 +363,9 @@ Deno.test("3b-1: both agent-chat proposal paths bind the target before #4304 can
   const binds = [...source.matchAll(/await bindDiscountTargetDefault\(/g)];
   assertEquals(binds.length, 2, "the loop path and the single-call path");
   for (const match of binds) {
-    const after = source.slice(match.index!, match.index! + 600);
+    // #3355 ship-prep: the bind sits inside the rollout switch's on-path
+    // block, so the canonicaliser follows a little further down.
+    const after = source.slice(match.index!, match.index! + 1200);
     assert(
       after.includes("canonicalizeAgentProposalArgs("),
       "the canonicaliser runs right after the bind",
@@ -466,9 +468,12 @@ Deno.test("3b-2: every model call that reads results passes its contents through
     const calls = [...source.matchAll(/await callGemini\(\{/g)];
     assert(calls.length > 0, path);
     for (const match of calls) {
-      const head = source.slice(match.index!, match.index! + 200);
+      const head = source.slice(match.index!, match.index! + 260);
+      // #3355 ship-prep: on the rollout switch's on path; the off path keeps
+      // origin/main's contents.
       assert(
-        /contents:\s*withAriLocalTimesForModel\(/.test(head),
+        /contents:\s*(?:understandFirst\s*\?\s*)?withAriLocalTimesForModel\(/
+          .test(head),
         `${path}: a callGemini without brand-local times:\n${head}`,
       );
     }

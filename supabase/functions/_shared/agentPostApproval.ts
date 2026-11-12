@@ -5,6 +5,7 @@
 
 import { ARI_STOPPED_HERE_LINE, stripPromptEcho } from "./ariOwnerCopy.ts";
 import { readAriUnderstandFirst } from "./ariRollout.ts";
+import { continueAfterApprovedActionLegacy } from "./agentPostApprovalLegacy.ts";
 import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
@@ -73,6 +74,11 @@ export type PostApprovalContinuation =
      * filled from the host's own words, exactly as agent-chat does.
      */
     goalText?: string;
+    /**
+     * #3355 ship-prep: built by origin/main's continuation (the rollout
+     * switch is off); the caller canonicalises it as origin/main does.
+     */
+    legacy?: true;
   };
 
 function contentText(value: unknown): string {
@@ -118,7 +124,24 @@ export async function continueAfterApprovedAction(args: {
    * Unset: read for the approved card's brand.
    */
   understandFirst?: boolean;
+  /**
+   * #3355 ship-prep: the approved card's brand (its pending action's
+   * related brand), for the switch read when the args carry no brand_id.
+   */
+  brandId?: string | null;
 }): Promise<PostApprovalContinuation | null> {
+  // #3355 ship-prep: with the switch off for this brand, origin/main's
+  // continuation runs unchanged (agentPostApprovalLegacy.ts).
+  const switchBrandId = args.brandId ??
+    (typeof args.toolArgs?.brand_id === "string"
+      ? args.toolArgs.brand_id
+      : null);
+  const understandFirst = args.understandFirst ??
+    await readAriUnderstandFirst(args.serviceClient, switchBrandId);
+  if (!understandFirst) {
+    const legacy = await continueAfterApprovedActionLegacy(args);
+    return legacy?.kind === "proposal" ? { ...legacy, legacy: true } : legacy;
+  }
   // Ticket pricing's confirmed operation returns the exact canonical tier
   // that its SQL executor read back. Use that receipt directly; a second model
   // pass adds latency and can replace a verified result with an unsafe claim.
@@ -375,11 +398,7 @@ export async function continueAfterApprovedAction(args: {
     }));
     return { kind: "text", text: null, observations: loop.observations };
   }
-  const checked = args.understandFirst ??
-    await readAriUnderstandFirst(
-      args.serviceClient,
-      typeof brandId === "string" ? brandId : null,
-    );
+  const checked = understandFirst;
   if (!checked) {
     const unchecked = dedupeReplySentences(continuationText);
     return {

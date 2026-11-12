@@ -401,12 +401,34 @@ function publicSocialType(url: URL): "social" | null {
     : null;
 }
 
-function catalogue(): Array<{ name: string; description: string }> {
+/**
+ * #3355 ship-prep — the capability map as origin/main lists it (811c033211),
+ * for the rollout switch's off path: no Feature Guide search, and the memory
+ * write is save_memory_note. [TRANSITIONAL] off path — exit: rollout
+ * ari-understand-first-3355 active at 100% for every brand.
+ */
+const LEGACY_LOCAL_CAPABILITIES: ReadonlyArray<readonly [string, string]> =
+  LOCAL_CAPABILITIES.flatMap((
+    [name, description],
+  ): Array<readonly [string, string]> =>
+    name === "search_mingla_guide" ? [] : name === "remember_note"
+      ? [[
+        "save_memory_note",
+        "Save an approved preference, correction, business fact or workflow.",
+      ]]
+      : [[name, description]]
+  );
+
+function catalogue(
+  legacy = false,
+): Array<{ name: string; description: string }> {
   const all = [
     ...DOMAIN_TOOLS.map(({ name, description }) => ({ name, description })),
     ...SITE_AGENT_TOOLS.map(({ name, description }) => ({ name, description })),
     ...READINESS_TOOLS.map(({ name, description }) => ({ name, description })),
-    ...LOCAL_CAPABILITIES.map(([name, description]) => ({ name, description })),
+    ...(legacy ? LEGACY_LOCAL_CAPABILITIES : LOCAL_CAPABILITIES).map((
+      [name, description],
+    ) => ({ name, description })),
     {
       name: "create_brand",
       description: "Create a host brand after confirmation.",
@@ -443,10 +465,12 @@ function capabilityTerms(query: string): string[] {
 export function searchAriCapabilities(
   query: string,
   limit = 12,
+  /** #3355 ship-prep: the off path's capability map (origin/main's). */
+  options: { legacy?: boolean } = {},
 ): Array<{ name: string; description: string; score: number }> {
   const terms = capabilityTerms(query);
   const minimumCoverage = terms.length <= 1 ? 1 : 2;
-  return catalogue().map((item) => {
+  return catalogue(options.legacy === true).map((item) => {
     const haystack = new Set(
       `${item.name} ${item.description}`.toLowerCase().match(/[a-z0-9]{3,}/g) ??
         [],
@@ -669,6 +693,35 @@ const searchCapabilities: AgentToolDefinition = {
 };
 
 /**
+ * #3355 ship-prep — search_capabilities as origin/main answers it (the
+ * legacy capability map), for the rollout switch's off path only.
+ */
+export const ARI_LEGACY_SEARCH_CAPABILITIES: AgentToolDefinition = {
+  name: "search_capabilities",
+  description:
+    "Search Mingla capabilities before concluding that Ari cannot do something.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["query"],
+    properties: {
+      query: { type: "string", minLength: 2, maxLength: 300 },
+      limit: { type: "integer", minimum: 1, maximum: 20 },
+    },
+  },
+  executor: (args) =>
+    Promise.resolve({
+      query: requiredText(args.query, "query", 300),
+      matches: searchAriCapabilities(
+        String(args.query),
+        Number(args.limit ?? 12),
+        { legacy: true },
+      ),
+      total_capabilities: catalogue(true).length,
+    }),
+};
+
+/**
  * #3355 Wave B (B1) — Ari reads the Feature Guide (public.product_capabilities)
  * through ari_search_feature_guide, as the signed-in caller. The guide's
  * effective status decides how Ari may speak (how_to_say).
@@ -883,6 +936,43 @@ const listMemoryNotes: AgentToolDefinition = {
 // host sees and deletes every note in Ari settings), so it runs in the loop
 // without a card (ARI_10X_AGENT_STATE), through ari_remember_note with the
 // caller's JWT. See ariMemory.ts.
+/**
+ * #3355 ship-prep — the pre-#3355 memory write, offered only on the rollout
+ * switch's off path (ariRolloutTurn.ts) so a brand outside the rollout sees
+ * the tool production runs today. Not in ARI_10X_TOOLS: the current turn
+ * offers remember_note instead. Verbatim from origin/main 811c033211.
+ * [TRANSITIONAL] off-path tool — exit: rollout ari-understand-first-3355
+ * active at 100% for every brand.
+ */
+export const ARI_LEGACY_SAVE_MEMORY_NOTE: AgentToolDefinition = {
+  name: "save_memory_note",
+  description:
+    "Save an explicit approved preference, correction, business fact or working style. Do not infer sensitive facts.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["kind", "content"],
+    properties: {
+      brand_id: { type: "string", format: "uuid", nullable: true },
+      kind: {
+        type: "string",
+        enum: ["preference", "correction", "business_fact", "workflow"],
+      },
+      content: { type: "string", minLength: 1, maxLength: 1200 },
+      evidence_message_id: { type: "string", format: "uuid", nullable: true },
+    },
+  },
+  executor: async (args, client) =>
+    await callRpc(client, "ari_memory_save", {
+      p_brand_id: isUuid(args.brand_id) ? args.brand_id : null,
+      p_kind: args.kind,
+      p_content: requiredText(args.content, "content", 1200),
+      p_evidence_message_id: isUuid(args.evidence_message_id)
+        ? args.evidence_message_id
+        : null,
+    }),
+};
+
 const rememberNote: AgentToolDefinition = {
   name: "remember_note",
   description:

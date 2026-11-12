@@ -31,6 +31,9 @@ const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   update_onboarding_plan: "Save onboarding progress",
   list_memory_notes: "Read approved business memory",
   remember_note: "Save a note for later",
+  // #3355 ship-prep: the rollout switch's off path still offers origin/main's
+  // memory write. [TRANSITIONAL] exit: rollout active at 100%.
+  save_memory_note: "Save the approved preference",
   forget_memory_note: "Remove the saved preference",
   manage_agent_job: "Save task progress",
 });

@@ -810,7 +810,8 @@ export async function authorizeAgentTool(
   if (!isUuid(userId)) {
     throw new ToolError("ROLE_DENIED", "Authentication is required");
   }
-  const expected = AGENT_TOOL_AUTHORIZATION[tool.name];
+  const expected = AGENT_TOOL_AUTHORIZATION[tool.name] ??
+    ARI_LEGACY_TOOL_AUTHORIZATION[tool.name];
   const expectedAdActions = expected?.hostAdActions ?? [];
   const declaredAdActions = tool.hostAdActions ?? [];
   if (
@@ -1115,6 +1116,19 @@ function validateSchemaValue(value: unknown, rule: any, path: string): void {
   }
 }
 
+/**
+ * #3355 ship-prep — the authorization of the pre-#3355 tools offered only on
+ * the rollout switch's off path (ariRolloutTurn.ts). Kept out of
+ * AGENT_TOOL_AUTHORIZATION so the current registry stays exact.
+ * [TRANSITIONAL] off-path tools — exit: rollout ari-understand-first-3355
+ * active at 100% for every brand.
+ */
+export const ARI_LEGACY_TOOL_AUTHORIZATION: Readonly<
+  Record<string, AgentAuthorizationDeclaration>
+> = Object.freeze({
+  save_memory_note: role("self", "optional_brand"),
+});
+
 export function secureAgentTools(
   definitions: AgentToolDefinition[],
 ): AgentTool[] {
@@ -1150,6 +1164,38 @@ export function secureAgentTools(
           userId,
         );
         return await rawExecutor(args, client, userId, context);
+      },
+    };
+  });
+}
+
+/**
+ * The off path's legacy tools (ariRolloutTurn.ts), each re-authorized on
+ * every call exactly like a registry tool. A legacy variant of a current tool
+ * keeps that tool's declaration.
+ */
+export function secureLegacyAgentTools(
+  definitions: AgentToolDefinition[],
+): AgentTool[] {
+  return definitions.map((definition) => {
+    const declaration = ARI_LEGACY_TOOL_AUTHORIZATION[definition.name] ??
+      AGENT_TOOL_AUTHORIZATION[definition.name];
+    if (!declaration) {
+      throw new Error(
+        `Missing Ari legacy authorization declaration: ${definition.name}`,
+      );
+    }
+    const contract = {
+      ...declaration,
+      name: definition.name,
+      parameters: definition.parameters,
+    };
+    return {
+      ...definition,
+      ...declaration,
+      executor: async (args, client, userId, context) => {
+        await authorizeAgentTool(contract, args, client, userId);
+        return await definition.executor(args, client, userId, context);
       },
     };
   });

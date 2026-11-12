@@ -555,9 +555,26 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<Record<string, ToolOwnerCopy>> =
   });
 
 /** Owner words for a tool, or the neutral row when a tool has none. */
+/**
+ * #3355 ship-prep — owner words for origin/main's memory write, offered only
+ * on the rollout switch's off path (it never makes a card, so it is not in
+ * the Host card table). [TRANSITIONAL] exit: rollout
+ * ari-understand-first-3355 active at 100% for every brand.
+ */
+const LEGACY_TOOL_OWNER_COPY: Readonly<Record<string, ToolOwnerCopy>> = Object
+  .freeze({
+    save_memory_note: row(
+      "Remember this",
+      "Something to remember",
+      "Saved to memory",
+    ),
+  });
+
 export function toolOwnerCopy(toolName: string): ToolOwnerCopy {
   return Object.prototype.hasOwnProperty.call(WRITE_TOOL_OWNER_COPY, toolName)
     ? WRITE_TOOL_OWNER_COPY[toolName]
+    : Object.prototype.hasOwnProperty.call(LEGACY_TOOL_OWNER_COPY, toolName)
+    ? LEGACY_TOOL_OWNER_COPY[toolName]
     : row("Review this change", "Review this change", "Saved in Mingla");
 }
 

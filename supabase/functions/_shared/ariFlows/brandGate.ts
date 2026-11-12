@@ -194,6 +194,77 @@ function canWaitItems(
  * line with a link to Home, and they stay on Home's to-do list. `onAnswer`
  * stays so a card shown before this change can still be answered.
  */
+const MAX_FIX_OPTIONS = 3;
+
+/**
+ * #3355 ship-prep — origin/main's "can wait" step (811c033211), for the
+ * rollout switch's off path: the items are one card with "Not now, keep
+ * going" and up to three "Add …" handoffs. [TRANSITIONAL] off path — exit:
+ * rollout ari-understand-first-3355 active at 100% for every brand.
+ */
+function legacyCanWaitProbe(
+  ctx: FlowContext,
+  readiness: BrandReadiness,
+  waiting: ReturnType<typeof canWaitItems>,
+): ProbeResult {
+  const action = ctx.def.readiness.publish;
+  const handedOff = ctx.state?.state === "human_action"
+    ? findItem(readiness, ctx.state.item_key)
+    : undefined;
+  if (handedOff && handedOff.severity !== "done") {
+    return {
+      done: false,
+      ask: itemHandoff({
+        item: handedOff,
+        noun: ctx.def.noun,
+        title: `Add ${ownerItemNoun(handedOff.label)}`,
+        lead: `${handedOff.label} isn't set yet.`,
+        allowNotNow: true,
+      }),
+    };
+  }
+  const note = handedOff
+    ? `I checked; ${ownerItemNoun(handedOff.label)} is there now.`
+    : undefined;
+  if (waiting.length === 0) {
+    return {
+      done: true,
+      evidence: gateEvidence(readiness, action, { can_wait: [] }),
+      note,
+    };
+  }
+  const labels = waiting.map((item) => item.label);
+  const fixable = waiting.filter((item) =>
+    item.fix.can_caller_fix && !!item.fix.route
+  ).slice(0, MAX_FIX_OPTIONS);
+  return {
+    done: false,
+    note,
+    ask: {
+      kind: "question",
+      reuse_key: `can_wait:${waiting.map((item) => item.key).join(",")}`,
+      title: `Before your ${ctx.def.noun} goes live`,
+      text:
+        `These would make your ${ctx.def.noun} page stronger, but none of them stops me starting it: ${
+          listWords(labels)
+        }. If you skip them for now they stay on your Home to-do list.`,
+      options: [
+        { id: "not_now", label: "Not now, keep going" },
+        ...fixable.map((item) => ({
+          id: `fix:${item.key}`,
+          label: `Add ${lowerFirst(item.label)}`.slice(0, 100),
+        })),
+      ],
+      items: waiting.map((item) => ({
+        key: item.key,
+        label: item.label,
+        blocks: false,
+      })),
+      record: { set_aside: waiting.map((item) => item.key) },
+    },
+  };
+}
+
 export const brandCanWaitStep: StepDefinition = {
   key: "brand_can_wait",
   title: "Things that can wait",
@@ -204,6 +275,8 @@ export const brandCanWaitStep: StepDefinition = {
     const action = ctx.def.readiness.publish;
     const readiness = await ctx.deps.readiness(action);
     const waiting = canWaitItems(ctx, readiness, action);
+    // #3355 ship-prep: the rollout switch is off — origin/main's step.
+    if (ctx.legacy) return legacyCanWaitProbe(ctx, readiness, waiting);
     return {
       done: true,
       evidence: gateEvidence(readiness, action, {

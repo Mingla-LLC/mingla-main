@@ -165,7 +165,11 @@ Deno.test("B3: the turn's toolset comes from the intent read — classifier hint
   assertStringIncludes(chat, "readFlowRequest(semanticMessage),");
   // #3355 Wave E: the loop's declarations are the generated tool
   // descriptions plus, when a setup may start, the start_flow control.
-  assertStringIncludes(chat, "...ariToolDeclarations(selectedTools),");
+  // #3355 ship-prep: chosen by the rollout switch (ariRolloutTurn.ts).
+  assertStringIncludes(
+    chat,
+    "...ariTurnToolDeclarations(selectedTools, understandFirst),",
+  );
   assertStringIncludes(chat, "...startFlowDeclarations,");
 });
 
@@ -251,5 +255,9 @@ Deno.test("B4: a failed read inside the loop is a model-visible observation with
   const chat = Deno.readTextFileSync(
     new URL("supabase/functions/agent-chat/index.ts", ROOT),
   );
-  assertStringIncludes(chat, "normalizeError: normalizeAriToolError,");
+  // #3355 ship-prep: the switch off drops user_reason / next_step.
+  assertStringIncludes(
+    chat,
+    "ariTurnToolError(normalizeAriToolError(error), understandFirst),",
+  );
 });

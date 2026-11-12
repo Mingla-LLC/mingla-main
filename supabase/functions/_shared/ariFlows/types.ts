@@ -437,6 +437,11 @@ export interface FlowContext {
    * write was refused (nothing saved). `message` is the plain reason.
    */
   failed?: { tool_name: string; message: string };
+  /**
+   * #3355 ship-prep — the "Ari understands first" rollout switch is off for
+   * this brand: steps keep origin/main's behaviour (the "can wait" card).
+   */
+  legacy?: boolean;
 }
 
 export type AskSpec = {

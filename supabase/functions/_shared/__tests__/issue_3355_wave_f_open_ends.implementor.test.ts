@@ -623,7 +623,8 @@ Deno.test("F live: a reply that announces a proposal and makes none goes back on
   ) assert(!announcesWriteWithoutCall(text), text);
   assertMatch(
     read(AGENT_CHAT),
-    /: announcesWriteWithoutCall\(text\) && !announcedWriteBounced &&\s*\(announcedWriteBounced = true\)\s*\? \{\s*code: "WRITE_PROPOSAL_REQUIRED"/,
+    // #3355 ship-prep: on the rollout switch's on path only.
+    /: understandFirst && announcesWriteWithoutCall\(text\) &&\s*!announcedWriteBounced &&\s*\(announcedWriteBounced = true\)\s*\? \{\s*code: "WRITE_PROPOSAL_REQUIRED"/,
   );
 });
 

@@ -365,21 +365,34 @@ Deno.test("E/D3a: agent-chat has no pre-model setup start or keyword planner ent
   const edge = read("supabase/functions/_shared/ariFlows/edge.ts");
   const code = (src: string) => src.replace(/\/\/[^\n]*/g, "");
   // The keyword starts are gone from the engine's pre-model say.
+  // #3355 ship-prep: origin/main's typed starts survive only on the rollout
+  // switch's off path (legacyTypedStart), behind args.legacy.
   const decide = code(edge.slice(
     edge.indexOf("export async function decideFlowTurn("),
-    edge.indexOf("export async function startFlowFromTool("),
+    edge.indexOf("async function legacyTypedStart("),
   ));
   assertNotMatch(decide, /classifyOfferingIntent\(|isContactImportIntent\(/);
   assertNotMatch(decide, /store\.start\(/);
-  // agent-chat: no keyword planner entry, no typed Website start.
-  assertNotMatch(code(chat), /isCreateEventPlanningRequest\(/);
-  assertNotMatch(code(chat), /isWebsiteSetupRequest\(/);
-  assertMatch(chat, /\(activeEventPlan \|\| turnRoute\.planner\)/);
+  assertMatch(
+    decide,
+    /if \(!args\.legacy\) return \{ kind: "none" \};\s*return await legacyTypedStart\(args, store, deps\);/,
+  );
+  // agent-chat: no keyword planner entry, no typed Website start (on path).
+  assertEquals(
+    [...code(chat).matchAll(/isCreateEventPlanningRequest\(/g)].length,
+    1,
+  );
   assertMatch(
     chat,
-    /websiteSetup: body\.workflow_context === "website_setup",/,
+    /const eventPlannerRequest = understandFirst\s*\? turnRoute\.planner\s*: isCreateEventPlanningRequest\(semanticMessage\);/,
   );
-  assertMatch(chat, /route: turnRoute\.flow,/);
+  assertEquals([...code(chat).matchAll(/isWebsiteSetupRequest\(/g)].length, 1);
+  assertMatch(
+    chat,
+    /websiteSetup: body\.workflow_context === "website_setup" \|\|\s*\(!understandFirst && isWebsiteSetupRequest\(semanticMessage\)\),/,
+  );
+  assertMatch(chat, /\(activeEventPlan \|\| eventPlannerRequest\)/);
+  assertMatch(chat, /route: understandFirst\s*\? turnRoute\.flow\s*:/);
   // start_flow is offered, classified as flow, and handled by the engine.
   assertMatch(chat, /\.\.\.startFlowDeclarations,/);
   assertMatch(chat, /call\.name === ARI_START_FLOW_TOOL/);

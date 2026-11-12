@@ -150,6 +150,25 @@ export function ariToolsetsForHints(
   return [...selected];
 }
 
+/**
+ * #3355 ship-prep — origin/main's toolset inference (811c033211), for the
+ * rollout switch's off path: no classifier hints, and the memory toolset only
+ * on its original words. [TRANSITIONAL] off path — exit: rollout
+ * ari-understand-first-3355 active at 100% for every brand.
+ */
+const LEGACY_MEMORY_INTENT =
+  /\b(remember|preference|correction|forget|last time)\b/i;
+
+export function inferLegacyAriToolsets(text: string): AriToolsetKey[] {
+  const selected = new Set<AriToolsetKey>(["core"]);
+  for (const [key, pattern] of INTENT_PATTERNS) {
+    const legacyPattern = key === "memory" ? LEGACY_MEMORY_INTENT : pattern;
+    if (legacyPattern.test(text)) selected.add(key);
+  }
+  if (selected.size === 1) selected.add("brand");
+  return [...selected];
+}
+
 export function inferAriToolsets(
   text: string,
   hints: readonly (string | null | undefined)[] = [],
@@ -817,6 +836,8 @@ export function ariDeterministicReadPlan(
   taskTitle?: string | null,
   hasAttachments = false,
   campaignDraftId?: string | null,
+  /** #3355 ship-prep: the rollout switch's off path keeps origin/main's lanes. */
+  options: { legacy?: boolean } = {},
 ): AriDeterministicReadPlan | null {
   if (brandId && campaignDraftId && needsAriCampaignDraftReview(text)) {
     return {
@@ -943,7 +964,7 @@ export function ariDeterministicReadPlan(
       .test(text) &&
     // #3355 rework 3 (live answer eval): "open a support ticket" is a
     // support request for the support tools, never an event-capability read.
-    !ARI_SUPPORT_REQUEST.test(text)
+    (options.legacy === true || !ARI_SUPPORT_REQUEST.test(text))
   ) {
     return {
       intent: "listing_capabilities",

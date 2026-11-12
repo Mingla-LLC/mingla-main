@@ -12,6 +12,7 @@ import {
 } from "../agentReadinessTools.ts";
 import type { ReadinessAction } from "../readinessCatalog.ts";
 import {
+  classifyOfferingIntent,
   classifyReadinessQuestion,
   findFlowDefinition,
   intentWantsInstallments,
@@ -24,7 +25,9 @@ import { WEBSITE_SETUP_FLOW, WEBSITE_SETUP_FLOW_KEY } from "./websiteSetup.ts";
 import {
   CONTACT_LIST_STEP,
   CONTACT_REVIEW_STEP,
+  IMPORT_CONTACTS_FLOW,
   IMPORT_CONTACTS_FLOW_KEY,
+  isContactImportIntent,
 } from "./contactImport.ts";
 import { CONTACT_IMPORT_MAPPING_VERSION } from "../contactImportContract.ts";
 import {
@@ -41,6 +44,7 @@ import {
   type RunnerTrigger,
 } from "./runner.ts";
 import type { FlowRequestHint } from "./requestRead.ts";
+import { readAriUnderstandFirst } from "../ariRollout.ts";
 import {
   createFlowStore,
   FlowConflict,
@@ -1121,6 +1125,16 @@ export interface FlowTurnArgs {
   /** #3355 Wave E — the turn's intent route (default: the hint route). */
   route?: FlowTurnRoute;
   /**
+   * #3355 ship-prep — the "Ari understands first" rollout switch is off for
+   * this brand: typed words start a setup exactly as origin/main does (the
+   * contact-import and offering keyword starts, with origin/main's
+   * classifier), and the runner keeps origin/main's rules for an open card
+   * (no parking, the "can wait" step, no completion follow-up).
+   * [TRANSITIONAL] off path — exit: rollout ari-understand-first-3355 active
+   * at 100% for every brand.
+   */
+  legacy?: boolean;
+  /**
    * #3355 — this turn's attachments as text (a contact list attached in the
    * chat). Read only when the import flow needs them.
    */
@@ -1234,6 +1248,7 @@ async function importFilesTurn(
       answer: read.answer,
       ownerText: read.answer.display_text,
       brandName: args.brand!.name,
+      ...(args.legacy ? { legacy: true } : {}),
     }),
   );
 }
@@ -1330,6 +1345,7 @@ export async function decideFlowTurn(
           answer: args.flowAnswer,
           ownerText: args.flowAnswer.display_text,
           brandName: args.brand.name,
+          ...(args.legacy ? { legacy: true } : {}),
         }),
       );
     }
@@ -1345,6 +1361,7 @@ export async function decideFlowTurn(
         ...(args.escalate ? { escalate: true } : {}),
         // #3355 Wave E: the intent read's flow_action is primary.
         ...(route.flowAction ? { flowAction: route.flowAction } : {}),
+        ...(args.legacy ? { legacy: true } : {}),
       });
       const website = live.flow_key === WEBSITE_SETUP_FLOW_KEY;
       // #2830 P4: "Start / continue Website setup" points at the open card.
@@ -1393,7 +1410,10 @@ export async function decideFlowTurn(
     // a setup here. The contact-import and offering keyword starts that lived
     // here are hints now; the model starts a setup with start_flow
     // (startFlowFromTool below).
-    return { kind: "none" };
+    if (!args.legacy) return { kind: "none" };
+    // #3355 ship-prep — the rollout switch is off: origin/main's keyword
+    // starts, verbatim (811c033211).
+    return await legacyTypedStart(args, store, deps);
   } catch (error) {
     if (
       error instanceof FlowEngineUnavailable || error instanceof FlowConflict
@@ -1468,6 +1488,72 @@ async function completedRunFollowUp(
       answer,
       ownerText: answer.display_text,
       brandName: args.brand.name,
+    }),
+  );
+}
+
+/**
+ * #3355 ship-prep — origin/main's typed setup starts, for the rollout
+ * switch's off path: "Import my contacts" starts the contact import, and the
+ * keyword offering classifier (origin/main's, without the Wave A
+ * non-offering rule) starts an offering setup.
+ */
+async function legacyTypedStart(
+  args: FlowTurnArgs,
+  store: FlowStore,
+  deps: { store: FlowStore; probes: FlowProbeDeps },
+): Promise<FlowTurnDecision> {
+  if (!args.brand) return { kind: "none" };
+  if (args.otherLaneActive) return { kind: "none" };
+  // #3355: "Import my contacts" / "Upload a contact list".
+  if (isContactImportIntent(args.message)) {
+    const def = IMPORT_CONTACTS_FLOW;
+    const started = await store.start({
+      brandId: args.brand.id,
+      flowKey: def.key,
+      flowVersion: def.version,
+      concurrency: def.concurrency,
+      conversationId: args.conversationId,
+      answers: {},
+    });
+    const first = await runFlowStep(deps, {
+      run: started.run,
+      trigger: "turn",
+      brandName: args.brand.name,
+      legacy: true,
+    });
+    // The list attached to the same message is read straight away.
+    if (first.kind === "artefact") {
+      const filesTurn = await importFilesTurn(args, deps, first.run);
+      if (filesTurn) return filesTurn;
+    }
+    return decisionFromOutcome(first);
+  }
+  const flowKey = classifyOfferingIntent(args.message, { legacy: true });
+  if (!flowKey) return { kind: "none" };
+  const def = findFlowDefinition(flowKey);
+  if (!def) return { kind: "none" };
+  const started = await store.start({
+    brandId: args.brand.id,
+    flowKey: def.key,
+    flowVersion: def.version,
+    concurrency: def.concurrency,
+    conversationId: args.conversationId,
+    answers: {
+      intent_text: { value: args.message.slice(0, 600), source: "owner" },
+      paid: { value: intentWantsPaid(args.message), source: "owner" },
+      // #3355 P6: deposits/instalments are the one paid path payouts block.
+      ...(def.key === "create_trip" && intentWantsInstallments(args.message)
+        ? { installments: { value: true, source: "owner" as const } }
+        : {}),
+    },
+  });
+  return decisionFromOutcome(
+    await runFlowStep(deps, {
+      run: started.run,
+      trigger: "turn",
+      brandName: args.brand.name,
+      legacy: true,
     }),
   );
 }
@@ -1714,6 +1800,7 @@ async function startWebsiteSetup(
       run,
       trigger: "turn",
       brandName: args.brand!.name,
+      ...(args.legacy ? { legacy: true } : {}),
     }),
   );
   if (decision.kind === "reply" && started.created) {
@@ -1937,6 +2024,11 @@ export async function runFlowForConversation(args: {
   probes?: FlowProbeDeps;
   /** #2830 — see FlowResearch. */
   research?: FlowResearch;
+  /**
+   * #3355 ship-prep — FlowTurnArgs.legacy. Unset: read from the rollout
+   * switch for the run's brand.
+   */
+  legacy?: boolean;
 }): Promise<{ outcome: RunnerOutcome | null; run: FlowRun | null }> {
   const store = args.store ?? createFlowStore(args.service, args.userId);
   try {
@@ -1944,6 +2036,8 @@ export async function runFlowForConversation(args: {
     if (!run || !LIVE_FLOW_STATUSES.has(run.status)) {
       return { outcome: null, run };
     }
+    const legacy = args.legacy ??
+      !(await readAriUnderstandFirst(args.service, args.brand.id));
     const outcome = await runFlowStep({
       store,
       probes: args.probes ?? buildFlowProbeDeps(
@@ -1960,6 +2054,7 @@ export async function runFlowForConversation(args: {
       ...(args.failed ? { failed: args.failed } : {}),
       ...(args.requireStatus ? { requireStatus: args.requireStatus } : {}),
       brandName: args.brand.name,
+      ...(legacy ? { legacy: true } : {}),
     });
     return { outcome, run: outcome.run };
   } catch (error) {

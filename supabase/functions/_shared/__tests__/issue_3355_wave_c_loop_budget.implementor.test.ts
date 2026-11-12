@@ -11,7 +11,7 @@
 import {
   assert,
   assertEquals,
-  assertStringIncludes,
+  assertMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
@@ -123,13 +123,16 @@ Deno.test("C3: the 55 s deadline still wins over the step and tool budget", asyn
 
 Deno.test("C3: agent-chat uses ariChatLoopBudget for the main loop, counting required pre-reads", () => {
   const source = read("supabase/functions/agent-chat/index.ts");
-  assertStringIncludes(
+  // #3355 ship-prep: on the rollout switch's on path; with the switch off
+  // the turn keeps origin/main's budget (the loop default, or the local
+  // lane's own), as production runs today.
+  assertMatch(
     source,
-    'budget: ariChatLoopBudget({\n          localModelEnabled: Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true",\n          requiredReads: initialCalls.length +',
+    /budget: !understandFirst\s*\? Deno\.env\.get\("ARI_LOCAL_MODEL_ENABLED"\) === "true"\s*\? \{ \.\.\.ARI_LOCAL_LOOP_BUDGET \}\s*: undefined\s*: ariChatLoopBudget\(\{\s*localModelEnabled:\s*Deno\.env\.get\("ARI_LOCAL_MODEL_ENABLED"\) === "true",\s*requiredReads: initialCalls\.length \+/,
   );
   assert(
     !/budget: Deno\.env\.get\("ARI_LOCAL_MODEL_ENABLED"\) === "true"\s*\?\s*\{\s*deadlineMs: 115_000/
       .test(source),
-    "the old local-only budget with an undefined production fallthrough is gone",
+    "the old inline local-only budget is gone",
   );
 });

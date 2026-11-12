@@ -664,7 +664,8 @@ Deno.test("R3-4: the continuation's words after a confirmed write are checked ag
   );
   assertMatch(
     confirm,
-    /toolArgs: finalArgs,\s+\}\);\s+if \(continuation\?\.kind === "proposal"\)/,
+    // #3355 ship-prep: plus the approved card's brand for the switch read.
+    /toolArgs: finalArgs,\s+brandId: pending\.related_brand_id \?\? null,\s+\}\);\s+if \(continuation\?\.kind === "proposal"\)/,
   );
   assertMatch(
     confirm,

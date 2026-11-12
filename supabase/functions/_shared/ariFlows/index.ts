@@ -255,12 +255,19 @@ function createsNonOffering(normalized: string): boolean {
  * #3355 Wave A: a create verb whose object is a non-offering thing (a code,
  * a ticket tier, a refund…) is not an offering intent either.
  */
-export function classifyOfferingIntent(text: string): OfferingFlowKey | null {
+export function classifyOfferingIntent(
+  text: string,
+  /**
+   * #3355 ship-prep: the rollout switch's off path keeps origin/main's
+   * classifier (without the Wave A non-offering rule).
+   */
+  options: { legacy?: boolean } = {},
+): OfferingFlowKey | null {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized || normalized.length > 600) return null;
   if (QUESTION_LEAD.test(normalized)) return null;
   if (NOT_A_CREATE.test(normalized)) return null;
-  if (createsNonOffering(normalized)) return null;
+  if (!options.legacy && createsNonOffering(normalized)) return null;
   const verb = CREATE_VERB.exec(normalized);
   if (!verb) return null;
   let best: { key: OfferingFlowKey; index: number } | null = null;

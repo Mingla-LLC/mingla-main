@@ -1448,6 +1448,7 @@ async function handleConfirmAction(args: {
           toolName: tool.name,
           result,
           toolArgs: finalArgs,
+          brandId: pending.related_brand_id ?? null,
         });
         if (continuation?.kind === "proposal") {
           const nextTool = findTool(continuation.toolName);
@@ -1456,11 +1457,21 @@ async function handleConfirmAction(args: {
           } else {
             // #3355 rework 4 (R4-7): the same discount fill-in as agent-chat
             // before #4304 canonicalises; a question replaces the card.
-            continuation = await prepareContinuationProposal({
-              continuation,
-              client: userClient,
-              canonicalize: canonicalizeAgentProposalArgs,
-            });
+            // #3355 ship-prep: origin/main's canonicalisation when the
+            // continuation came from the switch's off path.
+            continuation = continuation.legacy
+              ? {
+                ...continuation,
+                toolArgs: canonicalizeAgentProposalArgs(
+                  nextTool.name,
+                  continuation.toolArgs,
+                ),
+              }
+              : await prepareContinuationProposal({
+                continuation,
+                client: userClient,
+                canonicalize: canonicalizeAgentProposalArgs,
+              });
             if (continuation.kind === "proposal") {
               await authorizeAgentTool(
                 nextTool,

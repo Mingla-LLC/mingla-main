@@ -206,7 +206,13 @@ Deno.test("I-ARI-HANDOFF-FIXABLE runtime: a route outside the App Map is dropped
 
 Deno.test("I-ARI-HANDOFF-FIXABLE runtime: agent-chat runs every committed reply through the route gate", () => {
   const chat = read("supabase/functions/agent-chat/index.ts");
-  assertStringIncludes(chat, "const routeGuard = guardAriReplyRoutes({");
+  // #3355 ship-prep: on the rollout switch's on path (unset = on); the off
+  // path keeps origin/main's text.
+  assertStringIncludes(chat, ": guardAriReplyRoutes({");
+  assertStringIncludes(
+    chat,
+    "const legacyText = unguardedArgs.understandFirst === false;",
+  );
   assert(
     /async function commitTextTurn\(\s*unguardedArgs: CommitTextTurnArgs,/.test(
       chat,
