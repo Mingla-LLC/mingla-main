@@ -179,7 +179,7 @@ BEGIN
   IF NEW.status = 'done' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'done') THEN
     IF NEW.closed_via = 'system'
        OR COALESCE(current_setting('ops.review_confirmed', true), '') = NEW.id::text
-       OR (NEW.plan_step IS NOT NULL AND COALESCE(current_setting('ops.plan_sync', true), '') = 'on')
+       OR (NEW.plan_step IS NOT NULL AND (TG_OP = 'INSERT' OR COALESCE(current_setting('ops.plan_sync', true), '') = 'on'))
        OR (NEW.parent_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.ops_work_cards p WHERE p.id = NEW.parent_id AND p.status = 'done')) THEN
       IF COALESCE(current_setting('ops.review_confirmed', true), '') = NEW.id::text THEN
         NEW.confirmed_by := COALESCE(NEW.confirmed_by, NULLIF(current_setting('ops.review_confirmer', true), ''));

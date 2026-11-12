@@ -308,7 +308,8 @@ $fn$;
 create function pg_temp.item(p_title text) returns jsonb
 language sql as $fn$
   select jsonb_build_object('title', p_title, 'instructions', 'Do the work carefully and say what changed.',
-    'done_means', 'It is done and checked.', 'owners', jsonb_build_array('gem.a4255@test.local'), 'due_on', pg_temp.today() + 3);
+    'done_means', 'It is done and checked.', 'owners', jsonb_build_array('gem.a4255@test.local'),
+    'watchers', jsonb_build_array('oz.a4255@test.local'), 'due_on', pg_temp.today() + 3);  -- [TEST-MOD-APPROVED #4398] one watcher
 $fn$;
 
 -- ───────────────────────────── A-TREE ─────────────────────────────
@@ -385,12 +386,15 @@ begin
       '"a string, not a step"'::jsonb),
     'gem.a4255@test.local', 'gem.a4255@test.local')
   returning id into v_open;
+  -- [TEST-MOD-APPROVED #4398] a card closed before #4398 is loaded as a fixture (replica mode), past the review rule.
+  set local session_replication_role = replica;
   insert into public.ops_work_cards (title, instructions, done_means, status, kind, due_on, due_source, sprint_id, plan, close_kind, close_reason, closed_at, closed_by, closed_via, created_by, updated_by)
   values ('A4255 Fill closed card', 'Old instructions for the closed card.', 'Done means checked.', 'done', 'task', pg_temp.today() - 2, 'explicit', public.ops_sprint_ensure(pg_temp.today()),
     jsonb_build_array(jsonb_build_object('n', 1, 'text', 'Open step on a closed card', 'status', 'todo'),
                       jsonb_build_object('n', 2, 'text', 'Done step on a closed card', 'status', 'done')),
     'done', 'Closed before plans became subtasks.', now() - interval '1 day', 'gem.a4255@test.local', null, 'gem.a4255@test.local', 'gem.a4255@test.local')
   returning id into v_closed;
+  set local session_replication_role = origin;
   insert into public.ops_work_cards (title, instructions, done_means, status, kind, due_on, due_source, sprint_id, plan, archived_at, archived_by, archive_reason, created_by, updated_by)
   values ('A4255 Fill removed card', 'Old instructions for the removed card.', 'Done means checked.', 'todo', 'task', pg_temp.today() + 5, 'explicit', public.ops_sprint_ensure(pg_temp.today()),
     jsonb_build_array(jsonb_build_object('n', 1, 'text', 'Step on a removed card', 'status', 'todo')),
