@@ -184,7 +184,7 @@ const STRIPE_TERMINAL_PLUGIN = [
   {
     bluetoothBackgroundMode: false,
     locationWhenInUsePermission:
-      "Mingla Host uses your location to confirm where door card payments are taken, to help measure the performance of our marketing and improve our services.",
+      "Mingla Host uses your location to confirm where card payments are taken with Tap to Pay on iPhone.",
     bluetoothPeripheralPermission:
       "Mingla Host uses Bluetooth to connect to supported card readers.",
     bluetoothAlwaysUsagePermission:
