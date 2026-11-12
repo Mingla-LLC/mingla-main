@@ -150,7 +150,7 @@ export const TAP_DECLINED_COPY = {
 
 /** #4389 — only when Stripe test mode refused a real card (test_mode_live_card). */
 export const TAP_TEST_MODE_LIVE_CARD_HINT =
-  "Test mode: real cards are always declined here. Use a Stripe test card.";
+  "Test mode: real cards are always declined here. Use a test card.";
 
 export const tapDeclinedBody = (testModeLiveCard: boolean | undefined): string =>
   testModeLiveCard === true ? `${TAP_DECLINED_COPY.body} ${TAP_TEST_MODE_LIVE_CARD_HINT}` : TAP_DECLINED_COPY.body;
