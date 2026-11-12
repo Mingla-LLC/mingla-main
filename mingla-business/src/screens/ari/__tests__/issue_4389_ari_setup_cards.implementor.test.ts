@@ -45,6 +45,10 @@ describe("#4389 A1 / A2 — cards from the checklist, not Ari's words", () => {
     expect(copy.headline).toBe("Hi Tobi. Let's get your account ready to take bookings.");
     expect(`${copy.headline} ${copy.body}`).not.toMatch(/business/i);
   });
+  test("the greeting is told whether brand_setup is complete (#4389 P2: never 'is set up' early)", () => {
+    expect(read("../AriChatScreen.tsx")).toContain("setupComplete: setupData?.facts.complete === true");
+  });
+
   test("the screen mounts A1 under the greeting and A2 from useBrandSetupChecklist", () => {
     const src = read("../AriChatScreen.tsx");
     expect(src).toContain("footer={firstRunSetupCard}");

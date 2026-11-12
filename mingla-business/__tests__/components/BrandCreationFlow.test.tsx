@@ -91,8 +91,10 @@ describe("META-ORCH-0972 Sub-B BrandCreationFlow contract", () => {
   test("SC-B-5 welcome offering chooser routes to every creator", () => {
     const creationSource = readBusinessFile("src/components/brand/BrandCreationFlow.tsx");
     // F4 hands the pick straight to the creator route (replace: setup is done,
-    // Back from the creator should not land on the finished setup).
-    expect(creationSource).toContain("onSelect={(o) => router.replace(routeForOffering(o) as never)}");
+    // Back from the creator should not land on the finished setup). #4389 —
+    // the offering list loads on intent, so routeForOffering comes with it.
+    expect(creationSource).toContain('void import("./OfferingChooser")');
+    expect(creationSource).toContain(".then(({ routeForOffering }) => router.replace(routeForOffering(o) as never))");
 
     const routes = Object.fromEntries(
       OFFERING_OPTIONS.map((o) => [o.kind, routeForOffering(o.kind)]),

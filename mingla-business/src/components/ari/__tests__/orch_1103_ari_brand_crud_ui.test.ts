@@ -44,7 +44,8 @@ describe("ORCH-1103 token", () => {
 
 describe("ORCH-1103 Surface 1 — cover band (create + update brand)", () => {
   it("ToolProposalCard imports the existing CoverPickerSheet (no new sheet)", () => {
-    expect(proposalCard).toMatch(/import\s*\{\s*CoverPickerSheet\s*\}\s*from\s*"\.\.\/ui\/CoverPickerSheet"/);
+    // #4389 — the same sheet, through its one mount point (on-intent on web).
+    expect(proposalCard).toMatch(/import\s*\{\s*CoverPickerSheet\s*\}\s*from\s*"\.\.\/ui\/LazyCoverPickerSheet"/);
   });
 
   it("renders an Add-cover affordance with the empty / busy / error states", () => {

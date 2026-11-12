@@ -2,8 +2,10 @@
  * #4389 — brand setup, door and Ari analytics through the app's existing
  * analytics client (AppsFlyer, `logAppsFlyerEvent`); no new SDK. Properties
  * carry ids and states only: never names, bank details or other PII.
+ *
+ * The client loads when the first event is sent, so a screen that imports this
+ * module does not pull the AppsFlyer and Supabase clients in with it.
  */
-import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 
 export const BRAND_SETUP_EVENTS = [
   "brand_setup_step_viewed",
@@ -38,10 +40,8 @@ export function trackBrandSetup(event: BrandSetupEvent, props: Record<string, Va
     if (!ALLOWED_KEYS.has(k) || v === undefined || v === null) continue;
     clean[k] = String(v);
   }
-  try {
-    logAppsFlyerEvent(event, clean);
-  } catch (error) {
-    // Analytics must never break setup; surface it in the console.
-    console.warn("[brandSetupAnalytics] event failed", event, error);
-  }
+  // Analytics must never break setup; failures surface in the console.
+  void import("../../services/appsFlyerService")
+    .then(({ logAppsFlyerEvent }) => logAppsFlyerEvent(event, clean))
+    .catch((error: unknown) => console.warn("[brandSetupAnalytics] event failed", event, error));
 }

@@ -4,11 +4,11 @@
  * its place (createOnIntentLazySheet), then the picker takes over.
  */
 import { createOnIntentLazySheet } from "./OnIntentLazySheet";
-import type { CoverPickerSheetProps } from "./CoverPickerSheet";
+import type { CoverPickerSheetProps as Props } from "./CoverPickerSheet";
 
 export type { CoverPickerSheetProps } from "./CoverPickerSheet";
 
-export const CoverPickerSheet = createOnIntentLazySheet<CoverPickerSheetProps>(
+export const CoverPickerSheet = createOnIntentLazySheet<Props>(
   async () => (await import("./CoverPickerSheet")).CoverPickerSheet,
   { loadingLabel: "Loading covers" },
 );

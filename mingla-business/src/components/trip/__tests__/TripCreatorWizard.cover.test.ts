@@ -116,7 +116,8 @@ describe("ORCH-0876 — TripCreatorWizard cover field + autosave wiring", () => 
     // suites — so Step1 just mounts the sheet + wires onCoverChange. CoverPatch is
     // still imported from ../ui/CoverPicker.
     expect(STEP1).toContain('import { type CoverPatch } from "../ui/CoverPicker"');
-    expect(STEP1).toContain('import { CoverPickerSheet } from "../ui/CoverPickerSheet"');
+    // #4389 — the same unified sheet, through its one mount point (on-intent on web).
+    expect(STEP1).toContain('import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet"');
     expect(STEP1).toMatch(/<CoverPickerSheet\b[\s\S]*?onCoverChange=\{handleCoverChange\}/);
   });
 

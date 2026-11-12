@@ -5,12 +5,11 @@
  * brand_setup may be called "set up"; otherwise the brand "was created" and
  * the next step is named. AriChatScreen passes brand_setup.complete.
  *
- * FAILS ON REVERT: the unconditional "is set up" headline → T1/T2; the
- * screen not passing `setupComplete` → T3.
+ * FAILS ON REVERT: the unconditional "is set up" headline → T1/T2/T3. That
+ * the Ari screen passes brand_setup.complete is pinned beside the Ari card
+ * render tests (screens/ari/__tests__/issue_4389_ari_setup_cards).
  */
 import { describe, expect, test } from "@jest/globals";
-import * as fs from "fs";
-import * as path from "path";
 
 import { firstRunGreeting } from "../firstRunState";
 
@@ -28,11 +27,9 @@ describe("#4389 — Ari never claims setup is complete unless brand_setup is", (
     expect(firstRunGreeting(base).headline).not.toMatch(/is set up/);
   });
 
-  test("T3: complete → 'is set up'; the Ari screen passes brand_setup.complete", () => {
+  test("T3: complete → 'is set up'", () => {
     expect(firstRunGreeting({ ...base, setupComplete: true }).headline).toBe(
       "Wythe Hospitality is set up. What are you hosting first?",
     );
-    const screen = fs.readFileSync(path.join(__dirname, "../../screens/ari/AriChatScreen.tsx"), "utf8");
-    expect(screen).toContain("setupComplete: setupData?.facts.complete === true");
   });
 });

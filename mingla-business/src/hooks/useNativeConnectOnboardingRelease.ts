@@ -11,7 +11,6 @@
  */
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
@@ -38,6 +37,28 @@ export const fetchNativeConnectOnboardingRelease = async (
   if (error) throw error;
   const answer = data as Partial<NativeConnectReleaseAnswer> | null;
   return { iphone: answer?.iphone === true, android: answer?.android === true };
+};
+
+/**
+ * The binary's `extra` config, read only on a phone and only when asked. A
+ * module-scope `expo-constants` import breaks every render suite that mounts
+ * the bank setup screen (expo-modules-core is not linked there); failing to
+ * read it means no override, which is the safe answer.
+ */
+let extraReadFailed = false;
+const nativeExtra = (os: string): Record<string, unknown> | undefined => {
+  if ((os !== "ios" && os !== "android") || extraReadFailed) return undefined;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const constants = require("expo-constants") as {
+      default?: { expoConfig?: { extra?: Record<string, unknown> } | null };
+    };
+    return constants.default?.expoConfig?.extra ?? undefined;
+  } catch (error: unknown) {
+    extraReadFailed = true;
+    console.warn("[useNativeConnectOnboardingRelease] app config unread; no dev override", error);
+    return undefined;
+  }
 };
 
 /** The local dev override baked into this binary's config (never EAS). */
@@ -69,8 +90,6 @@ export const useNativeConnectOnboardingRelease = (
   }, [query.isError, query.error]);
   return {
     flagLive: nativeConnectFlagLive(os, query.isError ? null : query.data),
-    devForce: readNativeConnectDevForce(
-      Constants.expoConfig?.extra as Record<string, unknown> | undefined,
-    ),
+    devForce: readNativeConnectDevForce(nativeExtra(os)),
   };
 };
