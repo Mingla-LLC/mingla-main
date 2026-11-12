@@ -446,7 +446,9 @@ export function createGigHireHandler(
           "[gig-hire] PaymentIntent id not stored; cancelling",
           storeError,
         );
-        await stripe.paymentIntents.cancel(intent.id).catch((
+        await stripe.paymentIntents.cancel(intent.id, {}, {
+          idempotencyKey: `gig_cancel:${intent.id}`,
+        }).catch((
           cancelError: unknown,
         ) =>
           console.error("[gig-hire] PaymentIntent cancel failed", cancelError)

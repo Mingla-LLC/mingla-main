@@ -177,8 +177,13 @@ $fn$;
 -- ---------------------------------------------------------------------------
 -- 3. payment_late: the automatic full refund of a late payment.
 -- ---------------------------------------------------------------------------
+-- plpgsql (was sql): same answers, including NULL for an unknown contract.
+-- The body is not validated at CREATE time, which keeps filtered replay lanes
+-- that skip unrelated migrations closed (#2492).
 CREATE OR REPLACE FUNCTION public.issue_3872_gig_refund_branch_allowed(p_contract_id uuid, p_branch text) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $fn$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $fn$
+DECLARE v_allowed boolean;
+BEGIN
   SELECT coalesce(CASE p_branch
     WHEN 'host_before_accept' THEN c.state IN ('offered','cancelled')
     WHEN 'creator_decline' THEN c.state IN ('offered','declined')
@@ -192,7 +197,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $fn$
     -- #4402: a payment that landed after the offer was retired as unpaid.
     WHEN 'payment_late' THEN c.state='cancelled' AND c.cancel_reason IS NOT DISTINCT FROM 'payment_not_completed'
     ELSE false END,false)
+    INTO v_allowed
   FROM public.gig_contracts c WHERE c.id=p_contract_id;
+  RETURN v_allowed;
+END;
 $fn$;
 
 -- The existing recorder moves the contract and rewrites cancel_reason. A late
