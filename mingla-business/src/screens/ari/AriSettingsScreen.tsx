@@ -35,18 +35,16 @@ import {
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useAriKnowledge } from "../../hooks/useAriKnowledge";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import type {
   AriAgentJob,
   AriMemoryKind,
   AriMemoryNote,
 } from "../../services/ariKnowledgeService";
 
-const MEMORY_KINDS: AriMemoryKind[] = [
-  "preference",
-  "business_fact",
-  "workflow",
-  "correction",
-];
+// #3355 Wave D: the kinds Ari's remember_note uses (older notes may still be
+// business_fact or workflow and keep their own label).
+const MEMORY_KINDS: AriMemoryKind[] = ["preference", "fact", "correction"];
 
 function jobErrorCopy(code: string): string {
   if (code === "PERMISSION_DENIED") {
@@ -63,6 +61,29 @@ function jobErrorCopy(code: string): string {
 
 function labelForMemoryKind(kind: AriMemoryKind): string {
   return kind.replace("_", " ").replace(/^./, (value) => value.toUpperCase());
+}
+
+/**
+ * #3355 Wave D (D1) — who can see a note, and what the caller can do with it.
+ * A brand note is shared with the brand's team; only its author edits it, and
+ * the author or a brand admin can forget it. Older rows without the fields
+ * are the caller's own.
+ */
+export function memoryNoteAccess(note: AriMemoryNote): {
+  whoSees: string;
+  canEdit: boolean;
+  canForget: boolean;
+} {
+  const mine = note.mine !== false;
+  return {
+    whoSees: note.scope === "brand"
+      ? mine ? "Shared with your team" : "Shared by a teammate"
+      : note.brand_id
+      ? "Only you · this brand"
+      : "Only you · all brands",
+    canEdit: mine,
+    canForget: note.can_forget ?? mine,
+  };
 }
 
 function labelForJobStatus(status: AriAgentJob["status"]): string {
@@ -83,6 +104,9 @@ export const AriSettingsScreen: React.FC = () => {
   );
   const [memoryKind, setMemoryKind] = useState<AriMemoryKind>("preference");
   const [memoryDraft, setMemoryDraft] = useState("");
+  const [forgetTarget, setForgetTarget] = useState<AriMemoryNote | null>(null);
+  const [forgetBusy, setForgetBusy] = useState(false);
+  const [forgetError, setForgetError] = useState<string | null>(null);
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
 
   React.useEffect(() => {
@@ -170,29 +194,32 @@ export const AriSettingsScreen: React.FC = () => {
     setMemoryDraft(note.content);
   };
 
+  // #3355 rework 3 (R3-6): Alert.alert's buttons do nothing on Host web
+  // (react-native-web), so Delete was a dead tap there. The app's own
+  // cross-platform ConfirmDialog asks on every surface.
   const handleForgetMemory = (note: AriMemoryNote): void => {
-    Alert.alert(
-      "Forget this memory?",
-      "Ari will stop using it in future conversations.",
-      [
-        { text: "Keep", style: "cancel" },
-        {
-          text: "Forget",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await knowledge.forgetMemory(note.id);
-              if (editingMemoryId === note.id) resetMemoryComposer();
-            } catch (err) {
-              Alert.alert(
-                "Couldn't forget memory",
-                err instanceof Error ? err.message : "Unknown error",
-              );
-            }
-          },
-        },
-      ],
-    );
+    setForgetError(null);
+    setForgetTarget(note);
+  };
+
+  const confirmForgetMemory = async (): Promise<void> => {
+    const note = forgetTarget;
+    if (!note) return;
+    setForgetBusy(true);
+    setForgetError(null);
+    try {
+      await knowledge.forgetMemory(note.id);
+      if (editingMemoryId === note.id) resetMemoryComposer();
+      setForgetTarget(null);
+    } catch (err) {
+      setForgetError(
+        err instanceof Error
+          ? `Couldn't delete the note: ${err.message}`
+          : "Couldn't delete the note. Try again.",
+      );
+    } finally {
+      setForgetBusy(false);
+    }
   };
 
   const handleJobControl = async (
@@ -275,12 +302,13 @@ export const AriSettingsScreen: React.FC = () => {
         </Section>
 
         <Section
-          title={`Ari memory${currentBrand ? ` · ${currentBrand.displayName}` : ""}`}
+          title={`What Ari remembers${currentBrand ? ` · ${currentBrand.displayName}` : ""}`}
         >
           <Text style={styles.about}>
-            Review exactly what Ari may carry into future conversations. Brand
-            memories stay with the active brand; personal preferences can be
-            corrected or forgotten here.
+            Ari keeps short notes when you correct it or tell it a preference,
+            and uses them in later chats. Notes shared with the brand are seen
+            by your team. Ari never keeps emails, phone numbers, card or bank
+            details, passwords or ID numbers.
           </Text>
           <View style={styles.kindRow}>
             {MEMORY_KINDS.map((kind) => (
@@ -357,37 +385,44 @@ export const AriSettingsScreen: React.FC = () => {
               Ari has no saved memories for this scope yet.
             </Text>
           ) : null}
-          {knowledge.memory.map((note) => (
-            <View key={note.id} style={styles.memoryCard}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.memoryKind}>
-                  {labelForMemoryKind(note.kind)}
-                </Text>
-                <Text style={styles.cardMeta}>
-                  {note.brand_id ? "This brand" : "All brands"}
-                </Text>
+          {knowledge.memory.map((note) => {
+            const access = memoryNoteAccess(note);
+            return (
+              <View key={note.id} style={styles.memoryCard}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.memoryKind}>
+                    {labelForMemoryKind(note.kind)}
+                  </Text>
+                  <Text style={styles.cardMeta}>{access.whoSees}</Text>
+                </View>
+                <Text style={styles.memoryContent}>{note.content}</Text>
+                {access.canEdit || access.canForget ? (
+                  <View style={styles.inlineActions}>
+                    {access.canEdit ? (
+                      <Pressable
+                        onPress={() => beginMemoryEdit(note)}
+                        style={styles.textAction}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${labelForMemoryKind(note.kind)} memory`}
+                      >
+                        <Text style={styles.textActionLabel}>Edit</Text>
+                      </Pressable>
+                    ) : null}
+                    {access.canForget ? (
+                      <Pressable
+                        onPress={() => handleForgetMemory(note)}
+                        style={styles.textAction}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${labelForMemoryKind(note.kind)} memory`}
+                      >
+                        <Text style={styles.forgetLabel}>Delete</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
-              <Text style={styles.memoryContent}>{note.content}</Text>
-              <View style={styles.inlineActions}>
-                <Pressable
-                  onPress={() => beginMemoryEdit(note)}
-                  style={styles.textAction}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit ${labelForMemoryKind(note.kind)} memory`}
-                >
-                  <Text style={styles.textActionLabel}>Edit</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => handleForgetMemory(note)}
-                  style={styles.textAction}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Forget ${labelForMemoryKind(note.kind)} memory`}
-                >
-                  <Text style={styles.forgetLabel}>Forget</Text>
-                </Pressable>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </Section>
 
         <Section title="Long-running tasks">
@@ -508,6 +543,29 @@ export const AriSettingsScreen: React.FC = () => {
           </Section>
         ) : null}
       </ScrollView>
+      <ConfirmDialog
+        visible={forgetTarget !== null}
+        onClose={() => {
+          if (!forgetBusy) {
+            setForgetTarget(null);
+            setForgetError(null);
+          }
+        }}
+        onConfirm={confirmForgetMemory}
+        title="Delete this note?"
+        description={forgetTarget?.scope === "brand"
+          ? "Ari will stop using it in future conversations for everyone on the brand."
+          : "Ari will stop using it in future conversations."}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        confirmLoading={forgetBusy}
+        closeDisabled={forgetBusy}
+        errorMessage={forgetError}
+        confirmTestID="ari-memory-delete-confirm"
+        cancelTestID="ari-memory-delete-keep"
+        testID="ari-memory-delete-dialog"
+      />
     </View>
   );
 };

@@ -9,6 +9,7 @@
 
 import { supabase } from "./supabase";
 import type { AriSentAttachment } from "./ariAttachmentService";
+import type { AriClientContext } from "../config/routes";
 import type { AriUiCapabilitiesV2 } from "../components/ari/renditions/ariRenditionCapabilities";
 // Type-only cite keeps #2060 gates happy without pulling the recovery registry
 // into the web boot chunk (ORCH-1083). Runtime assert below is structural.
@@ -231,6 +232,8 @@ export interface SendMessageArgs {
    * host has no brand / nothing made yet, and what they said they host.
    */
   first_run?: AriFirstRunHint;
+  /** #3355 Wave C (C2) — the Host screen the host is on (context only). */
+  client_context?: AriClientContext;
 }
 
 /** #4304 — what the app knows about a first-run host when they send. */

@@ -206,7 +206,8 @@ describe("#3355 Ari reply feedback controls", () => {
     for (const label of [
       'accessibilityLabel="Cancel memory edit"',
       "accessibilityLabel={`Edit ${labelForMemoryKind(note.kind)} memory`}",
-      "accessibilityLabel={`Forget ${labelForMemoryKind(note.kind)} memory`}",
+      // #3355 Wave D: "What Ari remembers" names the action Delete.
+      "accessibilityLabel={`Delete ${labelForMemoryKind(note.kind)} memory`}",
       "accessibilityLabel={`Resume ${job.goal_summary}`}",
       "accessibilityLabel={`Pause ${job.goal_summary}`}",
       "accessibilityLabel={`Cancel ${job.goal_summary}`}",

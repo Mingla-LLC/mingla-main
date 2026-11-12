@@ -380,6 +380,11 @@ export type Brand = {
   locationProviderPlaceId?: string | null;
   city?: string;
   countryCode?: string;
+  /**
+   * #3355 Wave A (A4) — `brands.default_timezone`, the brand's IANA time zone.
+   * Filled from a single-zone country by the database; set on Brand Edit.
+   */
+  defaultTimezone?: string;
   /** Ve1 — Restaurant / Play / Creative & Arts from venue onboarding. */
   venueCategory?: VenueCategory;
   /** Ve1+ — linked place_pool row after Ve2 match. */

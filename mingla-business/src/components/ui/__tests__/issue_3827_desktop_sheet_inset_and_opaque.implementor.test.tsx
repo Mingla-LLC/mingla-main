@@ -21,6 +21,8 @@
 // FAILS-ON-REVERT: delete `cardBodyInset` from Sheet.web.tsx and the inset
 // tests go red; delete the opaque base View and the opacity tests go red.
 
+// MINGLA-INVARIANT: I-SHEET-BREATHING-ROOM | issue #3355 | Every default wide-web sheet card reserves spacing.lg below its content, so a pinned footer never sits flush on the card's bottom border.
+
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
 
@@ -81,6 +83,21 @@ describe("#3827 wide-desktop Sheet card", () => {
     expect(flat(body[0].props.style).paddingTop).toBe(24);
     // The consumer's first line is INSIDE the inset body.
     expect(body[0].findAll((n) => n.type === "Text")).toHaveLength(1);
+  });
+
+  test("#3355 the body keeps breathing room under its content (pinned footers never sit on the border)", async () => {
+    mockWide = true;
+    const { spacing } = jest.requireActual<{ spacing: { lg: number } }>("../../../constants/designSystem");
+    const root = await mount();
+    const pad = flat(byTestID(root, "probe-desktop-body")[0].props.style).paddingBottom;
+    expect(pad).toBe(spacing.lg);
+    expect(pad).toBeGreaterThanOrEqual(16);
+  });
+
+  test("#3355 a Competition panel still lays out its own bottom inset", async () => {
+    mockWide = true;
+    const root = await mount({ presentation: "competition", panelBackground: "#101010" });
+    expect(flat(byTestID(root, "probe-desktop-body")[0].props.style).paddingBottom).toBeUndefined();
   });
 
   test("a default card has an opaque base under its content", async () => {
