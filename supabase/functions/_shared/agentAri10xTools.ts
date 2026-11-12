@@ -937,32 +937,13 @@ const listMemoryNotes: AgentToolDefinition = {
 // without a card (ARI_10X_AGENT_STATE), through ari_remember_note with the
 // caller's JWT. See ariMemory.ts.
 /**
- * #3355 ship-prep — the pre-#3355 memory write, offered only on the rollout
- * switch's off path (ariRolloutTurn.ts) so a brand outside the rollout sees
- * the tool production runs today. Not in ARI_10X_TOOLS: the current turn
- * offers remember_note instead. Verbatim from origin/main 811c033211.
- * [TRANSITIONAL] off-path tool — exit: rollout ari-understand-first-3355
- * active at 100% for every brand.
+ * #3355 ship-prep — the executor of origin/main's memory write (verbatim from
+ * 811c033211), for the rollout switch's off path only; the tool itself is
+ * declared in ariRolloutTurn.ts, outside the registry. [TRANSITIONAL] exit:
+ * rollout ari-understand-first-3355 active at 100% for every brand.
  */
-export const ARI_LEGACY_SAVE_MEMORY_NOTE: AgentToolDefinition = {
-  name: "save_memory_note",
-  description:
-    "Save an explicit approved preference, correction, business fact or working style. Do not infer sensitive facts.",
-  parameters: {
-    type: "object",
-    additionalProperties: false,
-    required: ["kind", "content"],
-    properties: {
-      brand_id: { type: "string", format: "uuid", nullable: true },
-      kind: {
-        type: "string",
-        enum: ["preference", "correction", "business_fact", "workflow"],
-      },
-      content: { type: "string", minLength: 1, maxLength: 1200 },
-      evidence_message_id: { type: "string", format: "uuid", nullable: true },
-    },
-  },
-  executor: async (args, client) =>
+export const legacySaveMemoryNoteExecutor: AgentToolDefinition["executor"] =
+  async (args, client) =>
     await callRpc(client, "ari_memory_save", {
       p_brand_id: isUuid(args.brand_id) ? args.brand_id : null,
       p_kind: args.kind,
@@ -970,8 +951,7 @@ export const ARI_LEGACY_SAVE_MEMORY_NOTE: AgentToolDefinition = {
       p_evidence_message_id: isUuid(args.evidence_message_id)
         ? args.evidence_message_id
         : null,
-    }),
-};
+    });
 
 const rememberNote: AgentToolDefinition = {
   name: "remember_note",

@@ -1126,7 +1126,8 @@ function validateSchemaValue(value: unknown, rule: any, path: string): void {
 export const ARI_LEGACY_TOOL_AUTHORIZATION: Readonly<
   Record<string, AgentAuthorizationDeclaration>
 > = Object.freeze({
-  save_memory_note: role("self", "optional_brand"),
+  // Not a registry declaration (the registry stays exact): spelled out.
+  save_memory_note: { requiredRole: "self", resource: "optional_brand" },
 });
 
 export function secureAgentTools(

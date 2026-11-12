@@ -19,10 +19,10 @@
  */
 
 import { AGENT_TOOLS, findTool, isAgentStateToolCall } from "./agentTools.ts";
-import type { AgentTool } from "./agentToolHelpers.ts";
+import type { AgentTool, AgentToolDefinition } from "./agentToolHelpers.ts";
 import {
-  ARI_LEGACY_SAVE_MEMORY_NOTE,
   ARI_LEGACY_SEARCH_CAPABILITIES,
+  legacySaveMemoryNoteExecutor,
 } from "./agentAri10xTools.ts";
 import { secureLegacyAgentTools } from "./agentToolAuthorization.ts";
 import { ariToolDeclarations } from "./ariToolDescriptions.ts";
@@ -32,6 +32,31 @@ import type { AgentLoopNormalizedError } from "./agentLoop.ts";
 export const ARI_UNDERSTAND_FIRST_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "search_mingla_guide",
 ]);
+
+/**
+ * origin/main's memory write (811c033211), offered only on the off path; not
+ * part of the registry (AGENT_TOOLS), so it is declared here.
+ */
+const LEGACY_SAVE_MEMORY_NOTE: AgentToolDefinition = {
+  name: "save_memory_note",
+  description:
+    "Save an explicit approved preference, correction, business fact or working style. Do not infer sensitive facts.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["kind", "content"],
+    properties: {
+      brand_id: { type: "string", format: "uuid", nullable: true },
+      kind: {
+        type: "string",
+        enum: ["preference", "correction", "business_fact", "workflow"],
+      },
+      content: { type: "string", minLength: 1, maxLength: 1200 },
+      evidence_message_id: { type: "string", format: "uuid", nullable: true },
+    },
+  },
+  executor: legacySaveMemoryNoteExecutor,
+};
 
 /** origin/main's owner-note declaration (no ask_mingla_team topic). */
 const LEGACY_TELL_OWNER = {
@@ -52,7 +77,7 @@ const LEGACY_TELL_OWNER = {
 
 const LEGACY_REPLACEMENTS: ReadonlyMap<string, AgentTool> = new Map(
   secureLegacyAgentTools([
-    ARI_LEGACY_SAVE_MEMORY_NOTE,
+    LEGACY_SAVE_MEMORY_NOTE,
     ARI_LEGACY_SEARCH_CAPABILITIES,
   ]).map((tool) => [
     tool.name === "save_memory_note" ? "remember_note" : tool.name,
