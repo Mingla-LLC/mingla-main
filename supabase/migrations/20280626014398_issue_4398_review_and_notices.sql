@@ -105,7 +105,9 @@ $function$;
 -- The review column stays: it can be renamed or recoloured, never archived
 -- or moved to another group.
 CREATE FUNCTION public.ops_4398_review_column_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp
+-- #4398 (P0 retest): SECURITY DEFINER, so the check runs whoever wrote the row (a deferred check fires
+-- at COMMIT as the signed-in role, which cannot read the ops tables).
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $function$
 BEGIN
   IF OLD.role = 'review' AND (NEW.archived_at IS NOT NULL OR NEW.grp <> 'doing' OR NEW.role IS DISTINCT FROM 'review') THEN
@@ -174,7 +176,9 @@ ALTER TABLE public.ops_work_events ADD CONSTRAINT ops_work_events_action_check C
 -- step ticked through its card's plan. Gate: ops_4398_review_guard.
 -- Test: supabase/migrations/__tests__/issue_4398_work_board_v3.implementor.pg17.test.sql
 CREATE FUNCTION public.ops_4398_review_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp
+-- #4398 (P0 retest): SECURITY DEFINER, so the check runs whoever wrote the row (a deferred check fires
+-- at COMMIT as the signed-in role, which cannot read the ops tables).
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $function$
 DECLARE v_review uuid := public.ops_review_status_id();
 BEGIN

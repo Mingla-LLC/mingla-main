@@ -40,7 +40,9 @@ END
 $precheck$;
 
 CREATE FUNCTION public.ops_4398_card_people_check() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp
+-- #4398 (P0 retest): SECURITY DEFINER, so the check runs whoever wrote the row (a deferred check fires
+-- at COMMIT as the signed-in role, which cannot read the ops tables).
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $function$
 DECLARE v_card uuid; v_open boolean; v_owners integer; v_watchers integer;
 BEGIN

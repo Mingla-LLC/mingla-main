@@ -79,9 +79,14 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', v_id, 'email', v_email, 'role', 'authenticated')::text, true);
     perform set_config('request.jwt.claim.role', '', true);
     execute p_sql into v_out;
+    -- #4398 (P0 retest): fire the deferred people check here, still as role authenticated, the way
+    -- PostgREST commits a request (Admin and the Host app); a refusal rolls this call back.
+    set constraints ops_4398_card_people_people, ops_4398_card_people_cards immediate;
+    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
     reset role;
     return v_out;
   exception when others then
+    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
     reset role;
     return 'ERR:' || sqlstate || ':' || sqlerrm;
   end;
