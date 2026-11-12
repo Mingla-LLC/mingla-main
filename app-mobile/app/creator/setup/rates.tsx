@@ -5,10 +5,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { creatorProgramService, type CreatorPackage } from '../../../src/services/creatorProgramService';
 import { payoutService, payoutCountry } from '../../../src/services/payoutService';
-import { programErrorText } from '../../../src/services/programResult';
+import { programErrorMessage, programErrorText } from '../../../src/services/programResult';
 import { FORMAT_INFO, currencySymbol, formatMoney, moneyInputValue, parseMoneyInput, platformLabel, type FormatInfo } from '../../../src/utils/programFormat';
 import { SETUP_STATUS_KEY, goToNextStep, stepTitle } from '../../../src/components/creator/setupNav';
-import { ProgramButton, ProgramCard, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
+import { ProgramButton, ProgramCard, ProgramField, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { Chip } from '../../../src/components/programs/ProgramPickers';
 
 const CURRENCIES = ['USD', 'NGN', 'GBP', 'EUR', 'CAD'] as const;
@@ -63,6 +63,15 @@ export default function CreatorRatesStep(): React.ReactElement {
   };
 
   if (status.isLoading) return <ProgramScreen title={stepTitle('rates')}><ProgramLoading /></ProgramScreen>;
+  if (status.isError) return <ProgramScreen title={stepTitle('rates')}><ProgramLoadError text={programErrorText(status.error)} onRetry={() => void status.refetch()} /></ProgramScreen>;
+  // #4402: a rate needs a saved profile. Without one, Save rate used to fail
+  // with nothing on screen; the step now says why and leads to the profile.
+  if (!status.data?.profile) {
+    return <ProgramScreen title={stepTitle('rates')}
+      footer={<ProgramButton label="Go to your profile" onPress={() => router.push('/creator/setup/profile' as never)} />}>
+      <ProgramNotice tone="warning" text={programErrorMessage('creator_profile_required')} />
+    </ProgramScreen>;
+  }
 
   return <ProgramScreen title={stepTitle('rates')}
     footer={<ProgramButton label={active.length ? 'Continue' : 'Set at least one rate'} disabled={active.length === 0} onPress={() => void goToNextStep(router, queryClient, 'rates')} />}>
@@ -79,6 +88,8 @@ export default function CreatorRatesStep(): React.ReactElement {
 
     <ProgramSheet visible={draft !== null} onClose={() => setDraft(null)} title={draft?.format.name ?? ''} snapPoints={['88%']} busy={busy}
       footer={<View style={{ gap: 8 }}>
+        {/* #4402: the save error sits beside Save rate, not below the fold. */}
+        {error ? <ProgramNotice tone="error" text={error} /> : null}
         <ProgramButton label="Save rate" busy={busy} onPress={() => void save(true)} />
         {draft?.existing?.active ? <ProgramButton label="Stop offering this format" variant="ghost" disabled={busy} onPress={() => void save(false)} /> : null}
       </View>}>
@@ -94,7 +105,6 @@ export default function CreatorRatesStep(): React.ReactElement {
         <Text style={s.fieldLabel}>Turnaround after the shoot</Text>
         <View style={s.wrap}>{TURNAROUND.map((d) => <Chip key={d} label={`${d} day${d === 1 ? '' : 's'}`} selected={draft.turnaround === d} onPress={() => setDraft({ ...draft, turnaround: d })} />)}</View>
         <ProgramNotice text="Your price includes perpetual organic and paid-marketing rights for Mingla and the paying Host once your full Creator fee is released. You keep copyright." />
-        {error ? <ProgramNotice tone="error" text={error} /> : null}
       </> : null}
     </ProgramSheet>
   </ProgramScreen>;

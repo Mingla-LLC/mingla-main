@@ -15,6 +15,8 @@ INSERT INTO auth.users(id,email) VALUES
   ('38723100-0000-4000-8000-0000000000a3','w1id-nobody@mingla.test');
 INSERT INTO public.creator_accounts(id,email,display_name) VALUES
   ('38723100-0000-4000-8000-0000000000a1','w1id-creator@mingla.test','Ada Films');
+-- #4402: the creator identity is the Explorer login (a live profiles row).
+INSERT INTO public.profiles(id) VALUES ('38723100-0000-4000-8000-0000000000a1');
 INSERT INTO public.admin_users(email,status) VALUES('w1id-admin@mingla.test','active');
 SET LOCAL session_replication_role = origin;
 

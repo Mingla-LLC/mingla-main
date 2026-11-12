@@ -160,5 +160,8 @@ module.exports = {
     // issue #4347 × #4334 — tester final retest: the sheet's Directions and
     // Route all stops on #4334's Maps target (bytes, refused ids, pairing).
     "**/__tests__/issue_4347_maps_routing.tester.adversarial.test.ts",
+    // issue #4402 — Creator setup errors land beside the button: a refused
+    // profile Save, the Rates step before a profile exists, a refused Save rate.
+    "**/__tests__/issue_4402_creator_setup_errors.implementor.render.test.tsx",
   ],
 };

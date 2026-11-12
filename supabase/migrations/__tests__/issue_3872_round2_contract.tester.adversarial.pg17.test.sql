@@ -29,6 +29,12 @@ INSERT INTO public.events(id,brand_id,title,slug,status,published_at) VALUES
 INSERT INTO public.creator_accounts(id,email,display_name) VALUES
   ('38725000-0000-4000-8000-0000000000a3','r2a-creator@mingla.test','Ada Films'),
   ('38725000-0000-4000-8000-0000000000a4','r2a-creator2@mingla.test','Bo Clips');
+-- #4402: the creator identity is the Explorer login (a live profiles row).
+-- The stranger's Explorer account is deleted, which is now the only way to be
+-- refused creator_account_required.
+INSERT INTO public.profiles(id,explorer_deleted_at) VALUES
+  ('38725000-0000-4000-8000-0000000000a3',NULL),('38725000-0000-4000-8000-0000000000a4',NULL),
+  ('38725000-0000-4000-8000-0000000000a5',now()),('38725000-0000-4000-8000-0000000000a6',NULL);
 INSERT INTO public.creator_profiles(creator_account_id,mode_enabled,display_name,home_city_id,niches,verification,date_of_birth,agreement_version,agreement_signed_at) VALUES
   ('38725000-0000-4000-8000-0000000000a3',true,'Ada Films','38725000-0000-4000-8000-0000000000c1',ARRAY['food'],'verified','1995-01-01','v1',now()),
   ('38725000-0000-4000-8000-0000000000a4',true,'Bo Clips','38725000-0000-4000-8000-0000000000c1',ARRAY['music'],'verified','1995-01-01','v1',now());
@@ -105,12 +111,19 @@ BEGIN
      OR (SELECT home_city_pending_name FROM public.creator_profiles WHERE creator_account_id=v_creator) IS NOT NULL THEN
     RAISE EXCEPTION 'another creator changed my city';
   END IF;
-  -- A non-creator cannot set a city at all.
+  -- A non-creator cannot set a city at all. #4402: a person whose Explorer
+  -- account is deleted is refused outright; one with a live Explorer account
+  -- but no creator profile gets creator_profile_required (asserted below).
   PERFORM pg_temp.act(v_stranger);
   v_failed:=false;
   BEGIN PERFORM public.creator_home_city_set(v_city,NULL,NULL);
   EXCEPTION WHEN others THEN v_failed:=SQLERRM='creator_account_required'; END;
   IF NOT v_failed THEN RAISE EXCEPTION 'non-creator set a home city'; END IF;
+  PERFORM pg_temp.act(v_other_host);
+  v_r:=public.creator_home_city_set(v_city,NULL,NULL);
+  IF v_r->>'error' IS DISTINCT FROM 'creator_profile_required' OR (v_r->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'explorer without a creator profile set a city: %',v_r;
+  END IF;
   -- Empty, blank and unknown input is a field error, never a silent success.
   PERFORM pg_temp.act(v_creator);
   v_r:=public.creator_home_city_set(NULL,'   ',NULL);
