@@ -250,6 +250,7 @@
         "mingla-business/src/components/creators/screens/HostGigContractScreen.tsx",
         "mingla-business/src/components/creators/screens/PrehireCreatorProfileScreen.tsx",
         "mingla-business/src/components/gigs/HireSheet.tsx",
+        "mingla-business/src/components/programs/ShowcaseStrip.tsx",
         "mingla-business/src/components/gigs/hireTerms.ts",
         "mingla-business/src/services/creatorGigsService.ts",
         "mingla-business/src/utils/creatorProgramFormat.ts",
@@ -278,6 +279,7 @@
         "supabase/migrations/20280221004216_issue_4216_creator_rights.sql",
         "supabase/migrations/20280630004402_issue_4402_creator_identity_without_host_account.sql",
         "supabase/migrations/20280702004402_issue_4402_creator_review_and_handle_proof.sql",
+        "supabase/migrations/20280702104402_issue_4402_admin_change_handle_band.sql",
         "mingla-marketing/app/creators/page.tsx",
         "mingla-marketing/app/locals/page.tsx"
       ]
