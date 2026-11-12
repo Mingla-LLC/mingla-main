@@ -579,11 +579,13 @@ describe("#3802 C-13: invite row copy", () => {
 
 describe("#3802 C-14: source contracts — the invite flow", () => {
   it("the Team and roles page sends invitations through one function and nothing else", () => {
-    assert.ok(ADMIN_PAGE.includes('functions.invoke("admin-team-invite"'));
+    // #4400: the one call goes through invokeWithRefresh (a 401 is retried once after a refresh).
+    assert.ok(ADMIN_PAGE.includes("invokeWithRefresh(TEAM_INVITE_FUNCTION"));
     assert.ok(ADMIN_PAGE.includes("admin_team_invite_states"));
     assert.equal(ADMIN_PAGE.includes("signInWithOtp"), false);
     assert.equal(ADMIN_PAGE.includes('from("admin_users")'), false);
-    assert.equal(ADMIN_PAGE.match(/functions\.invoke\(/g).length, 1);
+    assert.equal(ADMIN_PAGE.match(/functions\.invoke\(/g), null);
+    assert.equal(ADMIN_PAGE.match(/invokeWithRefresh\(/g).length, 1);
     assert.ok(ADMIN_PAGE.includes("Resend invite"));
     assert.ok(ADMIN_PAGE.includes("Remove access for ${email}?"));
     assert.ok(ADMIN_PAGE.includes("They get an email with a one-time link that expires in 7 days, and choose their own password."));
