@@ -129,6 +129,14 @@ export const TapToPaySetupScreen = ({
   const [brandNotAvailable, setBrandNotAvailable] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [payCodeBusy, setPayCodeBusy] = useState<boolean>(false);
+  // #4389 — Stripe Terminal starts in the background (TapToPayTerminalHost), e.g.
+  // the instant a brand is created, before it can take cards; that start fails
+  // and the failure used to stay on screen here before the host tapped anything.
+  // A background failure is retried quietly on arrival; an error shows only
+  // after the host's own attempt, and that one tap carries on into setup.
+  const [hostAttempted, setHostAttempted] = useState<boolean>(false);
+  const quietRetryRef = useRef<boolean>(false);
+  const pendingSetupRef = useRef<boolean | null>(null);
 
   const goToDoor = useCallback((): void => {
     if (eventId === null) {
@@ -177,6 +185,8 @@ export const TapToPaySetupScreen = ({
   const runSetup = useCallback(
     async (allowTerms: boolean, probe = false): Promise<void> => {
       if (terminal.status === "error") {
+        // Start Terminal again, then carry on with this same attempt.
+        pendingSetupRef.current = allowTerms;
         terminal.retryInitialize();
         return;
       }
@@ -238,6 +248,24 @@ export const TapToPaySetupScreen = ({
     [terminal, draft, router, eventId, goToDoor, brandId],
   );
 
+  useEffect(() => {
+    if (terminal.status !== "error" || quietRetryRef.current) return;
+    quietRetryRef.current = true;
+    terminal.retryInitialize();
+  }, [terminal]);
+
+  useEffect(() => {
+    if (terminal.client === null || pendingSetupRef.current === null) return;
+    const allowTerms = pendingSetupRef.current;
+    pendingSetupRef.current = null;
+    void runSetup(allowTerms);
+  }, [terminal.client, runSetup]);
+
+  const startHostSetup = useCallback((): void => {
+    setHostAttempted(true);
+    void runSetup(mayAcceptTerms);
+  }, [runSetup, mayAcceptTerms]);
+
   // Someone who may not accept the terms never gets a setup button, but an admin
   // may already have accepted them. Apple only answers when asked, so ask once,
   // never allowing the terms sheet.
@@ -269,6 +297,9 @@ export const TapToPaySetupScreen = ({
     iosUpdateRequired ||
     availability.reason === "ios_update_required" ||
     (deviceRejected && isIosBelowTapFloor(device.os, device.version));
+
+  const terminalFailedForHost =
+    hostAttempted && terminal.status === "error" && terminal.errorMessage !== null && terminal.errorMessage !== "";
 
   const pinRow = (currency ?? "").trim().toUpperCase() === "GBP";
   // Settings: nothing to set up (or no brand to set up): say so and keep the guide.
@@ -364,18 +395,18 @@ export const TapToPaySetupScreen = ({
             {Platform.OS === "ios" ? "Take cards on this iPhone" : "Take cards on this phone"}
           </Text>
           <TapFactList facts={rows} testID="tap-setup-facts" />
-          {terminal.status === "error" && terminal.errorMessage ? (
+          {terminalFailedForHost ? (
             <Text style={styles.error}>{terminal.errorMessage}</Text>
           ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          {error || (terminal.status === "error" && terminal.errorMessage) ? (
+          {error || terminalFailedForHost ? (
             <HelpLink onPress={openHelp} />
           ) : null}
         </ScrollView>
         <View style={styles.bar}>
           <Button
             label={tapToPaySetupButtonLabel(Platform.OS)}
-            onPress={() => void runSetup(mayAcceptTerms)}
+            onPress={startHostSetup}
             loading={busy || terminal.status === "initializing"}
             disabled={busy || terminal.status === "initializing"}
             variant="primary"

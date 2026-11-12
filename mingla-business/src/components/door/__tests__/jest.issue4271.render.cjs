@@ -24,6 +24,8 @@ module.exports = {
     // #4271 Tap to Pay on iPhone review gaps (awareness role, full name, Get help, Settings icon).
     // #4389 also: the awareness splash auto-shows only on Home with setup complete.
     "**/src/components/door/__tests__/issue_4271_review_gaps.render.test.tsx",
+    // #4389 — setup never shows a background Terminal start failure; Done on "On for this brand".
+    "**/src/components/door/__tests__/issue_4389_tap_setup_quiet_start.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|react-native-reanimated|react-native-svg)",
