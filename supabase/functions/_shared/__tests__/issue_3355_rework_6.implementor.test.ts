@@ -469,8 +469,8 @@ Deno.test("Rule 5: every event a list names is backed on its own", async () => {
   assertEquals(kept, honest);
 });
 
-Deno.test("R6-14: a 12-code list is read in full (the read covers 25 codes)", async () => {
-  const codes = Array.from({ length: 12 }, (_, index) => `CODE${index + 10}`);
+Deno.test("R6-14: a 30-code list is read in full (25 beside the judge, the rest after it)", async () => {
+  const codes = Array.from({ length: 30 }, (_, index) => `CODE${index + 10}`);
   const reply = `${codes.join(", ")} are all live.`;
   const out = await run({
     host: "are all my codes live?",
