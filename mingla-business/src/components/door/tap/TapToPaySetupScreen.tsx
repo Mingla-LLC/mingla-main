@@ -307,7 +307,11 @@ export const TapToPaySetupScreen = ({
   const settingsGuideOnly = eventId === null && (brandId === null || (availability.available && !availability.needsSetup));
 
   let body: React.ReactElement;
-  if (settingsGuideOnly) {
+  // #4389 — while setup runs (Apple's terms, account linking, then How to Tap)
+  // the screen stays on "Getting ready": Apple's answer flips to accepted the
+  // moment the reader connects, and "On for this brand" + Done used to show
+  // before How to Tap, so Done left first and the guide then opened over F4.
+  if (settingsGuideOnly && !busy) {
     // #4389 — "On for this brand" ends with a clear way out (back to F4, Home
     // or Settings, wherever the host came from), not only the back arrow.
     body = (

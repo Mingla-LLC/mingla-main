@@ -316,3 +316,31 @@ describe("#4389 — Tap to Pay setup never shows a background start failure", ()
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("#4389 — How to Tap shows before 'On for this brand' and its Done", () => {
+  test("Q5: while How to Tap is open the screen stays on 'Getting ready'; Done only after it closes", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const howToTap = require("../../../services/terminal/howToTap") as { showHowToTapEducation: jest.Mock };
+    let closeGuide: (v: string) => void = () => undefined;
+    howToTap.showHowToTapEducation.mockImplementationOnce(() => new Promise<string>((r) => { closeGuide = r; }));
+    const c = client();
+    // Apple's answer turns "accepted" the moment the reader connects.
+    c.ensureReaderConnected.mockImplementation(async () => {
+      mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+      return {};
+    });
+    updateTapToPaySession({ status: "ready", client: c, errorMessage: null } as never);
+    const tree = await mountSetup(null);
+    act(() => {
+      (pressables(tree.root, "tap-setup-start")[0] as ReactTestInstance).props.onPress();
+    });
+    await settle();
+    act(() => updateTapToPaySession({ readerReady: true } as never));
+    await settle();
+    expect(pressables(tree.root, "tap-on-done")).toHaveLength(0);
+    expect(textOf(tree.root)).not.toContain("On for this brand");
+    await act(async () => closeGuide("shown"));
+    await settle();
+    expect(pressables(tree.root, "tap-on-done").length).toBeGreaterThan(0);
+  });
+});
