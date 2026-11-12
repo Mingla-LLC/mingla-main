@@ -50,12 +50,8 @@ import {
 } from "../ariRollout.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
-const OTHER_BRAND = "99999999-9999-4999-8999-999999999999";
-const USER = "77777777-7777-4777-8777-777777777777";
 const EV1 = "22222222-2222-4222-8222-222222222222";
 const EV2 = "22222222-2222-4222-8222-333333333333";
-const EV3 = "22222222-2222-4222-8222-444444444444";
-const EV4 = "22222222-2222-4222-8222-555555555555";
 
 type Rows = Array<Record<string, unknown>>;
 
@@ -226,20 +222,6 @@ const pubBrunch = {
   title: "Abuja Brunch",
   status: "scheduled",
   event_type: "event",
-};
-const ended = {
-  id: EV3,
-  brand_id: BRAND,
-  title: "October Rooftop",
-  status: "ended",
-  event_type: "event",
-};
-const trip = {
-  id: EV4,
-  brand_id: BRAND,
-  title: "Calabar Weekend",
-  status: "draft",
-  event_type: "trip",
 };
 
 const EV = { events: [draftNight, pubBrunch] };
