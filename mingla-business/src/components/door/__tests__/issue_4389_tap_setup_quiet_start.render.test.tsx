@@ -302,4 +302,17 @@ describe("#4389 — Tap to Pay setup never shows a background start failure", ()
     expect(pressables(tree.root, "tap-get-help")).toHaveLength(1);
   });
 
+  test("Q4: On for this brand (from Settings / F4) has a Done back to where the host came from", async () => {
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    updateTapToPaySession({ status: "ready", client: client(), errorMessage: null } as never);
+    const tree = await mountSetup(null);
+    expect(textOf(tree.root)).toContain("On for this brand");
+    const done = pressables(tree.root, "tap-on-done");
+    expect(done.length).toBeGreaterThan(0);
+    expect(textOf(done[0] as ReactTestInstance)).toContain("Done");
+    act(() => {
+      (done[0] as ReactTestInstance).props.onPress();
+    });
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
 });

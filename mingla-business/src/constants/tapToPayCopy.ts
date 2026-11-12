@@ -113,6 +113,8 @@ export const tapEducationRows = (os: string, options: { pinRow: boolean }): TapE
 export const TAP_HOW_TO_TAP_BUTTON = "Show How to Tap";
 export const TAP_HOW_TO_TAP_FAILED = "Couldn't show Apple's How to Tap guide. Try again.";
 export const TAP_ON_FOR_BRAND = "On for this brand";
+/** #4389 — the way out of "On for this brand". */
+export const TAP_DONE = "Done";
 
 export const TAP_CARD_NEEDS_INSERT_COPY = {
   title: "This card can't be tapped",

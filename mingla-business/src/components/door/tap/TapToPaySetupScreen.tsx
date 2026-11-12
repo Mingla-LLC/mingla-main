@@ -37,6 +37,7 @@ import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 import {
   TAP_GET_HELP,
   TAP_ON_FOR_BRAND,
+  TAP_DONE,
   TAP_ADMIN_ONLY_COPY,
   TAP_APPLE_TERMS_ROW,
   tapToPayName,
@@ -307,15 +308,30 @@ export const TapToPaySetupScreen = ({
 
   let body: React.ReactElement;
   if (settingsGuideOnly) {
+    // #4389 — "On for this brand" ends with a clear way out (back to F4, Home
+    // or Settings, wherever the host came from), not only the back arrow.
     body = (
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {brandId !== null ? (
-          <Text style={styles.heroTitle} accessibilityRole="header" testID="tap-on-for-brand">
-            {TAP_ON_FOR_BRAND}
-          </Text>
-        ) : null}
-        <TapToPayEducation pinRow={pinRow} />
-      </ScrollView>
+      <View style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {brandId !== null ? (
+            <Text style={styles.heroTitle} accessibilityRole="header" testID="tap-on-for-brand">
+              {TAP_ON_FOR_BRAND}
+            </Text>
+          ) : null}
+          <TapToPayEducation pinRow={pinRow} />
+        </ScrollView>
+        <View style={styles.bar}>
+          <Button
+            label={TAP_DONE}
+            onPress={handleBack}
+            variant="primary"
+            size="lg"
+            fullWidth
+            accessibilityLabel={TAP_DONE}
+            testID="tap-on-done"
+          />
+        </View>
+      </View>
     );
   } else if (showIosUpdate) {
     body = <TapUpdateIos onUsePayCode={() => void startPayCode()} loading={payCodeBusy} onHelp={openHelp} />;
