@@ -458,7 +458,11 @@ Deno.test("Rule 5: every event a list names is backed on its own", async () => {
     claims: [claim(reply, "live", "event", "Abuja Brunch")],
     tables: { events: [draftNight, pubBrunch] },
   });
-  assertEquals(out, "Your records show Lagos Night Out as a draft.");
+  // Rework 8 (R8-8): Abuja Brunch's true half is kept.
+  assertEquals(
+    out,
+    "Abuja Brunch is live. Your records show Lagos Night Out as a draft.",
+  );
   const honest = "Abuja Brunch is live, but Lagos Night Out is still a draft.";
   const kept = await run({
     host: "are my events live?",

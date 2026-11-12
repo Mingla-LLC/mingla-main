@@ -166,6 +166,30 @@ interface OfferingRow {
   sortKey: number;
 }
 
+/**
+ * #3355 rework 8 (R8-11): a draft's saved date and start time, as the host
+ * typed them in the event's own time zone ("2026-12-20 20:00 (Africa/Lagos
+ * time)"), or null when the draft has no date yet.
+ */
+export function draftWhenText(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const when = value as Record<string, unknown>;
+  const date = typeof when.date === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(when.date.trim())
+    ? when.date.trim()
+    : null;
+  if (!date) return null;
+  const time = typeof when.startTime === "string" &&
+      /^\d{1,2}:\d{2}$/.test(when.startTime.trim())
+    ? ` ${when.startTime.trim()}`
+    : "";
+  const zone = typeof when.timezone === "string" &&
+      /^[A-Za-z_]+(?:\/[A-Za-z_+-]+)+$/.test(when.timezone.trim())
+    ? ` (${when.timezone.trim()} time)`
+    : "";
+  return `${date}${time}${zone}`;
+}
+
 async function offeringsSection(
   client: SupabaseClient,
   brandId: string,
@@ -174,7 +198,7 @@ async function offeringsSection(
   const [events, stays] = await Promise.all([
     client.from("events")
       .select(
-        "id,title,status,event_type,updated_at,event_dates(start_at,end_at)",
+        "id,title,status,event_type,updated_at,event_dates(start_at,end_at),draft_when:theme->business_draft->when",
       )
       .eq("brand_id", brandId)
       .is("deleted_at", null)
@@ -207,15 +231,21 @@ async function offeringsSection(
     if (["cancelled", "canceled", "ended", "archived"].includes(status)) {
       continue;
     }
-    const date = upcoming[0]?.start ?? null;
+    // #3355 rework 8 (R8-11): a draft keeps its dates on the draft itself
+    // (`theme.business_draft.when`) until it is published, so a draft Ari
+    // just created is never said to have no date.
+    const date = upcoming[0]?.start ??
+      (status === "draft" ? draftWhenText(raw.draft_when) : null);
     rows.push({
       kind: ariSafeText(raw.event_type, 20) || "event",
       title: ariSafeText(raw.title) || "Untitled",
       status,
       date,
       // Soonest dated first, then drafts by most recently changed.
-      sortKey: date ? Date.parse(date) : Number.MAX_SAFE_INTEGER -
-        (Date.parse(String(raw.updated_at ?? "")) || 0),
+      sortKey: upcoming[0]?.start
+        ? Date.parse(upcoming[0].start)
+        : Number.MAX_SAFE_INTEGER -
+          (Date.parse(String(raw.updated_at ?? "")) || 0),
     });
   }
   // Stays are optional for a brand; a failed stays read keeps the events.

@@ -278,6 +278,7 @@ import {
   ownerMessagesForProposal,
   preserveStatedSlots,
   type StatedSlotCheck,
+  statedSlotsAskedBefore,
   writeObjectsFrom,
   writeStatesFromHistory,
 } from "../_shared/ariTruthGuards.ts";
@@ -4246,7 +4247,7 @@ ${boundedAgentContext}
           loopResult.toolCall.args = withHostStatedDiscountCode(
             tool.name,
             loopResult.toolCall.args,
-            extractStatedSlots([semanticMessage]).code,
+            hostStatedCode(history, tool.name, semanticMessage),
           );
           loopResult.toolCall.args = canonicalizeAgentProposalArgs(
             tool.name,
@@ -5154,7 +5155,7 @@ ${boundedAgentContext}
         gemini.toolCall.args = withHostStatedDiscountCode(
           tool.name,
           gemini.toolCall.args,
-          extractStatedSlots([semanticMessage]).code,
+          hostStatedCode(history, tool.name, semanticMessage),
         );
         gemini.toolCall.args = canonicalizeAgentProposalArgs(
           tool.name,
@@ -5456,6 +5457,23 @@ ${boundedAgentContext}
  * loop and the single-call path run before a proposal card
  * (I-ARI-STATED-SLOTS-PRESERVED).
  */
+/**
+ * #3355 rework 8 (R8-12): the code the host typed since the last card of
+ * this tool — the request turn's code still counts on the follow-up turns
+ * ("Yes, 10% off.", "FAVY10").
+ */
+function hostStatedCode(
+  history: ReadonlyArray<
+    { role?: unknown; content?: unknown; tool_calls?: unknown }
+  >,
+  toolName: string,
+  current: string,
+): string | undefined {
+  return extractStatedSlots(
+    ownerMessagesForProposal({ history, toolName, current }),
+  ).code;
+}
+
 async function statedSlotStage(args: {
   toolName: string;
   toolArgs: Record<string, unknown>;
@@ -5478,6 +5496,11 @@ async function statedSlotStage(args: {
     }),
     userClient: args.userClient,
     modelStated: args.modelStated,
+    // #3355 rework 8 (R8-12): each field is asked once; then the host wins.
+    askedBefore: statedSlotsAskedBefore({
+      history: args.history,
+      toolName: args.toolName,
+    }),
   });
 }
 

@@ -63,6 +63,54 @@ const HEX_ONE = new RegExp(HEX_RUN.source, "i");
 const ALL_CAPS_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g;
 const SNAKE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
 
+/**
+ * #3355 rework 8 (R8-10): words of Ari's own instructions that the model
+ * sometimes repeats to the host ("Verified via canonical Mingla readback",
+ * "Human-owned work: None").
+ */
+function PROMPT_ECHO_WORDS(): RegExp[] {
+  return [
+    /\bcanonical\b/i,
+    /\bread[- ]?backs?\b/i,
+    /\bhuman[- ]owned\b/i,
+    /\bAri[- ]owned\b/i,
+  ];
+}
+
+/** "Waiting for approval: None." / "Skipped: none" — an empty category. */
+const EMPTY_CATEGORY = /^[\p{L} -]{2,40}:\s*(?:none|n\/a|nothing|-)\s*[.!]?$/iu;
+/** "Goal complete." / "Final result confirmed in Mingla system." */
+const BARE_STATUS_ECHO =
+  /^(?:goal\s+(?:is\s+)?complete(?:d)?|final\s+result\s+confirmed(?:\s+in\s+(?:the\s+)?mingla(?:\s+system)?)?|all\s+steps\s+complete(?:d)?)\s*[.!]?$/i;
+
+/**
+ * #3355 rework 8 (R8-10): remove the sentences that repeat Ari's own
+ * instructions (they carry no fact for the host), and empty categories.
+ * What is left is the plain receipt.
+ */
+export function stripPromptEcho(text: string): string {
+  const echo = PROMPT_ECHO_WORDS();
+  const lines: string[] = [];
+  for (const line of String(text ?? "").split("\n")) {
+    if (!line.trim()) {
+      lines.push("");
+      continue;
+    }
+    const kept = line.split(/(?<=[.!?])\s+/).filter((sentence) => {
+      const plain = sentence.replace(/[*_`]/g, "").replace(/^\s*[-•]\s*/, "")
+        .trim();
+      if (!plain) return false;
+      if (echo.some((pattern) => pattern.test(plain))) return false;
+      if (EMPTY_CATEGORY.test(plain) || BARE_STATUS_ECHO.test(plain)) {
+        return false;
+      }
+      return true;
+    });
+    if (kept.length > 0) lines.push(kept.join(" "));
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** Internal keys that are plumbing in any spelling ("plan revision", "state_version"). */
 const INTERNAL_KEY_PHRASES: readonly RegExp[] = [
   /\b(?:expected[ _])?(?:plan|context|client|site|draft)[ _]revision\b/i,
@@ -75,6 +123,8 @@ const INTERNAL_KEY_PHRASES: readonly RegExp[] = [
   // #3355 P9 (D-21): places come from the address search; Ari never asks
   // for, or talks about, coordinates.
   /\b(?:latitudes?|longitudes?)\b/i,
+  // #3355 rework 8 (R8-10): the continuation prompt's own words.
+  ...PROMPT_ECHO_WORDS(),
 ];
 
 /** Strict-only words: fine in prose, never in a label or engine line. */

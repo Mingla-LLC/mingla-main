@@ -757,8 +757,47 @@ export function quoteAssertsLive(text: string): boolean {
  * fixed phrases ("up and running") are kept whole.
  */
 const STATUS_CLAUSE_CUT =
-  /\s*(?:[,;:/]|\s[-–—]\s|\b(?:but|while|whereas|however|though|although|except|whilst|and|so|because|which|then|plus)\b)\s*/i;
+  /\s*(?:[,;:/|]|\s[-–—]\s|[–—]|\b(?:but|while|whereas|however|though|although|except|whilst|and|so|because|which|then|plus)\b)\s*/i;
 const GLUED_PHRASES: readonly RegExp[] = [/\bup\s+and\s+running\b/gi];
+
+/**
+ * #3355 rework 8 (R8-1): a word that puts a hedged or modal clause in the
+ * present ("should be live now", "guests can now buy tickets").
+ */
+const NOW_WORD =
+  /\b(?:now|already|right\s+now|today|currently|at\s+the\s+moment|by\s+now)\b/i;
+/**
+ * R8-1: a modal that governs the state word directly ("will be live", "can
+ * now be published", "you'll go live") — a plan or a possibility — and the
+ * hedges that, with a present-time word, still say the state is current
+ * ("should be live now", "must be published by now").
+ */
+const MODAL_DIRECT =
+  /(?:\b(?:will|would|could|should|can|may|might|shall|must|ought\s+to|going\s+to|about\s+to|ready\s+to|needs?\s+to|has\s+to|have\s+to|wants?\s+to)|['’]ll)\s+(?:(?:now|already|soon|then|also|just|still|finally)\s+)?(?:(?:be|go|become|get|start|have\s+been|have\s+gone)\s+)?(?:(?:now|already|fully|officially)\s+)?$/i;
+const HEDGE_MODAL = /\b(?:should|must|ought\s+to)\s+(?:[\p{L}'’]+\s+){0,3}$/iu;
+/** R8-1: a modal of possibility ("can", "could", "may"). */
+const POSSIBLE_MODAL =
+  /\b(?:can|could|may|are\s+able\s+to|is\s+able\s+to)\s+(?:[\p{L}'’]+\s+){0,6}$/iu;
+/**
+ * R8-1: what guests can do with an object said as current fact ("Guests can
+ * now buy tickets", "People can book it today") says it is live.
+ */
+const GUEST_AFFORDANCE =
+  /\b(?:guests?|people|buyers?|attendees?|fans|followers|everyone|anyone|customers|the\s+public)\s+(?:can|could|may|are\s+able\s+to)\s+(?:(?:now|already)\s+)?(?!be\b)[\p{L}]+/iu;
+/** R8-4: "not only" / "not just" focus a statement; they do not negate it. */
+const FOCUS_NOT = /\bnot\s+(?:only|just|merely|simply)\b/gi;
+/**
+ * R8-4: the non-live publication states a negation turns into live ("no
+ * longer a draft", "isn't paused"); "hasn't ended" says nothing about live.
+ */
+const NEGATABLE_NONLIVE =
+  /^(?:drafts?|unpublished|paused|in\s+review|pending(?:\s+review)?|hidden|offline|turned\s+off|switched\s+off)$/i;
+/**
+ * R8-6: a how-to or an instruction about the action ("To publish Lagos Night
+ * Out, open it and tap Publish"): never a status said as fact.
+ */
+const HOW_TO =
+  /(?:^|[,;:.!]\s*|\b(?:and|then|just)\s+)(?:to\s+)?(?:publish|unpublish|go\s+live|make\s+(?:it|them)\s+live|tap|press|click|open|go\s+to|head\s+to|select|choose|turn\s+on|switch\s+on)\b/i;
 
 /**
  * Words before a state word that make it a plan, a possibility or a
@@ -871,20 +910,48 @@ export function clauseMood(
     const hit = new RegExp(pattern.source, flags).exec(clause);
     if (hit && (at < 0 || hit.index < at)) at = hit.index;
   }
-  if (at < 0) return NONLIVE_STATE.test(clause) ? "negative" : "none";
+  const negates = (text: string): boolean => {
+    const plain = text.replace(FOCUS_NOT, " ");
+    return NEGATED_STATE.test(plain) || /^\s*no\b/i.test(plain) ||
+      /\b(?:no|neva)\s+$/i.test(plain);
+  };
+  if (at < 0) {
+    const nonlive = NONLIVE_STATE.exec(clause);
+    if (nonlive) {
+      // R8-4: a negated publication state says the object is live ("no
+      // longer a draft", "not a draft anymore", "isn't paused").
+      const before = clause.slice(0, nonlive.index);
+      return NEGATABLE_NONLIVE.test(nonlive[0].trim()) && negates(before) &&
+          !CONDITION_BEFORE.test(before)
+        ? "positive"
+        : "negative";
+    }
+    // R8-1: "Guests can now buy tickets" says the object is live now.
+    const guests = GUEST_AFFORDANCE.exec(clause);
+    if (
+      guests && NOW_WORD.test(clause) &&
+      !CONDITION_BEFORE.test(clause.slice(0, guests.index)) &&
+      !negates(clause)
+    ) return "positive";
+    return "none";
+  }
   const before = clause.slice(0, at);
-  if (
-    FUTURE_STATE.test(clause) || CONDITION_BEFORE.test(before) ||
-    MODAL_NEAR.test(before)
-  ) {
+  if (FUTURE_STATE.test(clause) || CONDITION_BEFORE.test(before)) {
     return "future";
   }
-  if (
-    NEGATED_STATE.test(before) || /^\s*no\b/i.test(before) ||
-    /\b(?:no|neva)\s+$/i.test(before)
-  ) {
-    return "negative";
+  // R8-1: a hedged state with a present-time word is a present claim
+  // ("Your event should be live now"); a modal of possibility with a verb
+  // between it and the state ("People can find it on Discover now") too. A
+  // modal that governs the state itself ("can now be published", "will be
+  // live") stays a plan.
+  if (MODAL_DIRECT.test(before)) {
+    if (!(HEDGE_MODAL.test(before) && NOW_WORD.test(clause))) return "future";
+  } else if (MODAL_NEAR.test(before)) {
+    if (!(POSSIBLE_MODAL.test(before) && NOW_WORD.test(clause))) {
+      return "future";
+    }
   }
+  if (negates(before)) return "negative";
   return "positive";
 }
 
@@ -1131,6 +1198,70 @@ function askedForWrite(context: ClaimContext): boolean {
 }
 
 /**
+ * #3355 rework 8 (R8-2): the reply says the work is done ("Done!", "All
+ * set", "I've created…", "It's been published", "it's live").
+ */
+const DONE_OPENER =
+  /(?:^|[.!?]\s+|\n\s*)(?:[\p{L}]+,\s*)?(?:done|all\s+done|all\s+set|you['’]?re\s+all\s+set|sorted|it['’]?s\s+done|that['’]?s\s+done|c['’]est\s+fait|e\s+don\s+(?:set|do|finish))\b/iu;
+const PRONOUN_LIVE =
+  /(?:^|[.!?]\s+|\n\s*)(?:(?:yes|great|perfect|ok(?:ay)?)[,!.]?\s+)?(?:it|it['’]s|it\s+is|that['’]s|they['’]re|they\s+are)\s+(?:now\s+|all\s+|already\s+)*(?:live|published|created|sent|active|ready|up)\b/i;
+
+export function replyClaimsCompletion(text: string): boolean {
+  const plain = text.replace(/[*_`]/g, "");
+  return DONE_OPENER.test(plain) || FIRST_PERSON_PAST.test(plain) ||
+    PASSIVE_DONE.test(plain) || ML_DONE.test(plain) || PRONOUN_LIVE.test(plain);
+}
+
+/**
+ * #3355 rework 8 (R8-2, Seth's tie-break, binding): the host's message asks
+ * for a write (a write verb in an action position, any phrasing — "can you
+ * make…", "please create…", "make me…"), the reply says it is done, and
+ * nothing was written or proposed in THIS turn. The completion claim is then
+ * always corrected to the true state, whatever the intent read said and
+ * before any status row or older card can back it. A status follow-up with
+ * no write verb ("Did you make the code?", "Can guests use FAVY10 now?") is
+ * never touched by this rule.
+ */
+export function completionWithoutWrite(
+  context: ClaimContext,
+  evidence: readonly ClaimEvidence[],
+): boolean {
+  if (context.approved) return false;
+  if (!hostAsksForWrite(context.hostMessage ?? "")) return false;
+  if (!replyClaimsCompletion(context.replyText ?? "")) return false;
+  return !evidence.some((item) => item.thisTurn && item.status !== "read");
+}
+
+/**
+ * Rework 8 (R8-2): the claim names one specific object ("I created FAVY10",
+ * "Lagos Night Out is live") that a record of this chat matches exactly.
+ * That record is the truth about that very object, so the ordinary rules
+ * decide it. The tie-break is about a described or unnamed "Done! Your
+ * student discount is live" / "Done! It's published", which an older record
+ * of ANOTHER object would otherwise back.
+ */
+function namesRecordedObject(
+  claim: AriClaim,
+  evidence: readonly ClaimEvidence[],
+  context: ClaimContext,
+): boolean {
+  const object = claim.object?.trim() ?? "";
+  const quoted = codesInObject(claim.quote, context.chatObjects ?? []);
+  // An unnamed claim about the code the host's own request names ("Create
+  // FAVY10" → "All set ✅") is about that code.
+  const names = object && !DESCRIBED_OBJECT.test(object) &&
+      !BARE_PRONOUN.test(object)
+    ? [object]
+    : quoted.length > 0
+    ? quoted
+    : [...(context.hostNamed ?? [])];
+  return names.length > 0 &&
+    names.every((name) =>
+      evidence.some((item) => objectsMatch(name, item.objects))
+    );
+}
+
+/**
  * #3355 rework 6 (R6-4, Seth's rule 5 — one structural rule in place of the
  * R5-1 conjunction list): the clauses of a quote, each with the state it
  * says. A clause is cut at a comma, semicolon, colon, slash or a contrast
@@ -1350,12 +1481,13 @@ export type WantedStatus = "live" | "sent" | "sold_out" | "cancelled";
 const STATUS_WORDS: Partial<Record<AriClaimKind, RegExp>> = {
   // Rework 6 (R6-3 / R6-12): "visible to guests", "up on Mingla", "ticket
   // sales are open" say the same state as "published".
+  // Rework 8 (R8-5): "on Discover", "its page is up" say it too.
   event:
-    /\b(?:live|published|on\s+sale|active|visible|up\s+on|listed|bookable|open\s+for\s+(?:bookings|rsvps|sales)|sales?\s+(?:is|are)\s+(?:now\s+)?open|now\s+open)\b/i,
+    /\b(?:live|published|on\s+sale|active|visible|up\s+on|listed|bookable|open\s+for\s+(?:bookings|rsvps|sales)|sales?\s+(?:is|are)\s+(?:now\s+)?open|now\s+open|on\s+discover|(?:page|link|listing)\s+(?:is|are)\s+(?:now\s+)?up)\b/i,
   trip:
-    /\b(?:live|published|on\s+sale|active|visible|up\s+on|listed|bookable|open\s+for\s+bookings|sales?\s+(?:is|are)\s+(?:now\s+)?open|now\s+open)\b/i,
+    /\b(?:live|published|on\s+sale|active|visible|up\s+on|listed|bookable|open\s+for\s+bookings|sales?\s+(?:is|are)\s+(?:now\s+)?open|now\s+open|on\s+discover|(?:page|link|listing)\s+(?:is|are)\s+(?:now\s+)?up)\b/i,
   experience:
-    /\b(?:live|published|on\s+sale|active|visible|up\s+on|listed|bookable|open\s+for\s+bookings|sales?\s+(?:is|are)\s+(?:now\s+)?open|now\s+open)\b/i,
+    /\b(?:live|published|on\s+sale|active|visible|up\s+on|listed|bookable|open\s+for\s+bookings|sales?\s+(?:is|are)\s+(?:now\s+)?open|now\s+open|on\s+discover|(?:page|link|listing)\s+(?:is|are)\s+(?:now\s+)?up)\b/i,
   stay:
     /\b(?:live|published|active|visible|up\s+on|listed|open\s+for\s+bookings|bookable)\b/i,
   venue: /\b(?:approved|verified|live|published)\b/i,
@@ -1408,13 +1540,19 @@ export function statusKindsOf(claim: AriClaim): Set<AriClaimKind> {
  *   - not `positive`: no clause asserts it, but a clause says the object is
  *     NOT in it now ("Not yet — your event is still a draft"); the claim is
  *     backed only when the row is not in `wanted` either.
- * Null: no clause says a current state at all (a plan, a condition, an
- * instruction, a proposal) — that is not a status claim.
+ *   - `plan` (rework 8, R8-1 / R8-6): every clause is a plan, a
+ *     condition, a possibility or a how-to with no present-time word ("Once
+ *     you publish Lagos Night Out, guests can buy tickets"). It is said
+ *     about a status kind, so it is kept as said and never handed to the
+ *     card rules.
+ * Null: not a status claim of these kinds (a proposal, a write's receipt
+ * claim such as "I've created Lagos Night Out as a draft").
  */
 export interface StatusAssertion {
   wanted: WantedStatus;
   positive: boolean;
   clauses: string[];
+  plan?: true;
 }
 
 const CANCEL_WORDS =
@@ -1483,16 +1621,34 @@ export function statusAssertion(
     }
     return { wanted: wantedOf(negative), positive: false, clauses: negative };
   }
+  const all = clauses.map((clause) => clause.text);
+  const plan: StatusAssertion = {
+    wanted: wantedOf(all),
+    positive: false,
+    clauses: all,
+    plan: true,
+  };
+  // Rework 8 (R8-1): every stated clause is a plan or a possibility. With a
+  // present-time word and no condition ("Guests will see your event on
+  // Discover from today") it is a present claim held to the row; otherwise
+  // it is a plan, kept as said — never decided by an older card.
+  if (moods.some((mood) => mood !== "none")) {
+    const future = clauses.filter((_clause, index) => moods[index] === "future")
+      .map((clause) => clause.text);
+    if (
+      future.some((text) => NOW_WORD.test(text)) &&
+      !future.some((text) => CONDITION_BEFORE.test(text))
+    ) return { wanted: wantedOf(future), positive: true, clauses: future };
+    return plan;
+  }
   // No clause says a state in words ("Yes!", "Done — Lagos Night Out."): the
-  // judge's own action word asserts it, unless the claim is a plan or a
-  // condition anywhere.
-  if (moods.some((mood) => mood !== "none")) return null;
+  // judge's own action word asserts it, unless the claim is a plan, a
+  // condition or a how-to anywhere (rework 8: kept as said, R8-6).
   const plain = claim.quote.replace(/[*_`]/g, "");
   if (
-    NEGATED_STATE.test(plain) || FUTURE_STATE.test(plain) ||
-    NOT_YET_ANY.test(plain)
-  ) return null;
-  const all = clauses.map((clause) => clause.text);
+    NEGATED_STATE.test(plain.replace(FOCUS_NOT, " ")) ||
+    FUTURE_STATE.test(plain) || NOT_YET_ANY.test(plain) || HOW_TO.test(plain)
+  ) return plan;
   if (cancelling) return { wanted: "cancelled", positive: true, clauses: all };
   if (claim.action === "scheduled") return null;
   for (const kind of kinds) {
@@ -1815,7 +1971,13 @@ function resolveStatusTarget(
     );
     return titles.size === 1 ? narrowed : null;
   };
-  if (named) {
+  // Rework 8 (R8-6): the judge named an object the asserted clauses do not
+  // say ("Abuja Brunch is live, but Lagos Night Out is still a draft",
+  // object Lagos Night Out): the asserted clauses' titles decide.
+  const namedElsewhere = named !== null &&
+    rowsTitledIn(named, rows).some((item) => !said.includes(item)) &&
+    said.length > 0;
+  if (named && !namedElsewhere) {
     const key = titleKey(named);
     const matched = rows.filter((item) =>
       item.objects.some((name) => titleKey(name) === key)
@@ -2027,6 +2189,11 @@ function statusJudgement(
   ];
   const assertion = statusAssertion(claim, claimed, titles);
   if (!assertion) return null;
+  // Rework 8 (R8-1 / R8-6): a plan or how-to about a status kind is kept as
+  // said; it is never decided by the card rules.
+  if (assertion.plan) {
+    return { backed: true, found: null, object: claim.object };
+  }
   const wanted = assertion.wanted;
   const kind = [...claimed][0];
   const status = context.status;
@@ -2105,11 +2272,29 @@ function statusJudgement(
       dropsFollowing: true,
     };
   }
+  // Rework 8 (R8-8): "A and B are both live" with B a draft keeps A's true
+  // half: "A is live. Your records show B as a draft."
+  const againstKey = titleKey(displayName(against, ""));
+  const trueHalf =
+    assertion.positive && (wanted === "live" || wanted === "sent")
+      ? [
+        ...new Set(
+          target.rows.filter(fits).map((item) => displayName(item, "")).filter(
+            (name) => name && titleKey(name) !== againstKey,
+          ),
+        ),
+      ]
+      : [];
+  const kept = trueHalf.length > 0
+    ? `${trueHalf.join(" and ")} ${trueHalf.length > 1 ? "are" : "is"} ${
+      wanted === "sent" ? "sent" : "live"
+    }. `
+    : "";
   return {
     backed: false,
     found: against,
     object: claim.object,
-    say: statusSentence(wanted, against, kind),
+    say: `${kept}${statusSentence(wanted, against, kind)}`,
     dropsFollowing: true,
   };
 }
@@ -2164,6 +2349,32 @@ export function judgeClaim(
     );
     return { backed: Boolean(waiting), found: waiting ?? null, object: null };
   }
+  const judged = judgeClaimByRecords(claim, all, context);
+  // Rework 8 (R8-2): the tie-break. A completion claim the records would
+  // back (a status row or an older card of another object) on a write
+  // request with nothing written or proposed this turn is corrected; one
+  // they already correct keeps its own, more specific, true state.
+  if (
+    judged.backed && claim.action !== "proposed" &&
+    completionWithoutWrite(context, all) &&
+    !namesRecordedObject(claim, all, context)
+  ) {
+    return {
+      backed: false,
+      found: null,
+      object: null,
+      say: TRUE_STATE_NOTHING_SAVED,
+      dropsFollowing: true,
+    };
+  }
+  return judged;
+}
+
+function judgeClaimByRecords(
+  claim: AriClaim,
+  all: readonly ClaimEvidence[],
+  context: ClaimContext,
+): ClaimJudgement {
   const status = statusJudgement(claim, all, context);
   if (status) return status;
   const kinds = claimKinds(claim);
@@ -2754,7 +2965,18 @@ function statusFact(
     const subject = subjects[index];
     if (!subject) return;
     const owner = clauses[clause.owner]?.text ?? clause.text;
-    if (!STATUS_VERB.test(owner) && !ML_STATE.test(owner)) return;
+    // Rework 8 (R8-3): a list or table line ("- Lagos Night Out: published",
+    // "| Lagos Night Out | Published |", "Lagos Night Out — published")
+    // states its status as a label beside the title, with no verb.
+    const label = clause.owner === index + 1 &&
+      owner.split(/\s+/).filter((word) => /[\p{L}]/u.test(word)).length <= 4 &&
+      new RegExp(
+        `${escapeRegExp(clause.text)}\\s*(?:[:|]|[-–—])\\s*${
+          escapeRegExp(owner.slice(0, 4))
+        }`,
+        "iu",
+      ).test(plain);
+    if (!label && !STATUS_VERB.test(owner) && !ML_STATE.test(owner)) return;
     const words: RegExp[] = [ML_STATE];
     const own = STATUS_WORDS[subject.kind];
     if (own) words.push(own);
@@ -2786,6 +3008,13 @@ function statusFact(
     object,
   };
 }
+
+/**
+ * Rework 8 (R8-5): a sentence that only affirms ("Yes, it is!", 'You asked
+ * "…?" — yes, it is.'): it carries the host question's state.
+ */
+const AFFIRMATION =
+  /(?:^|[,;:—–-]\s*)(?:yes|yeah|yep|yup|correct|that['’]s\s+right|it\s+is|indeed)\b[\s,!.]*(?:(?:it|they|she|he)\s+(?:is|are)|it['’]s|they['’]re)?[\s.!✅🎉]*$/iu;
 
 /** A deterministic claim; `bare` is a status exclamation alone. */
 interface SentenceClaim extends AriClaim {
@@ -2824,10 +3053,22 @@ export function deterministicClaims(args: {
   statusNames?: ReadonlyArray<{ name: string; kind: AriClaimKind }>;
   /** Rework 7 (R7-14): the one status kind "it" is about this turn. */
   pronounKind?: AriClaimKind | null;
+  /** Rework 8 (R8-5): the host's message ("Is Lagos Night Out published?"). */
+  hostMessage?: string;
 }): SentenceClaim[] {
   const objects = args.objects.filter((object) => object.trim().length >= 3);
   const skip = args.skip.map(normalise).filter((item) => item.length >= 3);
   const out: SentenceClaim[] = [];
+  // Rework 8 (R8-5): a bare "Yes, it is!" answering a status question says
+  // the question's state about the question's object.
+  const hostQuestion = (args.hostMessage ?? "").trim();
+  const hostFact = args.status && isStatusQuestion(hostQuestion)
+    ? statusFact(
+      hostQuestion.replace(/[?\s]+$/, ""),
+      args.statusNames ?? [],
+      null,
+    )
+    : null;
   for (const line of args.text.split("\n")) {
     if (!line.trim()) continue;
     for (const sentence of lineSentences(line)) {
@@ -2904,6 +3145,10 @@ export function deterministicClaims(args: {
         );
         if (fact) {
           claim(fact.action, fact.kind, fact.object);
+          continue;
+        }
+        if (hostFact && AFFIRMATION.test(plain)) {
+          claim(hostFact.action, hostFact.kind, hostFact.object);
           continue;
         }
       }
@@ -3038,7 +3283,8 @@ export function fallbackStripClaims(args: {
   const claims = deterministicClaims({
     text: args.text,
     objects: args.objects,
-    asked: askedForWrite(context),
+    asked: askedForWrite(context) ||
+      completionWithoutWrite(context, args.evidence),
     fresh: args.fresh,
     skip: args.skip ?? [],
     hostCodes: context.hostNamed ?? [],
@@ -3058,6 +3304,7 @@ export function fallbackStripClaims(args: {
         : [];
     }),
     pronounKind: args.pronounKind ?? null,
+    hostMessage: args.hostMessage,
   });
   if (claims.length === 0) return { text: args.text, removed: [] };
   const savedNow = args.evidence.some((item) =>
@@ -3377,12 +3624,14 @@ function claimedStatusKinds(
           !DESCRIBED_OBJECT.test(claim.object.trim()) &&
           TITLE_WORDS.test(claim.object.trim())));
     if (titled) {
-      if (statusAssertion(claim, OFFERING_KINDS)) {
+      const offered = statusAssertion(claim, OFFERING_KINDS);
+      if (offered && !offered.plan) {
         for (const kind of OFFERING_KINDS) out.add(kind);
       }
       continue;
     }
-    if (!statusAssertion(claim, kinds)) continue;
+    const assertion = statusAssertion(claim, kinds);
+    if (!assertion || assertion.plan) continue;
     for (const kind of readKindsOf(kinds)) {
       if (STATUS_READ_KINDS.has(kind)) out.add(kind);
     }
@@ -3420,8 +3669,21 @@ function pronounKindOf(
   planKinds: ReadonlySet<AriClaimKind> | undefined,
   evidence: readonly ClaimEvidence[],
   hostMessage: string,
+  previousTurn?: string,
 ): AriClaimKind | null {
-  if (!planKinds || planKinds.size === 0) return null;
+  if (!planKinds || planKinds.size === 0) {
+    // Rework 8 (R8-7): "is it live yet?" right after Ari named an object
+    // ("Lagos Night Out is saved as a draft."): "it" is that object, read
+    // with the offerings when the previous turn names no other kind.
+    const before = previousTurn ?? "";
+    if (
+      !isStatusQuestion(hostMessage) ||
+      !/\b(?:it|that|this\s+one)\b/i.test(hostMessage) ||
+      !TITLE_WORDS.test(before) || codesInObject(before).length > 0
+    ) return null;
+    const named = [...statusKindsInText(before)];
+    return named.length === 1 ? named[0] : named.length === 0 ? "event" : null;
+  }
   const families = new Set<string>();
   for (const kind of planKinds) {
     families.add(OFFERING_KINDS.has(kind) ? "offering" : kind);
@@ -3572,6 +3834,7 @@ export async function checkReplyClaims(args: {
     args.statusRead?.kinds,
     args.evidence,
     args.hostMessage,
+    args.previousTurn,
   );
   const hasCard = args.evidence.some((item) => item.state !== null);
   const budgetLeft = () =>
@@ -3597,7 +3860,8 @@ export async function checkReplyClaims(args: {
     deterministicClaims({
       text: args.text,
       objects: args.objects,
-      asked: askedForWrite(context),
+      asked: askedForWrite(context) ||
+        completionWithoutWrite(context, args.evidence),
       fresh: freshOf(null) ?? { ok: false, checked: new Set() },
       skip,
       hostCodes: context.hostNamed ?? [],
@@ -3607,6 +3871,7 @@ export async function checkReplyClaims(args: {
         : undefined,
       statusNames: namesOf(status),
       pronounKind,
+      hostMessage: args.hostMessage,
     }).filter((claim) => !claim.bare);
   /**
    * Rule 3: read every kind and code the claims assert a status about that

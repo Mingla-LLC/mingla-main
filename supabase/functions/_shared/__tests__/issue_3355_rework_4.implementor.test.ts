@@ -1003,7 +1003,8 @@ Deno.test("R4-12: a heading in the continuation is softened to a bold line; a co
   );
   assertMatch(
     source,
-    /const continuationText = softenAriHeadings\(loop\.text\);/,
+    // Rework 8 (R8-10): the instructions' own words are stripped too.
+    /const continuationText = stripPromptEcho\(softenAriHeadings\(loop\.text\)\);/,
   );
   assertMatch(source, /lintAriCopy\(continuationText,/);
 });

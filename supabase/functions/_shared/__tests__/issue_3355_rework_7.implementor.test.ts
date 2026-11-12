@@ -35,7 +35,10 @@ import {
   type StatusClient,
   titleCandidates,
 } from "../ariStatusRead.ts";
-import { type WriteState } from "../ariTruthGuards.ts";
+import {
+  TRUE_STATE_NOTHING_SAVED,
+  type WriteState,
+} from "../ariTruthGuards.ts";
 import {
   type AriGapSignal,
   decideAriEscalation,
@@ -339,12 +342,14 @@ Deno.test("statusAssertion: positive, negative and plan clauses", () => {
     )?.positive,
     false,
   );
+  // Rework 8 (R8-1 / R8-6): a plan is a status-kind claim kept as said —
+  // never null (which handed it to the card rules).
   assertEquals(
     statusAssertion(
       claim("It will be live once you publish it.", "live", "event"),
       event,
-    ),
-    null,
+    )?.plan,
+    true,
   );
   // A write claim that mentions a draft is decided by its receipt.
   assertEquals(
@@ -508,11 +513,13 @@ Deno.test("R7-3: a valid intent read that says no write is not overridden by the
     objects: ["FAVY10"],
     read: brandRead({ FAVY10: "active" }),
   };
-  // The valid read said this is not a write: the confirmed card it follows
-  // (FAVY10, read active this turn) decides.
+  // Rework 8 (R8-2, Seth's tie-break): the host's words ask for a write
+  // ("Can you make…"), the reply says "Done!" and nothing was written or
+  // proposed this turn — corrected, whatever the intent read said (it used
+  // to keep the reply on FAVY10's older card).
   assertEquals(
     await run({ ...base, asked: false, intentRead: true }),
-    done,
+    TRUE_STATE_NOTHING_SAVED,
   );
   // The read failed: the grammar rule says write, and no record backs it.
   assert(

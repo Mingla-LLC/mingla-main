@@ -2058,8 +2058,15 @@ export function checkStatedSlots(args: {
   /** #3355 rework 1: the brand's currency (amounts off). */
   currency?: string | null;
   now?: Date;
+  /**
+   * #3355 rework 8 (R8-12): the fields Ari already asked the host about
+   * since the last card of this tool. The host's typed value then wins and
+   * goes on the card: Ari asks at most once per field.
+   */
+  askedBefore?: ReadonlySet<string>;
 }): StatedSlotCheck {
   const { schemaKeys } = args;
+  const askedBefore = args.askedBefore ?? new Set<string>();
   const out: Record<string, unknown> = { ...args.toolArgs };
   const now = args.now ?? new Date();
   const bound: string[] = [];
@@ -2110,8 +2117,14 @@ export function checkStatedSlots(args: {
     stated.code && schemaKeys.has("code") && out.kind !== "automatic"
   ) {
     if (proposedCode !== stated.code) {
-      missing.push("code");
-      asks.push(`the code ${stated.code}`);
+      if (askedBefore.has("code")) {
+        // R8-12: asked once already; the host's code goes on the card.
+        out.code = stated.code;
+        bound.push("code");
+      } else {
+        missing.push("code");
+        asks.push(`the code ${stated.code}`);
+      }
     }
   }
   // P1-3: a stated percent is a percent of exactly that size.
@@ -2119,10 +2132,19 @@ export function checkStatedSlots(args: {
     const wrongKind = schemaKeys.has("value_type") &&
       out.value_type !== undefined && out.value_type !== "percent";
     if (wrongKind || Number(out.value_bps) !== stated.value_bps) {
-      missing.push("value_bps");
-      asks.push(`${stated.value_bps / 100}% off`);
-      const proposedHad = proposedValueWords(out, args.currency);
-      if (proposedHad) had.push(proposedHad);
+      if (askedBefore.has("value_bps")) {
+        // R8-12: asked once already ("Yes, 10% off."); the host's percent
+        // goes on the card, never the model's 0.1% again.
+        out.value_bps = stated.value_bps;
+        if (schemaKeys.has("value_type")) out.value_type = "percent";
+        delete out.value_minor;
+        bound.push("value_bps");
+      } else {
+        missing.push("value_bps");
+        asks.push(`${stated.value_bps / 100}% off`);
+        const proposedHad = proposedValueWords(out, args.currency);
+        if (proposedHad) had.push(proposedHad);
+      }
     }
   }
   // P1-3: a stated amount off is a fixed amount of exactly that size, in
@@ -2355,6 +2377,8 @@ export async function preserveStatedSlots(args: {
   now?: Date;
   /** #3355 Wave E — the intent read's stated values (grounded again here). */
   modelStated?: ModelStatedValues | null;
+  /** #3355 rework 8 (R8-12): fields Ari already asked about (see checkStatedSlots). */
+  askedBefore?: ReadonlySet<string>;
 }): Promise<StatedSlotCheck> {
   const properties = (args.parameters as { properties?: unknown }).properties;
   const schemaKeys = new Set(
@@ -2437,7 +2461,48 @@ export async function preserveStatedSlots(args: {
     country,
     currency,
     now: args.now,
+    ...(args.askedBefore ? { askedBefore: args.askedBefore } : {}),
   });
+}
+
+/**
+ * #3355 rework 8 (R8-12): the fields Ari's own stated-slot questions asked
+ * about since the last card of this tool ("Before I set this up: you asked
+ * for 10% off…", "Tell me the code you'd like…"). Each field is asked once;
+ * after that the host's typed value wins.
+ */
+export function statedSlotsAskedBefore(args: {
+  history: ReadonlyArray<
+    { role?: unknown; content?: unknown; tool_calls?: unknown }
+  >;
+  toolName: string;
+  limit?: number;
+}): Set<string> {
+  const out = new Set<string>();
+  let seen = 0;
+  for (let index = args.history.length - 1; index >= 0; index -= 1) {
+    const row = args.history[index];
+    if (
+      row.role === "assistant" && row.tool_calls &&
+      (row.tool_calls as { tool_name?: unknown }).tool_name === args.toolName
+    ) break;
+    if (row.role !== "assistant") continue;
+    if (++seen > (args.limit ?? 4)) break;
+    const text = (row.content as { text?: unknown } | null)?.text;
+    if (typeof text !== "string") continue;
+    const asked = /\byou asked for\b([^.?!]*)/i.exec(text)?.[1] ?? "";
+    if (/%\s*off/i.test(asked)) out.add("value_bps");
+    if (/\b(?:the code|one of the codes)\b/i.test(asked)) out.add("code");
+    if (
+      /\bTell me the code\b|\bwhat code should people type\b/i.test(text)
+    ) out.add("code");
+    if (
+      /\bHow much off should this be\? Tell me the percentage\b/i.test(text)
+    ) {
+      out.add("value_bps");
+    }
+  }
+  return out;
 }
 
 /**
