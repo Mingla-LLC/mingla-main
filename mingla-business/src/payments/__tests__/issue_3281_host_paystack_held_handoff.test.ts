@@ -1072,6 +1072,43 @@ describe("#3281 6c — the hold never outlives the server session", () => {
     expect(openBrowserAsync).toHaveBeenCalledTimes(1);
   });
 
+  it("a wall clock moved back before the page opens cannot stretch the server's deadline", async () => {
+    const T0 = new Date("2026-11-12T10:00:00Z").getTime();
+    const now = jest.spyOn(Date, "now").mockReturnValue(T0);
+    const mono = jest.spyOn(performance, "now").mockReturnValue(1_000);
+    await pay(v2Input());
+    now.mockReturnValue(T0 + 330_000);
+    mono.mockReturnValue(1_000 + 30_000);
+    preflightAnswer = () => {
+      // 65 s left; then 70 s pass while the wall clock is corrected back.
+      now.mockReturnValue(T0 + 100_000);
+      mono.mockReturnValue(1_000 + 100_000);
+      return {
+        data: { status: "present_allowed", expiresInSeconds: 65 },
+        error: null,
+      };
+    };
+    expect(await pay(v2Input())).toEqual({
+      outcome: "failed",
+      message: PAGE_EXPIRED,
+    });
+    expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([403, 404])(
+    "a first status read of %s is a refusal: the page is dropped, not retried",
+    async (status) => {
+      await pay(v2Input());
+      statusAnswers = [abandoned, http(status)];
+      expect(await pay(v2Input())).toEqual({
+        outcome: "failed",
+        message: NOT_ISSUED,
+      });
+      expect(preflights()).toHaveLength(0);
+      expect(openBrowserAsync).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("the server saying more than a minute is left lets the page reopen", async () => {
     await pay(v2Input());
     preflightAnswer = () => ({

@@ -86,7 +86,7 @@ import {
   clearAllHeldHandoffs as clearSharedHeldHandoffs,
   clearHeldHandoff,
   dropHeldHandoff,
-  handoffElapsedMs,
+  handoffClockNow,
   handoffGeneration,
   handoffLifetimeMs,
   holdHandoff,
@@ -403,7 +403,9 @@ async function readCheckoutStatusOnce(
   if (error != null) {
     const status =
       (error as { context?: { status?: number } })?.context?.status ?? null;
-    if (status === 409) {
+    // issue #3281 (bundle 6d) — 403 (not this buyer's token) and 404 (no
+    // such session) are definitive too: the session cannot be paid here.
+    if (status === 409 || status === 403 || status === 404) {
       const raw = await extractFunctionError(error, "");
       return { kind: "refused", code: raw.length > 0 ? raw : null };
     }
@@ -844,7 +846,7 @@ async function revalidateHeldHandoff(
   };
   // How old the page was when we asked: the server's seconds left are counted
   // from no earlier than this, so the tightened deadline can only be early.
-  const elapsedAtAsk = handoffElapsedMs(handoff);
+  const askedAt = handoffClockNow();
   try {
     preflight = await supabase.functions.invoke<{
       status?: string;
@@ -866,7 +868,7 @@ async function revalidateHeldHandoff(
     // longer than the real session (a failed expiry read, a reused session).
     // The hold is shortened to match, and the caller checks it again before
     // writing the recovery pointer and right before opening the page.
-    tightenHandoffLifetime(handoff, preflight.data.expiresInSeconds, elapsedAtAsk);
+    tightenHandoffLifetime(handoff, preflight.data.expiresInSeconds, askedAt);
     if (!isHandoffLive(handoff)) {
       dropHeldHandoff(eventId, handoff.fingerprint, generation);
       return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };

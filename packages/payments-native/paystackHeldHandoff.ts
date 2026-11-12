@@ -40,6 +40,20 @@ export interface HeldPaystackHandoff {
    * server's own seconds-left on the session (`handoffLifetimeMs`).
    */
   lifetimeMs: number;
+  /**
+   * issue #3281 (bundle 6d) — a deadline the server set (its seconds left),
+   * kept on EACH clock separately: a wall clock moved back cannot pass the
+   * monotonic deadline, and a monotonic clock paused in sleep cannot pass
+   * the wall one. Absent until the server has said.
+   */
+  serverDeadlineWall?: number;
+  serverDeadlineMono?: number;
+}
+
+/** Both clocks, read together (to anchor a question to the server). */
+export interface HandoffClockReading {
+  wall: number;
+  mono: number;
 }
 
 /** Stop reopening a page this long before the server's session ends. */
@@ -81,16 +95,22 @@ export const monotonicNow = (): number => {
 export const handoffElapsedMs = (entry: HeldPaystackHandoff): number =>
   Math.max(Date.now() - entry.cachedAt, monotonicNow() - entry.cachedAtMono);
 
+export const handoffClockNow = (): HandoffClockReading => ({
+  wall: Date.now(),
+  mono: monotonicNow(),
+});
+
 /**
- * issue #3281 (bundle 6d) — the server said the session has `secondsLeft`,
- * measured when `elapsedAtAsk` (this page's elapsed time just before asking)
- * had passed. Shorten the hold to match, never lengthen it: the deadline is
- * counted from before the question, so it can only be early.
+ * issue #3281 (bundle 6d) — the server said the session has `secondsLeft`
+ * when asked at `askedAt` (both clocks read just before the question). The
+ * page may not be reopened past that, minus the margin, on EITHER clock.
+ * Only ever earlier: an existing deadline is kept when it is sooner, and the
+ * 14-minute / create-time bound in `lifetimeMs` still applies.
  */
 export const tightenHandoffLifetime = (
   entry: HeldPaystackHandoff,
   secondsLeft: unknown,
-  elapsedAtAsk: number,
+  askedAt: HandoffClockReading,
 ): void => {
   if (
     typeof secondsLeft !== "number" ||
@@ -99,10 +119,17 @@ export const tightenHandoffLifetime = (
   ) {
     return;
   }
-  entry.lifetimeMs = Math.min(
-    entry.lifetimeMs,
-    elapsedAtAsk + secondsLeft * 1000 - PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS,
-  );
+  const remaining = secondsLeft * 1000 - PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS;
+  const wall = askedAt.wall + remaining;
+  const mono = askedAt.mono + remaining;
+  entry.serverDeadlineWall =
+    entry.serverDeadlineWall === undefined
+      ? wall
+      : Math.min(entry.serverDeadlineWall, wall);
+  entry.serverDeadlineMono =
+    entry.serverDeadlineMono === undefined
+      ? mono
+      : Math.min(entry.serverDeadlineMono, mono);
 };
 
 /**
@@ -110,8 +137,22 @@ export const tightenHandoffLifetime = (
  * wall-clock and monotonic readings: a wall clock moved back cannot extend
  * the hold, and a monotonic clock that pauses in deep sleep cannot either.
  */
-export const isHandoffLive = (entry: HeldPaystackHandoff): boolean =>
-  handoffElapsedMs(entry) < entry.lifetimeMs;
+export const isHandoffLive = (entry: HeldPaystackHandoff): boolean => {
+  if (handoffElapsedMs(entry) >= entry.lifetimeMs) return false;
+  if (
+    entry.serverDeadlineWall !== undefined &&
+    Date.now() >= entry.serverDeadlineWall
+  ) {
+    return false;
+  }
+  if (
+    entry.serverDeadlineMono !== undefined &&
+    monotonicNow() >= entry.serverDeadlineMono
+  ) {
+    return false;
+  }
+  return true;
+};
 
 /**
  * Held pages per event, then per purchase fingerprint. More than one per event

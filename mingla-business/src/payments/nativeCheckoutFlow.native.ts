@@ -58,7 +58,7 @@ import { waitForPaymentPageClosed } from "@mingla/payments-native/paymentPageRet
 import {
   clearHeldHandoff,
   dropHeldHandoff,
-  handoffElapsedMs,
+  handoffClockNow,
   handoffGeneration,
   handoffLifetimeMs,
   holdHandoff,
@@ -375,9 +375,13 @@ async function readCheckoutStatusOnce(
   }
   // A 409 is the server refusing the sale. Without this the buyer waited out
   // the whole budget for a sale that was already refused.
+  // issue #3281 (bundle 6d) — 403 (not this buyer's token) and 404 (no such
+  // session) are definitive too: the session cannot be paid here.
+  const refusedStatus = (error as { context?: { status?: number } } | null)
+    ?.context?.status;
   if (
     error != null &&
-    (error as { context?: { status?: number } })?.context?.status === 409
+    (refusedStatus === 409 || refusedStatus === 403 || refusedStatus === 404)
   ) {
     return { kind: "refused" };
   }
@@ -472,7 +476,7 @@ async function revalidateHeldHandoff(
   };
   // issue #3281 (bundle 6d) — how old the page was when we asked; the
   // server's seconds left count from no earlier than this.
-  const elapsedAtAsk = handoffElapsedMs(handoff);
+  const askedAt = handoffClockNow();
   try {
     preflight = await supabase.functions.invoke<{ status?: string }>(
       "ticket-checkout-status",
@@ -497,11 +501,7 @@ async function revalidateHeldHandoff(
     // session was an older one reused, the real limit can be shorter.
     // bundle 6d: the hold is shortened to match (never lengthened), and the
     // live check right before opening enforces it.
-    tightenHandoffLifetime(
-      handoff,
-      preflight.data.expiresInSeconds,
-      elapsedAtAsk,
-    );
+    tightenHandoffLifetime(handoff, preflight.data.expiresInSeconds, askedAt);
     if (!isHandoffLive(handoff)) {
       dropHeldHandoff(eventId, handoff.fingerprint, generation);
       return { outcome: "failed", message: CHECKOUT_PAGE_EXPIRED_MESSAGE };

@@ -527,6 +527,48 @@ describe("#3281 6d — a held page is re-checked before it reopens", () => {
     expect(pointer()).toBeNull();
   });
 
+  it("a wall clock moved back during a slow pointer write cannot stretch the server's deadline", async () => {
+    const t0 = 1_900_000_000_000;
+    const now = jest.spyOn(Date, "now").mockReturnValue(t0);
+    const mono = jest.spyOn(performance, "now").mockReturnValue(1_000);
+    await abandonFirst();
+    // Asked at wall +330 s, monotonic +30 s (the wall clock had run ahead).
+    now.mockReturnValue(t0 + 330_000);
+    mono.mockReturnValue(1_000 + 30_000);
+    statusAnswers = [pending, abandoned];
+    preflightAnswer = () => allowed(65); // 5 s inside the margin
+    const secure = jest.requireMock("../../lib/secureStoreSafe");
+    secure.secureSetItem.mockImplementationOnce(async (_key, value) => {
+      // A 70-second write, during which the wall clock is corrected back.
+      now.mockReturnValue(t0 + 100_000);
+      mono.mockReturnValue(1_000 + 100_000);
+      mockSecureValue = value;
+    });
+    expect(await pay()).toEqual({
+      outcome: "failed",
+      message: CHECKOUT_PAGE_EXPIRED_MESSAGE,
+    });
+    expect(opened()).toHaveLength(1);
+    expect(pointer()).toBeNull();
+  });
+
+  it.each([403, 404])(
+    "a first status read of %s is a refusal: the page is dropped, not retried",
+    async (status) => {
+      await abandonFirst();
+      statusAnswers = [http(status)];
+      expect(await pay()).toMatchObject({
+        outcome: "failed",
+        message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+      });
+      expect(preflights()).toHaveLength(0);
+      expect(opened()).toHaveLength(1);
+      statusAnswers = [abandoned];
+      await pay();
+      expect(calls("ticket-checkout-create")).toHaveLength(2);
+    },
+  );
+
   it("a recovery pointer that cannot be written for a pending order keeps the held page, and never reopens it", async () => {
     await abandonFirst();
     const unpaidTickets = {
