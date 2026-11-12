@@ -13,3 +13,11 @@ export const TapToPayAwarenessModal = (_props: { assets?: unknown }): React.Reac
 
 /** #4389 HT — no splash on the web: the caller opens setup itself. */
 export const openTapToPayAwareness = (_brandId: string): boolean => false;
+
+/** Web never shows the splash (Tap to Pay is native only). Same signature as native. */
+export function tapAwarenessAutoShowAllowed(_input: {
+  pathname: string | null;
+  setupComplete: boolean;
+}): boolean {
+  return false;
+}
