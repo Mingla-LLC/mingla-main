@@ -71,6 +71,8 @@ class FakeQuery implements PromiseLike<DbResult> {
 }
 
 class FakeServiceClient {
+  /** #3281 6c — what the session's `expires_at` read returns. */
+  expiry: string | null | undefined | "throw" | "error" = undefined;
   readonly operations: string[] = [];
   readonly updates: Array<{ table: string; payload: Record<string, unknown> }> = [];
   sessionError: { message: string } | null = null;
@@ -143,6 +145,15 @@ class FakeServiceClient {
         return { data: { brands: { payout_hold_cutover_at: null } }, error: null };
       }
       return { data: { event_type: "event", bookings_closed: false }, error: null };
+    }
+    // #3281 6c — the session expiry read after the Paystack commit.
+    if (table === "ticket_checkout_sessions" && action === "select" && single) {
+      if (this.expiry === "throw") throw new Error("expiry read failed");
+      if (this.expiry === "error") return { data: null, error: { message: "down" } };
+      return {
+        data: this.expiry === undefined ? null : { expires_at: this.expiry },
+        error: null,
+      };
     }
     if (table === "ticket_checkout_sessions" && action === "update" && payload) {
       this.updates.push({ table, payload });
@@ -300,3 +311,44 @@ Deno.test("#3645 full-pay Paystack quote has no plan fields", async () => {
   assertEquals(json.installmentChargeSchedule, undefined);
   assertEquals(json.planTotalBuyerCents, undefined);
 });
+
+Deno.test("#3281 6c the Paystack answer carries the session's expiry, by time and seconds left", async () => {
+  const ops = { operations: [] as string[] };
+  const { db, handler } = harness(initializer(ops, []), null);
+  const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  db.expiry = expires;
+  const response = await handler(request());
+  const json = await response.json();
+  assertEquals(response.status, 200, JSON.stringify(json));
+  assertEquals(json.kind, "requires_paystack_redirect");
+  assertEquals(json.expiresAt, expires);
+  assert(json.expiresInSeconds > 590 && json.expiresInSeconds <= 600, String(json.expiresInSeconds));
+});
+
+Deno.test("#3281 6c an already-past expiry is sent as zero seconds left, never negative", async () => {
+  const ops = { operations: [] as string[] };
+  const { db, handler } = harness(initializer(ops, []), null);
+  db.expiry = new Date(Date.now() - 60_000).toISOString();
+  const json = await (await handler(request())).json();
+  assertEquals(json.expiresInSeconds, 0);
+});
+
+for (const [label, expiry] of [
+  ["a queued hold's infinity", "infinity"],
+  ["no row", undefined],
+  ["a null expiry", null],
+  ["a read error", "error"],
+  ["a read that throws", "throw"],
+] as const) {
+  Deno.test(`#3281 6c ${label}: the page is still answered, with neither expiry field`, async () => {
+    const ops = { operations: [] as string[] };
+    const { db, handler } = harness(initializer(ops, []), null);
+    db.expiry = expiry;
+    const response = await handler(request());
+    const json = await response.json();
+    assertEquals(response.status, 200, JSON.stringify(json));
+    assertEquals(json.kind, "requires_paystack_redirect");
+    assertEquals("expiresAt" in json, false);
+    assertEquals("expiresInSeconds" in json, false);
+  });
+}

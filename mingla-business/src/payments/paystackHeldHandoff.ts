@@ -27,8 +27,23 @@ export interface HeldPaystackHandoff {
   authorizationUrl: string;
   checkoutSessionId: string;
   buyerStatusToken: string;
+  /** Wall clock, taken just before the create call. */
   cachedAt: number;
+  /**
+   * issue #3281 (bundle 6c) — the same moment on the monotonic clock. A
+   * phone's wall clock can be moved back; elapsed time is the larger of the
+   * two readings, so neither a clock change nor deep sleep can stretch a hold.
+   */
+  cachedAtMono: number;
+  /**
+   * issue #3281 (bundle 6c) — how long the page may be reopened, from the
+   * server's own seconds-left on the session (`handoffLifetimeMs`).
+   */
+  lifetimeMs: number;
 }
+
+/** Stop reopening a page this long before the server's session ends. */
+export const PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS = 60 * 1000;
 
 /**
  * `ticket-checkout-create` gives the session 15 minutes from when it writes the
@@ -36,6 +51,40 @@ export interface HeldPaystackHandoff {
  * early, so it never outlives the session it pays into.
  */
 export const PAYSTACK_HANDOFF_TTL_MS = 14 * 60 * 1000;
+
+/**
+ * How long a page created by a request sent just before the hold may be
+ * reopened, given the server's seconds-left on the session (any non-number or
+ * negative value is ignored, and the 14-minute bound always applies). Counted
+ * from before the request, so it can only be shorter than the truth.
+ */
+export const handoffLifetimeMs = (expiresInSeconds: unknown): number =>
+  typeof expiresInSeconds === "number" &&
+  Number.isFinite(expiresInSeconds) &&
+  expiresInSeconds >= 0
+    ? Math.min(
+        PAYSTACK_HANDOFF_TTL_MS,
+        expiresInSeconds * 1000 - PAYSTACK_HANDOFF_EXPIRY_MARGIN_MS,
+      )
+    : PAYSTACK_HANDOFF_TTL_MS;
+
+/** Milliseconds on a clock that never goes backwards (wall clock if absent). */
+export const monotonicNow = (): number => {
+  const performance = (globalThis as { performance?: { now?: () => number } })
+    .performance;
+  return typeof performance?.now === "function"
+    ? performance.now()
+    : Date.now();
+};
+
+/**
+ * Whether the page may still be reopened. Elapsed time is the larger of the
+ * wall-clock and monotonic readings: a wall clock moved back cannot extend
+ * the hold, and a monotonic clock that pauses in deep sleep cannot either.
+ */
+export const isHandoffLive = (entry: HeldPaystackHandoff): boolean =>
+  Math.max(Date.now() - entry.cachedAt, monotonicNow() - entry.cachedAtMono) <
+  entry.lifetimeMs;
 
 /**
  * Held pages per event, then per purchase fingerprint. More than one per event
@@ -61,12 +110,11 @@ export const handoffGeneration = (): number => generation;
 export const readHeldHandoff = (
   eventId: string,
   fingerprint: string,
-  now: number = Date.now(),
 ): HeldPaystackHandoff | null => {
   const forEvent = held.get(eventId);
   if (forEvent === undefined) return null;
   for (const [key, entry] of forEvent) {
-    if (now - entry.cachedAt >= PAYSTACK_HANDOFF_TTL_MS) forEvent.delete(key);
+    if (!isHandoffLive(entry)) forEvent.delete(key);
   }
   if (forEvent.size === 0) held.delete(eventId);
   return forEvent.get(fingerprint) ?? null;
@@ -94,6 +142,23 @@ export const clearHeldHandoff = (
   // account has since been given for the same event.
   if (sinceGeneration !== generation) return;
   held.delete(eventId);
+};
+
+/**
+ * issue #3281 (bundle 6c) — drop ONE purchase's page (it ran out), leaving the
+ * event's other carts' pages alone. Ignored after a sign-out, like
+ * `clearHeldHandoff`.
+ */
+export const dropHeldHandoff = (
+  eventId: string,
+  fingerprint: string,
+  sinceGeneration: number,
+): void => {
+  if (sinceGeneration !== generation) return;
+  const forEvent = held.get(eventId);
+  if (forEvent === undefined) return;
+  forEvent.delete(fingerprint);
+  if (forEvent.size === 0) held.delete(eventId);
 };
 
 export const clearAllHeldHandoffs = (): void => {
