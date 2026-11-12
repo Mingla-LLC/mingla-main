@@ -246,10 +246,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389: re-sealed after registering the four #4389 migrations (renumbered 20280629*4389, above main's 20280626*4398) and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes, skipping the brand setup migration in the #1931 template replay, and merging origin/main 811c033211.
 // #4389: re-sealed after skipping the brand setup and Ari brand operation migrations in the #2117 pre-landing replay (they re-emit #2117-gated readers before #2117 lands there).
 // #4389: re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows) and renumbering the four #4389 migrations to 20280701*4389 (above main's 20280630004402).
+// #4402: re-sealed after registering the shared payee bank account migration (20280701904402) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes, and skipping it in the #1931 template replay.
 // #4402: register the creator review migration (20280702004402) and its pg17 suite in the #1857, #1931 and #2117 replay lanes; re-sealed.
 // #4402 rework: register the tester's creator review pg17 proof beside the implementor's; re-sealed.
 // #4402: register the admin band-change migration (20280702104402, skipped in the #1931 template replay) and its pg17 proof; re-sealed.
-export const BOOTSTRAP_SHA256 = "c2aefdd622cc383e55747102ca1103a6a9bec3975128b93945e9ac5034a9a719";
+// #4402: re-sealed after merging origin/main 87e922d58f (the shared payee bank rows kept beside the creator review and band-change rows).
+export const BOOTSTRAP_SHA256 = "898b6030ca951c4619a1c220a0c44ec582e20c82a32f13113be860f2dda3d9d6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

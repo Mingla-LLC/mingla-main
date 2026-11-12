@@ -23,6 +23,21 @@ const fail = (message) => {
   throw new Error(`issue-1931-private-event-access: ${message}`);
 };
 
+/** The body of `async function preflightPaymentSheet(` up to its closing brace, or "" if absent. */
+function preflightHelperBody(text) {
+  const start = text.indexOf("async function preflightPaymentSheet(");
+  if (start < 0) return "";
+  const end = text.indexOf("\n}\n", start);
+  return end < 0 ? text.slice(start) : text.slice(start, end + 2);
+}
+
+/** SC-50 M3 probe: flip `preflight: true` inside the helper only. */
+function mutatePreflightHelper(text) {
+  const body = preflightHelperBody(text);
+  if (!body) return text;
+  return text.replace(body, body.replace("preflight: true", "preflight: false"));
+}
+
 // ---------------------------------------------------------------------------------
 // SQL normalisers. The tester defeated the first version of this gate three ways:
 // a trailing `-- ADD COLUMN` comment forged the inert-column allowance, and string
@@ -212,7 +227,12 @@ const check = (s) => {
     if (!(text.lastIndexOf("preflightPaymentSheet(") < text.indexOf("presentPaymentSheet()"))) {
       fail(`${name} native flow calls preflight AFTER present (SC-50(c))`);
     }
-    if (!text.includes("preflight: true")) fail(`${name} native flow lost \`preflight: true\` (SC-50(d))`);
+    // SC-50(d) is scoped to the Stripe preflight helper itself. #4407 (#3281) added a
+    // second `preflight: true` (the held Paystack page reopen), so a file-wide
+    // `includes` let the helper lose its flag unnoticed.
+    if (!preflightHelperBody(text).includes("preflight: true")) {
+      fail(`${name} native flow's preflightPaymentSheet() lost \`preflight: true\` (SC-50(d))`);
+    }
     if (/issue_1931|issue-1931|private-event-access|privateAccess/.test(text)) {
       fail(`${name} native flow carries a #1931 edit — DO-NOT-TOUCH this release (SC-50(e))`);
     }
@@ -328,7 +348,7 @@ if (process.argv.includes("--self-test")) {
     { label: "SC-50 M1 duplicate preflight call after present",
       apply: (s) => ({ ...s, consumerNative: s.consumerNative + "\nawait preflightPaymentSheet();\n" }) },
     { label: "SC-50 M3 preflight:true deleted",
-      apply: (s) => ({ ...s, businessNative: s.businessNative.replace("preflight: true", "preflight: false") }) },
+      apply: (s) => ({ ...s, businessNative: mutatePreflightHelper(s.businessNative) }) },
     { label: "SC-50 M4 a #1931 edit lands in a native flow",
       apply: (s) => ({ ...s, businessNative: s.businessNative + "\n// issue_1931 private access\n" }) },
     // SC-54(c)

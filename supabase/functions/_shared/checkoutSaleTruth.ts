@@ -94,7 +94,9 @@ export async function markTicketProviderUnknown(
 export async function ticketCheckoutPreflight(
   client: ServiceClient,
   input: { checkoutSessionId: string; buyerStatusTokenHash: string },
-): Promise<"present_allowed" | "in_progress" | "unavailable" | "forbidden"> {
+): Promise<
+  "present_allowed" | "in_progress" | "unavailable" | "forbidden" | "error"
+> {
   const { data, error } = await client.rpc(
     "issue_1930_ticket_checkout_preflight",
     {
@@ -102,7 +104,10 @@ export async function ticketCheckoutPreflight(
       p_buyer_status_token_hash: input.buyerStatusTokenHash,
     },
   );
-  if (error) return "unavailable";
+  // Issue #3281 (bundle 6c) — the check itself failed. Still fail closed (it
+  // is never `present_allowed`), but say so distinctly: a native client holds
+  // a payable Paystack page and must not drop it over a database hiccup.
+  if (error) return "error";
   return data === "present_allowed" || data === "in_progress" ||
       data === "forbidden"
     ? data

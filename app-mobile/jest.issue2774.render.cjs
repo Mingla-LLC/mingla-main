@@ -167,5 +167,8 @@ module.exports = {
     // expired, rejected, verified), no X, Local prefill; showcase progress
     // only after a pick.
     "**/__tests__/issue_4402_creator_socials_states.implementor.render.test.tsx",
+    // issue #4402 — a refused bank connect shows its error under the button
+    // that caused it, not at the bottom of the form.
+    "**/__tests__/issue_4402_payout_connect_error.implementor.render.test.tsx",
   ],
 };
