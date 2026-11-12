@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Folosește un cod de plată",
     "ttpUnavailableTitle": "{{name}} nu este disponibil aici",
     "ttpCountryBody": "{{name}} funcționează pentru brandurile care încasează în SUA sau Regatul Unit.",
-    "ttpUnavailableBody": "Folosește în schimb un cod de plată. Merge pe orice telefon."
+    "ttpUnavailableBody": "Folosește în schimb un cod de plată. Merge pe orice telefon.",
+    "ttpDeviceTitle": "{{name}} nu este disponibil pe acest telefon",
+    "ttpDeviceBodyIos": "{{name}} are nevoie de un iPhone XS sau mai nou, cu cel mai recent iOS.",
+    "ttpDeviceBodyAndroid": "{{name}} are nevoie de un telefon Android cu NFC pornit și opțiunile pentru dezvoltatori oprite."
   },
   "ariSetup": {
     "items": {

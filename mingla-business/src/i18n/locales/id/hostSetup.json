@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Pakai kode bayar",
     "ttpUnavailableTitle": "{{name}} tidak tersedia di sini",
     "ttpCountryBody": "{{name}} berfungsi untuk brand yang menerima dana di AS atau Inggris.",
-    "ttpUnavailableBody": "Pakai kode bayar saja. Bisa di ponsel apa pun."
+    "ttpUnavailableBody": "Pakai kode bayar saja. Bisa di ponsel apa pun.",
+    "ttpDeviceTitle": "{{name}} tidak tersedia di ponsel ini",
+    "ttpDeviceBodyIos": "{{name}} memerlukan iPhone XS atau lebih baru dengan iOS terbaru.",
+    "ttpDeviceBodyAndroid": "{{name}} memerlukan ponsel Android dengan NFC aktif dan opsi developer nonaktif."
   },
   "ariSetup": {
     "items": {

@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Lo kóòdù ìsanwó",
     "ttpUnavailableTitle": "{{name}} kò sí níbí",
     "ttpCountryBody": "{{name}} ń ṣiṣẹ́ fún àwọn àmì tí ń gba owó ní US tàbí UK.",
-    "ttpUnavailableBody": "Lo kóòdù ìsanwó dípò. Ó ń ṣiṣẹ́ lórí fóònù èyíkéyìí."
+    "ttpUnavailableBody": "Lo kóòdù ìsanwó dípò. Ó ń ṣiṣẹ́ lórí fóònù èyíkéyìí.",
+    "ttpDeviceTitle": "{{name}} kò sí lórí fóònù yìí",
+    "ttpDeviceBodyIos": "{{name}} nílò iPhone XS tàbí èyí tí ó tuntun jù pẹ̀lú iOS tuntun.",
+    "ttpDeviceBodyAndroid": "{{name}} nílò fóònù Android tí NFC rẹ̀ wà ní títàn, tí àwọn àṣàyàn olùgbéejáde sì wà ní pípa."
   },
   "ariSetup": {
     "items": {

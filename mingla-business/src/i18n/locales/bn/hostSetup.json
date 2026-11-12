@@ -256,7 +256,10 @@
     "ttpUsePayCode": "পে কোড ব্যবহার করুন",
     "ttpUnavailableTitle": "{{name}} এখানে উপলব্ধ নয়",
     "ttpCountryBody": "{{name}} যুক্তরাষ্ট্র বা যুক্তরাজ্যে টাকা নেওয়া ব্র্যান্ডের জন্য কাজ করে।",
-    "ttpUnavailableBody": "বদলে পে কোড ব্যবহার করুন। এটি যেকোনো ফোনে কাজ করে।"
+    "ttpUnavailableBody": "বদলে পে কোড ব্যবহার করুন। এটি যেকোনো ফোনে কাজ করে।",
+    "ttpDeviceTitle": "এই ফোনে {{name}} উপলব্ধ নয়",
+    "ttpDeviceBodyIos": "{{name}}-এর জন্য সর্বশেষ iOS সহ iPhone XS বা নতুন ফোন লাগবে।",
+    "ttpDeviceBodyAndroid": "{{name}}-এর জন্য NFC চালু ও ডেভেলপার অপশন বন্ধ থাকা Android ফোন লাগবে।"
   },
   "ariSetup": {
     "items": {

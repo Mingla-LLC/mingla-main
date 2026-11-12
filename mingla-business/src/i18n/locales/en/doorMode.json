@@ -86,6 +86,9 @@
     "ttpUsePayCode": "Use a pay code",
     "ttpUnavailableTitle": "{{name}} isn't available here",
     "ttpCountryBody": "{{name}} works for brands that collect funds in the US or UK.",
-    "ttpUnavailableBody": "Use a pay code instead. It works on any phone."
+    "ttpUnavailableBody": "Use a pay code instead. It works on any phone.",
+    "ttpDeviceTitle": "{{name}} isn't available on this phone",
+    "ttpDeviceBodyIos": "{{name}} needs iPhone XS or newer with the latest iOS.",
+    "ttpDeviceBodyAndroid": "{{name}} needs an Android phone with NFC turned on and developer options off."
   }
 }

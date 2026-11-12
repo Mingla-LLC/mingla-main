@@ -88,4 +88,16 @@ describe("#4389 — Tap to Pay says what is actually missing", () => {
       expect({ rel, route: /setup\?step=pay/.test(src) }).toEqual({ rel, route: true });
     }
   });
+
+  // #4389 — the older-iPhone / no-NFC state says why, with the pay code.
+  test("T4: not on this phone says why (iPhone XS + latest iOS; Android NFC), never 'can't take taps'", () => {
+    const { tapNotOnThisPhoneCopy } = require("../tap/TapNotOnThisPhone") as typeof import("../tap/TapNotOnThisPhone");
+    const ios = tapNotOnThisPhoneCopy("ios");
+    expect(ios.body).toBe("Tap to Pay on iPhone needs iPhone XS or newer with the latest iOS.");
+    expect(ios.title).toBe("Tap to Pay on iPhone isn't available on this phone");
+    expect(tapNotOnThisPhoneCopy("android").body).toContain("NFC");
+    for (const c of [ios, tapNotOnThisPhoneCopy("android")]) expect(`${c.title} ${c.body}`).not.toMatch(/can.t take taps/);
+    const src = fs.readFileSync(path.join(__dirname, "../tap/TapNotOnThisPhone.tsx"), "utf8");
+    expect(src).toContain("DOOR_MODE_COPY.ttpUsePayCode");
+  });
 });

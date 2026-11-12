@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Guna kod bayaran",
     "ttpUnavailableTitle": "{{name}} tiada di sini",
     "ttpCountryBody": "{{name}} berfungsi untuk jenama yang menerima dana di AS atau UK.",
-    "ttpUnavailableBody": "Guna kod bayaran sebaliknya. Ia berfungsi pada mana-mana telefon."
+    "ttpUnavailableBody": "Guna kod bayaran sebaliknya. Ia berfungsi pada mana-mana telefon.",
+    "ttpDeviceTitle": "{{name}} tiada pada telefon ini",
+    "ttpDeviceBodyIos": "{{name}} memerlukan iPhone XS atau lebih baharu dengan iOS terkini.",
+    "ttpDeviceBodyAndroid": "{{name}} memerlukan telefon Android dengan NFC dihidupkan dan pilihan pembangun dimatikan."
   },
   "ariSetup": {
     "items": {

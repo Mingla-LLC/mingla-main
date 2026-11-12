@@ -256,7 +256,10 @@
     "ttpUsePayCode": "ใช้รหัสชำระเงิน",
     "ttpUnavailableTitle": "{{name}} ใช้ที่นี่ไม่ได้",
     "ttpCountryBody": "{{name}} ใช้ได้กับแบรนด์ที่รับเงินในสหรัฐฯ หรือสหราชอาณาจักร",
-    "ttpUnavailableBody": "ใช้รหัสชำระเงินแทน ใช้ได้กับทุกโทรศัพท์"
+    "ttpUnavailableBody": "ใช้รหัสชำระเงินแทน ใช้ได้กับทุกโทรศัพท์",
+    "ttpDeviceTitle": "ใช้ {{name}} บนโทรศัพท์เครื่องนี้ไม่ได้",
+    "ttpDeviceBodyIos": "{{name}} ต้องใช้ iPhone XS ขึ้นไปที่ติดตั้ง iOS ล่าสุด",
+    "ttpDeviceBodyAndroid": "{{name}} ต้องใช้โทรศัพท์ Android ที่เปิด NFC และปิดตัวเลือกสำหรับนักพัฒนา"
   },
   "ariSetup": {
     "items": {

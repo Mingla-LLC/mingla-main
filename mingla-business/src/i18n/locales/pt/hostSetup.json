@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Usar um código de pagamento",
     "ttpUnavailableTitle": "{{name}} não está disponível aqui",
     "ttpCountryBody": "{{name}} funciona para marcas que recebem nos EUA ou no Reino Unido.",
-    "ttpUnavailableBody": "Use um código de pagamento. Funciona em qualquer celular."
+    "ttpUnavailableBody": "Use um código de pagamento. Funciona em qualquer celular.",
+    "ttpDeviceTitle": "{{name}} não está disponível neste celular",
+    "ttpDeviceBodyIos": "{{name}} precisa de um iPhone XS ou mais recente com o iOS mais atual.",
+    "ttpDeviceBodyAndroid": "{{name}} precisa de um celular Android com NFC ligado e opções de desenvolvedor desligadas."
   },
   "ariSetup": {
     "items": {

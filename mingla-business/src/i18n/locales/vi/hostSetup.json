@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Dùng mã thanh toán",
     "ttpUnavailableTitle": "{{name}} không có ở đây",
     "ttpCountryBody": "{{name}} dùng cho thương hiệu nhận tiền tại Mỹ hoặc Anh.",
-    "ttpUnavailableBody": "Hãy dùng mã thanh toán. Mã này dùng được trên mọi điện thoại."
+    "ttpUnavailableBody": "Hãy dùng mã thanh toán. Mã này dùng được trên mọi điện thoại.",
+    "ttpDeviceTitle": "{{name}} không dùng được trên điện thoại này",
+    "ttpDeviceBodyIos": "{{name}} cần iPhone XS trở lên với iOS mới nhất.",
+    "ttpDeviceBodyAndroid": "{{name}} cần điện thoại Android bật NFC và tắt tùy chọn nhà phát triển."
   },
   "ariSetup": {
     "items": {

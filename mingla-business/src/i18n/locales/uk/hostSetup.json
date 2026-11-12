@@ -257,6 +257,9 @@
     "ttpUnavailableTitle": "{{name}} тут недоступна",
     "ttpCountryBody": "{{name}} працює для брендів, які отримують кошти у США або Великій Британії.",
     "ttpUnavailableBody": "Використайте код оплати. Він працює на будь-якому телефоні.",
+    "ttpDeviceTitle": "{{name}} недоступна на цьому телефоні",
+    "ttpDeviceBodyIos": "Для {{name}} потрібен iPhone XS або новіший з останньою iOS.",
+    "ttpDeviceBodyAndroid": "Для {{name}} потрібен телефон Android з увімкненим NFC і вимкненими параметрами розробника.",
     "ticketCount_few": "{{count}} квитки",
     "paidLine_few": "{{count}} квитки позначено · {{how}}",
     "cashReceiptLine_few": "Оплачено {{total}} готівкою за {{count}} квитки."

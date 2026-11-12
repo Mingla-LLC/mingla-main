@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Ödeme kodu kullan",
     "ttpUnavailableTitle": "{{name}} burada kullanılamıyor",
     "ttpCountryBody": "{{name}}, ABD veya Birleşik Krallık'ta tahsilat yapan markalar için çalışır.",
-    "ttpUnavailableBody": "Bunun yerine ödeme kodu kullan. Her telefonda çalışır."
+    "ttpUnavailableBody": "Bunun yerine ödeme kodu kullan. Her telefonda çalışır.",
+    "ttpDeviceTitle": "{{name}} bu telefonda kullanılamıyor",
+    "ttpDeviceBodyIos": "{{name}} için en güncel iOS yüklü iPhone XS veya daha yenisi gerekir.",
+    "ttpDeviceBodyAndroid": "{{name}} için NFC'si açık ve geliştirici seçenekleri kapalı bir Android telefon gerekir."
   },
   "ariSetup": {
     "items": {

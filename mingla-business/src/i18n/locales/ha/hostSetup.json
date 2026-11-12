@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Yi amfani da lambar biya",
     "ttpUnavailableTitle": "{{name}} babu a nan",
     "ttpCountryBody": "{{name}} yana aiki ga alamomin da ke karɓar kuɗi a Amurka ko Birtaniya.",
-    "ttpUnavailableBody": "Yi amfani da lambar biya a maimakon haka. Tana aiki a kowace waya."
+    "ttpUnavailableBody": "Yi amfani da lambar biya a maimakon haka. Tana aiki a kowace waya.",
+    "ttpDeviceTitle": "{{name}} babu a wannan waya",
+    "ttpDeviceBodyIos": "{{name}} yana buƙatar iPhone XS ko sabo tare da sabuwar iOS.",
+    "ttpDeviceBodyAndroid": "{{name}} yana buƙatar wayar Android da NFC a kunne kuma zaɓuɓɓukan masu haɓakawa a kashe."
   },
   "ariSetup": {
     "items": {

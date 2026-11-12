@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Jiri koodu ịkwụ ụgwọ",
     "ttpUnavailableTitle": "{{name}} adịghị ebe a",
     "ttpCountryBody": "{{name}} na-arụ ọrụ maka akara na-anata ego na US ma ọ bụ UK.",
-    "ttpUnavailableBody": "Jiri koodu ịkwụ ụgwọ kama. Ọ na-arụ ọrụ na ekwentị ọ bụla."
+    "ttpUnavailableBody": "Jiri koodu ịkwụ ụgwọ kama. Ọ na-arụ ọrụ na ekwentị ọ bụla.",
+    "ttpDeviceTitle": "{{name}} adịghị na ekwentị a",
+    "ttpDeviceBodyIos": "{{name}} chọrọ iPhone XS ma ọ bụ nke ọhụrụ karịa nwere iOS kachasị ọhụrụ.",
+    "ttpDeviceBodyAndroid": "{{name}} chọrọ ekwentị Android nwere NFC gbanyere na nhọrọ ndị mmepe gbanyụrụ."
   },
   "ariSetup": {
     "items": {

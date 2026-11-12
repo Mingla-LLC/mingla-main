@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Använd en betalkod",
     "ttpUnavailableTitle": "{{name}} är inte tillgängligt här",
     "ttpCountryBody": "{{name}} fungerar för varumärken som tar emot pengar i USA eller Storbritannien.",
-    "ttpUnavailableBody": "Använd en betalkod i stället. Den fungerar på alla telefoner."
+    "ttpUnavailableBody": "Använd en betalkod i stället. Den fungerar på alla telefoner.",
+    "ttpDeviceTitle": "{{name}} är inte tillgängligt på den här telefonen",
+    "ttpDeviceBodyIos": "{{name}} kräver iPhone XS eller nyare med senaste iOS.",
+    "ttpDeviceBodyAndroid": "{{name}} kräver en Android-telefon med NFC på och utvecklaralternativ av."
   },
   "ariSetup": {
     "items": {

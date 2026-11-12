@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Ya pay code",
     "ttpUnavailableTitle": "{{name}} i rre ẹvba",
     "ttpCountryBody": "{{name}} ya ru iyan ne ẹre ne a ye US ra UK.",
-    "ttpUnavailableBody": "Ya pay code. Ọ ya ru iyan vbe ẹro phone hia."
+    "ttpUnavailableBody": "Ya pay code. Ọ ya ru iyan vbe ẹro phone hia.",
+    "ttpDeviceTitle": "{{name}} i rre vbe phone na",
+    "ttpDeviceBodyIos": "{{name}} gualọ iPhone XS ra ne ọ kpọn sẹ ẹre ke iOS ne ọ ghi khọn sẹ.",
+    "ttpDeviceBodyAndroid": "{{name}} gualọ phone Android ne NFC rhọkpa ye, ne developer options ladian."
   },
   "ariSetup": {
     "items": {

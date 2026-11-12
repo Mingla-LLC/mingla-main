@@ -256,7 +256,10 @@
     "ttpUsePayCode": "Zahlcode verwenden",
     "ttpUnavailableTitle": "{{name}} ist hier nicht verfügbar",
     "ttpCountryBody": "{{name}} funktioniert für Marken, die Geld in den USA oder im Vereinigten Königreich einnehmen.",
-    "ttpUnavailableBody": "Verwende stattdessen einen Zahlcode. Er funktioniert auf jedem Handy."
+    "ttpUnavailableBody": "Verwende stattdessen einen Zahlcode. Er funktioniert auf jedem Handy.",
+    "ttpDeviceTitle": "{{name}} ist auf diesem Handy nicht verfügbar",
+    "ttpDeviceBodyIos": "{{name}} braucht ein iPhone XS oder neuer mit dem neuesten iOS.",
+    "ttpDeviceBodyAndroid": "{{name}} braucht ein Android-Handy mit eingeschaltetem NFC und ausgeschalteten Entwickleroptionen."
   },
   "ariSetup": {
     "items": {

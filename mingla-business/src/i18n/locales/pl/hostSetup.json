@@ -257,6 +257,9 @@
     "ttpUnavailableTitle": "{{name}} nie jest tu dostępne",
     "ttpCountryBody": "{{name}} działa dla marek, które przyjmują środki w USA lub Wielkiej Brytanii.",
     "ttpUnavailableBody": "Użyj zamiast tego kodu płatności. Działa na każdym telefonie.",
+    "ttpDeviceTitle": "{{name}} nie jest dostępne na tym telefonie",
+    "ttpDeviceBodyIos": "{{name}} wymaga iPhone'a XS lub nowszego z najnowszym iOS.",
+    "ttpDeviceBodyAndroid": "{{name}} wymaga telefonu z Androidem z włączonym NFC i wyłączonymi opcjami programisty.",
     "ticketCount_few": "{{count}} bilety",
     "paidLine_few": "{{count}} bilety odprawione · {{how}}",
     "cashReceiptLine_few": "Zapłacono {{total}} gotówką za {{count}} bilety."

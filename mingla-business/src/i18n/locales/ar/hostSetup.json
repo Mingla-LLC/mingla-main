@@ -256,7 +256,10 @@
     "ttpUsePayCode": "استخدم رمز دفع",
     "ttpUnavailableTitle": "{{name}} غير متاحة هنا",
     "ttpCountryBody": "تعمل {{name}} للعلامات التي تستلم أموالها في الولايات المتحدة أو المملكة المتحدة.",
-    "ttpUnavailableBody": "استخدم رمز دفع بدلًا من ذلك. يعمل على أي هاتف."
+    "ttpUnavailableBody": "استخدم رمز دفع بدلًا من ذلك. يعمل على أي هاتف.",
+    "ttpDeviceTitle": "{{name}} غير متاحة على هذا الهاتف",
+    "ttpDeviceBodyIos": "تتطلب {{name}} جهاز iPhone XS أو أحدث مع آخر إصدار من iOS.",
+    "ttpDeviceBodyAndroid": "تتطلب {{name}} هاتف Android مع تشغيل NFC وإيقاف خيارات المطوّر."
   },
   "ariSetup": {
     "items": {

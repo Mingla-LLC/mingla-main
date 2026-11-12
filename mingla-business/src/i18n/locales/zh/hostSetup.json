@@ -256,7 +256,10 @@
     "ttpUsePayCode": "使用付款码",
     "ttpUnavailableTitle": "此处无法使用 {{name}}",
     "ttpCountryBody": "{{name}} 适用于在美国或英国收款的品牌。",
-    "ttpUnavailableBody": "请改用付款码，任何手机都能用。"
+    "ttpUnavailableBody": "请改用付款码，任何手机都能用。",
+    "ttpDeviceTitle": "此手机无法使用 {{name}}",
+    "ttpDeviceBodyIos": "{{name}} 需要装有最新 iOS 的 iPhone XS 或更新机型。",
+    "ttpDeviceBodyAndroid": "{{name}} 需要已开启 NFC 且关闭开发者选项的 Android 手机。"
   },
   "ariSetup": {
     "items": {

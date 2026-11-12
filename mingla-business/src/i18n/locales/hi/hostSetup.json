@@ -256,7 +256,10 @@
     "ttpUsePayCode": "पे कोड इस्तेमाल करें",
     "ttpUnavailableTitle": "{{name}} यहाँ उपलब्ध नहीं है",
     "ttpCountryBody": "{{name}} उन ब्रांडों के लिए है जो अमेरिका या यूके में पैसे लेते हैं।",
-    "ttpUnavailableBody": "इसके बजाय पे कोड इस्तेमाल करें। यह किसी भी फ़ोन पर चलता है।"
+    "ttpUnavailableBody": "इसके बजाय पे कोड इस्तेमाल करें। यह किसी भी फ़ोन पर चलता है।",
+    "ttpDeviceTitle": "इस फ़ोन पर {{name}} उपलब्ध नहीं है",
+    "ttpDeviceBodyIos": "{{name}} के लिए नवीनतम iOS वाला iPhone XS या नया फ़ोन चाहिए।",
+    "ttpDeviceBodyAndroid": "{{name}} के लिए NFC चालू और डेवलपर विकल्प बंद वाला Android फ़ोन चाहिए।"
   },
   "ariSetup": {
     "items": {

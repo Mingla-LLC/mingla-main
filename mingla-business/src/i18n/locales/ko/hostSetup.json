@@ -256,7 +256,10 @@
     "ttpUsePayCode": "결제 코드 사용",
     "ttpUnavailableTitle": "{{name}}은(는) 여기서 사용할 수 없어요",
     "ttpCountryBody": "{{name}}은(는) 미국 또는 영국에서 대금을 받는 브랜드에서 쓸 수 있어요.",
-    "ttpUnavailableBody": "대신 결제 코드를 사용하세요. 어떤 휴대폰에서도 돼요."
+    "ttpUnavailableBody": "대신 결제 코드를 사용하세요. 어떤 휴대폰에서도 돼요.",
+    "ttpDeviceTitle": "이 휴대폰에서는 {{name}}을(를) 사용할 수 없어요",
+    "ttpDeviceBodyIos": "{{name}}에는 최신 iOS가 설치된 iPhone XS 이상이 필요해요.",
+    "ttpDeviceBodyAndroid": "{{name}}에는 NFC가 켜져 있고 개발자 옵션이 꺼진 Android 휴대폰이 필요해요."
   },
   "ariSetup": {
     "items": {

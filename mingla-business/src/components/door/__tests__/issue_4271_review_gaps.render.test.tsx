@@ -518,8 +518,8 @@ describe("G3 iPhone says the full name, Android never says iPhone", () => {
     expect(text.setupNotAvailable).toContain("Tap to Pay on iPhone isn't available here");
     expect(text.saleNotAvailable).toContain("Tap to Pay on iPhone isn't available here");
     expect(text.saleDidNotStart).toContain("Tap to Pay on iPhone didn't start");
-    expect(text.notOnThisPhone).toContain("Tap to Pay on iPhone needs an iPhone XS or newer");
-    expect(text.setupNotOnThisPhone).toContain("Tap to Pay on iPhone needs an iPhone XS or newer");
+    expect(text.notOnThisPhone).toContain("Tap to Pay on iPhone needs iPhone XS or newer"); // #4389 wording
+    expect(text.setupNotOnThisPhone).toContain("Tap to Pay on iPhone needs iPhone XS or newer");
     for (const [name, value] of Object.entries(text)) expect([name, BARE_NAME.test(value)]).toEqual([name, false]);
   });
 
@@ -565,9 +565,11 @@ describe("G4 every failed state offers Get help, and it opens Help & Support", (
       expect(textOf(root)).toContain("Ask an admin");
       expectHelpOpensSupport(root);
     });
-    test("This phone can't take taps", async () => {
+    // #4389 — the device state says why, never "can't take taps".
+    test("not on this phone: says why", async () => {
       const { root } = await setup({ available: false, needsSetup: false, reason: "unsupported_device" });
-      expect(textOf(root)).toContain("This phone can't take taps");
+      expect(textOf(root)).toContain("Tap to Pay on iPhone needs iPhone XS or newer with the latest iOS.");
+      expect(textOf(root)).not.toContain("can't take taps");
       expectHelpOpensSupport(root);
     });
     test("Update iOS", async () => {

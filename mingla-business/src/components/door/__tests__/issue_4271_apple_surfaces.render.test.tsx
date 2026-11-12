@@ -607,7 +607,9 @@ describe("B7 configuring and progress", () => {
     Object.defineProperty(Platform, "Version", { value: "18.1", configurable: true });
     const current = mount(saleScreen());
     await settleSale();
-    expect(textOf(current.root)).toContain("This phone can't take taps");
+    // #4389 — the device state says why (i18n).
+    expect(textOf(current.root)).toContain("Tap to Pay on iPhone isn't available on this phone");
+    expect(textOf(current.root)).toContain("needs iPhone XS or newer with the latest iOS");
   });
 });
 

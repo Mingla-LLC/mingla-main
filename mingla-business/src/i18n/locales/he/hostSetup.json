@@ -256,7 +256,10 @@
     "ttpUsePayCode": "שימוש בקוד תשלום",
     "ttpUnavailableTitle": "{{name}} לא זמין כאן",
     "ttpCountryBody": "{{name}} זמין למותגים שגובים כסף בארה\"ב או בבריטניה.",
-    "ttpUnavailableBody": "אפשר להשתמש בקוד תשלום. הוא עובד בכל טלפון."
+    "ttpUnavailableBody": "אפשר להשתמש בקוד תשלום. הוא עובד בכל טלפון.",
+    "ttpDeviceTitle": "{{name}} לא זמין בטלפון הזה",
+    "ttpDeviceBodyIos": "{{name}} דורש iPhone XS ומעלה עם גרסת iOS העדכנית.",
+    "ttpDeviceBodyAndroid": "{{name}} דורש טלפון Android עם NFC פעיל ואפשרויות מפתח כבויות."
   },
   "ariSetup": {
     "items": {

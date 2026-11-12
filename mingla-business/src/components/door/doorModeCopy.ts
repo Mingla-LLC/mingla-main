@@ -136,4 +136,8 @@ export const DOOR_MODE_COPY = {
   ttpUnavailableTitle: (os: string): string => t("ttpUnavailableTitle", { name: tapToPayName(os) }),
   ttpCountryBody: (os: string): string => t("ttpCountryBody", { name: tapToPayName(os) }),
   get ttpUnavailableBody(): string { return t("ttpUnavailableBody"); },
+  /** #4389 — this phone can't run it: say why (model / iOS, or NFC). */
+  ttpDeviceTitle: (os: string): string => t("ttpDeviceTitle", { name: tapToPayName(os) }),
+  ttpDeviceBody: (os: string): string =>
+    t(os === "ios" ? "ttpDeviceBodyIos" : "ttpDeviceBodyAndroid", { name: tapToPayName(os) }),
 };
