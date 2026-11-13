@@ -405,7 +405,6 @@ async function sendViaResend(input: {
       input.campaignId,
       input.to,
     );
-    // no-attachment: Admin campaigns embed approved image/GIF URLs in HTML; this composer does not send file attachments.
     const payload = JSON.stringify({
       from: formatSenderHeader(rendered.from),
       reply_to: ADMIN_REPLY_TO,
@@ -420,6 +419,7 @@ async function sendViaResend(input: {
     let responseBody = "";
     for (let attempt = 0; attempt <= RATE_LIMIT_INLINE_BACKOFF_MS.length; attempt++) {
       await paceSend();
+      // no-attachment: Admin campaigns embed approved image/GIF URLs in HTML; this composer does not send file attachments.
       response = await fetch("https://api.resend.com/emails", {
         signal: AbortSignal.timeout(PROVIDER_CALL_TIMEOUT_MS),
         method: "POST",
