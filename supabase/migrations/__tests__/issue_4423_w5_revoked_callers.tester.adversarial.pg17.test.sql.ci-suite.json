@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4423_w5_revoked_callers.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4423-w5-revoked-callers-tester",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}
