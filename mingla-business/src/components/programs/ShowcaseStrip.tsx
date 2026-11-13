@@ -1,19 +1,31 @@
 /**
  * #3872 — creator showcase thumbnails. Tapping one plays it full screen
  * through the public showcase link (verified creators only).
+ *
+ * #4402 — the playback link is Bunny's signed embed PAGE, so it plays in an
+ * iframe (web) or a WebView (native), the way Explorer and Admin play it. A
+ * raw video element never loads it (a frozen 0:00 player). Failures show a
+ * message, never a silent player.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
+  Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { WebView } from "react-native-webview";
 
-import { FullScreenVideoViewer } from "../ui/FullScreenVideoViewer";
 import { Icon } from "../ui/Icon";
 import { showcasePlayback } from "../../services/creatorGigsService";
+import {
+  CREATOR_VIDEO_ERROR,
+  creatorVideoSurface,
+} from "../../utils/creatorProgramFormat";
 import {
   accent,
   radius,
@@ -63,6 +75,14 @@ export function ShowcaseStrip({
               { backgroundColor: TILE_TONES[index % TILE_TONES.length] },
             ]}
           >
+            {item.thumb ? (
+              <Image
+                source={{ uri: item.thumb }}
+                style={styles.tileThumb}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+            ) : null}
             {loadingId === item.media_id ? (
               <ActivityIndicator color={textTokens.primary} />
             ) : (
@@ -78,8 +98,8 @@ export function ShowcaseStrip({
       {failedId ? (
         <Text style={styles.failed}>This video isn't available right now.</Text>
       ) : null}
-      <FullScreenVideoViewer
-        uri={uri}
+      <CreatorVideoPlayer
+        url={uri}
         title={`${creatorName}'s showcase`}
         onClose={() => setUri(null)}
       />
@@ -87,16 +107,122 @@ export function ShowcaseStrip({
   );
 }
 
+/** Full-screen player for a creator video's signed Bunny embed link. */
+export function CreatorVideoPlayer({
+  url,
+  title,
+  onClose,
+}: {
+  url: string | null;
+  title: string;
+  onClose: () => void;
+}): React.ReactElement {
+  const surface = creatorVideoSurface(url, Platform.OS);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setLoading(true);
+    setFailed(false);
+  }, [url]);
+  const showError = url !== null && (surface === "error" || failed);
+  return (
+    <Modal
+      visible={url !== null}
+      animationType="fade"
+      onRequestClose={onClose}
+      transparent={false}
+    >
+      <View style={styles.playerRoot}>
+        {url !== null && !showError && surface === "iframe"
+          ? React.createElement("iframe", {
+              key: url,
+              src: url,
+              title,
+              allow: "accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen",
+              allowFullScreen: true,
+              referrerPolicy: "strict-origin-when-cross-origin",
+              onLoad: () => setLoading(false),
+              onError: () => setFailed(true),
+              style: { border: 0, width: "100%", height: "100%", background: "#000" },
+            })
+          : null}
+        {url !== null && !showError && surface === "webview" ? (
+          <WebView
+            key={url}
+            source={{ uri: url }}
+            originWhitelist={[
+              "https://player.mediadelivery.net",
+              "https://iframe.mediadelivery.net",
+            ]}
+            style={styles.player}
+            allowsInlineMediaPlayback
+            allowsFullscreenVideo
+            javaScriptEnabled
+            domStorageEnabled
+            setSupportMultipleWindows={false}
+            onLoadEnd={() => setLoading(false)}
+            onError={() => setFailed(true)}
+            onHttpError={() => setFailed(true)}
+          />
+        ) : null}
+        {showError ? (
+          <View style={styles.playerMessage} accessibilityRole="alert">
+            <Icon name="flag" size={24} color={textTokens.primary} />
+            <Text style={styles.playerError}>{CREATOR_VIDEO_ERROR}</Text>
+          </View>
+        ) : loading ? (
+          <View pointerEvents="none" style={styles.playerMessage}>
+            <ActivityIndicator size="large" color={accent.warm} />
+          </View>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Close ${title}`}
+          hitSlop={12}
+          onPress={onClose}
+          style={styles.playerClose}
+        >
+          <Icon name="close" size={22} color="#ffffff" />
+        </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: spacing.sm },
   tile: {
+    overflow: "hidden",
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: accent.tint,
   },
-  tileRow: { width: 64, aspectRatio: 9 / 13 },
-  tileLarge: { flex: 1, aspectRatio: 9 / 14 },
+  // #4402 (H29) — 9:16 tiles, never smaller than 96 x 170.
+  tileRow: { width: 96, minWidth: 96, aspectRatio: 9 / 16, minHeight: 170 },
+  tileLarge: { flex: 1, minWidth: 96, aspectRatio: 9 / 16, minHeight: 170 },
+  tileThumb: { ...StyleSheet.absoluteFillObject, borderRadius: radius.md },
   failed: { color: textTokens.tertiary, fontSize: 12, marginTop: spacing.xs },
+  playerRoot: { flex: 1, backgroundColor: "#000000" },
+  player: { flex: 1, backgroundColor: "#000000" },
+  playerMessage: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    padding: spacing.lg,
+  },
+  playerError: { color: textTokens.primary, fontSize: 15, textAlign: "center" },
+  playerClose: {
+    position: "absolute",
+    top: 48,
+    right: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.62)",
+  },
 });

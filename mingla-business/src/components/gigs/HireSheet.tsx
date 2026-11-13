@@ -3,6 +3,9 @@
  * as checkboxes and one "Agree and pay $X" button. Also used for a counter
  * offer top-up (pay the difference) and for a host counter before hiring.
  * Provider errors become words; a payment is only "done" after confirm.
+ * #4402: confirm goes through `confirm_reference` (the server checks the
+ * provider and records the payment), and a retry on an offer that is already
+ * paid opens that offer instead of charging again.
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
@@ -12,13 +15,15 @@ import { Input } from "../ui/Input";
 import { StripeProviderWrapper } from "../../payments/StripeProviderWrapper";
 import { useGigHirePay } from "../../payments/useGigHirePay";
 import {
-  confirmGigHire,
+  confirmGigReference,
   startGigHire,
   startGigTopup,
   type GigHireStart,
 } from "../../services/gigHireService";
 import {
   bookingFeeMinor,
+  minFeeError,
+  minFeeHint,
   minorToWholeText,
   programErrorMessage,
   programMoney,
@@ -127,13 +132,17 @@ function HireSheetBody({
     mode.kind === "hire" && feeMinor ? bookingFeeMinor(feeMinor) : 0;
   const total = (feeMinor ?? 0) + booking;
   const allChecked = mode.kind === "topup" || checked.every(Boolean);
+  // #4402 (D2) — the minimum creator fee, explained beside the fee. A top-up
+  // is only a difference, so the minimum does not apply to it.
+  const belowMin =
+    mode.kind === "hire" ? minFeeError(feeMinor, currency) : null;
+  const feeHint =
+    mode.kind === "hire" ? minFeeHint(currency, feeMinor) : null;
 
   const confirm = async (start: GigHireStart) => {
-    const result = await confirmGigHire({
+    const result = await confirmGigReference({
       contractId: start.contract_id,
-      termsVersion: start.terms_version,
-      rail: start.rail,
-      providerRef: start.provider_ref,
+      reference: start.provider_ref,
     });
     if (!result.ok) {
       setError(
@@ -150,6 +159,10 @@ function HireSheetBody({
   const run = async () => {
     if (!feeMinor) {
       setError("Enter a fee above zero.");
+      return;
+    }
+    if (belowMin) {
+      setError(belowMin);
       return;
     }
     setBusy(true);
@@ -172,11 +185,20 @@ function HireSheetBody({
               idempotencyKey: `gig-${mode.interestId}-${feeMinor}-${attemptKey.slice(0, 8)}`,
             });
       if (!start.ok) {
+        // #4402: the earlier payment for this creator went through. Open that
+        // offer; never charge twice.
+        if (start.error === "already_paid" && start.contract_id) {
+          onPaid(start.contract_id);
+          return;
+        }
         setError(
-          programErrorMessage(
-            start.error,
-            "We couldn't start the payment. Try again in a few minutes.",
-          ),
+          start.error === "fee_below_minimum"
+            ? (minFeeError(0, currency) ??
+                programErrorMessage(start.error))
+            : programErrorMessage(
+                start.error,
+                "We couldn't start the payment. Try again in a few minutes.",
+              ),
         );
         return;
       }
@@ -231,7 +253,7 @@ function HireSheetBody({
               : "Agree and pay"
           }
           loading={busy}
-          disabled={busy || !allChecked || !feeMinor}
+          disabled={busy || !allChecked || !feeMinor || Boolean(belowMin)}
           onPress={() => void run()}
         />
       )}
@@ -246,12 +268,13 @@ function HireSheetBody({
         countering ? (
           <>
             <Input
-              value={feeText}
+              value={feeText ? Number(feeText).toLocaleString("en-US") : ""}
               onChangeText={(value) => setFeeText(value.replace(/[^0-9]/g, ""))}
               variant="number"
               placeholder={`Your fee offer in ${currency}`}
               accessibilityLabel={`Your fee offer in ${currency}`}
             />
+            <FieldError message={feeMinor ? belowMin : null} />
             <Muted>{`${creatorName} asked for ${programMoney(mode.quoteMinor, currency)}. They see your offer and have 48 hours to accept.`}</Muted>
           </>
         ) : (
@@ -286,7 +309,8 @@ function HireSheetBody({
           value={feeMinor ? programMoney(total, currency) : "—"}
           strong
         />
-        <Muted>{`Held by Mingla until the post is live. Refunded if ${creatorName} declines or misses a deadline.`}</Muted>
+        <Muted>{`Held by Mingla until the posts are checked. Refunded if ${creatorName} declines or misses a deadline.`}</Muted>
+        {feeHint ? <Muted>{feeHint}</Muted> : null}
       </Card>
       {mode.kind === "hire" && salesShareBps ? (
         <Card>

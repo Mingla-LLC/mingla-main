@@ -124,6 +124,12 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "paystack.charge_orphan_reference",
   "paystack.charge_amount_mismatch",
   "paystack.charge_currency_mismatch",
+  // #4402 — creator-hire payments recorded by the webhooks, gig-hire and
+  // reconcile (never only by the Host screen).
+  "gig.payment_captured",
+  "gig.payment_late_refund_due",
+  "gig.payment_capture_mismatch",
+  "gig.payment_not_completed",
   // ORCH-1291 [rsvp-chip-in] — Paystack (NG) RSVP contribution webhook amount/
   // currency guards emitted by _shared/paystackWebhookRouter (contribution path
   // mirrors the ticket charge guards; contribution marked failed, no order).
@@ -213,6 +219,35 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
       return {
         title: "Nigerian payment not verified",
         detail: "A charge.success webhook arrived but the verify call did not return success; no order was created.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    // #4402 — creator-hire payments.
+    case "gig.payment_captured":
+      return {
+        title: "Creator hire payment recorded",
+        detail: "The payment for a creator offer was confirmed and the offer was sent to the creator.",
+        category: "orders",
+        iconHint: "ticket",
+      };
+    case "gig.payment_late_refund_due":
+      return {
+        title: "Late creator payment refunded",
+        detail: "A payment arrived after its creator offer had closed, so it is refunded in full.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "gig.payment_capture_mismatch":
+      return {
+        title: "Creator hire payment needs a check",
+        detail: "A creator hire payment did not match the offer, so it was not recorded. Mingla has been alerted.",
+        category: "orders",
+        iconHint: "flag",
+      };
+    case "gig.payment_not_completed":
+      return {
+        title: "Creator hire payment not completed",
+        detail: "A card payment for a creator offer did not go through. Nothing was recorded.",
         category: "orders",
         iconHint: "shield",
       };

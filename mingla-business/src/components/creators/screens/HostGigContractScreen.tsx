@@ -16,6 +16,9 @@ import React, {
   useState,
 } from "react";
 import {
+  ActivityIndicator,
+  AppState,
+  Image,
   Platform,
   Pressable,
   Share,
@@ -23,7 +26,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 
 import { Button } from "../../../components/ui/Button";
 import { DateField } from "../../../components/ui/DateField";
@@ -41,7 +44,7 @@ import {
   proposalChangeWords,
   type DueChangeErrors,
 } from "../../../components/programs/dueChange";
-import { FullScreenVideoViewer } from "../../../components/ui/FullScreenVideoViewer";
+import { CreatorVideoPlayer } from "../../../components/programs/ShowcaseStrip";
 import {
   HireSheet,
   type HireSheetMode,
@@ -66,6 +69,7 @@ import {
 import { useProgramParams } from "../../../components/programs/useProgramParams";
 import { useRefreshOnFocus } from "../../../components/programs/useScreenLifecycle";
 import {
+  hostPollMs,
   playbackNotice,
   visibleNotice,
   type ContractNotice,
@@ -78,6 +82,8 @@ import {
   activityEvents,
   contractFeeWords,
   contractMoneyState,
+  hostPostingCopy,
+  workspaceRefundedMinor,
   contractStatusCard,
   fixCategoryWords,
   fixesLeft,
@@ -88,9 +94,14 @@ import {
   sectionLines,
   shootInstant,
   contractNoticeKey,
+  hostPaymentCard,
+  nextPaymentCheckDelay,
+  paymentCheckState,
   shootWindowWords,
   workspaceShootWindow,
+  type HostPaymentCheckState,
 } from "../../../components/programs/contractCopy";
+import { confirmGigReference } from "../../../services/gigHireService";
 import {
   creatorGigsService,
   approvedDeliveryDownload,
@@ -102,6 +113,11 @@ import {
 import {
   HOST_CONTRACT_STEPS,
   actorWords,
+  cancelRefundQuote,
+  deliveryPosterUrl,
+  formatInZone,
+  gigZone,
+  postDeadlineShownIso,
   dueIn,
   formatName,
   hostContractStep,
@@ -127,7 +143,9 @@ type SheetKind =
   | "dispute"
   | "change_dates"
   | "terms"
-  | "rate";
+  | "rate"
+  | "cancel_offer"
+  | "cancel_gig";
 
 const STEP_CAPTION: Record<number, string> = {
   1: "Offer",
@@ -140,11 +158,23 @@ const STEP_CAPTION: Record<number, string> = {
 
 export default function HostGigContract(): React.ReactElement {
   const router = useRouter();
-  const { brandId, params } = useProgramParams("contractId");
+  const { brandId, params } = useProgramParams(
+    "contractId",
+    "reference",
+    "trxref",
+  );
   const contractId = params.contractId ?? "";
+  // #4402 — Paystack sends the host back here with ?reference=…; the page
+  // asks the server, which checks the provider and records the payment.
+  const returnReference = params.reference ?? params.trxref ?? null;
   const [workspace, setWorkspace] = useState<GigWorkspace | null>(null);
   const [creatorName, setCreatorName] = useState("Creator");
   const [paymentPending, setPaymentPending] = useState(false);
+  const [payCheck, setPayCheck] = useState<HostPaymentCheckState | null>(
+    null,
+  );
+  const payCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
   const [gigIdForRetry, setGigIdForRetry] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +203,17 @@ export default function HostGigContract(): React.ReactElement {
   const [stars, setStars] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
   const [topup, setTopup] = useState<HireSheetMode | null>(null);
+  // #4402 — the header says what is happening while an action runs.
+  const [working, setWorking] = useState<string | null>(null);
+  const focusedRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      return () => {
+        focusedRef.current = false;
+      };
+    }, []),
+  );
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [downloadAvailableUntil, setDownloadAvailableUntil] = useState<
     string | null
@@ -211,15 +252,67 @@ export default function HostGigContract(): React.ReactElement {
   // The creator acts on their side: refetch on refocus and when the app
   // returns to the foreground, not only on pull-to-refresh.
   useRefreshOnFocus(refresh);
+
+  // #4402 — check the payment with the server: on a Paystack return, and
+  // whenever the offer still shows no captured hold. A pending answer is
+  // polled every 3 s for up to 30 s; only `not_paid` may say nothing was
+  // charged.
+  const checkPayment = useCallback(
+    async (startedAt: number) => {
+      if (!contractId) return;
+      if (payCheckTimer.current) clearTimeout(payCheckTimer.current);
+      setPayCheck("checking");
+      let state: HostPaymentCheckState;
+      try {
+        state = paymentCheckState(
+          await confirmGigReference({
+            contractId,
+            reference: returnReference,
+          }),
+        );
+      } catch {
+        state = "error";
+      }
+      if (!mounted.current) return;
+      const delay = nextPaymentCheckDelay(state, Date.now() - startedAt);
+      if (delay !== null) {
+        payCheckTimer.current = setTimeout(() => {
+          void checkPayment(startedAt);
+        }, delay);
+        return;
+      }
+      setPayCheck(state);
+      if (state === "paid") await refresh();
+    },
+    [contractId, refresh, returnReference],
+  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (payCheckTimer.current) clearTimeout(payCheckTimer.current);
+    };
+  }, []);
+  const needsPayCheck =
+    returnReference !== null ||
+    (paymentPending && workspace?.contract.state === "offered");
+  useEffect(() => {
+    if (needsPayCheck && payCheck === null) void checkPayment(Date.now());
+  }, [checkPayment, needsPayCheck, payCheck]);
   const contractState = workspace?.contract.state ?? "";
   useEffect(() => {
     setChecklist([false, false, false]);
   }, [contractState]);
 
-  const run = async (action: () => Promise<unknown>, done: string) => {
+  const run = async (
+    action: () => Promise<unknown>,
+    done: string,
+    workingLabel?: string,
+  ) => {
     setBusy(true);
     setError(null);
     setNotice(null);
+    setWorking(workingLabel ?? null);
     try {
       const result = await action();
       if (
@@ -240,11 +333,24 @@ export default function HostGigContract(): React.ReactElement {
         programErrorMessage(runError, "That didn't go through. Try again."),
       );
     } finally {
+      setWorking(null);
       setBusy(false);
     }
   };
 
   const state = workspace?.contract.state ?? "";
+  // #4402 (item 8) — poll every 20 s only while this screen is focused, the
+  // app is in the foreground and the creator is the one who has to act.
+  useEffect(() => {
+    const interval = hostPollMs(state);
+    if (interval === false) return undefined;
+    const timer = setInterval(() => {
+      if (focusedRef.current && AppState.currentState === "active") {
+        void refresh();
+      }
+    }, interval);
+    return () => clearInterval(timer);
+  }, [state, refresh]);
   const notice = visibleNotice(noticeRecord, contractNoticeKey(workspace));
   const step = hostContractStep(state);
   const deadline = workspace?.contract.state_deadline_at ?? null;
@@ -372,6 +478,10 @@ export default function HostGigContract(): React.ReactElement {
   );
   const plan = workspace?.shoot_plan ?? null;
   const gig = workspace?.gig;
+  // #4402 (item 12) — every time reads in the gig's own zone ("Lagos time").
+  const zone = gigZone(workspace);
+  const when = (iso: string | null | undefined): string =>
+    formatInZone(iso, zone);
   const shootWindow = workspaceShootWindow(gig);
   // The agreed due: the current terms version (an accepted change moves it).
   const agreedDue = agreedVideoDue({
@@ -542,8 +652,8 @@ export default function HostGigContract(): React.ReactElement {
               }}
             />
           ) : null}
-          <FullScreenVideoViewer
-            uri={videoUri}
+          <CreatorVideoPlayer
+            url={videoUri}
             title={`${creatorName}'s video`}
             onClose={() => setVideoUri(null)}
           />
@@ -771,6 +881,87 @@ export default function HostGigContract(): React.ReactElement {
                 />
               </SheetBody>
             ) : null}
+            {sheet === "cancel_offer" || sheet === "cancel_gig"
+              ? (() => {
+                  const isGig = sheet === "cancel_gig";
+                  const money = currentTerms?.currency ?? "USD";
+                  const quote = cancelRefundQuote(
+                    isGig ? "gig" : "offer",
+                    currentTerms?.fee_minor ?? 0,
+                    currentTerms?.booking_fee_minor ?? 0,
+                  );
+                  const back = programMoney(quote.totalMinor, money);
+                  return (
+                    <SheetBody
+                      title={isGig ? "Cancel this gig?" : "Cancel this offer?"}
+                    >
+                      <Muted>
+                        {isGig
+                          ? `You get ${back} back. ${creatorName} keeps 25% of the fee for the work so far.`
+                          : `${creatorName} won't be able to accept it. You get ${back} back to your original payment.`}
+                      </Muted>
+                      <ListGroup>
+                        {isGig ? (
+                          <>
+                            <ListRow
+                              title="75% of the fee"
+                              right={programMoney(quote.feeShareMinor, money)}
+                              chevron={false}
+                            />
+                            <ListRow
+                              title="Booking fee"
+                              right={programMoney(quote.bookingMinor, money)}
+                              chevron={false}
+                            />
+                            <ListRow
+                              title="You get back"
+                              right={back}
+                              chevron={false}
+                            />
+                          </>
+                        ) : (
+                          <ListRow
+                            title="Refund"
+                            subtitle={`Fee ${programMoney(quote.feeShareMinor, money)} + booking fee ${programMoney(quote.bookingMinor, money)}`}
+                            right={back}
+                            chevron={false}
+                          />
+                        )}
+                      </ListGroup>
+                      <FieldError message={error} />
+                      <View style={styles.confirmActions}>
+                        <Button
+                          fullWidth
+                          variant="destructive"
+                          label="Cancel and refund"
+                          loading={busy}
+                          onPress={() =>
+                            void run(
+                              () =>
+                                creatorGigsService.refund(
+                                  contractId,
+                                  isGig
+                                    ? "host_after_accept_before_lock"
+                                    : "host_before_accept",
+                                ),
+                              isGig
+                                ? "Gig cancelled. Your eligible refund has started. Provider fees follow the payment provider’s refund rules."
+                                : "Offer cancelled. Your refund has started.",
+                            )
+                          }
+                        />
+                        <Button
+                          fullWidth
+                          variant="secondary"
+                          label={isGig ? "Keep the gig" : "Keep the offer"}
+                          disabled={busy}
+                          onPress={() => setSheet(null)}
+                        />
+                      </View>
+                    </SheetBody>
+                  );
+                })()
+              : null}
             {sheet === "rate" ? (
               <SheetBody title={`How was working with ${creatorName}?`}>
                 <View style={styles.stars}>
@@ -881,6 +1072,14 @@ export default function HostGigContract(): React.ReactElement {
               creatorName,
               hostRated,
               stepCaption: caption,
+              shoot: plan
+                ? {
+                    proposedBy: plan.proposed_by,
+                    confirmed: Boolean(plan.confirmed_at),
+                    whenWords: when(plan.shoot_at),
+                  }
+                : null,
+              working,
             });
             return (
               <Card>
@@ -914,22 +1113,45 @@ export default function HostGigContract(): React.ReactElement {
           ) : null}
           {sheet === null ? <FieldError message={error} /> : null}
 
-          {paymentPending ? (
-            <Card>
-              <Text style={programStyles.title}>Payment not completed</Text>
-              <Muted>{`${creatorName} hasn't received this offer because the payment didn't go through. Nothing was charged.`}</Muted>
-              <Button
-                label="Retry payment"
-                onPress={() =>
-                  router.push(
-                    (gigIdForRetry
-                      ? `/brand/${brandId}/creators/${gigIdForRetry}/interest`
-                      : `/brand/${brandId}/creators`) as never,
-                  )
-                }
-              />
-            </Card>
-          ) : null}
+          {(() => {
+            // #4402: no "nothing charged" copy and no Retry until the server
+            // has checked the provider and said not_paid.
+            if (!needsPayCheck && payCheck === null) return null;
+            const payCard = hostPaymentCard(payCheck ?? "checking", {
+              creatorName,
+              fromReturn: returnReference !== null,
+            });
+            if (!payCard) return null;
+            return (
+              <Card>
+                <View style={styles.rowBetween}>
+                  <Text style={programStyles.title}>{payCard.title}</Text>
+                  {payCard.busy ? (
+                    <ActivityIndicator
+                      accessibilityLabel="Checking your payment"
+                    />
+                  ) : null}
+                </View>
+                <Muted>{payCard.body}</Muted>
+                {payCard.action && payCard.actionLabel ? (
+                  <Button
+                    label={payCard.actionLabel}
+                    onPress={() => {
+                      if (payCard.action === "check") {
+                        void checkPayment(Date.now());
+                        return;
+                      }
+                      router.push(
+                        (gigIdForRetry
+                          ? `/brand/${brandId}/creators/${gigIdForRetry}/interest`
+                          : `/brand/${brandId}/creators`) as never,
+                      );
+                    }}
+                  />
+                ) : null}
+              </Card>
+            );
+          })()}
 
           {owedTopup && currentTerms && !topup ? (
             <Card>
@@ -982,21 +1204,15 @@ export default function HostGigContract(): React.ReactElement {
               <Text
                 style={programStyles.title}
               >{`Waiting for ${creatorName}`}</Text>
-              <Muted>{`They have until ${deadline ? shortDateTime(deadline) : "48 hours after your offer"} to answer. If they decline or don't answer, you get a full refund automatically.`}</Muted>
+              <Muted>{`They have until ${deadline ? when(deadline) : "48 hours after your offer"} to answer. If they decline or don't answer, you get a full refund automatically.`}</Muted>
               <Button
                 variant="secondary"
                 label="Cancel offer and refund"
                 loading={busy}
-                onPress={() =>
-                  void run(
-                    () =>
-                      creatorGigsService.refund(
-                        contractId,
-                        "host_before_accept",
-                      ),
-                    "Offer cancelled. Your refund has started.",
-                  )
-                }
+                onPress={() => {
+                  setError(null);
+                  setSheet("cancel_offer");
+                }}
               />
             </Card>
           ) : null}
@@ -1016,7 +1232,7 @@ export default function HostGigContract(): React.ReactElement {
                 <>
                   <SummaryLine
                     label="When"
-                    value={shortDateTime(plan.shoot_at)}
+                    value={when(plan.shoot_at)}
                   />
                   {plan.arrival_note ? (
                     <SummaryLine label="Note" value={plan.arrival_note} />
@@ -1062,6 +1278,7 @@ export default function HostGigContract(): React.ReactElement {
                               true,
                             ),
                           "Shoot time approved.",
+                          "Approving…",
                         )
                       }
                     />
@@ -1215,6 +1432,14 @@ export default function HostGigContract(): React.ReactElement {
                 accessibilityLabel={`Play ${creatorName}'s video`}
                 style={styles.player}
               >
+                {deliveryPosterUrl(delivery) ? (
+                  <Image
+                    source={{ uri: deliveryPosterUrl(delivery) ?? "" }}
+                    style={styles.playerPoster}
+                    resizeMode="contain"
+                    accessibilityIgnoresInvertColors
+                  />
+                ) : null}
                 <Icon name="play" size={32} color={textTokens.primary} />
                 <Text style={styles.playerCaption}>
                   {`Version ${delivery.round + 1} · tap to play`}
@@ -1312,37 +1537,61 @@ export default function HostGigContract(): React.ReactElement {
             </Card>
           ) : null}
 
-          {["approved", "posting", "posts_failed"].includes(state) ? (
-            <Card>
-              <Text style={programStyles.title}>Waiting for posts</Text>
-              <Muted>{`The creator posts by ${shortDate(String(gig?.post_by ?? ""))} and adds the links here. Mingla checks them automatically.`}</Muted>
-            </Card>
-          ) : null}
-
-          {state === "posts_submitted" ? (
-            <Card>
-              <Text style={programStyles.title}>Checking posts</Text>
-              <Muted>
-                Mingla checks each post automatically. Confirm only if you can
-                see them live; silence counts as a pass after 48 hours.
-              </Muted>
-              <Button
-                label="Confirm posts are live"
-                loading={busy}
-                onPress={() =>
-                  void run(
-                    () =>
-                      creatorGigsService.transition(
-                        contractId,
-                        state,
-                        "host_confirm",
-                      ),
-                    "Posts confirmed.",
+          {(() => {
+            // #4402 — posting deadline, the automatic refund and the review.
+            const paid =
+              (currentTerms?.fee_minor ?? 0) +
+              (currentTerms?.booking_fee_minor ?? 0);
+            const refundedMinor = workspaceRefundedMinor(workspace);
+            const posting = hostPostingCopy({
+              state,
+              creatorName,
+              deadlineWords: deadline ? when(postDeadlineShownIso(deadline)) : null,
+              deadlineAt: deadline,
+              cancelReason:
+                typeof workspace.contract.cancel_reason === "string"
+                  ? workspace.contract.cancel_reason
+                  : null,
+              refundWords: currentTerms
+                ? programMoney(
+                    refundedMinor && refundedMinor > 0 ? refundedMinor : paid,
+                    currentTerms.currency,
                   )
-                }
-              />
-            </Card>
-          ) : null}
+                : null,
+            });
+            if (!posting) return null;
+            return (
+              <Card>
+                <View style={styles.rowBetween}>
+                  <Text style={programStyles.title}>{posting.title}</Text>
+                  {posting.dueSoon ? (
+                    <StatusTag label="Due soon" tone="waiting" />
+                  ) : null}
+                </View>
+                {posting.lines.map((line) => (
+                  <Muted key={line}>{line}</Muted>
+                ))}
+                {state === "posts_submitted" ? (
+                  <Button
+                    variant="secondary"
+                    label="Confirm posts are live"
+                    loading={busy}
+                    onPress={() =>
+                      void run(
+                        () =>
+                          creatorGigsService.transition(
+                            contractId,
+                            state,
+                            "host_confirm",
+                          ),
+                        "Posts confirmed.",
+                      )
+                    }
+                  />
+                ) : null}
+              </Card>
+            );
+          })()}
 
           {state === "posts_verified" ? (
             <Card>
@@ -1475,6 +1724,8 @@ export default function HostGigContract(): React.ReactElement {
                   currentTerms.fee_minor,
                   currentTerms.currency,
                   moneyState,
+                  workspaceRefundedMinor(workspace),
+                  currentTerms.fee_minor + (currentTerms.booking_fee_minor ?? 0),
                 )}
                 chevron={false}
               />
@@ -1509,7 +1760,11 @@ export default function HostGigContract(): React.ReactElement {
             {gig ? (
               <ListRow
                 title="Video needed by"
-                right={agreedVideoDueWords(agreedDue)}
+                right={
+                  agreedDue.videoDueAt && zone
+                    ? when(agreedDue.videoDueAt)
+                    : agreedVideoDueWords(agreedDue)
+                }
                 chevron={false}
               />
             ) : null}
@@ -1567,7 +1822,7 @@ export default function HostGigContract(): React.ReactElement {
                   />
                 </View>
               ) : (
-                <Muted>{`Waiting for the creator until ${shortDateTime(openChange.expires_at)}.`}</Muted>
+                <Muted>{`Waiting for the creator until ${when(openChange.expires_at)}.`}</Muted>
               )}
             </Card>
           ) : null}
@@ -1598,16 +1853,10 @@ export default function HostGigContract(): React.ReactElement {
                 variant="ghost"
                 label="Cancel gig and refund"
                 loading={busy}
-                onPress={() =>
-                  void run(
-                    () =>
-                      creatorGigsService.refund(
-                        contractId,
-                        "host_after_accept_before_lock",
-                      ),
-                    "Gig cancelled. Your eligible refund has started. Provider fees follow the payment provider’s refund rules.",
-                  )
-                }
+                onPress={() => {
+                  setError(null);
+                  setSheet("cancel_gig");
+                }}
               />
             ) : null}
             {canDispute ? (
@@ -1664,7 +1913,7 @@ export default function HostGigContract(): React.ReactElement {
                   key={event.id}
                   compact
                   title={event.words}
-                  subtitle={`${actorWords(event.actor)} · ${shortDateTime(event.at)}`}
+                  subtitle={`${actorWords(event.actor)} · ${when(event.at)}`}
                   chevron={false}
                 />
               ))}
@@ -1708,18 +1957,29 @@ const styles = StyleSheet.create({
   },
   // Centred at the card's content width, 9:16 like the video itself. The old
   // 9:13 box with a max height shrank its width and sat left with a gap.
+  // #4402 — the frame stays 9:16 but never grows past 640 px tall (360 wide),
+  // and on web never past 70% of the window, so it no longer fills a desktop
+  // screen as a blank brown box.
   player: {
-    alignSelf: "stretch",
+    alignSelf: "center",
     width: "100%",
+    maxWidth: 360,
     aspectRatio: 9 / 16,
     borderRadius: radius.lg,
     backgroundColor: "#5b3a22",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
+    overflow: "hidden",
+    ...(Platform.OS === "web"
+      ? ({ maxWidth: "min(100%, calc(min(70vh, 640px) * 0.5625))" } as object)
+      : null),
   },
+  playerPoster: { ...StyleSheet.absoluteFillObject },
   playerCaption: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
   stars: { flexDirection: "row", gap: spacing.sm },
+  // Breathing room: 10 px between the buttons, 28 px under the last one.
+  confirmActions: { gap: 10, paddingBottom: 28 },
   offer: {
     gap: spacing.xs,
     padding: spacing.md,

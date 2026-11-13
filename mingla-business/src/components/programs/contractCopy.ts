@@ -207,8 +207,14 @@ export function contractFeeWords(
   feeMinor: number,
   currency: string,
   moneyState: ContractMoneyState | null,
+  refundedMinor?: number | null,
+  totalPaidMinor?: number | null,
 ): string {
   const fee = programMoney(feeMinor, currency);
+  const refunded =
+    typeof refundedMinor === "number" && refundedMinor > 0
+      ? programMoney(refundedMinor, currency)
+      : null;
   switch (moneyState) {
     case "on_the_way":
       return `${fee} · On the way`;
@@ -216,13 +222,78 @@ export function contractFeeWords(
       return `${fee} · Ready`;
     case "paid":
       return `${fee} paid`;
+    // #4402 — the row shows what actually went back, not the contract fee.
     case "refunded":
-      return `${fee} refunded`;
+      return `${refunded ?? fee} refunded`;
     case "partially_refunded":
-      return `${fee} · part refunded`;
+      return refunded
+        ? typeof totalPaidMinor === "number" && totalPaidMinor > 0
+          ? `${refunded} refunded of ${programMoney(totalPaidMinor, currency)}`
+          : `${refunded} refunded`
+        : `${fee} · part refunded`;
     default:
       return fee;
   }
+}
+
+/** gig_contract_workspace.refunded_minor (top level, or on the contract). */
+export function workspaceRefundedMinor(workspace: unknown): number | null {
+  if (!workspace || typeof workspace !== "object") return null;
+  const row = workspace as Record<string, unknown>;
+  const direct = row.refunded_minor;
+  if (typeof direct === "number") return direct;
+  const nested = (row.contract as Record<string, unknown> | undefined)
+    ?.refunded_minor;
+  return typeof nested === "number" ? nested : null;
+}
+
+/**
+ * #4402 — the posting stage in host words: the deadline, the automatic full
+ * refund if nobody posts, and what happened after a missed post.
+ */
+export function hostPostingCopy(input: {
+  state: string;
+  creatorName: string;
+  deadlineWords: string | null;
+  deadlineAt: string | null;
+  cancelReason: string | null;
+  refundWords: string | null;
+  nowMs?: number;
+}): { title: string; lines: string[]; dueSoon: boolean } | null {
+  const { state, creatorName } = input;
+  if (state === "cancelled" && input.cancelReason === "post_missed") {
+    return {
+      title: "Refunded",
+      lines: [
+        `The creator didn't post in time. Your full refund${input.refundWords ? ` of ${input.refundWords}` : ""} has started.`,
+      ],
+      dueSoon: false,
+    };
+  }
+  if (state === "posts_submitted") {
+    return {
+      title: "Checking posts",
+      lines: [
+        `${creatorName} posted. Mingla's team is checking the links. You'll hear when they pass.`,
+      ],
+      dueSoon: false,
+    };
+  }
+  if (["approved", "posting", "posts_failed"].includes(state)) {
+    const now = input.nowMs ?? Date.now();
+    const due = input.deadlineAt ? new Date(input.deadlineAt).getTime() : NaN;
+    const dueSoon = Number.isFinite(due) && due - now < 86_400_000;
+    const lines = [
+      `${creatorName} posts the video and adds the links here. Mingla's team checks each link, usually within a day.`,
+    ];
+    if (input.deadlineWords) {
+      lines.push(
+        `${creatorName} posts by ${input.deadlineWords}. If they don't, you're refunded in full automatically.`,
+      );
+    }
+    return { title: dueSoon ? "Posts due soon" : "Waiting for posts", lines, dueSoon };
+  }
+  return null;
 }
 
 const PAYOUT_STATES: ReadonlySet<string> = new Set([
@@ -239,6 +310,14 @@ export function contractStatusCard(input: {
   creatorName: string;
   hostRated: boolean;
   stepCaption: string;
+  /** #4402 — the shoot plan, so the header follows a confirmation at once. */
+  shoot?: {
+    proposedBy: "host" | "creator";
+    confirmed: boolean;
+    whenWords: string;
+  } | null;
+  /** #4402 — while an action runs, the header says so ("Approving…"). */
+  working?: string | null;
 }): {
   title: string;
   pill: string;
@@ -260,7 +339,7 @@ export function contractStatusCard(input: {
             : "Payment released";
   }
   const canRate = input.state === "completed" && !input.hostRated;
-  const line =
+  let line =
     input.state === "released" || input.state === "day30"
       ? `Posts stay up for 30 days. You can rate ${input.creatorName} when the gig is done.`
       : input.state === "completed"
@@ -268,6 +347,21 @@ export function contractStatusCard(input: {
           ? "You've rated this gig."
           : `Rate ${input.creatorName} when you're ready.`
         : input.stepCaption;
+  const planned = input.state === "accepted" || input.state === "shoot_planned";
+  if (planned && input.shoot) {
+    const { proposedBy, confirmed, whenWords } = input.shoot;
+    if (confirmed) {
+      title = "Shoot time confirmed";
+      line = `Shoot confirmed for ${whenWords}. You'll review the script before the shoot.`;
+    } else if (proposedBy === "creator") {
+      title = "Approve the shoot time";
+      line = `${input.creatorName} proposed ${whenWords}.`;
+    } else {
+      title = "Waiting for the creator to confirm";
+      line = `You proposed ${whenWords}.`;
+    }
+  }
+  if (input.working) title = input.working;
   return {
     title,
     pill: input.state === "completed" ? "Done" : pill.label,
@@ -286,7 +380,10 @@ export function activityEvents<T extends { kind: string }>(
 ): Array<T & { words: string }> {
   const out: Array<T & { words: string }> = [];
   for (const event of [...events].reverse()) {
-    const words = activityWords(event.kind);
+    const words = activityWords(
+      event.kind,
+      (event as { data?: Record<string, unknown> | null }).data,
+    );
     if (words === null) continue;
     if (out.length > 0 && out[out.length - 1].words === words) continue;
     out.push({ ...event, words });
@@ -331,4 +428,148 @@ export function contractNoticeKey(
     })
     .join(",");
   return `${workspace.contract.state ?? ""}|v${workspace.contract.current_terms_version ?? ""}|${requests}`;
+}
+
+// ---------------------------------------------------------------------------
+// #4402 — what the host sees while a creator-hire payment is checked.
+//
+// Invariant I-4402-E: the host UI never says nothing was charged until the
+// server's payment_check is not_paid (declared in
+// src/components/creators/screens/__tests__/issue_4402_contract_pay_return.test.ts).
+// ---------------------------------------------------------------------------
+
+/** The server's answer (`payment_check`) plus the two client-only states. */
+export type HostPaymentCheckState =
+  | "checking"
+  | "paid"
+  | "pending"
+  | "unfinished"
+  | "not_paid"
+  | "mismatch"
+  | "refunded"
+  | "error";
+
+export type HostPaymentCard = {
+  title: string;
+  body: string;
+  /** retry → back to the applicant to offer again; check → ask the server again. */
+  action: "retry" | "check" | null;
+  actionLabel: string | null;
+  busy: boolean;
+};
+
+export const PAYMENT_CHECK_POLL_MS = 3000;
+export const PAYMENT_CHECK_LIMIT_MS = 30000;
+
+/** Map a confirm_reference answer to a state; anything unknown is an error, never "not paid". */
+export function paymentCheckState(answer: {
+  ok: boolean;
+  payment_check?: string;
+}): HostPaymentCheckState {
+  if (answer.ok) return "paid";
+  switch (answer.payment_check) {
+    case "paid":
+    case "pending":
+    case "unfinished":
+    case "not_paid":
+    case "mismatch":
+    case "refunded":
+      return answer.payment_check;
+    default:
+      return "error";
+  }
+}
+
+/** Keep polling a pending answer every 3 s for up to 30 s after the first check. */
+export function nextPaymentCheckDelay(
+  state: HostPaymentCheckState,
+  elapsedMs: number,
+): number | null {
+  if (state !== "pending") return null;
+  return elapsedMs + PAYMENT_CHECK_POLL_MS <= PAYMENT_CHECK_LIMIT_MS
+    ? PAYMENT_CHECK_POLL_MS
+    : null;
+}
+
+/** The payment card, or null when there is nothing to say (paid). */
+export function hostPaymentCard(
+  state: HostPaymentCheckState,
+  context: { creatorName: string; fromReturn: boolean },
+): HostPaymentCard | null {
+  switch (state) {
+    case "paid":
+      return null;
+    case "checking":
+      return {
+        title: context.fromReturn
+          ? "Confirming your payment…"
+          : "Checking your payment",
+        body: "This takes a few seconds.",
+        action: null,
+        actionLabel: null,
+        busy: true,
+      };
+    case "pending":
+      return {
+        title: "Your payment is still being confirmed",
+        body: "We'll update this page when it lands. You won't be charged twice.",
+        action: "check",
+        actionLabel: "Check again",
+        busy: false,
+      };
+    case "unfinished":
+      // #4402: Paystack keeps an unfinished checkout payable, so this is not
+      // "nothing was charged" (that is only after the server says not_paid).
+      return {
+        title: "This payment wasn't finished",
+        body: "If you closed the payment page, you can start again. You won't be charged twice.",
+        action: "retry",
+        actionLabel: "Start again",
+        busy: false,
+      };
+    case "not_paid":
+      return context.fromReturn
+        ? {
+            title: "The payment didn't go through",
+            body: "Nothing was charged.",
+            action: "retry",
+            actionLabel: "Try again",
+            busy: false,
+          }
+        : {
+            title: "Payment not completed",
+            body: `${context.creatorName} hasn't received this offer because the payment didn't go through. Nothing was charged.`,
+            action: "retry",
+            actionLabel: "Retry payment",
+            busy: false,
+          };
+    case "mismatch":
+      return {
+        title: "We couldn't match this payment",
+        body: "Our team has been alerted.",
+        action: null,
+        actionLabel: null,
+        busy: false,
+      };
+    case "refunded":
+      return {
+        title: "This payment is being refunded",
+        body: "It arrived after this offer had closed, so the full amount is on its way back to you.",
+        action: "retry",
+        actionLabel: "Make a new offer",
+        busy: false,
+      };
+    case "error":
+      return {
+        title: "We couldn't check your payment",
+        body: "Check your connection and try again.",
+        action: "check",
+        actionLabel: "Check payment",
+        busy: false,
+      };
+    default: {
+      const never: never = state;
+      return never;
+    }
+  }
 }

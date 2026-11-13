@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { postHogService } from "./postHogService";
+import { isUpcomingListing } from "../utils/creatorProgramFormat";
 
 // #3872 — Host side of creator gigs. The creator side lives in Explorer.
 
@@ -7,7 +8,28 @@ export type FollowerBand = {
   platform: string;
   band: string | null;
   verified: boolean;
+  /** #4402: 'admin' = recorded by a Mingla admin when approving the handle. */
+  source?: string | null;
 };
+
+/**
+ * #4402 — Hosts see only an audience band a Mingla admin recorded, never the
+ * creator's own. The server already filters; this keeps the screens honest
+ * against an older server or a stray row.
+ */
+export function adminAudienceBands(value: unknown): FollowerBand[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (x): x is FollowerBand =>
+      Boolean(x) &&
+      typeof x === "object" &&
+      typeof (x as FollowerBand).platform === "string" &&
+      (x as FollowerBand).source === "admin" &&
+      (x as FollowerBand).verified === true &&
+      typeof (x as FollowerBand).band === "string" &&
+      ((x as FollowerBand).band as string).length > 0,
+  );
+}
 
 export type GigApplicant = {
   interest_id: string;
@@ -313,11 +335,7 @@ export function normalizeApplicants(raw: unknown): GigApplicant[] {
       niches: Array.isArray(row.niches)
         ? row.niches.filter((x): x is string => typeof x === "string")
         : [],
-      follower_bands: Array.isArray(row.follower_bands)
-        ? (row.follower_bands as FollowerBand[]).filter(
-            (x) => x && typeof x.platform === "string",
-          )
-        : [],
+      follower_bands: adminAudienceBands(row.follower_bands),
       rating:
         typeof row.rating === "number"
           ? row.rating
@@ -556,10 +574,14 @@ export const creatorGigsService = {
   },
   applicants: async (gigId: string): Promise<GigApplicant[]> =>
     normalizeApplicants(await rpc("gig_applicants", { p_gig_id: gigId })),
-  prehireProfile: (creatorId: string) =>
-    rpc<PrehireProfile | null>("prehire_creator_profile", {
+  prehireProfile: async (creatorId: string) => {
+    const profile = await rpc<PrehireProfile | null>("prehire_creator_profile", {
       p_creator_account_id: creatorId,
-    }),
+    });
+    return profile
+      ? { ...profile, follower_bands: adminAudienceBands(profile.follower_bands) }
+      : profile;
+  },
   decideInterest: (interestId: string, status: "shortlisted" | "passed") =>
     writeRpc<WriteResult>("gig_interest_decide", {
       p_interest_id: interestId,
@@ -704,3 +726,84 @@ export const creatorGigsService = {
     return data;
   },
 };
+
+
+/** A live shoot city with its country, for the grouped picker (#4402 H23). */
+export type GigCity = { id: string; name: string; country: string };
+
+export async function fetchGigCities(): Promise<GigCity[]> {
+  const { data, error } = await supabase
+    .from("seeding_cities")
+    .select("id,name,country")
+    .eq("is_live_for_consumers", true)
+    .order("name")
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    country: typeof row.country === "string" && row.country ? row.country : "Other",
+  }));
+}
+
+/**
+ * #4402 (item 18) — listings a gig can be posted for: published, upcoming
+ * events (never drafts, deleted or finished ones) and the brand's venues.
+ */
+export async function fetchGigListingOptions(
+  brandId: string,
+  now: Date = new Date(),
+): Promise<
+  {
+    listingKind: "event" | "venue";
+    listingId: string;
+    label: string;
+    typeLabel: string;
+  }[]
+> {
+  const [events, venues] = await Promise.all([
+    supabase
+      // orch-strict-grep-allow events-type-filter — the gig picker includes every public offering kind and filters with an explicit .in
+      .from("events")
+      .select("id,title,event_type,status,event_dates(end_at)")
+      .eq("brand_id", brandId)
+      .in("event_type", ["event", "experience", "trip", "rsvp"])
+      .in("status", ["scheduled", "live"])
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("venue_listings")
+      .select("id,name,venue_category")
+      .eq("brand_id", brandId)
+      .order("created_at", { ascending: false })
+      .limit(200),
+  ]);
+  if (events.error) throw events.error;
+  if (venues.error) throw venues.error;
+  const upcoming = (events.data ?? []).filter((row) =>
+    isUpcomingListing(
+      {
+        status: typeof row.status === "string" ? row.status : null,
+        ends: (Array.isArray(row.event_dates) ? row.event_dates : []).map(
+          (date: { end_at?: string | null }) => date?.end_at ?? null,
+        ),
+      },
+      now,
+    ),
+  );
+  return [
+    ...upcoming.map((row) => ({
+      listingKind: "event" as const,
+      listingId: String(row.id),
+      label: String(row.title ?? "Untitled listing"),
+      typeLabel: String(row.event_type ?? "event"),
+    })),
+    ...(venues.data ?? []).map((row) => ({
+      listingKind: "venue" as const,
+      listingId: String(row.id),
+      label: String(row.name ?? "Untitled venue"),
+      typeLabel: String(row.venue_category ?? "venue"),
+    })),
+  ];
+}
