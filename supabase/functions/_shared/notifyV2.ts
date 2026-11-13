@@ -24,6 +24,8 @@ import {
   validatePersistedOfferingPushV1,
 } from "./offeringInviteQuote.ts";
 import { notificationSafeError } from "./notificationSafeError.ts";
+// #4422 — the reopen instant for an RSVP text held by the operator embargo.
+import { nextNgGenericWindowOpen, ngEmbargoNow } from "./ngSmsEmbargo.ts";
 // #1529 — the single source of truth for E.164 → ISO-2, replacing the
 // two-country ternary that used to sit at the RSVP SMS call site below.
 import { countryFromE164 } from "./e164Country.ts";
@@ -1171,17 +1173,23 @@ export interface RsvpChannelInput {
   lease_id: string;
 }
 
+/** Issue #1447 + #4422: what one RSVP channel attempt came to. `deferred`
+ * (#4422) means held by the Nigerian operator embargo until `nextAttemptAt`;
+ * every other outcome has `nextAttemptAt: null`. */
+export interface RsvpChannelResult {
+  outcome: "sent" | "retryable" | "terminal" | "ambiguous" | "deferred";
+  providerMessageId: string | null;
+  safeCode: string | null;
+  nextAttemptAt: string | null;
+}
+
 /** Issue #1447: RSVP's claimed channel rows still use the unified dispatcher
  * adapters and mandatory can_send chokepoint. The caller owns the durable RSVP
  * lease; this function owns only policy + provider I/O. */
 export async function dispatchRsvpChannel(
   client: MinimalClient,
   input: RsvpChannelInput,
-): Promise<{
-  outcome: "sent" | "retryable" | "terminal" | "ambiguous";
-  providerMessageId: string | null;
-  safeCode: string | null;
-}> {
+): Promise<RsvpChannelResult> {
   const policyChannel = input.channel === "in_app" ? "inapp" : input.channel;
   const { data: catData } = await client.from("notification_categories")
     .select("*").eq("key", input.category_key).maybeSingle();
@@ -1191,6 +1199,7 @@ export async function dispatchRsvpChannel(
       outcome: "terminal",
       providerMessageId: null,
       safeCode: "dispatch_rejected",
+      nextAttemptAt: null,
     };
   }
   const { data: allowed } = await client.rpc("can_send", {
@@ -1204,6 +1213,7 @@ export async function dispatchRsvpChannel(
       outcome: "terminal",
       providerMessageId: null,
       safeCode: "can_send_denied",
+      nextAttemptAt: null,
     };
   }
   if (input.channel === "in_app") {
@@ -1212,6 +1222,7 @@ export async function dispatchRsvpChannel(
         outcome: "terminal",
         providerMessageId: null,
         safeCode: "no_contact",
+        nextAttemptAt: null,
       };
     }
     const inserted = await client.from("notifications").insert({
@@ -1223,11 +1234,17 @@ export async function dispatchRsvpChannel(
       idempotency_key: `${input.idempotency_key}:in_app`,
     }) as unknown as { error: { code?: string } | null };
     return !inserted.error || inserted.error.code === "23505"
-      ? { outcome: "sent", providerMessageId: null, safeCode: null }
+      ? {
+        outcome: "sent",
+        providerMessageId: null,
+        safeCode: null,
+        nextAttemptAt: null,
+      }
       : {
         outcome: "retryable",
         providerMessageId: null,
         safeCode: "dispatch_unavailable",
+        nextAttemptAt: null,
       };
   }
   let result: {
@@ -1235,6 +1252,7 @@ export async function dispatchRsvpChannel(
     status: string;
     providerMessageId: string | null;
     error?: string;
+    retryAfter?: string;
   };
   if (input.channel === "push") {
     if (!input.user_id) {
@@ -1242,6 +1260,7 @@ export async function dispatchRsvpChannel(
         outcome: "terminal",
         providerMessageId: null,
         safeCode: "no_contact",
+        nextAttemptAt: null,
       };
     }
     result = await pushAdapter.send({
@@ -1260,6 +1279,7 @@ export async function dispatchRsvpChannel(
         outcome: "terminal",
         providerMessageId: null,
         safeCode: "no_contact",
+        nextAttemptAt: null,
       };
     }
     result = await emailAdapter.send({
@@ -1284,6 +1304,7 @@ export async function dispatchRsvpChannel(
         outcome: "terminal",
         providerMessageId: null,
         safeCode: "no_contact",
+        nextAttemptAt: null,
       };
     }
     result = await smsAdapter.send({
@@ -1307,20 +1328,28 @@ export async function dispatchRsvpChannel(
       outcome: "sent",
       providerMessageId: result.providerMessageId,
       safeCode: null,
+      nextAttemptAt: null,
     };
   }
   // #2218 — a Nigerian `generic` send held by the operator embargo is
-  // DEFINITIVELY unsent and DEFINITIVELY retryable: zero HTTP happened, so
-  // there is no ambiguity about whether the provider took it, and the window
-  // reopens at a known instant. Classified before the ladder below so it can
-  // never be read as `terminal` (which would abandon a message that is still
-  // owed) or as `ambiguous` (which would make re-sending look like a
-  // double-send risk).
+  // DEFINITIVELY unsent: zero HTTP happened, so there is no ambiguity about
+  // whether the provider took it, and the window reopens at a known instant.
+  // Classified before the ladder below so it can never be read as `terminal`
+  // (which would abandon a message that is still owed) or as `ambiguous`
+  // (which would make re-sending look like a double-send risk).
+  //
+  // #4422 — it is also NOT `retryable`. Mapped to retryable, the RSVP retry
+  // ladder (30 s … 32 min, 8 tries) ran out about 70 minutes in and dropped
+  // every text created between 20:00 and about 06:50 WAT. `deferred` carries
+  // the reopen instant, and rsvp-notify parks the row until then without
+  // spending a try (`defer_rsvp_notification_delivery`).
   if (result.status === "deferred") {
     return {
-      outcome: "retryable",
+      outcome: "deferred",
       providerMessageId: null,
       safeCode: notificationSafeError(result.error ?? "ng_operator_embargo"),
+      nextAttemptAt: result.retryAfter ??
+        nextNgGenericWindowOpen(ngEmbargoNow()).toISOString(),
     };
   }
   const safe = result.error
@@ -1339,6 +1368,7 @@ export async function dispatchRsvpChannel(
       : "ambiguous",
     providerMessageId: null,
     safeCode: safe,
+    nextAttemptAt: null,
   };
 }
 

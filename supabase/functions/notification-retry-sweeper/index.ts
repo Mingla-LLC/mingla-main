@@ -40,6 +40,9 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 
+// Issue #4422 — one ops alert for a buyer reached on no channel.
+import { alertUnreachedGuests } from "../_shared/unreachedGuestAlert.ts";
+
 import {
   BATCH_LIMIT,
   isEligible,
@@ -131,6 +134,10 @@ serve(async (req) => {
       results.push({ notificationId, status: "failed", error: message });
     }
   }
+
+  // Issue #4422 — after the re-dispatch, alert once for any ticket order whose
+  // buyer was reached on no channel and is owed nothing more.
+  await alertUnreachedGuests(supabase, "ticket");
 
   return jsonResponse({
     scanned,

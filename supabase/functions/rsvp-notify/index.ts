@@ -25,6 +25,8 @@ import { buildRsvpPassMessage } from "../_shared/rsvpPassMessage.ts";
 import { renderTransactionalEmail } from "../_shared/email/index.ts";
 import { eventUpdateReplyTo } from "../_shared/email/eventUpdatedEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
+// Issue #4422 — one ops alert for a guest reached on no channel.
+import { alertUnreachedGuests } from "../_shared/unreachedGuestAlert.ts";
 // Issue #3827 — buyers and guests are told when a live listing changes.
 import {
   buildEventUpdateDispatch,
@@ -305,6 +307,41 @@ async function complete(
     notificationId: claim.notification_id,
     channel: claim.channel,
     outcome: status,
+    attempt: claim.attempt_count,
+    providerCode: safeCode,
+  }));
+}
+
+/** Issue #4422 — park a text held by the Nigerian operator embargo until its
+ * window reopens, without spending a try. A failed write is never swallowed:
+ * it is logged and the lease is classified, so the row is retried. */
+async function deferDelivery(
+  admin: AdminClient,
+  claim: Claim,
+  safeCode: string | null,
+  nextAttemptAt: string | null,
+): Promise<void> {
+  const { data, error } = await admin.rpc("defer_rsvp_notification_delivery", {
+    p_delivery_id: claim.delivery_id,
+    p_lease_id: claim.lease_id,
+    p_safe_error_code: safeCode,
+    p_next_attempt_at: nextAttemptAt,
+  });
+  if (error) {
+    console.error(
+      "[rsvp-notify] defer failed",
+      claim.delivery_id,
+      error.message,
+    );
+    await classifyFailure(admin, claim, "defer_write_failed");
+  } else if (data !== true) {
+    console.error("[rsvp-notify] defer lost its lease", claim.delivery_id);
+  }
+  console.info(JSON.stringify({
+    event: "rsvp_notification_channel_result",
+    notificationId: claim.notification_id,
+    channel: claim.channel,
+    outcome: "deferred",
     attempt: claim.attempt_count,
     providerCode: safeCode,
   }));
@@ -623,6 +660,15 @@ async function processClaim(
         lease_id: claim.lease_id,
       },
     );
+    if (result.outcome === "deferred") {
+      await deferDelivery(
+        admin,
+        claim,
+        result.safeCode,
+        result.nextAttemptAt,
+      );
+      return;
+    }
     await complete(
       admin,
       claim,
@@ -695,5 +741,10 @@ serve(async (req: Request): Promise<Response> => {
       (claim) => processClaim(admin, claim, loadNotice),
     ),
   ]);
+  // Issue #4422 — on the every-minute tick, one ops alert for any guest this
+  // worker reached on no channel and owes nothing more.
+  if (!notificationId) {
+    await alertUnreachedGuests(admin, "rsvp");
+  }
   return json(200, { ok: true, claimed: claims.length });
 });

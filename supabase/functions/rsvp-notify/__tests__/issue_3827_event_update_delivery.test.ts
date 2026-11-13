@@ -200,6 +200,10 @@ globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => 
   if (url.origin === ORIGIN) {
     const leaf = url.pathname.split("/").at(-1) ?? "";
     const body = req.method === "GET" ? null : await req.json();
+    // #4422 — the tick's unreached-guest alert claim; nothing to alert here.
+    if (leaf === "issue_4422_claim_unreached_guest_alerts") {
+      return jsonResponse([]);
+    }
     if (leaf === "event_edit_notice_fanout") {
       seen.order.push("fanout");
       seen.fanoutArgs.push(body);

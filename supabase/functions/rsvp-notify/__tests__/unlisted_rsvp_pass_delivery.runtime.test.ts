@@ -123,6 +123,10 @@ function installFixture(scenario: () => Scenario, seen: Observed): () => void {
         seen.completions.push(body);
         return jsonResponse(true);
       }
+      // #4422 — the tick's unreached-guest alert claim; nothing to alert here.
+      if (leaf === "issue_4422_claim_unreached_guest_alerts") {
+        return jsonResponse([]);
+      }
       if (leaf === "event_edit_notice_fanout") {
         return jsonResponse({ notices: 0, rows: 0 });
       }
