@@ -1,14 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { GigProposal, GigTerms, GigWorkspace } from '../../../services/creatorGigsService';
-import { chooseAndUploadCreatorMedia, isPickerCancel } from '../../../services/creatorMediaService';
-import { programErrorText } from '../../../services/programResult';
-import { agreedVideoDueText, deliverablesLabel, formatDateRange, formatDateTime, formatMoney, formatShortDate, parseDay, platformLabel, proposalDueText, salesShareText, shootPickRange, usageLabel, videoDueText } from '../../../utils/programFormat';
+import { gigZone, type GigProposal, type GigTerms, type GigWorkspace } from '../../../services/creatorGigsService';
+import { chooseAndUploadCreatorMedia, isPickerCancel, pendingDeliveryMedia, waitForMediaReady } from '../../../services/creatorMediaService';
+import { programErrorText, toProgramError } from '../../../services/programResult';
+import { agreedVideoDue, agreedVideoDueZoned, deliverablesLabel, doorPassLine, formatDateRange, formatDateTime, formatInZone, formatMoney, formatShortDate, parseDay, platformLabel, postDeadlineText, proposalDueText, salesShareText, shootPickRange, uploadDueReason, usageLabel, videoDueText } from '../../../utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramField, ProgramNotice, ProgramPill, ProgramRow, ProgramSheet, programStyles as s } from '../../programs/ProgramUi';
 import { CalendarGrid, CheckRow, Chip, StarsInput, TimeChips } from '../../programs/ProgramPickers';
 import { playOwnVideo } from '../../programs/VideoTile';
-import { POST_URL_RULES, TRACK_STEPS, TRACK_TITLES, actorWords, currentTrackStep, eventWords, fixWords, postCheckWords } from './contractWords';
+import { POST_URL_RULES, TRACK_STEPS, TRACK_TITLES, actorWords, currentTrackStep, eventWords, failedPostReason, fixWords, postCheckWords, scriptPartsFor, type ScriptPartSpec } from './contractWords';
 
 // ── Brand (revealed after acceptance) ──────────────────────────────────────
 
@@ -69,13 +69,13 @@ export function Tracker({ state, terms, acceptedAt, releaseHint }: { state: stri
 
 // ── Terms and history ──────────────────────────────────────────────────────
 
-export function TermsCard({ terms, gig }: { terms: GigTerms; gig: GigWorkspace['gig'] }): React.ReactElement {
+export function TermsCard({ terms, gig, zone = null }: { terms: GigTerms; gig: GigWorkspace['gig']; zone?: string | null }): React.ReactElement {
   const window = gig.shoot_window;
   return <ProgramCard>
     <ProgramRow title="Fee" value={formatMoney(terms.fee_minor, terms.currency)} chevron={false} />
     {window ? <ProgramRow title="Shoot" value={formatDateRange(window.start, window.end)} chevron={false} />
       : terms.shoot_date ? <ProgramRow title="Shoot" value={formatShortDate(terms.shoot_date)} chevron={false} /> : null}
-    <ProgramRow title="Video due" value={termsVideoDue(terms, gig)} chevron={false} />
+    <ProgramRow title="Video due" value={termsVideoDue(terms, gig, zone)} chevron={false} />
     <ProgramRow title="Deliverables" value={deliverablesLabel(terms.deliverables)} chevron={false} />
     <ProgramRow title="Fixes included" value="2 technical" chevron={false} />
     {salesShareText(terms.sales_share_bps) ? <ProgramRow title="Plus" value={salesShareText(terms.sales_share_bps)!} chevron={false} /> : null}
@@ -84,8 +84,8 @@ export function TermsCard({ terms, gig }: { terms: GigTerms; gig: GigWorkspace['
 }
 
 /** The agreed due (current terms): date and time. */
-function termsVideoDue(terms: GigTerms, gig: GigWorkspace['gig']): string {
-  return agreedVideoDueText(terms, gig);
+function termsVideoDue(terms: GigTerms, gig: GigWorkspace['gig'], zone: string | null): string {
+  return agreedVideoDueZoned(terms, gig, zone);
 }
 
 export function TermsHistory({ terms }: { terms: GigTerms[] }): React.ReactElement | null {
@@ -132,11 +132,34 @@ export function Timeline({ events }: { events: GigWorkspace['events'] }): React.
     <Text style={s.label}>Timeline</Text>
     <ProgramCard>
       {shown.length === 0 ? <Text style={s.copy}>No activity yet.</Text> : shown.map((e, i) => <View key={e.id} style={[styles.event, i < shown.length - 1 && styles.eventBorder]}>
-        <Text style={s.strong}>{eventWords(e.kind)}</Text>
+        <Text style={s.strong}>{eventWords(e.kind, e.data, formatMoney)}</Text>
         <Text style={s.small}>{actorWords(e.actor)} · {formatDateTime(e.at)}</Text>
       </View>)}
     </ProgramCard>
   </>;
+}
+
+// ── Confirmed shoot + text door pass ───────────────────────────────────────
+
+const SHOOT_CARD_STATES = ['shoot_planned', 'script_drafting', 'script_sent', 'script_locked', 'delivered', 'fix_requested'];
+
+/** The agreed shoot time, where to arrive and the door pass, from the confirmed plan until the video is approved. */
+export function ShootCard({ workspace, state, creatorName = null }: { workspace: GigWorkspace; state: string; creatorName?: string | null }): React.ReactElement | null {
+  const plan = workspace.shoot_plan;
+  if (!plan?.confirmed_at || !plan.shoot_at || !SHOOT_CARD_STATES.includes(state)) return null;
+  const terms = workspace.terms.find((t) => t.version === workspace.contract.current_terms_version) ?? workspace.terms[workspace.terms.length - 1];
+  const reveal = workspace.reveal ?? null;
+  const place = [reveal?.place_name ?? workspace.gig.place_name, reveal?.place_address ?? workspace.gig.place_address].filter(Boolean).join(' · ');
+  const arrival = typeof plan.arrival_note === 'string' ? plan.arrival_note.trim() : '';
+  return <ProgramCard accessibilityLabel="Shoot and door pass">
+    <ProgramPill label="Shoot confirmed" tone="success" />
+    <Text style={s.title}>Shoot: {formatInZone(String(plan.shoot_at), gigZone(workspace))}</Text>
+    {place ? <Text style={s.copy}>{place}</Text> : null}
+    {arrival ? <Text style={s.copy}>Arrival: {arrival}</Text> : null}
+    <Text style={s.label}>Door pass</Text>
+    <Text style={s.strong}>{doorPassLine(terms?.shoot_passes, creatorName)}</Text>
+    <Text style={s.small}>Show this screen at the door.</Text>
+  </ProgramCard>;
 }
 
 // ── Shoot ──────────────────────────────────────────────────────────────────
@@ -177,11 +200,6 @@ export function ShootSheet({ visible, onClose, window, initialAt, busy, error, o
 
 // ── Script ─────────────────────────────────────────────────────────────────
 
-const SCRIPT_PARTS = [
-  { key: 'hook', title: 'Hook · first 3 seconds', placeholder: 'What stops the scroll?' },
-  { key: 'middle', title: 'Middle', placeholder: 'What people see and feel there' },
-  { key: 'invite', title: 'Invite', placeholder: 'Why go, and how to book' },
-] as const;
 type ScriptPart = { on_screen: string; voiceover: string };
 
 export function ScriptEditor({ workspace, editable, busy, error, onSave }: {
@@ -189,29 +207,32 @@ export function ScriptEditor({ workspace, editable, busy, error, onSave }: {
   onSave: (body: Record<string, unknown>, send: boolean) => void;
 }): React.ReactElement {
   const latest = workspace.scripts[workspace.scripts.length - 1];
+  // The parts follow the gig format's beats (Hook, Atmosphere, Experience, End card).
+  const specs: ScriptPartSpec[] = useMemo(() => scriptPartsFor(workspace.gig.format_structure), [workspace.gig.format_structure]);
   const initialParts = useMemo(() => {
-    const parts: Record<string, ScriptPart> = { hook: { on_screen: '', voiceover: '' }, middle: { on_screen: '', voiceover: '' }, invite: { on_screen: '', voiceover: '' } };
+    const parts: Record<string, ScriptPart> = Object.fromEntries(specs.map((p) => [p.key, { on_screen: '', voiceover: '' }]));
     (latest?.body?.sections ?? []).forEach((section, i) => {
-      const key = typeof section.key === 'string' && section.key in parts ? section.key : SCRIPT_PARTS[i]?.key;
+      const key = typeof section.key === 'string' && section.key in parts ? section.key : specs[i]?.key;
       if (key) parts[key] = { on_screen: String(section.on_screen ?? ''), voiceover: String(section.voiceover ?? '') };
     });
     return parts;
-  }, [latest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a refetch of the same script must not wipe what is being typed.
+  }, [latest?.version, specs]);
   const [parts, setParts] = useState(initialParts);
   const [disclosure, setDisclosure] = useState<string>(typeof latest?.body?.disclosure === 'string' && latest.body.disclosure ? latest.body.disclosure : '#ad');
   const [confirmed, setConfirmed] = useState(Boolean(latest));
   useEffect(() => { setParts(initialParts); }, [initialParts]);
 
-  const filled = SCRIPT_PARTS.filter((p) => (parts[p.key].on_screen + parts[p.key].voiceover).trim().length > 0).length;
+  const filled = specs.filter((p) => ((parts[p.key]?.on_screen ?? '') + (parts[p.key]?.voiceover ?? '')).trim().length > 0).length;
   const body = (): Record<string, unknown> => ({
-    sections: SCRIPT_PARTS.map((p) => ({ key: p.key, on_screen: parts[p.key].on_screen.trim(), voiceover: parts[p.key].voiceover.trim(), shot_notes: '' })),
+    sections: specs.map((p) => ({ key: p.key, on_screen: (parts[p.key]?.on_screen ?? '').trim(), voiceover: (parts[p.key]?.voiceover ?? '').trim(), shot_notes: '' })),
     disclosure, estimated_seconds: 30,
   });
 
   if (!editable) {
     return <ProgramCard>
       <Text style={s.label}>{latest?.locked_at ? 'Locked script' : 'Your script'}</Text>
-      {SCRIPT_PARTS.map((p) => (parts[p.key].on_screen || parts[p.key].voiceover) ? <View key={p.key} style={styles.part}>
+      {specs.map((p) => (parts[p.key]?.on_screen || parts[p.key]?.voiceover) ? <View key={p.key} style={styles.part}>
         <Text style={s.strong}>{p.title}</Text>
         {parts[p.key].on_screen ? <Text style={s.copy}>On screen: {parts[p.key].on_screen}</Text> : null}
         {parts[p.key].voiceover ? <Text style={s.copy}>Say: {parts[p.key].voiceover}</Text> : null}
@@ -222,10 +243,10 @@ export function ScriptEditor({ workspace, editable, busy, error, onSave }: {
 
   return <ProgramCard>
     <Text style={s.title}>Script</Text>
-    {SCRIPT_PARTS.map((p) => <View key={p.key} style={styles.part}>
+    {specs.map((p) => <View key={p.key} style={styles.part}>
       <Text style={s.strong}>{p.title}</Text>
-      <ProgramField label="On screen" value={parts[p.key].on_screen} onChangeText={(v) => setParts({ ...parts, [p.key]: { ...parts[p.key], on_screen: v } })} placeholder={p.placeholder} multiline maxLength={400} />
-      <ProgramField label="What you say" value={parts[p.key].voiceover} onChangeText={(v) => setParts({ ...parts, [p.key]: { ...parts[p.key], voiceover: v } })} placeholder="Voiceover or lines" multiline maxLength={400} />
+      <ProgramField label="On screen" value={parts[p.key]?.on_screen ?? ''} onChangeText={(v) => setParts((cur) => ({ ...cur, [p.key]: { ...(cur[p.key] ?? { on_screen: '', voiceover: '' }), on_screen: v } }))} placeholder={p.placeholder} multiline maxLength={400} />
+      <ProgramField label="What you say" value={parts[p.key]?.voiceover ?? ''} onChangeText={(v) => setParts((cur) => ({ ...cur, [p.key]: { ...(cur[p.key] ?? { on_screen: '', voiceover: '' }), voiceover: v } }))} placeholder="Voiceover or lines" multiline maxLength={400} />
     </View>)}
     <Text style={s.fieldLabel}>Disclosure</Text>
     <View style={s.wrap}>{['#ad', 'Paid partnership'].map((d) => <Chip key={d} label={d} selected={disclosure === d} onPress={() => setDisclosure(d)} />)}</View>
@@ -240,31 +261,118 @@ export function ScriptEditor({ workspace, editable, busy, error, onSave }: {
 
 // ── Upload ─────────────────────────────────────────────────────────────────
 
+/** What the upload card is doing. `idle` has no progress bar; nothing says "Uploading" before a video is picked. */
+export type UploadPhase = 'idle' | 'uploading' | 'processing' | 'ready' | 'sending' | 'sent' | 'failed';
+
 export function UploadCard({ contractId, workspace, onSubmit }: { contractId: string; workspace: GigWorkspace; onSubmit: (jobId: string) => Promise<void> }): React.ReactElement {
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<UploadPhase>('idle');
   const [progress, setProgress] = useState(0);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stalled, setStalled] = useState(false);
+  const [recheck, setRecheck] = useState(0);
+  const submitted = useRef<string | null>(null);
+  const alive = useRef(true);
   const lastFix = workspace.deliveries.filter((d) => d.decision === 'fix_requested').slice(-1)[0];
   const fixing = workspace.contract.state === 'fix_requested';
-  const upload = async (): Promise<void> => {
-    setBusy(true); setProgress(0); setError(null);
+  const usedJobs = useMemo(() => workspace.deliveries.map((d) => (typeof d.media_job_id === 'string' ? d.media_job_id : '')).filter(Boolean), [workspace.deliveries]);
+  const terms = workspace.terms.find((t) => t.version === workspace.contract.current_terms_version) ?? workspace.terms[workspace.terms.length - 1] ?? null;
+  const dueReason = uploadDueReason(agreedVideoDue(terms, workspace.gig), gigZone(workspace));
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  // Resume: a video of this contract that nothing uses yet (still processing, ready, or failed).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const pending = await pendingDeliveryMedia(contractId, usedJobs);
+      if (cancelled || !pending || submitted.current === pending.id) return;
+      setJobId(pending.id);
+      setPhase(pending.status === 'ready' ? 'ready' : ['failed', 'rejected', 'expired'].includes(pending.status) ? 'failed' : 'processing');
+    })();
+    return () => { cancelled = true; };
+  }, [contractId, usedJobs]);
+
+  /** Sends a ready video once. A video that is not ready yet goes back to Processing; it is never uploaded again. */
+  const send = useCallback(async (id: string): Promise<void> => {
+    if (submitted.current === id) return;
+    submitted.current = id;
+    setPhase('sending'); setError(null);
     try {
-      const media = await chooseAndUploadCreatorMedia({ purpose: 'delivery', contractId, onProgress: setProgress });
-      await onSubmit(media.jobId);
-    } catch (e) { if (!isPickerCancel(e)) setError(programErrorText(e)); } finally { setBusy(false); }
+      await onSubmit(id);
+      if (alive.current) setPhase('sent');
+    } catch (e) {
+      submitted.current = null;
+      if (!alive.current) return;
+      if (toProgramError(e).code === 'ready_delivery_media_required') { setStalled(false); setPhase('processing'); setError(null); return; }
+      setError(programErrorText(e)); setPhase('ready');
+    }
+  }, [onSubmit]);
+
+  // Processing: check every 4 s for up to 10 minutes, then send the moment it is ready.
+  useEffect(() => {
+    if (phase !== 'processing' || !jobId) return;
+    let cancelled = false;
+    setStalled(false);
+    void (async () => {
+      const result = await waitForMediaReady(jobId, { isCancelled: () => cancelled });
+      if (cancelled) return;
+      if (result.status === 'ready') void send(jobId);
+      else if (result.status === 'failed') setPhase('failed');
+      else if (result.status === 'timeout') setStalled(true);
+    })();
+    return () => { cancelled = true; };
+  }, [phase, jobId, send, recheck]);
+
+  const upload = async (): Promise<void> => {
+    const before = phase;
+    setProgress(0); setError(null); setStalled(false);
+    try {
+      const media = await chooseAndUploadCreatorMedia({ purpose: 'delivery', contractId, onProgress: setProgress, onPicked: () => { setPhase('uploading'); } });
+      setJobId(media.jobId); setPhase('processing');
+    } catch (e) {
+      if (isPickerCancel(e)) return;
+      setPhase(before === 'ready' ? 'ready' : 'idle'); setError(programErrorText(e));
+    }
   };
+
+  const chooseLabel = phase === 'failed' ? 'Choose another video' : phase === 'ready' ? 'Choose a different video' : 'Choose video';
   return <ProgramCard tone="highlight">
     <Text style={s.title}>{fixing ? 'Upload the fixed video' : 'Upload your video'}</Text>
+    {dueReason ? <Text style={s.accentText}>{dueReason}</Text> : null}
     {fixing && lastFix ? <>
       <Text style={s.label}>What to fix</Text>
       {(lastFix.fix_categories ?? []).map((c) => <Text key={c} style={s.strong}>• {fixWords(c)}</Text>)}
       {lastFix.fix_note ? <Text style={s.copy}>“{lastFix.fix_note}”</Text> : null}
     </> : null}
-    <Text style={s.copy}>Vertical, up to 90 seconds and 150 MB. Mingla keeps a private review copy for the host.</Text>
-    {busy ? <View style={styles.bar}><View style={[styles.fill, { width: `${Math.max(4, Math.round(progress * 100))}%` }]} /></View> : null}
-    {busy ? <Text style={s.small}>Uploading {Math.round(progress * 100)}%. Keep the app open.</Text> : null}
-    {error ? <ProgramNotice tone="error" text={error} /> : null}
-    <ProgramButton label="Choose video" icon="cloud-upload-outline" busy={busy} onPress={() => void upload()} />
+    {phase === 'idle' ? <Text style={s.copy}>Vertical, up to 90 seconds and 150 MB. Mingla keeps a private review copy for the host.</Text> : null}
+    {phase === 'uploading' ? <>
+      <View style={styles.bar}><View style={[styles.fill, { width: `${Math.max(4, Math.round(progress * 100))}%` }]} /></View>
+      <Text style={s.small}>Uploading {Math.round(progress * 100)}%. Keep the app open.</Text>
+    </> : null}
+    {phase === 'processing' ? <>
+      <Text style={s.strong}>Processing your video…</Text>
+      <Text style={s.small}>This usually takes under a minute. You can leave this screen; we’ll keep it.</Text>
+      {stalled ? <>
+        <Text style={s.small}>It’s taking longer than usual. Your video is saved.</Text>
+        <ProgramButton label="Check again" variant="secondary" onPress={() => setRecheck((n) => n + 1)} />
+      </> : null}
+    </> : null}
+    {phase === 'ready' ? <>
+      <Text style={s.copy}>Your video finished processing.</Text>
+      <ProgramButton label="Send this video to the host" busy={false} onPress={() => jobId && void send(jobId)} />
+      {error ? <ProgramNotice tone="error" text={error} /> : null}
+    </> : null}
+    {phase === 'sending' ? <ProgramButton label="Sending to the host" busy onPress={() => undefined} /> : null}
+    {phase === 'sent' ? <>
+      <Text style={s.strong}>✓ Sent to the host</Text>
+      <Text style={s.small}>The host reviews it within 3 days. If they don’t answer, it’s approved automatically.</Text>
+    </> : null}
+    {phase === 'failed' ? <>
+      <ProgramNotice tone="error" text="This video couldn’t be processed. Choose another video." />
+    </> : null}
+    {phase === 'idle' && error ? <ProgramNotice tone="error" text={error} /> : null}
+    {phase === 'idle' || phase === 'failed' ? <ProgramButton label={chooseLabel} icon="cloud-upload-outline" onPress={() => void upload()} />
+      : phase === 'ready' ? <ProgramButton label={chooseLabel} variant="ghost" onPress={() => void upload()} /> : null}
   </ProgramCard>;
 }
 
@@ -292,21 +400,29 @@ export function PostLinksCard({ workspace, busy, error, onSubmit }: { workspace:
   const [touched, setTouched] = useState(false);
   const invalid = list.filter((p) => urls[p]?.trim() && !POST_URL_RULES[p].pattern.test(urls[p].trim()));
   const ready = list.every((p) => urls[p]?.trim()) && invalid.length === 0;
+  const fixing = workspace.contract.state === 'posts_failed';
+  const deadline = postDeadlineText(workspace.contract.state_deadline_at, gigZone(workspace));
   return <ProgramCard tone="highlight">
-    <Text style={s.title}>Add your live links</Text>
-    <Text style={s.copy}>One link per post. Copy it from the post itself.</Text>
+    <Text style={s.title}>{fixing ? 'Submit the fixed link' : 'Add your live links'}</Text>
+    <Text style={s.copy}>Paste the public link for each post. Mingla’s team checks them, usually within a day.</Text>
     {list.map((p) => <ProgramField key={p} label={platformLabel(p)} value={urls[p] ?? ''} onChangeText={(v) => setUrls({ ...urls, [p]: v })} onBlur={() => setTouched(true)}
       placeholder={POST_URL_RULES[p].example} autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType="url" textContentType="URL"
       error={touched && invalid.includes(p) ? `That doesn’t look like a ${platformLabel(p)} post link. It should look like ${POST_URL_RULES[p].example}` : null} />)}
+    {deadline ? <Text style={s.small}>{fixing ? 'Fix by' : 'Post by'} {deadline}</Text> : null}
     {error ? <ProgramNotice tone="error" text={error} /> : null}
-    <ProgramButton label="Submit links" busy={busy} disabled={!ready} onPress={() => onSubmit(list.map((p) => ({ platform: p, url: urls[p].trim() })))} />
+    <ProgramButton label={fixing ? 'Submit the fixed link' : 'Submit links'} busy={busy} disabled={!ready} onPress={() => onSubmit(list.map((p) => ({ platform: p, url: urls[p].trim() })))} />
   </ProgramCard>;
 }
 
 export function PostsStatus({ workspace }: { workspace: GigWorkspace }): React.ReactElement | null {
   if (!workspace.posts.length) return null;
+  const state = workspace.contract.state;
+  const failed = workspace.posts.find((p) => p.check_status === 'failed');
+  const reason = failed ? failedPostReason(failed, workspace.events) : null;
   return <ProgramCard>
     <Text style={s.label}>Your posts</Text>
+    {state === 'posts_submitted' ? <ProgramNotice title="Mingla’s team is checking your links" text="You’re paid 48 hours after they pass. No deadline runs while the posts are being checked." /> : null}
+    {state === 'posts_failed' ? <ProgramNotice tone="warning" title="One of your posts needs a fix" text={reason ?? 'Edit the post or the link, then submit the link again.'} /> : null}
     {workspace.posts.map((p, i) => <ProgramRow key={p.id} title={platformLabel(p.platform)} subtitle={`Added ${formatShortDate(p.submitted_at)}`}
       right={<ProgramPill label={postCheckWords(p.check_status)} tone={p.check_status === 'passed' ? 'success' : p.check_status === 'failed' ? 'danger' : 'neutral'} />} chevron={false} isLast={i === workspace.posts.length - 1} />)}
   </ProgramCard>;

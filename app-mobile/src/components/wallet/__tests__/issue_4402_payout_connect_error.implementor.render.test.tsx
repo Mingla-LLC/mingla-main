@@ -46,6 +46,8 @@ jest.mock("../../../services/payoutService", () => ({
   },
 }));
 
+jest.mock("../../../services/creatorProgramService", () => ({ creatorProgramService: { ownProfile: jest.fn() } }));
+
 jest.mock("../../../services/programResult", () => ({
   programErrorText: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
@@ -173,5 +175,30 @@ describe("#4402 PayoutConnect error placement", () => {
     const notices = errorNotices(r);
     expect(notices).toHaveLength(1);
     expect(nextSibling(button(r, "Connect bank")) === notices[0] ? "under the button" : "elsewhere").toBe("under the button");
+  });
+
+  // #4402 E22: a creator sees the bank button for their own country; other countries sit behind "Paid in another currency?".
+  it("shows one bank flow for the home country and the country list only after 'Paid in another currency?'", async () => {
+    mockQueries["creator/own-profile"] = { data: { display_name: "Ada Obi", home_city: { countryCode: "NG" } }, isLoading: false, isError: false };
+    const r = await mount();
+    expect(r.root.findAll((n) => (n.type as unknown) === "ChoiceField").map((n) => n.props.label)).toEqual(["Bank"]);
+    expect(button(r, "Connect bank")).toBeTruthy();
+    await run(() => button(r, "Paid in another currency?").props.onPress());
+    expect(r.root.findAll((n) => (n.type as unknown) === "ChoiceField").map((n) => n.props.label)).toEqual(["Country of your bank"]);
+  });
+
+  // #4402 E21: a bank name that shares no word with the profile name is flagged, and payouts are not blocked.
+  it("warns when the account name does not match the profile name, and still allows connecting", async () => {
+    mockQueries["creator/own-profile"] = { data: { display_name: "Ada Obi", home_city: { countryCode: "NG" } }, isLoading: false, isError: false };
+    mockCheckAccount.mockResolvedValue({ account_name: "USEMINGLA LIMITED", account_number_masked: "******0000" });
+    const r = await mount();
+    const bankField = r.root.find((n) => (n.type as unknown) === "ChoiceField" && n.props.label === "Bank");
+    await run(() => bankField.props.onChange("057"));
+    const accountField = r.root.find((n) => (n.type as unknown) === "ProgramField");
+    await run(() => accountField.props.onChangeText("0000000000"));
+    await run(() => button(r, "Connect bank").props.onPress());
+    const warning = r.root.findAll((n) => (n.type as unknown) === "ProgramNotice" && n.props.tone === "warning");
+    expect(warning.map((n) => n.props.text)).toContain("We’ll check this account name with you before your first payout.");
+    expect(button(r, "Yes, connect this account").props.disabled).toBeFalsy();
   });
 });

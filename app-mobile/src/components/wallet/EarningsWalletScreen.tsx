@@ -9,7 +9,7 @@ import { payoutService } from "../../services/payoutService";
 import { programErrorText } from "../../services/programResult";
 import { shareCanonicalFallback } from "../../services/contentShareAdapter";
 import { mixpanelService } from "../../services/mixpanelService";
-import { formatMoney, formatShortDate, moneyStateWord, type MoneyState } from "../../utils/programFormat";
+import { formatMoney, formatShortDate, heldBelowFloorText, moneyStateWord, waitingToReachText, type MoneyState } from "../../utils/programFormat";
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramRow, ProgramScreen, programStyles as s } from "../programs/ProgramUi";
 import { Segmented } from "../programs/ProgramPickers";
 import { Icon, type IconName } from "../ui/Icon";
@@ -69,6 +69,9 @@ export const EarningsWalletScreen: React.FC = () => {
     }
     return shown.filter((r) => r.state === state && r.currency === currency).reduce((sum, r) => sum + r.amount_minor, 0);
   };
+  // #4402: money waiting for the payout floor (the floors come from the server).
+  const held = combined.data?.held_below_floor ?? [];
+  const heldFor = (code: string) => held.find((h) => h.currency.toUpperCase() === code.toUpperCase());
   const reversed = (referrals.data?.shares ?? []).filter((x) => x.status === "reversed");
 
   const refresh = (): void => { void referrals.refetch(); void combined.refetch(); void payout.refetch(); };
@@ -90,6 +93,8 @@ export const EarningsWalletScreen: React.FC = () => {
       <Tile value={formatMoney(tile("paid"), currency)} label="Paid" hint="Your bank confirmed it" />
     </View>
 
+    {filter === "all" || filter === "gig" ? held.map((h) => <ProgramNotice key={h.currency} text={heldBelowFloorText(h)} />) : null}
+
     {shown.length === 0 ? <ProgramEmpty title="Nothing here yet"
       text={filter === "gig" ? "Gig fees show here once a host hires you." : filter === "local" ? "Local pay shows here once a month’s review is approved." : "Share an event: when a friend books through your link, the reward shows here."} />
       : <ProgramCard>{shown.map((r, i) => <View key={`${r.kind}-${r.at}-${i}`} style={[styles.row, i < shown.length - 1 && styles.rowBorder]}>
@@ -100,7 +105,10 @@ export const EarningsWalletScreen: React.FC = () => {
         </View>
         <View style={styles.right}>
           <Text style={s.strong}>{formatMoney(r.amount_minor, r.currency)}</Text>
-          <ProgramPill label={moneyStateWord(r.state)} tone={r.state === "paid" ? "success" : r.state === "ready" ? "accent" : "neutral"} />
+          {(() => {
+            const floor = r.below_floor === false || r.state !== "on_the_way" ? undefined : heldFor(r.currency);
+            return <ProgramPill label={floor ? waitingToReachText(floor) : moneyStateWord(r.state)} tone={r.state === "paid" ? "success" : r.state === "ready" ? "accent" : "neutral"} />;
+          })()}
         </View>
       </View>)}</ProgramCard>}
     {showReferralExtras && rows.some((r) => r.kind === "referral") ? <Text style={s.small}>Referral amounts are after Mingla’s 5% referral service fee.</Text> : null}

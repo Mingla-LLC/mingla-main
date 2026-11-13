@@ -3,28 +3,42 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { creatorGigsService } from '../../../src/services/creatorGigsService';
-import { programErrorText } from '../../../src/services/programResult';
+import { creatorGigsService, gigZone, type GigWorkspace } from '../../../src/services/creatorGigsService';
+import { programErrorText, toProgramError } from '../../../src/services/programResult';
 import {
   contractCardLabel, contractMoneyLine, creatorStateWords, currencySymbol, formatMoney, formatName, formatShortDate, formatTimeLeft, moneyInputValue, parseMoneyInput,
   releasedCardText, toDayString, agreedVideoDue, agreedVideoDueText, dueChangeInitial, dueChangePayload, dueTimeOptions,
+  formatInZone, groupMoneyTyping, isBelowMinFee, minFeeError, minFeeHint, postingStatusCopy,
 } from '../../../src/utils/programFormat';
 import { ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { CalendarGrid, TimeChips } from '../../../src/components/programs/ProgramPickers';
 import { JOIN_IN_FLIGHT } from '../../../src/components/programs/programRefresh';
-import { useRefreshOnFocus } from '../../../src/components/programs/useProgramRefresh';
+import { useRefreshOnFocus, useScreenFocused } from '../../../src/components/programs/useProgramRefresh';
 import {
-  BrandCard, DeliveriesCard, DisputeCard, DisputeOpenCard, PostLinksCard, PostsStatus, ProposalCard, RatingCard, ScriptEditor, ShootSheet, TermsCard, TermsHistory, Timeline, Tracker, UploadCard,
+  BrandCard, DeliveriesCard, DisputeCard, DisputeOpenCard, PostLinksCard, PostsStatus, ProposalCard, RatingCard, ScriptEditor, ShootCard, ShootSheet, TermsCard, TermsHistory, Timeline, Tracker, UploadCard,
 } from '../../../src/components/creator/contract/ContractSections';
-import { nextActionFor } from '../../../src/components/creator/contract/contractWords';
+import { contractRefetchInterval, creatorWaitsOnHost, failedPostReason, nextActionFor } from '../../../src/components/creator/contract/contractWords';
 
 type Busy = 'accept' | 'decline' | 'counter' | 'shoot' | 'script' | 'transition' | 'posts' | 'dispute' | 'rate' | 'change' | 'cancel' | 'respond' | null;
+
+/** True while the next move is the host's (the screen reads again every 20 s). */
+export function waitsOnHost(w: GigWorkspace | null): boolean {
+  return Boolean(w && creatorWaitsOnHost(w.contract.state, {
+    openCounter: w.proposals.some((p) => p.status === 'open' && 'fee_minor' in p.changes), pendingTopup: Boolean(w.pending_topup),
+    creatorProposedShoot: Boolean(w.shoot_plan && !w.shoot_plan.confirmed_at && w.shoot_plan.proposed_by === 'creator'),
+  }));
+}
 
 export default function CreatorContractScreen(): React.ReactElement {
   const { contractId } = useLocalSearchParams<{ contractId: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ['creator', 'contract', contractId], queryFn: () => creatorGigsService.workspace(contractId), enabled: Boolean(contractId) });
+  // #4402: while the next move is the host's, read the contract again every 20 s (focused screen only).
+  const focused = useScreenFocused();
+  const query = useQuery({
+    queryKey: ['creator', 'contract', contractId], queryFn: () => creatorGigsService.workspace(contractId), enabled: Boolean(contractId),
+    refetchInterval: (q) => (focused ? contractRefetchInterval(waitsOnHost(q.state.data ?? null)) : false),
+  });
   const [busy, setBusy] = useState<Busy>(null);
   const [errors, setErrors] = useState<Partial<Record<Exclude<Busy, null>, string>>>({});
   const [sheet, setSheet] = useState<'counter' | 'shoot' | 'change' | null>(null);
@@ -42,7 +56,7 @@ export default function CreatorContractScreen(): React.ReactElement {
   useRefreshOnFocus(() => { if (contractId) void queryClient.invalidateQueries({ queryKey: ['creator', 'contract', contractId] }, JOIN_IN_FLIGHT); });
 
   /** Runs one action; failures (including `{ok:false}`) stay next to the control that caused them. */
-  const act = async (key: Exclude<Busy, null>, action: () => Promise<unknown>, after?: () => void): Promise<boolean> => {
+  const act = async (key: Exclude<Busy, null>, action: () => Promise<unknown>, after?: () => void, describe?: (e: unknown) => string | null): Promise<boolean> => {
     setBusy(key); setErrors((e) => ({ ...e, [key]: undefined }));
     try {
       await action();
@@ -50,7 +64,7 @@ export default function CreatorContractScreen(): React.ReactElement {
       after?.();
       return true;
     } catch (e) {
-      setErrors((x) => ({ ...x, [key]: programErrorText(e) }));
+      setErrors((x) => ({ ...x, [key]: describe?.(e) ?? programErrorText(e) }));
       return false;
     } finally { setBusy(null); }
   };
@@ -61,6 +75,7 @@ export default function CreatorContractScreen(): React.ReactElement {
     action={<ProgramButton label="Back to Creator" variant="secondary" onPress={() => router.replace('/creator' as never)} />} /></ProgramScreen>;
 
   const state = w.contract.state;
+  const zone = gigZone(w);
   const terms = w.terms.find((t) => t.version === w.contract.current_terms_version) ?? w.terms[w.terms.length - 1] ?? null;
   const currency = terms?.currency ?? 'USD';
   const title = w.gig.title_public;
@@ -76,8 +91,10 @@ export default function CreatorContractScreen(): React.ReactElement {
     const sendCounter = async (): Promise<void> => {
       const minor = parseMoneyInput(counterPrice, currency);
       if (minor === null) { setErrors((e) => ({ ...e, counter: `Enter a price above zero, like ${currencySymbol(currency)}350.` })); return; }
+      if (isBelowMinFee(minor, currency)) { setErrors((e) => ({ ...e, counter: minFeeError(currency) })); return; }
       if (terms && minor === terms.fee_minor) { setErrors((e) => ({ ...e, counter: 'Counter with a different price from the offer.' })); return; }
-      await act('counter', () => creatorGigsService.counter(contractId, minor, counterNote), () => setSheet(null));
+      await act('counter', () => creatorGigsService.counter(contractId, minor, counterNote), () => setSheet(null),
+        (e) => (toProgramError(e).code === 'fee_below_minimum' ? minFeeError(currency) || null : null));
     };
     return <ProgramScreen title="Offer" refreshing={query.isFetching} onRefresh={() => void refresh()}
       footer={<View style={{ gap: 8 }}>
@@ -93,9 +110,9 @@ export default function CreatorContractScreen(): React.ReactElement {
         <Text style={s.accentText}>{formatTimeLeft(w.contract.state_deadline_at)}</Text>
         <Text style={s.h1}>You’ve got an offer</Text>
         <Text style={s.copy}>{title} · {formatName(w.gig.format_key)}</Text>
-        {terms ? <Text style={s.strong}>{formatMoney(terms.fee_minor, currency)} paid to you, already held by Mingla</Text> : null}
+        {terms ? <Text style={s.strong}>{formatMoney(terms.fee_minor, currency)} for you. The host has paid; Mingla holds it until your posts are checked.</Text> : null}
       </ProgramCard>
-      {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
+      {terms ? <TermsCard terms={terms} gig={w.gig} zone={zone} /> : null}
       {w.rights ? <ProgramNotice text={`${w.rights.label}. You keep copyright; the standard licence is not a negotiable offer field.`} /> : null}
       {w.pending_topup ? <ProgramNotice text="The host accepted your counter and is paying the difference. You can accept once it’s paid." /> : null}
       {openCounter ? <ProgramCard>
@@ -112,7 +129,8 @@ export default function CreatorContractScreen(): React.ReactElement {
         footer={<ProgramButton label="Send counter" busy={busy === 'counter'} disabled={!counterPrice.trim()} onPress={() => void sendCounter()} />}>
         {terms ? <Text style={s.copy}>The offer is {formatMoney(terms.fee_minor, currency)}. If the host accepts a higher price, they pay the difference; a lower price refunds them the difference.</Text> : null}
         <ProgramField inSheet label="Your price" prefix={currencySymbol(currency)} suffix={currency} value={counterPrice}
-          onChangeText={(v) => { setCounterPrice(v.replace(/[^0-9.,]/g, '')); setErrors((e) => ({ ...e, counter: undefined })); }} keyboardType="decimal-pad" error={errors.counter ?? null} />
+          onChangeText={(v) => { setCounterPrice(groupMoneyTyping(v)); setErrors((e) => ({ ...e, counter: undefined })); }} keyboardType="decimal-pad" error={errors.counter ?? null}
+          hint={minFeeHint(currency, parseMoneyInput(counterPrice, currency), { withBooking: true }) || undefined} />
         <ProgramField inSheet label="Note to the host (optional)" value={counterNote} onChangeText={setCounterNote} multiline counter={{ max: 300 }} maxLength={300} placeholder="Why this price" />
       </ProgramSheet>
     </ProgramScreen>;
@@ -121,11 +139,12 @@ export default function CreatorContractScreen(): React.ReactElement {
   // ── Closed without work ──
   if (['declined', 'expired', 'cancelled'].includes(state)) {
     const refund = w.events.find((e) => e.kind === 'refund_recorded');
+    const postMissed = w.contract.cancel_reason === 'post_missed' || refund?.data?.branch === 'post_missed';
     const refundMinor = typeof refund?.data?.refund_minor === 'number' ? refund.data.refund_minor : typeof refund?.data?.amount_minor === 'number' ? refund.data.amount_minor : null;
     return <ProgramScreen title={title}>
       <ProgramCard>
-        <Text style={s.title}>{creatorStateWords(state)}</Text>
-        <Text style={s.copy}>{refundMinor !== null ? `The host was refunded ${formatMoney(refundMinor, currency)}.` : 'The host is refunded automatically.'} Nothing more to do here.</Text>
+        <Text style={s.title}>{postMissed ? 'This gig was cancelled' : creatorStateWords(state)}</Text>
+        <Text style={s.copy}>{postMissed ? 'This gig was cancelled because the posts weren’t added in time. The host was refunded.' : refundMinor !== null ? `The host was refunded ${formatMoney(refundMinor, currency)}.` : 'The host is refunded automatically.'} Nothing more to do here.</Text>
       </ProgramCard>
       <Timeline events={w.events} />
     </ProgramScreen>;
@@ -144,7 +163,9 @@ export default function CreatorContractScreen(): React.ReactElement {
   const canDispute = ['fix_requested', 'posting', 'posts_failed', 'delivered'].includes(state);
   // After release the creator has nothing to do: the card reports the money and the 30-day check.
   const released = ['released', 'day30', 'completed', 'resolved_release'].includes(state);
-  const cardText = state === 'completed' ? [releasedCardText(state, w.money_state, w.money_paid_at), next.text].filter(Boolean).join(' ')
+  const failedPost = w.posts.find((p) => p.check_status === 'failed');
+  const posting = postingStatusCopy(state, due, zone, failedPost ? failedPostReason(failedPost, w.events) : null);
+  const cardText = posting ? posting.text : state === 'completed' ? [releasedCardText(state, w.money_state, w.money_paid_at), next.text].filter(Boolean).join(' ')
     : released ? releasedCardText(state, w.money_state, w.money_paid_at)
     : state === 'accepted' && window ? next.text.replace('the shoot window', formatShootWindow(window)) : next.text;
 
@@ -164,9 +185,10 @@ export default function CreatorContractScreen(): React.ReactElement {
     <BrandCard workspace={w} />
 
     <ProgramCard tone="highlight">
-      <Text style={s.accentText}>{contractCardLabel(state, due)}</Text>
-      <Text style={s.title}>{released && w.money_state === 'paid' ? 'Paid' : next.title}</Text>
+      <Text style={s.accentText}>{posting?.accent ?? contractCardLabel(state, due)}</Text>
+      <Text style={s.title}>{released && w.money_state === 'paid' ? 'Paid' : posting?.title ?? next.title}</Text>
       <Text style={s.copy}>{cardText}</Text>
+      {hostProposedShoot && plan?.shoot_at ? <Text style={s.strong}>Suggested: {formatInZone(String(plan.shoot_at), zone)}</Text> : null}
       {hostProposedShoot && plan?.shoot_at ? <View style={styles.two}>
         <ProgramButton label="Pick another" variant="secondary" style={s.flex} disabled={busy !== null} onPress={() => setSheet('shoot')} />
         <ProgramButton label={`Confirm ${formatShortDate(plan.shoot_at)}`} style={s.flex} busy={busy === 'shoot'}
@@ -175,6 +197,8 @@ export default function CreatorContractScreen(): React.ReactElement {
       {errors.transition ? <ProgramNotice tone="error" text={errors.transition} /> : null}
       {errors.shoot && sheet !== 'shoot' ? <ProgramNotice tone="error" text={errors.shoot} /> : null}
     </ProgramCard>
+
+    <ShootCard workspace={w} state={state} />
 
     {openProposal && !openCounter ? <ProposalCard proposal={openProposal} currency={currency} busy={busy === 'respond'}
       onRespond={(accept) => void act('respond', () => creatorGigsService.respondToChange(openProposal.id, accept))} /> : null}
@@ -205,7 +229,7 @@ export default function CreatorContractScreen(): React.ReactElement {
         : w.rights.status === 'legacy'
           ? `This older contract keeps its original ${w.rights.usage_days ?? ''}-day licence.`
           : 'The perpetual marketing licence stays pending until your full Creator fee is released.'} /> : null}
-    {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
+    {terms ? <TermsCard terms={terms} gig={w.gig} zone={zone} /> : null}
     <TermsHistory terms={w.terms} />
 
     {canChangeTerms && !openProposal ? <ProgramButton label="Ask to change the video-due date" variant="secondary" onPress={() => {

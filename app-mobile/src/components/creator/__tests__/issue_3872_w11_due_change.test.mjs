@@ -65,6 +65,6 @@ test("the contract screen asks for a date and a time and shows the agreed due", 
   assert.ok(screen.includes("dueChangePayload(dueDay, dueTime)"));
   assert.ok(!screen.includes("{ post_by: newPostBy }"));
   const sections = read("src/components/creator/contract/ContractSections.tsx");
-  assert.ok(sections.includes("agreedVideoDueText(terms, gig)"));
+  assert.ok(sections.includes("agreedVideoDueZoned(terms, gig, zone)"));
   assert.ok(sections.includes("proposalDueText(proposal.changes)"));
 });

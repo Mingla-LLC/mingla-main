@@ -47,7 +47,7 @@ test('#3872 money inputs take whole currency and convert to minor units', () => 
   assert.equal(parseMoneyInput('12.345', 'USD'), null);
   assert.equal(parseMoneyInput('abc', 'USD'), null);
   assert.equal(moneyInputValue(30000, 'USD'), '300');
-  assert.equal(moneyInputValue(120050, 'USD'), '1200.50');
+  assert.equal(moneyInputValue(120050, 'USD'), '1,200.50');
 });
 
 test('#3872 dates read "Nov 14" and ranges "Nov 14–16", never ISO', () => {
