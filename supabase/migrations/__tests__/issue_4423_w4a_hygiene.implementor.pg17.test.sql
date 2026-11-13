@@ -1,5 +1,5 @@
 -- Issue #4423 Wave 4a -- implementor suite for
--- 20280705204423_issue_4423_w4a_indexes_and_cron.sql, on the fully replayed
+-- 20280707204423_issue_4423_w4a_indexes_and_cron.sql, on the fully replayed
 -- PG17 schema. Everything is rolled back.
 --
 --   INDEX    every one of the 22 hot-table foreign keys now has an index whose

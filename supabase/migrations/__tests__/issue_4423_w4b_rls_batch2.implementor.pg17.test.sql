@@ -1,5 +1,5 @@
 -- Issue #4423 Wave 4b batch 2 (profiles and user_* tables) -- implementor suite for
--- 20280705314423_issue_4423_w4b_rls_batch2_profiles_social.sql, on the fully replayed PG17 schema.
+-- 20280707314423_issue_4423_w4b_rls_batch2_profiles_social.sql, on the fully replayed PG17 schema.
 -- Everything is rolled back.
 --
 --   MECH    the 34 rewritten policies keep their command, mode and roles,

@@ -1,7 +1,7 @@
 -- Issue #4423 Wave 2 -- implementor suite for
--- 20280705004423_issue_4423_w2_ops_set_based_card_builders.sql,
--- 20280705014423_issue_4423_w2_ops_work_list_review_counts.sql and
--- 20280705024423_issue_4423_w2_sprint_plan_read_first.sql, on the fully
+-- 20280707004423_issue_4423_w2_ops_set_based_card_builders.sql,
+-- 20280707014423_issue_4423_w2_ops_work_list_review_counts.sql and
+-- 20280707024423_issue_4423_w2_sprint_plan_read_first.sql, on the fully
 -- replayed PG17 schema. Everything is rolled back.
 --
 --   PARITY   ops_cards_json(ids, today, 'full') equals ops_card_json per card
@@ -288,7 +288,7 @@ begin
   values (94423, 'W2 release', 'https://github.com/Mingla-LLC/mingla-main/pull/94423', now() - interval '1 hour', md5('w2') || substr(md5('w2x'), 1, 8), true,
           array['live_check_missing', 'migrations_pending']::text[],
           jsonb_build_object('web', jsonb_build_object('mingla-admin', 'ready', 'mingla-business', 'not_deployed', 'mingla-sites', 'failed')),
-          array['20280705004423']::text[], '{}'::jsonb, '[]'::jsonb);
+          array['20280707004423']::text[], '{}'::jsonb, '[]'::jsonb);
   insert into public.ops_work_files (card_id, kind, name, url, added_by) values
     (pg_temp.id('parent'), 'link', 'Spec', 'https://example.test/spec', pg_temp.email('own'));
   insert into public.ops_work_files (card_id, kind, name, storage_path, mime, size_bytes, added_by) values

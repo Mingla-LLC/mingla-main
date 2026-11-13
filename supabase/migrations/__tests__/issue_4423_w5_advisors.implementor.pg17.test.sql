@@ -1,6 +1,6 @@
 -- Issue #4423 Wave 5 -- implementor suite for
--- 20280705404423_issue_4423_w5_function_grants.sql and
--- 20280705414423_issue_4423_w5_function_search_path.sql, on the fully
+-- 20280707404423_issue_4423_w5_function_grants.sql and
+-- 20280707414423_issue_4423_w5_function_search_path.sql, on the fully
 -- replayed PG17 schema. Everything is rolled back.
 --
 --   GRANTS   the 43 functions in the grants migration are not executable by

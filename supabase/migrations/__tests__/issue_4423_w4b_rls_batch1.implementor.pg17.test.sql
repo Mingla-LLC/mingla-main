@@ -1,5 +1,5 @@
 -- Issue #4423 Wave 4b batch 1 (messaging, conversations, notifications and team tables) -- implementor suite for
--- 20280705304423_issue_4423_w4b_rls_batch1_messaging.sql, on the fully replayed PG17 schema.
+-- 20280707304423_issue_4423_w4b_rls_batch1_messaging.sql, on the fully replayed PG17 schema.
 -- Everything is rolled back.
 --
 --   MECH    the 57 rewritten policies keep their command, mode and roles,

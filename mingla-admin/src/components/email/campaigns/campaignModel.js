@@ -40,6 +40,25 @@ export function statePill(state, stateLabel) {
   return { label: stateLabel || pill.label, variant: pill.variant };
 }
 
+// The sample person every saved copy and preview is written for (#4419). The
+// same seven fields the sender personalises (admin-send-email model.ts), with
+// the values its renderer gives SAMPLE_RECIPIENT; a Deno test pins both ends.
+const SAMPLE_TOKENS = Object.freeze({
+  first_name: "Maya",
+  display_name: "Maya Okafor",
+  username: "@mayaexplores",
+  country: "Nigeria",
+  language: "English",
+  joined_date: "15 Jan 2026",
+  name: "Maya",
+});
+
+/** A subject or preview line as the sample person (Maya) sees it, so the list never shows "{first_name}". */
+export function sampleText(text) {
+  if (typeof text !== "string") return "";
+  return text.replace(/\{(first_name|display_name|username|country|language|joined_date|name)\}/g, (_m, key) => SAMPLE_TOKENS[key]);
+}
+
 const fmt = (n) => Number(n || 0).toLocaleString("en-US");
 
 function segmentLabel(seg) {

@@ -1,5 +1,5 @@
 -- Issue #4423 Wave 4b batch 4 (every other public table) -- implementor suite for
--- 20280705334423_issue_4423_w4b_rls_batch4_rest.sql, on the fully replayed PG17 schema.
+-- 20280707334423_issue_4423_w4b_rls_batch4_rest.sql, on the fully replayed PG17 schema.
 -- Everything is rolled back.
 --
 --   MECH    the 390 rewritten policies keep their command, mode and roles,

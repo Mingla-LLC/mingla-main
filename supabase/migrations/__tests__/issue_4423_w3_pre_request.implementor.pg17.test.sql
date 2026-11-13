@@ -1,6 +1,6 @@
 -- Issue #4423 Wave 3 -- implementor suite for
--- 20280705104423_issue_4423_w3_admin_request_limits.sql and
--- 20280705114423_issue_4423_w3_db_health_probe.sql, on the fully replayed
+-- 20280707104423_issue_4423_w3_admin_request_limits.sql and
+-- 20280707114423_issue_4423_w3_db_health_probe.sql, on the fully replayed
 -- PG17 schema. Everything is rolled back.
 --
 --   PATH     An Admin-only RPC path (/rpc/ops_*, /rpc/team_*, /rpc/admin_*,

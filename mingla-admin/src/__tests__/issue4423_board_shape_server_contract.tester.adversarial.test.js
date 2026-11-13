@@ -18,8 +18,8 @@
 //      the new server's refusals never contain it.
 //
 // FAILS-ON-REVERT: delete 'links' (or any required key) from the shared
-// jsonb_build_object in 20280705004423_issue_4423_w2_ops_set_based_card_builders.sql,
-// or drop the board_text mapping in 20280705014423_..._review_counts.sql, and
+// jsonb_build_object in 20280707004423_issue_4423_w2_ops_set_based_card_builders.sql,
+// or drop the board_text mapping in 20280707014423_..._review_counts.sql, and
 // this file goes red.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

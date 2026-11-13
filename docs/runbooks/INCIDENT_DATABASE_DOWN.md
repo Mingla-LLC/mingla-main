@@ -14,7 +14,7 @@
 - If regional outage: wait for provider recovery; enable status page message.
 - If connection pool exhaustion: reduce edge concurrency; pause marketing send cron.
 - If the pool is full of Admin calls (`ops_*`, `team_*`, `admin_*`, `crm_*` in `pg_stat_activity`, application `postgrest`): since #4423 those calls are cut off at 3 s by the PostgREST pre-request hook, so one Admin tab cannot hold a connection for long. Close the looping tab. The hook is on `authenticator`; to switch it off (only if it is itself the problem): `ALTER ROLE authenticator RESET pgrst.db_pre_request; NOTIFY pgrst, 'reload config';`.
-- The api-health-probe database check emails the API health recipients when the pool is at least 80 % in use on two checks in a row (every 5 minutes), or a public request takes over 1 s or fails. To silence it during a known incident: `SELECT cron.unschedule('issue_4423_db_health_probe');`, and re-create it from `20280705114423_issue_4423_w3_db_health_probe.sql` afterwards.
+- The api-health-probe database check emails the API health recipients when the pool is at least 80 % in use on two checks in a row (every 5 minutes), or a public request takes over 1 s or fails. To silence it during a known incident: `SELECT cron.unschedule('issue_4423_db_health_probe');`, and re-create it from `20280707114423_issue_4423_w3_db_health_probe.sql` afterwards.
 - If bad migration: stop deploys; assess PITR restore ([DR_RESTORE.md](./DR_RESTORE.md), gate G4 in [LAUNCH_GATES.md](../LAUNCH_GATES.md)).
 
 ## Recovery verification

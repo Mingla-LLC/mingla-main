@@ -1,5 +1,5 @@
 -- Issue #4423 Wave 4b batch 3 (orders, events, tickets and brands) -- implementor suite for
--- 20280705324423_issue_4423_w4b_rls_batch3_commerce.sql, on the fully replayed PG17 schema.
+-- 20280707324423_issue_4423_w4b_rls_batch3_commerce.sql, on the fully replayed PG17 schema.
 -- Everything is rolled back.
 --
 --   MECH    the 66 rewritten policies keep their command, mode and roles,

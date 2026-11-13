@@ -1,5 +1,5 @@
 -- Issue #4423 Wave 2 (W2.5) -- implementor suite for
--- 20280705034423_issue_4423_w2_team_inbox_limit_first.sql, on the fully
+-- 20280707034423_issue_4423_w2_team_inbox_limit_first.sql, on the fully
 -- replayed PG17 schema. Everything is rolled back.
 --
 --   GOLDEN  team_inbox returns exactly what the body it replaces returns (kept

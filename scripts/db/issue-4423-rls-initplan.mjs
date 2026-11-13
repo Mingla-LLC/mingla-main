@@ -15,7 +15,7 @@
 //                 roles::text[] as roles, cmd, qual, with_check
 //            from pg_policies order by 1, 2, 3) x;
 //   2. node scripts/db/issue-4423-rls-initplan.mjs policies.json out/
-//   3. diff out/*.sql supabase/migrations/2028070533*4423_*.sql (and 30, 31, 32)
+//   3. diff out/*.sql supabase/migrations/2028070733*4423_*.sql (and 30, 31, 32)
 //
 // Only the public schema is rewritten: storage.* and realtime.* tables are
 // owned by platform roles that migrations cannot ALTER.
@@ -138,10 +138,10 @@ export function alterPolicy(p) {
 }
 
 export const BATCH_FILES = {
-  1: "20280705304423_issue_4423_w4b_rls_batch1_messaging.sql",
-  2: "20280705314423_issue_4423_w4b_rls_batch2_profiles_social.sql",
-  3: "20280705324423_issue_4423_w4b_rls_batch3_commerce.sql",
-  4: "20280705334423_issue_4423_w4b_rls_batch4_rest.sql",
+  1: "20280707304423_issue_4423_w4b_rls_batch1_messaging.sql",
+  2: "20280707314423_issue_4423_w4b_rls_batch2_profiles_social.sql",
+  3: "20280707324423_issue_4423_w4b_rls_batch3_commerce.sql",
+  4: "20280707334423_issue_4423_w4b_rls_batch4_rest.sql",
 };
 const BATCH_TITLE = {
   1: "messaging, conversations, notifications and team tables",

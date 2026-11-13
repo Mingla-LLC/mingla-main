@@ -274,8 +274,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4423 Wave 2: register the four set-based ops/team_inbox migrations in the #1857, #1931 and #2117 lanes, and their two PostgreSQL proofs in #1931 and #2117; re-sealed.
 // #4423 Wave 3: register the pre-request limit and database health migrations in the #1857, #1931 and #2117 lanes, and their PostgreSQL proof in #1931 and #2117; re-sealed.
 // #4423 Wave 4a: register the hot-table index and cron hygiene migration in the #1857, #1931 and #2117 lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
-// #4423 Wave 4a CI fix: skip 20280705204423 (indexes on order_attributions, order_add_on_line_items, conversations.program_target_user_id) by exact filename in the #1931 and #2117 filtered replays, which never create them; re-sealed.
-export const BOOTSTRAP_SHA256 = "05ebf755aab5ac0ccb9b19fd8f3953840033596d1182842f597040df82fea0d1";
+// #4423 Wave 4a CI fix: skip 20280707204423 (indexes on order_attributions, order_add_on_line_items, conversations.program_target_user_id) by exact filename in the #1931 and #2117 filtered replays, which never create them; re-sealed.
+// #4423 integration: merged origin/main a5a5c59094 (#4419 20280706004419 rows kept beside the #4423 rows) and renamed the thirteen #4423 migrations 20280705*4423 to 20280707*4423 (after 20280706004419), in order; re-sealed.
+export const BOOTSTRAP_SHA256 = "69e2a37efa74c9da5c2d95d2b5eea61f370be7bb02717285654ea559fbfe221d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
