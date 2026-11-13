@@ -6,9 +6,13 @@
 //        people already accepted are never sent again
 //   TF-2 a normal 40-person batch paces its starts >= 200 ms apart and its
 //        pacing alone stays far inside one cron minute
+//   TF-3 (retest P2-2) a 429 storm with Retry-After 3 s: the run stops at the
+//        time budget, everyone it did not reach is back to pending with their
+//        try given back, nobody is failed, and the next run picks them up
 //
 // FAILS-ON-REVERT: re-sending accepted deliveries or changing the idempotency
-// key per try reds TF-1; dropping `await paceSend()` reds TF-2.
+// key per try reds TF-1; dropping `await paceSend()` reds TF-2; dropping the
+// run budget (or the release of unsent people) reds TF-3.
 import {
   assert,
   assertEquals,
@@ -25,6 +29,7 @@ Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
 
 const {
   ADMIN_SEND_MIN_INTERVAL_MS,
+  DRAIN_BUDGET_MS,
   ADMIN_SEND_REQUESTS_PER_SECOND,
   RESEND_ACCOUNT_LIMIT_PER_SECOND,
   SNAPSHOT_MAX_ATTEMPTS,
@@ -208,5 +213,35 @@ Deno.test("TF-2 a normal 40-person batch is paced >= 200 ms apart and its pacing
     const pacedMs = rec.now() - t0;
     assert(pacedMs >= 39 * ADMIN_SEND_MIN_INTERVAL_MS, `paced ${pacedMs}`);
     assert(pacedMs < 15_000, `pacing alone took ${pacedMs} ms`);
+  } finally { rec.restore(); }
+});
+
+Deno.test("TF-3 a 429 storm ends the run at the budget; nobody reached is back to pending, nobody failed", async () => {
+  let storm = true;
+  const rec = recordFetch((key) =>
+    storm
+      ? new Response('{"message":"Too many requests"}', { status: 429, headers: { "retry-after": "3" } })
+      : new Response(JSON.stringify({ id: `re-${key}` }), { status: 200 })
+  );
+  try {
+    const row = campaignRow({ rendered_at: "2026-11-13T09:00:01Z", rendered_document: GOOD_DOC, started_at: new Date().toISOString() });
+    const db = fakeDb({ campaign: row, deliveries: deliveries(40) });
+    const t0 = rec.now();
+    await processClaimedCampaign(db.client, row as never);
+    assert(rec.now() - t0 <= DRAIN_BUDGET_MS + 10_000, `run took ${rec.now() - t0} ms of pacing and waiting`);
+    const statuses = db.state.deliveries.map((d) => String(d.status));
+    assertEquals(statuses.includes("failed"), false, "a 429 never fails anyone inside 24 h");
+    assertEquals(statuses.includes("sending"), false, "nothing is left claimed behind a 10-minute stale claim");
+    const pending = db.state.deliveries.filter((d) => d.status === "pending");
+    assert(pending.length > 0, "the budget stopped the run before everyone");
+    for (const d of pending) assertEquals(d.attempts, 0, `the try is given back to ${d.id}`);
+    for (const d of db.state.deliveries.filter((x) => x.status === "retrying")) assertEquals(d.attempts, 0);
+    // The storm passes: the next runs reach everyone, each exactly once accepted.
+    storm = false;
+    for (let i = 0; i < 3 && db.state.deliveries.some((d) => d.status !== "accepted"); i += 1) {
+      for (const d of db.state.deliveries) if (d.status === "retrying") d.next_attempt_at = new Date(0).toISOString();
+      await processClaimedCampaign(db.client, { ...db.log, status: "sending" } as never);
+    }
+    assertEquals(db.state.deliveries.every((d) => d.status === "accepted"), true);
   } finally { rec.restore(); }
 });
