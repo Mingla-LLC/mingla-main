@@ -3,7 +3,7 @@ import {
   supabase,
   SESSION_EXPIRED_MESSAGE,
 } from "../lib/supabase";
-import { SectionCard, StatCard, AlertCard } from "../components/ui/Card";
+import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input, Textarea, Toggle } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
@@ -14,34 +14,34 @@ import { Tabs } from "../components/ui/Tabs";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-import { formatRelativeTime, formatFullDate, truncate } from "../lib/formatters";
+import { formatRelativeTime } from "../lib/formatters";
 import { logAdminAction } from "../lib/auditLog";
-import { exportCsv } from "../lib/exportCsv";
 import {
-  Mail, Send, Users, Clock, CheckCircle, XCircle,
-  AlertTriangle, Eye, User, Plus, Pencil, Trash2, Download,
+  Send, Users, Clock, Eye, User, Plus, Pencil, Trash2,
 } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { EmailComposer } from "../components/email/EmailComposer";
-import { audienceFilterWords } from "../lib/emailAudience";
-import { emailViewFromHash, emailViewHash, emailViewsFor } from "../lib/emailViews";
+import {
+  emailDetailHash,
+  emailDetailIdFromHash,
+  emailListFilterFromHash,
+  emailViewFromHash,
+  emailViewHash,
+  emailViewsFor,
+} from "../lib/emailViews";
+import { isFullAdmin } from "../lib/access";
+// #4419: one Emails tab (list + a full page per email) replaces Scheduled and Sent.
+import { EmailsListView } from "../components/email/campaigns/EmailsListView";
+import { EmailDetailPage } from "../components/email/campaigns/EmailDetailPage";
 // #4383: the admin-send-email client lives in one place (the Overview uses it too).
 import { callEdgeFunction } from "../services/adminSendEmailService";
-// #4383: the Scheduled section (every teammate who writes email).
-import { listScheduledEmails } from "../services/communicationsService";
-import { LoadError } from "../components/ui/LoadError";
-import { ScheduleTime } from "../components/communications/ScheduleTime";
-import { ConfirmCancel } from "../components/communications/ConfirmCancel";
-import { LaterInputs } from "../components/communications/SchedulePicker";
-import { checkLaterTime, utcToZonedInputs } from "../lib/scheduleTime";
-import { communicationsErrorMessage } from "../lib/communicationsErrors";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-// #4383: the screen's sections (Write, Scheduled, Sent, Templates, Unsubscribes) and
+// #4419: the screen's sections (Write, Emails, Templates, Unsubscribes) and
 // who sees each live in lib/emailViews.js; the open one is `view=` in the
-// address. #4255: every teammate writes and sends (D5); Sent and
-// Unsubscribes read admin-only tables, so only admins see them.
+// address, and one email's page is #/email/<id>. #4255: every teammate writes
+// and sends (D5); only admins see sent emails and the unsubscribe list.
 
 // #3720 Slice B — only segments the edge actually filters. City / tier /
 // last_active were UI-only and silently sent to everyone (bug 4).
@@ -53,39 +53,6 @@ const SEGMENT_TYPES = [
 ];
 
 const DAILY_EMAIL_LIMIT = 100;
-const PAGE_SIZE = 20;
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function segmentLabel(seg) {
-  if (!seg || seg.type === "all") return "All Users";
-  if (seg.type === "country") return `Country: ${seg.country || "—"}`;
-  if (seg.type === "onboarding") return `Onboarding: ${seg.onboarding || "—"}`;
-  if (seg.type === "status") return `Status: ${seg.status || "—"}`;
-  return "Custom";
-}
-
-function campaignAudienceLabel(log) {
-  if (log?.audience?.mode === "everyone") return "Everyone";
-  if (log?.audience?.mode === "person") return log.recipient_email || log.audience.email || "One person";
-  if (log?.audience?.mode === "segment") {
-    // #4226: one wording with the composer, including the ticket-buyer filters.
-    const active = audienceFilterWords(log.audience.filters);
-    return active.length ? active.join(" · ") : "All Host & Explorer users";
-  }
-  return log?.recipient_type === "bulk" ? segmentLabel(log.segment_filter) : (log?.recipient_email || "One person");
-}
-
-function campaignStatusLabel(status) {
-  if (status === "sent" || status === "completed") return "Completed";
-  if (status === "partial") return "Partially completed";
-  if (status === "sending") return "Sending";
-  if (status === "scheduled") return "Scheduled";
-  if (status === "queued" || status === "pending") return "Queued";
-  if (status === "cancelled") return "Cancelled";
-  if (status === "failed") return "Failed";
-  return String(status || "Unknown");
-}
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
@@ -93,13 +60,25 @@ function campaignStatusLabel(status) {
 // opens it (lib/access.js PAGE_ADDITIONAL_AREAS.email), exactly as the old
 // Support tab.
 export function EmailPage() {
-  const { signOut, access } = useAuth();
+  const { signOut, access, session } = useAuth();
   const subTabs = emailViewsFor(access);
-  const [activeSubTab, setActiveView] = useState(() => emailViewFromHash(window.location.hash, subTabs));
+  const isAdmin = isFullAdmin(access);
+  const readAddress = useCallback((views) => {
+    const hash = window.location.hash;
+    const detailId = emailDetailIdFromHash(hash);
+    return {
+      hash,
+      view: detailId ? "emails" : emailViewFromHash(hash, views),
+      detailId,
+      filter: emailListFilterFromHash(hash),
+    };
+  }, []);
+  const [address, setAddress] = useState(() => readAddress(subTabs));
+  const activeSubTab = address.view;
   const subTabsKey = subTabs.map((tab) => tab.id).join(",");
   useEffect(() => {
     const views = emailViewsFor(access);
-    const sync = () => setActiveView(emailViewFromHash(window.location.hash, views));
+    const sync = () => setAddress(readAddress(views));
     sync();
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
@@ -109,10 +88,13 @@ export function EmailPage() {
   const changeView = useCallback((viewId) => {
     window.location.hash = emailViewHash(viewId);
   }, []);
+  // #4419: "Duplicate as new" opens Write prefilled with the sent email.
+  const [duplicate, setDuplicate] = useState(null);
   const [providerConfigured, setProviderConfigured] = useState(true);
   const [providerChecked, setProviderChecked] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const mountedRef = useRef(true);
+  const onSessionExpired = useCallback(() => setSessionExpired(true), []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -149,9 +131,9 @@ export function EmailPage() {
         title="Email"
         description="Write, schedule and track emails to hosts, creators and Locals."
         actions={activeSubTab === "write" ? null : (
-          <Button icon={Pencil} onClick={() => changeView("write")}>Write email</Button>
+          <Button icon={Pencil} onClick={() => { setDuplicate(null); changeView("write"); }}>Write email</Button>
         )}
-        tabs={<Tabs tabs={subTabs} activeTab={activeSubTab} onChange={changeView} />}
+        tabs={<Tabs tabs={subTabs} activeTab={activeSubTab} onChange={(id) => { if (id === "write") setDuplicate(null); changeView(id); }} />}
       />
       {sessionExpired && (
         <div
@@ -170,137 +152,42 @@ export function EmailPage() {
       )}
       {(activeSubTab === "write" || activeSubTab === "templates") && (
         <ComposeSubView
+          key={duplicate?.key || "compose"}
           providerConfigured={providerConfigured}
           providerChecked={providerChecked}
-          onSessionExpired={() => setSessionExpired(true)}
+          onSessionExpired={onSessionExpired}
           openTemplateManager={activeSubTab === "templates"}
+          initialDraft={activeSubTab === "write" ? duplicate : null}
         />
       )}
-      {activeSubTab === "scheduled" && (
-        <ScheduledSubView
+      {activeSubTab === "emails" && address.detailId && (
+        <EmailDetailPage
+          key={address.detailId}
+          campaignId={address.detailId}
+          isAdmin={isAdmin}
+          myEmail={session?.user?.email || access?.email || ""}
           providerConfigured={providerConfigured}
-          onSessionExpired={() => setSessionExpired(true)}
+          onBack={() => { window.location.hash = emailViewHash("emails"); }}
+          onDuplicate={(draft) => { setDuplicate(draft); changeView("write"); }}
+          onSessionExpired={onSessionExpired}
         />
       )}
-      {activeSubTab === "sent" && <HistorySubView />}
+      {activeSubTab === "emails" && !address.detailId && (
+        <EmailsListView
+          // #4419 (tester P3-1): a new address (#/email?view=scheduled from a
+          // link on this page) re-opens the list with its filter. Chip clicks
+          // rewrite the address without a hashchange, so they never remount.
+          key={address.hash}
+          isAdmin={isAdmin}
+          initialFilter={address.filter}
+          onOpen={(id) => { window.location.hash = emailDetailHash(id); }}
+          onWrite={() => changeView("write")}
+          onFilterChange={(filter) => window.history.replaceState(null, "", emailViewHash("emails", filter))}
+          onSessionExpired={onSessionExpired}
+        />
+      )}
       {activeSubTab === "unsubscribes" && <PreferencesSubView />}
     </div>
-  );
-}
-
-// ─── Scheduled (#4383) ──────────────────────────────────────────────────────
-//
-// Every scheduled email, for every teammate who writes email: its time in
-// the zone it was scheduled in, who gets it (counted when it was scheduled,
-// D8), who scheduled it. Change time, Edit words or Cancel until the sender
-// starts it; after that the row says it started and nothing changes.
-
-function ScheduledSubView({ providerConfigured, onSessionExpired }) {
-  const { addToast } = useToast();
-  const [state, setState] = useState({ status: "loading", rows: [], error: null });
-  const [moving, setMoving] = useState(null);
-  const [moveError, setMoveError] = useState(null);
-  const [cancelling, setCancelling] = useState(null);
-  const [editing, setEditing] = useState(null);
-  const [busy, setBusy] = useState(null);
-
-  const load = useCallback(async () => {
-    setState((current) => ({ ...current, status: "loading", error: null }));
-    try { setState({ status: "ready", rows: await listScheduledEmails(), error: null }); }
-    catch (error) { setState({ status: "error", rows: [], error }); }
-  }, []);
-  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
-
-  function failed(title, error) {
-    if (error?.name === "SessionExpiredError") { onSessionExpired?.(); return; }
-    addToast({ variant: "error", title, description: communicationsErrorMessage(error) });
-  }
-
-  async function saveTime() {
-    if (!moving) return;
-    const check = checkLaterTime(moving.later);
-    setMoveError(check.ok ? null : check.message);
-    if (!check.ok) return;
-    setBusy(`move:${moving.row.id}`);
-    try {
-      await callEdgeFunction({ action: "reschedule_campaign", campaignId: moving.row.id, scheduledFor: check.at.toISOString(), timezone: moving.later.zone });
-      addToast({ variant: "success", title: "Time changed", description: `${moving.row.subject} now goes out at the new time.` });
-      setMoving(null);
-      void load();
-    } catch (error) { failed("Couldn't change the time", error); setMoving(null); void load(); }
-    finally { setBusy(null); }
-  }
-
-  async function openEditor(row) {
-    setBusy(`edit:${row.id}`);
-    try {
-      const result = await callEdgeFunction({ action: "get_scheduled_campaign", campaignId: row.id });
-      setEditing(result.campaign);
-    } catch (error) { failed("Couldn't open this email", error); void load(); }
-    finally { setBusy(null); }
-  }
-
-  async function doCancel() {
-    if (!cancelling) return;
-    setBusy(`cancel:${cancelling.id}`);
-    try {
-      await callEdgeFunction({ action: "cancel_campaign", campaignId: cancelling.id });
-      addToast({ variant: "success", title: "Cancelled. It will not go out." });
-      setCancelling(null);
-      void load();
-    } catch (error) { failed("Couldn't cancel the email", error); setCancelling(null); void load(); }
-    finally { setBusy(null); }
-  }
-
-  if (editing) {
-    return (
-      <EmailComposer
-        key={editing.id}
-        callEdgeFunction={callEdgeFunction}
-        providerConfigured={providerConfigured}
-        onSessionExpired={onSessionExpired}
-        editingCampaign={editing}
-        onEditingDone={() => { setEditing(null); void load(); }}
-      />
-    );
-  }
-
-  return (
-    <SectionCard title="Scheduled emails" subtitle="Every teammate who can write email sees this list.">
-      {state.status === "loading" ? <div className="flex justify-center py-8"><Spinner /></div>
-        : state.status === "error" ? <LoadError title="Couldn't load scheduled emails" message={communicationsErrorMessage(state.error)} onRetry={() => void load()} />
-        : state.rows.length === 0 ? <p className="text-sm text-[var(--color-text-secondary)]">No emails scheduled. Write one and pick Schedule.</p>
-        : <ul className="divide-y divide-[var(--gray-100)]">{state.rows.map((row) => (
-          <li key={row.id} className="flex flex-wrap items-start gap-3 py-3">
-            <Badge variant={row.can_change ? "info" : "warning"} dot>{row.can_change ? "Scheduled" : "Sending"}</Badge>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-[var(--color-text-primary)] break-words">{row.subject}</p>
-              <p className="text-xs text-[var(--color-text-secondary)]">
-                {campaignAudienceLabel(row)} · {Number(row.recipient_count || 0).toLocaleString()} (counted {formatFullDate(row.created_at)}){row.sent_by_name ? ` · by ${row.sent_by_name}` : ""}
-              </p>
-            </div>
-            <ScheduleTime at={row.scheduled_for} zone={row.timezone || "UTC"} />
-            {row.can_change ? (
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" icon={Clock} disabled={Boolean(busy)} onClick={() => { setMoveError(null); setMoving({ row, later: { ...utcToZonedInputs(row.scheduled_for, row.timezone || "UTC"), zone: row.timezone || "UTC" } }); }}>Change time</Button>
-                <Button size="sm" variant="secondary" icon={Pencil} loading={busy === `edit:${row.id}`} disabled={Boolean(busy)} onClick={() => void openEditor(row)}>Edit</Button>
-                <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => setCancelling({ id: row.id, title: row.subject })}>Cancel</Button>
-              </div>
-            ) : <span className="self-center text-xs text-[var(--color-text-tertiary)]">Started sending</span>}
-          </li>))}</ul>}
-
-      <Modal open={Boolean(moving)} onClose={() => (busy ? null : setMoving(null))} title="Change send time">
-        <ModalBody>
-          <p className="mb-3 text-sm text-[var(--color-text-secondary)]">&ldquo;{moving?.row.subject}&rdquo;</p>
-          {moving ? <LaterInputs value={moving.later} onChange={(later) => setMoving((m) => ({ ...m, later }))} error={moveError} hint="To change who gets it, cancel and write a new email." /> : null}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" disabled={Boolean(busy)} onClick={() => setMoving(null)}>Back</Button>
-          <Button loading={busy === `move:${moving?.row.id}`} onClick={() => void saveTime()}>Save time</Button>
-        </ModalFooter>
-      </Modal>
-      <ConfirmCancel target={cancelling} kindLabel="email" busy={busy === `cancel:${cancelling?.id}`} onConfirm={() => void doCancel()} onClose={() => setCancelling(null)} />
-    </SectionCard>
   );
 }
 
@@ -313,6 +200,7 @@ function ComposeSubView(props) {
       providerConfigured={props.providerConfigured}
       onSessionExpired={props.onSessionExpired}
       openTemplateManager={props.openTemplateManager}
+      initialDraft={props.initialDraft}
     />
   );
 }
@@ -883,276 +771,6 @@ function LegacyComposeSubView({ providerConfigured, providerChecked, onSessionEx
           <Button variant="secondary" onClick={() => setDeleteTemplateModal(null)}>Cancel</Button>
           <Button variant="danger" icon={Trash2} onClick={handleDeleteTemplate}>Delete</Button>
         </ModalFooter>
-      </Modal>
-    </div>
-  );
-}
-
-// ─── History ────────────────────────────────────────────────────────────────
-
-function HistorySubView() {
-  const { addToast } = useToast();
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  const [history, setHistory] = useState([]);
-  const [historyCount, setHistoryCount] = useState(0);
-  const [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [detailLog, setDetailLog] = useState(null);
-  const [cancelling, setCancelling] = useState(false);
-  const [stats, setStats] = useState({ totalSent: 0, todayCount: 0, failureRate: 0 });
-
-  const fetchHistory = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data, count } = await supabase
-        .from("admin_email_log")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-      if (mountedRef.current) {
-        setHistory(data || []);
-        setHistoryCount(count || 0);
-      }
-    } catch {
-      if (mountedRef.current) { setHistory([]); setHistoryCount(0); }
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [page]);
-
-  const fetchStats = useCallback(async () => {
-    try {
-      const { data: allTimeLogs } = await supabase
-        .from("admin_email_log")
-        .select("sent_count, failed_count")
-        .limit(10000);
-
-      let totalSent = 0;
-      let totalFailed = 0;
-      for (const log of (allTimeLogs || [])) {
-        totalSent += log.sent_count || 0;
-        totalFailed += log.failed_count || 0;
-      }
-
-      const todayISO = new Date().toISOString().split("T")[0];
-      const { data: todayLogs } = await supabase
-        .from("admin_email_log")
-        .select("sent_count")
-        .gte("created_at", todayISO);
-
-      let todayCount = 0;
-      for (const log of (todayLogs || [])) todayCount += log.sent_count || 0;
-
-      const totalAttempted = totalSent + totalFailed;
-      const failureRate = totalAttempted > 0 ? ((totalFailed / totalAttempted) * 100).toFixed(1) : 0;
-
-      if (mountedRef.current) setStats({ totalSent, todayCount, failureRate });
-    } catch {
-      // Table may not exist
-    }
-  }, []);
-
-  useEffect(() => { fetchHistory(); }, [fetchHistory]);
-  useEffect(() => { fetchStats(); }, [fetchStats]);
-
-  function handleExport() {
-    const exportColumns = [
-      { key: "subject", label: "Subject" },
-      { key: "recipient_type", label: "Type" },
-      { key: "sent_count", label: "Provider Accepted" },
-      { key: "failed_count", label: "Failed" },
-      { key: "recipient_count", label: "Total Recipients" },
-      { key: "status", label: "Status" },
-      { key: "template_used", label: "Template" },
-      { key: "created_at", label: "Created At" },
-    ];
-    exportCsv(exportColumns, history, "email_history");
-  }
-
-  const columns = [
-    {
-      key: "subject",
-      label: "Subject",
-      sortable: true,
-      render: (val) => (
-        <span className="font-medium" title={val}>
-          {truncate(val, 50)}
-        </span>
-      ),
-    },
-    {
-      key: "recipient_type",
-      label: "Audience",
-      render: (_, row) => <span className="text-sm" title={campaignAudienceLabel(row)}>{truncate(campaignAudienceLabel(row), 34)}</span>,
-    },
-    {
-      key: "sent_count",
-      label: "Accepted",
-      render: (val, row) => `${val || 0} accepted · ${row.matched_count || row.recipient_count || 0} matched`,
-    },
-    {
-      key: "status",
-      label: "Status",
-      render: (val) => {
-        const v = ["sent", "completed"].includes(val) ? "success" : ["partial", "scheduled", "queued", "sending", "pending"].includes(val) ? "warning" : val === "failed" ? "error" : "default";
-        return <Badge variant={v} dot>{campaignStatusLabel(val)}</Badge>;
-      },
-    },
-    {
-      key: "template_used",
-      label: "Template",
-      render: (val) => val || "Custom",
-    },
-    {
-      key: "created_at",
-      label: "When",
-      sortable: true,
-      render: (val, row) => row.status === "scheduled" && row.scheduled_for
-        ? `Scheduled ${formatRelativeTime(row.scheduled_for)}`
-        : formatRelativeTime(row.completed_at || val),
-    },
-    {
-      key: "_actions",
-      label: "",
-      render: (_, row) => (
-        <Button variant="ghost" size="sm" onClick={() => setDetailLog(row)}>View</Button>
-      ),
-    },
-  ];
-
-  async function cancelCampaign() {
-    if (!detailLog) return;
-    setCancelling(true);
-    try {
-      await callEdgeFunction({ action: "cancel_campaign", campaignId: detailLog.id });
-      addToast({ variant: "success", title: "Scheduled email cancelled" });
-      setDetailLog(null);
-      await fetchHistory();
-    } catch (error) {
-      addToast({ variant: "error", title: "Could not cancel campaign", description: error.message });
-    } finally {
-      setCancelling(false);
-    }
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard icon={Send} label="Provider accepted" value={stats.totalSent.toLocaleString()} />
-        <StatCard icon={Clock} label="Accepted today" value={stats.todayCount} />
-        <StatCard
-          icon={stats.failureRate > 5 ? AlertTriangle : CheckCircle}
-          label="Failure Rate"
-          value={`${stats.failureRate}%`}
-        />
-      </div>
-
-      {/* Export */}
-      <div className="flex justify-end">
-        <Button variant="secondary" size="sm" icon={Download} onClick={handleExport} disabled={history.length === 0}>
-          Export CSV
-        </Button>
-      </div>
-
-      {/* History Table */}
-      <DataTable
-        columns={columns}
-        rows={history}
-        loading={loading}
-        emptyIcon={Mail}
-        emptyMessage="No email campaigns yet"
-        pagination={{
-          page,
-          pageSize: PAGE_SIZE,
-          total: historyCount,
-          from: historyCount === 0 ? 0 : page * PAGE_SIZE + 1,
-          to: Math.min((page + 1) * PAGE_SIZE, historyCount),
-          onChange: setPage,
-        }}
-      />
-
-      {/* Detail Modal */}
-      <Modal open={!!detailLog} onClose={() => setDetailLog(null)} title="Email Log Detail" size="lg">
-        {detailLog && (
-          <>
-            <ModalBody>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-[var(--color-text-tertiary)]">Subject</p>
-                    <p className="font-medium text-[var(--color-text-primary)]">{detailLog.subject}</p>
-                  </div>
-                  <div>
-                    <p className="text-[var(--color-text-tertiary)]">From</p>
-                    <p className="text-[var(--color-text-primary)]">{detailLog.from_name} &lt;{detailLog.from_email}&gt;</p>
-                  </div>
-                  <div>
-                    <p className="text-[var(--color-text-tertiary)]">Audience</p>
-                    <p className="text-[var(--color-text-primary)]">
-                      {campaignAudienceLabel(detailLog)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[var(--color-text-tertiary)]">Recipients</p>
-                    <p className="text-[var(--color-text-primary)]">
-                      {detailLog.matched_count || detailLog.recipient_count} matched, {detailLog.sent_count} provider accepted, {detailLog.failed_count} failed
-                      {Number(detailLog.skipped_count) > 0 && `, ${detailLog.skipped_count} unsubscribed`}
-                      {Number(detailLog.no_contact_count) > 0 && `, ${detailLog.no_contact_count} no valid email`}
-                      {Number(detailLog.duplicate_count) > 0 && `, ${detailLog.duplicate_count} duplicate`}
-                      {Number(detailLog.no_consent_count) > 0 && `, ${detailLog.no_consent_count} didn't agree to marketing`}
-                      {Number(detailLog.internal_excluded_count) > 0 && `, ${detailLog.internal_excluded_count} staff and test`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[var(--color-text-tertiary)]">Status</p>
-                    <Badge variant={["sent", "completed"].includes(detailLog.status) ? "success" : ["partial", "scheduled", "queued", "sending", "pending"].includes(detailLog.status) ? "warning" : "error"} dot>
-                      {campaignStatusLabel(detailLog.status)}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-[var(--color-text-tertiary)]">When</p>
-                    <p className="text-[var(--color-text-primary)]">
-                      {detailLog.status === "scheduled" && detailLog.scheduled_for
-                        ? `Scheduled for ${formatFullDate(detailLog.scheduled_for)} (${detailLog.timezone || "UTC"})`
-                        : formatFullDate(detailLog.completed_at || detailLog.created_at)}
-                    </p>
-                  </div>
-                  {detailLog.template_used && (
-                    <div>
-                      <p className="text-[var(--color-text-tertiary)]">Template</p>
-                      <p className="text-[var(--color-text-primary)]">{detailLog.template_used}</p>
-                    </div>
-                  )}
-                  {detailLog.recipient_type === "bulk" && detailLog.segment_filter && (
-                    <div>
-                      <p className="text-[var(--color-text-tertiary)]">Segment</p>
-                      <p className="text-[var(--color-text-primary)]">{segmentLabel(detailLog.segment_filter)}</p>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[var(--color-text-tertiary)] text-sm mb-2">Body</p>
-                  <div className="p-4 rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] text-sm text-[var(--color-text-primary)] whitespace-pre-wrap font-mono">
-                    {detailLog.body}
-                  </div>
-                </div>
-              </div>
-            </ModalBody>
-            <ModalFooter>
-              {["scheduled", "queued"].includes(detailLog.status) && (
-                <Button variant="danger" onClick={cancelCampaign} loading={cancelling}>Cancel campaign</Button>
-              )}
-              <Button variant="ghost" onClick={() => setDetailLog(null)}>Close</Button>
-            </ModalFooter>
-          </>
-        )}
       </Modal>
     </div>
   );

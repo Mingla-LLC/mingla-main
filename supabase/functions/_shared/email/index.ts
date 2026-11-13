@@ -141,7 +141,9 @@ export function renderTransactionalEmail(input: RenderInput): RenderResult {
   const from = input.sender ?? resolveSender(input.variant);
   assertNotResendSandbox(from);
 
-  return { subject, html, text, from };
+  // #4419: the inbox preview line is returned too (additive), so Admin can
+  // store and show exactly what the inbox showed.
+  return { subject, html, text, from, preheader };
 }
 
 export {

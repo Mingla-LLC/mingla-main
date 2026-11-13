@@ -90,7 +90,11 @@ function missingClient(error: null | { code: string; message: string } = null) {
 function sendingClient(rows: unknown[]) {
   const adminUpdates: Record<string, unknown>[] = [];
   const deliveryUpdates: Record<string, unknown>[] = [];
+  // #4419: the first batch saves the exact copy on the campaign row and every
+  // batch reads the stored document back, so the fake keeps that row.
+  const campaignRow: Record<string, unknown> = {};
   return {
+    campaignRow,
     adminUpdates,
     deliveryUpdates,
     from(table: string) {
@@ -105,7 +109,10 @@ function sendingClient(rows: unknown[]) {
           const accepted = statuses.includes("accepted") ? 1 : 0;
           return { data: null, error: null, count: accepted };
         }
-        if (table === "admin_email_log" && update) adminUpdates.push(update);
+        if (table === "admin_email_log" && update) {
+          adminUpdates.push(update);
+          Object.assign(campaignRow, update);
+        }
         if (table === "admin_email_recipient_deliveries" && update) {
           deliveryUpdates.push(update);
         }
@@ -115,6 +122,8 @@ function sendingClient(rows: unknown[]) {
         update = value;
         return chain;
       };
+      chain.maybeSingle = () =>
+        Promise.resolve({ data: { ...campaignRow }, error: null });
       chain.in = (_column: string, value: string[]) => {
         statuses = value;
         return chain;
