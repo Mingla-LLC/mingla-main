@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchLiveRuns } from "../services/cityPipelineService";
 import { ACTIVE_RUN_STATUSES, LIVE_RATE_WINDOW_MS, currentProgress, runRate } from "../lib/cityPipeline";
+import { subscribePageReturn, subscribeVisibility } from "../lib/pageReturn";
 
 export const LIVE_ACTIVE_POLL_MS = 5000;
 export const LIVE_IDLE_POLL_MS = 30000;
@@ -96,15 +97,21 @@ export function useLiveCityRuns({ days = 7 } = {}) {
   useEffect(() => {
     unmountedRef.current = false;
     refresh();
-    function onVisibility() {
-      if (!document.hidden) tickRef.current?.();
-    }
-    document.addEventListener("visibilitychange", onVisibility);
+    // #4423: shown again reads through the shared page-return signal (at most
+    // once per gap). A hidden tab's tick stops the chain, so being shown again
+    // also restarts the timer; that makes no request by itself.
+    const offReturn = subscribePageReturn(() => tickRef.current?.());
+    const offVisibility = subscribeVisibility((visible) => {
+      if (!visible || unmountedRef.current) return;
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => tickRef.current?.(), activeRef.current ? LIVE_ACTIVE_POLL_MS : LIVE_IDLE_POLL_MS);
+    });
+    const unsubscribe = () => { offReturn(); offVisibility(); };
     const samples = samplesRef.current;
     return () => {
       unmountedRef.current = true;
       clearTimeout(timerRef.current);
-      document.removeEventListener("visibilitychange", onVisibility);
+      unsubscribe();
       samples.clear();
     };
   }, [refresh]);

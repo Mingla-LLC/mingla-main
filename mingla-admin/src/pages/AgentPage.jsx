@@ -78,6 +78,7 @@ import {
   setupVerdict,
   shownKeyVerdict,
 } from "../lib/agentConnect";
+import { subscribeVisibility } from "../lib/pageReturn";
 
 /**
  * Issue #4294: one row per Claude app connection, with Disconnect (asks
@@ -186,15 +187,15 @@ function useWatch(active, onTick, { everyMs = WATCH_EVERY_MS, until, onEnd } = {
       isVisible: () => document.visibilityState === "visible",
       isOnline: () => navigator.onLine !== false,
     });
-    const onVisibility = () => {
-      // Shown again: hooks/useAgentKeys.js makes the one read of that moment;
-      // this only starts the timer again.
-      if (document.visibilityState === "visible") watch.visible(false);
+    // Shown again: hooks/useAgentKeys.js makes the one read of that moment;
+    // this only starts the timer again. #4423: the shared lib/pageReturn
+    // visibility signal (no request is made here).
+    const unsubscribe = subscribeVisibility((visible) => {
+      if (visible) watch.visible(false);
       else watch.hidden();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
+    });
     return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
+      unsubscribe();
       watch.stop();
     };
   }, [active, everyMs, until]);

@@ -61,3 +61,13 @@ export function captureException(error, context, sdk = Sentry) {
   if (!started) return "";
   return sdk.captureException(error, context);
 }
+
+/**
+ * #4423: send a message-level event (the request ceiling trip). Same no-op
+ * rule as captureException.
+ * @returns {string}
+ */
+export function captureMessage(message, context, sdk = Sentry) {
+  if (!started) return "";
+  return sdk.captureMessage(message, context);
+}

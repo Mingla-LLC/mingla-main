@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as service from "../services/contentCalendarService";
+import { subscribePageReturn } from "../lib/pageReturn";
 
 export function useContentCalendar(query) {
   const key = JSON.stringify(query || {});
@@ -26,8 +27,7 @@ export function useContentCalendar(query) {
   useEffect(() => {
     load();
     const refresh = () => { if (document.visibilityState === "visible" && navigator.onLine !== false) load({ quiet: true }); };
-    window.addEventListener("focus", refresh); window.addEventListener("online", refresh); document.addEventListener("visibilitychange", refresh);
-    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); document.removeEventListener("visibilitychange", refresh); };
+    return subscribePageReturn(refresh); // #4423: the shared page-return signal
   }, [load]);
   const replaceItem = useCallback((item) => setState((s) => ({ ...s, items: s.items.some((row) => row.id === item.id) ? s.items.map((row) => row.id === item.id ? item : row) : [...s.items, item] })), []);
   const removeItem = useCallback((id) => setState((s) => ({ ...s, items: s.items.filter((item) => item.id !== id), total: Math.max(0, s.total - 1) })), []);

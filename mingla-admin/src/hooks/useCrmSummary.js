@@ -10,6 +10,7 @@ import { useAuth } from "../context/AuthContext";
 import { crmKeys } from "./useCrmConfig";
 import { localToday } from "../lib/crmModel";
 import * as crm from "../services/crmService";
+import { subscribePageReturn } from "../lib/pageReturn";
 
 /** How often a summary refreshes by itself while the page is visible. */
 export const SUMMARY_REFRESH_MS = 60_000;
@@ -84,22 +85,15 @@ export function useCrmSummary(kind, { enabled = true } = {}) {
         if (mounted.current && mine === seq.current) setState({ key, data: null, error, loaded: true });
       }
     );
-    const onFocus = () => {
-      if (document.visibilityState === "visible") refetch({ quiet: true });
-    };
-    const onOnline = () => refetch({ quiet: true });
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
-    window.addEventListener("online", onOnline);
+    // #4423: the shared page-return signal (visible and online, once per gap).
+    const unsubscribe = subscribePageReturn(() => refetch({ quiet: true }));
     const timer = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       if (navigator.onLine === false) return;
       refetch({ quiet: true });
     }, SUMMARY_REFRESH_MS);
     return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
-      window.removeEventListener("online", onOnline);
+      unsubscribe();
       clearInterval(timer);
     };
   }, [enabled, key, read, refetch]);

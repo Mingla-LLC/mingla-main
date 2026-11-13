@@ -9,6 +9,12 @@
 //
 // The store belongs to one signed-in person: a different user (or signing
 // out) clears it before anything is shown (Constitution rule 6).
+//
+// #4423 (W1.1): the poll counts from the last refresh and "the page came back"
+// is the shared lib/pageReturn signal; both go through lib/pollGate key
+// "messages". Realtime changes keep their 600 ms debounce: the badge may read
+// on each one, the inbox (team_inbox, the heavy call) at most once every
+// INBOX_MIN_GAP_MS, with one trailing read so the last change is never lost.
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -17,19 +23,27 @@ import { getInbox } from "../services/dashboardService";
 import { fetchBadge, setMyTimeZone } from "../services/teamChatService";
 import { SUPPORT_ALERT_TYPES } from "../lib/emailAlerts";
 import { createTimeZoneSync, deviceTimeZone, messagesBadge } from "../lib/messagesModel";
+import * as pageReturn from "../lib/pageReturn";
+import { createPoller, tabPollGate } from "../lib/pollGate";
 
 export const MESSAGES_POLL_MS = 30_000;
 export const MESSAGES_CHANGED = "mingla:messages-changed";
+export const INBOX_MIN_GAP_MS = 5_000;
+const GATE_KEY = "messages";
+const BADGE_GATE_KEY = "messages-badge";
 
-const EMPTY = Object.freeze({ owner: null, badge: null, inbox: null, inboxError: null, badgeError: null, loading: true });
+const EMPTY = Object.freeze({ owner: null, badge: null, inbox: null, inboxError: null, badgeError: null, loading: true, stale: false });
 
 let state = EMPTY;
 const listeners = new Set();
 let consumers = 0;
-let timer = null;
+let poller = null;
 let channel = null;
 let debounce = null;
-let seq = 0;
+let trailing = null;
+let badgeSeq = 0;
+let inboxSeq = 0;
+let lastInboxAt = -Infinity;
 let owner = null;
 
 function emit(next) {
@@ -37,39 +51,65 @@ function emit(next) {
   for (const l of listeners) l();
 }
 
-/** One count call: the team badge and the inbox, side by side. */
-export async function refreshMessages() {
-  if (!owner) return;
-  const mine = ++seq;
+/**
+ * One count call: the team badge and (unless `inbox` is false) the inbox,
+ * side by side. Resolves to { skipped } for the poller.
+ */
+export async function refreshMessages({ inbox = true, quiet = false } = {}) {
+  if (!owner) return { skipped: true };
+  const key = inbox ? GATE_KEY : BADGE_GATE_KEY;
+  if (quiet) {
+    const why = tabPollGate.why(key);
+    if (why) {
+      tabPollGate.allow(key);
+      if (why !== "in_flight" && state.owner === owner && (state.badge || state.inbox)) emit({ ...state, stale: true });
+      return { skipped: true };
+    }
+  }
   const forUser = owner;
-  const [badge, inbox] = await Promise.allSettled([fetchBadge(), getInbox(SUPPORT_ALERT_TYPES)]);
-  if (mine !== seq || forUser !== owner) return;
-  emit({
-    owner: forUser,
-    badge: badge.status === "fulfilled" ? badge.value : state.badge,
-    badgeError: badge.status === "rejected" ? badge.reason : null,
-    inbox: inbox.status === "fulfilled" ? inbox.value : state.inbox,
-    inboxError: inbox.status === "rejected" ? inbox.reason : null,
-    loading: false,
-  });
+  const mineBadge = ++badgeSeq;
+  const mineInbox = inbox ? ++inboxSeq : 0;
+  if (inbox) lastInboxAt = Date.now();
+  tabPollGate.start(key, { background: quiet });
+  const [badge, box] = await Promise.allSettled([fetchBadge(), inbox ? getInbox(SUPPORT_ALERT_TYPES) : Promise.resolve(null)]);
+  const failed = [badge, inbox ? box : null].find((r) => r && r.status === "rejected");
+  tabPollGate.settle(key, failed ? { ok: false, status: failed.reason?.status, code: failed.reason?.code, error: failed.reason } : { ok: true }, { background: quiet });
+  if (forUser !== owner) return { skipped: false };
+  const next = { ...state, owner: forUser, loading: false, stale: false };
+  if (mineBadge === badgeSeq) {
+    next.badge = badge.status === "fulfilled" ? badge.value : state.badge;
+    next.badgeError = badge.status === "rejected" ? badge.reason : null;
+  }
+  if (inbox && mineInbox === inboxSeq) {
+    next.inbox = box.status === "fulfilled" ? box.value : state.inbox;
+    next.inboxError = box.status === "rejected" ? box.reason : null;
+  }
+  emit(next);
+  return { skipped: false };
+}
+
+/** A realtime or local change: badge now, the inbox at most every INBOX_MIN_GAP_MS. */
+function liveRefresh() {
+  const wait = lastInboxAt + INBOX_MIN_GAP_MS - Date.now();
+  if (wait <= 0) {
+    void refreshMessages({ quiet: true });
+    return;
+  }
+  void refreshMessages({ inbox: false, quiet: true });
+  if (!trailing) {
+    trailing = setTimeout(() => { trailing = null; liveRefresh(); }, wait);
+  }
 }
 
 function soon() {
   clearTimeout(debounce);
-  debounce = setTimeout(() => { void refreshMessages(); }, 600);
-}
-
-function onVisible() {
-  if (typeof document === "undefined" || document.visibilityState === "visible") void refreshMessages();
+  debounce = setTimeout(liveRefresh, 600);
 }
 
 function start() {
-  void refreshMessages();
-  timer = setInterval(onVisible, MESSAGES_POLL_MS);
-  window.addEventListener("focus", onVisible);
-  window.addEventListener("online", onVisible);
+  poller = createPoller({ refresh: (options) => refreshMessages(options), intervalMs: MESSAGES_POLL_MS, pageReturn });
+  poller.start();
   window.addEventListener(MESSAGES_CHANGED, soon);
-  document.addEventListener("visibilitychange", onVisible);
   // Rows reach this browser only for chats this person may read (RLS).
   try {
     channel = supabase
@@ -86,13 +126,12 @@ function start() {
 }
 
 function stop() {
-  clearInterval(timer);
+  poller?.stop();
+  poller = null;
   clearTimeout(debounce);
-  timer = null;
-  window.removeEventListener("focus", onVisible);
-  window.removeEventListener("online", onVisible);
+  clearTimeout(trailing);
+  trailing = null;
   window.removeEventListener(MESSAGES_CHANGED, soon);
-  document.removeEventListener("visibilitychange", onVisible);
   if (channel) void supabase.removeChannel(channel);
   channel = null;
 }
@@ -101,7 +140,9 @@ function setOwner(next) {
   if (next === owner) return;
   if (consumers > 0 && owner) stop();
   owner = next;
-  seq += 1;
+  badgeSeq += 1;
+  inboxSeq += 1;
+  lastInboxAt = -Infinity;
   emit({ ...EMPTY, owner: next });
   if (consumers > 0 && owner) start();
 }
@@ -146,6 +187,7 @@ export function useMessages() {
     inboxError: current.inboxError,
     badgeError: current.badgeError,
     loading: current.loading && !current.inbox,
+    stale: !!current.stale,
     count: messagesBadge({ badge: current.badge, inbox: current.inbox }),
     refetch,
   };
@@ -167,8 +209,7 @@ export function useTeamTimeZoneSync(userId) {
       });
     };
     run();
-    const onVisible = () => { if (document.visibilityState === "visible") run(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    // #4423: the shared page-return signal (one save per zone per person anyway).
+    return pageReturn.subscribePageReturn(run);
   }, [userId]);
 }

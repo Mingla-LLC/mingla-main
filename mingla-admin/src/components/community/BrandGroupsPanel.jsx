@@ -75,6 +75,7 @@ import { BrandGroupThread } from "./BrandGroupThread";
 import { BrandGroupComposer } from "./BrandGroupComposer";
 import { BrandGroupRail } from "./BrandGroupRail";
 import { BrandGroupSidePanel } from "./BrandGroupSidePanel";
+import { subscribePageReturn } from "../../lib/pageReturn";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const FIELD_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -309,9 +310,9 @@ export function BrandGroupsPanel({ onCounts }) {
   useEffect(() => {
     // D-13: a focus reads again only when the last full read is a minute old.
     const onFocus = () => { if (focusRefreshDue(lastFullRead.current)) void loadInbox(); };
-    window.addEventListener("focus", onFocus);
+    const unsubscribe = subscribePageReturn(onFocus); // #4423: the shared page-return signal
     const timer = setInterval(() => { void loadInbox(); }, FULL_REFRESH_MS);
-    return () => { window.removeEventListener("focus", onFocus); clearInterval(timer); };
+    return () => { unsubscribe(); clearInterval(timer); };
   }, [loadInbox]);
 
   useEffect(() => {

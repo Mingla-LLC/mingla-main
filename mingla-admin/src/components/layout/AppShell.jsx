@@ -1,10 +1,38 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useSyncExternalStore } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { HEADER_PAGE_ITEMS, NAV_ITEMS } from "../../lib/constants";
 import { useAuth } from "../../context/AuthContext";
 import { pageTitle } from "../../lib/access";
 import { DraftCountProvider, useDraftCounts } from "../../hooks/useDraftCounts";
+import { AlertCard } from "../ui/Card";
+import { tabCeiling } from "../../lib/requestCeiling";
+
+export const CEILING_BANNER_TEXT = "Admin paused refreshing for a minute because this tab sent too many requests. Your work is safe.";
+
+// #4423 (W1.4): the request ceiling tripped (lib/requestCeiling). Shown, not
+// dismissible, until the pause ends; it hides itself when the minute is up.
+function useCeilingTripped() {
+  const tripped = useSyncExternalStore(tabCeiling.subscribe, () => tabCeiling.state().tripped, () => false);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!tripped) return undefined;
+    const wait = Math.max(250, tabCeiling.state().resumeInMs + 50);
+    const t = setTimeout(() => setTick((n) => n + 1), wait);
+    return () => clearTimeout(t);
+  }, [tripped]);
+  return tripped;
+}
+
+export function RequestCeilingBanner() {
+  const tripped = useCeilingTripped();
+  if (!tripped) return null;
+  return (
+    <div role="alert" aria-live="assertive" className="px-[var(--page-gutter)] pt-3">
+      <AlertCard variant="warning" title="Refreshing paused">{CEILING_BANNER_TEXT}</AlertCard>
+    </div>
+  );
+}
 
 // Issue #3802 (admin shell): the one frame every page sits in. The shell, and
 // only the shell, sets the space around a page: the gutter on all four sides,
@@ -54,6 +82,7 @@ export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
           onOpenSearch={onOpenSearch}
         />
 
+        <RequestCeilingBanner />
         <main className="flex-1 overflow-y-auto">
           <div className="w-full min-w-0 max-w-[var(--content-max-width)] p-[var(--page-gutter)]">
             {children}

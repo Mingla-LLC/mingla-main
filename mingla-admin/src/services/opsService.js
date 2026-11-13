@@ -48,6 +48,30 @@ async function call(run) {
 
 export const fetchOpsConfig = (today) => call(() => supabase.rpc("ops_config", { p_today: today || null }));
 export const listWork = (query = {}) => call(() => supabase.rpc("ops_work_list", { p_query: query }));
+
+// #4423 (W2.2): the list views read the light "board" shape (no drawer-only
+// fields); the card drawer still reads the full card through ops_work_get.
+export const BOARD_SHAPE = "board";
+
+// [TRANSITIONAL] A server without 20280704014423 (#4423 W2) refuses the
+// `shape` key with invalid_query naming "shape"; then this tab asks once more
+// without it and keeps doing so (the full shape, exactly as before #4423).
+// Exit: remove once that migration is applied in production.
+let boardShapeRefused = false;
+export function refusesShape(error) {
+  return error?.token === "invalid_query" && /"shape"|\bshape\b/.test(`${error?.message || ""} ${error?.detail || ""}`);
+}
+export const listBoardWork = async (query = {}) => {
+  if (boardShapeRefused) return listWork(query);
+  try {
+    return await listWork({ ...query, shape: BOARD_SHAPE });
+  } catch (error) {
+    if (!refusesShape(error)) throw error;
+    boardShapeRefused = true;
+    console.warn("[#4423] the server does not take shape:board yet; reading the full shape.");
+    return listWork(query);
+  }
+};
 export const getWork = (id, today) => call(() => supabase.rpc("ops_work_get", { p_id: id, p_today: today || null }));
 export const addWork = (items, requestKey) => call(() => supabase.rpc("ops_work_add", { p_items: items, p_request_key: requestKey }));
 export const updateWork = (id, changes, revision, requestKey) =>
