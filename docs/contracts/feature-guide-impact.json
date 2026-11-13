@@ -1325,7 +1325,10 @@
         "supabase/functions/_shared/adLaunchAttemptOpsAlert.ts",
         "supabase/functions/_shared/google.ts",
         "supabase/functions/_shared/reddit.ts",
-        "supabase/functions/_shared/snapchat.ts"
+        "supabase/functions/_shared/snapchat.ts",
+        "mingla-admin/src/components/AdConnectionsPanel.jsx",
+        "mingla-admin/src/components/AppIdentityReadinessPanel.jsx",
+        "mingla-admin/src/components/app-readiness/AppDownloadReadinessPanel.jsx"
       ]
     },
     {
@@ -1453,7 +1456,13 @@
         "supabase/migrations/20280626004398_issue_4398_routes_and_people.sql",
         "supabase/migrations/20280626014398_issue_4398_review_and_notices.sql",
         "supabase/migrations/20280626034398_issue_4398_people_invariant.sql",
-        "supabase/migrations/20280626044398_issue_4398_mark_work_updates_read.sql"
+        "supabase/migrations/20280626044398_issue_4398_mark_work_updates_read.sql",
+        "mingla-admin/src/hooks/useDraftCounts.js",
+        "mingla-admin/src/hooks/useDrafts.js",
+        "supabase/migrations/20280707004423_issue_4423_w2_ops_set_based_card_builders.sql",
+        "supabase/migrations/20280707014423_issue_4423_w2_ops_work_list_review_counts.sql",
+        "supabase/migrations/20280707024423_issue_4423_w2_sprint_plan_read_first.sql",
+        "supabase/migrations/20280707034423_issue_4423_w2_team_inbox_limit_first.sql"
       ]
     },
     {
@@ -1488,7 +1497,9 @@
         "supabase/migrations/20280427014270_issue_4270_w2_host_card.sql",
         "mingla-admin/src/lib/inboundLeads.js",
         "mingla-admin/src/pages/InboundLeadsPage.jsx",
-        "mingla-admin/src/services/dashboardService.js"
+        "mingla-admin/src/services/dashboardService.js",
+        "mingla-admin/src/hooks/useCrmPipeline.js",
+        "mingla-admin/src/hooks/useCrmSummary.js"
       ]
     },
     {
@@ -1516,7 +1527,8 @@
         "mingla-admin/src/lib/panelDrafts.js",
         "mingla-admin/src/lib/panelStack.js",
         "mingla-admin/src/pages/ContentCalendarPage.jsx",
-        "supabase/migrations/20280605004255_issue_4255_content_calendar_approved_designed.sql"
+        "supabase/migrations/20280605004255_issue_4255_content_calendar_approved_designed.sql",
+        "mingla-admin/src/hooks/useContentCalendar.js"
       ]
     },
     {
@@ -1527,7 +1539,16 @@
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",
         "mingla-admin/src/lib/teamInvite.js",
         "mingla-admin/src/pages/AdminPage.jsx",
-        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
+        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql",
+        "mingla-admin/src/components/layout/AppShell.jsx",
+        "mingla-admin/src/components/ui/LoadError.jsx",
+        "mingla-admin/src/lib/authEvents.js",
+        "mingla-admin/src/lib/pageReturn.js",
+        "mingla-admin/src/lib/pollGate.js",
+        "mingla-admin/src/lib/requestCeiling.js",
+        "mingla-admin/src/lib/supabase.js",
+        "mingla-admin/src/pages/RoleHomePage.jsx",
+        "supabase/migrations/20280707104423_issue_4423_w3_admin_request_limits.sql"
       ]
     },
     {
@@ -1553,7 +1574,9 @@
         "supabase/functions/_shared/teamAgentMcp.ts",
         "supabase/functions/_shared/teamAgentTools.ts",
         "supabase/functions/team-agent/index.ts",
-        "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql"
+        "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql",
+        "mingla-admin/src/hooks/useAgentGuide.js",
+        "mingla-admin/src/hooks/useAgentKeys.js"
       ]
     },
     {
@@ -1973,7 +1996,8 @@
         "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql",
         "supabase/migrations/20280428004276_issue_4276_live_runs.sql",
         "supabase/migrations/20280504004276_issue_4276_admin_counts_headroom.sql",
-        "supabase/migrations/20280509004276_issue_4276_resume_resets_progress.sql"
+        "supabase/migrations/20280509004276_issue_4276_resume_resets_progress.sql",
+        "mingla-admin/src/hooks/useActiveRunsPoller.js"
       ]
     },
     {
@@ -1984,7 +2008,16 @@
         "supabase/functions/api-health-probe/index.ts",
         "supabase/functions/_shared/googleKeyRejection.ts",
         "supabase/functions/places-coordinate-refresh/index.ts",
-        "supabase/functions/places-coordinate-refresh/refresh.ts"
+        "supabase/functions/places-coordinate-refresh/refresh.ts",
+        "supabase/functions/api-health-probe/dbHealth.ts",
+        "supabase/migrations/20280707114423_issue_4423_w3_db_health_probe.sql",
+        "supabase/migrations/20280707204423_issue_4423_w4a_indexes_and_cron.sql",
+        "supabase/migrations/20280707304423_issue_4423_w4b_rls_batch1_messaging.sql",
+        "supabase/migrations/20280707314423_issue_4423_w4b_rls_batch2_profiles_social.sql",
+        "supabase/migrations/20280707324423_issue_4423_w4b_rls_batch3_commerce.sql",
+        "supabase/migrations/20280707334423_issue_4423_w4b_rls_batch4_rest.sql",
+        "supabase/migrations/20280707404423_issue_4423_w5_function_grants.sql",
+        "supabase/migrations/20280707414423_issue_4423_w5_function_search_path.sql"
       ]
     },
     {
