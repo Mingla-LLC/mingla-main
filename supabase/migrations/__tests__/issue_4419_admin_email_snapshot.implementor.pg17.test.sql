@@ -1,6 +1,6 @@
 -- #4419 Part A — the exact copy of an Admin email never changes once saved.
 --
--- MINGLA-INVARIANT: I-4419-EMAIL-SNAPSHOT-IMMUTABLE | issue #4419 | Once admin_email_log.rendered_at is set, no role (service_role, an active admin through RLS, the table owner) can change or clear rendered_subject, rendered_preheader, rendered_html, rendered_text, rendered_document, rendered_at or render_sample; the trigger raises admin_email_snapshot_immutable (PT409).
+-- MINGLA-INVARIANT: I-4419-EMAIL-SNAPSHOT-IMMUTABLE | issue #4419 | Once admin_email_log.rendered_at is set, no role (service_role, a signed-in admin through RLS, the table owner) can change or clear rendered_subject, rendered_preheader, rendered_html, rendered_text, rendered_document, rendered_at or render_sample; the trigger raises admin_email_snapshot_immutable (PT409).
 --
 -- Also: the copy is all-or-none and size-capped; anon and a non-admin read no
 -- campaign; other columns still change after the copy; cancelled_by clears

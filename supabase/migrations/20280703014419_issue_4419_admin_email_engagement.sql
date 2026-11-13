@@ -1,5 +1,7 @@
 -- #4419 Part B — what happened to an Admin email after it left us.
 --
+-- MINGLA-INVARIANT: I-4419-ADMIN-EVENTS-LINKED-ONCE | issue #4419 | A provider event whose email id matches an Admin delivery is stored once (svix_id) against that delivery and un-flagged as a host-campaign event; replays change nothing; an event that matches no Admin delivery is left exactly as #2714 left it. Tested by issue_4419_admin_email_engagement.implementor.pg17.test.sql.
+--
 -- Resend already tells resend-webhook about every email (sent, delivered,
 -- delivery delayed, bounced, marked as spam, opened, clicked) and
 -- mkt_ingest_email_event files each event in marketing_email_events, but only
@@ -83,7 +85,6 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_4419_event_time(text, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4419_event_time(text, timestamptz) TO service_role;
 
--- MINGLA-INVARIANT: I-4419-ADMIN-EVENTS-LINKED-ONCE | issue #4419 | A provider event whose email id matches an Admin delivery is stored once (svix_id) against that delivery and un-flagged as a host-campaign event; replays change nothing; an event that matches no Admin delivery is left exactly as #2714 left it. Tested by issue_4419_admin_email_engagement.implementor.pg17.test.sql.
 CREATE OR REPLACE FUNCTION public.issue_4419_apply_admin_email_event(p_svix_id text)
 RETURNS boolean
 LANGUAGE plpgsql
