@@ -484,7 +484,8 @@ export function phase3dContractDigest(manifest) {
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
 // #4422: register 20280705004422 (held RSVP texts, transactional bounce truth) and 20280705104422 (RSVP message links) in the #1857, #1931 and #2117 replay lanes, and their two PostgreSQL proofs in #1931 and #2117; re-sealed.
 // #4422: skip 20280705104422 (RSVP message links, typed on the skipped #4063 claim_links) by exact filename in the #1931 pre-landing replay; re-sealed after merging origin/main 8e1d47562b.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "098875ffe4c01a3c95c183089309387cb29b009d35c55469b638fbd24fd44c3f";
+// #4422 rework: the tester's delivery-truth pg17 proof joins the #1931 and #2117 lanes; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "41fd85e8ac38961735c80f5c781e5dbfd3508f2438acc82ae2915bc41d6d9ac3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
