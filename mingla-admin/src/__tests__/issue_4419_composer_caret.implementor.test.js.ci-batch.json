@@ -10,7 +10,7 @@
     ],
     "steps": [
       {
-        "name": "Admin email body editor: typing keeps order and caret at the end, drafts and toolbar still replace content, From and Replies show the real sender",
+        "name": "Admin email body editor: typing never rewrites the block, drafts and templates still replace it, From, Replies and footer show the real sender",
         "cwd": "mingla-admin",
         "run": "node --test src/__tests__/issue_4419_composer_caret.implementor.test.js",
         "commandId": "assert:issue-4419-composer-caret:01",

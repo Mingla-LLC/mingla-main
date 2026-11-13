@@ -37,7 +37,7 @@ import { Badge } from "../ui/Badge";
 import { isFullAdmin } from "../../lib/access";
 import { formatRelativeTime } from "../../lib/formatters";
 import { EmailBlogPostPicker } from "./EmailBlogPostPicker";
-import { ADMIN_EMAIL_FROM_LABEL, ADMIN_EMAIL_REPLY_TO } from "../../lib/adminEmailSender";
+import { ADMIN_EMAIL_FROM_LABEL, ADMIN_EMAIL_REPLY_TO, ADMIN_EMAIL_SENDER } from "../../lib/adminEmailSender";
 import { EditableRichBlock } from "./EditableRichBlock";
 import { escapeHtml, sanitizeLocalRichText } from "./richText";
 import {
@@ -232,7 +232,7 @@ function LocalEmailPreview({ subject, documentValue }) {
         </div>
         <div className="border-t border-[#efe9e2] px-6 py-5 text-xs leading-5 text-[#756e68]">
           <p>You’re receiving this email from Mingla.</p>
-          <p><a className="underline" href="#unsubscribe">Unsubscribe</a> · Mingla, hello@usemingla.com</p>
+          <p><a className="underline" href="#unsubscribe">Unsubscribe</a> · Mingla, {ADMIN_EMAIL_SENDER.address}</p>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { sanitizeLocalRichText } from "./richText";
+import { syncEditableHtml } from "./richText";
 
 // #4419: one editable body block. The DOM is the source of truth while the
 // admin types: HTML is written into it only when the incoming `html` differs
@@ -13,10 +13,7 @@ export function EditableRichBlock({ html, editorRef, onFocus, onHtmlChange, clas
   const nodeRef = useRef(null);
 
   useLayoutEffect(() => {
-    const node = nodeRef.current;
-    if (!node) return;
-    if (node.innerHTML === html) return;
-    node.innerHTML = sanitizeLocalRichText(html);
+    syncEditableHtml(nodeRef.current, html);
   }, [html]);
 
   return (

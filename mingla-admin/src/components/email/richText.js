@@ -33,3 +33,12 @@ export function sanitizeLocalRichText(value) {
       }
     });
 }
+
+// Writes `html` (sanitised) into `node` only when it differs from what the node
+// already holds. Returns true when it wrote. Typing reports the node's own
+// innerHTML back as `html`, so typing never writes.
+export function syncEditableHtml(node, html, sanitize = sanitizeLocalRichText) {
+  if (!node || node.innerHTML === html) return false;
+  node.innerHTML = sanitize(html);
+  return true;
+}
