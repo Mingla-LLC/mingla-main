@@ -79,8 +79,12 @@ Deno.test("auto-approved anonymous primary plus two guests", () => {
     notify.includes("buildRsvpPassPdf"),
     "eligible email must use the shared PDF renderer",
   );
+  // [TEST-MOD-APPROVED #4422] The dispatcher now carries every file the
+  // worker gives it (calendar file + QR PDF), so the PDF is pinned at both
+  // ends: the worker pushes it, the dispatcher forwards the list.
   assert(
-    dispatcher.includes("attachments: [input.attachment]"),
+    dispatcher.includes("? { attachments: input.attachments }") &&
+      notify.includes("attachments.push({\n          filename: pdf.filename,"),
     "eligible email must attach the PDF",
   );
   assert(
