@@ -11,7 +11,9 @@
 import {
   addDays,
   briefLintMessage,
+  gigZone,
   lintPublicBrief,
+  minFeeError,
   minorToWholeText,
   programErrorMessage,
 } from "../../utils/creatorProgramFormat";
@@ -109,6 +111,9 @@ export function emptyBrief(): BriefForm {
 
 /** Prefill from an existing gig (edit, or Book again). */
 export function briefFromGig(gig: HostGig, currency: string): BriefForm {
+  // #4402 (H20) — Edit gig shows the same time as the gig header: the stored
+  // instant read in the gig's own zone, not as UTC.
+  const zone = gigZone(gig);
   const platforms = (Array.isArray(gig.deliverables) ? gig.deliverables : [])
     .map((item) => item.platform)
     .filter(
@@ -132,13 +137,13 @@ export function briefFromGig(gig: HostGig, currency: string): BriefForm {
     platforms:
       platforms.length > 0 ? Array.from(new Set(platforms)) : ["instagram"],
     videoDueDay: gig.post_by ?? "",
-    videoDueTime: timeOf(gig.video_due_at),
+    videoDueTime: timeOf(gig.video_due_at, zone),
     ...(gig.shoot_window_start &&
     gig.shoot_window_start === gig.shoot_window_end
       ? {
           shootMode: "day" as const,
           shootDay: gig.shoot_window_start,
-          shootTime: timeOf(gig.shoot_at),
+          shootTime: timeOf(gig.shoot_at, zone),
         }
       : { shootMode: "open" as const, shootDay: "", shootTime: "" }),
     slots: typeof gig.slots === "number" ? gig.slots : 1,
@@ -151,8 +156,28 @@ export function briefFromGig(gig: HostGig, currency: string): BriefForm {
 }
 
 /** "HH:MM" from a stored "YYYY-MM-DDTHH:MM" value, or "". */
-function timeOf(value: unknown): string {
+export function timeOf(value: unknown, timezone?: string | null): string {
   if (typeof value !== "string") return "";
+  if (timezone) {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      try {
+        const parts = new Intl.DateTimeFormat("en-GB", {
+          timeZone: timezone,
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        }).formatToParts(date);
+        const pick = (type: string): string =>
+          parts.find((part) => part.type === type)?.value ?? "";
+        if (pick("hour") && pick("minute")) {
+          return `${pick("hour")}:${pick("minute")}`;
+        }
+      } catch {
+        // Unknown zone: fall through to the stored clock time.
+      }
+    }
+  }
   const match = /T(\d{2}:\d{2})/.exec(value);
   return match ? match[1] : "";
 }
@@ -218,6 +243,11 @@ export function validateBrief(
   if (!Number.isInteger(form.slots) || form.slots < 1 || form.slots > 10)
     errors.slots = "Hire between 1 and 10 creators.";
   if (payMinor === null) errors.pay = "Enter the most you'll pay each creator.";
+  // #4402 (D2) — the server refuses a budget below the minimum; say it first.
+  else {
+    const below = minFeeError(payMinor, ctx.currency);
+    if (below) errors.pay = below;
+  }
   if (!form.cityId) errors.city = "Pick the city the shoot is in.";
   return errors;
 }
@@ -365,6 +395,8 @@ export function briefServerErrors(result: {
   error?: string;
   field?: string;
   reasons?: string[];
+  min_minor?: number;
+  currency?: string;
 }): BriefErrors {
   if (result.error === "public_brief_not_anonymous") {
     return {
@@ -381,6 +413,16 @@ export function briefServerErrors(result: {
     return {
       videoDue:
         "The video can't be due before the shoot. Pick a later time or an earlier shoot.",
+    };
+  }
+  if (result.error === "fee_below_minimum") {
+    const min = (result as { min_minor?: number; currency?: string }).min_minor;
+    const code = (result as { currency?: string }).currency;
+    return {
+      pay:
+        typeof min === "number" && code
+          ? (minFeeError(min - 1, code) ?? "That is below the minimum creator fee.")
+          : "That is below the minimum creator fee.",
     };
   }
   if (result.error === "pay_required") {

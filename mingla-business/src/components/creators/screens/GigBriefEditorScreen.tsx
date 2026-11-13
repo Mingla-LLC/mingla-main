@@ -50,19 +50,23 @@ import {
   type ShootMode,
 } from "../../../components/programs/gigBrief";
 import { CREATOR_FORMATS } from "../../../services/creatorProgramContract";
-import { creatorGigsService } from "../../../services/creatorGigsService";
 import {
-  fetchProgramCities,
+  creatorGigsService,
+  fetchGigCities,
+  type GigCity,
+} from "../../../services/creatorGigsService";
+import {
   fetchPromoteListing,
   matchCity,
-  type ProgramCity,
   type PromoteListing,
 } from "../../../services/promoteListingService";
 import {
   bookingFeeMinor,
   briefLintMessage,
   formatName,
+  groupCitiesByCountry,
   lintPublicBrief,
+  minFeeHint,
   programErrorMessage,
   programMoney,
   shortDate,
@@ -144,7 +148,8 @@ export default function GigBriefEditor(): React.ReactElement {
   const listingKind = params.listingKind === "venue" ? "venue" : "event";
   const [listingId, setListingId] = useState(params.listingId ?? "");
   const [listing, setListing] = useState<PromoteListing | null>(null);
-  const [cities, setCities] = useState<ProgramCity[]>([]);
+  const [cities, setCities] = useState<GigCity[]>([]);
+  const [cityQuery, setCityQuery] = useState("");
   const [form, setForm] = useState<BriefForm>(emptyBrief);
   const [ready, setReady] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -163,7 +168,7 @@ export default function GigBriefEditor(): React.ReactElement {
         sourceGigId
           ? creatorGigsService.hostHome(brandId).catch(() => null)
           : Promise.resolve(null),
-        fetchProgramCities().catch(() => [] as ProgramCity[]),
+        fetchGigCities().catch(() => [] as GigCity[]),
       ]);
       if (!active) return;
       const source = home?.gigs.find((gig) => gig.id === sourceGigId) ?? null;
@@ -571,16 +576,37 @@ export default function GigBriefEditor(): React.ReactElement {
           ) : null}
           <FieldError message={errors.shoot} />
           <Text style={styles.fieldLabel}>Shoot city</Text>
-          <View style={styles.chips}>
-            {cities.map((city) => (
-              <Chip
-                key={city.id}
-                label={city.name}
-                selected={form.cityId === city.id}
-                onPress={() => update("cityId", city.id)}
-              />
-            ))}
-          </View>
+          {cities.length > 8 ? (
+            <Input
+              value={cityQuery}
+              onChangeText={setCityQuery}
+              placeholder="Search cities or countries"
+              accessibilityLabel="Search shoot cities"
+            />
+          ) : null}
+          {(() => {
+            // #4402 (H23) — grouped by country, the listing's country first.
+            const mine = cities.find((city) => city.id === form.cityId)?.country;
+            const groups = groupCitiesByCountry(cities, cityQuery, mine);
+            if (groups.length === 0) {
+              return <Muted>No cities match that search.</Muted>;
+            }
+            return groups.map((group) => (
+              <View key={group.country} style={styles.cityGroup}>
+                <Text style={styles.tiny}>{group.country}</Text>
+                <View style={styles.chips}>
+                  {group.cities.map((city) => (
+                    <Chip
+                      key={city.id}
+                      label={city.name}
+                      selected={form.cityId === city.id}
+                      onPress={() => update("cityId", city.id)}
+                    />
+                  ))}
+                </View>
+              </View>
+            ));
+          })()}
           <FieldError message={errors.city} />
 
           <SectionLabel>Deal</SectionLabel>
@@ -596,7 +622,9 @@ export default function GigBriefEditor(): React.ReactElement {
           <View style={[styles.money, errors.pay ? styles.boxError : null]}>
             <Text style={styles.moneyGlyph}>{currencyGlyph || currency}</Text>
             <TextInput
-              value={form.payText}
+              value={
+                form.payText ? Number(form.payText).toLocaleString("en-US") : ""
+              }
               onChangeText={(value) =>
                 update("payText", value.replace(/[^0-9]/g, ""))
               }
@@ -608,6 +636,9 @@ export default function GigBriefEditor(): React.ReactElement {
             />
           </View>
           <Text style={styles.tiny}>Creators see this as the most the gig pays.</Text>
+          {minFeeHint(currency, payMinor) ? (
+            <Text style={styles.tiny}>{minFeeHint(currency, payMinor)}</Text>
+          ) : null}
           <FieldError message={errors.pay} />
           {form.goal === "sell" ? (
             <>
@@ -677,6 +708,7 @@ const styles = StyleSheet.create({
   },
   stepCount: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  cityGroup: { gap: spacing.xs },
   fieldLabel: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
   tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
   optional: { color: textTokens.tertiary, fontSize: 12 },

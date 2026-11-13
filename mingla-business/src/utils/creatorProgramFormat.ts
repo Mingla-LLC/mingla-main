@@ -86,6 +86,147 @@ export function bookingFeeMinor(feeMinor: number): number {
   return Math.floor((feeMinor * 1500 + 5000) / 10000);
 }
 
+/**
+ * #4402 (D2) — the smallest creator fee Mingla accepts, in minor units. The
+ * server enforces it; this copy only explains it. Other currencies have no
+ * minimum (OQ-7), so they return null.
+ */
+const GIG_MIN_FEE_MINOR: Record<string, number> = {
+  NGN: 10000,
+  USD: 1000,
+  EUR: 1000,
+  GBP: 1000,
+};
+
+export function gigMinFeeMinor(currency: string | null | undefined): number | null {
+  const code = typeof currency === "string" ? currency.toUpperCase() : "";
+  return Object.prototype.hasOwnProperty.call(GIG_MIN_FEE_MINOR, code)
+    ? GIG_MIN_FEE_MINOR[code]
+    : null;
+}
+
+/** "The minimum creator fee is ₦100." — null when the fee is fine or no minimum applies. */
+export function minFeeError(
+  feeMinor: number | null | undefined,
+  currency: string,
+): string | null {
+  const min = gigMinFeeMinor(currency);
+  if (min === null || typeof feeMinor !== "number" || feeMinor >= min) return null;
+  return `The minimum creator fee is ${programMoney(min, currency)}.`;
+}
+
+/**
+ * The hint under a fee field. Host copy speaks to the host ("you also pay").
+ * With a typed fee at or above the minimum it shows the real total.
+ */
+export function minFeeHint(
+  currency: string,
+  feeMinor?: number | null,
+  voice: "host" | "creator" = "host",
+): string | null {
+  const min = gigMinFeeMinor(currency);
+  if (min === null) return null;
+  const lead = `Minimum ${programMoney(min, currency)}.`;
+  const who = voice === "host" ? "You also pay" : "The host also pays";
+  const cost = voice === "host" ? "costs you" : "costs the host";
+  if (typeof feeMinor === "number" && feeMinor >= min) {
+    return `${lead} ${who} Mingla's 15% booking fee on top, so ${programMoney(feeMinor, currency)} ${cost} ${programMoney(feeMinor + bookingFeeMinor(feeMinor), currency)}.`;
+  }
+  return `${lead} ${who} Mingla's 15% booking fee on top.`;
+}
+
+/**
+ * #4402 — what a host gets back when they cancel (mirrors gig_refund_quote).
+ * Before the creator accepts: everything paid. After accept, before the
+ * script is approved: 75% of the fee plus the booking fee.
+ */
+export function cancelRefundQuote(
+  kind: "offer" | "gig",
+  feeMinor: number,
+  bookingMinor: number,
+): {
+  feeShareMinor: number;
+  bookingMinor: number;
+  totalMinor: number;
+  creatorKeepsMinor: number;
+} {
+  const feeShareMinor = kind === "offer" ? feeMinor : Math.round((feeMinor * 75) / 100);
+  return {
+    feeShareMinor,
+    bookingMinor,
+    totalMinor: feeShareMinor + bookingMinor,
+    creatorKeepsMinor: feeMinor - feeShareMinor,
+  };
+}
+
+/**
+ * Initials from letters only ("S(eth) Ogieva" → "Seth Ogieva" for the
+ * Initials badge → "SO"); an email falls back to its first letter.
+ */
+export function rosterInitialsName(
+  name: string | null | undefined,
+  email?: string | null,
+): string {
+  const words = (name ?? "")
+    .split(/\s+/)
+    .map((part) => part.replace(/[^\p{L}]/gu, ""))
+    .filter((part) => part.length > 0);
+  if (words.length > 0) return words.join(" ");
+  const letter = (email ?? "").match(/\p{L}/u);
+  return letter ? letter[0] : "?";
+}
+
+/**
+ * #4402 (H23) — group cities by country (the brand's country first, the rest
+ * A to Z) after a case-insensitive search on the name or country.
+ */
+export function groupCitiesByCountry<T extends { name: string; country: string }>(
+  cities: readonly T[],
+  query: string,
+  brandCountry?: string | null,
+): Array<{ country: string; cities: T[] }> {
+  const needle = query.trim().toLowerCase();
+  const kept = needle
+    ? cities.filter(
+        (city) =>
+          city.name.toLowerCase().includes(needle) ||
+          city.country.toLowerCase().includes(needle),
+      )
+    : [...cities];
+  const byCountry = new Map<string, T[]>();
+  for (const city of kept) {
+    const key = city.country || "Other";
+    byCountry.set(key, [...(byCountry.get(key) ?? []), city]);
+  }
+  const mine = (brandCountry ?? "").toLowerCase();
+  return [...byCountry.entries()]
+    .sort(([a], [b]) => {
+      const aMine = a.toLowerCase() === mine ? 0 : 1;
+      const bMine = b.toLowerCase() === mine ? 0 : 1;
+      return aMine - bMine || a.localeCompare(b);
+    })
+    .map(([country, list]) => ({
+      country,
+      cities: [...list].sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+}
+
+/**
+ * #4402 (item 18) — only published, upcoming events can carry a gig. `ends`
+ * are the event's date end times; an event with none is left out.
+ */
+export function isUpcomingListing(
+  row: { status?: string | null; ends?: ReadonlyArray<string | null> },
+  now: Date = new Date(),
+): boolean {
+  if (row.status !== "scheduled" && row.status !== "live") return false;
+  return (row.ends ?? []).some((end) => {
+    if (!end) return false;
+    const time = new Date(end).getTime();
+    return Number.isFinite(time) && time >= now.getTime();
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Dates
 // ---------------------------------------------------------------------------
@@ -145,6 +286,88 @@ export function shortDateTime(value: string | null | undefined): string {
       ? `${hour12} ${hours < 12 ? "AM" : "PM"}`
       : `${hour12}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
   return `${WEEKDAYS[date.getDay()]} ${MONTHS[date.getMonth()]} ${date.getDate()}, ${time}`;
+}
+
+/** "Africa/Lagos" → "Lagos time"; "UTC" → "UTC". The same words on every device. */
+export function zoneLabel(timezone: string | null | undefined): string {
+  if (typeof timezone !== "string" || timezone.length === 0) return "";
+  if (timezone === "UTC" || timezone === "Etc/UTC") return "UTC";
+  const city = timezone.split("/").pop() ?? timezone;
+  return `${city.replace(/_/g, " ")} time`;
+}
+
+/**
+ * #4402 (item 12) — "Tue Dec 15, 6:00 PM Lagos time": a gig's own zone, never
+ * the phone's. With no zone it falls back to the phone's time without a label
+ * rather than guessing one.
+ */
+export function formatInZone(
+  value: string | null | undefined,
+  timezone: string | null | undefined,
+): string {
+  const date = parseProgramDate(value);
+  if (!date) return "";
+  if (typeof timezone !== "string" || timezone.length === 0) {
+    return shortDateTime(value);
+  }
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).formatToParts(date);
+    const pick = (type: string): string =>
+      parts.find((part) => part.type === type)?.value ?? "";
+    // #4402: Hermes on iOS splits formatToParts on punctuation, so hour /
+    // minute / dayPeriod can be missing ("undefined:undefined"). The time
+    // comes from format() then, which every engine renders whole.
+    const time =
+      pick("hour") && pick("minute") && pick("dayPeriod")
+        ? `${pick("hour")}:${pick("minute")} ${pick("dayPeriod").toUpperCase()}`
+        : new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone,
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          })
+            .format(date)
+            .replace(/\u202f|\u00a0/g, " ")
+            .toUpperCase();
+    return `${pick("weekday")} ${pick("month")} ${pick("day")}, ${time} ${zoneLabel(timezone)}`;
+  } catch {
+    return shortDateTime(value);
+  }
+}
+
+/**
+ * #4402 — the posting deadline as people read it. The server stores the first
+ * instant after the grace day ("00:00"); show the last minute ("11:59 PM") the
+ * day before, the same as the creator's app.
+ */
+export function postDeadlineShownIso(deadlineAt: string | null | undefined): string | null {
+  if (typeof deadlineAt !== "string" || deadlineAt.length === 0) return null;
+  const ms = Date.parse(deadlineAt);
+  return Number.isFinite(ms) ? new Date(ms - 60_000).toISOString() : null;
+}
+
+/** The gig's zone from a workspace or gig row (the server sends `timezone`). */
+export function gigZone(source: unknown): string | null {
+  if (!source || typeof source !== "object") return null;
+  const row = source as Record<string, unknown>;
+  const direct = row.timezone;
+  if (typeof direct === "string" && direct.length > 0) return direct;
+  for (const key of ["gig", "contract"]) {
+    const nested = row[key];
+    if (nested && typeof nested === "object") {
+      const zone = (nested as Record<string, unknown>).timezone;
+      if (typeof zone === "string" && zone.length > 0) return zone;
+    }
+  }
+  return null;
 }
 
 /** "Nov 20–25", "Nov 28 – Dec 3", or a single "Nov 20". */
@@ -388,14 +611,14 @@ const EVENT_WORDS: Record<string, string> = {
   delivered: "Video sent for review",
   fix_requested: "Fix requested",
   approved: "Video approved",
-  posts_submitted: "Post links added",
+  posts_submitted: "Links added",
   posts_verified: "Posts verified",
   released: "Payment released to the creator",
   completed: "Done",
   disputed: "Dispute opened",
   rating_submitted: "Rating left",
-  counter_sent: "Creator suggested a different fee",
-  counter_accepted: "New fee agreed",
+  counter_sent: "Counter-offer sent",
+  counter_accepted: "Counter-offer accepted",
   counter_declined: "Counter-offer declined",
 };
 
@@ -414,17 +637,26 @@ const ACTION_EVENT_WORDS: Record<string, string> = {
   auto_approve: "Video approved",
   lock_script: "Script approved",
   auto_lock: "Script approved",
-  posts_passed: "Posts verified",
   host_confirm: "Posts verified",
   auto_confirm: "Posts verified",
   release: "Payment released to the creator",
   expire: "Offer expired",
   cancel: "Offer cancelled",
   offer_created: "Offer sent",
-  hold_captured: "Payment received",
+  hold_captured: "Payment held by Mingla",
   offer_payment_abandoned: "Payment not completed",
   delivery_submitted: "Video sent for review",
   refund_recorded: "Refund recorded",
+  plan_confirmed: "Shoot time confirmed",
+  start_script: "Script started",
+  send_script: "Script sent",
+  request_script_changes: "Script changes requested",
+  request_fix: "Fix requested",
+  start_posting: "Posting started",
+  posts_passed: "All posts checked",
+  posts_failed: "A post needs a fix",
+  gig_release_recorded: "Payment released to the creator",
+  post_reviewed: "Post checked",
   topup_captured: "Difference paid",
   counter_refund_recorded: "Difference refunded",
   terms_change_declined: "Change declined",
@@ -435,8 +667,28 @@ const ACTION_EVENT_WORDS: Record<string, string> = {
   dispute_release_recorded: "Payment released to the creator",
 };
 
-export function activityWords(kind: string | null | undefined): string | null {
+export function activityWords(
+  kind: string | null | undefined,
+  data?: Record<string, unknown> | null,
+): string | null {
   if (typeof kind !== "string") return null;
+  if (kind === "post_reviewed") {
+    return data?.result === "failed"
+      ? "Post checked: failed"
+      : data?.result === "passed"
+        ? "Post checked: passed"
+        : "Post checked";
+  }
+  if (kind === "refund_recorded" || kind === "counter_refund_recorded") {
+    const minor = data?.refund_minor;
+    const currency = data?.currency;
+    if (typeof minor === "number" && typeof currency === "string") {
+      return `Refund of ${programMoney(minor, currency)} recorded`;
+    }
+  }
+  if (kind.startsWith("dispute_") && !(kind in ACTION_EVENT_WORDS)) {
+    return "Dispute updated";
+  }
   if (Object.prototype.hasOwnProperty.call(EVENT_WORDS, kind))
     return EVENT_WORDS[kind];
   if (Object.prototype.hasOwnProperty.call(ACTION_EVENT_WORDS, kind))
@@ -571,6 +823,12 @@ const ERROR_WORDS: Record<string, string> = {
   rollout_required: "Creator gigs aren't available for this brand yet.",
   fix_rounds_exhausted:
     "Both fix rounds are used. Approve the video or open a dispute.",
+  // #4402 — re-offering after a cancel, and the minimum creator fee.
+  interest_not_open: "This creator is no longer available for this gig.",
+  already_offered:
+    "You already have an open offer with this creator. Open it from Creators.",
+  gig_not_open: "This gig is closed. Reopen it to make offers.",
+  fee_below_minimum: "That fee is below the minimum creator fee.",
 };
 
 /** Turn a thrown error or `{ok:false,error}` code into words a host can act on. */
@@ -760,6 +1018,48 @@ export function creatorVideoSurface(
 ): CreatorVideoSurface {
   if (!isCreatorEmbedUrl(url)) return "error";
   return platformOS === "web" ? "iframe" : "webview";
+}
+
+/**
+ * #4402 (item 17) — a delivery's poster image, when the server sends one
+ * (`thumbnail_url`, `thumbnail` or `poster_url`, plain https only). Null shows
+ * a branded poster instead of a blank box.
+ */
+export function deliveryPosterUrl(delivery: unknown): string | null {
+  if (!delivery || typeof delivery !== "object") return null;
+  const row = delivery as Record<string, unknown>;
+  for (const key of ["thumbnail_url", "thumbnail", "poster_url"]) {
+    const value = row[key];
+    if (typeof value === "string" && /^https:\/\//.test(value)) return value;
+  }
+  return null;
+}
+
+/**
+ * #4402 (H18) — what the host is told right after posting. It only claims
+ * reach the server counted: `verified_creator_count` in the gig's city.
+ */
+export function gigReachCopy(gig: unknown): { tone: "ok" | "none" | "unknown"; body: string } {
+  const row = gig && typeof gig === "object" ? (gig as Record<string, unknown>) : {};
+  const count = row.verified_creator_count;
+  const city =
+    typeof row.city_name === "string" && row.city_name ? row.city_name : "your city";
+  if (typeof count === "number" && count > 0) {
+    return {
+      tone: "ok",
+      body: `Your gig is live. ${count} verified creator${count === 1 ? "" : "s"} in ${city} can see it.`,
+    };
+  }
+  if (count === 0) {
+    return {
+      tone: "none",
+      body: `Your gig is live. There are no verified creators in ${city} yet; we'll tell you when someone applies.`,
+    };
+  }
+  return {
+    tone: "unknown",
+    body: "Your gig is live. We'll tell you when a creator applies.",
+  };
 }
 
 export const CREATOR_VIDEO_ERROR = "This video couldn't play. Close it and try again in a moment.";

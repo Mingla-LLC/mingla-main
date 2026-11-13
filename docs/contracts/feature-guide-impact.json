@@ -307,7 +307,24 @@
         "supabase/functions/stripe-webhook/index.ts",
         "supabase/migrations/20280702204402_issue_4402_gig_payment_capture.sql",
         "supabase/functions/gig-refund/function-policy.json",
-        "supabase/functions/gig-refund/handler.ts"
+        "supabase/functions/gig-refund/handler.ts",
+        "app-mobile/src/components/creator/CreatorDobField.tsx",
+        "app-mobile/src/components/creator/contract/contractWords.ts",
+        "app-mobile/src/components/programs/useProgramRefresh.ts",
+        "app-mobile/src/components/wallet/EarningsWalletScreen.tsx",
+        "mingla-admin/src/pages/ProgramGigsPage.jsx",
+        "mingla-business/src/components/creators/CreatorsHomeView.tsx",
+        "mingla-business/src/components/creators/screens/CreatorRosterScreen.tsx",
+        "mingla-business/src/components/creators/screens/GigApplicantsScreen.tsx",
+        "mingla-business/src/components/programs/gigBrief.ts",
+        "mingla-business/src/components/programs/screenLifecycle.ts",
+        "supabase/functions/_shared/gigTimers.ts",
+        "supabase/migrations/20280704004402_issue_4402_gig_posting_and_post_review.sql",
+        "supabase/migrations/20280704104402_issue_4402_gig_min_fee_and_interest_edit.sql",
+        "supabase/migrations/20280704204402_issue_4402_local_pick_window.sql",
+        "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
+        "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
+        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql"
       ]
     },
     {
@@ -1817,7 +1834,24 @@
     {
       "capability_key": "rsvp-passes",
       "paths": [
-        "app-mobile/src/components/activity/RsvpPassSheet.tsx"
+        "app-mobile/src/components/activity/RsvpPassSheet.tsx",
+        "supabase/functions/_shared/claimLink.ts",
+        "supabase/functions/_shared/email/purchaseBody.ts",
+        "supabase/functions/_shared/email/purchaseCopy.ts",
+        "supabase/functions/_shared/messageLinks.ts",
+        "supabase/functions/_shared/notifyV2.ts",
+        "supabase/functions/_shared/rsvpPassMessage.ts",
+        "supabase/functions/_shared/secretBundle.ts",
+        "supabase/functions/_shared/sms/buyerSms.ts",
+        "supabase/functions/_shared/unreachedGuestAlert.ts",
+        "supabase/functions/notification-retry-sweeper/index.ts",
+        "supabase/functions/offering-invite-dispatch/index.ts",
+        "supabase/functions/public-submit-rsvp/index.ts",
+        "supabase/functions/rsvp-notify/copy.ts",
+        "supabase/functions/rsvp-notify/eventUpdate.ts",
+        "supabase/functions/rsvp-notify/index.ts",
+        "supabase/migrations/20280705004422_issue_4422_transactional_delivery_truth.sql",
+        "supabase/migrations/20280705104422_issue_4422_rsvp_message_links.sql"
       ]
     },
     {
@@ -3660,7 +3694,13 @@
       "paths": [
         "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx",
         "mingla-business/src/components/brand/LazyBrandPaystackOnboardView.tsx",
-        "mingla-business/src/components/brand/LazyBrandPaystackOnboardView.web.tsx"
+        "mingla-business/src/components/brand/LazyBrandPaystackOnboardView.web.tsx",
+        "app-mobile/src/services/referralEarningsService.ts",
+        "supabase/functions/payee-account-paystack-recipient/index.ts",
+        "supabase/migrations/20280704304402_issue_4402_earnings_payout_floor.sql",
+        "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
+        "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
+        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql"
       ]
     }
   ]

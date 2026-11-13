@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { postHogService } from './postHogService';
 import { programRead, programWrite } from './programApi';
 import { toProgramError } from './programResult';
+import type { PickWindow } from '../utils/programFormat';
 
 export type LocalCityProgram = {
   city_id: string; city: string; seats: number;
@@ -37,6 +38,8 @@ export type LocalMonth = Record<string, unknown> & {
 };
 export type LocalHome = {
   local: LocalSeat; current_month: LocalMonth | null; months: LocalMonth[];
+  /** #4402: whether a pick is open now, and why (month start, new seat, or opened by Admin). */
+  pick_window?: PickWindow | null;
   payout: null | { stripe_status?: string | null; paystack_status?: string | null; currency?: string | null };
 };
 export type LocalPlaceCandidate = { id: string; name: string; address: string | null; primary_type: string | null; eligible: boolean; reason: string | null };

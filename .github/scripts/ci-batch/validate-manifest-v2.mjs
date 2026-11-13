@@ -480,14 +480,21 @@ export function phase3dContractDigest(manifest) {
 // #4402: re-sealed after merging origin/main 87e922d58f (the shared payee bank rows kept beside the creator review and band-change rows).
 // #3355 merge of #4404 (origin/main 7ace80fa0a; #4389 and #4402 rows kept beside the #3355 rows): renumbered the fifteen #3355 migrations to 20280702013355 … 20280702153355 (above main's 20280701304389), in order; re-sealed.
 // #3355 rework 9: register 20280702163355 (deleting a chat closes its Ari flow runs) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
-// #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
+// #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay, and M2 in the #2117 one; re-sealed.
+// #4402 merge of origin/main d116790964 (#4422 rows and #1931 skips kept beside the #4402 ones); re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
+// #4402: register 20280704504402 (NGN minimum creator fee is ₦100) in the #1857, #1931 and #2117 replay lanes; re-sealed.
+// #4402: register 20280704604402 (upload deadline follows the agreed due) and its PostgreSQL proof; re-sealed.
+// #4402 merge of origin/main a5a5c59094 (#4419 20280706004419 rows kept after the #4402 rows); re-sealed.
+// #4402 CI fix: skip the seven polish migrations (gig tables from skipped #3872) by exact filename in the #1931 pre-landing replay, and M2 in the #2117 one; re-sealed.
+// #4402 merge of origin/main d116790964 (#4422 rows and #1931 skips kept beside the #4402 ones); re-sealed.
 // #4423 Wave 2: re-sealed after registering the four Wave 2 migrations and two pg17 proofs; MANIFEST.json phase3eContractSha256 matches.
 // #4423 Wave 3: re-sealed after registering the two Wave 3 migrations and their pg17 proof; MANIFEST.json phase3eContractSha256 matches.
 // #4423 Wave 4a: re-sealed after registering the Wave 4a migration and its pg17 proof; MANIFEST.json phase3eContractSha256 matches.
 // #4423 Wave 4a CI fix: re-sealed after adding the Wave 4a migration to the #1931 and #2117 skip lists; MANIFEST.json phase3eContractSha256 matches.
 // #4423 integration: merged origin/main a5a5c59094 (#4419 20280706004419 rows kept beside the #4423 rows) and renamed the thirteen #4423 migrations 20280705*4423 to 20280707*4423 (after 20280706004419), in order; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7ecefd169b8aed582fee333a1ba1caa274f0837e410f244d9545725e79e439ad";
+// #4423 integration 2: merged origin/main ce482c996c; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "92d521d5895f9b1c18a51c85c4c69329fc211a05e3168528aefa26c7f6d8abcf";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

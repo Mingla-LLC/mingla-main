@@ -163,7 +163,7 @@ test("W3.3 money words come from money_state; paid names the date; null says not
   assert.doesNotMatch(releasedCardText("released", "ready", null, now), /Paid/);
   const screen = read("app/creator/contract/[contractId].tsx");
   assert.match(screen, /releasedCardText\(state, w\.money_state, w\.money_paid_at\)/);
-  assert.match(screen, /contractCardLabel\(state, due\)/);
+  assert.match(screen, /contractCardLabel\(state, due(, [^)]*)?\)/);
 });
 
 // ── W2.2 / W5.1 / keyboard rule (source contracts) ─────────────────────────

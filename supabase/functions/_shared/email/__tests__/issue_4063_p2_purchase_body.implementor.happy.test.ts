@@ -219,3 +219,45 @@ Deno.test("#4063 enforces claim contacts and safe action URLs", () => {
     "purchase_body_button_url_missing_or_invalid",
   );
 });
+
+// Issue #4422 — the four RSVP states without a pass now carry a "See the
+// event" button, and the Maybe email can add the app line, linked on words.
+Deno.test("#4422 RSVP state emails link the event page and the app on words", () => {
+  for (
+    const template of [
+      "rsvp_pending",
+      "rsvp_waitlisted",
+      "rsvp_maybe",
+      "rsvp_not_going",
+    ] as const
+  ) {
+    assertEquals(
+      purchaseEmailCopy({ ...BASE, template }).buttonLabel,
+      "See the event",
+      template,
+    );
+  }
+  const result = renderPurchaseBody({
+    variant: "purchase_message",
+    copy: purchaseEmailCopy({ ...BASE, template: "rsvp_maybe" }),
+    buttonUrl: "https://host.usemingla.com/e/bachata-lagos/takeover",
+    appLink: true,
+  });
+  assertStringIncludes(
+    result.html,
+    'Or <a href="https://usemingla.com/download"',
+  );
+  assertStringIncludes(result.html, ">get the Mingla app</a>");
+  assertStringIncludes(
+    result.text,
+    "Or get the Mingla app to keep your plans in one place: https://usemingla.com/download",
+  );
+  const visible = result.html.replace(/<[^>]+>/g, " ");
+  assert(!/https?:\/\//.test(visible), `raw URL in visible HTML: ${visible}`);
+  const plain = renderPurchaseBody({
+    variant: "purchase_message",
+    copy: purchaseEmailCopy({ ...BASE, template: "rsvp_maybe" }),
+    buttonUrl: "https://host.usemingla.com/e/bachata-lagos/takeover",
+  });
+  assert(!plain.html.includes("get the Mingla app"), "appLink is opt-in");
+});

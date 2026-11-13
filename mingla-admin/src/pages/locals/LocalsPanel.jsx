@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/Button";
 import { Input, Textarea, Toggle } from "../../components/ui/Input";
 import { AlertCard, SectionCard } from "../../components/ui/Card";
 import { Tabs } from "../../components/ui/Tabs";
+import { Modal, ModalBody, ModalFooter } from "../../components/ui/Modal";
 import { useToast } from "../../context/ToastContext";
 import { ProgramConversationPanel } from "../../components/programs/ProgramConversationPanel";
 import {
@@ -19,6 +20,7 @@ import {
   getCreatorMediaPlayback,
   getLocalQueue,
   listLocalProgramPeople,
+  openLocalPickWindow,
   prepareLocalPayout,
   saveCityProgram,
   voidLocalMonth,
@@ -28,7 +30,18 @@ import {
   checkProgramDraft,
   LOCAL_MONTH_WORDS,
   PAYOUT_CURRENCIES,
+  PICK_WINDOW_DAYS_DEFAULT,
+  PICK_WINDOW_DAYS_MAX,
+  PICK_WINDOW_DAYS_MIN,
+  POST_REASON_MAX,
   SOCIAL_CHECK_WORDS,
+  checkPickWindowDraft,
+  localAlreadyPicked,
+  localHistoryLine,
+  pickLocalWord,
+  pickWindowButtonLabel,
+  pickWindowConfirmLabel,
+  pickWindowSummary,
   minorToWhole,
   money,
   moneyStateWord,
@@ -344,6 +357,97 @@ function CityProgramsWorkspace({ queue, freeCities, onSave }) {
   return <div className="space-y-4" data-testid="local-city-programs"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{queue.programs.map((program) => { const rate = programRate(program); return <CityCard key={`${program.city_id}:${program.seats}:${rate.minor}:${rate.currency}:${program.is_open}`} program={program} onSave={onSave} />; })}</div>{!queue.programs.length ? <SectionCard><QueueEmpty title="No city programs yet" detail="Create the first city program below." /></SectionCard> : null}<SectionCard title="Add a city" subtitle="Each city has its own seats, monthly rate, payout currency, and application state."><NewCityForm cities={freeCities} onSave={onSave} /></SectionCard></div>;
 }
 
+// ── #4402 (D5): Locals and their pick window ───────────────────────────────
+
+function PickWindowDialog({ local, onClose, onConfirm }) {
+  const [days, setDays] = useState(String(PICK_WINDOW_DAYS_DEFAULT));
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const draft = checkPickWindowDraft({ days, reason });
+  const extending = Boolean(local.window?.open);
+  const submit = async () => {
+    if (!draft.ok || saving) return;
+    setSaving(true); setError("");
+    try { await onConfirm(local, draft.reason, draft.days); }
+    catch (cause) { setError(programErrorMessage(cause, "Couldn't open the pick window. Try again.")); setSaving(false); }
+  };
+  return (
+    <Modal open onClose={saving ? () => {} : onClose} title={`${extending ? "Extend" : "Open"} pick window · ${displayName(local, "Local")}`} size="sm">
+      <ModalBody className="space-y-4">
+        <p className="text-sm text-[var(--color-text-secondary)]">Lets this Local pick a place for this month outside the normal window. The reason is saved in History.</p>
+        <div>
+          <label htmlFor={`pick-days-${local.local_id}`} className="mb-1.5 block text-sm font-medium text-[var(--color-text-primary)]">Days</label>
+          <input id={`pick-days-${local.local_id}`} type="number" inputMode="numeric" min={PICK_WINDOW_DAYS_MIN} max={PICK_WINDOW_DAYS_MAX} step={1} className={selectClass} value={days} onChange={(e) => setDays(e.target.value)} aria-invalid={draft.ok ? undefined : Boolean(draft.errors.days)} />
+          {!draft.ok && draft.errors.days ? <p className="mt-1 text-xs text-[var(--color-error-700)]">{draft.errors.days}</p> : null}
+        </div>
+        <Textarea label="Reason" value={reason} maxLength={POST_REASON_MAX} onChange={(e) => setReason(e.target.value)} error={reason && !draft.ok ? draft.errors.reason : undefined} helper={`${reason.trim().length} / ${POST_REASON_MAX}. Required, 5 to 300 characters.`} />
+        {error ? <p role="alert" className="text-sm text-[var(--color-error-700)]">{error}</p> : null}
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button loading={saving} disabled={!draft.ok} onClick={() => void submit()}>{pickWindowConfirmLabel(days)}</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+function LocalHistory({ local }) {
+  const lines = (Array.isArray(local.history) ? local.history : []).map((event) => ({ event, text: localHistoryLine(event) })).filter((row) => row.text);
+  if (!lines.length) return <p className="text-xs text-[var(--color-text-tertiary)]">No history yet.</p>;
+  return (
+    <ul className="space-y-1.5">
+      {lines.map(({ event, text }, i) => (
+        <li key={event.id ?? `${event.at}-${i}`} className="text-xs text-[var(--color-text-secondary)]">
+          {text}<span className="ml-2 text-[var(--color-text-tertiary)]">{shortDateTime(event.at ?? event.created_at)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function LocalsWorkspace({ locals, onOpenWindow }) {
+  const [historyOf, setHistoryOf] = useState(null);
+  const selected = locals.find((l) => l.local_id === historyOf) ?? null;
+  return (
+    <SectionCard title="Locals" subtitle="Who can pick a place this month, and who opened a window." noPadding>
+      {locals.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] text-left text-sm">
+            <thead className="bg-[var(--gray-50)] text-xs text-[var(--color-text-tertiary)]"><tr><th className="px-4 py-3 font-medium">Local</th><th className="px-4 py-3 font-medium">Seat started</th><th className="px-4 py-3 font-medium">Pick</th><th className="px-4 py-3 font-medium">Pick window</th><th className="px-4 py-3 font-medium text-right">Action</th></tr></thead>
+            <tbody className="divide-y divide-[var(--gray-200)]">
+              {locals.map((local) => {
+                const win = pickWindowSummary(local.window);
+                const picked = localAlreadyPicked(local);
+                return (
+                  <tr key={local.local_id} className="align-top">
+                    <td className="px-4 py-3"><p className="font-medium text-[var(--color-text-primary)]">{displayName(local, "Local")}</p><p className="text-xs text-[var(--color-text-tertiary)]">{local.city || "—"}</p></td>
+                    <td className="px-4 py-3 text-[var(--color-text-secondary)]">{local.seat_started_on ? monthDay(local.seat_started_on) : "—"}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-primary)]">{pickLocalWord(local)}</td>
+                    <td className="px-4 py-3"><p className="text-[var(--color-text-primary)]">{win.text}</p>{win.source ? <p className="text-xs text-[var(--color-text-tertiary)]">{win.source}</p> : null}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="ghost" aria-expanded={historyOf === local.local_id} onClick={() => setHistoryOf(historyOf === local.local_id ? null : local.local_id)}>History</Button>
+                        <Button size="sm" variant="secondary" disabled={picked} title={picked ? "Already picked this month" : undefined} onClick={() => onOpenWindow(local)}>{pickWindowButtonLabel(local)}</Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : <QueueEmpty title="No active Locals" detail="Active Locals appear here with their pick window." />}
+      {selected ? <div className="border-t border-[var(--gray-200)] px-4 py-3"><h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">History · {displayName(selected, "Local")}</h3><LocalHistory local={selected} /></div> : null}
+    </SectionCard>
+  );
+}
+
+function monthDay(value) {
+  const d = new Date(`${String(value).slice(0, 10)}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 function localStatusWord(person) {
   if (person.has_local_record && person.program_status === "active") return "Active Local";
   if (person.has_local_record) return String(person.program_status || "Local").replaceAll("_", " ");
@@ -412,7 +516,7 @@ function LocalMessagesWorkspace({ people }) {
 
 export function LocalsPanel() {
   const { addToast } = useToast();
-  const [queue, setQueue] = useState({ agreement: null, cities: [], programs: [], applications: [], picks: [], reviews: [], payouts: [], people: [] });
+  const [queue, setQueue] = useState({ agreement: null, cities: [], programs: [], applications: [], picks: [], reviews: [], payouts: [], locals: [], people: [] });
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -427,6 +531,7 @@ export function LocalsPanel() {
   const [mediaLoading, setMediaLoading] = useState(null);
   const [mediaReviewed, setMediaReviewed] = useState({});
   const [socialChecks, setSocialChecks] = useState({});
+  const [windowFor, setWindowFor] = useState(null);
   const load = useCallback(async () => {
     setLoadError(""); setLoading(true);
     try {
@@ -460,9 +565,16 @@ export function LocalsPanel() {
     catch (cause) { setRowError((current) => ({ ...current, [errorKey]: programErrorMessage(cause, "This video cannot be played right now. Do not approve the review yet.") })); }
     finally { setMediaLoading(null); }
   };
+  const openWindow = async (local, reason, days) => {
+    await openLocalPickWindow(local.local_id, reason, days);
+    setWindowFor(null);
+    addToast({ variant: "success", title: `Pick window open for ${days} ${days === 1 ? "day" : "days"}.` });
+    await load();
+  };
   const tabs = [
     { id: "messages", label: `Messages · ${queue.people.length}` },
     { id: "applications", label: `Applications · ${queue.applications.length}` },
+    { id: "locals", label: `Locals · ${queue.locals.length}` },
     { id: "picks", label: `Picks · ${queue.picks.length}` },
     { id: "reviews", label: `Reviews · ${queue.reviews.length}` },
     { id: "payouts", label: `Payouts · ${queue.payouts.length}` },
@@ -479,6 +591,7 @@ export function LocalsPanel() {
         {tab === "messages" ? <LocalMessagesWorkspace people={queue.people} /> : (
         <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
           {tab === "applications" ? <ApplicationWorkspace queue={queue} selectedId={selectedApplicationId} onSelect={setSelectedApplicationId} busy={busy} rowError={rowError} run={run} /> : null}
+          {tab === "locals" ? <LocalsWorkspace locals={queue.locals} onOpenWindow={setWindowFor} /> : null}
           {tab === "picks" ? <PicksWorkspace picks={queue.picks} voidReason={voidReason} setVoidReason={setVoidReason} rowError={rowError} busy={busy} run={run} /> : null}
           {tab === "reviews" ? <ReviewWorkspace queue={queue} selectedId={selectedReviewId} onSelect={setSelectedReviewId} mediaGrants={mediaGrants} mediaLoading={mediaLoading} mediaReviewed={mediaReviewed} setMediaReviewed={setMediaReviewed} socialChecks={socialChecks} setSocialChecks={setSocialChecks} rowError={rowError} reasons={reasons} setReasons={setReasons} loadReviewMedia={loadReviewMedia} busy={busy} run={run} /> : null}
           {tab === "payouts" ? <PayoutsWorkspace payouts={queue.payouts} rowError={rowError} busy={busy} run={run} /> : null}
@@ -486,6 +599,7 @@ export function LocalsPanel() {
         </div>
         )}
       </div>
+      {windowFor ? <PickWindowDialog local={windowFor} onClose={() => setWindowFor(null)} onConfirm={openWindow} /> : null}
     </div>
   );
 }

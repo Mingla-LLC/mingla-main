@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/rsvp-notify/__tests__/issue_4422_rsvp_message_journey.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4422-rsvp-message-journey-implementor",
+  "profile": "deno-2-unit"
+}

@@ -47,6 +47,7 @@ import {
 } from "../../../services/creatorGigsService";
 import {
   audienceLabel,
+  gigReachCopy,
   hostContractPill,
   nicheLabel,
   programErrorMessage,
@@ -279,7 +280,7 @@ export default function GigApplicants(): React.ReactElement {
                 <ProgramEmpty
                   icon="video"
                   title="Your gig is live"
-                  body="Creators near you can see it now. We'll tell you as they show interest."
+                  body={gigReachCopy(gig).body}
                 />
               ) : (
                 <ListGroup>

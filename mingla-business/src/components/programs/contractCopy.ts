@@ -207,8 +207,14 @@ export function contractFeeWords(
   feeMinor: number,
   currency: string,
   moneyState: ContractMoneyState | null,
+  refundedMinor?: number | null,
+  totalPaidMinor?: number | null,
 ): string {
   const fee = programMoney(feeMinor, currency);
+  const refunded =
+    typeof refundedMinor === "number" && refundedMinor > 0
+      ? programMoney(refundedMinor, currency)
+      : null;
   switch (moneyState) {
     case "on_the_way":
       return `${fee} · On the way`;
@@ -216,13 +222,78 @@ export function contractFeeWords(
       return `${fee} · Ready`;
     case "paid":
       return `${fee} paid`;
+    // #4402 — the row shows what actually went back, not the contract fee.
     case "refunded":
-      return `${fee} refunded`;
+      return `${refunded ?? fee} refunded`;
     case "partially_refunded":
-      return `${fee} · part refunded`;
+      return refunded
+        ? typeof totalPaidMinor === "number" && totalPaidMinor > 0
+          ? `${refunded} refunded of ${programMoney(totalPaidMinor, currency)}`
+          : `${refunded} refunded`
+        : `${fee} · part refunded`;
     default:
       return fee;
   }
+}
+
+/** gig_contract_workspace.refunded_minor (top level, or on the contract). */
+export function workspaceRefundedMinor(workspace: unknown): number | null {
+  if (!workspace || typeof workspace !== "object") return null;
+  const row = workspace as Record<string, unknown>;
+  const direct = row.refunded_minor;
+  if (typeof direct === "number") return direct;
+  const nested = (row.contract as Record<string, unknown> | undefined)
+    ?.refunded_minor;
+  return typeof nested === "number" ? nested : null;
+}
+
+/**
+ * #4402 — the posting stage in host words: the deadline, the automatic full
+ * refund if nobody posts, and what happened after a missed post.
+ */
+export function hostPostingCopy(input: {
+  state: string;
+  creatorName: string;
+  deadlineWords: string | null;
+  deadlineAt: string | null;
+  cancelReason: string | null;
+  refundWords: string | null;
+  nowMs?: number;
+}): { title: string; lines: string[]; dueSoon: boolean } | null {
+  const { state, creatorName } = input;
+  if (state === "cancelled" && input.cancelReason === "post_missed") {
+    return {
+      title: "Refunded",
+      lines: [
+        `The creator didn't post in time. Your full refund${input.refundWords ? ` of ${input.refundWords}` : ""} has started.`,
+      ],
+      dueSoon: false,
+    };
+  }
+  if (state === "posts_submitted") {
+    return {
+      title: "Checking posts",
+      lines: [
+        `${creatorName} posted. Mingla's team is checking the links. You'll hear when they pass.`,
+      ],
+      dueSoon: false,
+    };
+  }
+  if (["approved", "posting", "posts_failed"].includes(state)) {
+    const now = input.nowMs ?? Date.now();
+    const due = input.deadlineAt ? new Date(input.deadlineAt).getTime() : NaN;
+    const dueSoon = Number.isFinite(due) && due - now < 86_400_000;
+    const lines = [
+      `${creatorName} posts the video and adds the links here. Mingla's team checks each link, usually within a day.`,
+    ];
+    if (input.deadlineWords) {
+      lines.push(
+        `${creatorName} posts by ${input.deadlineWords}. If they don't, you're refunded in full automatically.`,
+      );
+    }
+    return { title: dueSoon ? "Posts due soon" : "Waiting for posts", lines, dueSoon };
+  }
+  return null;
 }
 
 const PAYOUT_STATES: ReadonlySet<string> = new Set([
@@ -239,6 +310,14 @@ export function contractStatusCard(input: {
   creatorName: string;
   hostRated: boolean;
   stepCaption: string;
+  /** #4402 — the shoot plan, so the header follows a confirmation at once. */
+  shoot?: {
+    proposedBy: "host" | "creator";
+    confirmed: boolean;
+    whenWords: string;
+  } | null;
+  /** #4402 — while an action runs, the header says so ("Approving…"). */
+  working?: string | null;
 }): {
   title: string;
   pill: string;
@@ -260,7 +339,7 @@ export function contractStatusCard(input: {
             : "Payment released";
   }
   const canRate = input.state === "completed" && !input.hostRated;
-  const line =
+  let line =
     input.state === "released" || input.state === "day30"
       ? `Posts stay up for 30 days. You can rate ${input.creatorName} when the gig is done.`
       : input.state === "completed"
@@ -268,6 +347,21 @@ export function contractStatusCard(input: {
           ? "You've rated this gig."
           : `Rate ${input.creatorName} when you're ready.`
         : input.stepCaption;
+  const planned = input.state === "accepted" || input.state === "shoot_planned";
+  if (planned && input.shoot) {
+    const { proposedBy, confirmed, whenWords } = input.shoot;
+    if (confirmed) {
+      title = "Shoot time confirmed";
+      line = `Shoot confirmed for ${whenWords}. You'll review the script before the shoot.`;
+    } else if (proposedBy === "creator") {
+      title = "Approve the shoot time";
+      line = `${input.creatorName} proposed ${whenWords}.`;
+    } else {
+      title = "Waiting for the creator to confirm";
+      line = `You proposed ${whenWords}.`;
+    }
+  }
+  if (input.working) title = input.working;
   return {
     title,
     pill: input.state === "completed" ? "Done" : pill.label,
@@ -286,7 +380,10 @@ export function activityEvents<T extends { kind: string }>(
 ): Array<T & { words: string }> {
   const out: Array<T & { words: string }> = [];
   for (const event of [...events].reverse()) {
-    const words = activityWords(event.kind);
+    const words = activityWords(
+      event.kind,
+      (event as { data?: Record<string, unknown> | null }).data,
+    );
     if (words === null) continue;
     if (out.length > 0 && out[out.length - 1].words === words) continue;
     out.push({ ...event, words });

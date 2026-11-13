@@ -1,9 +1,13 @@
 // Issue #4063 — one QR-free, one-button purchase email body skeleton.
 
 import { formatMoneyFromCents, formatMoneyOrFree } from "./currency.ts";
+import { MINGLA_APP_LINK_URL } from "./appLink.ts";
 import { escapeHtml } from "./escape.ts";
 import type { PurchaseEmailCopy } from "./purchaseCopy.ts";
 import { SHELL_TOKENS } from "./shell.ts";
+
+// Issue #4422 — the app line links the one app destination (#2240 owner).
+const APP_DOWNLOAD_URL = MINGLA_APP_LINK_URL;
 
 const {
   BRAND_BORDER,
@@ -60,6 +64,8 @@ export interface PurchaseBodyInput {
   buttonUrl?: string | null;
   details?: PurchaseDetails | null;
   receipt?: PurchaseReceipt | null;
+  /** Issue #4422 — add the "get the Mingla app" line after the promise. */
+  appLink?: boolean;
 }
 
 export interface PurchaseBodyResult {
@@ -262,7 +268,12 @@ export function renderPurchaseBody(
     }</h1>
 <p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${
       escapeHtml(input.copy.promise)
-    }</p>
+    }</p>${
+      // #4422 — only an appLink email gains a line, so every other purchase
+      // email stays byte-identical.
+      input.appLink
+        ? `\n<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">Or <a href="${APP_DOWNLOAD_URL}" style="color:${BRAND_ORANGE};text-decoration:underline;">get the Mingla app</a> to keep your plans in one place.</p>`
+        : ""}
 ${
       claim
         ? `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${claim.html}</p>`
@@ -274,6 +285,12 @@ ${buttonHtml}${details?.html ?? ""}${receipt?.html ?? ""}`;
     input.copy.heading,
     "",
     input.copy.promise,
+    ...(input.appLink
+      ? [
+        "",
+        `Or get the Mingla app to keep your plans in one place: ${APP_DOWNLOAD_URL}`,
+      ]
+      : []),
     ...(claim ? ["", claim.text] : []),
     ...(input.copy.buttonLabel && buttonUrl
       ? ["", `${input.copy.buttonLabel}: ${buttonUrl}`]

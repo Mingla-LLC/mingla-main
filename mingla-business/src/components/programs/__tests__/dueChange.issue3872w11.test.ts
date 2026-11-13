@@ -85,7 +85,7 @@ describe("host contract screen", () => {
   });
   it("shows the agreed due on Video needed by and on proposal cards", () => {
     const src = contractSrc();
-    expect(src).toMatch(/title="Video needed by"\s*right=\{agreedVideoDueWords\(agreedDue\)\}/);
+    expect(src).toMatch(/title="Video needed by"[\s\S]{0,400}agreedVideoDueWords\(agreedDue\)/);
     expect(src).toContain("proposalChangeWords(openChange.changes)");
   });
 });

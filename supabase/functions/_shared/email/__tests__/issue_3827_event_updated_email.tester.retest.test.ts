@@ -49,7 +49,7 @@ const worker = await import("../../../rsvp-notify/eventUpdate.ts") as Record<str
   buildEventUpdateDispatch: (
     context: unknown,
     payload: Record<string, unknown>,
-  ) => { title: string; body: string; sms: string; emailOverride: { rendered: Record<string, string> } };
+  ) => Promise<{ title: string; body: string; sms: string; emailOverride: { rendered: Record<string, string> } }>;
   inGroupsOf: <T>(items: readonly T[], size: number, fn: (item: T) => Promise<void>) => Promise<void>;
 };
 
@@ -118,7 +118,8 @@ const STREET_CHANGE = [
 async function renderAll(admin: unknown): Promise<string> {
   const loaded = await worker.createNoticeLoader(admin)(NOTICE_ID);
   assertEquals(loaded.state, "ready", "the notice should load");
-  const out = worker.buildEventUpdateDispatch(loaded.context, { recipientName: "Ada" });
+  // [TEST-MOD-APPROVED #4422] the dispatch is async (it may mint a short link).
+  const out = await worker.buildEventUpdateDispatch(loaded.context, { recipientName: "Ada" });
   const r = out.emailOverride.rendered;
   return [out.title, out.body, out.sms, r.subject, r.html, r.text].join("\n");
 }
