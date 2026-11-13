@@ -48,6 +48,10 @@
 -- the migration is idempotent; everything after it rolls back.
 
 \ir ../20280403034261_issue_4261_friend_share_and_group_links.sql
+-- Issue #4423: the re-apply above recreates five policies that Wave 4b later
+-- rewrote; restore their current form for every suite that runs after this one.
+\ir ../20280705304423_issue_4423_w4b_rls_batch1_messaging.sql
+\ir ../20280705334423_issue_4423_w4b_rls_batch4_rest.sql
 
 BEGIN;
 

@@ -94,7 +94,7 @@ BEGIN
   IF v_pol.roles::text <> '{authenticated}' OR v_pol.cmd <> 'SELECT' OR v_pol.permissive <> 'PERMISSIVE' THEN
     RAISE EXCEPTION 'T-01: policy shape is roles % cmd % %', v_pol.roles, v_pol.cmd, v_pol.permissive;
   END IF;
-  IF v_pol.qual <> '((auth.uid() = id) OR (NOT is_blocked_by(id, auth.uid())))' THEN
+  IF v_pol.qual <> '((( SELECT auth.uid() AS uid) = id) OR (NOT is_blocked_by(id, ( SELECT auth.uid() AS uid))))' THEN
     RAISE EXCEPTION 'T-01: policy expression changed: %', v_pol.qual;
   END IF;
 
