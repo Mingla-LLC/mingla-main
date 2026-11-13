@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { localCityRate, localProgramService, type LocalHome, type LocalLanding, type LocalMonth } from '../../src/services/localProgramService';
 import { payoutService } from '../../src/services/payoutService';
 import { programErrorText } from '../../src/services/programResult';
-import { formatMoney, formatMonth, formatShortDate, parseDay, pickWindowWords, toDayString } from '../../src/utils/programFormat';
+import { formatMoney, formatMonth, formatShortDate, pickWindowWords, toDayString, visitedOnBounds, visitedOnError } from '../../src/utils/programFormat';
 import { APPLICATION_COPY, LOCAL_STEPS, localMoneyWord, localMonthWords, localStepIndex } from '../../src/components/local/localWords';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { CheckRow, ChoiceField, Chip, DateField, ToggleRow } from '../../src/components/programs/ProgramPickers';
@@ -21,7 +21,8 @@ export default function LocalScreen(): React.ReactElement {
   const landing = useQuery({ queryKey: ['local', 'landing'], queryFn: () => localProgramService.landing() });
   const signedLocal = Boolean(landing.data?.local?.agreement_signed_at);
   const home = useQuery({ queryKey: ['local', 'home'], queryFn: () => localProgramService.home(), enabled: signedLocal });
-  const refresh = (): void => { void queryClient.invalidateQueries({ queryKey: ['local'] }); };
+  // Reads the seat, the month and the pick window again. Returns the read so a caller can wait for it.
+  const refresh = (): Promise<void> => queryClient.refetchQueries({ queryKey: ['local'] }, { cancelRefetch: true });
   // #4402: reopened or back from the background: read the seat, the month and the pick window again.
   useRefreshOnFocus(() => { void queryClient.invalidateQueries({ queryKey: ['local'] }, JOIN_IN_FLIGHT); });
 
@@ -183,7 +184,7 @@ function LocalAgreementSign({ landing, refreshing, onRefresh }: { landing: Local
 
 // ── Month home ─────────────────────────────────────────────────────────────
 
-function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: LocalLanding; home: LocalHome; refreshing: boolean; onRefresh: () => void }): React.ReactElement {
+function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: LocalLanding; home: LocalHome; refreshing: boolean; onRefresh: () => void | Promise<void> }): React.ReactElement {
   const router = useRouter();
   const now = new Date();
   const thisMonth = toDayString(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -251,7 +252,7 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
   </ProgramScreen>;
 }
 
-function PickPlace({ city, onPicked }: { city: string; onPicked: () => void }): React.ReactElement {
+function PickPlace({ city, onPicked }: { city: string; onPicked: () => void | Promise<void> }): React.ReactElement {
   const [query, setQuery] = useState('');
   const [term, setTerm] = useState('');
   const [tie, setTie] = useState(false);
@@ -265,7 +266,7 @@ function PickPlace({ city, onPicked }: { city: string; onPicked: () => void }): 
       { text: 'Not yet', style: 'cancel' },
       { text: 'Pick it', onPress: () => void (async () => {
         setBusyId(id); setError(null);
-        try { await localProgramService.pickPlace(id, false); onPicked(); } catch (e) { setError(programErrorText(e)); } finally { setBusyId(null); }
+        try { await localProgramService.pickPlace(id, false); await onPicked(); } catch (e) { setError(programErrorText(e)); } finally { setBusyId(null); }
       })() },
     ]);
   };
@@ -284,22 +285,23 @@ function PickPlace({ city, onPicked }: { city: string; onPicked: () => void }): 
   </View>;
 }
 
-function MarkVisited({ month, onDone }: { month: LocalMonth; onDone: () => void }): React.ReactElement {
+function MarkVisited({ month, onDone }: { month: LocalMonth; onDone: () => void | Promise<void> }): React.ReactElement {
   const [day, setDay] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const start = parseDay(month.month) ?? new Date();
+  const bounds = visitedOnBounds(month.month, typeof month.picked_at === 'string' ? month.picked_at : null);
+  const dayError = visitedOnError(day, bounds);
   const save = async (): Promise<void> => {
-    if (!day) return;
+    if (!day || dayError) return;
     setBusy(true); setError(null);
     try { await localProgramService.markVisited(month.id, day); onDone(); } catch (e) { setError(programErrorText(e)); } finally { setBusy(false); }
   };
   return <ProgramCard>
     <Text style={s.title}>Visit as a normal customer</Text>
     <Text style={s.copy}>Pay as usual, then tell us the day you went.</Text>
-    <DateField label="Visited on" value={day} onChange={setDay} minimumDate={start} maximumDate={new Date()} sheetTitle="Visited on" />
+    <DateField label="Visited on" value={day} onChange={setDay} minimumDate={bounds.min} maximumDate={bounds.max} sheetTitle="Visited on" error={dayError} />
     {error ? <ProgramNotice tone="error" text={error} /> : null}
-    <ProgramButton label="I’ve visited" busy={busy} disabled={!day} onPress={() => void save()} />
+    <ProgramButton label="I’ve visited" busy={busy} disabled={!day || Boolean(dayError)} onPress={() => void save()} />
   </ProgramCard>;
 }
 

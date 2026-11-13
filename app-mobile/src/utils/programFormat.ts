@@ -905,3 +905,21 @@ export function signBlockReason(input: { hasVersion: boolean; birthDate: string 
   if (!input.agreed) return 'Tick the box to agree, then sign.';
   return null;
 }
+
+// ── #4402: the "Visited on" day ────────────────────────────────────────────
+
+/** A visit can't be in the future, and can't be before the pick (else the start of the month). */
+export function visitedOnBounds(monthStart: string, pickedAt: string | null | undefined, now: Date = new Date()): { min: Date; max: Date } {
+  const start = parseDay(monthStart) ?? new Date(now.getFullYear(), now.getMonth(), 1);
+  const picked = parseDay(pickedAt ?? null);
+  const min = picked && picked.getTime() > start.getTime() ? new Date(picked.getFullYear(), picked.getMonth(), picked.getDate()) : start;
+  return { min, max: new Date(now.getFullYear(), now.getMonth(), now.getDate()) };
+}
+
+/** Why a chosen visit day is refused, or null. Compared as calendar days, so a picker that ignores its limits is still caught. */
+export function visitedOnError(day: string | null, bounds: { min: Date; max: Date }): string | null {
+  if (!day) return null;
+  if (day > toDayString(bounds.max)) return 'Pick a day that has already happened.';
+  if (day < toDayString(bounds.min)) return `Pick ${formatShortDate(bounds.min, bounds.max)} or later, the day you picked this place.`;
+  return null;
+}

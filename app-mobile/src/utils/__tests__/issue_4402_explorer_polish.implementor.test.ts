@@ -5,10 +5,11 @@
 // Each test fails when the fix it covers is removed. TZ is set in the CI step; the zone is passed explicitly anyway.
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs';
 import {
   agreedVideoDueZoned, capitalizeFirst, dayToTypedDob, dobWheelStart, doorPassLine, formatInZone, formatMonth, formatShortDate, formatTypedDob,
   groupMoneyTyping, heldBelowFloorText, isBelowMinFee, minFeeError, minFeeHint, moneyInputValue, parseMoneyInput, pickWindowWords, postDeadlineText, postDueSoonLabel,
-  postingStatusCopy, signBlockReason, typedDobToDay, uploadDueReason, waitingToReachText, zoneLabel,
+  postingStatusCopy, signBlockReason, visitedOnBounds, visitedOnError, typedDobToDay, uploadDueReason, waitingToReachText, zoneLabel,
 } from '../programFormat.ts';
 import {
   contractRefetchInterval, creatorWaitsOnHost, eventWords, failedPostReason, nextActionFor, postCheckWords, scriptPartsFor,
@@ -146,4 +147,22 @@ test('item 19: script parts follow the format beats and fall back only without a
   assert.deepEqual(parts.map((p) => p.title), ['Hook · first 3 seconds', 'Atmosphere', 'Experience', 'End card']);
   assert.deepEqual(scriptPartsFor([]).map((p) => p.key), ['hook', 'middle', 'invite']);
   assert.deepEqual(scriptPartsFor(null).map((p) => p.key), ['hook', 'middle', 'invite']);
+});
+
+test('W3: "Visited on" is never in the future and never before the pick (or the month start)', () => {
+  const bounds = visitedOnBounds('2026-11-01', '2026-11-12T09:00:00', new Date('2026-11-14T10:00:00'));
+  assert.equal(visitedOnError('2026-11-15', bounds), 'Pick a day that has already happened.');
+  assert.equal(visitedOnError('2026-11-14', bounds), null);
+  assert.match(visitedOnError('2026-11-10', bounds), /^Pick Nov 12 or later/);
+  assert.equal(visitedOnError('2026-11-12', bounds), null);
+  const noPick = visitedOnBounds('2026-11-01', null, new Date('2026-11-14T10:00:00'));
+  assert.equal(visitedOnError('2026-11-01', noPick), null);
+  assert.match(visitedOnError('2026-10-31', noPick), /Nov 1 or later/);
+});
+
+test('W1: a successful pick waits for the Local queries to be read again, so the screen moves on by itself', () => {
+  const screen = fs.readFileSync(new URL('../../../app/local/index.tsx', import.meta.url), 'utf8');
+  assert.match(screen, /const refresh = \(\): Promise<void> => queryClient\.refetchQueries\(\{ queryKey: \['local'\] \}/);
+  assert.match(screen, /await localProgramService\.pickPlace\(id, false\); await onPicked\(\);/);
+  assert.match(screen, /maximumDate=\{bounds\.max\}/);
 });
