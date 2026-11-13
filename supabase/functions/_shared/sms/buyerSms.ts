@@ -44,7 +44,10 @@ export type SmsTemplateKey =
   | "S19"
   | "S20"
   | "S20V"
-  | "S20D";
+  | "S20D"
+  | "S20L"
+  | "S20VL"
+  | "S20DL";
 
 export type BuyerSmsNoun = "ticket" | "booking" | "pass" | "receipt";
 
@@ -295,6 +298,14 @@ function render(key: SmsTemplateKey, s: NormalizedSlots): string {
       return `Mingla: ${s.title} has a new venue. See the details: ${s.link}`;
     case "S20D":
       return `Mingla: ${s.title} has changed. See the details: ${s.link}`;
+    // The same change texts without a link, for when no link fits one
+    // segment (a long event page link and no short link).
+    case "S20L":
+      return `Mingla: ${s.title} moved to ${s.date} ${s.time}.`;
+    case "S20VL":
+      return `Mingla: ${s.title} has a new venue.`;
+    case "S20DL":
+      return `Mingla: ${s.title} has changed.`;
   }
 }
 
@@ -415,4 +426,27 @@ export function fitTitleToSegment(
   }
   // Shortening cannot make it fit: keep the whole title.
   return full;
+}
+
+const CHANGE_NO_LINK = { S20: "S20L", S20V: "S20VL", S20D: "S20DL" } as const;
+
+/**
+ * Issue #4422 — a change text that never throws for length: with the link
+ * when it fits one segment, otherwise the same sentence without the link.
+ * A change notice must never be held back because a text is too long.
+ */
+export function renderChangeSms(
+  key: "S20" | "S20V" | "S20D",
+  slots: BuyerSmsSlots,
+): string {
+  try {
+    return renderBuyerSms(key, slots);
+  } catch (error) {
+    if (
+      !(error instanceof Error &&
+        error.message.startsWith("sms_template_overflow"))
+    ) throw error;
+    console.info(JSON.stringify({ event: "change_sms_link_omitted", key }));
+    return renderBuyerSms(CHANGE_NO_LINK[key], { ...slots, link: null });
+  }
 }

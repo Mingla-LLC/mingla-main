@@ -14,7 +14,8 @@
 // `unreached_guest_alert_failed` with the count, so it is visible in the logs,
 // and the guests are still findable in the ledger table.
 
-import { resolveAlertRecipientValue } from "./secretBundle.ts";
+// The existing delivery-health recipients; no new inbox, no new secret.
+import { apiHealthAlertRecipients } from "./secretBundle.ts";
 import {
   type OpsAlertEmailInput,
   type OpsAlertEmailResult,
@@ -61,18 +62,6 @@ const INTRO: Record<UnreachedSource, string> = {
   ticket:
     "These ticket orders reached the buyer on no channel, and nothing more will be sent. Ids and codes only: look the rows up in ticket_order_notifications.",
 };
-
-/** The existing delivery-health recipients; no new inbox, no new secret. */
-export function unreachedAlertRecipients(): string[] {
-  const configured = resolveAlertRecipientValue(
-    "api_health",
-    "API_HEALTH_ALERT_EMAILS",
-  );
-  if (Array.isArray(configured)) return configured;
-  return (configured ?? "seth@usemingla.com").split(",").map((value) =>
-    value.trim()
-  ).filter(Boolean);
-}
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -139,7 +128,7 @@ export async function alertUnreachedGuests(
     const result = await (deps.send ?? sendOpsAlertEmail)({
       subject: `${SUBJECTS[source]} (${rows.length})`,
       paragraphs: unreachedAlertParagraphs(source, rows),
-      recipients: (deps.recipients ?? unreachedAlertRecipients)(),
+      recipients: (deps.recipients ?? apiHealthAlertRecipients)(),
       idempotencyKey: `issue4422:${source}:${await sha256Hex(ids.join(","))}`,
     });
     if (result.succeeded === 0 || result.failed > 0) {

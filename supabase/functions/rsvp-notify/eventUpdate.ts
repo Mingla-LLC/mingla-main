@@ -21,7 +21,7 @@ import type { RsvpChannelInput } from "../_shared/notifyV2.ts";
 import type { ClaimLinkAdmin } from "../_shared/claimLink.ts";
 import { eventLinkExpiry, resolveBuyerLink } from "../_shared/messageLinks.ts";
 import { formatMessageTime } from "../_shared/messageTime.ts";
-import { renderBuyerSms } from "../_shared/sms/buyerSms.ts";
+import { renderChangeSms } from "../_shared/sms/buyerSms.ts";
 
 interface QueryError {
   code?: string | null;
@@ -313,7 +313,7 @@ function changeSms(
     ? null
     : formatMessageTime(start, context.timezone);
   if (when !== null) {
-    return renderBuyerSms("S20", {
+    return renderChangeSms("S20", {
       title: context.eventName,
       date: when.date,
       time: when.time,
@@ -322,7 +322,7 @@ function changeSms(
   }
   const venueOnly = context.changes.length > 0 &&
     context.changes.every((c) => c.field === "venue" || c.field === "address");
-  return renderBuyerSms(venueOnly ? "S20V" : "S20D", {
+  return renderChangeSms(venueOnly ? "S20V" : "S20D", {
     title: context.eventName,
     link,
   });
@@ -332,12 +332,15 @@ function changeSms(
  * What to send for one recipient of a notice. Throws
  * `event_update_email_nothing_to_say` when the notice holds nothing printable.
  * `links` mints the shared short event link for the text; without it (or when
- * minting fails) the text carries the full page link.
+ * minting fails) the text carries the full page link, or no link when that
+ * does not fit one segment. `withSms` false (an email, push or in-app row)
+ * builds no text at all, so a text can never hold back another channel.
  */
 export async function buildEventUpdateDispatch(
   context: NoticeContext,
   payload: Record<string, unknown>,
   links: ClaimLinkAdmin | null = null,
+  withSms = true,
 ): Promise<EventUpdateDispatch> {
   const rendered = renderEventUpdatedEmail({
     kind: context.kind,
@@ -352,7 +355,9 @@ export async function buildEventUpdateDispatch(
   });
   const eventName = cleanLine(context.eventName, 120);
   const short = eventUpdateShortLine(context.kind, context.brandName, context.changes);
-  const smsLink = links && context.eventId
+  const smsLink = !withSms
+    ? ""
+    : links && context.eventId
     ? (await resolveBuyerLink(links, {
       kind: "event_page",
       sourceId: context.eventId,
@@ -363,7 +368,7 @@ export async function buildEventUpdateDispatch(
   return {
     title: `Plans changed: ${eventName}`,
     body: short,
-    sms: changeSms(context, smsLink),
+    sms: withSms ? changeSms(context, smsLink) : "",
     link: context.eventUrl,
     emailOverride: {
       rendered: {

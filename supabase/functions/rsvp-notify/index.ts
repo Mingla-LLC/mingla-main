@@ -377,6 +377,7 @@ async function processClaim(
         loaded.context,
         p,
         claim.channel === "sms" ? admin : null,
+        claim.channel === "sms",
       );
     } catch (error) {
       // Nothing printable in the notice is final. Anything else (for example

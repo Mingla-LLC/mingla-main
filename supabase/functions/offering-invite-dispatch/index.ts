@@ -19,7 +19,7 @@ import {
   resolveOfferingInviteTokenPepper,
 } from "../_shared/offeringInviteToken.ts";
 import {
-  resolveAlertRecipientValue,
+  apiHealthAlertRecipients,
   resolveDeliveryFlagValue,
 } from "../_shared/secretBundle.ts";
 import { MAPPED_COUNTRIES } from "../_shared/e164Country.ts";
@@ -216,17 +216,6 @@ function observeWizardInvite(
   console.info(JSON.stringify({ event, ...properties }));
 }
 
-function wizardInviteAlertRecipients(): string[] {
-  const configured = resolveAlertRecipientValue(
-    "api_health",
-    "API_HEALTH_ALERT_EMAILS",
-  );
-  if (Array.isArray(configured)) return configured;
-  return (configured ?? "seth@usemingla.com").split(",").map((value) =>
-    value.trim()
-  ).filter(Boolean);
-}
-
 export async function drainWizardInviteObservability(
   service: WizardServiceClient,
 ): Promise<number> {
@@ -307,7 +296,7 @@ export async function drainWizardInviteHealthAlerts(
           `Current aggregate count: ${row.occurrenceCount}.`,
           `First detected at ${row.firstDetectedAt} UTC.`,
         ],
-        recipients: wizardInviteAlertRecipients(),
+        recipients: apiHealthAlertRecipients(),
         cta: null,
       });
       if (result.succeeded < 1) continue;

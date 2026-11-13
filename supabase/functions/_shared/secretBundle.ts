@@ -726,3 +726,22 @@ export function resolveAlertRecipientValue(
     ? result.value[field]
     : fallback(bundle, field, legacyName, result, getEnv);
 }
+
+/**
+ * Issue #4422 — the api_health (delivery-health) alert recipients as a list.
+ * One owner for the comma-split and the founder fallback, shared by
+ * offering-invite-dispatch and the unreached-guest alert.
+ */
+export function apiHealthAlertRecipients(
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): string[] {
+  const configured = resolveAlertRecipientValue(
+    "api_health",
+    "API_HEALTH_ALERT_EMAILS",
+    getEnv,
+  );
+  if (Array.isArray(configured)) return configured;
+  return (configured ?? "seth@usemingla.com").split(",").map((value) =>
+    value.trim()
+  ).filter(Boolean);
+}

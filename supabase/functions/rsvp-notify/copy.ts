@@ -7,7 +7,7 @@
 // is case-changed, and each text is fitted to one GSM-7 segment by shortening
 // the event title (see fitTitleToSegment).
 
-import { fitTitleToSegment, renderBuyerSms } from "../_shared/sms/buyerSms.ts";
+import { fitTitleToSegment, renderChangeSms } from "../_shared/sms/buyerSms.ts";
 
 export type RsvpTemplateKey =
   | "rsvp_acknowledgement"
@@ -86,7 +86,7 @@ export function copyFor(
       return {
         title: `Plans changed: ${event}`,
         body: "The host updated this event.",
-        sms: renderBuyerSms("S20D", { title: event, link: smsLink }),
+        sms: renderChangeSms("S20D", { title: event, link: smsLink }),
       };
     // Issue #3827 — only reached without a notice, which the worker refuses
     // before sending; the case keeps the switch exhaustive.
@@ -94,7 +94,7 @@ export function copyFor(
       return {
         title: `Details changed: ${event}`,
         body: "The host changed the details of this event.",
-        sms: renderBuyerSms("S20D", { title: event, link: smsLink }),
+        sms: renderChangeSms("S20D", { title: event, link: smsLink }),
       };
     case "rsvp_waitlist_promoted":
       return {

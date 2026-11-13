@@ -268,12 +268,12 @@ export function renderPurchaseBody(
     }</h1>
 <p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${
       escapeHtml(input.copy.promise)
-    }</p>
-${
+    }</p>${
+      // #4422 — only an appLink email gains a line, so every other purchase
+      // email stays byte-identical.
       input.appLink
-        ? `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">Or <a href="${APP_DOWNLOAD_URL}" style="color:${BRAND_ORANGE};text-decoration:underline;">get the Mingla app</a> to keep your plans in one place.</p>`
-        : ""
-    }
+        ? `\n<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">Or <a href="${APP_DOWNLOAD_URL}" style="color:${BRAND_ORANGE};text-decoration:underline;">get the Mingla app</a> to keep your plans in one place.</p>`
+        : ""}
 ${
       claim
         ? `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${claim.html}</p>`
