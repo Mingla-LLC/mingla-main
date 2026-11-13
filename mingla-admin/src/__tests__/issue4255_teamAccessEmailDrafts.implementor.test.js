@@ -216,8 +216,12 @@ describe("D — the screens use the shared drafts", () => {
   });
 
   it("send history and unsubscribes stay admin-only on the Email page", () => {
-    // #4383: the sections live in lib/emailViews.js (History is "Sent").
-    assert.match(read("lib/emailViews.js"), /ADMIN_ONLY_EMAIL_VIEWS = Object\.freeze\(new Set\(\["sent", "unsubscribes"\]\)\)/);
+    // #4383: the sections live in lib/emailViews.js. #4419: Scheduled and Sent
+    // became one Emails tab; sent emails stay admin-only on the server (a
+    // non-admin's list and pages are scheduled emails only), the unsubscribe
+    // list stays an admin-only tab.
+    assert.match(read("lib/emailViews.js"), /ADMIN_ONLY_EMAIL_VIEWS = Object\.freeze\(new Set\(\["unsubscribes"\]\)\)/);
+    assert.match(fs.readFileSync(path.resolve(SRC, "../../supabase/functions/admin-send-email/index.ts"), "utf8"), /if \(!ctx\.isAdmin && state !== "scheduled"\) throw new Error\("email_admin_only"\);/);
     const page = read("pages/EmailPage.jsx");
     assert.match(page, /const subTabs = emailViewsFor\(access\);/);
     assert.match(page, /<Tabs tabs=\{subTabs\}/);

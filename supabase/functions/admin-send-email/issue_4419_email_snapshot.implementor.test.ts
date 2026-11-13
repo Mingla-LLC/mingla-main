@@ -93,6 +93,9 @@ function fakeDb(options: {
   listResult?: Row;
   person?: Row | null;
   audits?: Row[];
+  engagement?: Row | null;
+  engagementCounts?: Row[];
+  engagementError?: boolean;
 } = {}) {
   const log = new Map<string, Row>();
   if (options.campaign) log.set(String(options.campaign.id), { ...options.campaign });
@@ -223,8 +226,12 @@ function fakeDb(options: {
       if (fn === "issue_4419_admin_email_list") {
         return Promise.resolve({ data: options.listResult ?? { rows: [], counts: {}, total: 0 }, error: null });
       }
-      if (fn === "issue_4419_admin_email_engagement_counts") return Promise.resolve({ data: [], error: null });
-      if (fn === "issue_4419_admin_email_engagement") return Promise.resolve({ data: null, error: null });
+      if (fn === "issue_4419_admin_email_engagement_counts") {
+        return Promise.resolve(options.engagementError ? { data: null, error: { message: "down" } } : { data: options.engagementCounts ?? [], error: null });
+      }
+      if (fn === "issue_4419_admin_email_engagement") {
+        return Promise.resolve(options.engagementError ? { data: null, error: { message: "down" } } : { data: options.engagement ?? null, error: null });
+      }
       if (fn === "admin_people_directory") {
         const c: Record<string, unknown> = {};
         for (const m of ["select", "eq", "limit"]) c[m] = () => c;
@@ -589,4 +596,31 @@ Deno.test("S-8b delivery errors map to plain codes (the SQL summary's twin)", ()
   assertEquals(deliveryFailureCode("TypeError: fetch failed"), "provider_down");
   assertEquals(deliveryFailureCode("boom"), "other");
   assertEquals(deliveryFailureCode(null), "other");
+});
+
+Deno.test("S-11 (Part B) engagement reaches the list and the page; a failed read never breaks them", async () => {
+  const engagement = {
+    accepted: 2, events: 5, delivered: 2, bounced: { hard: 0, soft: 0 }, complained: 0,
+    opened_unique: 1, opened_total: 2, clicked_unique: 0, clicked_total: 0, top_links: [],
+    tracking: { opens_seen: true, clicks_seen: false, clicks_seen_anywhere: false },
+  };
+  const db = fakeDb({
+    campaign: campaignRow({ status: "completed" }),
+    engagement,
+    engagementCounts: [{ campaign_id: CAMPAIGN, delivered: 2, opened_unique: 1 }],
+    listResult: { rows: [{ id: CAMPAIGN, subject: "Lagos", status: "completed", started_at: "2026-11-13T09:00:00Z", recipient_type: "bulk", recipient_count: 2, skipped_count: 0 }], counts: {}, total: 1 },
+  });
+  const detail = await getCampaignDetail(db.client, { campaignId: CAMPAIGN }, { isAdmin: true });
+  assertEquals(detail.engagement, engagement);
+  const list = await listCampaigns(db.client, {}, { isAdmin: true });
+  assertEquals([list.rows[0].delivered, list.rows[0].opened_unique], [2, 1]);
+
+  const down = fakeDb({
+    campaign: campaignRow({ status: "completed" }),
+    engagementError: true,
+    listResult: { rows: [{ id: CAMPAIGN, subject: "Lagos", status: "completed" }], counts: {}, total: 1 },
+  });
+  assertEquals((await getCampaignDetail(down.client, { campaignId: CAMPAIGN }, { isAdmin: true })).engagement, null);
+  const downList = await listCampaigns(down.client, {}, { isAdmin: true });
+  assertEquals([downList.rows[0].delivered, downList.rows[0].opened_unique], [null, null]);
 });

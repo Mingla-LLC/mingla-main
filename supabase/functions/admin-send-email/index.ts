@@ -1155,6 +1155,16 @@ type DeliverySummary = {
   raw: string | null;
 };
 
+function sourceDocument(row: DetailRow): EmailContentBlock[] {
+  try {
+    return validateDocument(
+      row.body_document ?? legacyBodyDocument(String(row.body ?? "")),
+    );
+  } catch {
+    return legacyBodyDocument(String(row.body ?? ""));
+  }
+}
+
 /** #4419 — one email's whole page: state, timeline facts, the frame, counts, failures. */
 export async function getCampaignDetail(
   supabase: ServiceClient,
@@ -1260,6 +1270,8 @@ export async function getCampaignDetail(
         timezone: audit.metadata?.timezone ?? null,
       })),
       can_change: state === "scheduled" && !row.processing_started_at,
+      // The saved blocks (references, not the rendered copy), for "Duplicate as new".
+      document: sourceDocument(row),
     },
     counts: {
       matched: Number(row.matched_count ?? 0),

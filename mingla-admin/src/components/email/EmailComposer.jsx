@@ -274,7 +274,9 @@ function LocalEmailPreview({ subject, documentValue }) {
 // not editable here (the Email screen's Scheduled list changes the time; a
 // new audience means cancel and write a new email). Save sends the same
 // document checks as a new campaign, through update_scheduled_campaign.
-export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionExpired, openTemplateManager = false, editingCampaign = null, onEditingDone = null }) {
+// #4419: `initialDraft` ({ subject, document, audienceMode, filters }) opens a
+// new email prefilled from a sent one ("Duplicate as new"). Nothing else changes.
+export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionExpired, openTemplateManager = false, editingCampaign = null, onEditingDone = null, initialDraft = null }) {
   const { addToast } = useToast();
   const { access, session } = useAuth();
   const myUserId = session?.user?.id || null;
@@ -405,6 +407,18 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     const storage = browserStorage();
     async function start() {
       // #4383: editing a scheduled email never pulls in a draft or a recovery copy.
+      // #4419: "Duplicate as new" opens with the sent email's words and audience.
+      if (initialDraft && !editingCampaign) {
+        applyComposerState({
+          subject: initialDraft.subject || "",
+          document: Array.isArray(initialDraft.document) ? initialDraft.document : null,
+          audienceMode: initialDraft.audienceMode === "everyone" ? "everyone" : "segment",
+          filters: { ...EMPTY_FILTERS, ...(initialDraft.filters || {}) },
+          selectedRecipient: null,
+        });
+        if (!cancelled) await refreshDrafts();
+        return;
+      }
       if (editingCampaign) return;
       const legacy = legacyDraftToMigrate(storage);
       if (legacy) {
