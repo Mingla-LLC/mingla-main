@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-ADMIN-SINGLE-PAGE-RETURN-LISTENER | issue #4423 | Only mingla-admin/src/lib/pageReturn.js adds focus, visibilitychange or online listeners; every other admin refresh subscribes to its shared, throttled page-return signal.
 // Issue #4423 (W1.1, W1.6) — strict gate.
 // @invariant I-ADMIN-SINGLE-PAGE-RETURN-LISTENER: only mingla-admin/src/lib/pageReturn.js
 // adds window `focus` / `online` / `offline` or document `visibilitychange`

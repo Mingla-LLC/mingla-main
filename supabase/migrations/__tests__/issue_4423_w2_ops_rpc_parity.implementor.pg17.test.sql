@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-OPS-LIST-NO-PER-ROW-NAME-LOOKUP | issue #4423 | Ops list RPCs resolve person names once per distinct email per call, never once per card field.
 -- Issue #4423 Wave 2 -- implementor suite for
 -- 20280707004423_issue_4423_w2_ops_set_based_card_builders.sql,
 -- 20280707014423_issue_4423_w2_ops_work_list_review_counts.sql and

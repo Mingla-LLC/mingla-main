@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-ADMIN-TAB-CEILING-300-PER-MIN | issue #4423 | One admin tab sends at most 300 database requests per minute; over that it pauses for 60 s, shows a banner and reports to Sentry.
 // Issue #4423 (W1.4, W1.6): the hard per-tab ceiling, 300 requests a minute.
 //
 // lib/requestCeiling.js with an injected inner fetch, clock and Sentry

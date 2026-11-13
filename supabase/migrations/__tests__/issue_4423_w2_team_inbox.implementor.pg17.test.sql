@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-TEAM-INBOX-LIMIT-BEFORE-LABEL | issue #4423 | team_inbox limits to the newest 100 rows before labelling any of them, so its cost does not grow with mention history.
 -- Issue #4423 Wave 2 (W2.5) -- implementor suite for
 -- 20280707034423_issue_4423_w2_team_inbox_limit_first.sql, on the fully
 -- replayed PG17 schema. Everything is rolled back.

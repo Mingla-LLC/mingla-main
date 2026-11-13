@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-ADMIN-POLL-BUDGET-60-PER-MIN | issue #4423 | Background admin reads stay within a 60-per-minute budget per tab; reads over it are skipped, never queued.
 // Issue #4423 (W1.1, W1.6): the gate every background read goes through.
 //
 // lib/pollGate.js with an injected clock and a fixed `random` (0.5 = no

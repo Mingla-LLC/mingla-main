@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-ADMIN-RPC-3S-PRE-REQUEST | issue #4423 | Signed-in (authenticated) API requests run under a 3 s statement limit set per request; service_role and anon keep their own limits and the setting never leaks past its request.
 -- Issue #4423 Wave 3 -- implementor suite for
 -- 20280707104423_issue_4423_w3_admin_request_limits.sql and
 -- 20280707114423_issue_4423_w3_db_health_probe.sql, on the fully replayed
