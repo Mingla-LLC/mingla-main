@@ -64,14 +64,14 @@ Deno.test("every auth.signOut in mingla-admin/src names a scope; only completeIn
 
 Deno.test("verifyPassword, rejectSession and Sign out end this browser only", async () => {
   const auth = stripComments(await Deno.readTextFile(new URL("context/AuthContext.jsx", SRC)));
-  for (const name of ["const rejectSession", "const verifyPassword", "const signOut = async"]) {
+  for (const name of ["const rejectSession", "const verifyPassword", "const signOut = useCallback(async"] /* #4423: stable callbacks */) {
     const start = auth.indexOf(name);
     assert(start >= 0, name);
     const body = auth.slice(start, start + 2500);
     assertMatch(body, /auth\.signOut\(\{ scope: "local" \}\)/, name);
   }
   assertMatch(auth, /const endSession = useCallback\(\(notice\) => rejectSession\(notice\)/);
-  assertMatch(auth.slice(auth.indexOf("<AuthContext.Provider")), /endSession,/);
+  assertMatch(auth.slice(auth.indexOf("const value = useMemo(")), /endSession,/); // #4423: the provider value is memoised
 });
 
 const httpError = (status: number, body: unknown, name = "FunctionsHttpError") => ({

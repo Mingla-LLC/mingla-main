@@ -552,7 +552,7 @@ describe("#3802 TA-7: the accept screen's address and message, and the link's se
 
   it("sign-in passes the invited address on for the one state only, and passes nothing else from the answer", () => {
     const AUTH = read("context/AuthContext.jsx");
-    const start = AUTH.indexOf("const acceptInvite = async (token) => {");
+    const start = AUTH.indexOf("const acceptInvite = useCallback(async (token) => {") /* #4423: stable callbacks */;
     const body = AUTH.slice(start, AUTH.indexOf("const completeInviteSetup", start));
     assert.ok(start > 0 && body.length > 400);
     const returns = [...body.matchAll(/return \{([^}]*)\}/g)].map((m) => m[1].replace(/\s+/g, " ").trim());

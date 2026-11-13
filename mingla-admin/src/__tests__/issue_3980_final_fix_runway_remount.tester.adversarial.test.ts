@@ -16,6 +16,9 @@
 // FAILS ON REVERT: drop `cache: RUNWAY_CACHE` from useOpsRunway, or drop the
 // cache seeding / cache write in useOpsPoll — TA-1, TA-3 and TA-4 fail.
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
+// #4423: useOpsPoll refreshes through lib/pollGate (and lib/pageReturn); the
+// harness gives it the real gate and poller, with inert timers and no events.
+import { createPollGate, createPoller } from "../lib/pollGate.js";
 
 const SRC = new URL("../", import.meta.url);
 const read = (relative: string) => Deno.readTextFileSync(new URL(relative, SRC));
@@ -83,12 +86,16 @@ const fakeDocument = { visibilityState: "visible", addEventListener() {}, remove
 function buildRunway(runtime: ReturnType<typeof makeRuntime>, auth: { email: string }, ops: { fetchRunwayReport: () => Promise<unknown> }) {
   const factory = new Function(
     "useState", "useRef", "useCallback", "useEffect", "useAuth", "ops", "todayIso", "window", "document", "navigator", "setInterval", "clearInterval",
-    `${pollSource}\n${cacheLine}\n${runwaySource}\nreturn useOpsRunway;`,
+    "tabPollGate", "createPoller", "pageReturn",
+    `let anonymousPolls = 0;\n${pollSource}\n${cacheLine}\n${runwaySource}\nreturn useOpsRunway;`,
   );
   return factory(
     runtime.hooks.useState, runtime.hooks.useRef, runtime.hooks.useCallback, runtime.hooks.useEffect,
     () => ({ access: { email: auth.email } }), ops, () => "2026-10-19",
     fakeWindow, fakeDocument, { onLine: true }, () => 0, () => {},
+    createPollGate(),
+    (options: { refresh: unknown; intervalMs?: number; pageReturn: unknown }) => createPoller({ ...options, setTimer: () => 0, clearTimer: () => {}, isVisible: () => true, isOnline: () => true }),
+    { subscribePageReturn: () => () => {}, markRefreshed: () => {} },
   ) as () => { data: { rows: Array<{ title: string }> } | null; loading: boolean; error: unknown };
 }
 

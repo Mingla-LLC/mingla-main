@@ -519,7 +519,8 @@ describe("#3802 A-7: source contracts", () => {
     assert.ok(HOOK.includes("const keyFor = (email) => `agent:keys:${email || \"\"}`;"));
     assert.ok(HOOK.includes("const current = state.key === key;"));
     assert.ok(/if \(quiet\) return null;\s*setState\(\{ key, data: null, error, loaded: true \}\);/.test(HOOK), "a quiet refresh that fails keeps what is on screen");
-    assert.ok(HOOK.includes('window.addEventListener("online", onOnline);'));
+    // #4423: back online (and focus, visible again) is the shared lib/pageReturn signal.
+    assert.ok(HOOK.includes("const unsubscribe = subscribePageReturn(() => refetch({ quiet: true }));"));
   });
 });
 
@@ -615,7 +616,8 @@ describe("#3802 A-8: a key that was ended somewhere else does not stay on screen
     assert.ok(/isVisible: \(\) => document\.visibilityState === "visible",\s*isOnline: \(\) => navigator\.onLine !== false,/.test(PAGE));
     assert.equal(/setInterval\(/.test(PAGE), false, "no timer that runs in a hidden tab or without an end");
     assert.ok(PAGE.includes("setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false, shownAt: Date.now() } }));"));
-    assert.ok(HOOK.includes('document.addEventListener("visibilitychange", onFocus);') && HOOK.includes('window.addEventListener("focus", onFocus);'));
+    // #4423: focus and visible again reach the hook through lib/pageReturn.
+    assert.ok(HOOK.includes("subscribePageReturn(() => refetch({ quiet: true }))"));
     // Only an id is remembered beside the key, and nothing is sent to another tab or kept in storage.
     const all = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");
     assert.equal(/BroadcastChannel|postMessage|localStorage|sessionStorage|indexedDB|addEventListener\("storage"/.test(all), false);
