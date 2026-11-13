@@ -516,3 +516,190 @@ export function normalizeAudience(input: unknown): AudienceDefinition {
     },
   };
 }
+
+// ─── #4419: the exact copy, the campaign's state, failures in plain codes ───
+
+/**
+ * #4419 — the one sample person. The composer preview, the exact copy saved
+ * when a campaign starts, the Rebuilt view and a test send's fallback all
+ * render for her, so they cannot drift. Never a real person.
+ */
+export const SAMPLE_RECIPIENT: Readonly<RecipientProfile> = Object.freeze({
+  email: "member@example.com",
+  first_name: "Maya",
+  display_name: "Maya Okafor",
+  username: "mayaexplores",
+  // orch-strict-grep-allow stripe-country-out-of-scope — recipient preview country, unrelated to Stripe account availability
+  country: "NG",
+  preferred_language: "en",
+  created_at: "2026-01-15T12:00:00.000Z",
+});
+
+export type CampaignState =
+  | "scheduled"
+  | "sending"
+  | "sent"
+  | "partial"
+  | "failed"
+  | "cancelled"
+  | "unknown";
+
+export interface CampaignStateRow {
+  status?: string | null;
+  started_at?: string | null;
+}
+
+/**
+ * #4419 — what Admin calls a campaign row. A campaign between batches is
+ * `queued` again with `started_at` set, so it is still Sending; `queued`
+ * before its first batch is Sending too, labelled Starting. pending / draft
+ * are never guessed: Unknown. issue_4419_admin_email_list says the same in SQL.
+ */
+export function campaignState(
+  row: CampaignStateRow,
+): { state: CampaignState; label: string } {
+  const status = row.status ?? "";
+  switch (status) {
+    case "scheduled":
+      return { state: "scheduled", label: "Scheduled" };
+    case "sending":
+      return { state: "sending", label: "Sending" };
+    case "queued":
+      return row.started_at
+        ? { state: "sending", label: "Sending" }
+        : { state: "sending", label: "Starting" };
+    case "completed":
+    case "sent":
+      return { state: "sent", label: "Sent" };
+    case "partial":
+      return { state: "partial", label: "Partially sent" };
+    case "failed":
+      return { state: "failed", label: "Failed" };
+    case "cancelled":
+      return { state: "cancelled", label: "Cancelled" };
+    default:
+      return { state: "unknown", label: "Unknown" };
+  }
+}
+
+export type DeliveryFailureCode =
+  | "rate_limited"
+  | "provider_key"
+  | "invalid_address"
+  | "provider_down"
+  | "other";
+
+/** #4419 — one delivery's provider error as a code (SQL twin: issue_4419_admin_email_delivery_summary). */
+export function deliveryFailureCode(message: string | null | undefined): DeliveryFailureCode {
+  const text = String(message ?? "");
+  if (/^Resend 429/.test(text)) return "rate_limited";
+  if (/^Resend 40[13]/.test(text)) return "provider_key";
+  if (/^Resend 422/.test(text)) return "invalid_address";
+  if (
+    /^Resend 5\d\d/.test(text) ||
+    /(timed out|timeout|fetch failed|network|connection (reset|refused|closed))/i.test(text)
+  ) return "provider_down";
+  return "other";
+}
+
+/** #4419 — a campaign-level last_error as a code, or null when there is none. */
+export function campaignFailureCode(lastError: string | null | undefined): string | null {
+  const text = String(lastError ?? "").trim();
+  if (!text) return null;
+  for (
+    const code of [
+      "blog_post_not_published",
+      "email_snapshot_failed",
+      "campaign_recipient_snapshot_failed",
+    ]
+  ) {
+    if (text.startsWith(code)) return code;
+  }
+  return "other";
+}
+
+/** #4419 — a one-person send's address for a teammate who is not an admin: maya.o@… */
+export function maskEmail(email: string | null | undefined): string | null {
+  const value = typeof email === "string" ? email.trim() : "";
+  const at = value.indexOf("@");
+  if (at < 1) return null;
+  return `${value.slice(0, Math.min(6, at))}@…`;
+}
+
+/** #4419 — a search term as an ILIKE pattern with %, _ and \ taken literally. */
+export function subjectSearchPattern(term: unknown): string | null {
+  const text = typeof term === "string" ? term.trim().slice(0, 100) : "";
+  if (!text) return null;
+  return `%${text.replace(/[\\%_]/g, "\\$&")}%`;
+}
+
+/**
+ * #4419 — the Rebuilt view of an email sent before Admin kept a copy: a blog
+ * block that stored its display snapshot at create time is drawn from that
+ * snapshot (closest to what went out). For Admin's eyes only; never mailed
+ * (I-4137-EMAIL-BLOG-RESOLVED-SERVER-SIDE is about mail).
+ */
+export function rebuildFromStoredSnapshots(
+  document: EmailContentBlock[],
+): { document: EmailContentBlock[]; fromSnapshot: number; withoutSnapshot: number } {
+  let fromSnapshot = 0;
+  let withoutSnapshot = 0;
+  const rebuilt = document.map((block): EmailContentBlock => {
+    if (block.type !== "blog_post") return block;
+    const snap = block.snapshot;
+    if (!snap || !snap.slug || !snap.title) {
+      withoutSnapshot += 1;
+      return block;
+    }
+    fromSnapshot += 1;
+    return {
+      id: block.id,
+      type: "blog_post_resolved",
+      postId: block.postId,
+      style: block.style,
+      buttonText: block.buttonText,
+      url: `https://usemingla.com/blog/${snap.slug}`,
+      title: snap.title,
+      summary: snap.summary ?? "",
+      categoryLabel: snap.categoryLabel || "Mingla",
+      readMinutes: Number(snap.readMinutes || 1),
+      coverUrl: snap.coverUrl ?? null,
+      coverAlt: snap.coverAlt ?? "",
+      versionId: snap.versionId ?? "",
+    };
+  });
+  return { document: rebuilt, fromSnapshot, withoutSnapshot };
+}
+
+const STORED_BLOCK_TYPES = new Set([
+  "rich_text",
+  "image",
+  "divider",
+  "blog_post",
+  "blog_post_resolved",
+]);
+
+/**
+ * #4419 — read back admin_email_log.rendered_document: the blog-resolved
+ * document this server rendered and froze at send start. It is our own
+ * output (validated before it was resolved), so it is only shape-checked;
+ * anything else is refused rather than guessed.
+ */
+export function storedRenderedDocument(input: unknown): EmailContentBlock[] {
+  const blocks = input && typeof input === "object" && !Array.isArray(input) &&
+      (input as Record<string, unknown>).version === 1
+    ? (input as Record<string, unknown>).blocks
+    : input;
+  if (!Array.isArray(blocks) || blocks.length === 0 || blocks.length > 100) {
+    throw new Error("email_snapshot_document_invalid");
+  }
+  for (const block of blocks) {
+    if (
+      !block || typeof block !== "object" ||
+      !STORED_BLOCK_TYPES.has(String((block as Record<string, unknown>).type))
+    ) {
+      throw new Error("email_snapshot_document_invalid");
+    }
+  }
+  return blocks as EmailContentBlock[];
+}
