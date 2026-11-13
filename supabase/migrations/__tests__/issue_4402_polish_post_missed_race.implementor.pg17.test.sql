@@ -34,7 +34,7 @@ BEGIN
   VALUES (v_brand, v_host, 'Issue 4402 PM Race Host', 'i4402-pmrace-host-' || v_tag, 'USD');
   INSERT INTO public.seeding_cities(id, google_place_id, name, country, country_code, center_lat, center_lng,
     bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng)
-  VALUES (v_city, 'i4402-pmrace-city-' || v_tag, 'PM Race City', 'United States', 'US', 35.7, -78.6, 35.6, -78.7, 35.8, -78.5);
+  VALUES (v_city, 'i4402-pmrace-city-' || v_tag, 'PM Race City ' || v_tag, 'United States', 'US', 35.7, -78.6, 35.6, -78.7, 35.8, -78.5);
   INSERT INTO public.creator_profiles(creator_account_id, display_name, home_city_id, usage_ads_opt_in)
   VALUES (v_creator, 'PM Race Creator', v_city, true);
   INSERT INTO public.gigs(id, brand_id, listing_kind, listing_id, title_public, brief_public, format_key,
