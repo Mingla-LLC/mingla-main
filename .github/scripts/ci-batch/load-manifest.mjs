@@ -272,7 +272,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
 // #4422: register 20280705004422 (held RSVP texts, transactional bounce truth) and 20280705104422 (RSVP message links) in the #1857, #1931 and #2117 replay lanes, and their two PostgreSQL proofs in #1931 and #2117; re-sealed.
-export const BOOTSTRAP_SHA256 = "eb7b3e45449cdebccd7d4d7a43ca943597daa4bbd62f90be17ce9d7c09707988";
+// #4422: skip 20280705104422 (RSVP message links, typed on the skipped #4063 claim_links) by exact filename in the #1931 pre-landing replay; re-sealed after merging origin/main 8e1d47562b.
+export const BOOTSTRAP_SHA256 = "2f98d1e67a27a9c59316c97bfefc0f76db41d28ec964413489c9e32656f300aa";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
