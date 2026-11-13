@@ -9,10 +9,15 @@
 //        every other renderTransactionalEmail caller uses stay on usemingla.com
 //   TA-3 a later batch reuses the stored copy without writing it again, even
 //        when the campaign record handed in is stale (rendered_at missing)
+//   TA-4 (retest of P2-1) a read blip right after the FIRST batch saved the
+//        copy hands the send back to the drain; later runs reuse that copy
+//        (no second write, a blog edit ignored) and every person gets exactly
+//        one email
 //
 // FAILS-ON-REVERT: storing the personalized (sample) document instead of the
 // un-personalized one reds TA-1; dropping .is("rendered_at", null) from the
-// snapshot write reds TA-3 (the fake refuses the second write like the trigger).
+// snapshot write reds TA-3 (the fake refuses the second write like the trigger);
+// failing the campaign on a read error (no retry branch) reds TA-4.
 import {
   assert,
   assertEquals,
@@ -323,5 +328,45 @@ Deno.test("TA-3 a later batch with a stale record reuses the stored copy and nev
     assertEquals(fetch.calls.length, 2);
     assertStringIncludes(String(fetch.calls[1].body.html), "Title A");
     assertEquals(String(fetch.calls[1].body.html).includes("Title C"), false);
+  } finally { fetch.restore(); }
+});
+
+Deno.test("TA-4 a read blip after the first save re-queues; the next runs reuse the copy, one email each", async () => {
+  const fetch = withFetch();
+  try {
+    const db = fakeDb({ campaign: campaignRow(), deliveries: twoDeliveries() });
+    // Every read-back of admin_email_log fails during the first run only.
+    let blip = true;
+    const realFrom = (db.client as unknown as { from: (t: string) => Record<string, unknown> }).from;
+    (db.client as unknown as { from: (t: string) => Record<string, unknown> }).from = (table: string) => {
+      const chain = realFrom(table);
+      if (table !== "admin_email_log" || !blip) return chain;
+      const select = chain.select as (...a: unknown[]) => Record<string, unknown>;
+      chain.select = (...a: unknown[]) => {
+        const next = select(...a);
+        next.maybeSingle = () => Promise.resolve({ data: null, error: { message: "connection reset" } });
+        return next;
+      };
+      return chain;
+    };
+    const first = await processClaimedCampaign(db.client, campaignRow()) as Row;
+    assertEquals(first.retry, true, JSON.stringify(first));
+    assertEquals(current(db).status, "queued");
+    assertEquals(current(db).processing_started_at, null);
+    assertEquals(current(db).completed_at ?? null, null);
+    assert(current(db).rendered_at, "the copy saved before the blip is kept");
+    assertEquals(fetch.calls.length, 0, "nothing sent on the run that could not read the copy");
+    const savedHtml = current(db).rendered_html;
+    blip = false;
+    db.state.blogTitle = "Title Z";
+    for (let i = 0; i < 3; i += 1) {
+      await processClaimedCampaign(db.client, { ...current(db), status: "sending" } as never);
+    }
+    assertEquals(fetch.calls.length, 2, "one email per person, no double send");
+    assertEquals(new Set(fetch.calls.map((c) => c.headers["Idempotency-Key"])).size, 2);
+    assertEquals(fetch.calls.some((c) => String(c.body.html).includes("Title Z")), false);
+    assertEquals(current(db).rendered_html, savedHtml);
+    assertEquals(db.state.logUpdates.filter((u) => "rendered_html" in u).length, 1);
+    assertEquals(current(db).status, "completed");
   } finally { fetch.restore(); }
 });
