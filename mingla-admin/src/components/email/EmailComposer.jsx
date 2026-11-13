@@ -37,6 +37,9 @@ import { Badge } from "../ui/Badge";
 import { isFullAdmin } from "../../lib/access";
 import { formatRelativeTime } from "../../lib/formatters";
 import { EmailBlogPostPicker } from "./EmailBlogPostPicker";
+import { ADMIN_EMAIL_FROM_LABEL, ADMIN_EMAIL_REPLY_TO, ADMIN_EMAIL_SENDER } from "../../lib/adminEmailSender";
+import { EditableRichBlock } from "./EditableRichBlock";
+import { escapeHtml, sanitizeLocalRichText } from "./richText";
 import {
   APP_STATUS_OPTIONS,
   AUDIENCE_PRESETS,
@@ -118,39 +121,6 @@ function replacePreviewTokens(value) {
   return Object.entries(SAMPLE_VALUES).reduce((current, [token, replacement]) => (
     current.split(token).join(replacement)
   ), value || "").split("{name}").join("Maya");
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[character]);
-}
-
-function sanitizeLocalRichText(value) {
-  const allowed = new Set(["p", "h2", "h3", "strong", "b", "em", "i", "u", "ul", "ol", "li", "a", "br"]);
-  return String(value)
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "")
-    .replace(/<\/?([a-z0-9]+)(?:\s[^>]*)?>/gi, (raw, rawTag) => {
-      const tag = rawTag.toLowerCase();
-      if (!allowed.has(tag)) return "";
-      if (raw.startsWith("</")) return `</${tag}>`;
-      if (tag === "br") return "<br>";
-      if (tag !== "a") return `<${tag}>`;
-      const href = raw.match(/href\s*=\s*["']([^"']+)["']/i)?.[1];
-      try {
-        const parsed = new URL(href || "");
-        return parsed.protocol === "https:" || (parsed.protocol === "mailto:" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parsed.pathname))
-          ? `<a href="${escapeHtml(parsed.toString())}" target="_blank" rel="noopener noreferrer">`
-          : "<a>";
-      } catch {
-        return "<a>";
-      }
-    });
 }
 
 function plainTextFromDocument(documentValue) {
@@ -262,7 +232,7 @@ function LocalEmailPreview({ subject, documentValue }) {
         </div>
         <div className="border-t border-[#efe9e2] px-6 py-5 text-xs leading-5 text-[#756e68]">
           <p>You’re receiving this email from Mingla.</p>
-          <p><a className="underline" href="#unsubscribe">Unsubscribe</a> · Mingla, hello@usemingla.com</p>
+          <p><a className="underline" href="#unsubscribe">Unsubscribe</a> · Mingla, {ADMIN_EMAIL_SENDER.address}</p>
         </div>
       </div>
     </div>
@@ -1256,11 +1226,11 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-tertiary)]">From</p>
-              <p className="mt-0.5 text-sm font-medium text-[var(--color-text-primary)]">Mingla &lt;hello@usemingla.com&gt;</p>
+              <p className="mt-0.5 text-sm font-medium text-[var(--color-text-primary)]">{ADMIN_EMAIL_FROM_LABEL}</p>
             </div>
             <div className="rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-tertiary)]">Replies</p>
-              <p className="mt-0.5 text-sm font-medium text-[var(--color-text-primary)]">noreply@usemingla.com</p>
+              <p className="mt-0.5 text-sm font-medium text-[var(--color-text-primary)]">{ADMIN_EMAIL_REPLY_TO}</p>
             </div>
           </div>
 
@@ -1296,14 +1266,12 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               {documentValue.map((block) => (
                 <div key={block.id} className="group relative">
                   {block.type === "rich_text" && (
-                    <div
-                      ref={(node) => { if (node) editorRefs.current.set(block.id, node); else editorRefs.current.delete(block.id); }}
-                      contentEditable
-                      suppressContentEditableWarning
+                    <EditableRichBlock
+                      html={block.html}
+                      editorRef={(node) => { if (node) editorRefs.current.set(block.id, node); else editorRefs.current.delete(block.id); }}
                       onFocus={() => setActiveBlockId(block.id)}
-                      onInput={(event) => updateBlock(block.id, { html: event.currentTarget.innerHTML })}
+                      onHtmlChange={(html) => updateBlock(block.id, { html })}
                       className="min-h-12 rounded-lg px-2 py-1 text-sm leading-7 text-[var(--color-text-primary)] outline-none hover:bg-[var(--gray-50)] focus:bg-[var(--gray-50)] [&_a]:text-[var(--color-brand-600)] [&_a]:underline [&_h2]:my-2 [&_h2]:text-xl [&_h2]:font-bold [&_li]:ml-5 [&_ol]:list-decimal [&_p]:mb-2 [&_ul]:list-disc"
-                      dangerouslySetInnerHTML={{ __html: sanitizeLocalRichText(block.html) }}
                     />
                   )}
                   {block.type === "divider" && <hr className="my-5 border-0 border-t border-[var(--gray-300)]" />}
@@ -1622,7 +1590,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               <div className="col-span-2 sm:col-span-3"><p className="text-xs text-[var(--color-text-tertiary)]">Audience</p><p className="mt-1 font-medium text-[var(--color-text-primary)]">{audienceLabel}</p></div>
               <div className="col-span-2 sm:col-span-3"><p className="text-xs text-[var(--color-text-tertiary)]">When</p><p className="mt-1 font-medium text-[var(--color-text-primary)]">{scheduleMode === "later" ? `${new Date(scheduledLocal).toLocaleString()} (${timezone})` : "As soon as the delivery worker claims it"}</p></div>
             </div>
-            <div><p className="text-xs text-[var(--color-text-tertiary)]">From</p><p className="font-medium">Mingla &lt;hello@usemingla.com&gt; · replies to noreply@usemingla.com</p></div>
+            <div><p className="text-xs text-[var(--color-text-tertiary)]">From</p><p className="font-medium">{ADMIN_EMAIL_FROM_LABEL} · replies to {ADMIN_EMAIL_REPLY_TO}</p></div>
             <div><p className="text-xs text-[var(--color-text-tertiary)]">Subject</p><p className="font-medium">{subject}</p></div>
             <p className="text-xs text-[var(--color-text-secondary)]">Every matching recipient is snapshotted before delivery. The worker retries temporary failures without creating duplicate provider sends.</p>
           </div>
