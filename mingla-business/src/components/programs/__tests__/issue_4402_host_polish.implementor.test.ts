@@ -11,6 +11,7 @@ import {
   cancelRefundQuote,
   deliveryPosterUrl,
   formatInZone,
+  postDeadlineShownIso,
   gigMinFeeMinor,
   gigReachCopy,
   gigZone,
@@ -326,5 +327,17 @@ describe("formatInZone on a Hermes-shaped Intl", () => {
     } finally {
       Intl.DateTimeFormat.prototype.formatToParts = real;
     }
+  });
+});
+
+// #4402 walk (2026-11-13): Host read "posts by Thu Dec 17, 12:00 AM" while the
+// creator read "Wed Dec 16, 11:59 PM" for the same deadline.
+describe("posting deadline reads like the creator's", () => {
+  it("shows the last minute before the stored instant", () => {
+    expect(formatInZone(postDeadlineShownIso("2026-12-16T23:00:00Z"), "Africa/Lagos")).toBe(
+      "Wed Dec 16, 11:59 PM Lagos time",
+    );
+    expect(postDeadlineShownIso(null)).toBeNull();
+    expect(postDeadlineShownIso("nope")).toBeNull();
   });
 });

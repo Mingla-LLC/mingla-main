@@ -10,6 +10,9 @@ import {
   checkPostFailReason,
   contractStateWord,
   creatorStepRows,
+  dayWord,
+  deliverablesSummary,
+  mustTagWords,
   payoutNameReview,
   creatorCardThumb,
   localAlreadyPicked,
@@ -159,4 +162,19 @@ test("#4402 payout name mismatch: a warning on the card and the Payout account r
   assert.match(creators, /const nameReview = payoutNameReview\(creator\)/);
   assert.match(creators, /row\.nameReview\.reason/);
   assert.doesNotMatch(read("lib/creatorPrograms.js"), /payout_name_review[^\n]*(disabled|block)/i);
+});
+
+// #4402 walk (2026-11-13): the queue printed "[object Object] · [object Object]" for the
+// server's must_tag object and deliverables list (the drawer threw on the object), and a
+// post-by day of Tue 15 Dec read "Mon 14 Dec" in a browser west of UTC.
+test("posts to check: must-tag, deliverables and post-by read as words", () => {
+  assert.equal(mustTagWords({ mingla: "@usemingla", disclosure: "#ad" }), "@usemingla · #ad");
+  assert.equal(mustTagWords(["@usemingla", "#ad"]), "@usemingla · #ad");
+  assert.equal(mustTagWords("@usemingla"), "@usemingla");
+  assert.equal(mustTagWords(null), "");
+  assert.equal(deliverablesSummary([{ kind: "reel", count: 1, platform: "instagram" }]), "1 Reel");
+  assert.equal(dayWord("2026-12-15"), "Tue 15 Dec");
+  assert.doesNotMatch(gigs, /\{post\.must_tag \|\|/);
+  assert.doesNotMatch(gigs, /\{post\.deliverables \|\|/);
+  assert.match(gigs, /mustTagWords\(row\.must_tag\)/);
 });

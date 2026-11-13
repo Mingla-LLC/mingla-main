@@ -343,6 +343,17 @@ export function formatInZone(
   }
 }
 
+/**
+ * #4402 — the posting deadline as people read it. The server stores the first
+ * instant after the grace day ("00:00"); show the last minute ("11:59 PM") the
+ * day before, the same as the creator's app.
+ */
+export function postDeadlineShownIso(deadlineAt: string | null | undefined): string | null {
+  if (typeof deadlineAt !== "string" || deadlineAt.length === 0) return null;
+  const ms = Date.parse(deadlineAt);
+  return Number.isFinite(ms) ? new Date(ms - 60_000).toISOString() : null;
+}
+
 /** The gig's zone from a workspace or gig row (the server sends `timezone`). */
 export function gigZone(source: unknown): string | null {
   if (!source || typeof source !== "object") return null;

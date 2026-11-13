@@ -29,7 +29,9 @@ import {
   contractStateTone,
   contractStateWord,
   dayWord,
+  deliverablesSummary,
   isMissingFunction,
+  mustTagWords,
   money,
   payUpToWord,
   programErrorMessage,
@@ -162,8 +164,8 @@ function PostCheckDrawer({ post, onClose, onDecided }) {
           <dt className="text-[var(--color-text-tertiary)]">Gig</dt><dd className="text-[var(--color-text-primary)]">{post.gig_title ?? "Gig"}</dd>
           <dt className="text-[var(--color-text-tertiary)]">Creator</dt><dd className="text-[var(--color-text-primary)]">{post.creator_name ?? "—"}</dd>
           <dt className="text-[var(--color-text-tertiary)]">Host</dt><dd className="text-[var(--color-text-primary)]">{post.brand_name ?? "—"}</dd>
-          <dt className="text-[var(--color-text-tertiary)]">Must tag</dt><dd className="text-[var(--color-text-primary)]">{post.must_tag || "—"}</dd>
-          <dt className="text-[var(--color-text-tertiary)]">Deliverables</dt><dd className="text-[var(--color-text-primary)]">{post.deliverables || "—"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Must tag</dt><dd className="text-[var(--color-text-primary)]">{mustTagWords(post.must_tag) || "—"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Deliverables</dt><dd className="text-[var(--color-text-primary)]">{deliverablesSummary(post.deliverables) || "—"}</dd>
           <dt className="text-[var(--color-text-tertiary)]">Post by</dt><dd className="text-[var(--color-text-primary)]">{post.post_by ? dayWord(post.post_by) : "—"}</dd>
           <dt className="text-[var(--color-text-tertiary)]">Submitted</dt><dd className="text-[var(--color-text-primary)]">{shortDateTimeOrDash(post.submitted_at)} · {postWaitingWord(post)} ago</dd>
         </dl>
@@ -227,7 +229,7 @@ function PostChecksQueue({ queue }) {
                     <p className="text-[var(--color-text-primary)]">{row.gig_title ?? "Gig"}</p>
                     <p className="text-xs text-[var(--color-text-tertiary)]">{[row.creator_name, row.brand_name].filter(Boolean).join(" · ")}</p>
                   </td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{[row.must_tag, row.deliverables].filter(Boolean).join(" · ") || "—"}</td>
+                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{[mustTagWords(row.must_tag), deliverablesSummary(row.deliverables)].filter(Boolean).join(" · ") || "—"}</td>
                   <td className="px-4 py-3 text-[var(--color-text-secondary)]">{row.post_by ? dayWord(row.post_by) : "—"}</td>
                   <td className="px-4 py-3">
                     {postWaitingOverDay(row) ? <Badge variant="warning" dot>Waiting over a day</Badge> : null}

@@ -117,6 +117,7 @@ import {
   deliveryPosterUrl,
   formatInZone,
   gigZone,
+  postDeadlineShownIso,
   dueIn,
   formatName,
   hostContractStep,
@@ -1545,7 +1546,7 @@ export default function HostGigContract(): React.ReactElement {
             const posting = hostPostingCopy({
               state,
               creatorName,
-              deadlineWords: deadline ? when(deadline) : null,
+              deadlineWords: deadline ? when(postDeadlineShownIso(deadline)) : null,
               deadlineAt: deadline,
               cancelReason:
                 typeof workspace.contract.cancel_reason === "string"

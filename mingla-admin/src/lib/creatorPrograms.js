@@ -734,12 +734,28 @@ export function shortDateTimeOrDash(value) {
   return shortDateTime(value) || "—";
 }
 
-/** "Tue 20 Oct" for a deadline. */
+/**
+ * "Tue 20 Oct" for a deadline. A calendar day ("2026-12-15") is that day everywhere:
+ * read in UTC, never shifted a day back by the browser's zone (#4402 walk: post-by
+ * Tue 15 Dec showed as Mon 14 Dec in New York).
+ */
 export function dayWord(value) {
   if (!value) return "";
-  const d = new Date(value);
+  const calendarDay = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const d = new Date(calendarDay ? `${value}T00:00:00Z` : value);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", ...(calendarDay ? { timeZone: "UTC" } : {}) });
+}
+
+/**
+ * A gig's must-tag as words: "@usemingla · #ad". The server stores it as an object
+ * ({ mingla, disclosure }), older rows as a list or a string (#4402 walk: "[object Object]").
+ */
+export function mustTagWords(mustTag) {
+  if (!mustTag) return "";
+  if (typeof mustTag === "string") return mustTag.trim();
+  const values = Array.isArray(mustTag) ? mustTag : typeof mustTag === "object" ? Object.values(mustTag) : [];
+  return values.filter((v) => typeof v === "string" && v.trim()).map((v) => v.trim()).join(" · ");
 }
 
 const DELIVERABLE_WORDS = { video: "video", reel: "Reel", story: "Story", stories: "Stories", post: "post", tiktok: "TikTok" };
