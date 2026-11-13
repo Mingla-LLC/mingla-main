@@ -274,7 +274,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4422: register 20280705004422 (held RSVP texts, transactional bounce truth) and 20280705104422 (RSVP message links) in the #1857, #1931 and #2117 replay lanes, and their two PostgreSQL proofs in #1931 and #2117; re-sealed.
 // #4422: skip 20280705104422 (RSVP message links, typed on the skipped #4063 claim_links) by exact filename in the #1931 pre-landing replay; re-sealed after merging origin/main 8e1d47562b.
 // #4422 rework: the tester's delivery-truth pg17 proof joins the #1931 and #2117 lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "b653b8ae93f06284a3963747f7bd3a720d85a5cb39142d8dc724ad110020e30e";
+// #4422 merge of origin/main a5a5c59094 (#4426 email follow-up rows kept beside the #4422 rows); re-sealed.
+export const BOOTSTRAP_SHA256 = "f26ab348b05489661fcd3f5ab5a9193a442c87228720f608c61d55d5975dfa16";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

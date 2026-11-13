@@ -351,8 +351,8 @@ Deno.test("TA-4 a read blip after the first save re-queues; the next runs reuse 
     };
     const first = await processClaimedCampaign(db.client, campaignRow()) as Row;
     assertEquals(first.retry, true, JSON.stringify(first));
-    assertEquals(current(db).status, "queued");
-    assertEquals(current(db).processing_started_at, null);
+    assertEquals(current(db).status, "sending");
+    assertEquals(current(db).snapshot_attempts, 1);
     assertEquals(current(db).completed_at ?? null, null);
     assert(current(db).rendered_at, "the copy saved before the blip is kept");
     assertEquals(fetch.calls.length, 0, "nothing sent on the run that could not read the copy");

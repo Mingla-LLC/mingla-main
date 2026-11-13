@@ -16,6 +16,7 @@ import {
   listFiltersFor,
   listWhen,
   pageRange,
+  sampleText,
   statePill,
 } from "./campaignModel";
 
@@ -116,13 +117,13 @@ export function EmailsListBody({
           type="button"
           data-email-row={row.id}
           onClick={() => onOpen?.(row.id)}
-          aria-label={`Open ${row.subject}`}
+          aria-label={`Open ${sampleText(row.subject)}`}
           className="grid w-full grid-cols-[64px_minmax(0,1fr)_150px_200px_120px] items-center gap-4 border-b border-[var(--gray-100)] px-5 py-3.5 text-left last:border-b-0 hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand-500)] max-[1080px]:grid-cols-[56px_minmax(0,1fr)_180px_110px] max-[720px]:grid-cols-[48px_minmax(0,1fr)] max-[720px]:gap-3 max-[720px]:px-4"
         >
           <Thumb url={row.thumb_url} />
           <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{row.subject}</span>
-            <span className="truncate text-[13px] text-[var(--color-text-tertiary)]">{row.preheader || " "}</span>
+            <span className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{sampleText(row.subject)}</span>
+            <span className="truncate text-[13px] text-[var(--color-text-tertiary)]">{sampleText(row.preheader) || " "}</span>
           </span>
           <span className="min-w-0 text-[13px] text-[var(--color-text-secondary)] max-[1080px]:hidden">
             <span className="block truncate">{campaignAudienceLabel(row)}</span>

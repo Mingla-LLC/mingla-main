@@ -3330,7 +3330,8 @@
         "supabase/functions/_shared/email/index.ts",
         "supabase/functions/_shared/email/types.ts",
         "supabase/migrations/20280703004419_issue_4419_admin_email_snapshot.sql",
-        "supabase/migrations/20280703014419_issue_4419_admin_email_engagement.sql"
+        "supabase/migrations/20280703014419_issue_4419_admin_email_engagement.sql",
+        "supabase/migrations/20280706004419_issue_4419_email_followups.sql"
       ]
     },
     {
