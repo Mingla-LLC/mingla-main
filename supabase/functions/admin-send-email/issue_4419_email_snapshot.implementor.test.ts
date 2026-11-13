@@ -39,6 +39,7 @@ Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
 
 const {
   ADMIN_SENDER,
+  senderFor,
   cancelCampaign,
   errorStatus,
   getCampaignDetail,
@@ -106,6 +107,7 @@ function fakeDb(options: {
     rpcCalls: [] as Array<{ fn: string; params: unknown }>,
     deliveryInserts: 0,
     logUpdates: [] as Row[],
+    failLogReads: false,
   };
   const snapshotColumns = ["rendered_subject", "rendered_preheader", "rendered_html", "rendered_text", "rendered_document", "render_sample", "rendered_at"];
 
@@ -128,6 +130,9 @@ function fakeDb(options: {
       }
       if (table === "channel_suppressions" || table === "marketing_unsubscribes") return { data: [], error: null };
       if (table === "admin_email_log") {
+        if (op === "select" && state.failLogReads) {
+          return { data: null, error: { message: "connection reset" } };
+        }
         const rows = [...log.values()].filter(matchesRow);
         if (op === "update" && patch) {
           if (options.failSnapshotWrite && "rendered_html" in patch) {
@@ -623,4 +628,62 @@ Deno.test("S-11 (Part B) engagement reaches the list and the page; a failed read
   assertEquals((await getCampaignDetail(down.client, { campaignId: CAMPAIGN }, { isAdmin: true })).engagement, null);
   const downList = await listCampaigns(down.client, {}, { isAdmin: true });
   assertEquals([downList.rows[0].delivered, downList.rows[0].opened_unique], [null, null]);
+});
+
+Deno.test("S-12 (tester P2-1) a read blip on a later batch hands the send back to the drain; it never fails halfway", async () => {
+  const fetch = withFetch();
+  try {
+    const db = fakeDb({ campaign: campaignRow(), deliveries: twoDeliveries() });
+    await processClaimedCampaign(db.client, campaignRow());
+    assertEquals(fetch.calls.length, 1);
+    // Batch 2: the copy exists but reading it back fails once.
+    current(db).sent_count = 1;
+    db.state.failLogReads = true;
+    const result = await processClaimedCampaign(db.client, { ...current(db) } as never) as Row;
+    assertEquals(result.retry, true);
+    assertEquals(current(db).status, "queued", "back in the queue, not failed");
+    assertEquals(current(db).processing_started_at, null);
+    assertEquals(current(db).completed_at ?? null, null);
+    assertEquals(String(current(db).last_error ?? "").includes("snapshot"), false);
+    assertEquals(db.state.deliveries.filter((d) => d.status === "pending").length, 1, "the second person is still waiting");
+    assertEquals(fetch.calls.length, 1, "nothing sent on the failed run");
+    // The next drain run sends to the rest, from the same copy.
+    db.state.failLogReads = false;
+    await processClaimedCampaign(db.client, { ...current(db) } as never);
+    assertEquals(fetch.calls.length, 2);
+    assertEquals(db.state.deliveries.filter((d) => d.status === "pending").length, 0);
+    assertStringIncludes(String(fetch.calls[1].body.html), "Title A");
+  } finally { fetch.restore(); }
+});
+
+Deno.test("S-13 (tester P2-1) an unreadable stored copy after some were sent ends as partial, never 'nobody'", async () => {
+  const fetch = withFetch();
+  try {
+    const db = fakeDb({ campaign: campaignRow(), deliveries: twoDeliveries() });
+    await processClaimedCampaign(db.client, campaignRow());
+    // Corrupt the stored document (bypassing the trigger, as a bad restore would).
+    current(db).rendered_document = { version: 1, blocks: [{ type: "script" }] };
+    current(db).sent_count = 1;
+    await processClaimedCampaign(db.client, { ...current(db) } as never);
+    assertEquals(current(db).status, "partial");
+    assert(String(current(db).last_error).startsWith("email_snapshot_failed:"));
+    assertEquals(fetch.calls.length, 1);
+  } finally { fetch.restore(); }
+});
+
+Deno.test("S-14 (tester P3-5) the page names the sender an email actually goes out from", async () => {
+  // Scheduled before this deploy: the row still says usemingla.com.
+  const scheduled = fakeDb({ campaign: campaignRow({ status: "scheduled", started_at: null, from_name: "Mingla", from_email: "hello@usemingla.com" }) });
+  const detail = await getCampaignDetail(scheduled.client, { campaignId: CAMPAIGN }, { isAdmin: true });
+  assertEquals(detail.campaign.from, { name: "Mingla", email: "hello@campaigns.usemingla.com" });
+  // Sent before #4419 (no copy): what the row recorded.
+  assertEquals(senderFor({ started_at: "2026-10-01T00:00:00Z", from_name: "Mingla", from_email: "hello@usemingla.com" }), { name: "Mingla", email: "hello@usemingla.com" });
+  // The saved copy records the sender it used.
+  const fetch = withFetch();
+  try {
+    const db = fakeDb({ campaign: campaignRow({ from_email: "hello@usemingla.com" }), deliveries: twoDeliveries() });
+    await processClaimedCampaign(db.client, campaignRow());
+    assertEquals(current(db).from_email, "hello@campaigns.usemingla.com");
+    assertEquals((await getCampaignDetail(db.client, { campaignId: CAMPAIGN }, { isAdmin: true })).campaign.from.email, "hello@campaigns.usemingla.com");
+  } finally { fetch.restore(); }
 });

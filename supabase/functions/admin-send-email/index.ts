@@ -77,6 +77,23 @@ interface CampaignRecord {
   /** #4419: set once, when the first batch saved the exact copy. */
   rendered_at?: string | null;
   rendered_document?: unknown;
+  /** Provider-accepted so far (updated after every batch). */
+  sent_count?: number | null;
+}
+
+/**
+ * #4419 (tester P2-1) — a copy problem is final only when it can't get
+ * better: the first save was refused (D7: send nothing) or the stored copy is
+ * unreadable. A failed read of a copy that exists is a blip: the campaign is
+ * handed back to the drain to retry, never failed halfway.
+ */
+class SnapshotError extends Error {
+  retryable: boolean;
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.name = "SnapshotError";
+    this.retryable = retryable;
+  }
 }
 
 /** Legacy API segment names retained only for compatibility; unknown values fail closed. */
@@ -679,8 +696,11 @@ async function frozenCampaignDocument(
       rendered_document: versionedDocument(resolved),
       render_sample: { ...SAMPLE_RECIPIENT },
       rendered_at: new Date().toISOString(),
+      // #4419 (tester P3-5): the row names the sender this copy goes out from.
+      from_name: ADMIN_SENDER.name,
+      from_email: ADMIN_SENDER.address,
     }).eq("id", campaign.id).is("rendered_at", null);
-    if (error) throw new Error(`email_snapshot_failed:${error.message}`);
+    if (error) throw new SnapshotError(`email_snapshot_failed:${error.message}`, false);
   }
   // Read the stored document back: another run may have saved it first, and
   // the stored one is the one that goes out.
@@ -688,11 +708,18 @@ async function frozenCampaignDocument(
     .select("rendered_at,rendered_document")
     .eq("id", campaign.id)
     .maybeSingle();
-  if (error) throw new Error(`email_snapshot_failed:${error.message}`);
+  if (error) throw new SnapshotError(`email_snapshot_read_failed:${error.message}`, true);
   if (!data?.rendered_at || !data.rendered_document) {
-    throw new Error("email_snapshot_failed:copy_missing");
+    throw new SnapshotError("email_snapshot_read_failed:copy_missing", true);
   }
-  return storedRenderedDocument(data.rendered_document);
+  try {
+    return storedRenderedDocument(data.rendered_document);
+  } catch (error) {
+    throw new SnapshotError(
+      `email_snapshot_failed:${error instanceof Error ? error.message : String(error)}`,
+      false,
+    );
+  }
 }
 
 export async function processClaimedCampaign(
@@ -731,11 +758,23 @@ export async function processClaimedCampaign(
     );
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error);
+    if (error instanceof SnapshotError && error.retryable) {
+      // Nothing is claimed or sent this run. Hand the campaign back to the
+      // drain (queued, unclaimed) so the next run tries again; if even this
+      // write fails, the stale-claim recovery picks it up in 10 minutes.
+      await supabase.from("admin_email_log").update({
+        status: "queued",
+        processing_started_at: null,
+      }).eq("id", campaign.id);
+      return { ok: false, retry: true, error: raw };
+    }
     const message = raw.startsWith("email_snapshot_failed")
       ? raw
       : `email_snapshot_failed:${raw}`;
+    const accepted = Number(campaign.sent_count ?? 0);
     await supabase.from("admin_email_log").update({
-      status: "failed",
+      // Some people already got it: say partial, never "failed, nobody".
+      status: accepted > 0 ? "partial" : "failed",
       last_error: message.slice(0, 2000),
       completed_at: new Date().toISOString(),
       processing_started_at: null,
@@ -1155,6 +1194,22 @@ type DeliverySummary = {
   raw: string | null;
 };
 
+/**
+ * #4419 (tester P3-5): who an email is (or was) from. One that hasn't
+ * started goes out from today's Admin sender, whatever was stored when it
+ * was scheduled; one that went out says what the row recorded (the saved
+ * copy writes the sender it used).
+ */
+export function senderFor(row: DetailRow): { name: string; email: string } {
+  if (!row.rendered_at && !row.started_at) {
+    return { name: ADMIN_SENDER.name, email: ADMIN_SENDER.address };
+  }
+  return {
+    name: typeof row.from_name === "string" && row.from_name ? row.from_name : ADMIN_SENDER.name,
+    email: typeof row.from_email === "string" && row.from_email ? row.from_email : ADMIN_SENDER.address,
+  };
+}
+
 function sourceDocument(row: DetailRow): EmailContentBlock[] {
   try {
     return validateDocument(
@@ -1247,10 +1302,7 @@ export async function getCampaignDetail(
       state,
       state_label: label,
       raw_status: row.status,
-      from: {
-        name: row.from_name ?? ADMIN_SENDER.name,
-        email: row.from_email ?? ADMIN_SENDER.address,
-      },
+      from: senderFor(row),
       to_label: toLabelFor(row, ctx.isAdmin),
       recipient_type: row.recipient_type,
       audience,
