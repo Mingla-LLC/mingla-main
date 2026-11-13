@@ -98,6 +98,7 @@ interface Seen {
   eventReads: number;
   inFlight: number;
   maxInFlight: number;
+  mints: Array<Record<string, unknown>>;
   rejected: string[];
 }
 
@@ -151,6 +152,7 @@ const seen: Seen = {
   eventReads: 0,
   inFlight: 0,
   maxInFlight: 0,
+  mints: [],
   rejected: [],
 };
 
@@ -178,6 +180,7 @@ function reset(next: Partial<World> = {}): void {
     eventReads: 0,
     inFlight: 0,
     maxInFlight: 0,
+    mints: [],
     rejected: [],
   });
 }
@@ -201,6 +204,11 @@ globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => 
     const leaf = url.pathname.split("/").at(-1) ?? "";
     const body = req.method === "GET" ? null : await req.json();
     // #4422 — the tick's unreached-guest alert claim; nothing to alert here.
+    // #4422 — the change text's shared short event link.
+    if (leaf === "mint_redirect_link") {
+      seen.mints.push(body);
+      return jsonResponse({ code: "EVT4422ABC", expiresAt: body.p_expires_at });
+    }
     if (leaf === "issue_4422_claim_unreached_guest_alerts") {
       return jsonResponse([]);
     }
@@ -526,9 +534,18 @@ test("D-08 a going guest keeps the text channel, with real wording", async () =>
   same(seen.emails.length, 0, "no email for a text delivery");
   const message = seen.texts[0].Body ?? "";
   assert(message.includes("Sunset Sessions"), `the text names the event: ${message}`);
-  assert(
-    message.includes("https://host.usemingla.com/e/casa-lenta/sunset-sessions"),
-    `the text links to the event page: ${message}`,
+  // [TEST-MOD-APPROVED #4422] One segment, "Mingla:", the S20V venue wording
+  // and the shared short link to the event page.
+  same(
+    message,
+    "Mingla: Sunset Sessions has a new venue. See the details: usemingla.com/c/EVT4422ABC Reply STOP to opt out.",
+    "the change text",
+  );
+  same(seen.mints.length, 1, "one short link minted");
+  same(
+    [seen.mints[0].p_subject_kind, seen.mints[0].p_subject_id, seen.mints[0].p_target_url],
+    ["event_page", EVENT_ID, "https://host.usemingla.com/e/casa-lenta/sunset-sessions"],
+    "the short link points at the live event page",
   );
   assert(!message.includes("your event"), "no placeholder wording");
   same(seen.categoryReads, ["rsvp_acknowledgement"], "the guest category is unchanged");

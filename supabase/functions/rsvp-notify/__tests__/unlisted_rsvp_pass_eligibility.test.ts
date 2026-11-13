@@ -3,8 +3,8 @@
 //
 // fails-on-revert: put `event.visibility === "public"` back (drop "hidden" from
 // RSVP_PASS_VISIBILITIES) and P-02 reds; admit "private" and P-03 reds; unwire the
-// worker from the helper, or let the #871 attendance link share the widened pass
-// gate, and P-06 reds. The real worker is exercised end to end in
+// worker from the helper, or bring back the #871 attendance link (removed by
+// #4422), and P-06 reds. The real worker is exercised end to end in
 // unlisted_rsvp_pass_delivery.runtime.test.ts.
 import {
   RSVP_PASS_VISIBILITIES,
@@ -84,7 +84,9 @@ Deno.test("P-04 everything else is unchanged: deleted, deleted brand, not RSVP, 
 
 // [TEST-MOD-APPROVED #4063] Visibility is no longer an ownership predicate;
 // the existing pass eligibility boundary remains unchanged.
-Deno.test("P-06 the pass owns send eligibility while attendance ignores visibility", async () => {
+// [TEST-MOD-APPROVED #4422] The attendance link was removed by the approved
+// spec addendum (R7); P-06 now proves it stays removed.
+Deno.test("P-06 the pass owns send eligibility and carries no attendance link", async () => {
   const worker = await Deno.readTextFile(
     new URL("../index.ts", import.meta.url),
   );
@@ -114,26 +116,22 @@ Deno.test("P-06 the pass owns send eligibility while attendance ignores visibili
     !pass.includes('event.visibility === "public"'),
     "the pass decision itself must not be public-only",
   );
-  assert(
-    /return\s*{[\s\S]*attendanceClaim:\s*attendanceClaimStillEligible\(event, brand\)[\s\S]*}/
-      .test(pass),
-    "the attendance link decision must be made separately, on the same event row",
-  );
-  const attendance = body("function attendanceClaimStillEligible(");
-  assert(
-    !attendance.includes("event.visibility") &&
-      !attendance.includes("rsvpPassEventEligible"),
-    "the attendance claim decision must not read discovery visibility",
-  );
+  // #4422 — the separate #871 "connect attendance" link is gone from every
+  // pass (the /c/ claim link already claims attendance), so no pass text or
+  // email builds one and no gate for it remains.
+  for (
+    const gone of [
+      "attendanceClaimUrls",
+      "attendanceClaimStillEligible",
+      "Connect attendance",
+      "Connect this RSVP",
+    ]
+  ) {
+    assert(!worker.includes(gone), `the worker must not carry ${gone}`);
+  }
   const link = body("async function recoveryLinkFor(");
   assert(
-    /if\s*\(\s*table === "event_rsvps"\s*&&\s*current\?\.event_id\s*&&\s*attendanceClaimAllowed\s*\)/
-      .test(link),
-    "the attendance URL must only be built when that gate allows it",
-  );
-  assert(
-    /\?\s*await recoveryLinkFor\(admin, p, pass\?\.attendanceClaim === true\)/
-      .test(worker),
-    "the worker must pass the attendance decision, not a constant",
+    /\): Promise<\{ passUrl: string \} \| null>/.test(link),
+    "the recovery link returns the pass URL only",
   );
 });

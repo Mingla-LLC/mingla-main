@@ -1160,7 +1160,9 @@ export interface RsvpChannelInput {
   body: string;
   sms_body: string;
   deep_link: string;
-  attachment?: { filename: string; content: string } | null;
+  /** Issue #4422 — every file the email carries (the calendar file and the
+   * QR pass PDF). Only the email channel reads it. */
+  attachments?: Array<{ filename: string; content: string }> | null;
   /**
    * Issue #3827 — an email already rendered by its own module, with its
    * Reply-To. Only the email channel reads it; absent, nothing changes.
@@ -1288,7 +1290,9 @@ export async function dispatchRsvpChannel(
       body: input.body,
       cta: { label: "View RSVP", url: input.deep_link },
       idempotencyKey: `${input.idempotency_key}:email`,
-      ...(input.attachment ? { attachments: [input.attachment] } : {}),
+      ...(input.attachments && input.attachments.length > 0
+        ? { attachments: input.attachments }
+        : {}),
       ...(input.email_override
         ? {
           rendered: input.email_override.rendered,

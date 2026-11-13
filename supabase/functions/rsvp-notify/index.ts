@@ -18,10 +18,15 @@ import {
   rsvpRecoveryUrl,
   sha256Hex,
 } from "../_shared/rsvpPass.ts";
-import { attendanceClaimUrls } from "../_shared/attendanceClaim.ts";
-import { resolveBuyerLink } from "../_shared/messageLinks.ts";
+import { eventLinkExpiry, resolveBuyerLink } from "../_shared/messageLinks.ts";
 import { formatMessageTime } from "../_shared/messageTime.ts";
-import { buildRsvpPassMessage } from "../_shared/rsvpPassMessage.ts";
+import {
+  buildRsvpPassMessage,
+  type RsvpPassReason,
+} from "../_shared/rsvpPassMessage.ts";
+import { purchaseEmailCopy } from "../_shared/email/purchaseCopy.ts";
+import { renderBuyerSms } from "../_shared/sms/buyerSms.ts";
+import { copyFor, type RsvpTemplateKey } from "./copy.ts";
 import { renderTransactionalEmail } from "../_shared/email/index.ts";
 import { eventUpdateReplyTo } from "../_shared/email/eventUpdatedEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
@@ -47,16 +52,7 @@ const corsHeaders = {
 };
 
 type Channel = "email" | "sms" | "in_app" | "push";
-type TemplateKey =
-  | "rsvp_acknowledgement"
-  | "rsvp_pass"
-  | "rsvp_event_updated"
-  // Issue #3827 — a ticket or experience buyer told about a live edit.
-  | "buyer_event_updated"
-  | "rsvp_waitlist_promoted"
-  | "rsvp_approved"
-  | "rsvp_denied"
-  | "rsvp_removed";
+type TemplateKey = RsvpTemplateKey;
 interface Claim {
   delivery_id: string;
   notification_id: string;
@@ -79,111 +75,14 @@ function json(status: number, body: Record<string, unknown>): Response {
 const text = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 
-function copyFor(
-  template: TemplateKey,
-  p: Record<string, unknown>,
-  link: string,
-) {
-  const event = text(p.eventName) ?? "your event";
-  const brand = text(p.brandName) ?? "Mingla";
-  const state = text(p.status);
-  const approval = text(p.approvalStatus);
-  switch (template) {
-    case "rsvp_pass":
-      return {
-        title: `You're going to ${event}`,
-        body: [event, text(p.dateLine), text(p.venueLine), `Hosted by ${brand}`]
-          .filter(Boolean).join("\n\n"),
-        sms:
-          `${brand}: your RSVP for ${event} is confirmed. Open your secure invite: ${link}`,
-      };
-    case "rsvp_acknowledgement": {
-      const label = state === "waitlisted"
-        ? "You're on the waitlist"
-        : approval === "pending"
-        ? "Your RSVP is pending host approval"
-        : state === "maybe"
-        ? "We saved your Maybe"
-        : state === "not_going"
-        ? "Your RSVP is updated"
-        : "Your RSVP is confirmed";
-      return {
-        title: `${label}: ${event}`,
-        body: `${label} for ${event}.`,
-        sms: `${brand}: ${label.toLowerCase()} for ${event}. ${link}`,
-      };
-    }
-    case "rsvp_event_updated":
-      return {
-        title: `Plans changed: ${event}`,
-        body: "The host updated this event.",
-        sms: `${brand}: ${event} was updated. ${link}`,
-      };
-    // Issue #3827 — only reached without a notice, which the worker refuses
-    // before sending; the case keeps the switch exhaustive.
-    case "buyer_event_updated":
-      return {
-        title: `Details changed: ${event}`,
-        body: "The host changed the details of this event.",
-        sms: `${brand}: ${event} has changed. ${link}`,
-      };
-    case "rsvp_waitlist_promoted":
-      return {
-        title: `You're in! ${event}`,
-        body: "A spot opened — you're going.",
-        sms: `${brand}: a spot opened at ${event}. ${link}`,
-      };
-    case "rsvp_approved":
-      return {
-        title: `You're approved: ${event}`,
-        body: "The host approved your RSVP.",
-        sms: `${brand}: you're approved for ${event}. ${link}`,
-      };
-    case "rsvp_denied":
-      return {
-        title: `RSVP update: ${event}`,
-        body: "The host couldn't fit your RSVP this time.",
-        sms: `${brand}: the host couldn't fit your RSVP for ${event}.`,
-      };
-    case "rsvp_removed":
-      return {
-        title: `Update: ${event}`,
-        body: "The host removed you from this event.",
-        sms: `${brand}: the host removed you from ${event}.`,
-      };
-  }
-}
-
-/** #871 + #4063 — may this pass also carry the "connect attendance" link?
- *
- * Visibility controls discovery, not ownership. The pass helper still decides
- * which RSVP messages may be sent; once one is eligible, the primary guest may
- * receive the contact-gated claim link regardless of public/unlisted status.
- */
-function attendanceClaimStillEligible(
-  event:
-    | {
-      status: string;
-      visibility: string;
-      deleted_at: string | null;
-      event_type: string;
-    }
-    | null
-    | undefined,
-  brand: { deleted_at: string | null } | null | undefined,
-): boolean {
-  return !!event && event.deleted_at === null && brand?.deleted_at === null &&
-    event.event_type === "rsvp" && ["scheduled", "live"].includes(event.status);
-}
-
-/** null = the pass must not be sent. Otherwise the pass goes out, and
- * `attendanceClaim` says whether it may carry the #871 attendance link. */
+/** null = the pass must not be sent. Otherwise the pass goes out, replying to
+ * the brand's contact address. (#4422: the separate #871 "connect attendance"
+ * link is gone; the /c/ claim link already claims attendance.) */
 async function passStillEligible(
   admin: AdminClient,
   p: Record<string, unknown>,
 ): Promise<
   {
-    attendanceClaim: boolean;
     brandContactEmail: string | null;
   } | null
 > {
@@ -204,7 +103,6 @@ async function passStillEligible(
   // Unlisted RSVP invite link — public AND unlisted RSVPs; see passEligibility.ts.
   if (!rsvpPassEventEligible(event, brand?.deleted_at)) return null;
   return {
-    attendanceClaim: attendanceClaimStillEligible(event, brand),
     brandContactEmail: text(brand?.contact_email),
   };
 }
@@ -223,8 +121,7 @@ function bytesToBase64(value: string): string {
 async function recoveryLinkFor(
   admin: AdminClient,
   p: Record<string, unknown>,
-  attendanceClaimAllowed: boolean,
-): Promise<{ passUrl: string; attendanceClaimUrl: string | null } | null> {
+): Promise<{ passUrl: string } | null> {
   const entityId = text(p.entityId);
   if (!entityId) return null;
   const table = text(p.role) === "guest" ? "event_rsvp_guests" : "event_rsvps";
@@ -257,25 +154,13 @@ async function recoveryLinkFor(
       }).eq("id", entityId);
       if (error) return null;
     }
-    const passUrl = rsvpRecoveryUrl(
-      table === "event_rsvps" ? "primary" : "guest",
-      entityId,
-      token,
-    );
-    if (
-      table === "event_rsvps" && current?.event_id && attendanceClaimAllowed
-    ) {
-      return {
-        passUrl,
-        attendanceClaimUrl: attendanceClaimUrls({
-          kind: "rsvp",
-          eventId: current.event_id,
-          sourceId: entityId,
-          token,
-        }).webClaimUrl,
-      };
-    }
-    return { passUrl, attendanceClaimUrl: null };
+    return {
+      passUrl: rsvpRecoveryUrl(
+        table === "event_rsvps" ? "primary" : "guest",
+        entityId,
+        token,
+      ),
+    };
   } catch {
     return null;
   }
@@ -366,6 +251,49 @@ async function classifyFailure(
   }
 }
 
+/** #4422 — why the guest holds a pass: the stored enrichment, else the
+ * template (a promotion is a spot that opened, rsvp_approved the host). */
+function passReason(
+  template: TemplateKey,
+  p: Record<string, unknown>,
+): RsvpPassReason {
+  const stored = text(p.passReason);
+  if (stored === "going" || stored === "approved" || stored === "spot_opened") {
+    return stored;
+  }
+  return template === "rsvp_waitlist_promoted"
+    ? "spot_opened"
+    : template === "rsvp_approved"
+    ? "approved"
+    : "going";
+}
+
+type AcknowledgementState = "maybe" | "waitlisted" | "pending" | "not_going";
+
+/** Same order as copy.ts's acknowledgementLabel. A going RSVP has no row here:
+ * its pass is the message. */
+function acknowledgementState(
+  p: Record<string, unknown>,
+): AcknowledgementState | null {
+  const state = text(p.status);
+  if (state === "waitlisted") return "waitlisted";
+  if (text(p.approvalStatus) === "pending") return "pending";
+  if (state === "maybe") return "maybe";
+  if (state === "not_going") return "not_going";
+  return null;
+}
+
+const ACKNOWLEDGEMENTS = {
+  maybe: { sms: "S4M", lead: "Maybe saved:", template: "rsvp_maybe" },
+  waitlisted: { sms: "S4W", lead: "Waitlisted:", template: "rsvp_waitlisted" },
+  pending: { sms: "S4R", lead: "Request sent for", template: "rsvp_pending" },
+  not_going: {
+    sms: "S4N",
+    lead: "Got it, you can't go to",
+    template: "rsvp_not_going",
+  },
+} as const;
+
 async function processClaim(
   admin: AdminClient,
   claim: Claim,
@@ -445,7 +373,11 @@ async function processClaim(
       return;
     }
     try {
-      update = buildEventUpdateDispatch(loaded.context, p);
+      update = await buildEventUpdateDispatch(
+        loaded.context,
+        p,
+        claim.channel === "sms" ? admin : null,
+      );
     } catch (error) {
       // Nothing printable in the notice is final. Anything else (for example
       // a missing footer address) is configuration: keep the row and retry.
@@ -484,21 +416,27 @@ async function processClaim(
     : claim.channel === "sms"
     ? text(p.recipientPhone)
     : null;
-  const defaultLink = text(p.deepLink) ?? "https://usemingla.com";
   const entityId = text(p.entityId);
   const startIso = text(p.eventStartAt);
   const timezone = text(p.eventTimezone);
   const eventTime = startIso && timezone
     ? formatMessageTime(startIso, timezone)
     : null;
+  const eventName = text(p.eventName);
+  const brandName = text(p.brandName);
+  // #4422 — the live public page on host.usemingla.com (rsvp_messages_v2
+  // enrichment). Older rows have none and keep their stored link.
+  const eventUrl = text(p.eventUrl);
+  const eventId = text(p.event_id) ?? text(p.eventId);
+  const defaultLink = text(p.deepLink) ?? eventUrl ?? "https://usemingla.com";
   const canRenderV2 = isPassTemplate &&
     (claim.channel === "email" || claim.channel === "sms") &&
     entityId !== null && eventTime !== null &&
-    text(p.eventName) !== null && text(p.brandName) !== null;
-  const buyerLink = canRenderV2
+    eventName !== null && brandName !== null;
+  const buyerLink = canRenderV2 && entityId !== null
     ? await resolveBuyerLink(admin, {
       kind: text(p.role) === "guest" ? "rsvp_guest" : "rsvp_primary",
-      sourceId: entityId!,
+      sourceId: entityId,
     })
     : null;
   const recipientEmail = text(p.recipientEmail);
@@ -507,12 +445,14 @@ async function processClaim(
     null;
   const v2HasClaimContact = buyerLink?.claimed === true ||
     recipientEmail !== null || recipientPhoneLast4?.length === 4;
-  const modernMessage = canRenderV2 && buyerLink !== null && v2HasClaimContact
+  const modernMessage = canRenderV2 && buyerLink !== null &&
+      v2HasClaimContact && eventTime !== null && eventName !== null &&
+      brandName !== null
     ? buildRsvpPassMessage({
-      promoted: claim.template_key === "rsvp_waitlist_promoted",
+      reason: passReason(claim.template_key, p),
       guest: text(p.role) === "guest",
-      title: text(p.eventName)!,
-      brandName: text(p.brandName)!,
+      title: eventName,
+      brandName,
       recipientName: text(p.recipientName),
       recipientEmail,
       recipientPhoneLast4,
@@ -520,9 +460,9 @@ async function processClaim(
       claimed: buyerLink.claimed,
       buttonUrl: buyerLink.url,
       smsLink: buyerLink.display,
-      date: eventTime!.date,
-      time: eventTime!.time,
-      when: `${eventTime!.date}, ${eventTime!.time}`,
+      date: eventTime.date,
+      time: eventTime.time,
+      when: `${eventTime.date}, ${eventTime.time}`,
       place: text(p.venueLine),
     })
     : null;
@@ -538,26 +478,137 @@ async function processClaim(
     })
     : null;
   const modernCalendar = renderedModernEmail !== null && startIso !== null &&
-      entityId !== null
+      entityId !== null && eventName !== null
     ? buildCalendarLinks({
-      title: text(p.eventName)!,
+      title: eventName,
       startAtIso: startIso,
       endAtIso: text(p.eventEndAt),
       locationText: text(p.venueLine),
       isOnline: false,
-      description: `RSVP pass for ${text(p.eventName)!}`,
+      description: `RSVP pass for ${eventName}`,
       uid: `mingla-rsvp-${entityId}@usemingla.com`,
     })
     : null;
 
+  // #4422 — Maybe, waitlisted, pending and can't-go rows that carry the event
+  // enrichment get the shared purchase email ("See the event") and a
+  // one-segment text with the short event link.
+  const ackState = claim.template_key === "rsvp_acknowledgement"
+    ? acknowledgementState(p)
+    : null;
+  const ack = ackState !== null && eventTime !== null && eventUrl !== null &&
+      eventName !== null && brandName !== null
+    ? ACKNOWLEDGEMENTS[ackState]
+    : null;
+  const legacyEventUpdate = update === null &&
+    claim.template_key === "rsvp_event_updated" && eventUrl !== null;
+  const eventPageLink = claim.channel === "sms" && eventUrl !== null &&
+      eventId !== null && (ack !== null || legacyEventUpdate)
+    ? await resolveBuyerLink(admin, {
+      kind: "event_page",
+      sourceId: eventId,
+      targetUrl: eventUrl,
+      expiresAt: eventLinkExpiry({
+        lastEndAt: text(p.eventLastEndAt),
+        endAt: text(p.eventEndAt),
+        startAt: startIso,
+      }),
+    })
+    : null;
+  const eventSmsLink = eventPageLink?.display ??
+    eventUrl?.replace(/^https:\/\//, "") ?? null;
+  let ackMessage:
+    | {
+      title: string;
+      body: string;
+      sms: string;
+      rendered: ReturnType<typeof renderTransactionalEmail> | null;
+    }
+    | null = null;
+  if (
+    ack !== null && ackState !== null && eventTime !== null &&
+    eventUrl !== null && eventName !== null && brandName !== null &&
+    (claim.channel === "email" || claim.channel === "sms")
+  ) {
+    try {
+      const emailCopy = purchaseEmailCopy({
+        template: ack.template,
+        title: eventName,
+        date: eventTime.date,
+      });
+      let sms: string;
+      try {
+        sms = renderBuyerSms(ack.sms, {
+          title: eventName,
+          date: eventTime.date,
+          link: eventSmsLink,
+        });
+      } catch (error) {
+        if (
+          !(error instanceof Error &&
+            error.message.startsWith("sms_template_overflow"))
+        ) throw error;
+        // The full-page fallback link did not fit one segment.
+        console.info(JSON.stringify({
+          event: "rsvp_sms_link_omitted",
+          notificationId: claim.notification_id,
+          deliveryId: claim.delivery_id,
+        }));
+        sms = renderBuyerSms("S4L", {
+          stateWord: ack.lead,
+          title: eventName,
+          date: eventTime.date,
+        });
+      }
+      ackMessage = {
+        title: emailCopy.subject,
+        body: emailCopy.promise,
+        sms,
+        rendered: claim.channel === "email" && recipientEmail !== null
+          ? renderTransactionalEmail({
+            variant: "purchase_message",
+            recipient: { name: text(p.recipientName), email: recipientEmail },
+            body: {
+              variant: "purchase_message",
+              copy: emailCopy,
+              buttonUrl: eventUrl,
+              details: {
+                title: eventName,
+                hostOrVenue: brandName,
+                when: `${eventTime.date}, ${eventTime.time}`,
+                place: text(p.venueLine),
+              },
+              appLink: ackState === "maybe",
+            },
+          })
+          : null,
+      };
+    } catch (error) {
+      console.error(
+        "[rsvp-notify] acknowledgement render failed",
+        claim.delivery_id,
+        error instanceof Error ? error.message : "unknown",
+      );
+      await complete(
+        admin,
+        claim,
+        "failed_retryable",
+        null,
+        "rsvp_render_failed",
+      );
+      return;
+    }
+  }
+
   // Rows created before the Wave 2 payload enrichment keep their exact legacy
   // recovery link, PDF and copy. New rows have the canonical event instant and
-  // use the QR-free shared message with a stable claim link and ICS attachment.
+  // use the shared message with a stable claim link, the calendar file and
+  // (#4422) the QR pass PDF.
   const needsRecoveryLink = modernMessage === null &&
     claim.template_key === "rsvp_pass" &&
     (claim.channel === "email" || claim.channel === "sms");
   const recoveryLink = needsRecoveryLink
-    ? await recoveryLinkFor(admin, p, pass?.attendanceClaim === true)
+    ? await recoveryLinkFor(admin, p)
     : null;
   if (
     claim.template_key === "rsvp_pass" && needsRecoveryLink &&
@@ -576,6 +627,9 @@ async function processClaim(
     ? `mingla://calendar/${
       encodeURIComponent(text(p.rsvpId) ?? text(p.rsvp_id) ?? "")
     }`
+    : claim.template_key === "rsvp_acknowledgement" ||
+        claim.template_key === "rsvp_event_updated"
+    ? eventUrl ?? defaultLink
     : defaultLink;
   const link = buyerLink?.url ?? update?.link ?? recoveryLink?.passUrl ??
     authenticatedPassLink;
@@ -587,44 +641,63 @@ async function processClaim(
     }
     : update
     ? { title: update.title, body: update.body, sms: update.sms }
-    : copyFor(claim.template_key, p, link);
-  if (
-    modernMessage === null && claim.template_key === "rsvp_pass" &&
-    recoveryLink?.attendanceClaimUrl
-  ) {
-    copy.body =
-      `${copy.body}\n\nConnect this RSVP to your Mingla account to see who’s going: ${recoveryLink.attendanceClaimUrl}`;
-    copy.sms =
-      `${copy.sms} Connect attendance: ${recoveryLink.attendanceClaimUrl}`;
-  }
-  let attachment: { filename: string; content: string } | null = null;
+    : ackMessage
+    ? { title: ackMessage.title, body: ackMessage.body, sms: ackMessage.sms }
+    : copyFor(
+      claim.template_key,
+      p,
+      link,
+      legacyEventUpdate && eventSmsLink !== null ? eventSmsLink : link,
+    );
+  const attachments: Array<{ filename: string; content: string }> = [];
   if (modernCalendar !== null) {
-    attachment = {
+    attachments.push({
       filename: modernCalendar.icsFilename,
       content: bytesToBase64(modernCalendar.icsContent),
-    };
-  } else if (
-    modernMessage === null && claim.template_key === "rsvp_pass" &&
-    claim.channel === "email"
+    });
+  }
+  if (
+    claim.channel === "email" && isPassTemplate &&
+    (modernMessage !== null || claim.template_key === "rsvp_pass")
   ) {
     const qrCode = text(p.qrCode);
-    if (!qrCode) {
+    if (!qrCode && modernMessage !== null) {
+      // #4422 — e.g. a promoted guest (the drain mints no QR): the claim link
+      // carries the pass, so the email still goes, with the calendar file.
+      console.info(JSON.stringify({
+        event: "rsvp_pass_pdf_skipped_no_qr",
+        notificationId: claim.notification_id,
+        deliveryId: claim.delivery_id,
+      }));
+    } else if (!qrCode) {
       await complete(admin, claim, "failed_retryable", null, "rsvp_qr_missing");
       return;
-    }
-    try {
-      const pdf = await buildRsvpPassPdf({
-        eventTitle: text(p.eventName) ?? "your event",
-        dateLine: text(p.dateLine),
-        venueLine: text(p.venueLine),
-        brandName: text(p.brandName) ?? "Mingla",
-        attendeeName: text(p.recipientName),
-        qrPayload: qrCode,
-      });
-      attachment = { filename: pdf.filename, content: pdf.contentBase64 };
-    } catch {
-      await complete(admin, claim, "failed_retryable", null, "rsvp_pdf_failed");
-      return;
+    } else {
+      try {
+        const pdf = await buildRsvpPassPdf({
+          eventTitle: eventName ?? "your event",
+          dateLine: eventTime
+            ? `${eventTime.date}, ${eventTime.time}`
+            : text(p.dateLine),
+          venueLine: text(p.venueLine),
+          brandName: brandName ?? "Mingla",
+          attendeeName: text(p.recipientName),
+          qrPayload: qrCode,
+        });
+        attachments.push({
+          filename: pdf.filename,
+          content: pdf.contentBase64,
+        });
+      } catch {
+        await complete(
+          admin,
+          claim,
+          "failed_retryable",
+          null,
+          "rsvp_pdf_failed",
+        );
+        return;
+      }
     }
   }
   try {
@@ -645,12 +718,19 @@ async function processClaim(
         body: copy.body,
         sms_body: copy.sms,
         deep_link: link,
-        attachment,
+        attachments,
         ...(renderedModernEmail !== null
           ? {
             email_override: {
               rendered: renderedModernEmail,
               replyTo: eventUpdateReplyTo(pass?.brandContactEmail),
+            },
+          }
+          : ackMessage?.rendered
+          ? {
+            email_override: {
+              rendered: ackMessage.rendered,
+              replyTo: eventUpdateReplyTo(text(p.brandContactEmail)),
             },
           }
           : update && claim.channel === "email"

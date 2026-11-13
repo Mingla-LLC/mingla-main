@@ -12,13 +12,12 @@
 //     pass with its secure recovery link;
 //   - private RSVPs, and guests who are not approved or not going: nothing is
 //     sent, the delivery is parked `rsvp_not_eligible`, no token is written;
-//   - the #871 "connect attendance" link goes only to the primary guest, for
-//     either public or unlisted RSVPs. Visibility controls discovery, not claim.
+//   - (#4422) no pass carries the #871 "connect attendance" link any more.
 //   - the event read is bound to the RSVP's own event.
 //
 // fails-on-revert:
 //   - pass helper back to public-only        -> hidden cases send nothing, R-01 reds
-//   - attendance link back to public-only    -> hidden primary loses it, R-01 reds
+//   - attendance link brought back           -> R-01 reds
 //   - private admitted                       -> R-01 private rows red
 //   - approval / going check dropped         -> R-02 reds
 //
@@ -252,11 +251,13 @@ const seen: Observed = {
   rejected: [],
 };
 
-// [TEST-MOD-APPROVED #4063] The visibility matrix now proves that public and
-// unlisted primary guests both receive the contact-gated claim link.
+// [TEST-MOD-APPROVED #4063] The visibility matrix proves that public and
+// unlisted guests both receive the pass.
+// [TEST-MOD-APPROVED #4422] The #871 attendance link was removed (spec
+// addendum R7): no pass, in either channel, carries it.
 Deno.test({
   name:
-    "R-01 visibility x role x channel: pass and primary claim for public + unlisted, nothing for private",
+    "R-01 visibility x role x channel: pass for public + unlisted, nothing for private, no attendance link",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -289,11 +290,15 @@ Deno.test({
               outgoing.includes(PASS_URL),
               `${label}: the secure pass link must be in the message`,
             );
-            const expectClaim = visibility !== "private" && role === "primary";
+            // #4422 — the separate attendance link is gone from every pass.
             same(
               outgoing.includes(CLAIM_URL),
-              expectClaim,
-              `${label}: attendance link present only for an eligible RSVP's primary guest`,
+              false,
+              `${label}: no attendance link in any pass`,
+            );
+            assert(
+              !outgoing.includes("Connect"),
+              `${label}: no "Connect" line in either channel`,
             );
             same(seen.tokenWrites.length, 1, `${label}: one recovery token write`);
             same(

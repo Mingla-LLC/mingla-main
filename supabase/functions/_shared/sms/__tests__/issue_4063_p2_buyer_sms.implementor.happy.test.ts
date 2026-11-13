@@ -17,7 +17,16 @@ const ALL_KEYS: SmsTemplateKey[] = [
   "S2",
   "S3",
   "S4",
+  // [TEST-MOD-APPROVED #4422] the new RSVP and change texts join the
+  // worst-case one-segment check.
+  "S4A",
+  "S4P",
   "S4G",
+  "S4M",
+  "S4W",
+  "S4R",
+  "S4N",
+  "S4L",
   "S5",
   "S5H",
   "S6",
@@ -42,6 +51,9 @@ const ALL_KEYS: SmsTemplateKey[] = [
   "S18A",
   "S18N",
   "S19",
+  "S20",
+  "S20V",
+  "S20D",
 ];
 
 const TYPICAL = {
@@ -93,7 +105,7 @@ Deno.test("#4063 every buyer template fits one GSM-7 segment at worst-case bound
       amount: "NGN 9,999,999.00",
       expiry: "Sun 10:30 PM",
       link: "usemingla.com/c/1234567890",
-      noun: key === "S4" || key === "S4G" || key === "S13"
+      noun: key.startsWith("S4") || key === "S13"
         ? "pass"
         : key.startsWith("S8") || key === "S9B" || key === "S10V"
         ? "booking"

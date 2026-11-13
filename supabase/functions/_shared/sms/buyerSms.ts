@@ -10,7 +10,14 @@ export type SmsTemplateKey =
   | "S2"
   | "S3"
   | "S4"
+  | "S4A"
+  | "S4P"
   | "S4G"
+  | "S4M"
+  | "S4W"
+  | "S4R"
+  | "S4N"
+  | "S4L"
   | "S5"
   | "S5H"
   | "S6"
@@ -34,7 +41,10 @@ export type SmsTemplateKey =
   | "S18"
   | "S18A"
   | "S18N"
-  | "S19";
+  | "S19"
+  | "S20"
+  | "S20V"
+  | "S20D";
 
 export type BuyerSmsNoun = "ticket" | "booking" | "pass" | "receipt";
 
@@ -178,14 +188,31 @@ function render(key: SmsTemplateKey, s: NormalizedSlots): string {
       return `Mingla: You're booked for ${s.title}, ${s.date} ${s.time}. ${
         claimTail(s, "booking")
       }`;
+    // Issue #4422 (Seth's copy) — each pass text names the action that earned
+    // it. "Here's your pass:" is true claimed or not: the /c/ link opens it.
     case "S4":
-      return `Mingla: On the list: ${s.title}, ${s.date}. ${
-        claimTail(s, "pass")
-      }`;
+      return `Mingla: You RSVP'd to ${s.title}, ${s.date}. Here's your pass: ${s.link}`;
+    case "S4A":
+      return `Mingla: The host approved your RSVP to ${s.title}, ${s.date}. Here's your pass: ${s.link}`;
+    case "S4P":
+      return `Mingla: A spot opened at ${s.title}, ${s.date}, so your RSVP is in. Here's your pass: ${s.link}`;
     case "S4G":
       return `Mingla: ${s.lead} added you to the list for ${s.title}, ${s.date}. ${
         claimTail(s, "pass")
       }`;
+    // Issue #4422 — RSVP states without a pass link to the event page.
+    case "S4M":
+      return `Mingla: Maybe saved: ${s.title}, ${s.date}. Change it any time: ${s.link}`;
+    case "S4W":
+      return `Mingla: Waitlisted: ${s.title}, ${s.date}. We'll text you if a spot opens: ${s.link}`;
+    case "S4R":
+      return `Mingla: Request sent for ${s.title}, ${s.date}. We'll text you when the host says yes: ${s.link}`;
+    case "S4N":
+      return `Mingla: Got it, you can't go to ${s.title}, ${s.date}. See the event: ${s.link}`;
+    // The same states when no link fits one segment: `stateWord` is the fixed
+    // lead-in of S4M/S4W/S4R/S4N ("Maybe saved:", "Waitlisted:", ...).
+    case "S4L":
+      return `Mingla: ${s.stateWord} ${s.title}, ${s.date}. Check your email for the event link.`;
     case "S5":
       return `Mingla: The host couldn't fit your RSVP for ${s.title}, ${s.date}.`;
     case "S5H":
@@ -261,6 +288,13 @@ function render(key: SmsTemplateKey, s: NormalizedSlots): string {
     // Issue #4271 — the host texted the guest a door pay link.
     case "S19":
       return `Mingla: Pay for ${s.title} here: ${s.link}`;
+    // Issue #4422 — an event the guest or buyer holds has changed.
+    case "S20":
+      return `Mingla: ${s.title} moved to ${s.date} ${s.time}. See the details: ${s.link}`;
+    case "S20V":
+      return `Mingla: ${s.title} has a new venue. See the details: ${s.link}`;
+    case "S20D":
+      return `Mingla: ${s.title} has changed. See the details: ${s.link}`;
   }
 }
 
@@ -357,4 +391,28 @@ export function renderBuyerSms(
   }
 
   throw new Error(`sms_template_overflow:${key}`);
+}
+
+/**
+ * Issue #4422 — fit a fixed RSVP sentence into one segment by shortening the
+ * event title with "..." (never below 10 characters). Unlike renderBuyerSms it
+ * never throws: when even the shortest title does not fit (a long legacy
+ * recovery link), the full title is kept and the text sends as more than one
+ * segment, exactly as it did before.
+ */
+export function fitTitleToSegment(
+  build: (title: string) => string,
+  rawTitle: string,
+): string {
+  const title = toGsm7Text(rawTitle) || "your event";
+  const full = build(title);
+  if (finalSmsLength(full) <= 160) return full;
+  for (let cap = gsm7Length(title) - 1; cap >= 10; cap -= 1) {
+    const candidate = truncateToSeptets(title, cap);
+    if (gsm7Length(candidate) < 10) continue;
+    const body = build(candidate);
+    if (finalSmsLength(body) <= 160) return body;
+  }
+  // Shortening cannot make it fit: keep the whole title.
+  return full;
 }
