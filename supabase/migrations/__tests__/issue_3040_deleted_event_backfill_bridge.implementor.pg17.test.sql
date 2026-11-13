@@ -187,5 +187,8 @@ DELETE FROM auth.users WHERE id='30400000-0000-4000-8000-000000000101';
 -- Issue #3801: cover_video_apply_once was rebuilt again (a draft keeps its
 -- revision through a cover video apply); restore that latest definition too.
 \ir ../20271231303801_issue_3801_draft_cover_video_keeps_revision.sql
+-- Issue #4423: Wave 4b rewrote a cover video job policy the re-applies above
+-- recreate; restore its current form too.
+\ir ../20280705324423_issue_4423_w4b_rls_batch3_commerce.sql
 
 \echo 'issue_3040_deleted_event_backfill_bridge.implementor.pg17: PASS'
