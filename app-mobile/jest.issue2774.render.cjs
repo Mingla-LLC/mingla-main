@@ -170,5 +170,9 @@ module.exports = {
     // issue #4402 — a refused bank connect shows its error under the button
     // that caused it, not at the bottom of the form.
     "**/__tests__/issue_4402_payout_connect_error.implementor.render.test.tsx",
+    // issue #4402 — the creator delivery card waits for processing and sends once;
+    // the Shoot card and the posts-checked notices; the media poll and resume.
+    "**/__tests__/issue_4402_explorer_delivery.implementor.render.test.tsx",
+    "**/__tests__/issue_4402_explorer_media_poll.implementor.render.test.ts",
   ],
 };

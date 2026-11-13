@@ -124,10 +124,12 @@ BEGIN
     RAISE EXCEPTION 'unrelated change moved the due';
   END IF;
 
-  -- 6. The post reminder reads the agreed terms.
+  -- 6. The post reminder reads the agreed terms. #4402: the reminder now
+  -- fires in the 24 h before the post deadline (end of the agreed post_by in
+  -- the gig zone + 24 h grace), so the state carries that deadline.
   PERFORM pg_temp.act(NULL);
-  PERFORM public.issue_3872_contract_apply_state(v_c,'posting',NULL);
-  PERFORM public.gig_notification_tick((current_date+27)::timestamptz+interval '12 hours');
+  PERFORM public.issue_3872_contract_apply_state(v_c,'posting',public.issue_4402_gig_post_deadline(v_c));
+  PERFORM public.gig_notification_tick(public.issue_4402_gig_post_deadline(v_c)-interval '12 hours');
   SELECT o.payload INTO v_row FROM public.notification_outbox o WHERE o.category_key='creator.gig.post_reminder' AND o.payload->>'contract_id'=v_c::text;
   IF v_row IS NULL OR (v_row->>'post_by')::date<>current_date+27 OR (v_row->>'video_due_at')::timestamptz<>v_legacy_due THEN
     RAISE EXCEPTION 'post reminder: %',v_row;

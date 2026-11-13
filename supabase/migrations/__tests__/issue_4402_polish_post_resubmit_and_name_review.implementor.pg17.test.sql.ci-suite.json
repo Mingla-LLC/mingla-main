@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4402_polish_post_resubmit_and_name_review.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4402-polish-post-resubmit-and-name-review-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "postgres", "reset": "suite-owned" }
+}

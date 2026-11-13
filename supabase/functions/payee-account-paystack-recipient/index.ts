@@ -64,6 +64,11 @@ export interface PayeePaystackDeps {
     bankCode: string;
   }) => Promise<PaystackTransferRecipient>;
   deleteRecipient: (recipientCode: string) => Promise<void>;
+  // #4402 OQ-5 / E21: compare the bank's account name with the creator's
+  // profile names on the server and flag a mismatch for Admin review. Only
+  // the flag and a reason are stored, never the account name. Payouts are
+  // never blocked by it.
+  flagNameReview?: (userId: string, accountName: string) => Promise<void>;
   isShared: (recipientCode: string, userId: string) => Promise<boolean>;
   audit: (input: {
     userId: string;
@@ -104,6 +109,13 @@ function defaultDeps(): PayeePaystackDeps {
     resolveAccount: paystackResolveAccount,
     createRecipient: paystackCreateTransferRecipient,
     deleteRecipient: paystackDeleteTransferRecipient,
+    flagNameReview: async (userId, accountName) => {
+      const { error } = await client.rpc("issue_4402_payee_name_review_set", {
+        p_user_id: userId,
+        p_account_name: accountName,
+      });
+      if (error) throw error;
+    },
     isShared: (recipientCode, userId) =>
       isPaystackRecipientShared(client, recipientCode, {
         kind: "payee",
@@ -302,6 +314,17 @@ export async function handler(
     updated_at: new Date().toISOString(),
   });
   if (update.error) return json({ error: "internal_error" }, 500);
+  if (deps.flagNameReview) {
+    try {
+      await deps.flagNameReview(userId, resolved.account_name);
+    } catch (error) {
+      // A failed check never blocks connecting the account or a payout.
+      console.error(
+        "[payee-account-paystack-recipient] name review check failed",
+        error,
+      );
+    }
+  }
   try {
     await deps.audit({
       userId,

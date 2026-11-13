@@ -480,13 +480,15 @@ export function phase3dContractDigest(manifest) {
 // #4402: re-sealed after merging origin/main 87e922d58f (the shared payee bank rows kept beside the creator review and band-change rows).
 // #3355 merge of #4404 (origin/main 7ace80fa0a; #4389 and #4402 rows kept beside the #3355 rows): renumbered the fifteen #3355 migrations to 20280702013355 … 20280702153355 (above main's 20280701304389), in order; re-sealed.
 // #3355 rework 9: register 20280702163355 (deleting a chat closes its Ari flow runs) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
-// #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
+// #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay, and M2 in the #2117 one; re-sealed.
+// #4402 merge of origin/main d116790964 (#4422 rows and #1931 skips kept beside the #4402 ones); re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
-// #4422: register 20280705004422 (held RSVP texts, transactional bounce truth) and 20280705104422 (RSVP message links) in the #1857, #1931 and #2117 replay lanes, and their two PostgreSQL proofs in #1931 and #2117; re-sealed.
-// #4422: skip 20280705104422 (RSVP message links, typed on the skipped #4063 claim_links) by exact filename in the #1931 pre-landing replay; re-sealed after merging origin/main 8e1d47562b.
-// #4422 rework: the tester's delivery-truth pg17 proof joins the #1931 and #2117 lanes; re-sealed.
-// #4422 merge of origin/main a5a5c59094 (#4426 email follow-up rows kept beside the #4422 rows); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "d01faf07dd0033746ee8cf4eb293e6828121ff270bcb5189d2df269082d678c9";
+// #4402: register 20280704504402 (NGN minimum creator fee is ₦100) in the #1857, #1931 and #2117 replay lanes; re-sealed.
+// #4402: register 20280704604402 (upload deadline follows the agreed due) and its PostgreSQL proof; re-sealed.
+// #4402 merge of origin/main a5a5c59094 (#4419 20280706004419 rows kept after the #4402 rows); re-sealed.
+// #4402 CI fix: skip the seven polish migrations (gig tables from skipped #3872) by exact filename in the #1931 pre-landing replay, and M2 in the #2117 one; re-sealed.
+// #4402 merge of origin/main d116790964 (#4422 rows and #1931 skips kept beside the #4402 ones); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c6466585266ad24157ffce4ec896356016e57a85237636ea329338ff2b2ce2cc";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

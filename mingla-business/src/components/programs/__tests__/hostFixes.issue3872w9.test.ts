@@ -157,13 +157,14 @@ describe("P2: script parts use the format's section names", () => {
   });
 });
 
-describe("P3: the video review tile is centred at full width, 9:16", () => {
-  it("stretches to the card's content width", () => {
+describe("P3: the video review tile is centred, 9:16, with a height cap (#4402)", () => {
+  it("is centred, keeps 9:16 and never grows past 640 px or 70vh", () => {
     const src = read(CONTRACT);
     const player = src.slice(src.indexOf("  player: {"), src.indexOf("  playerCaption:"));
-    expect(player).toContain('alignSelf: "stretch"');
+    expect(player).toContain('alignSelf: "center"');
     expect(player).toContain("aspectRatio: 9 / 16");
-    expect(player).not.toContain("maxHeight");
+    expect(player).toContain("maxWidth: 360");
+    expect(player).toContain("min(70vh, 640px)");
   });
 });
 

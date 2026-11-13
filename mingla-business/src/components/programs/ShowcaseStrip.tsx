@@ -10,6 +10,7 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -74,6 +75,14 @@ export function ShowcaseStrip({
               { backgroundColor: TILE_TONES[index % TILE_TONES.length] },
             ]}
           >
+            {item.thumb ? (
+              <Image
+                source={{ uri: item.thumb }}
+                style={styles.tileThumb}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+            ) : null}
             {loadingId === item.media_id ? (
               <ActivityIndicator color={textTokens.primary} />
             ) : (
@@ -183,14 +192,17 @@ export function CreatorVideoPlayer({
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: spacing.sm },
   tile: {
+    overflow: "hidden",
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: accent.tint,
   },
-  tileRow: { width: 64, aspectRatio: 9 / 13 },
-  tileLarge: { flex: 1, aspectRatio: 9 / 14 },
+  // #4402 (H29) — 9:16 tiles, never smaller than 96 x 170.
+  tileRow: { width: 96, minWidth: 96, aspectRatio: 9 / 16, minHeight: 170 },
+  tileLarge: { flex: 1, minWidth: 96, aspectRatio: 9 / 16, minHeight: 170 },
+  tileThumb: { ...StyleSheet.absoluteFillObject, borderRadius: radius.md },
   failed: { color: textTokens.tertiary, fontSize: 12, marginTop: spacing.xs },
   playerRoot: { flex: 1, backgroundColor: "#000000" },
   player: { flex: 1, backgroundColor: "#000000" },

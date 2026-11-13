@@ -52,3 +52,42 @@ export async function publicCreatorMedia(jobId:string):Promise<{playback:{url:st
 
 /** True when the person just closed the picker without choosing. */
 export function isPickerCancel(error:unknown):boolean{return error instanceof ProgramActionError&&error.code==='picker_cancelled';}
+
+/** #4402: how a delivery video's processing ended. `timeout` is not a failure: the video may still finish. */
+export type MediaWaitResult={status:'ready'}|{status:'failed';failureCode:string|null}|{status:'timeout'};
+const FAILED_MEDIA_STATUSES=new Set(['failed','rejected','deleted','expired']);
+
+/**
+ * Polls `creator-media-status` until the video is ready, failed, cancelled or the time is up
+ * (every 4 s for up to 10 minutes by default). A status read that errors is retried on the next tick.
+ */
+export async function waitForMediaReady(jobId:string,options:{intervalMs?:number;maxMs?:number;fetchStatus?:(id:string)=>Promise<CreatorMediaStatus>;sleep?:(ms:number)=>Promise<void>;isCancelled?:()=>boolean;now?:()=>number}={}):Promise<MediaWaitResult|{status:'cancelled'}>{
+  const interval=options.intervalMs??4_000,maxMs=options.maxMs??600_000;
+  const read=options.fetchStatus??creatorMediaStatus;
+  const sleep=options.sleep??((ms:number)=>new Promise<void>((resolve)=>setTimeout(resolve,ms)));
+  const now=options.now??Date.now;
+  const started=now();
+  for(;;){
+    if(options.isCancelled?.())return{status:'cancelled'};
+    try{
+      const current=await read(jobId);
+      if(current.status==='ready')return{status:'ready'};
+      if(FAILED_MEDIA_STATUSES.has(current.status))return{status:'failed',failureCode:current.failureCode??null};
+    }catch{/* a missed read is retried on the next tick; the deadline below ends the wait */}
+    if(now()-started>=maxMs)return{status:'timeout'};
+    await sleep(interval);
+  }
+}
+
+export type PendingDeliveryMedia={id:string;status:string;created_at:string};
+/**
+ * The newest delivery video of this contract that no delivery uses yet (the same owner-read shape as
+ * `myShowcaseMedia`): still processing, ready to send, or failed. Null when there is none; a failed read THROWS, so it is never mistaken for "none".
+ */
+export async function pendingDeliveryMedia(contractId:string,usedJobIds:string[]=[]):Promise<PendingDeliveryMedia|null>{
+  const {data:auth}=await supabase.auth.getUser();const id=auth.user?.id;if(!id)return null;
+  const {data,error}=await supabase.from('creator_media_jobs').select('id,status,created_at').eq('owner_id',id).eq('purpose','delivery').eq('contract_id',contractId).is('deleted_at',null).order('created_at',{ascending:false}).limit(6);
+  if(error)throw new ProgramActionError('network');
+  const rows=(data??[]) as PendingDeliveryMedia[];
+  return rows.find((row)=>!usedJobIds.includes(row.id))??null;
+}

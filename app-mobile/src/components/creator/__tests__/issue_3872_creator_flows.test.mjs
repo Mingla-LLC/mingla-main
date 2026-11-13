@@ -23,7 +23,7 @@ test("#3872 the offer has Decline / Counter / Accept and counters through gig_co
 test("#3872 Send interest shows refusals next to the field, success only after the write resolves", () => {
   const gig = read("app/creator/gig/[gigId].tsx");
   const send = gig.slice(gig.indexOf("const send = async"), gig.indexOf("if (gig.isLoading)"));
-  assert.match(send, /await creatorGigsService\.sendInterest[\s\S]*Alert\.alert\('Interest sent'/);
+  assert.match(send, /await creatorGigsService\.sendInterest[\s\S]*Alert\.alert\(sheetMode === 'change' \? 'Price updated' : 'Interest sent'/);
   assert.match(send, /catch \(e\)[\s\S]*setError\(/);
   assert.doesNotMatch(send.slice(send.indexOf("catch")), /Interest sent/);
   assert.match(gig, /note_not_anonymous/);
@@ -33,10 +33,11 @@ test("#3872 Send interest shows refusals next to the field, success only after t
 
 test("#3872 the agreement step collects an 18+ date of birth, the tax line, and no tax details", () => {
   const agreement = read("app/creator/setup/agreement.tsx");
-  assert.match(agreement, /maximumDate=\{maxDate\}/);
-  assert.match(agreement, /latestAdultBirthDate\(\)/);
+  // #4402: the typed field and the wheel live in CreatorDobField, which only allows 18+ birth dates.
+  assert.match(agreement, /<CreatorDobField/);
+  assert.match(read("src/components/creator/CreatorDobField.tsx"), /maximumDate = latestAdultBirthDate\(\)/);
   assert.match(agreement, /if \(!isAdult\(birthDate\)\)/);
-  assert.match(agreement, /signAgreement\(version, birthDate\)/);
+  assert.match(agreement, /signAgreement\(birthDate\)/);
   assert.match(agreement, /You’re responsible for reporting and paying tax on what you earn\./);
   assert.doesNotMatch(agreement, /Seth|\bTIN\b|W-9/);
   assert.doesNotMatch(agreement, /tax ID|tax details|tax number/i);

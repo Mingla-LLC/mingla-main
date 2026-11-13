@@ -214,6 +214,16 @@ export function creatorCardLine(creator) {
   return checksProgress(creator.checks).text;
 }
 
+export const PAYOUT_NAME_WARNING = "Payout name doesn't match: check before the first payout";
+
+/** #4402 (OQ-5): flag only, payouts are never blocked. Returns {warning, reason} or null. */
+export function payoutNameReview(source) {
+  const review = source?.payout_name_review;
+  const flagged = review?.required === true || (Array.isArray(source?.flags) && source.flags.includes("payout_name_review"));
+  if (!flagged) return null;
+  return { warning: PAYOUT_NAME_WARNING, reason: typeof review?.reason === "string" && review.reason.trim() ? review.reason.trim() : null };
+}
+
 /** Flags come back as strings or objects; always return readable lines. */
 export function flagLines(flags) {
   if (!Array.isArray(flags)) return [];
@@ -237,6 +247,7 @@ const FLAG_WORDS = {
   bio_code_missing: "Bio code not found",
   duplicate_account: "May be a second account",
   payout_missing: "Payout not connected",
+  payout_name_review: "Payout name doesn't match: check before the first payout",
 };
 
 // ── Creator social accounts (#4402) ─────────────────────────────────────────
@@ -397,6 +408,12 @@ export function localSeatWord(local) {
 }
 
 /** Meter tones for a board card, from the queue row's checks and flags. */
+/** #4402: the board card's thumbnail URL (https only), or null for an icon card. */
+export function creatorCardThumb(creator) {
+  const url = creator?.thumbnail_url ?? creator?.showcase_thumb ?? creator?.showcase?.[0]?.thumb ?? null;
+  return typeof url === "string" && /^https:\/\//i.test(url) ? url : null;
+}
+
 export function cardStepTones(creator) {
   const checks = Array.isArray(creator?.checks) ? creator.checks : [];
   const review = (Array.isArray(creator?.flags) ? creator.flags : []).some((f) => typeof f === "string" && f.startsWith("handle_review:"));
@@ -466,6 +483,8 @@ export function creatorStepRows(detail) {
   rows.push(done("payout")
     ? { key: "payout", tone: "done", text: payoutWord(detail?.payout) }
     : { key: "payout", tone: "creator", tag: "Creator's turn", text: payoutWord(detail?.payout) });
+  const nameReview = payoutNameReview(detail);
+  if (nameReview) rows[rows.length - 1].nameReview = nameReview;
 
   if (done("agreement")) {
     const when = detail?.agreement?.signed_at ? ` on ${shortDateTime(detail.agreement.signed_at)}` : "";
@@ -510,7 +529,7 @@ export const CONTRACT_STATE_WORDS = {
   posting: "Waiting for posts",
   posts_submitted: "Checking posts",
   posts_verified: "Posts verified",
-  posts_failed: "Posts couldn't be checked",
+  posts_failed: "A post needs a fix",
   released: "Fee released",
   day30: "30-day check",
   completed: "Done",
@@ -522,6 +541,127 @@ export const CONTRACT_STATE_WORDS = {
   expired: "Expired",
   cancelled: "Cancelled",
 };
+
+// ── #4402: posts to check (Admin reviews every posted link) ───────────────
+
+export const POST_REASON_MIN = 5;
+export const POST_REASON_MAX = 300;
+export const POST_OVER_DAY_HOURS = 24;
+export const POST_FAIL_HINT = "Tell the creator exactly what to fix, for example: the post is missing @handle.";
+
+/** Whole hours a post has waited. Server `hours_waiting` wins; else counted from submitted_at. */
+export function postWaitingHours(row, now = Date.now()) {
+  const server = Number(row?.hours_waiting);
+  if (row?.hours_waiting != null && Number.isFinite(server)) return Math.max(0, Math.floor(server));
+  const at = new Date(row?.submitted_at).getTime();
+  if (!Number.isFinite(at)) return 0;
+  return Math.max(0, Math.floor((now - at) / 3600000));
+}
+
+export function postWaitingWord(row, now = Date.now()) {
+  return `${postWaitingHours(row, now)} h`;
+}
+
+/** A post waiting more than 24 h gets the "Waiting over a day" marker (OQ-10). */
+export function postWaitingOverDay(row, now = Date.now()) {
+  return postWaitingHours(row, now) > POST_OVER_DAY_HOURS;
+}
+
+/** Oldest first. Rows with no usable date go last. */
+export function sortPostChecks(rows) {
+  const list = Array.isArray(rows) ? rows.filter((r) => r && r.post_id) : [];
+  const time = (r) => { const t = new Date(r.submitted_at).getTime(); return Number.isFinite(t) ? t : Infinity; };
+  return [...list].sort((a, b) => time(a) - time(b));
+}
+
+export function postPlatformWord(platform) {
+  const words = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", facebook: "Facebook", snapchat: "Snapchat" };
+  return words[String(platform ?? "").toLowerCase()] ?? sentenceFromKey(platform || "post");
+}
+
+/** The only links Admin opens in a new tab are real web links. */
+export function safePostUrl(url) {
+  try {
+    const u = new URL(String(url));
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** { ok:true, reason } or { ok:false, error } for a Failed decision. */
+export function checkPostFailReason(value) {
+  const reason = String(value ?? "").trim();
+  if (reason.length < POST_REASON_MIN) return { ok: false, error: `Write at least ${POST_REASON_MIN} characters.` };
+  if (reason.length > POST_REASON_MAX) return { ok: false, error: `Keep it to ${POST_REASON_MAX} characters.` };
+  return { ok: true, reason };
+}
+
+// ── #4402: Mingla Local pick window ────────────────────────────────────────
+
+export const PICK_WINDOW_DAYS_DEFAULT = 7;
+export const PICK_WINDOW_DAYS_MIN = 1;
+export const PICK_WINDOW_DAYS_MAX = 14;
+export const PICK_WINDOW_SOURCE_WORDS = { month_start: "Start of month", new_seat: "New seat", admin: "Opened by admin" };
+
+function utcDayWord(value) {
+  const d = new Date(value);
+  if (!value || Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+/** { text, source, open } for the Pick window column. */
+export function pickWindowSummary(window) {
+  if (window?.open) {
+    const until = utcDayWord(window.open_until);
+    return { open: true, text: until ? `Open until ${until}` : "Open", source: PICK_WINDOW_SOURCE_WORDS[window.reason] ?? null };
+  }
+  const opens = window?.opens_on ? utcDayWord(window.opens_on) : "";
+  return { open: false, text: "Closed", source: opens ? `Opens ${opens}` : null };
+}
+
+export function pickLocalWord(local) {
+  const status = local?.pick?.status ?? local?.pick_status ?? null;
+  if (!status) return "Not yet";
+  return local?.pick?.place_name || local?.pick_place_name || "Picked";
+}
+
+/** A pick already made this month disables the button (the server refuses too). */
+export function localAlreadyPicked(local) {
+  return Boolean(local?.pick?.status ?? local?.pick_status);
+}
+
+export function pickWindowButtonLabel(local) {
+  return local?.window?.open ? "Extend window" : "Open pick window";
+}
+
+export function pickWindowConfirmLabel(days) {
+  const n = Number(days);
+  return Number.isInteger(n) && n === 1 ? "Open for 1 day" : `Open for ${Number.isFinite(n) ? n : PICK_WINDOW_DAYS_DEFAULT} days`;
+}
+
+/** { ok, days, reason } or { ok:false, errors:{days?,reason?} }. */
+export function checkPickWindowDraft({ days, reason }) {
+  const errors = {};
+  const n = Number(days);
+  if (!Number.isInteger(n) || n < PICK_WINDOW_DAYS_MIN || n > PICK_WINDOW_DAYS_MAX) errors.days = `Choose ${PICK_WINDOW_DAYS_MIN} to ${PICK_WINDOW_DAYS_MAX} days.`;
+  const checked = checkPostFailReason(reason);
+  if (!checked.ok) errors.reason = checked.error;
+  if (errors.days || errors.reason) return { ok: false, errors };
+  return { ok: true, days: n, reason: checked.reason };
+}
+
+/** One History row for a local_events entry, or null for kinds Admin does not show. */
+export function localHistoryLine(event) {
+  if (!event) return null;
+  const data = event.data ?? {};
+  if (event.kind === "pick_window_opened") {
+    const until = utcDayWord(data.open_until);
+    const by = data.admin_name || actorWord(event.actor);
+    return `Pick window opened${until ? ` until ${until}` : ""} by ${by}${data.reason ? `: ${data.reason}` : ""}`;
+  }
+  return gigEventWord(event.kind);
+}
 
 export function contractStateWord(state) {
   return CONTRACT_STATE_WORDS[state] ?? sentenceFromKey(state);
@@ -547,6 +687,8 @@ const EVENT_WORDS = {
   delivery_approved: "Video approved",
   posts_submitted: "Post links added",
   posts_verified: "Posts checked",
+  post_reviewed: "Post checked",
+  pick_window_opened: "Pick window opened",
   terms_change_proposed: "Change to terms proposed",
   terms_change_accepted: "Terms changed",
   terms_change_declined: "Change to terms declined",
@@ -588,12 +730,32 @@ export function monthWord(value) {
   return d.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-/** "Tue 20 Oct" for a deadline. */
+export function shortDateTimeOrDash(value) {
+  return shortDateTime(value) || "—";
+}
+
+/**
+ * "Tue 20 Oct" for a deadline. A calendar day ("2026-12-15") is that day everywhere:
+ * read in UTC, never shifted a day back by the browser's zone (#4402 walk: post-by
+ * Tue 15 Dec showed as Mon 14 Dec in New York).
+ */
 export function dayWord(value) {
   if (!value) return "";
-  const d = new Date(value);
+  const calendarDay = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const d = new Date(calendarDay ? `${value}T00:00:00Z` : value);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", ...(calendarDay ? { timeZone: "UTC" } : {}) });
+}
+
+/**
+ * A gig's must-tag as words: "@usemingla · #ad". The server stores it as an object
+ * ({ mingla, disclosure }), older rows as a list or a string (#4402 walk: "[object Object]").
+ */
+export function mustTagWords(mustTag) {
+  if (!mustTag) return "";
+  if (typeof mustTag === "string") return mustTag.trim();
+  const values = Array.isArray(mustTag) ? mustTag : typeof mustTag === "object" ? Object.values(mustTag) : [];
+  return values.filter((v) => typeof v === "string" && v.trim()).map((v) => v.trim()).join(" · ");
 }
 
 const DELIVERABLE_WORDS = { video: "video", reel: "Reel", story: "Story", stories: "Stories", post: "post", tiktok: "TikTok" };
@@ -616,7 +778,7 @@ export function deliverablesSummary(deliverables) {
 export const DISPUTE_REASON_WORDS = {
   technical_fixes_exhausted: "Both fixes used and the video still isn't right",
   post_missed: "Posts weren't made on time",
-  posts_failed: "Posts couldn't be checked",
+  posts_failed: "A post needs a fix",
   nontechnical_fix_abuse: "Fix requests went beyond the agreed script",
   timer_safety: "The deal stalled with no answer",
   other: "Something else",
@@ -801,7 +963,13 @@ const ERROR_WORDS = {
   admin_only_or_invalid: "That decision isn't allowed here.",
   admin_only_or_reason_required: "Add a reason before you continue.",
   note_required: "Add a note before you continue.",
-  reason_required: "Add a reason before you continue.",
+  reason_required: "Add a reason of 5 to 300 characters before you continue.",
+  invalid_check_result: "Choose Passed or Failed.",
+  post_not_reviewable: "This post was already checked or is no longer waiting. Refresh the list.",
+  post_not_found: "This post no longer exists. Refresh the list.",
+  invalid_days: "Choose between 1 and 14 days.",
+  local_not_active: "Only an active Local can have a pick window.",
+  local_not_found: "This Local no longer exists. Refresh the list.",
   invalid_decision: "That decision isn't allowed for this creator.",
   creator_not_found: "This creator no longer exists. Refresh the list.",
   creator_profile_not_found: "This creator no longer exists. Refresh the list.",

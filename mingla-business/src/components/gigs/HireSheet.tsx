@@ -22,6 +22,8 @@ import {
 } from "../../services/gigHireService";
 import {
   bookingFeeMinor,
+  minFeeError,
+  minFeeHint,
   minorToWholeText,
   programErrorMessage,
   programMoney,
@@ -130,6 +132,12 @@ function HireSheetBody({
     mode.kind === "hire" && feeMinor ? bookingFeeMinor(feeMinor) : 0;
   const total = (feeMinor ?? 0) + booking;
   const allChecked = mode.kind === "topup" || checked.every(Boolean);
+  // #4402 (D2) — the minimum creator fee, explained beside the fee. A top-up
+  // is only a difference, so the minimum does not apply to it.
+  const belowMin =
+    mode.kind === "hire" ? minFeeError(feeMinor, currency) : null;
+  const feeHint =
+    mode.kind === "hire" ? minFeeHint(currency, feeMinor) : null;
 
   const confirm = async (start: GigHireStart) => {
     const result = await confirmGigReference({
@@ -151,6 +159,10 @@ function HireSheetBody({
   const run = async () => {
     if (!feeMinor) {
       setError("Enter a fee above zero.");
+      return;
+    }
+    if (belowMin) {
+      setError(belowMin);
       return;
     }
     setBusy(true);
@@ -180,10 +192,13 @@ function HireSheetBody({
           return;
         }
         setError(
-          programErrorMessage(
-            start.error,
-            "We couldn't start the payment. Try again in a few minutes.",
-          ),
+          start.error === "fee_below_minimum"
+            ? (minFeeError(0, currency) ??
+                programErrorMessage(start.error))
+            : programErrorMessage(
+                start.error,
+                "We couldn't start the payment. Try again in a few minutes.",
+              ),
         );
         return;
       }
@@ -238,7 +253,7 @@ function HireSheetBody({
               : "Agree and pay"
           }
           loading={busy}
-          disabled={busy || !allChecked || !feeMinor}
+          disabled={busy || !allChecked || !feeMinor || Boolean(belowMin)}
           onPress={() => void run()}
         />
       )}
@@ -253,12 +268,13 @@ function HireSheetBody({
         countering ? (
           <>
             <Input
-              value={feeText}
+              value={feeText ? Number(feeText).toLocaleString("en-US") : ""}
               onChangeText={(value) => setFeeText(value.replace(/[^0-9]/g, ""))}
               variant="number"
               placeholder={`Your fee offer in ${currency}`}
               accessibilityLabel={`Your fee offer in ${currency}`}
             />
+            <FieldError message={feeMinor ? belowMin : null} />
             <Muted>{`${creatorName} asked for ${programMoney(mode.quoteMinor, currency)}. They see your offer and have 48 hours to accept.`}</Muted>
           </>
         ) : (
@@ -293,7 +309,8 @@ function HireSheetBody({
           value={feeMinor ? programMoney(total, currency) : "—"}
           strong
         />
-        <Muted>{`Held by Mingla until the post is live. Refunded if ${creatorName} declines or misses a deadline.`}</Muted>
+        <Muted>{`Held by Mingla until the posts are checked. Refunded if ${creatorName} declines or misses a deadline.`}</Muted>
+        {feeHint ? <Muted>{feeHint}</Muted> : null}
       </Card>
       {mode.kind === "hire" && salesShareBps ? (
         <Card>

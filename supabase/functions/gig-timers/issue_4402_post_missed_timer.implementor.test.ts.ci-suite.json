@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/gig-timers/issue_4402_post_missed_timer.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4402-post-missed-timer",
+  "profile": "deno-2-unit"
+}

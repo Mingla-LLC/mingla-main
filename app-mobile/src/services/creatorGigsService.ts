@@ -9,6 +9,8 @@ export type PublicGig = {
   rights_model?: 'legacy_timed' | 'creator_v1_perpetual'; agreement_version?: string | null; agreement_url?: string | null;
   /** When the video is due and the set shoot time (timestamptz), when the host gave them. */
   video_due_at?: string | null; shoot_at?: string | null;
+  /** #4402: the listing's IANA zone, so due times read the same on every phone. */
+  timezone?: string | null;
   saved?: boolean;
   /** The most the host pays each creator, in the gig's currency (null on gigs saved before pay existed). */
   pay_up_to_minor?: number | null; currency?: string | null;
@@ -24,7 +26,7 @@ export type CreatorHomeContract = {
   /** A counter-offer from you is waiting for the host. */
   counter_open?: boolean | null;
 };
-export type CreatorHomeInterest = { id: string; gig_id: string; title: string; status: string; quote_minor: number; currency: string; created_at: string };
+export type CreatorHomeInterest = { id: string; gig_id: string; title: string; status: string; quote_minor: number; currency: string; created_at: string; note?: string | null; package_id?: string | null };
 export type CreatorHome = { contracts: CreatorHomeContract[]; interests: CreatorHomeInterest[]; saved?: PublicGig[] };
 
 export type GigTerms = Record<string, unknown> & {
@@ -38,10 +40,10 @@ export type GigProposal = { id: string; from_version: number; proposed_by: 'host
 export type GigEvent = { id: string; at: string; actor: string; kind: string; data: Record<string, unknown> };
 export type GigScript = { version: number; body: { sections?: Array<Record<string, unknown>>; disclosure?: string; estimated_seconds?: number }; source: string; sent_at: string | null; locked_at: string | null; locked_by: string | null };
 export type GigDelivery = Record<string, unknown> & { id: string; round: number; decision: string | null; fix_categories?: string[]; fix_note?: string | null; submitted_at?: string };
-export type GigPost = { id: string; platform: string; url: string; check_status: string; submitted_at: string };
+export type GigPost = { id: string; platform: string; url: string; check_status: string; submitted_at: string; check_detail?: { reason?: string | null; method?: string | null } | null };
 
 export type GigWorkspace = {
-  contract: { id: string; state: string; state_deadline_at: string | null; fix_rounds_used: number; current_terms_version?: number; created_at?: string };
+  contract: { id: string; state: string; state_deadline_at: string | null; fix_rounds_used: number; current_terms_version?: number; created_at?: string; cancel_reason?: string | null };
   party: 'host' | 'creator' | 'admin'; revealed: boolean;
   /** Who the host is and where the shoot happens; only after acceptance. */
   reveal?: { brand_name: string | null; place_name: string | null; place_address: string | null } | null;
@@ -52,7 +54,11 @@ export type GigWorkspace = {
     brand_name?: string | null; place_name?: string | null; place_address?: string | null;
     shoot_window?: { start: string; end: string } | null; city_name?: string | null;
     video_due_at?: string | null; shoot_at?: string | null;
+    /** #4402: the listing's IANA zone (event zone, else the brand city's), and the format's beats. */
+    timezone?: string | null; format_structure?: Array<{ key: string; from?: number; to?: number }> | null;
   };
+  /** #4402: the zone can also arrive at the top level. */
+  timezone?: string | null;
   terms: GigTerms[];
   proposals: GigProposal[];
   events: GigEvent[];
@@ -81,14 +87,26 @@ export type GigRights = {
   whitelisting_requires_platform_authorization?: boolean;
 };
 
-export type EarningsRow = { kind: 'gig' | 'referral' | 'local'; title: string; amount_minor: number; currency: string; state: 'on_the_way' | 'ready' | 'paid'; at: string };
-export type CreatorEarningsSummary = { currency: string; on_the_way_minor: number; ready_minor: number; paid_minor: number; rows: EarningsRow[] };
+export type EarningsRow = { kind: 'gig' | 'referral' | 'local'; title: string; amount_minor: number; currency: string; state: 'on_the_way' | 'ready' | 'paid'; at: string;
+  /** #4402: false when the server says this row is not waiting on the payout floor. */
+  below_floor?: boolean };
+export type CreatorEarningsSummary = { currency: string; on_the_way_minor: number; ready_minor: number; paid_minor: number; rows: EarningsRow[];
+  /** #4402: per currency, money waiting for the payout floor (server-read floors). */
+  held_below_floor?: Array<{ currency: string; held_minor: number; floor_minor: number }> };
+
+/** The zone a gig's times are shown in (null: older server, show the device's time). */
+export function gigZone(workspace: Pick<GigWorkspace, 'gig' | 'timezone'> | null | undefined): string | null {
+  const zone = workspace?.gig?.timezone ?? workspace?.timezone ?? null;
+  return typeof zone === 'string' && zone ? zone : null;
+}
 
 export const creatorGigsService = {
   home: () => programRead<CreatorHome>('gig_creator_home'),
   board: (input: { cityId?: string | null; formatKey?: string | null } = {}) => programRead<PublicGig[]>('creator_gig_board', { p_city_id: input.cityId ?? null, p_format_key: input.formatKey ?? null }),
   detail: (gigId: string) => programRead<PublicGig | null>('creator_gig_detail', { p_gig_id: gigId }),
   withdrawInterest: (interestId: string) => programWrite<{ ok: true }>('gig_interest_withdraw', { p_interest_id: interestId }),
+  /** Change the price (and pitch) of an interest already sent: the server updates a sent or shortlisted interest in place. */
+  changeInterestPrice: (gigId: string, packageId: string, quotedMinor: number, note?: string) => programWrite('gig_interest_send', { p_gig_id: gigId, p_package_id: packageId, p_quoted_minor: quotedMinor, p_note: note?.trim() || null }),
   saveGig: (gigId: string, saved: boolean) => programWrite<{ ok: true; saved: boolean }>('creator_gig_save', { p_gig_id: gigId, p_saved: saved }),
   savedGigs: () => programRead<PublicGig[]>('creator_saved_gigs'),
   /** `{ok:false}` (note_not_anonymous, payout_rail_mismatch, creator_not_ready, gig_full, already_interested) throws. */

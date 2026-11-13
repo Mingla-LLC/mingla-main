@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/payee-account-paystack-recipient/__tests__/issue_4402_payee_name_review.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4402-payee-name-review",
+  "profile": "deno-1.46-stripe"
+}

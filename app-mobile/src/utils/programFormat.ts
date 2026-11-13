@@ -45,14 +45,20 @@ export function formatMoney(minor: number | null | undefined, currency: string |
   const exponent = currencyExponent(code);
   const whole = value / 10 ** exponent;
   const fraction = Number.isInteger(whole) ? 0 : exponent;
+  const fallback = (): string => {
+    const symbol = SYMBOLS[code] ?? `${code} `;
+    return `${whole < 0 ? '-' : ''}${symbol}${formatPlainNumber(Math.abs(whole), locale, fraction)}`;
+  };
   try {
-    return new Intl.NumberFormat(locale, {
+    const out = new Intl.NumberFormat(locale, {
       style: 'currency', currency: code, currencyDisplay: 'narrowSymbol',
       minimumFractionDigits: fraction, maximumFractionDigits: fraction,
     }).format(whole);
+    // #4402: Hermes on iOS ignores narrowSymbol and prints the code ("NGN 100");
+    // a currency with a known symbol reads "₦100" everywhere.
+    return SYMBOLS[code] && out.includes(code) ? fallback() : out;
   } catch {
-    const symbol = SYMBOLS[code] ?? `${code} `;
-    return `${whole < 0 ? '-' : ''}${symbol}${formatPlainNumber(Math.abs(whole), locale, fraction)}`;
+    return fallback();
   }
 }
 
@@ -94,7 +100,20 @@ export function parseMoneyInput(text: string, currency: string): number | null {
 export function moneyInputValue(minor: number | null | undefined, currency: string): string {
   if (typeof minor !== 'number' || !Number.isFinite(minor) || minor <= 0) return '';
   const whole = minorToWhole(minor, currency);
-  return Number.isInteger(whole) ? String(whole) : whole.toFixed(currencyExponent(currency));
+  return groupMoneyTyping(Number.isInteger(whole) ? String(whole) : whole.toFixed(currencyExponent(currency)));
+}
+
+/**
+ * #4402: digits are grouped while typing ("40000" → "40,000", "1200.5" → "1,200.5").
+ * Anything that is not a digit or the first dot is dropped; parseMoneyInput reads the commas back out.
+ */
+export function groupMoneyTyping(text: string): string {
+  const cleaned = text.replace(/[^0-9.]/g, '');
+  const dot = cleaned.indexOf('.');
+  const whole = (dot === -1 ? cleaned : cleaned.slice(0, dot)).replace(/^0+(?=\d)/, '');
+  const fraction = dot === -1 ? null : cleaned.slice(dot + 1).replace(/\./g, '');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return fraction === null ? grouped : `${grouped || '0'}.${fraction}`;
 }
 
 // ── Dates ──────────────────────────────────────────────────────────────────
@@ -132,9 +151,16 @@ export function persistedDayString(value: string | Date | null | undefined): str
   return parsed ? toDayString(parsed) : null;
 }
 
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** #4402: one month helper for every date, always with an initial capital ("Nov", never "nov"). */
+export function capitalizeFirst(text: string): string {
+  return text ? text.charAt(0).toLocaleUpperCase() + text.slice(1) : text;
+}
+
 function monthShort(date: Date, locale?: string): string {
-  try { return new Intl.DateTimeFormat(locale, { month: 'short' }).format(date); }
-  catch { return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getMonth()]; }
+  try { return capitalizeFirst(new Intl.DateTimeFormat(locale, { month: 'short' }).format(date)); }
+  catch { return MONTHS_SHORT[date.getMonth()]; }
 }
 
 /** "Nov 14" (with the year only when it isn't this year: "Jan 3, 2028"). */
@@ -187,7 +213,7 @@ export function formatDateTime(value: string | Date | null | undefined, now: Dat
 export function formatMonth(value: string | Date | null | undefined, style: 'long' | 'short' = 'long', locale?: string): string {
   const date = parseDay(value);
   if (!date) return '';
-  try { return new Intl.DateTimeFormat(locale, { month: style }).format(date); }
+  try { return capitalizeFirst(new Intl.DateTimeFormat(locale, { month: style }).format(date)); }
   catch { return monthShort(date, locale); }
 }
 
@@ -206,6 +232,15 @@ export function formatDue(value: string | Date | null | undefined, now: Date = n
   if (days <= 0) return 'Due today';
   if (days === 1) return 'Due tomorrow';
   return `Due ${formatShortDate(date, now, locale)}`;
+}
+
+/** formatDue for two calendar days already read in the same zone. */
+function formatDueDay(day: string, today: string, passed: boolean, now: Date, locale?: string): string {
+  const days = Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS);
+  if (passed && days < 0) return 'Overdue';
+  if (days <= 0) return 'Due today';
+  if (days === 1) return 'Due tomorrow';
+  return `Due ${formatShortDate(day, now, locale)}`;
 }
 
 /** Whole hours left until a deadline, never negative. */
@@ -434,17 +469,17 @@ export function proposalDueText(changes: Record<string, unknown>, now: Date = ne
  * never before today. The calendar opens on the picked day, else the first day
  * that can be picked (the window's first month).
  */
-export function shootPickRange(window: { start?: string | null; end?: string | null } | null | undefined, pickedAt: string | null | undefined, now: Date = new Date()): {
+export function shootPickRange(window: { start?: string | null; end?: string | null } | null | undefined, pickedAt: string | null | undefined, now: Date = new Date(), timeZone?: string | null): {
   minDate: string; maxDate: string | null; initialDay: string | null;
 } {
-  const today = toDayString(now);
+  const today = (timeZone && persistedDayInZone(now, timeZone)) || toDayString(now);
   const start = window?.start && /^\d{4}-\d{2}-\d{2}$/.test(window.start) ? window.start : null;
   const end = window?.end && /^\d{4}-\d{2}-\d{2}$/.test(window.end) ? window.end : null;
   const minDate = start && start > today ? start : today;
   const maxDate = end;
   if (maxDate && maxDate < minDate) return { minDate, maxDate, initialDay: null };
   const picked = parseDay(pickedAt);
-  const pickedDay = picked ? toDayString(picked) : null;
+  const pickedDay = picked ? ((timeZone && persistedDayInZone(picked, timeZone)) || toDayString(picked)) : null;
   const initialDay = pickedDay && pickedDay >= minDate && (!maxDate || pickedDay <= maxDate) ? pickedDay : minDate;
   return { minDate, maxDate, initialDay };
 }
@@ -508,14 +543,17 @@ function lowerFirst(text: string): string {
  * Working states: "Next · due Nov 25" (W3.1: the month stays "Nov", never "nov").
  * After release the creator has no Next; the card shows "Day-30 check · Nov 25" (W3.2).
  */
-export function contractCardLabel(state: string | null | undefined, deadlineAt: string | null | undefined, now: Date = new Date(), locale?: string): string {
+export function contractCardLabel(state: string | null | undefined, deadlineAt: string | null | undefined, now: Date = new Date(), locale?: string, timeZone?: string | null): string {
+  // #4402 (AC-12): read the deadline's day in the gig's zone, not the phone's.
+  const zoned = timeZone && deadlineAt ? persistedDayInZone(deadlineAt, timeZone) : '';
+  const dayValue = zoned || deadlineAt;
   if (RELEASED_STATES.includes(state ?? '')) {
-    const day = formatShortDate(deadlineAt, now, locale);
+    const day = formatShortDate(dayValue, now, locale);
     return day ? `Day-30 check · ${day}` : 'Day-30 check';
   }
   if (state === 'completed') return 'Done';
   if ((state ?? '').startsWith('resolved_')) return 'Dispute settled';
-  const due = formatDue(deadlineAt, now, locale);
+  const due = zoned ? formatDueDay(zoned, persistedDayInZone(now, timeZone), (parseDay(deadlineAt)?.getTime() ?? 0) < now.getTime(), now, locale) : formatDue(deadlineAt, now, locale);
   return due ? `Next · ${lowerFirst(due)}` : 'Next';
 }
 
@@ -632,4 +670,332 @@ export function localRowCopy(local: Landing | null | undefined): string | null {
 /** W1.1 — how hosts see you: "Ada Films · Food, Nightlife". */
 export function hostsSeeYouAs(name: string | null | undefined, niches: string[], nicheLabel: (key: string) => string): string {
   return [name?.trim() || '', niches.slice(0, 3).map(nicheLabel).join(', ')].filter(Boolean).join(' · ');
+}
+
+// ── #4402: zone-labelled times ─────────────────────────────────────────────
+
+const ZONE_NAMES: Record<string, string> = { UTC: 'UTC', GMT: 'UTC', 'Etc/UTC': 'UTC', 'Etc/GMT': 'UTC' };
+
+/** "Africa/Lagos" → "Lagos time"; "America/Argentina/Buenos_Aires" → "Buenos Aires time". Never a raw offset. */
+export function zoneLabel(timeZone: string | null | undefined): string {
+  if (!timeZone) return '';
+  if (ZONE_NAMES[timeZone]) return ZONE_NAMES[timeZone];
+  const city = timeZone.split('/').pop()?.replace(/_/g, ' ').trim();
+  return city ? `${city} time` : '';
+}
+
+function zoneParts(date: Date, timeZone: string, locale: string): Record<string, string> | null {
+  try {
+    const parts = new Intl.DateTimeFormat(locale, { timeZone, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(date);
+    const out: Record<string, string> = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    // #4402 walk: Hermes on iOS splits formatToParts on punctuation, so fields can be missing
+    // or mistyped. A one-field format() is read whole by every engine; fill the date fields from it.
+    const one = (options: Intl.DateTimeFormatOptions): string => new Intl.DateTimeFormat(locale, { timeZone, ...options }).format(date);
+    if (!/^[A-Za-z]{2,}\.?$/.test(out.weekday ?? '')) out.weekday = one({ weekday: 'short' });
+    if (!/^[A-Za-z]{3,}\.?$/.test(out.month ?? '')) out.month = one({ month: 'short' });
+    if (!/^\d{1,2}$/.test(out.day ?? '')) out.day = one({ day: 'numeric' }).replace(/\D/g, '');
+    if (!/^\d{4}$/.test(out.year ?? '')) out.year = one({ year: 'numeric' }).replace(/\D/g, '');
+    return out;
+  } catch { return null; }
+}
+
+/**
+ * "Tue Dec 15, 6:00 PM Lagos time": a moment shown in the listing's own zone, so a
+ * host in London and a creator in Lagos read the same hour. No zone known: the device's
+ * own time, with no label.
+ */
+export function formatInZone(value: string | Date | null | undefined, timeZone: string | null | undefined, now: Date = new Date()): string {
+  const date = parseDay(value);
+  if (!date) return '';
+  const parts = timeZone ? zoneParts(date, timeZone, 'en-US') : null;
+  if (!parts) return formatDateTime(date, now).replace(' · ', ', ');
+  const sameYear = Number(parts.year) === now.getFullYear();
+  const day = `${capitalizeFirst(parts.month)} ${parts.day}${sameYear ? '' : `, ${parts.year}`}`;
+  const time = parts.hour && parts.minute && parts.dayPeriod
+    ? `${parts.hour}:${parts.minute} ${parts.dayPeriod.toUpperCase()}`
+    : zoneTime(date, timeZone as string);
+  return `${parts.weekday} ${day}, ${time} ${zoneLabel(timeZone)}`.trim();
+}
+
+/**
+ * "6:00 PM" in a zone with format(), not formatToParts(): Hermes on iOS returns no
+ * hour/minute/dayPeriod parts, which printed "undefined:undefined" (#4402 walk).
+ */
+function zoneTime(date: Date, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true }).format(date)
+      .replace(/\u202f|\u00a0/g, ' ').toUpperCase();
+  } catch { return ''; }
+}
+
+/** "Tue Dec 15" for a calendar day ("2026-12-15") or an instant read in a zone. */
+export function formatDayWithWeekday(value: string | Date | null | undefined, timeZone?: string | null, now: Date = new Date()): string {
+  if (!value) return '';
+  const isDay = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const date = parseDay(value);
+  if (!date) return '';
+  if (isDay || !timeZone) return `${WEEKDAYS_SHORT[date.getDay()]} ${formatShortDate(date, now)}`;
+  const parts = zoneParts(date, timeZone, 'en-US');
+  if (!parts) return `${WEEKDAYS_SHORT[date.getDay()]} ${formatShortDate(date, now)}`;
+  return `${parts.weekday} ${capitalizeFirst(parts.month)} ${parts.day}${Number(parts.year) === now.getFullYear() ? '' : `, ${parts.year}`}`;
+}
+const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** The agreed video due as "Sun Dec 13, 11:59 PM Lagos time" (zone known) or the older device-time text. */
+export function agreedVideoDueZoned(terms: DueSource, gig: DueSource, timeZone: string | null | undefined, now: Date = new Date(), locale?: string): string {
+  const due = agreedVideoDue(terms, gig);
+  if (timeZone && due.videoDueAt && due.videoDueAt.length > 10) return formatInZone(due.videoDueAt, timeZone, now);
+  return videoDueText(due.videoDueAt, due.postBy, now, locale);
+}
+
+// ── #4402: the posting deadline ────────────────────────────────────────────
+
+/**
+ * The server's deadline is the end of the post-by day in the listing's zone plus a
+ * 24 hour grace, stored as the first instant after that. People read the last minute:
+ * one minute earlier, so "00:00" shows as "11:59 PM".
+ */
+export function postDeadlineShown(deadlineAt: string | null | undefined): Date | null {
+  const date = parseDay(deadlineAt);
+  return date ? new Date(date.getTime() - 60_000) : null;
+}
+
+/** "Wed Dec 16, 11:59 PM Lagos time" for the posting deadline. */
+export function postDeadlineText(deadlineAt: string | null | undefined, timeZone: string | null | undefined, now: Date = new Date()): string {
+  const shown = postDeadlineShown(deadlineAt);
+  return shown ? formatInZone(shown, timeZone, now) : '';
+}
+
+/** "Due in 9 hours" with under a day left; null otherwise (or once it has passed). */
+export function postDueSoonLabel(deadlineAt: string | null | undefined, now: Date = new Date()): string | null {
+  const date = parseDay(deadlineAt);
+  if (!date) return null;
+  const ms = date.getTime() - now.getTime();
+  if (ms <= 0 || ms > 86_400_000) return null;
+  const hours = Math.max(1, Math.ceil(ms / 3_600_000));
+  return `Due in ${hours} hour${hours === 1 ? '' : 's'}`;
+}
+
+/** Why the upload date is what it is, in one sentence. Null without a post-by date. */
+export function uploadDueReason(due: { videoDueAt: string | null; postBy: string | null }, timeZone: string | null | undefined, now: Date = new Date()): string | null {
+  if (!due.postBy) return null;
+  const postBy = formatDayWithWeekday(due.postBy, null, now);
+  const uploadLabel = due.videoDueAt && due.videoDueAt.length > 10 ? formatDayWithWeekday(due.videoDueAt, timeZone, now) : null;
+  const plain = `Upload your video before your post-by date of ${postBy}, so the host has time to review.`;
+  if (!uploadLabel) return plain;
+  // #4402 walk: never assert these parse — a bad date here crashed the whole upload step.
+  const postByDate = parseDay(due.postBy);
+  const uploadDay = parseDay(persistedDayInZone(due.videoDueAt!, timeZone));
+  if (!postByDate || !uploadDay) return `Upload by ${uploadLabel}, before your post-by date of ${postBy}, so the host has time to review.`;
+  const byDays = Math.round((startOfDay(postByDate) - startOfDay(uploadDay)) / DAY_MS);
+  return byDays === 2
+    ? `Upload by ${uploadLabel} — two days before your post-by date of ${postBy}, so the host has time to review.`
+    : `Upload by ${uploadLabel}, before your post-by date of ${postBy}, so the host has time to review.`;
+}
+
+/**
+ * The wall clock of an instant in a zone, read from format() (Hermes on iOS splits
+ * formatToParts on punctuation, #4402 walk). Null when the zone is unknown.
+ */
+export function zoneWallClock(date: Date, timeZone: string | null | undefined): { year: number; month: number; day: number; hour: number; minute: number } | null {
+  if (!timeZone) return null;
+  try {
+    const text = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }).format(date);
+    const m = /(\d{1,2})\D+(\d{1,2})\D+(\d{4})\D+(\d{1,2})\D+(\d{2})/.exec(text);
+    if (!m) return null;
+    return { year: Number(m[3]), month: Number(m[1]), day: Number(m[2]), hour: Number(m[4]) % 24, minute: Number(m[5]) };
+  } catch { return null; }
+}
+
+/** "2026-11-14" + "19:00" read in the event's zone → the instant. Null without a zone. */
+export function zonedInstant(day: string, time: string, timeZone: string | null | undefined): Date | null {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  const tm = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!dm || !tm || !timeZone) return null;
+  const wanted = Date.UTC(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Number(tm[1]), Number(tm[2]));
+  let guess = wanted;
+  for (let i = 0; i < 2; i += 1) {
+    const wall = zoneWallClock(new Date(guess), timeZone);
+    if (!wall) return null;
+    const shown = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute);
+    guess += wanted - shown;
+  }
+  return new Date(guess);
+}
+
+/** The calendar day ("2026-12-15") an instant falls on in a zone; the device's day without one. */
+function persistedDayInZone(iso: string | Date, timeZone: string | null | undefined): string {
+  const date = iso instanceof Date ? iso : parseDay(iso);
+  if (!date) return '';
+  const wall = zoneWallClock(date, timeZone);
+  if (!wall) return toDayString(date);
+  return `${wall.year}-${String(wall.month).padStart(2, '0')}-${String(wall.day).padStart(2, '0')}`;
+}
+
+/** "2 passes under Ada Obi" for the text door pass. */
+export function doorPassLine(passes: unknown, name: string | null | undefined): string {
+  const n = typeof passes === 'number' && Number.isFinite(passes) && passes > 0 ? Math.floor(passes) : 1;
+  return `${n} pass${n === 1 ? '' : 'es'} under ${name?.trim() || 'your name'}`;
+}
+
+/** A reason from the review team as a sentence: trimmed, with a closing full stop. */
+export function sentence(text: string): string {
+  const trimmed = text.trim();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/**
+ * The creator's status-card words for the three posting states, with the deadline in the listing's zone.
+ * `accent` is the small line on top ("Due in 9 hours" with under a day left).
+ */
+export function postingStatusCopy(state: string, deadlineAt: string | null | undefined, timeZone: string | null | undefined, reason: string | null, now: Date = new Date()): { accent: string | null; title: string; text: string } | null {
+  const when = postDeadlineText(deadlineAt, timeZone, now);
+  const accent = postDueSoonLabel(deadlineAt, now);
+  if (state === 'approved') return { accent, title: 'Post your video', text: when ? `Post by ${when}. Add your live links here once it’s up.` : 'Add your live links here once it’s up.' };
+  if (state === 'posting') return { accent, title: 'Add your live links', text: when ? `Post by ${when}. If the links aren’t added by then, the gig is cancelled and the host is refunded.` : 'If the links aren’t added in time, the gig is cancelled and the host is refunded.' };
+  if (state === 'posts_failed') {
+    const fix = reason ? `${sentence(reason)} Edit the caption, then submit the link again.` : 'Edit the post or the link, then submit the link again.';
+    return { accent, title: 'One of your posts needs a fix', text: when ? `${fix} Fix by ${when}.` : fix };
+  }
+  return null;
+}
+
+// ── #4402: minimum creator fee ─────────────────────────────────────────────
+
+/** Mirrors the server (issue_4402_gig_min_fee_minor): ₦100 / $10 / €10 / £10. Other currencies have none. */
+const MIN_FEE_MINOR: Record<string, number> = { NGN: 10_000, USD: 1_000, EUR: 1_000, GBP: 1_000 };
+export const BOOKING_FEE_PERCENT = 15;
+
+export function minFeeMinor(currency: string | null | undefined): number | null {
+  return MIN_FEE_MINOR[(currency ?? '').toUpperCase()] ?? null;
+}
+
+export function isBelowMinFee(minor: number | null | undefined, currency: string | null | undefined): boolean {
+  const min = minFeeMinor(currency);
+  return min !== null && typeof minor === 'number' && minor > 0 && minor < min;
+}
+
+/** "The minimum creator fee is ₦100." Empty when the currency has no minimum. */
+export function minFeeError(currency: string | null | undefined): string {
+  const min = minFeeMinor(currency);
+  return min === null ? '' : `The minimum creator fee is ${formatMoney(min, currency)}.`;
+}
+
+/**
+ * The hint under a fee field. Creator wording ("the host also pays"); `withBooking` adds the
+ * 15% booking fee line with the host's total for the fee typed so far.
+ */
+export function minFeeHint(currency: string | null | undefined, feeMinor: number | null, options: { withBooking?: boolean } = {}): string {
+  const min = minFeeMinor(currency);
+  const parts: string[] = [];
+  if (min !== null) parts.push(`Minimum ${formatMoney(min, currency)}.`);
+  if (options.withBooking) {
+    const base = `The host also pays Mingla’s ${BOOKING_FEE_PERCENT}% booking fee on top`;
+    parts.push(feeMinor && feeMinor > 0
+      ? `${base}, so ${formatMoney(feeMinor, currency)} costs the host ${formatMoney(Math.round(feeMinor * (100 + BOOKING_FEE_PERCENT) / 100), currency)}.`
+      : `${base}.`);
+  }
+  return parts.join(' ');
+}
+
+// ── #4402: earnings below the payout floor ─────────────────────────────────
+
+export type HeldBelowFloor = { currency: string; held_minor: number; floor_minor: number };
+
+/** "₦100 waiting. Paid once you have ₦1,000 or more in NGN." The floor always comes from the server. */
+export function heldBelowFloorText(item: HeldBelowFloor): string {
+  return `${formatMoney(item.held_minor, item.currency)} waiting. Paid once you have ${formatMoney(item.floor_minor, item.currency)} or more in ${item.currency.toUpperCase()}.`;
+}
+
+export function waitingToReachText(item: HeldBelowFloor): string {
+  return `Waiting to reach ${formatMoney(item.floor_minor, item.currency)}`;
+}
+
+// ── #4402: the Local pick window ───────────────────────────────────────────
+
+export type PickWindow = { open: boolean; reason?: 'month_start' | 'new_seat' | 'admin' | null; open_until?: string | null; opens_on?: string | null };
+
+function utcDay(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** The last day a pick is accepted. Month-start and new-seat windows end at 00:00 UTC, so that day is the one before. */
+export function pickWindowLastDay(window: PickWindow): string | null {
+  const until = parseDay(window.open_until ?? null);
+  if (!until) return null;
+  if (window.reason === 'admin') return toDayString(until);
+  return utcDay(new Date(until.getTime() - 1));
+}
+
+/** The words for the Local home: an open window with its last day and reason, or the closed line. */
+export function pickWindowWords(window: PickWindow | null | undefined, seatStartedOn?: string | null, now: Date = new Date()): { open: boolean; headline: string; detail: string | null } {
+  if (!window || window.open) {
+    const last = window ? pickWindowLastDay(window) : null;
+    const headline = last ? `Pick your place by ${formatDayWithWeekday(last, null, now)}.` : 'Pick your place for this month.';
+    const detail = window?.reason === 'new_seat' && seatStartedOn ? `You started on ${formatShortDate(persistedDayString(seatStartedOn), now)}, so you get 7 days to pick.` : null;
+    return { open: true, headline, detail };
+  }
+  const opens = window.opens_on ? ` The next window opens on ${formatDayWithWeekday(persistedDayString(window.opens_on), null, now)}.` : '';
+  return { open: false, headline: `Picks for this month are closed.${opens}`, detail: null };
+}
+
+// ── #4402: date of birth (typed or picked) and the agreement's sign button ──
+
+/** "15032001" → "15 / 03 / 2001". Digits only; the separators are drawn, never typed. */
+export function formatTypedDob(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join(' / ');
+}
+
+/** A complete, real calendar date typed as DD / MM / YYYY → "2001-03-15"; anything else is null. */
+export function typedDobToDay(text: string): string | null {
+  const digits = text.replace(/\D/g, '');
+  if (digits.length !== 8) return null;
+  const day = Number(digits.slice(0, 2)); const month = Number(digits.slice(2, 4)); const year = Number(digits.slice(4, 8));
+  if (year < 1900) return null;
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return toDayString(date);
+}
+
+/** "2001-03-15" → "15 / 03 / 2001" (what the typed field shows for a saved date). */
+export function dayToTypedDob(day: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day ?? '');
+  return m ? `${m[3]} / ${m[2]} / ${m[1]}` : '';
+}
+
+export const CREATOR_UNDER_18_ERROR = 'You need to be 18 or older to join as a creator.';
+
+/** The wheel opens 21 years back from today (never later than the last allowed birth date). */
+export function dobWheelStart(now: Date = new Date()): Date {
+  const start = new Date(now.getFullYear() - 21, now.getMonth(), now.getDate());
+  const latest = latestAdultBirthDate(now);
+  return start.getTime() > latest.getTime() ? latest : start;
+}
+
+/** Why "Sign and continue" is disabled, shown right under it; null when signing is possible. */
+export function signBlockReason(input: { hasVersion: boolean; birthDate: string | null; agreed: boolean }, now: Date = new Date()): string | null {
+  if (!input.hasVersion) return 'The agreement isn’t ready to sign yet.';
+  if (!input.birthDate) return 'Add your date of birth to sign.';
+  if (!isAdult(input.birthDate, now)) return CREATOR_UNDER_18_ERROR;
+  if (!input.agreed) return 'Tick the box to agree, then sign.';
+  return null;
+}
+
+// ── #4402: the "Visited on" day ────────────────────────────────────────────
+
+/** A visit can't be in the future, and can't be before the pick (else the start of the month). */
+export function visitedOnBounds(monthStart: string, pickedAt: string | null | undefined, now: Date = new Date()): { min: Date; max: Date } {
+  const start = parseDay(monthStart) ?? new Date(now.getFullYear(), now.getMonth(), 1);
+  const picked = parseDay(pickedAt ?? null);
+  const min = picked && picked.getTime() > start.getTime() ? new Date(picked.getFullYear(), picked.getMonth(), picked.getDate()) : start;
+  return { min, max: new Date(now.getFullYear(), now.getMonth(), now.getDate()) };
+}
+
+/** Why a chosen visit day is refused, or null. Compared as calendar days, so a picker that ignores its limits is still caught. */
+export function visitedOnError(day: string | null, bounds: { min: Date; max: Date }): string | null {
+  if (!day) return null;
+  if (day > toDayString(bounds.max)) return 'Pick a day that has already happened.';
+  if (day < toDayString(bounds.min)) return `Pick ${formatShortDate(bounds.min, bounds.max)} or later, the day you picked this place.`;
+  return null;
 }

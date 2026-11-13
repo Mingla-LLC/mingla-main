@@ -42,6 +42,8 @@ const machineBranches = new Set<RefundBranch>([
   ...userBranches,
   "declined_or_expired",
   "upload_missed",
+  // #4402: an approved video not posted by the post deadline (timer only).
+  "post_missed",
   "counter_lower",
   // #4402: a payment that landed after its offer was retired as unpaid is
   // refunded in full, by the webhook, gig-hire or reconcile only.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
@@ -29,4 +29,26 @@ export function useRefreshOnFocus(refresh: () => void): void {
     });
     return () => subscription.remove();
   }, []);
+}
+
+/**
+ * #4402 — true while the screen is the focused one. Polling hooks use it to stop on blur
+ * (the app's own background pause comes from react-query not polling in the background).
+ */
+export function useScreenFocused(): boolean {
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    return () => setFocused(false);
+  }, []));
+  return focused;
+}
+
+/**
+ * #4402 — the refetch interval for a screen that is waiting on the other side: `intervalMs`
+ * while focused and waiting, otherwise false. Pass the result as react-query's `refetchInterval`.
+ */
+export function useWaitingInterval(waiting: boolean, intervalMs = 20_000): number | false {
+  const focused = useScreenFocused();
+  return focused && waiting ? intervalMs : false;
 }

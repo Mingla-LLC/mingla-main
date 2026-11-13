@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, Check, Clock, ExternalLink, Lock, RefreshCw, Search, User, X as XIcon,
+  AlertTriangle, Check, Clock, ExternalLink, Film, Lock, RefreshCw, Search, User, X as XIcon,
 } from "lucide-react";
 import { useProgramLoad } from "../hooks/useProgramLoad";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -45,6 +45,8 @@ import {
   audienceCompare,
   bandWord,
   cardStepTones,
+  creatorCardThumb,
+  payoutNameReview,
   checksProgress,
   creatorCardLine,
   creatorColumnFor,
@@ -112,6 +114,8 @@ function CreatorCard({ creator, onOpen }) {
   const line = creatorCardLine(creator);
   const progress = checksProgress(creator.checks);
   const handle = creator.handle?.handle ? ` · @${creator.handle.handle}` : "";
+  const thumb = creatorCardThumb(creator);
+  const nameReview = payoutNameReview(creator);
   return (
     <button
       type="button"
@@ -119,7 +123,14 @@ function CreatorCard({ creator, onOpen }) {
       aria-label={`${creator.display_name || "Unnamed creator"}, ${verificationWord(creator.verification)}. ${line}`}
       className={`flex w-full cursor-pointer gap-3 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-3 text-left shadow-[var(--shadow-sm)] transition-colors hover:border-[var(--color-brand-300)] ${FOCUS}`}
     >
-      <span aria-hidden="true" className="h-12 w-9 shrink-0 rounded-md bg-[var(--gray-200)]" />
+      {thumb ? (
+        <img src={thumb} alt="" loading="lazy" className="h-12 w-9 shrink-0 rounded-md bg-[var(--gray-200)] object-cover" />
+      ) : (
+        <span aria-hidden="true" title="No video yet" className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md bg-[var(--gray-100)] text-[var(--color-text-tertiary)]">
+          <Film className="h-4 w-4" />
+          <span className="text-[8px] leading-none">No video</span>
+        </span>
+      )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13.5px] font-semibold text-[var(--color-text-primary)]">{creator.display_name || "Unnamed creator"}</span>
         <span className="block truncate text-xs text-[var(--color-text-tertiary)]">
@@ -130,6 +141,7 @@ function CreatorCard({ creator, onOpen }) {
           <span className="tabular-nums">{progress.text}</span>
         </span>
         <span className="mt-1 block truncate text-xs text-[var(--color-text-secondary)]">{line}</span>
+        {nameReview ? <span className="mt-1.5 block"><Badge variant="warning" dot>{nameReview.warning}</Badge></span> : null}
         <span className="mt-2 block"><CreatorStepMeter tones={cardStepTones(creator)} /></span>
       </span>
     </button>
@@ -486,6 +498,12 @@ function SetupSteps({ detail }) {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-[var(--color-text-primary)]">{stepWord(row.key)}</span>
                 <span className="block text-xs text-[var(--color-text-secondary)]">{row.text}</span>
+                {row.nameReview ? (
+                  <span className="mt-1.5 block">
+                    <Badge variant="warning" dot>{row.nameReview.warning}</Badge>
+                    {row.nameReview.reason ? <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">{row.nameReview.reason}</span> : null}
+                  </span>
+                ) : null}
               </span>
               <Badge variant={STEP_TAG[row.tone] ?? "default"}>{row.tone === "done" ? "Done" : row.tag}</Badge>
               <span className="sr-only">{row.tone === "done" ? "done" : "not done"}</span>
@@ -825,7 +843,7 @@ function RecordSkeleton() {
   );
 }
 
-function CreatorRecord({ creatorId, onBack, onChanged }) {
+function CreatorRecord({ creatorId, boardRow = null, onBack, onChanged }) {
   const { addToast } = useToast();
   const fetchDetail = useCallback(() => getCreatorDetail(creatorId), [creatorId]);
   const record = useProgramLoad(fetchDetail);
@@ -833,7 +851,8 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
   const [approving, setApproving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [changingBand, setChangingBand] = useState(null);
-  const detail = record.data;
+  // The name flag is read from the board row when the detail read carries none.
+  const detail = record.data && boardRow?.payout_name_review && !record.data.payout_name_review ? { ...record.data, payout_name_review: boardRow.payout_name_review } : record.data;
 
   const refresh = useCallback(() => { record.reload(); onChanged(); }, [record, onChanged]);
 
@@ -990,6 +1009,7 @@ export function ProgramCreatorsPage() {
       <CreatorRecord
         key={route.creatorId}
         creatorId={route.creatorId}
+        boardRow={(board.data ?? []).find((r) => r.creator_id === route.creatorId) ?? null}
         onBack={() => go({ tab: route.tab, creatorId: null })}
         onChanged={board.reload}
       />
