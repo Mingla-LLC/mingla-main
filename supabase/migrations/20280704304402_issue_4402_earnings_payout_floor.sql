@@ -22,7 +22,7 @@ CREATE OR REPLACE FUNCTION public.issue_4402_held_below_floor(p_user_id uuid)
  STABLE SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
-  -- MINGLA-INVARIANT: I-4402-FLOOR-1 | issue #4402 | the payout floor shown to a creator is read from payee_payout_currency_floors, per currency
+  -- Invariant (declared in its test): I-4402-FLOOR-1 | issue #4402 | the payout floor shown to a creator is read from payee_payout_currency_floors, per currency
   SELECT coalesce(jsonb_agg(jsonb_build_object('currency',h.currency,'held_minor',h.held_minor,'floor_minor',f.floor_minor) ORDER BY h.currency),'[]'::jsonb)
   FROM (
     SELECT upper(s.currency) AS currency,sum(greatest(s.net_minor-s.reversed_minor,0))::bigint AS held_minor

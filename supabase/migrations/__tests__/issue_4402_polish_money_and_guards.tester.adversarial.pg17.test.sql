@@ -16,6 +16,8 @@
 --      opens and, since the #4402 P1-1 fix, gig_refund_claim cancels it with
 --      no refund and no provider call (it used to say nothing_due forever).
 -- Every fixture rolls back.
+--
+-- MINGLA-INVARIANT: I-4402-POST-5 | issue #4402 | a post_missed contract with nothing held ends cancelled with no provider call, never an endless 409 retry
 
 BEGIN;
 

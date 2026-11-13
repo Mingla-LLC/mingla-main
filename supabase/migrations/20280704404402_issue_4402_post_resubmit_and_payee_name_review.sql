@@ -61,7 +61,7 @@ CREATE OR REPLACE FUNCTION public.issue_4402_payee_name_review_set(p_user_id uui
 AS $function$
 DECLARE v_bank text[]:=public.issue_4402_name_tokens(p_account_name); v_profile text[]; v_flag boolean;
 BEGIN
-  -- MINGLA-INVARIANT: I-4402-PAYEE-NAME-1 | issue #4402 | a bank account name with no word in common with the creator's names is flagged for Admin review and never blocks a payout
+  -- Invariant (declared in its test): I-4402-PAYEE-NAME-1 | issue #4402 | a bank account name with no word in common with the creator's names is flagged for Admin review and never blocks a payout
   IF auth.uid() IS NOT NULL THEN RAISE EXCEPTION 'service_role_only' USING ERRCODE='42501'; END IF;
   SELECT coalesce(array_agg(DISTINCT t),'{}'::text[]) INTO v_profile
   FROM (
@@ -93,7 +93,7 @@ BEGIN
   -- or refunded hold) has nothing to refund. Close it here, under the row
   -- lock, and answer 'completed' so gig-refund returns ok with no provider
   -- call and the timer never retries it.
-  -- MINGLA-INVARIANT: I-4402-POST-5 | issue #4402 | a post_missed contract with nothing held ends cancelled with no provider call, never an endless 409 retry
+  -- Invariant (declared in its test): I-4402-POST-5 | issue #4402 | a post_missed contract with nothing held ends cancelled with no provider call, never an endless 409 retry
   IF p_branch = 'post_missed' AND public.issue_3872_gig_refund_branch_allowed(v.id, 'post_missed')
      AND NOT EXISTS (SELECT 1 FROM public.gig_holds h WHERE h.contract_id = v.id
                       AND h.status IN ('captured','released','refunded','partially_refunded')) THEN
@@ -146,7 +146,7 @@ BEGIN
   IF jsonb_typeof(p_posts)<>'array' OR jsonb_array_length(p_posts)=0 THEN RAISE EXCEPTION 'posts_required' USING ERRCODE='22023'; END IF;
   -- #4402 tester P2-1: the same row lock gig_refund_claim takes, so a submit
   -- cannot slip between a post_missed claim and its refund record.
-  -- MINGLA-INVARIANT: I-4402-POST-6 | issue #4402 | no post is accepted once a post_missed claim exists or the post deadline has passed
+  -- Invariant (declared in its test): I-4402-POST-6 | issue #4402 | no post is accepted once a post_missed claim exists or the post deadline has passed
   SELECT * INTO v_contract FROM public.gig_contracts WHERE id=p_contract_id FOR UPDATE;
   IF EXISTS(SELECT 1 FROM public.gig_refund_claims rc WHERE rc.contract_id=p_contract_id AND rc.branch='post_missed')
      OR (v_contract.state IN ('approved','posting','posts_failed') AND v_contract.state_deadline_at<=now()) THEN
@@ -154,7 +154,7 @@ BEGIN
   END IF;
   -- #4402 A1: a new link for a platform replaces that platform's failed
   -- links, so a fixed post can pass review. History stays in gig_events.
-  -- MINGLA-INVARIANT: I-4402-POST-4 | issue #4402 | a resubmitted platform never keeps an earlier failed link that would block posts_verified
+  -- Invariant (declared in its test): I-4402-POST-4 | issue #4402 | a resubmitted platform never keeps an earlier failed link that would block posts_verified
   DELETE FROM public.gig_posts gp
    WHERE gp.contract_id=p_contract_id AND gp.check_status='failed'
      AND gp.platform IN (SELECT e->>'platform' FROM jsonb_array_elements(p_posts) e)

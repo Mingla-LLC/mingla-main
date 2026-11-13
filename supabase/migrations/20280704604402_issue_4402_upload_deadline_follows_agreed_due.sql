@@ -21,7 +21,7 @@ SET LOCAL lock_timeout = '10s';
 
 CREATE OR REPLACE FUNCTION public.issue_4402_upload_deadline(p_contract_id uuid, p_terms_version integer) RETURNS timestamptz
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
-  -- MINGLA-INVARIANT: I-4402-UPLOAD-1 | issue #4402 | the upload timer is the agreed video_due_at (fallback post_by - 1 day UTC), never sooner than 24 h after it starts
+  -- Invariant (declared in its test): I-4402-UPLOAD-1 | issue #4402 | the upload timer is the agreed video_due_at (fallback post_by - 1 day UTC), never sooner than 24 h after it starts
   SELECT coalesce(t.video_due_at, ((coalesce(t.post_by,g.post_by)-1)::timestamp AT TIME ZONE 'UTC'))
   FROM public.gig_contracts c
   JOIN public.gigs g ON g.id=c.gig_id

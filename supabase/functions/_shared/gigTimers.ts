@@ -35,7 +35,7 @@ export function gigTimerDecision(
     // (post_by end of day in the gig zone + 24 h grace). Missing it cancels
     // the gig with a full host refund. posts_submitted deliberately has NO
     // entry and NO deadline: Admin reviews it from the queue instead.
-    // MINGLA-INVARIANT: I-4402-POST-2 | issue #4402 | every state holding captured money has a timer action here or an Admin queue row (posts_submitted)
+    // Invariant (declared in its test): I-4402-POST-7 | issue #4402 | every state holding captured money has a timer action here or an Admin queue row (posts_submitted)
     approved: {
       action: "cancel_missed_post",
       refundBranch: "post_missed",

@@ -50,7 +50,7 @@ DECLARE
   v_month date:=date_trunc('month',(p_now AT TIME ZONE 'UTC'))::date;
   v_seat date; v_best_until timestamptz; v_best_reason text; v_until timestamptz;
 BEGIN
-  -- MINGLA-INVARIANT: I-4402-LOCAL-1 | issue #4402 | a Local pick is accepted only while issue_4402_local_pick_window().open
+  -- Invariant (declared in its test): I-4402-LOCAL-1 | issue #4402 | a Local pick is accepted only while issue_4402_local_pick_window().open
   SELECT l.seat_started_on INTO v_seat FROM public.locals l WHERE l.id=p_local_id;
   -- 1. Start of month: the UTC day is 1-7 (open until the 8th, 00:00 UTC).
   IF extract(day FROM v_today)<=7 THEN

@@ -28,7 +28,7 @@ SET LOCAL lock_timeout = '10s';
 
 CREATE OR REPLACE FUNCTION public.issue_4402_gig_min_fee_minor(p_currency text) RETURNS bigint
 LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $fn$
-  -- MINGLA-INVARIANT: I-4402-FEE-1 | issue #4402 | no gig budget, offer, counter or interest price below the currency minimum
+  -- Invariant (declared in its test): I-4402-FEE-1 | issue #4402 | no gig budget, offer, counter or interest price below the currency minimum
   SELECT CASE upper(btrim(coalesce(p_currency,'')))
     WHEN 'NGN' THEN 500000::bigint
     WHEN 'USD' THEN 1000::bigint

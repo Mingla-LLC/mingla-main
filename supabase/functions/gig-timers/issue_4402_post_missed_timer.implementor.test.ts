@@ -2,7 +2,7 @@
 // deadline is cancelled with a full host refund through gig-refund
 // (branch post_missed). posts_submitted never has a timer: Admin reviews it.
 //
-// MINGLA-INVARIANT: I-4402-POST-2 | issue #4402 | approved/posting/posts_failed map to the post_missed refund; posts_submitted has no timer action
+// MINGLA-INVARIANT: I-4402-POST-7 | issue #4402 | approved/posting/posts_failed map to the post_missed refund; posts_submitted has no timer action
 import {
   assert,
   assertEquals,

@@ -207,7 +207,7 @@ BEGIN
     -- #4402: the post deadline (end of post_by in the gig zone + 24 h grace).
     -- Missing it refunds the host (post_missed). posts_submitted gets NO
     -- deadline (ELSE NULL): Admin reviews it from admin_gig_queue.post_checks.
-    -- MINGLA-INVARIANT: I-4402-POST-1 | issue #4402 | a posts_submitted contract never has state_deadline_at
+    -- Invariant (declared in its test): I-4402-POST-1 | issue #4402 | a posts_submitted contract never has state_deadline_at
     WHEN v_next IN ('approved','posting') THEN greatest(public.issue_4402_gig_post_deadline(v.id),now()+interval '24 hours')
     WHEN v_next='posts_failed' THEN greatest(public.issue_4402_gig_post_deadline(v.id),now()+interval '48 hours')
     WHEN v_next='posts_verified' THEN now()+interval '48 hours'
@@ -289,7 +289,7 @@ AS $function$
 DECLARE v_post public.gig_posts; v_contract public.gig_contracts; v_reason text:=nullif(btrim(coalesce(p_reason,'')),'');
   v_applied jsonb; v_state text; v_card uuid;
 BEGIN
-  -- MINGLA-INVARIANT: I-4402-POST-3 | issue #4402 | only an admin records a post review; a fail always carries a 5-300 character reason
+  -- Invariant (declared in its test): I-4402-POST-3 | issue #4402 | only an admin records a post review; a fail always carries a 5-300 character reason
   IF NOT public.is_admin_user() THEN RAISE EXCEPTION 'admin_only' USING ERRCODE='42501'; END IF;
   IF p_result IS NULL OR p_result NOT IN ('passed','failed') THEN RETURN jsonb_build_object('ok',false,'error','invalid_check_result'); END IF;
   SELECT * INTO v_post FROM public.gig_posts WHERE id=p_post_id;
@@ -346,7 +346,7 @@ BEGIN
       FROM public.creator_profiles p WHERE p.verification='review'
     ),'[]'::jsonb),
     -- #4402 D1: every submitted post still waiting for Mingla's check.
-    -- MINGLA-INVARIANT: I-4402-POST-2 | issue #4402 | a posts_submitted contract with an unchecked post always has a row here
+    -- Invariant (declared in its test): I-4402-POST-2 | issue #4402 | a posts_submitted contract with an unchecked post always has a row here
     'post_checks',coalesce((
       SELECT jsonb_agg(jsonb_build_object(
         'post_id',gp.id,'contract_id',c.id,'platform',gp.platform,'url',gp.url,'submitted_at',gp.submitted_at,
