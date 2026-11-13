@@ -505,6 +505,13 @@ describe("R tester rework", () => {
     assert.equal(heading, "Lagos this weekend, Maya");
     assert.ok(!html.includes("{first_name}"));
   });
+  it("R-7 (P3-1) all seven personal fields are filled in the list row", () => {
+    const rows = [{ ...ROWS[0], subject: "{name} {first_name}", preheader: "{display_name}|{username}|{country}|{language}|{joined_date}" }];
+    const html = decode(h.list({ status: "ready", rows, counts: {}, total: 1, filter: "all", query: "", page: 0, isAdmin: true }));
+    assert.ok(html.includes("Maya Okafor|@mayaexplores|Nigeria|English|15 Jan 2026"), "preview line");
+    assert.ok(html.includes("Maya Maya"), "subject");
+    assert.ok(!/\{[a-z_]+\}/.test(html.replace(/<[^>]*>/g, " ")), "no token left");
+  });
   it("R-6 the list row shows the subject and preview line as Maya sees them, never {first_name}", () => {
     const rows = [{ ...ROWS[0], subject: "Lagos, {first_name}", preheader: "{first_name}, five rooftops this weekend" }];
     const html = decode(h.list({ status: "ready", rows, counts: {}, total: 1, filter: "all", query: "", page: 0, isAdmin: true }));

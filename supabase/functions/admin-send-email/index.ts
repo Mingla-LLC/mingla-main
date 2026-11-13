@@ -79,8 +79,22 @@ export const ADMIN_SEND_MIN_INTERVAL_MS = Math.ceil(
 );
 /** A 429 is retried in this run twice (1s, 3s, or Resend's Retry-After). */
 const RATE_LIMIT_INLINE_BACKOFF_MS = [1000, 3000];
-/** A 429 never fails a person for rate alone; after this long without a send it does. */
+/**
+ * A 429 never fails a person for rate alone; after this long since sending of
+ * THEIR campaign began (campaign.started_at, never the time it was created or
+ * scheduled for) it does.
+ */
 const RATE_LIMIT_GIVE_UP_MS = 24 * 3_600_000;
+/**
+ * One drain run must end well inside the cron minute and Supabase's limits
+ * (150 s idle, 400 s wall clock): stop starting sends after this long, and cap
+ * one provider call so a run always returns by about 50 s. Every 429 wait is
+ * counted against it; a wait longer than what is left defers the person.
+ */
+export const DRAIN_BUDGET_MS = 40_000;
+const PROVIDER_CALL_TIMEOUT_MS = 8_000;
+/** claim_due_admin_email_campaign re-claims a "sending" campaign this long after processing_started_at. */
+const STALE_CLAIM_MS = 10 * 60_000;
 const RATE_LIMIT_MIN_DEFER_SECONDS = 60;
 /** Unreadable saved copy: this many tries, 10 minutes more apart each time. */
 export const SNAPSHOT_MAX_ATTEMPTS = 5;
@@ -93,6 +107,11 @@ export const pacing = {
     new Promise((resolve) => setTimeout(resolve, ms)),
   minIntervalMs: ADMIN_SEND_MIN_INTERVAL_MS,
 };
+// Pacing is per isolate on purpose. One drain is one campaign, finishes inside
+// DRAIN_BUDGET_MS (so before the next cron tick), and the drain RPC only
+// hands out one campaign per tick, so two drains overlap only when an admin's
+// "send now" runs beside a tick. Worst case that is two isolates at 5/s = the
+// account's 10/s, and a 429 there is deferred, never failed.
 let nextSendAt = 0;
 /** Reserve the next send slot and wait for it: sends start >= minIntervalMs apart. */
 export async function paceSend(): Promise<void> {
@@ -129,6 +148,8 @@ interface CampaignRecord {
   sent_count?: number | null;
   /** How many times the saved copy could not be read; capped at SNAPSHOT_MAX_ATTEMPTS. */
   snapshot_attempts?: number | null;
+  /** When sending of this campaign began (set by the first claim). */
+  started_at?: string | null;
 }
 
 /**
@@ -362,6 +383,8 @@ async function sendViaResend(input: {
   subject: string;
   document: EmailContentBlock[];
   profile: RecipientProfile;
+  /** pacing.now() value after which this run may not wait or start sends. */
+  deadline?: number;
 }): Promise<{
   ok: boolean;
   id?: string;
@@ -394,9 +417,11 @@ async function sendViaResend(input: {
     });
     let response!: Response;
     let retryAfter: number | null = null;
+    let responseBody = "";
     for (let attempt = 0; attempt <= RATE_LIMIT_INLINE_BACKOFF_MS.length; attempt++) {
       await paceSend();
       response = await fetch("https://api.resend.com/emails", {
+        signal: AbortSignal.timeout(PROVIDER_CALL_TIMEOUT_MS),
         method: "POST",
         headers: {
           Authorization: `Bearer ${RESEND_API_KEY}`,
@@ -405,16 +430,18 @@ async function sendViaResend(input: {
         },
         body: payload,
       });
+      responseBody = await response.text();
       if (response.status !== 429) break;
       retryAfter = boundedRetryAfterSeconds(response.headers.get("retry-after"));
       const backoff = RATE_LIMIT_INLINE_BACKOFF_MS[attempt];
       if (backoff === undefined) break;
-      await response.text();
-      await pacing.sleep(
-        retryAfter !== null ? Math.min(retryAfter * 1000, 10_000) : backoff,
-      );
+      const wait = retryAfter !== null ? retryAfter * 1000 : backoff;
+      // A wait longer than 10 s, or than the run has left, is not slept: the
+      // person is deferred (next_attempt_at) instead.
+      const left = input.deadline === undefined ? Infinity : input.deadline - pacing.now();
+      if (wait > Math.min(10_000, left)) break;
+      await pacing.sleep(wait);
     }
-    const responseBody = await response.text();
     if (!response.ok) {
       return {
         ok: false,
@@ -903,6 +930,11 @@ export async function processClaimedCampaign(
       : `email_snapshot_failed:${raw}`;
     return await endUnreadableCopy(supabase, campaign, message, null);
   }
+  if (Number(campaign.snapshot_attempts ?? 0) > 0) {
+    // The copy read fine: only CONSECUTIVE failures count toward the cap.
+    await supabase.from("admin_email_log").update({ snapshot_attempts: 0 }).eq("id", campaign.id);
+  }
+  const deadline = pacing.now() + DRAIN_BUDGET_MS;
   const { data: deliveries, error: claimError } = await supabase.rpc(
     "claim_admin_email_delivery_batch",
     {
@@ -917,7 +949,25 @@ export async function processClaimedCampaign(
 
   // One send at a time, each waiting for its slot (paceSend), so the whole
   // drain stays under the share of Resend's rate limit Admin email may use.
-  for (const delivery of (deliveries ?? []) as Array<Record<string, unknown>>) {
+  const claimed = (deliveries ?? []) as Array<Record<string, unknown>>;
+  const settled = new Set<unknown>();
+  // Anything claimed but not sent when the run ends (time budget, or a throw)
+  // goes back to pending at once, so a cut-off run never leaves a campaign
+  // stuck behind a 10-minute stale claim.
+  const releaseUnsent = async () => {
+    for (const d of claimed) {
+      if (settled.has(d.id)) continue;
+      await supabase.from("admin_email_recipient_deliveries").update({
+        status: "pending",
+        attempts: Math.max(Number(d.attempts ?? 1) - 1, 0),
+        updated_at: new Date().toISOString(),
+      }).eq("id", d.id);
+    }
+  };
+  try {
+  for (const delivery of claimed) {
+    if (pacing.now() >= deadline) break;
+    settled.add(delivery.id);
     {
       const recipientEmail = String(delivery.recipient_email).toLowerCase()
         .trim();
@@ -936,6 +986,7 @@ export async function processClaimedCampaign(
         subject: campaign.subject,
         document,
         profile: delivery.personalization as RecipientProfile,
+        deadline,
       });
       if (result.ok) {
         await supabase.from("admin_email_recipient_deliveries").update({
@@ -947,7 +998,7 @@ export async function processClaimedCampaign(
         }).eq("id", delivery.id);
       } else if (
         result.rateLimited &&
-        Date.now() - new Date(String(delivery.created_at ?? Date.now())).getTime() <
+        Date.now() - new Date(String(campaign.started_at ?? Date.now())).getTime() <
           RATE_LIMIT_GIVE_UP_MS
       ) {
         // Too many requests is not the person's fault: try again later and
@@ -976,6 +1027,9 @@ export async function processClaimedCampaign(
       }
     }
   }
+  } finally {
+    await releaseUnsent();
+  }
 
   const countStatuses = (statuses: string[]) =>
     countDeliveries(supabase, campaign.id, statuses);
@@ -987,12 +1041,32 @@ export async function processClaimedCampaign(
   ]);
 
   if (unfinished > 0) {
+    // When is the earliest person due again? If that is later than now (a
+    // 429 storm, or a retry backoff) the campaign is PARKED until then, not
+    // put back at the front of the queue: it stays "sending" with a claim
+    // time set so the drain's stale-claim rule (10 minutes) releases it
+    // exactly at that moment, and newer due campaigns run in between.
+    const { data: dueRows, error: dueError } = await supabase
+      .from("admin_email_recipient_deliveries")
+      .select("next_attempt_at")
+      .eq("campaign_id", campaign.id)
+      .in("status", ["pending", "sending", "retrying"])
+      .order("next_attempt_at", { ascending: true })
+      .limit(1);
+    if (dueError) throw new Error(`delivery_due_read_failed:${dueError.message}`);
+    const times = ((dueRows ?? []) as Array<{ next_attempt_at?: string | null }>)
+      .map((r) => Date.parse(String(r.next_attempt_at ?? "")))
+      .filter((t) => Number.isFinite(t));
+    const earliest = times.length ? Math.min(...times) : Date.now();
+    const parked = earliest > Date.now();
     await supabase.from("admin_email_log").update({
-      status: "queued",
+      status: parked ? "sending" : "queued",
       sent_count: accepted,
       failed_count: failed,
       skipped_count: skipped,
-      processing_started_at: null,
+      processing_started_at: parked
+        ? new Date(earliest - STALE_CLAIM_MS).toISOString()
+        : null,
     }).eq("id", campaign.id);
     return {
       campaign_id: campaign.id,

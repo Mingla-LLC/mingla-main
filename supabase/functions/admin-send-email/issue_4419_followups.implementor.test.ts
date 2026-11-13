@@ -34,6 +34,7 @@ Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
 
 const {
   ADMIN_SEND_MIN_INTERVAL_MS,
+  DRAIN_BUDGET_MS,
   ADMIN_SEND_REQUESTS_PER_SECOND,
   RESEND_ACCOUNT_LIMIT_PER_SECOND,
   SNAPSHOT_MAX_ATTEMPTS,
@@ -135,7 +136,7 @@ const campaignRow = (extra: Row = {}): Row => ({
 const deliveries = (n: number, extra: Row = {}): Row[] =>
   Array.from({ length: n }, (_, i) => ({
     id: `d${i + 1}`, campaign_id: CAMPAIGN, recipient_email: `p${i + 1}@example.com`, status: "pending", attempts: 0,
-    created_at: new Date().toISOString(), personalization: { email: `p${i + 1}@example.com`, first_name: `P${i + 1}` }, ...extra,
+    created_at: new Date().toISOString(), next_attempt_at: new Date().toISOString(), personalization: { email: `p${i + 1}@example.com`, first_name: `P${i + 1}` }, ...extra,
   }));
 
 /** A virtual clock: sleep advances it, every fetch is stamped with it. */
@@ -202,14 +203,16 @@ Deno.test("F-3 a 429 that keeps coming defers the person: never failed, the try 
     assertEquals(d.status, "retrying");
     assertEquals(d.attempts, 0, "claimed once (1), given back (0)");
     assert(Date.parse(String(d.next_attempt_at)) >= Date.now() + 55_000, "later, not now");
-    assertEquals(log(db).status, "queued", "campaign waits in the queue, not failed");
-    // After 24 hours of being refused it does fail, with the reason kept.
-    const old = fakeDb({ campaign: row, deliveries: deliveries(1, { created_at: new Date(Date.now() - 25 * 3_600_000).toISOString() }) });
-    await processClaimedCampaign(old.client, row as never);
+    assertEquals(log(db).status, "sending", "parked until the person is due, not failed");
+    // After 24 hours of being refused SINCE SENDING BEGAN it does fail.
+    const hours = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    const old = fakeDb({ campaign: campaignRow({ ...row, started_at: hours(25) }), deliveries: deliveries(1) });
+    await processClaimedCampaign(old.client, { ...old.log } as never);
     assertEquals(old.state.deliveries[0].status, "failed");
   } finally { clock.restore(); }
 });
 const log = (db: ReturnType<typeof fakeDb>) => db.log;
+const { personalizeText, SAMPLE_RECIPIENT } = await import("./model.ts");
 
 Deno.test("F-4 an unreadable copy backs off, then ends partial or failed at the cap", async () => {
   // copy_missing (rendered_at set, document gone) is the retryable read problem.
@@ -288,4 +291,88 @@ Deno.test("F-6 test to me: atomic reserve, nothing sent if it fails, slot return
     await assertRejects(() => sendCampaignTest(refused.client, { campaignId: CAMPAIGN }, who), Error, "test_send_failed");
     assertEquals(refused.state.deletedAudits, ["a1"]);
   } finally { globalThis.fetch = original; }
+});
+
+const rowReady = { rendered_at: "2026-11-13T09:00:01Z", rendered_document: GOOD_DOC };
+
+Deno.test("F-7 (P1-1) the 24 h clock starts when sending began, not when the email was scheduled", async () => {
+  const clock = virtualTime(() => new Response('{"message":"Too many requests"}', { status: 429, headers: { "retry-after": "1" } }));
+  try {
+    const days = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    // Scheduled 3 days ago (deliveries created then), sending began just now.
+    const db = fakeDb({
+      campaign: campaignRow({ ...rowReady, created_at: days(3), started_at: new Date().toISOString() }),
+      deliveries: deliveries(2, { created_at: days(3) }),
+    });
+    await processClaimedCampaign(db.client, { ...db.log } as never);
+    assertEquals(db.state.deliveries.map((d) => d.status), ["retrying", "retrying"], "kept trying, not failed");
+    assert(db.log.status !== "failed");
+  } finally { clock.restore(); }
+});
+
+Deno.test("F-8 (P2-1) a campaign with nobody due is parked until the earliest person is due; newer campaigns run meanwhile", async () => {
+  const clock = virtualTime(() => new Response('{"message":"Too many requests"}', { status: 429 }));
+  try {
+    const db = fakeDb({ campaign: campaignRow(rowReady), deliveries: deliveries(2) });
+    await processClaimedCampaign(db.client, { ...db.log } as never);
+    const due = Math.min(...db.state.deliveries.map((d) => Date.parse(String(d.next_attempt_at))));
+    assert(due > Date.now() + 55_000);
+    assertEquals(db.log.status, "sending");
+    // The drain re-claims a "sending" campaign 10 minutes after processing_started_at: that moment is `due`.
+    assertEquals(Date.parse(String(db.log.processing_started_at)) + 10 * 60_000, due);
+    // Somebody due now keeps it at the front of the queue as before.
+    const ready = fakeDb({ campaign: campaignRow(rowReady), deliveries: deliveries(2) });
+    ready.state.deliveries[1].status = "retrying";
+    ready.state.deliveries[1].next_attempt_at = new Date().toISOString();
+    clock.restore();
+    const ok2 = virtualTime(ok);
+    try {
+      await processClaimedCampaign(ready.client, { ...ready.log } as never);
+      assertEquals(ready.log.status, "completed");
+    } finally { ok2.restore(); }
+  } finally { clock.restore(); }
+});
+
+Deno.test("F-9 (P2-2) a run stops inside its time budget, releases what it did not send, and never sleeps past it", async () => {
+  const clock = virtualTime(() => new Response('{"message":"Too many requests"}', { status: 429, headers: { "retry-after": "1" } }));
+  try {
+    const start = pacing.now();
+    const db = fakeDb({ campaign: campaignRow(rowReady), deliveries: deliveries(40) });
+    await processClaimedCampaign(db.client, { ...db.log } as never);
+    const elapsed = pacing.now() - start;
+    assert(elapsed <= DRAIN_BUDGET_MS + 5_000, `run took ${elapsed} ms`);
+    const untouched = db.state.deliveries.filter((d) => d.status === "pending");
+    assert(untouched.length > 0, "some people were not reached");
+    assert(untouched.every((d) => d.attempts === 0), "their try was given back");
+    assert(!db.state.deliveries.some((d) => d.status === "sending"), "nothing left stranded as sending");
+    assertEquals(db.log.status, "queued", "released now, not a 10-minute stale claim");
+    assertEquals(db.log.processing_started_at, null);
+  } finally { clock.restore(); }
+  // A Retry-After longer than the wait allowed defers at once, with no sleep.
+  const long = virtualTime(() => new Response("{}", { status: 429, headers: { "retry-after": "30" } }));
+  try {
+    const db = fakeDb({ campaign: campaignRow(rowReady), deliveries: deliveries(1) });
+    await processClaimedCampaign(db.client, { ...db.log } as never);
+    assert(!long.sleeps.some((ms) => ms >= 10_000), `slept ${long.sleeps}`);
+    assertEquals(long.stamps.length, 1, "one call, then deferred");
+    assertEquals(db.state.deliveries[0].status, "retrying");
+    assert(Date.parse(String(db.state.deliveries[0].next_attempt_at)) >= Date.now() + 29_000, "deferred by Retry-After");
+  } finally { long.restore(); }
+});
+
+Deno.test("F-10 (P3-2) a good read of the copy resets the try counter", async () => {
+  const clock = virtualTime(ok);
+  try {
+    const db = fakeDb({ campaign: campaignRow({ ...rowReady, snapshot_attempts: 4 }), deliveries: deliveries(1) });
+    await processClaimedCampaign(db.client, { ...db.log } as never);
+    assertEquals(db.log.snapshot_attempts, 0);
+  } finally { clock.restore(); }
+});
+
+Deno.test("F-11 (P3-1) the sample values the Admin list uses are what the renderer gives the sample person", () => {
+  const sample = {
+    "{first_name}": "Maya", "{display_name}": "Maya Okafor", "{username}": "@mayaexplores",
+    "{country}": "Nigeria", "{language}": "English", "{joined_date}": "15 Jan 2026", "{name}": "Maya",
+  };
+  for (const [token, value] of Object.entries(sample)) assertEquals(personalizeText(token, SAMPLE_RECIPIENT), value, token);
 });

@@ -178,7 +178,7 @@ Deno.test("TF-1 a deferred person is sent once when the drain comes back; nobody
     const db = fakeDb({ campaign: row, deliveries: deliveries(3) });
     await processClaimedCampaign(db.client, row as never);
     assertEquals(db.state.deliveries.map((d) => d.status), ["accepted", "retrying", "accepted"]);
-    assertEquals(db.log.status, "queued");
+    assertEquals(db.log.status, "sending", "parked until the deferred person is due (P2-1)");
     storm = false;
     await processClaimedCampaign(db.client, { ...db.log, status: "sending" } as never);
     await processClaimedCampaign(db.client, { ...db.log, status: "sending" } as never);
