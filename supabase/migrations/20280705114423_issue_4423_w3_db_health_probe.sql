@@ -7,9 +7,9 @@
 --   * issue_4423_db_health_snapshot(): PostgREST connections open and in use
 --     (not idle) against the pool of 30, client queries running longer than
 --     5 s, and the longest one's age and application name. No query text.
---   * the probe also times one cheap public RPC through PostgREST with the
---     anon key (/rpc/pgrst_pre_request: no table, returns nothing), which is
---     exactly the path a public page waits on.
+--   * the probe also times one cheap public read through PostgREST with the
+--     anon key (GET /rpc/issue_1384_supported_currencies, a STABLE public RPC
+--     over a handful of rows), which is exactly the path a public page waits on.
 --   * issue_4423_db_health_record(): keeps how many checks in a row had the
 --     pool at least 80 % in use, and when the last alert went out (so one
 --     incident sends one email per 30 minutes, not one every 5).

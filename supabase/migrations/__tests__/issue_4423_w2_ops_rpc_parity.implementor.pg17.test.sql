@@ -198,6 +198,8 @@ declare v_mon date := public.ops_monday((now() at time zone 'UTC')::date); v_spr
         v_review uuid := public.ops_review_status_id(); v_chat text := substr(md5('w24423 chat'), 1, 16);
 begin
   set local session_replication_role = replica;
+  -- last week's sprint, for the old done card (a fresh replay has only this week and next)
+  insert into public.ops_sprints (starts_on) values (v_mon - 7) on conflict (starts_on) do nothing;
   select id into v_sprint from public.ops_sprints where starts_on = v_mon;
   insert into public.ops_sprint_goals (id, sprint_id, title, owner_email, created_by, updated_by, position)
   values (gen_random_uuid(), v_sprint, 'Ship the W2 fixture', pg_temp.email('own'), pg_temp.email('own'), pg_temp.email('own'), 0)

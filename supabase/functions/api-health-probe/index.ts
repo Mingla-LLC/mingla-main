@@ -155,16 +155,16 @@ async function requestedMode(req: Request): Promise<string | null> {
   }
 }
 
-// Issue #4423 Wave 3: one cheap public request through PostgREST with the anon
-// key, the path a public page waits on. pgrst_pre_request reads no table.
+// Issue #4423 Wave 3: one cheap public read through PostgREST with the anon
+// key, the path a public page waits on: the supported-currencies list (a
+// STABLE public RPC over a handful of rows, read by buyer checkout). A GET,
+// so the probe stays read-only.
 async function timePublicRpc(supabaseUrl: string): Promise<PublicRpcTiming> {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const started = performance.now();
   try {
-    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/pgrst_pre_request`, {
-      method: "POST",
-      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
-      body: "{}",
+    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/issue_1384_supported_currencies`, {
+      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
       signal: AbortSignal.timeout(10_000),
     });
     await res.body?.cancel();
