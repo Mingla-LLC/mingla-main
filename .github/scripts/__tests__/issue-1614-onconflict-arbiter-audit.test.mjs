@@ -209,9 +209,15 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //       existing non-partial unique index `uq_mkt_msg_campaign_phone`, the
   //       same one its three sibling upserts in that file already use.
   //
+  // #4423 database overload, census +1 (112, after #4273):
+  //   `issue_4423_db_health_state (id)` — api-health-probe/index.ts marks the
+  //   deploy ready for the 5-minute database cron with `ignoreDuplicates: true`;
+  //   arbiter: `id boolean PRIMARY KEY` in
+  //   20280707114423_issue_4423_w3_db_health_probe.sql.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 111);
+  assert.equal(sites.length, 112);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&
