@@ -233,23 +233,32 @@ Deno.test("#871 anonymous browser link acquisition supports preflight and retry 
 
 // [TEST-MOD-APPROVED #4063] Visibility now governs pass delivery only; claim
 // ownership is decided by the received-code contact proof.
-Deno.test("#871 RSVP pass attendance CTA uses live non-visibility eligibility", () => {
+// [TEST-MOD-APPROVED #4422] The RSVP pass no longer carries its own
+// attendance CTA (spec addendum R7): the /c/ claim link claims attendance.
+// The live (non-visibility) checks stay on the pass helper.
+Deno.test("#871 RSVP passes carry no separate attendance CTA; the pass gate stays live", () => {
   const source = read("supabase/functions/rsvp-notify/index.ts");
+  assertStringIncludes(
+    source,
+    '"status,visibility,deleted_at,event_type,brands(deleted_at,contact_email)"',
+  );
+  for (
+    const gone of [
+      "attendanceClaimStillEligible",
+      "attendanceClaimUrls",
+      "Connect attendance",
+    ]
+  ) {
+    assert(!source.includes(gone), `rsvp-notify must not carry ${gone}`);
+  }
+  const helper = read("supabase/functions/rsvp-notify/passEligibility.ts");
   for (
     const contract of [
-      '"status,visibility,deleted_at,event_type,brands(deleted_at,contact_email)"',
       'event.event_type === "rsvp"',
-      '["scheduled", "live"].includes(event.status)',
-      "brand?.deleted_at === null",
+      '["scheduled", "live"].includes(String(event.status))',
+      "event.deleted_at === null",
     ]
-  ) assertStringIncludes(source, contract);
-  const start = source.indexOf("function attendanceClaimStillEligible(");
-  const end = source.indexOf("\n}\n", start);
-  assert(start >= 0 && end > start, "attendance eligibility helper missing");
-  assert(
-    !source.slice(start, end).includes("event.visibility"),
-    "claim eligibility must not read discovery visibility",
-  );
+  ) assertStringIncludes(helper, contract);
 });
 
 Deno.test("#871 native and HTTPS fragment forms parse identically and reject ambiguity", () => {
@@ -553,7 +562,8 @@ Deno.test("#871 delivery is provider-idempotent and RSVP delivery preserves pass
   assertStringIncludes(backfill, 'finalStatus = "failed_terminal"');
   assertStringIncludes(backfill, 'rsvpRecoveryUrl("primary"');
   assertStringIncludes(rsvpNotify, "rsvpRecoveryUrl");
-  assertStringIncludes(rsvpNotify, "attendanceClaimUrls");
+  // [TEST-MOD-APPROVED #4422] RSVP passes no longer build an attendance URL.
+  assert(!rsvpNotify.includes("attendanceClaimUrls"));
 });
 
 Deno.test("#871 exact analytics events live at real boundaries with coarse payloads only", () => {

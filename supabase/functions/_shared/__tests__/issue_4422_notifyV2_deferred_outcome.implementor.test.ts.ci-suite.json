@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4422_notifyV2_deferred_outcome.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4422-notifyv2-deferred-outcome-implementor",
+  "profile": "deno-2-unit"
+}

@@ -4,8 +4,11 @@ import type { PurchaseBodyInput } from "./email/purchaseBody.ts";
 import { purchaseEmailCopy } from "./email/purchaseCopy.ts";
 import { renderBuyerSms } from "./sms/buyerSms.ts";
 
+/** Issue #4422 — why the guest holds a pass, so the text can say so. */
+export type RsvpPassReason = "going" | "approved" | "spot_opened";
+
 export interface RsvpPassMessageInput {
-  promoted: boolean;
+  reason: RsvpPassReason;
   guest: boolean;
   title: string;
   brandName: string;
@@ -31,7 +34,7 @@ export function buildRsvpPassMessage(
   input: RsvpPassMessageInput,
 ): RsvpPassMessage {
   const copy = purchaseEmailCopy({
-    template: input.promoted ? "rsvp_promoted" : "rsvp_on_list",
+    template: input.reason === "spot_opened" ? "rsvp_promoted" : "rsvp_on_list",
     title: input.title,
     date: input.date,
     firstName: input.recipientName,
@@ -58,14 +61,24 @@ export function buildRsvpPassMessage(
           : undefined,
       },
     },
-    sms: renderBuyerSms(input.guest ? "S4G" : "S4", {
-      title: input.title,
-      lead: input.leadName,
-      date: input.date,
-      time: input.time,
-      link: input.smsLink,
-      noun: "pass",
-      claimed: input.claimed,
-    }),
+    // The plus-one keeps "<Lead> added you to the list": they took no action.
+    sms: renderBuyerSms(
+      input.guest
+        ? "S4G"
+        : input.reason === "approved"
+        ? "S4A"
+        : input.reason === "spot_opened"
+        ? "S4P"
+        : "S4",
+      {
+        title: input.title,
+        lead: input.leadName,
+        date: input.date,
+        time: input.time,
+        link: input.smsLink,
+        noun: "pass",
+        claimed: input.claimed,
+      },
+    ),
   };
 }

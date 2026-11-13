@@ -14,7 +14,9 @@ export type BuyerLinkKind =
   | "reservation"
   | "venue_order"
   | "ticket"
-  | "waitlist_offer";
+  | "waitlist_offer"
+  // Issue #4422 — one shared short link to an event's public page.
+  | "event_page";
 
 export interface BuyerLink {
   url: string;
@@ -35,7 +37,7 @@ const DOWNLOAD_URL = "https://usemingla.com/download";
 const DOWNLOAD_DISPLAY = "usemingla.com/download";
 
 function claimKind(
-  kind: Exclude<BuyerLinkKind, "waitlist_offer">,
+  kind: Exclude<BuyerLinkKind, "waitlist_offer" | "event_page">,
 ): ClaimLinkKind {
   if (kind === "rsvp_primary") return "rsvp";
   return kind;
@@ -47,6 +49,17 @@ function fallback(input: BuyerLinkInput): BuyerLink {
     return {
       url: input.targetUrl?.trim() || DOWNLOAD_URL,
       display: "",
+      isShort: false,
+      claimed: false,
+      fallback: true,
+    };
+  }
+  if (input.kind === "event_page") {
+    // The full page link; texts show it without the scheme.
+    const url = input.targetUrl?.trim() || DOWNLOAD_URL;
+    return {
+      url,
+      display: url.replace(/^https:\/\//, ""),
       isShort: false,
       claimed: false,
       fallback: true,
@@ -65,7 +78,7 @@ export async function resolveBuyerLink(
   admin: ClaimLinkAdmin,
   input: BuyerLinkInput,
 ): Promise<BuyerLink> {
-  if (input.kind === "waitlist_offer") {
+  if (input.kind === "waitlist_offer" || input.kind === "event_page") {
     const targetUrl = input.targetUrl?.trim() ?? "";
     const expiresAt = input.expiresAt?.trim() ?? "";
     if (targetUrl.length === 0 || expiresAt.length === 0) {
@@ -73,7 +86,7 @@ export async function resolveBuyerLink(
     }
     const link = await mintRedirectLink(
       admin,
-      "waitlist_offer",
+      input.kind,
       input.sourceId,
       targetUrl,
       expiresAt,
@@ -99,4 +112,34 @@ export async function resolveBuyerLink(
     claimed: link.claimed === true,
     fallback: false,
   };
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Issue #4422 — when an event_page short link stops resolving: 30 days after
+ * the event's last date ends (`lastEndAt`, else `endAt`, else one day after
+ * `startAt`). Kept inside the database's bounds: never in the past (an
+ * already-ended event gets 30 days from now) and under 400 days ahead.
+ */
+export function eventLinkExpiry(
+  times: {
+    lastEndAt?: string | null;
+    endAt?: string | null;
+    startAt?: string | null;
+  },
+  now: Date = new Date(),
+): string {
+  const parse = (value: string | null | undefined): number | null => {
+    if (typeof value !== "string" || value.trim().length === 0) return null;
+    const ms = Date.parse(value);
+    return Number.isNaN(ms) ? null : ms;
+  };
+  const start = parse(times.startAt);
+  const end = parse(times.lastEndAt) ?? parse(times.endAt) ??
+    (start === null ? null : start + DAY_MS);
+  const floor = now.getTime() + 30 * DAY_MS;
+  const ceiling = now.getTime() + 399 * DAY_MS;
+  const candidate = end === null ? floor : end + 30 * DAY_MS;
+  return new Date(Math.min(Math.max(candidate, floor), ceiling)).toISOString();
 }

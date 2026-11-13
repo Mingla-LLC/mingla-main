@@ -392,8 +392,10 @@ Deno.test("TW-02 groups of five: never more than five at once, every item proces
   assertEquals(seen, [1, 2, 3]);
 });
 
-Deno.test("TW-03 the per-recipient dispatch: the email carries the notice; the other channels say only that plans changed", () => {
-  const dispatch = buildEventUpdateDispatch({
+// [TEST-MOD-APPROVED #4422] the dispatch is async (it may mint a short link),
+// and the text is the one-segment S20 family.
+Deno.test("TW-03 the per-recipient dispatch: the email carries the notice; the other channels say only that plans changed", async () => {
+  const dispatch = await buildEventUpdateDispatch({
     noticeId: "44444444-4444-4444-8444-444444444444",
     kind: "rsvp",
     eventName: "Sunset\r\nSessions",
@@ -406,6 +408,10 @@ Deno.test("TW-03 the per-recipient dispatch: the email carries the notice; the o
     eventUrl: EVENT_URL,
   }, { recipientName: "Ada", recipientEmail: "ada@example.test" });
   assertEquals(dispatch.emailOverride.replyTo, "support@usemingla.com");
+  assertEquals(
+    dispatch.sms,
+    `Mingla: Sunset Sessions has a new venue. See the details: ${EVENT_URL.replace("https://", "")}`,
+  );
   assertFalse(/[\r\n]/.test(dispatch.emailOverride.rendered.subject), "a line break reached the subject");
   for (const line of [dispatch.title, dispatch.body, dispatch.sms]) {
     assertFalse(line.includes("evil.example"), "the reason reached a text, push or in-app line");

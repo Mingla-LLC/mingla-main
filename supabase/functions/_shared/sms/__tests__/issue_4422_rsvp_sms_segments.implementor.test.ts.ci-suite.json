@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/sms/__tests__/issue_4422_rsvp_sms_segments.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4422-rsvp-sms-segments-implementor",
+  "profile": "deno-2-unit"
+}

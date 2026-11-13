@@ -14,6 +14,10 @@ export type ClaimLinkKind =
   | "venue_order"
   | "ticket";
 
+/** Redirect subjects: a waitlist offer's checkout, or (#4422) an event's
+ * public page on host.usemingla.com. The database allow-lists each target. */
+export type RedirectLinkKind = "waitlist_offer" | "event_page";
+
 export interface MintedClaimLink {
   code: string;
   url: string;
@@ -72,7 +76,7 @@ function parsedLink(data: unknown): MintedClaimLink | null {
 async function mint(
   admin: ClaimLinkAdmin,
   rpcName: "mint_claim_link" | "mint_redirect_link",
-  kind: ClaimLinkKind | "waitlist_offer",
+  kind: ClaimLinkKind | RedirectLinkKind,
   args: Record<string, unknown>,
 ): Promise<MintedClaimLink | null> {
   try {
@@ -100,7 +104,7 @@ export function mintClaimLink(
 
 export function mintRedirectLink(
   admin: ClaimLinkAdmin,
-  kind: "waitlist_offer",
+  kind: RedirectLinkKind,
   subjectId: string,
   targetUrl: string,
   expiresAt: string,

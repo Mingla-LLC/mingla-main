@@ -17,6 +17,11 @@ import {
   renderEventUpdatedEmail,
 } from "../_shared/email/eventUpdatedEmail.ts";
 import type { RsvpChannelInput } from "../_shared/notifyV2.ts";
+// Issue #4422 — the change text is one segment, with a short event link.
+import type { ClaimLinkAdmin } from "../_shared/claimLink.ts";
+import { eventLinkExpiry, resolveBuyerLink } from "../_shared/messageLinks.ts";
+import { formatMessageTime } from "../_shared/messageTime.ts";
+import { renderChangeSms } from "../_shared/sms/buyerSms.ts";
 
 interface QueryError {
   code?: string | null;
@@ -79,6 +84,10 @@ export interface NoticeContext {
   reason: string | null;
   venueName: string | null;
   eventUrl: string;
+  /** Issue #4422 — the event the short link points at, and when its last
+   * date ends (the link lives until 30 days after). */
+  eventId?: string | null;
+  lastEndAt?: string | null;
 }
 
 export type NoticeLoadResult =
@@ -116,7 +125,7 @@ async function loadNotice(
       .select(
         // The address-hiding switch is read as it is NOW, not as it was when
         // the notice was recorded (issue #3827 rework M1).
-        "id,title,slug,timezone,event_type,status,deleted_at,address_withheld:theme->business_event->>hideAddressUntilTicket,brands(name,slug,contact_email,deleted_at)",
+        "id,title,slug,timezone,event_type,status,deleted_at,address_withheld:theme->business_event->>hideAddressUntilTicket,brands(name,slug,contact_email,deleted_at),event_dates(start_at,end_at,cancelled_at)",
       )
       .eq("id", notice.event_id).maybeSingle();
     if (eventRead.error) return { state: "unavailable" };
@@ -129,6 +138,7 @@ async function loadNotice(
       deleted_at?: string | null;
       address_withheld?: unknown;
       brands?: unknown;
+      event_dates?: unknown;
     } | null;
     const brand = (Array.isArray(event?.brands) ? event?.brands[0] : event?.brands) as {
       name?: string | null;
@@ -171,11 +181,31 @@ async function loadNotice(
         reason: asText(notice.reason),
         venueName: asText(notice.after_snapshot?.venue),
         eventUrl: canonicalAdDestinationUrl(kind, brandSlug, eventSlug),
+        eventId: notice.event_id,
+        lastEndAt: lastLiveEnd(event.event_dates),
       },
     };
   } catch {
     return { state: "unavailable" };
   }
+}
+
+/** The latest end among the dates that are not cancelled, or null. */
+function lastLiveEnd(raw: unknown): string | null {
+  if (!Array.isArray(raw)) return null;
+  let latest: number | null = null;
+  for (const row of raw) {
+    const date = row as {
+      start_at?: unknown;
+      end_at?: unknown;
+      cancelled_at?: unknown;
+    };
+    if (date?.cancelled_at) continue;
+    const value = asText(date?.end_at) ?? asText(date?.start_at);
+    const ms = value ? Date.parse(value) : Number.NaN;
+    if (!Number.isNaN(ms) && (latest === null || ms > latest)) latest = ms;
+  }
+  return latest === null ? null : new Date(latest).toISOString();
 }
 
 export type SendCheck = "ok" | "held_feature_off" | "held_allowlist" | "notice_missing" | "unavailable";
@@ -252,14 +282,66 @@ export interface EventUpdateDispatch {
   emailOverride: NonNullable<RsvpChannelInput["email_override"]>;
 }
 
+/** The one new start when the date (and nothing else) changed, or null. */
+function onlyNewStart(changes: EventUpdateChange[]): string | null {
+  if (
+    changes.length === 0 ||
+    !changes.every((c) => c.field === "dates" || c.field === "timezone")
+  ) return null;
+  const dates = changes.filter((c) => c.field === "dates");
+  if (dates.length !== 1 || dates[0].many === true) return null;
+  const pairs = Array.isArray(dates[0].new)
+    ? dates[0].new.filter((pair) =>
+      !!pair && typeof pair === "object" &&
+      typeof (pair as { s?: unknown }).s === "string"
+    ) as Array<{ s: string }>
+    : [];
+  return pairs.length === 1 ? pairs[0].s : null;
+}
+
+/**
+ * Issue #4422 — the change text, one GSM-7 segment: "moved to <date> <time>"
+ * when the date alone changed to one new start, "has a new venue" when only
+ * the venue or address changed, otherwise "has changed".
+ */
+function changeSms(
+  context: NoticeContext,
+  link: string,
+): string {
+  const start = onlyNewStart(context.changes);
+  const when = start === null
+    ? null
+    : formatMessageTime(start, context.timezone);
+  if (when !== null) {
+    return renderChangeSms("S20", {
+      title: context.eventName,
+      date: when.date,
+      time: when.time,
+      link,
+    });
+  }
+  const venueOnly = context.changes.length > 0 &&
+    context.changes.every((c) => c.field === "venue" || c.field === "address");
+  return renderChangeSms(venueOnly ? "S20V" : "S20D", {
+    title: context.eventName,
+    link,
+  });
+}
+
 /**
  * What to send for one recipient of a notice. Throws
  * `event_update_email_nothing_to_say` when the notice holds nothing printable.
+ * `links` mints the shared short event link for the text; without it (or when
+ * minting fails) the text carries the full page link, or no link when that
+ * does not fit one segment. `withSms` false (an email, push or in-app row)
+ * builds no text at all, so a text can never hold back another channel.
  */
-export function buildEventUpdateDispatch(
+export async function buildEventUpdateDispatch(
   context: NoticeContext,
   payload: Record<string, unknown>,
-): EventUpdateDispatch {
+  links: ClaimLinkAdmin | null = null,
+  withSms = true,
+): Promise<EventUpdateDispatch> {
   const rendered = renderEventUpdatedEmail({
     kind: context.kind,
     eventName: context.eventName,
@@ -272,12 +354,21 @@ export function buildEventUpdateDispatch(
     venueName: context.venueName,
   });
   const eventName = cleanLine(context.eventName, 120);
-  const brandName = cleanLine(context.brandName, 80) || "Mingla";
   const short = eventUpdateShortLine(context.kind, context.brandName, context.changes);
+  const smsLink = !withSms
+    ? ""
+    : links && context.eventId
+    ? (await resolveBuyerLink(links, {
+      kind: "event_page",
+      sourceId: context.eventId,
+      targetUrl: context.eventUrl,
+      expiresAt: eventLinkExpiry({ lastEndAt: context.lastEndAt ?? null }),
+    })).display
+    : context.eventUrl.replace(/^https:\/\//, "");
   return {
     title: `Plans changed: ${eventName}`,
     body: short,
-    sms: `${brandName}: ${eventName} has changed. See what is different: ${context.eventUrl}`,
+    sms: withSms ? changeSms(context, smsLink) : "",
     link: context.eventUrl,
     emailOverride: {
       rendered: {

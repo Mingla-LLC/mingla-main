@@ -1794,7 +1794,24 @@
     {
       "capability_key": "rsvp-passes",
       "paths": [
-        "app-mobile/src/components/activity/RsvpPassSheet.tsx"
+        "app-mobile/src/components/activity/RsvpPassSheet.tsx",
+        "supabase/functions/_shared/claimLink.ts",
+        "supabase/functions/_shared/email/purchaseBody.ts",
+        "supabase/functions/_shared/email/purchaseCopy.ts",
+        "supabase/functions/_shared/messageLinks.ts",
+        "supabase/functions/_shared/notifyV2.ts",
+        "supabase/functions/_shared/rsvpPassMessage.ts",
+        "supabase/functions/_shared/secretBundle.ts",
+        "supabase/functions/_shared/sms/buyerSms.ts",
+        "supabase/functions/_shared/unreachedGuestAlert.ts",
+        "supabase/functions/notification-retry-sweeper/index.ts",
+        "supabase/functions/offering-invite-dispatch/index.ts",
+        "supabase/functions/public-submit-rsvp/index.ts",
+        "supabase/functions/rsvp-notify/copy.ts",
+        "supabase/functions/rsvp-notify/eventUpdate.ts",
+        "supabase/functions/rsvp-notify/index.ts",
+        "supabase/migrations/20280705004422_issue_4422_transactional_delivery_truth.sql",
+        "supabase/migrations/20280705104422_issue_4422_rsvp_message_links.sql"
       ]
     },
     {

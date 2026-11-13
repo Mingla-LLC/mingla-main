@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4422_transactional_delivery_truth.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4422-transactional-delivery-truth-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "postgres", "reset": "suite-owned" }
+}
