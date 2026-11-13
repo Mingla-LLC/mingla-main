@@ -1352,6 +1352,7 @@ export async function sendCampaignTest(
     : { email: to, first_name: SAMPLE_RECIPIENT.first_name };
   const copy = renderCampaignEmail(String(row.subject ?? ""), document, profile, to);
   assertNotResendSandbox(ADMIN_SENDER);
+  // no-attachment: a test send carries the campaign's own HTML; Admin campaigns never attach files.
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
