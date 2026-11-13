@@ -248,7 +248,7 @@ function CardSearch({ label, onPick, onCancel, disabled }) {
     let live = true;
     const t = setTimeout(async () => {
       try {
-        const answer = await ops.listWork({ q: query, subtasks: true, limit: 20, done_days: 0 });
+        const answer = await ops.listBoardWork({ q: query, subtasks: true, limit: 20, done_days: 0 });
         const cards = (answer?.cards || []).filter((c) => Number(c.depth || 0) <= 1 && c.status !== "done");
         if (live) setResult({ q: query, cards, error: null });
       } catch (error) { if (live) setResult({ q: query, cards: [], error }); }

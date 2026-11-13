@@ -13,7 +13,7 @@ import { todayIso } from "../../lib/opsModel";
 export async function loadToday(owner) {
   const now = new Date();
   const [open, standup, feed] = await Promise.all([
-    ops.listWork({ status: ["todo", "doing"], done_days: 0, limit: 300, ...(owner ? { owner } : {}) }),
+    ops.listBoardWork({ status: ["todo", "doing"], done_days: 0, limit: 300, ...(owner ? { owner } : {}) }),
     ops.fetchEventsSince(standupSince(now).toISOString(), owner),
     ops.fetchEventsSince(lastDaySince(now).toISOString(), owner),
   ]);
@@ -24,7 +24,7 @@ const PAGE = 300;
 const MAX_PAGES = 20;
 
 /** Every card a query matches, 300 at a time (at most 6,000). */
-export async function listAllWork(query, list = ops.listWork) {
+export async function listAllWork(query, list = ops.listBoardWork) {
   const cards = [];
   let offset = 0;
   for (let page = 0; page < MAX_PAGES; page += 1) {
@@ -67,7 +67,7 @@ async function closedInWindow(base, win, list) {
  * `owner`, `who` and `q` are the same filters the board sends; on Today the
  * last 24 hours of changes come too ("What changed").
  */
-export async function loadPeriod(win, { owner = null, who = "all", q = "" } = {}, list = ops.listWork) {
+export async function loadPeriod(win, { owner = null, who = "all", q = "" } = {}, list = ops.listBoardWork) {
   const base = { who, today: todayIso(), ...(owner ? { owner } : {}), ...(q ? { q } : {}) };
   const [open, done, feed] = await Promise.all([
     listAllWork({ ...base, status: ["todo", "doing"], done_days: 0 }, list),
