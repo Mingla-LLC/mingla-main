@@ -235,7 +235,17 @@ export function getContractWorkspace(contractId) {
 
 export async function getGigQueue() {
   const data = await read("admin_gig_queue");
-  return { disputes: data?.disputes ?? [], creator_reviews: data?.creator_reviews ?? [] };
+  return { disputes: data?.disputes ?? [], creator_reviews: data?.creator_reviews ?? [], post_checks: data?.post_checks ?? [] };
+}
+
+// #4402 (D1) — Mingla's team marks a posted link Passed or Failed. A fail needs a
+// reason of 5 to 300 characters (the creator sees it). {ok:false} throws.
+export function decidePostCheck(postId, result, reason) {
+  return write("admin_gig_post_decide", {
+    p_post_id: postId,
+    p_result: result,
+    p_reason: result === "failed" && reason && String(reason).trim() ? String(reason).trim() : null,
+  });
 }
 
 /**
@@ -272,7 +282,17 @@ export async function getLocalQueue() {
     picks: data?.picks ?? [],
     reviews: data?.reviews ?? [],
     payouts: data?.payouts ?? [],
+    locals: data?.locals ?? [],
   };
+}
+
+// #4402 (D5) — open (or extend) a Local's pick window for 1 to 14 days, with a reason.
+export function openLocalPickWindow(localId, reason, days = 7) {
+  return write("admin_local_open_pick_window", {
+    p_local_id: localId,
+    p_reason: String(reason ?? "").trim(),
+    p_days: Number(days),
+  });
 }
 
 export function saveCityProgram({ cityId, seats, isOpen, monthlyRateMinor, payoutCurrency }) {

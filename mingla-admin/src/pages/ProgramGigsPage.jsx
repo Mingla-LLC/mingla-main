@@ -5,16 +5,27 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useProgramLoad } from "../hooks/useProgramLoad";
-import { RefreshCw } from "lucide-react";
+import { Check, ExternalLink, RefreshCw, X } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Drawer } from "../components/ui/Drawer";
 import { SearchInput } from "../components/ui/SearchInput";
+import { Textarea } from "../components/ui/Input";
+import { useToast } from "../context/ToastContext";
 import { AlertCard } from "../components/ui/Card";
 import { GigTimeline } from "./crm/GigTimeline";
-import { getContractWorkspace, listGigContracts } from "../services/creatorProgramsService";
+import { decidePostCheck, getContractWorkspace, getGigQueue, listGigContracts } from "../services/creatorProgramsService";
 import {
+  POST_FAIL_HINT,
+  POST_REASON_MAX,
+  checkPostFailReason,
+  postPlatformWord,
+  postWaitingOverDay,
+  postWaitingWord,
+  safePostUrl,
+  shortDateTimeOrDash,
+  sortPostChecks,
   contractStateTone,
   contractStateWord,
   dayWord,
@@ -24,6 +35,8 @@ import {
   programErrorMessage,
   shortDateTime,
 } from "../lib/creatorPrograms";
+
+const POSTS_FILTER = "posts";
 
 const STATE_FILTERS = [
   { id: "all", label: "All", match: () => true },
@@ -83,17 +96,171 @@ function GigDrawer({ gig, onClose }) {
   );
 }
 
+// ── #4402 (D1): Posts to check ─────────────────────────────────────────────
+// Mingla's team opens each posted link and marks it Passed or Failed. A fail
+// needs a reason the creator sees. Oldest first; over 24 h shows "Waiting over a day".
+
+function PostCheckDrawer({ post, onClose, onDecided }) {
+  const { addToast } = useToast();
+  const [mode, setMode] = useState("choose");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(null);
+  const [error, setError] = useState("");
+  const [history, setHistory] = useState(null);
+  const [historyError, setHistoryError] = useState("");
+
+  useEffect(() => {
+    if (!post) return undefined;
+    let cancelled = false;
+    getContractWorkspace(post.contract_id)
+      .then((data) => { if (!cancelled) setHistory(Array.isArray(data?.events) ? data.events : []); })
+      .catch((cause) => { if (!cancelled) setHistoryError(programErrorMessage(cause, "Couldn't load this post's history.")); });
+    return () => { cancelled = true; };
+  }, [post]);
+
+  if (!post) return null;
+  const url = safePostUrl(post.url);
+  const checked = checkPostFailReason(reason);
+  const decide = async (result) => {
+    if (saving) return;
+    setError("");
+    setSaving(result);
+    try {
+      await decidePostCheck(post.post_id, result, result === "failed" ? checked.reason : null);
+      addToast({ variant: "success", title: result === "passed" ? "Post passed." : "Post failed. The creator can see why." });
+      onDecided();
+    } catch (cause) {
+      setError(programErrorMessage(cause, "Couldn't save this decision. Try again."));
+      setSaving(null);
+    }
+  };
+  const events = (history ?? []).filter((e) => ["posts_submitted", "post_reviewed", "delivery_approved"].includes(e.kind));
+  return (
+    <Drawer
+      open
+      onClose={saving ? () => {} : onClose}
+      title={`Check post · ${postPlatformWord(post.platform)}`}
+      footer={mode === "fail" ? (
+        <div className="flex flex-col gap-2.5 pb-1">
+          <Button variant="danger" className="w-full" loading={saving === "failed"} disabled={!checked.ok || !!saving} onClick={() => void decide("failed")}>Mark failed and tell the creator</Button>
+          <Button variant="secondary" className="w-full" disabled={!!saving} onClick={() => { setMode("choose"); setError(""); }}>Cancel</Button>
+        </div>
+      ) : (
+        <div className="flex gap-2.5 pb-1">
+          <Button className="flex-1" icon={Check} loading={saving === "passed"} disabled={!!saving} onClick={() => void decide("passed")}>Passed</Button>
+          <Button className="flex-1" variant="danger" icon={X} disabled={!!saving} onClick={() => { setMode("fail"); setError(""); }}>Failed</Button>
+        </div>
+      )}
+    >
+      <div className="space-y-5">
+        {url ? (
+          <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-[var(--gray-300)] px-3 text-sm font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-50)]">
+            Open post on {postPlatformWord(post.platform)}<ExternalLink className="h-4 w-4" aria-hidden="true" />
+          </a>
+        ) : <AlertCard variant="warning" title="This link can't be opened">The creator's link isn't a web address. Fail it and ask for a working link.</AlertCard>}
+        <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-sm">
+          <dt className="text-[var(--color-text-tertiary)]">Gig</dt><dd className="text-[var(--color-text-primary)]">{post.gig_title ?? "Gig"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Creator</dt><dd className="text-[var(--color-text-primary)]">{post.creator_name ?? "—"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Host</dt><dd className="text-[var(--color-text-primary)]">{post.brand_name ?? "—"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Must tag</dt><dd className="text-[var(--color-text-primary)]">{post.must_tag || "—"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Deliverables</dt><dd className="text-[var(--color-text-primary)]">{post.deliverables || "—"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Post by</dt><dd className="text-[var(--color-text-primary)]">{post.post_by ? dayWord(post.post_by) : "—"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Submitted</dt><dd className="text-[var(--color-text-primary)]">{shortDateTimeOrDash(post.submitted_at)} · {postWaitingWord(post)} ago</dd>
+        </dl>
+        {mode === "fail" ? (
+          <Textarea
+            label="Reason the creator will see"
+            value={reason}
+            maxLength={POST_REASON_MAX}
+            onChange={(e) => setReason(e.target.value)}
+            error={reason && !checked.ok ? checked.error : undefined}
+            helper={`${reason.trim().length} / ${POST_REASON_MAX}. ${POST_FAIL_HINT}`}
+            autoFocus
+          />
+        ) : (
+          <p className="text-sm text-[var(--color-text-secondary)]">When every post on this gig passes, the creator is paid in 48 hours.</p>
+        )}
+        {error ? <p role="alert" className="text-sm text-[var(--color-error-700)]">{error}</p> : null}
+        <div>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">History</h3>
+          {historyError ? <p className="text-sm text-[var(--color-text-secondary)]">{historyError}</p> : history === null ? <p className="text-sm text-[var(--color-text-secondary)]">Loading the history…</p> : events.length ? <GigTimeline events={events} currency={post.currency ?? null} /> : <p className="text-sm text-[var(--color-text-secondary)]">No history yet.</p>}
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+function PostChecksQueue({ queue }) {
+  const [selected, setSelected] = useState(null);
+  const rows = useMemo(() => sortPostChecks(queue.data?.post_checks), [queue.data]);
+  const missing = isMissingFunction(queue.error);
+  const error = queue.error && !missing ? programErrorMessage(queue.error, "Couldn't load posts to check. Try again.") : "";
+  if (missing) {
+    return <AlertCard variant="info" title="Posts to check isn't available yet">This list needs a server update that hasn't shipped.</AlertCard>;
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-[var(--color-text-secondary)]">Oldest first. Open the link, then decide.</p>
+      {error ? <AlertCard variant="error" title="Couldn't load posts to check" action={<Button size="sm" variant="secondary" onClick={queue.reload}>Try again</Button>}>{error}</AlertCard> : null}
+      <div className="admin-control-scroll overflow-x-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)]">
+        <table className="w-full min-w-[860px] text-sm">
+          <thead className="bg-[var(--gray-50)] text-left text-xs uppercase tracking-wider text-[var(--color-text-tertiary)]">
+            <tr>
+              <th scope="col" className="px-4 py-2.5 font-semibold">Post</th>
+              <th scope="col" className="px-4 py-2.5 font-semibold">Gig and creator</th>
+              <th scope="col" className="px-4 py-2.5 font-semibold">Must include</th>
+              <th scope="col" className="px-4 py-2.5 font-semibold">Post by</th>
+              <th scope="col" className="px-4 py-2.5 font-semibold">Waiting</th>
+              <th scope="col" className="px-4 py-2.5 font-semibold">Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const url = safePostUrl(row.url);
+              return (
+                <tr key={row.post_id} className="border-t border-[var(--gray-200)] align-top hover:bg-[var(--gray-50)]">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-[var(--color-text-primary)]">{postPlatformWord(row.platform)}</p>
+                    {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--color-brand-700)] underline">Open post</a> : <span className="text-xs text-[var(--color-text-tertiary)]">No link</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-[var(--color-text-primary)]">{row.gig_title ?? "Gig"}</p>
+                    <p className="text-xs text-[var(--color-text-tertiary)]">{[row.creator_name, row.brand_name].filter(Boolean).join(" · ")}</p>
+                  </td>
+                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{[row.must_tag, row.deliverables].filter(Boolean).join(" · ") || "—"}</td>
+                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{row.post_by ? dayWord(row.post_by) : "—"}</td>
+                  <td className="px-4 py-3">
+                    {postWaitingOverDay(row) ? <Badge variant="warning" dot>Waiting over a day</Badge> : null}
+                    <p className="tabular-nums text-[var(--color-text-secondary)]">{postWaitingWord(row)}</p>
+                  </td>
+                  <td className="px-4 py-3"><Button size="sm" variant="secondary" onClick={() => setSelected(row)}>Review</Button></td>
+                </tr>
+              );
+            })}
+            {!rows.length && !queue.loading ? (
+              <tr><td colSpan={6} className="px-4 py-10 text-center"><p className="text-sm font-semibold text-[var(--color-text-primary)]">No posts to check</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">Links creators submit will appear here, oldest first.</p></td></tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+      <PostCheckDrawer key={selected?.post_id ?? "none"} post={selected} onClose={() => setSelected(null)} onDecided={() => { setSelected(null); queue.reload(); }} />
+    </div>
+  );
+}
+
 function GigsList() {
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState("all");
   const [selected, setSelected] = useState(null);
 
+  const queue = useProgramLoad(getGigQueue);
+  const postCount = queue.data?.post_checks?.length;
   const list = useProgramLoad(listGigContracts);
   const rows = useMemo(() => list.data ?? [], [list.data]);
   const loading = list.loading;
   const missing = isMissingFunction(list.error);
   const error = list.error && !missing ? programErrorMessage(list.error, "Couldn't load gigs. Try again.") : "";
-  const refresh = list.reload;
+  const refresh = () => { list.reload(); queue.reload(); };
 
   const shown = useMemo(() => {
     const filter = STATE_FILTERS.find((f) => f.id === stateFilter) ?? STATE_FILTERS[0];
@@ -125,9 +292,18 @@ function GigsList() {
               {f.label}
             </button>
           ))}
+          <button
+            type="button"
+            aria-pressed={stateFilter === POSTS_FILTER}
+            onClick={() => setStateFilter(POSTS_FILTER)}
+            className={`min-h-9 cursor-pointer rounded-full border px-3 text-xs font-medium ${stateFilter === POSTS_FILTER ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-300)] text-[var(--color-text-secondary)]"}`}
+          >
+            Posts to check · {postCount ?? "·"}
+          </button>
         </div>
-        <Button variant="secondary" size="sm" icon={RefreshCw} onClick={refresh} loading={loading}>Refresh</Button>
+        <Button variant="secondary" size="sm" icon={RefreshCw} onClick={refresh} loading={loading || queue.loading}>Refresh</Button>
       </div>
+      {stateFilter === POSTS_FILTER ? <PostChecksQueue queue={queue} /> : <>
       {error ? <AlertCard variant="error" title="Couldn't load gigs">{error}</AlertCard> : null}
       <div className="admin-control-scroll overflow-x-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)]">
         <table className="w-full min-w-[860px] text-sm">
@@ -166,6 +342,7 @@ function GigsList() {
         </table>
       </div>
       <GigDrawer key={selected?.contract_id ?? "none"} gig={selected} onClose={() => setSelected(null)} />
+      </>}
     </div>
   );
 }
@@ -175,7 +352,7 @@ export function ProgramGigsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Gigs"
-        description="Every hired gig and where it stands. Read-only: the host and creator run the deal."
+        description="Every hired gig and where it stands, plus the posted links Mingla's team checks. The host and creator run the deal."
       />
       <GigsList />
     </div>

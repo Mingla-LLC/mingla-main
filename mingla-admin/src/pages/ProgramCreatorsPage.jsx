@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, Check, Clock, ExternalLink, Lock, RefreshCw, Search, User, X as XIcon,
+  AlertTriangle, Check, Clock, ExternalLink, Film, Lock, RefreshCw, Search, User, X as XIcon,
 } from "lucide-react";
 import { useProgramLoad } from "../hooks/useProgramLoad";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -45,6 +45,7 @@ import {
   audienceCompare,
   bandWord,
   cardStepTones,
+  creatorCardThumb,
   checksProgress,
   creatorCardLine,
   creatorColumnFor,
@@ -112,6 +113,7 @@ function CreatorCard({ creator, onOpen }) {
   const line = creatorCardLine(creator);
   const progress = checksProgress(creator.checks);
   const handle = creator.handle?.handle ? ` · @${creator.handle.handle}` : "";
+  const thumb = creatorCardThumb(creator);
   return (
     <button
       type="button"
@@ -119,7 +121,14 @@ function CreatorCard({ creator, onOpen }) {
       aria-label={`${creator.display_name || "Unnamed creator"}, ${verificationWord(creator.verification)}. ${line}`}
       className={`flex w-full cursor-pointer gap-3 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-3 text-left shadow-[var(--shadow-sm)] transition-colors hover:border-[var(--color-brand-300)] ${FOCUS}`}
     >
-      <span aria-hidden="true" className="h-12 w-9 shrink-0 rounded-md bg-[var(--gray-200)]" />
+      {thumb ? (
+        <img src={thumb} alt="" loading="lazy" className="h-12 w-9 shrink-0 rounded-md bg-[var(--gray-200)] object-cover" />
+      ) : (
+        <span aria-hidden="true" title="No video yet" className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md bg-[var(--gray-100)] text-[var(--color-text-tertiary)]">
+          <Film className="h-4 w-4" />
+          <span className="text-[8px] leading-none">No video</span>
+        </span>
+      )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13.5px] font-semibold text-[var(--color-text-primary)]">{creator.display_name || "Unnamed creator"}</span>
         <span className="block truncate text-xs text-[var(--color-text-tertiary)]">
