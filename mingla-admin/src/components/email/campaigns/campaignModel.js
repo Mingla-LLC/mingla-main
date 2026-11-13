@@ -40,6 +40,15 @@ export function statePill(state, stateLabel) {
   return { label: stateLabel || pill.label, variant: pill.variant };
 }
 
+// The sample person every saved copy and preview is written for (#4419).
+const SAMPLE_TOKENS = Object.freeze({ first_name: "Maya", display_name: "Maya Okafor", username: "mayaexplores" });
+
+/** A subject or preview line as the sample person (Maya) sees it, so the list never shows "{first_name}". */
+export function sampleText(text) {
+  if (typeof text !== "string") return "";
+  return text.replace(/\{\s*(first_name|display_name|username)\s*\}/gi, (_m, key) => SAMPLE_TOKENS[key.toLowerCase()]);
+}
+
 const fmt = (n) => Number(n || 0).toLocaleString("en-US");
 
 function segmentLabel(seg) {

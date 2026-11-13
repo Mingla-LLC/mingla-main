@@ -505,4 +505,11 @@ describe("R tester rework", () => {
     assert.equal(heading, "Lagos this weekend, Maya");
     assert.ok(!html.includes("{first_name}"));
   });
+  it("R-6 the list row shows the subject and preview line as Maya sees them, never {first_name}", () => {
+    const rows = [{ ...ROWS[0], subject: "Lagos, {first_name}", preheader: "{first_name}, five rooftops this weekend" }];
+    const html = decode(h.list({ status: "ready", rows, counts: {}, total: 1, filter: "all", query: "", page: 0, isAdmin: true }));
+    assert.ok(html.includes("Maya, five rooftops this weekend"));
+    assert.ok(html.includes("Lagos, Maya"));
+    assert.ok(!html.includes("{first_name}"));
+  });
 });

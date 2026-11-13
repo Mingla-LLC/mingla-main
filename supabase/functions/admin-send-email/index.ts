@@ -66,6 +66,54 @@ const ADMIN_BLAST_BRAND_ID = "00000000-0000-4000-8000-372000000002";
 const BRANDED_UNSUBSCRIBE_LINK_ORIGIN = "https://usemingla.com/unsubscribe";
 const RECIPIENT_PAGE_SIZE = 1000;
 const DELIVERY_BATCH_SIZE = 40;
+
+// #4419 follow-up: Resend allows this account 10 requests a second across
+// EVERYTHING that sends from it (host marketing, ticket email, Admin email).
+// A drain of 40 in groups of 5 with no spacing burst past that and Resend
+// answered 429 "too many requests" to 313 people. Admin email takes half the
+// allowance, one request at a time, spaced so it can never exceed it.
+export const RESEND_ACCOUNT_LIMIT_PER_SECOND = 10;
+export const ADMIN_SEND_REQUESTS_PER_SECOND = 5;
+export const ADMIN_SEND_MIN_INTERVAL_MS = Math.ceil(
+  1000 / ADMIN_SEND_REQUESTS_PER_SECOND,
+);
+/** A 429 is retried in this run twice (1s, 3s, or Resend's Retry-After). */
+const RATE_LIMIT_INLINE_BACKOFF_MS = [1000, 3000];
+/** A 429 never fails a person for rate alone; after this long without a send it does. */
+const RATE_LIMIT_GIVE_UP_MS = 24 * 3_600_000;
+const RATE_LIMIT_MIN_DEFER_SECONDS = 60;
+/** Unreadable saved copy: this many tries, 10 minutes more apart each time. */
+export const SNAPSHOT_MAX_ATTEMPTS = 5;
+const SNAPSHOT_RETRY_STEP_MS = 10 * 60_000;
+
+/** Clock and sleep the pacer uses; tests replace them to prove the math. */
+export const pacing = {
+  now: (): number => Date.now(),
+  sleep: (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms)),
+  minIntervalMs: ADMIN_SEND_MIN_INTERVAL_MS,
+};
+let nextSendAt = 0;
+/** Reserve the next send slot and wait for it: sends start >= minIntervalMs apart. */
+export async function paceSend(): Promise<void> {
+  const now = pacing.now();
+  const start = Math.max(now, nextSendAt);
+  nextSendAt = start + pacing.minIntervalMs;
+  if (start > now) await pacing.sleep(start - now);
+}
+export function resetSendPacer(): void {
+  nextSendAt = 0;
+}
+
+/** Resend's Retry-After in seconds, bounded to something a drain can hold. */
+export function boundedRetryAfterSeconds(raw: string | null): number | null {
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.min(Math.max(Math.ceil(n), 1), 21_600);
+}
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type ServiceClient = SupabaseClient;
@@ -79,6 +127,8 @@ interface CampaignRecord {
   rendered_document?: unknown;
   /** Provider-accepted so far (updated after every batch). */
   sent_count?: number | null;
+  /** How many times the saved copy could not be read; capped at SNAPSHOT_MAX_ATTEMPTS. */
+  snapshot_attempts?: number | null;
 }
 
 /**
@@ -312,7 +362,14 @@ async function sendViaResend(input: {
   subject: string;
   document: EmailContentBlock[];
   profile: RecipientProfile;
-}): Promise<{ ok: boolean; id?: string; error?: string }> {
+}): Promise<{
+  ok: boolean;
+  id?: string;
+  error?: string;
+  /** Resend said 429: the person is fine, the send is only too fast. */
+  rateLimited?: boolean;
+  retryAfterSeconds?: number | null;
+}> {
   try {
     assertNotResendSandbox(ADMIN_SENDER);
     const rendered = renderCampaignEmail(
@@ -326,26 +383,45 @@ async function sendViaResend(input: {
       input.to,
     );
     // no-attachment: Admin campaigns embed approved image/GIF URLs in HTML; this composer does not send file attachments.
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": `admin-email-${input.deliveryId}`,
-      },
-      body: JSON.stringify({
-        from: formatSenderHeader(rendered.from),
-        reply_to: ADMIN_REPLY_TO,
-        to: [input.to],
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-        headers: marketingHeaders,
-      }),
+    const payload = JSON.stringify({
+      from: formatSenderHeader(rendered.from),
+      reply_to: ADMIN_REPLY_TO,
+      to: [input.to],
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      headers: marketingHeaders,
     });
+    let response!: Response;
+    let retryAfter: number | null = null;
+    for (let attempt = 0; attempt <= RATE_LIMIT_INLINE_BACKOFF_MS.length; attempt++) {
+      await paceSend();
+      response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": `admin-email-${input.deliveryId}`,
+        },
+        body: payload,
+      });
+      if (response.status !== 429) break;
+      retryAfter = boundedRetryAfterSeconds(response.headers.get("retry-after"));
+      const backoff = RATE_LIMIT_INLINE_BACKOFF_MS[attempt];
+      if (backoff === undefined) break;
+      await response.text();
+      await pacing.sleep(
+        retryAfter !== null ? Math.min(retryAfter * 1000, 10_000) : backoff,
+      );
+    }
     const responseBody = await response.text();
     if (!response.ok) {
-      return { ok: false, error: `Resend ${response.status}: ${responseBody}` };
+      return {
+        ok: false,
+        error: `Resend ${response.status}: ${responseBody}`,
+        rateLimited: response.status === 429,
+        retryAfterSeconds: response.status === 429 ? retryAfter : undefined,
+      };
     }
     let id: string | undefined;
     try {
@@ -722,6 +798,46 @@ async function frozenCampaignDocument(
   }
 }
 
+async function countDeliveries(
+  supabase: ServiceClient,
+  campaignId: string,
+  statuses: string[],
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("admin_email_recipient_deliveries")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId)
+    .in("status", statuses);
+  if (error) throw new Error(`delivery_count_failed:${error.message}`);
+  return count ?? 0;
+}
+
+/**
+ * The copy can't be used (refused, unreadable, or out of retries). The final
+ * status comes from the deliveries the provider accepted, never from the
+ * counter on the campaign row, which can be stale: some people got it means
+ * partial, nobody means failed.
+ */
+async function endUnreadableCopy(
+  supabase: ServiceClient,
+  campaign: CampaignRecord,
+  message: string,
+  attempts: number | null,
+) {
+  const accepted = await countDeliveries(supabase, campaign.id, ["accepted"]);
+  const failed = await countDeliveries(supabase, campaign.id, ["failed"]);
+  await supabase.from("admin_email_log").update({
+    status: accepted > 0 ? "partial" : "failed",
+    sent_count: accepted,
+    failed_count: failed,
+    last_error: message.slice(0, 2000),
+    completed_at: new Date().toISOString(),
+    processing_started_at: null,
+    ...(attempts === null ? {} : { snapshot_attempts: attempts }),
+  }).eq("id", campaign.id);
+  return { ok: false, error: message };
+}
+
 export async function processClaimedCampaign(
   supabase: ServiceClient,
   campaign: CampaignRecord,
@@ -759,27 +875,33 @@ export async function processClaimedCampaign(
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error);
     if (error instanceof SnapshotError && error.retryable) {
-      // Nothing is claimed or sent this run. Hand the campaign back to the
-      // drain (queued, unclaimed) so the next run tries again; if even this
-      // write fails, the stale-claim recovery picks it up in 10 minutes.
-      await supabase.from("admin_email_log").update({
-        status: "queued",
-        processing_started_at: null,
-      }).eq("id", campaign.id);
-      return { ok: false, retry: true, error: raw };
+      const attempts = Number(campaign.snapshot_attempts ?? 0) + 1;
+      if (attempts < SNAPSHOT_MAX_ATTEMPTS) {
+        // Not claimed or sent this run. Keep it "sending" with a claim that
+        // goes stale later (10 minutes plus 10 more per try), so the drain
+        // comes back to it after the newer emails instead of jumping ahead
+        // every minute. If even this write fails, the stale-claim recovery
+        // picks it up in 10 minutes.
+        await supabase.from("admin_email_log").update({
+          status: "sending",
+          snapshot_attempts: attempts,
+          processing_started_at: new Date(
+            pacing.now() + (attempts - 1) * SNAPSHOT_RETRY_STEP_MS,
+          ).toISOString(),
+        }).eq("id", campaign.id);
+        return { ok: false, retry: true, error: raw };
+      }
+      return await endUnreadableCopy(
+        supabase,
+        campaign,
+        `The saved copy of this email could not be read after ${SNAPSHOT_MAX_ATTEMPTS} tries, so nothing more was sent. (${raw})`,
+        attempts,
+      );
     }
     const message = raw.startsWith("email_snapshot_failed")
       ? raw
       : `email_snapshot_failed:${raw}`;
-    const accepted = Number(campaign.sent_count ?? 0);
-    await supabase.from("admin_email_log").update({
-      // Some people already got it: say partial, never "failed, nobody".
-      status: accepted > 0 ? "partial" : "failed",
-      last_error: message.slice(0, 2000),
-      completed_at: new Date().toISOString(),
-      processing_started_at: null,
-    }).eq("id", campaign.id);
-    return { ok: false, error: message };
+    return await endUnreadableCopy(supabase, campaign, message, null);
   }
   const { data: deliveries, error: claimError } = await supabase.rpc(
     "claim_admin_email_delivery_batch",
@@ -793,9 +915,10 @@ export async function processClaimedCampaign(
   }
   const liveSuppressed = await loadSuppressedEmails(supabase);
 
-  for (let offset = 0; offset < (deliveries ?? []).length; offset += 5) {
-    const group = deliveries.slice(offset, offset + 5);
-    await Promise.all(group.map(async (delivery: Record<string, unknown>) => {
+  // One send at a time, each waiting for its slot (paceSend), so the whole
+  // drain stays under the share of Resend's rate limit Admin email may use.
+  for (const delivery of (deliveries ?? []) as Array<Record<string, unknown>>) {
+    {
       const recipientEmail = String(delivery.recipient_email).toLowerCase()
         .trim();
       if (liveSuppressed.has(recipientEmail)) {
@@ -804,7 +927,7 @@ export async function processClaimedCampaign(
           last_error: null,
           updated_at: new Date().toISOString(),
         }).eq("id", delivery.id);
-        return;
+        continue;
       }
       const result = await sendViaResend({
         deliveryId: String(delivery.id),
@@ -822,28 +945,40 @@ export async function processClaimedCampaign(
           last_error: null,
           updated_at: new Date().toISOString(),
         }).eq("id", delivery.id);
+      } else if (
+        result.rateLimited &&
+        Date.now() - new Date(String(delivery.created_at ?? Date.now())).getTime() <
+          RATE_LIMIT_GIVE_UP_MS
+      ) {
+        // Too many requests is not the person's fault: try again later and
+        // give the try back, so a busy minute never burns the three tries.
+        const attempts = Number(delivery.attempts ?? 1);
+        const waitSeconds = Math.max(
+          result.retryAfterSeconds ?? 0,
+          RATE_LIMIT_MIN_DEFER_SECONDS,
+        );
+        await supabase.from("admin_email_recipient_deliveries").update({
+          status: "retrying",
+          attempts: Math.max(attempts - 1, 0),
+          next_attempt_at: new Date(Date.now() + waitSeconds * 1000).toISOString(),
+          last_error: result.error?.slice(0, 2000) ?? "rate_limited",
+          updated_at: new Date().toISOString(),
+        }).eq("id", delivery.id);
       } else {
         const attempts = Number(delivery.attempts ?? 1);
         await supabase.from("admin_email_recipient_deliveries").update({
-          status: attempts >= 3 ? "failed" : "retrying",
+          status: attempts >= 3 || result.rateLimited ? "failed" : "retrying",
           next_attempt_at: new Date(Date.now() + Math.pow(2, attempts) * 60_000)
             .toISOString(),
           last_error: result.error?.slice(0, 2000) ?? "provider_error",
           updated_at: new Date().toISOString(),
         }).eq("id", delivery.id);
       }
-    }));
+    }
   }
 
-  const countStatuses = async (statuses: string[]) => {
-    const { count, error } = await supabase
-      .from("admin_email_recipient_deliveries")
-      .select("id", { count: "exact", head: true })
-      .eq("campaign_id", campaign.id)
-      .in("status", statuses);
-    if (error) throw new Error(`delivery_count_failed:${error.message}`);
-    return count ?? 0;
-  };
+  const countStatuses = (statuses: string[]) =>
+    countDeliveries(supabase, campaign.id, statuses);
   const [accepted, failed, skipped, unfinished] = await Promise.all([
     countStatuses(["accepted"]),
     countStatuses(["failed"]),
@@ -1386,14 +1521,6 @@ export async function sendCampaignTest(
   });
   if (!ctx.isAdmin && state !== "scheduled") throw new Error("email_admin_only");
 
-  const { count, error: countError } = await supabase
-    .from("admin_audit_log")
-    .select("id", { count: "exact", head: true })
-    .eq("action", "email_campaign_test_sent")
-    .eq("metadata->>actor_user_id", ctx.user.id)
-    .gte("created_at", new Date(now - 3_600_000).toISOString());
-  if (countError) throw new Error(`test_send_count_failed:${countError.message}`);
-  if ((count ?? 0) >= TEST_SEND_LIMIT_PER_HOUR) throw new Error("test_send_limit");
   if (!RESEND_API_KEY) throw new Error("NO_PROVIDER");
 
   let document: EmailContentBlock[];
@@ -1416,6 +1543,21 @@ export async function sendCampaignTest(
     : { email: to, first_name: SAMPLE_RECIPIENT.first_name };
   const copy = renderCampaignEmail(String(row.subject ?? ""), document, profile, to);
   assertNotResendSandbox(ADMIN_SENDER);
+  // The hourly limit is checked and the audit row written in ONE database
+  // step (per-person lock), before anything is sent: parallel clicks cannot
+  // pass the limit, and if the row can't be written nothing is sent.
+  const { data: reservationId, error: reserveError } = await supabase.rpc(
+    "issue_4419_admin_email_test_send_reserve",
+    {
+      p_actor: ctx.user.id,
+      p_actor_email: ctx.user.email,
+      p_campaign: campaignId,
+      p_limit: TEST_SEND_LIMIT_PER_HOUR,
+      p_from_snapshot: Boolean(row.rendered_at),
+    },
+  );
+  if (reserveError) throw new Error(`test_send_count_failed:${reserveError.message}`);
+  if (!reservationId) throw new Error("test_send_limit");
   // no-attachment: a test send carries the campaign's own HTML; Admin campaigns never attach files.
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -1437,15 +1579,15 @@ export async function sendCampaignTest(
   });
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 300);
+    // Nothing was delivered, so give the slot back. If that fails the slot
+    // stays used, which only ever errs on the side of the limit.
+    const { error: releaseError } = await supabase.from("admin_audit_log")
+      .delete().eq("id", reservationId);
+    if (releaseError) {
+      console.error("[admin-send-email] test slot release failed", releaseError.message);
+    }
     throw new Error(`test_send_failed:Resend ${response.status}: ${detail}`);
   }
-  await auditCampaignChange(
-    supabase,
-    { id: ctx.user.id, email: ctx.user.email },
-    "email_campaign_test_sent",
-    campaignId,
-    { from_snapshot: Boolean(row.rendered_at) },
-  );
   return { sent: true, to };
 }
 
