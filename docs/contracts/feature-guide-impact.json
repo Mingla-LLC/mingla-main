@@ -3297,7 +3297,20 @@
       "capability_key": "staff-email",
       "paths": [
         "mingla-admin/src/lib/emailViews.js",
-        "mingla-admin/src/services/adminSendEmailService.js"
+        "mingla-admin/src/services/adminSendEmailService.js",
+        "mingla-admin/src/components/email/campaigns/DeliveryCard.jsx",
+        "mingla-admin/src/components/email/campaigns/EmailActions.jsx",
+        "mingla-admin/src/components/email/campaigns/EmailDetailPage.jsx",
+        "mingla-admin/src/components/email/campaigns/EmailTimeline.jsx",
+        "mingla-admin/src/components/email/campaigns/EmailViewBanner.jsx",
+        "mingla-admin/src/components/email/campaigns/EmailViewer.jsx",
+        "mingla-admin/src/components/email/campaigns/EmailsListView.jsx",
+        "mingla-admin/src/components/email/campaigns/campaignModel.js",
+        "mingla-admin/src/lib/emailFailureWords.js",
+        "supabase/functions/_shared/email/index.ts",
+        "supabase/functions/_shared/email/types.ts",
+        "supabase/migrations/20280703004419_issue_4419_admin_email_snapshot.sql",
+        "supabase/migrations/20280703014419_issue_4419_admin_email_engagement.sql"
       ]
     },
     {
