@@ -90,6 +90,18 @@ beforeEach(() => {
 });
 
 describe("#4402 item 1: the upload card waits, then sends once", () => {
+  it("a failed read of the last upload shows the error and Retry, never Choose video, and Retry re-reads", async () => {
+    mockPending.mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce({ id: "j7", status: "ready", created_at: "2026-12-10T10:00:00Z" });
+    const r = await mount(jest.fn());
+    expect(labels(r)).toEqual(["Retry"]);
+    expect(notices(r, "error").map((n) => n.props.text)).toEqual(["We couldn’t check your last upload. Pull to refresh or try again."]);
+    await act(async () => { button(r, "Retry").props.onPress(); });
+    await settle();
+    expect(mockPending).toHaveBeenCalledTimes(2);
+    expect(labels(r)).toEqual(["Send this video to the host", "Choose a different video"]);
+    expect(notices(r, "error")).toHaveLength(0);
+  });
+
   it("idle shows Choose video and no progress words before a video is picked", async () => {
     const r = await mount(jest.fn());
     expect(labels(r)).toEqual(["Choose video"]);

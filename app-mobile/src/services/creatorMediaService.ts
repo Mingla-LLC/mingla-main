@@ -82,12 +82,12 @@ export async function waitForMediaReady(jobId:string,options:{intervalMs?:number
 export type PendingDeliveryMedia={id:string;status:string;created_at:string};
 /**
  * The newest delivery video of this contract that no delivery uses yet (the same owner-read shape as
- * `myShowcaseMedia`): still processing, ready to send, or failed. Null when there is none.
+ * `myShowcaseMedia`): still processing, ready to send, or failed. Null when there is none; a failed read THROWS, so it is never mistaken for "none".
  */
 export async function pendingDeliveryMedia(contractId:string,usedJobIds:string[]=[]):Promise<PendingDeliveryMedia|null>{
   const {data:auth}=await supabase.auth.getUser();const id=auth.user?.id;if(!id)return null;
   const {data,error}=await supabase.from('creator_media_jobs').select('id,status,created_at').eq('owner_id',id).eq('purpose','delivery').eq('contract_id',contractId).is('deleted_at',null).order('created_at',{ascending:false}).limit(6);
-  if(error)return null;
+  if(error)throw new ProgramActionError('network');
   const rows=(data??[]) as PendingDeliveryMedia[];
   return rows.find((row)=>!usedJobIds.includes(row.id))??null;
 }

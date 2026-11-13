@@ -72,6 +72,13 @@ describe("#4402 pendingDeliveryMedia", () => {
     expect(q.is).toHaveBeenCalledWith("deleted_at", null);
   });
 
+  it("throws on a read error instead of returning null", async () => {
+    const q = chain(null);
+    q.limit = jest.fn(async () => ({ data: null, error: { message: "boom" } }));
+    mockFrom.mockReturnValue(q);
+    await expect(pendingDeliveryMedia("c1", [])).rejects.toBeTruthy();
+  });
+
   it("is null when every video is already used", async () => {
     mockFrom.mockReturnValue(chain(rows));
     expect(await pendingDeliveryMedia("c1", ["used", "free"])).toBeNull();

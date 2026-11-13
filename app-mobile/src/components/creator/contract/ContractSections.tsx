@@ -271,6 +271,9 @@ export function UploadCard({ contractId, workspace, onSubmit }: { contractId: st
   const [error, setError] = useState<string | null>(null);
   const [stalled, setStalled] = useState(false);
   const [recheck, setRecheck] = useState(0);
+  // The last-upload read failed: not the same as "nothing pending", so Choose video is not offered.
+  const [readFailed, setReadFailed] = useState(false);
+  const [reread, setReread] = useState(0);
   const submitted = useRef<string | null>(null);
   const alive = useRef(true);
   const lastFix = workspace.deliveries.filter((d) => d.decision === 'fix_requested').slice(-1)[0];
@@ -284,13 +287,15 @@ export function UploadCard({ contractId, workspace, onSubmit }: { contractId: st
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const pending = await pendingDeliveryMedia(contractId, usedJobs);
+      let pending: Awaited<ReturnType<typeof pendingDeliveryMedia>>;
+      try { pending = await pendingDeliveryMedia(contractId, usedJobs); setReadFailed(false); }
+      catch { if (!cancelled) setReadFailed(true); return; }
       if (cancelled || !pending || submitted.current === pending.id) return;
       setJobId(pending.id);
       setPhase(pending.status === 'ready' ? 'ready' : ['failed', 'rejected', 'expired'].includes(pending.status) ? 'failed' : 'processing');
     })();
     return () => { cancelled = true; };
-  }, [contractId, usedJobs]);
+  }, [contractId, usedJobs, reread]);
 
   /** Sends a ready video once. A video that is not ready yet goes back to Processing; it is never uploaded again. */
   const send = useCallback(async (id: string): Promise<void> => {
@@ -344,7 +349,11 @@ export function UploadCard({ contractId, workspace, onSubmit }: { contractId: st
       {(lastFix.fix_categories ?? []).map((c) => <Text key={c} style={s.strong}>• {fixWords(c)}</Text>)}
       {lastFix.fix_note ? <Text style={s.copy}>“{lastFix.fix_note}”</Text> : null}
     </> : null}
-    {phase === 'idle' ? <Text style={s.copy}>Vertical, up to 90 seconds and 150 MB. Mingla keeps a private review copy for the host.</Text> : null}
+    {phase === 'idle' && readFailed ? <>
+      <ProgramNotice tone="error" text="We couldn’t check your last upload. Pull to refresh or try again." />
+      <ProgramButton label="Retry" onPress={() => setReread((n) => n + 1)} />
+    </> : null}
+    {phase === 'idle' && !readFailed ? <Text style={s.copy}>Vertical, up to 90 seconds and 150 MB. Mingla keeps a private review copy for the host.</Text> : null}
     {phase === 'uploading' ? <>
       <View style={styles.bar}><View style={[styles.fill, { width: `${Math.max(4, Math.round(progress * 100))}%` }]} /></View>
       <Text style={s.small}>Uploading {Math.round(progress * 100)}%. Keep the app open.</Text>
@@ -371,7 +380,7 @@ export function UploadCard({ contractId, workspace, onSubmit }: { contractId: st
       <ProgramNotice tone="error" text="This video couldn’t be processed. Choose another video." />
     </> : null}
     {phase === 'idle' && error ? <ProgramNotice tone="error" text={error} /> : null}
-    {phase === 'idle' || phase === 'failed' ? <ProgramButton label={chooseLabel} icon="cloud-upload-outline" onPress={() => void upload()} />
+    {(phase === 'idle' && !readFailed) || phase === 'failed' ? <ProgramButton label={chooseLabel} icon="cloud-upload-outline" onPress={() => void upload()} />
       : phase === 'ready' ? <ProgramButton label={chooseLabel} variant="ghost" onPress={() => void upload()} /> : null}
   </ProgramCard>;
 }
