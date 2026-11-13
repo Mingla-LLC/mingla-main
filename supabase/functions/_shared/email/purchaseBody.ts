@@ -1,12 +1,13 @@
 // Issue #4063 — one QR-free, one-button purchase email body skeleton.
 
 import { formatMoneyFromCents, formatMoneyOrFree } from "./currency.ts";
+import { MINGLA_APP_LINK_URL } from "./appLink.ts";
 import { escapeHtml } from "./escape.ts";
 import type { PurchaseEmailCopy } from "./purchaseCopy.ts";
 import { SHELL_TOKENS } from "./shell.ts";
 
-// Issue #4422 — the one app download page, linked on words in HTML.
-const APP_DOWNLOAD_URL = "https://usemingla.com/download";
+// Issue #4422 — the app line links the one app destination (#2240 owner).
+const APP_DOWNLOAD_URL = MINGLA_APP_LINK_URL;
 
 const {
   BRAND_BORDER,

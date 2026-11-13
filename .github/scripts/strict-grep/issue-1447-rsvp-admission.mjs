@@ -119,7 +119,8 @@ export function violations(files) {
     'event: "rsvp_notification_channel_result"',
   ]) need(notify, token, "durable per-channel worker", failures);
   need(files.dispatcher ?? "", 'client.rpc("can_send"', "unified can_send chokepoint", failures);
-  need(files.dispatcher ?? "", "attachments: [input.attachment]", "email PDF attachment", failures);
+  // #4422 — the email carries every file it is given (calendar file + QR PDF).
+  need(files.dispatcher ?? "", "{ attachments: input.attachments }", "email PDF attachment", failures);
 
   for (const token of ["RATE_MAX", 'caller.rpc("biz_rsvp_scan"', "qrPayload.length > 512"])
     need(files.scanEdge ?? "", token, "authenticated scan edge", failures);
@@ -225,7 +226,7 @@ function selfTest() {
     ["migration", "requested_event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE RESTRICT", "requested_event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE", "scan audit preservation"],
     ["migration", "pass_recovery_token_hash=NULL,pass_recovery_token_created_at=NULL", "pass_recovery_token_hash=NULL,pass_recovery_token_created_at=NULL,checked_in_at=NULL,checked_in_by=NULL", "check-in history"],
     ["dispatcher", 'client.rpc("can_send"', 'client.rpc("send_anyway"', "can_send"],
-    ["dispatcher", "attachments: [input.attachment]", "attachments: []", "email PDF"],
+    ["dispatcher", "{ attachments: input.attachments }", "{ attachments: [] }", "email PDF"],
     ["detail", 'label="Scan guests"', 'label="Guests"', "action order"],
     ["popup", "Download RSVP invite PDF", "Email sent", "founder-hidden"],
     ["popup", "You’re on the list", "You're going!", "You’re on the list"],
