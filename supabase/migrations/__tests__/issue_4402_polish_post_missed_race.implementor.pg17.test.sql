@@ -6,29 +6,35 @@
 --
 -- MINGLA-INVARIANT: I-4402-POST-6 | issue #4402 | no post is accepted once a post_missed claim exists or the post deadline has passed
 --
--- Real two-session test (dblink), so fixtures are committed in an isolated
--- UUID namespace; the lane gives this suite its own database.
+-- Real two-session test (dblink), so fixtures are committed. Every run makes
+-- fresh ids, emails and slugs (kept in a temp table), so the suite can run
+-- again on the same database.
 \set ON_ERROR_STOP on
 CREATE EXTENSION IF NOT EXISTS dblink;
+CREATE TEMP TABLE i4402pm_ids AS
+SELECT gen_random_uuid() AS host, gen_random_uuid() AS creator, gen_random_uuid() AS brand, gen_random_uuid() AS city,
+       gen_random_uuid() AS gig, gen_random_uuid() AS interest, substr(md5(random()::text), 1, 10) AS tag;
 
 DO $setup$
 DECLARE
-  v_host uuid := '44020700-0000-4000-8000-000000000001';
-  v_creator uuid := '44020700-0000-4000-8000-000000000002';
-  v_brand uuid := '44020700-0000-4000-8000-000000000003';
-  v_city uuid := '44020700-0000-4000-8000-000000000004';
-  v_gig uuid := '44020700-0000-4000-8000-000000000005';
+  v_host uuid := (SELECT host FROM i4402pm_ids);
+  v_creator uuid := (SELECT creator FROM i4402pm_ids);
+  v_brand uuid := (SELECT brand FROM i4402pm_ids);
+  v_city uuid := (SELECT city FROM i4402pm_ids);
+  v_gig uuid := (SELECT gig FROM i4402pm_ids);
+  v_int uuid := (SELECT interest FROM i4402pm_ids);
+  v_tag text := (SELECT tag FROM i4402pm_ids);
   v_answer jsonb; v_c uuid;
 BEGIN
   UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'creator_gigs_enabled';
   INSERT INTO auth.users(id, email) VALUES
-    (v_host, 'issue-4402-pmrace-host@test.local'), (v_creator, 'issue-4402-pmrace-creator@test.local');
-  INSERT INTO public.creator_accounts(id, email, display_name) VALUES (v_host, 'issue-4402-pmrace-host@test.local', 'PM Race Host');
+    (v_host, 'i4402-pmrace-host-' || v_tag || '@test.local'), (v_creator, 'i4402-pmrace-creator-' || v_tag || '@test.local');
+  INSERT INTO public.creator_accounts(id, email, display_name) VALUES (v_host, 'i4402-pmrace-host-' || v_tag || '@test.local', 'PM Race Host');
   INSERT INTO public.brands(id, account_id, name, slug, default_currency)
-  VALUES (v_brand, v_host, 'Issue 4402 PM Race Host', 'issue-4402-pmrace-host', 'USD');
+  VALUES (v_brand, v_host, 'Issue 4402 PM Race Host', 'i4402-pmrace-host-' || v_tag, 'USD');
   INSERT INTO public.seeding_cities(id, google_place_id, name, country, country_code, center_lat, center_lng,
     bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng)
-  VALUES (v_city, 'issue-4402-pmrace-city', 'PM Race City', 'United States', 'US', 35.7, -78.6, 35.6, -78.7, 35.8, -78.5);
+  VALUES (v_city, 'i4402-pmrace-city-' || v_tag, 'PM Race City', 'United States', 'US', 35.7, -78.6, 35.6, -78.7, 35.8, -78.5);
   INSERT INTO public.creator_profiles(creator_account_id, display_name, home_city_id, usage_ads_opt_in)
   VALUES (v_creator, 'PM Race Creator', v_city, true);
   INSERT INTO public.gigs(id, brand_id, listing_kind, listing_id, title_public, brief_public, format_key,
@@ -41,15 +47,15 @@ BEGIN
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_creator, 'role', 'authenticated')::text, true);
   PERFORM public.creator_agreement_sign(DATE '1990-01-01');
   INSERT INTO public.gig_interest(id, gig_id, creator_account_id, quoted_minor)
-  VALUES ('44020700-0000-4000-8000-000000000006', v_gig, v_creator, 10000);
+  VALUES (v_int, v_gig, v_creator, 10000);
   PERFORM set_config('request.jwt.claim.sub', v_host::text, true);
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_host, 'role', 'authenticated')::text, true);
-  v_answer := public.gig_offer_prepare('44020700-0000-4000-8000-000000000006', '{"fee_minor":10000,"rights_accepted":true}'::jsonb, 'i4402-pmrace-offer');
+  v_answer := public.gig_offer_prepare(v_int, '{"fee_minor":10000,"rights_accepted":true}'::jsonb, 'i4402-pmrace-offer-' || v_tag);
   v_c := (v_answer->>'contract_id')::uuid;
   PERFORM set_config('request.jwt.claim.sub', '', true);
   PERFORM set_config('request.jwt.claims', '', true);
-  PERFORM public.gig_hold_set_provider_ref(v_c, 1, 'gig_hold', 'pi_i4402_pmrace');
-  PERFORM public.gig_hold_mark_captured(v_c, 1, 'pi_i4402_pmrace');
+  PERFORM public.gig_hold_set_provider_ref(v_c, 1, 'gig_hold', 'pi_i4402_pmrace_' || v_tag);
+  PERFORM public.gig_hold_mark_captured(v_c, 1, 'pi_i4402_pmrace_' || v_tag);
   -- Posting, deadline not yet passed: only the claim can close posting here.
   PERFORM public.issue_3872_contract_apply_state(v_c, 'posting', now() + interval '1 hour', NULL, NULL, NULL);
 END;
@@ -58,8 +64,9 @@ $setup$;
 DO $race$
 DECLARE
   v_conn text := format('dbname=%L user=%L host=127.0.0.1 port=%L', current_database(), current_user, current_setting('port'));
-  v_claims text := json_build_object('sub', '44020700-0000-4000-8000-000000000002', 'role', 'authenticated')::text;
-  v_c uuid := (SELECT id FROM public.gig_contracts WHERE gig_id = '44020700-0000-4000-8000-000000000005');
+  v_creator text := (SELECT creator::text FROM i4402pm_ids);
+  v_claims text := json_build_object('sub', v_creator, 'role', 'authenticated')::text;
+  v_c uuid := (SELECT id FROM public.gig_contracts WHERE gig_id = (SELECT gig FROM i4402pm_ids));
   v_claim jsonb; v_err text; v_rows integer;
 BEGIN
   PERFORM dblink_connect('i4402pm_a', v_conn);
@@ -72,9 +79,9 @@ BEGIN
   -- B (the creator) submits links while A is still open.
   PERFORM dblink_send_query('i4402pm_b', format($q$
     SELECT public.gig_posts_submit(%L, '[{"platform":"instagram","url":"https://instagram.com/reel/i4402pmrace"}]'::jsonb)::text
-      FROM (SELECT set_config('request.jwt.claim.sub', '44020700-0000-4000-8000-000000000002', true),
+      FROM (SELECT set_config('request.jwt.claim.sub', %L, true),
                    set_config('request.jwt.claims', %L, true)) claims
-  $q$, v_c, v_claims));
+  $q$, v_c, v_creator, v_claims));
   PERFORM pg_sleep(0.2);
   IF dblink_is_busy('i4402pm_b') <> 1 THEN
     RAISE EXCEPTION '#4402 P2-1 FAIL: the post submit did not wait for the refund claim''s row lock';
