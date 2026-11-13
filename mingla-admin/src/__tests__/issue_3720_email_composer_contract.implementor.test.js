@@ -31,8 +31,9 @@ describe("#3720 exact Admin email composer contract", () => {
   });
 
   it("locks identities, personalizes subject/body, and supports safe rich media", () => {
-    assert.match(COMPOSER, /Mingla &lt;hello@usemingla\.com&gt;/);
-    assert.match(COMPOSER, /noreply@usemingla\.com/);
+    // #4419: the labels read lib/adminEmailSender.js (hello@campaigns.usemingla.com), not a hard-coded copy.
+    assert.match(COMPOSER, /\{ADMIN_EMAIL_FROM_LABEL\}/);
+    assert.match(COMPOSER, /\{ADMIN_EMAIL_REPLY_TO\}/);
     for (const token of ["first_name", "display_name", "username", "country", "language", "joined_date"]) {
       assert.match(COMPOSER, new RegExp(token));
     }

@@ -1062,7 +1062,10 @@
     {
       "capability_key": "staff-email",
       "paths": [
+        "mingla-admin/src/components/email/EditableRichBlock.jsx",
         "mingla-admin/src/components/email/EmailComposer.jsx",
+        "mingla-admin/src/components/email/richText.js",
+        "mingla-admin/src/lib/adminEmailSender.js",
         "mingla-marketing/public/brand/email/social-snapchat.png",
         "mingla-marketing/public/brand/email/social-youtube.png",
         "mingla-marketing/public/signature.html",
