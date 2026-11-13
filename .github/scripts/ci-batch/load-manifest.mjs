@@ -271,7 +271,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 merge of origin/main c6941aac31 (#4402 payee_shared_bank_account rows kept beside the #3355 rows); re-sealed.
 // #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "a3987294dcfded72e711ae4341c9093fdfc07bfa83bf33538689339522102bf7";
+// #4423 Wave 2: register the four set-based ops/team_inbox migrations in the #1857, #1931 and #2117 lanes, and their two PostgreSQL proofs in #1931 and #2117; re-sealed.
+export const BOOTSTRAP_SHA256 = "65ef96e024f1088bff1d7870bfc7238c27bb23278b510d1a6f6c08916bffb15a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

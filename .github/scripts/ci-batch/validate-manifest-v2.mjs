@@ -482,7 +482,8 @@ export function phase3dContractDigest(manifest) {
 // #3355 rework 9: register 20280702163355 (deleting a chat closes its Ari flow runs) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "a568140597358a7dc188187ca1dd149bd590d1e6465165dea96949b57685355f";
+// #4423 Wave 2: re-sealed after registering the four Wave 2 migrations and two pg17 proofs; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3300d2bb226b702c4a1adef8dfdea57ef331cea09361071baf0001a7040ae15b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
