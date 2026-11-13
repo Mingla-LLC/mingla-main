@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4423_w2_team_inbox.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4423-w2-team-inbox-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

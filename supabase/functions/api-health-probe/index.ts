@@ -36,6 +36,8 @@ import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 import { resolveRuntimeConfigValue } from "../_shared/runtimeConfig.ts";
 // Issue #4114 Wave 7 — chat media storage early warning (daily tick).
 import { runChatMediaStorageCheck } from "./chatMediaStorage.ts";
+// Issue #4423 Wave 3 — database pool check (its own 5-minute tick).
+import { type PublicRpcTiming, readSnapshot, runDbHealthCheck } from "./dbHealth.ts";
 import {
   bodyVerdict,
   GOOGLE_PROBE_URLS,
@@ -139,6 +141,74 @@ interface CheckRow {
   mode: "test" | "live" | null;
   http_status: number | null;
   detail: Record<string, unknown>;
+}
+
+// Issue #4423 Wave 3: the cron's body says which check to run. {"mode":"db"}
+// runs only the database check; anything else (the hourly tick sends {}) runs
+// the full vendor tick as before.
+async function requestedMode(req: Request): Promise<string | null> {
+  try {
+    const body = await req.json();
+    return body && typeof body === "object" && typeof body.mode === "string" ? body.mode : null;
+  } catch {
+    return null;
+  }
+}
+
+// Issue #4423 Wave 3: one cheap public read through PostgREST with the anon
+// key, the path a public page waits on: the supported-currencies list (a
+// STABLE public RPC over a handful of rows, read by buyer checkout). A GET,
+// so the probe stays read-only.
+async function timePublicRpc(supabaseUrl: string): Promise<PublicRpcTiming> {
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const started = performance.now();
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/issue_1384_supported_currencies`, {
+      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    await res.body?.cancel();
+    return { ok: res.ok, ms: performance.now() - started, status: res.status };
+  } catch (_err) {
+    return { ok: false, ms: performance.now() - started, status: null };
+  }
+}
+
+async function handleDbHealth(nowMs: number): Promise<Response> {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const serviceClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  try {
+    const outcome = await runDbHealthCheck({
+      async snapshot() {
+        const { data, error } = await serviceClient.rpc("issue_4423_db_health_snapshot");
+        return { data: readSnapshot(data), error: error ? error.message : null };
+      },
+      timePublicRpc: () => timePublicRpc(SUPABASE_URL),
+      async record(high, alerted, snapshot) {
+        const { data, error } = await serviceClient.rpc("issue_4423_db_health_record", {
+          p_high: high, p_alerted: alerted, p_snapshot: snapshot,
+        });
+        if (error) logError("db health record failed", error, { fn: "api-health-probe" });
+        return { data: error ? null : (data ?? null), error: error ? error.message : null };
+      },
+      async send(alert) {
+        const result = await sendOpsAlertEmail({
+          subject: alert.subject,
+          paragraphs: alert.paragraphs,
+          recipients: alertRecipients(),
+          cta: { label: "Open API Health hub", url: `${adminUrl()}/#/api-health` },
+        });
+        return { succeeded: result.succeeded };
+      },
+      nowMs: () => nowMs,
+    });
+    structuredLog(outcome.status === "healthy" ? "info" : "warn", "api_health db check", { fn: "api-health-probe", outcome });
+    return jsonResponse({ ok: true, mode: "db", outcome, timestamp: new Date(nowMs).toISOString() });
+  } catch (err) {
+    logError("api_health db check failed", err, { fn: "api-health-probe" });
+    // 200 so pg_cron does not retry-storm, as the hourly tick does.
+    return jsonResponse({ ok: false, mode: "db", error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -933,6 +1003,10 @@ serve(async (req) => {
   }
 
   const nowMs = Date.now();
+  // #4423 Wave 3: the 5-minute database check runs alone.
+  if ((await requestedMode(req)) === "db") {
+    return await handleDbHealth(nowMs);
+  }
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
