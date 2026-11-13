@@ -185,7 +185,7 @@ export default function CreatorContractScreen(): React.ReactElement {
     <BrandCard workspace={w} />
 
     <ProgramCard tone="highlight">
-      <Text style={s.accentText}>{posting?.accent ?? contractCardLabel(state, due)}</Text>
+      <Text style={s.accentText}>{posting?.accent ?? contractCardLabel(state, due, undefined, undefined, zone)}</Text>
       <Text style={s.title}>{released && w.money_state === 'paid' ? 'Paid' : posting?.title ?? next.title}</Text>
       <Text style={s.copy}>{cardText}</Text>
       {hostProposedShoot && plan?.shoot_at ? <Text style={s.strong}>Suggested: {formatInZone(String(plan.shoot_at), zone)}</Text> : null}
@@ -245,7 +245,7 @@ export default function CreatorContractScreen(): React.ReactElement {
 
     <Timeline events={w.events} />
 
-    <ShootSheet visible={sheet === 'shoot'} onClose={() => setSheet(null)} window={window} initialAt={plan?.shoot_at ? String(plan.shoot_at) : null}
+    <ShootSheet visible={sheet === 'shoot'} onClose={() => setSheet(null)} window={window} initialAt={plan?.shoot_at ? String(plan.shoot_at) : null} timeZone={zone}
       busy={busy === 'shoot'} error={errors.shoot ?? null}
       onSend={(iso, note) => void act('shoot', () => creatorGigsService.planShoot(contractId, iso, note, false), () => setSheet(null))} />
 

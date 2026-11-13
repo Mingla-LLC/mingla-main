@@ -42,7 +42,7 @@ test("B4 the shoot calendar opens on the window and only allows its days (never 
 test("B4 ShootSheet uses the window range, remounts the calendar on it, and shows errors above Send", () => {
   const parts = read("src/components/creator/contract/ContractSections.tsx");
   const sheet = parts.slice(parts.indexOf("export function ShootSheet"), parts.indexOf("// ── Script"));
-  assert.match(sheet, /shootPickRange\(window, initialAt\)/);
+  assert.match(sheet, /shootPickRange\(window, initialAt(, [^)]*)?\)/);
   assert.match(sheet, /<CalendarGrid key=\{`\$\{range\.minDate\}:\$\{range\.maxDate \?\? ''\}`\} start=\{day\} onPick=\{setDay\} minDate=\{range\.minDate\} maxDate=\{range\.maxDate\}/);
   // The error is part of the footer, directly above the Send button; not in the body below it.
   assert.match(sheet, /footer=\{<View style=\{styles\.footerStack\}>\s*\{error \? <ProgramNotice tone="error" text=\{error\} \/> : null\}\s*<ProgramButton label=\{at \?/);

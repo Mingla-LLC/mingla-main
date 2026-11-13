@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import {
-  agreedVideoDueZoned, capitalizeFirst, formatMoney, dayToTypedDob, dobWheelStart, doorPassLine, formatInZone, formatMonth, formatShortDate, formatTypedDob,
+  agreedVideoDueZoned, capitalizeFirst, contractCardLabel, formatMoney, shootPickRange, zonedInstant, zoneWallClock, dayToTypedDob, dobWheelStart, doorPassLine, formatInZone, formatMonth, formatShortDate, formatTypedDob,
   groupMoneyTyping, heldBelowFloorText, isBelowMinFee, minFeeError, minFeeHint, moneyInputValue, parseMoneyInput, pickWindowWords, postDeadlineText, postDueSoonLabel,
   postingStatusCopy, signBlockReason, visitedOnBounds, visitedOnError, typedDobToDay, uploadDueReason, waitingToReachText, zoneLabel,
 } from '../programFormat.ts';
@@ -210,4 +210,17 @@ test('Hermes-shaped Intl: the upload reason never throws and still reads the zon
   } finally {
     Intl.DateTimeFormat.prototype.formatToParts = realParts;
   }
+});
+
+// #4402 walk 3 (AC-12): on a phone set to New York, the creator picked "7:00 PM" and the
+// host saw 1:00 AM Lagos; the "Next · due" day was also the phone's day.
+test('the shoot time and the due day are read in the gig zone, not the phone zone', () => {
+  assert.equal(zonedInstant('2026-11-14', '19:00', 'Africa/Lagos')?.toISOString(), '2026-11-14T18:00:00.000Z');
+  assert.equal(zonedInstant('2026-12-15', '18:00', 'America/New_York')?.toISOString(), '2026-12-15T23:00:00.000Z');
+  assert.equal(zonedInstant('2026-11-14', '19:00', null), null);
+  assert.deepEqual(zoneWallClock(new Date('2026-11-14T18:00:00Z'), 'Africa/Lagos'), { year: 2026, month: 11, day: 14, hour: 19, minute: 0 });
+  // Deadline Dec 14 00:00 UTC is Dec 14 in Lagos (Dec 13 on a New York phone).
+  assert.equal(contractCardLabel('script_locked', '2026-12-14T00:00:00Z', NOW, undefined, 'Africa/Lagos'), 'Next · due Dec 14');
+  // Late evening in New York is already tomorrow in Lagos: today moves with the zone.
+  assert.equal(shootPickRange({ start: '2026-11-01', end: '2026-12-15' }, null, new Date('2026-11-14T03:30:00Z'), 'Africa/Lagos').minDate, '2026-11-14');
 });

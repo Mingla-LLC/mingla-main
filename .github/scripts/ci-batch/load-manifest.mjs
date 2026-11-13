@@ -272,7 +272,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
 // #4402: register 20280704504402 (NGN minimum creator fee is ₦100) in the #1857, #1931 and #2117 replay lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "dee53419c84fb9dbf94bbee32f78b44dd1e4dbac355f68c4d88529f019471b7c";
+// #4402: register 20280704604402 (upload deadline follows the agreed due) and its PostgreSQL proof; re-sealed.
+export const BOOTSTRAP_SHA256 = "20ed587f032f72464a76321ceee87e3b30bce2af623f45e8d64da2da9389e7e5";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

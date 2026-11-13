@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { gigZone, type GigProposal, type GigTerms, type GigWorkspace } from '../../../services/creatorGigsService';
 import { chooseAndUploadCreatorMedia, isPickerCancel, pendingDeliveryMedia, waitForMediaReady } from '../../../services/creatorMediaService';
 import { programErrorText, toProgramError } from '../../../services/programResult';
-import { agreedVideoDue, agreedVideoDueZoned, deliverablesLabel, doorPassLine, formatDateRange, formatDateTime, formatInZone, formatMoney, formatShortDate, parseDay, platformLabel, postDeadlineText, proposalDueText, salesShareText, shootPickRange, uploadDueReason, usageLabel, videoDueText } from '../../../utils/programFormat';
+import { agreedVideoDue, agreedVideoDueZoned, deliverablesLabel, doorPassLine, formatDateRange, formatDateTime, formatInZone, formatMoney, formatShortDate, parseDay, platformLabel, postDeadlineText, proposalDueText, salesShareText, shootPickRange, uploadDueReason, usageLabel, videoDueText, zoneLabel, zonedInstant, zoneWallClock } from '../../../utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramField, ProgramNotice, ProgramPill, ProgramRow, ProgramSheet, programStyles as s } from '../../programs/ProgramUi';
 import { CalendarGrid, CheckRow, Chip, StarsInput, TimeChips } from '../../programs/ProgramPickers';
 import { playOwnVideo } from '../../programs/VideoTile';
@@ -164,15 +164,21 @@ export function ShootCard({ workspace, state, creatorName = null }: { workspace:
 
 // ── Shoot ──────────────────────────────────────────────────────────────────
 
-export function ShootSheet({ visible, onClose, window, initialAt, busy, error, onSend }: {
+export function ShootSheet({ visible, onClose, window, initialAt, busy, error, onSend, timeZone }: {
   visible: boolean; onClose: () => void; window: { start: string; end: string } | null; initialAt: string | null; busy: boolean; error: string | null;
   onSend: (iso: string, note: string) => void;
+  /** #4402 (AC-12): the gig's zone. Days and times are picked in it, never in the phone's zone. */
+  timeZone?: string | null;
 }): React.ReactElement {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the window object is rebuilt each render; its days are what matter.
-  const range = useMemo(() => shootPickRange(window, initialAt), [window?.start, window?.end, initialAt]);
+  const range = useMemo(() => shootPickRange(window, initialAt, new Date(), timeZone), [window?.start, window?.end, initialAt, timeZone]);
   const initial = parseDay(initialAt);
+  const initialWall = initial ? zoneWallClock(initial, timeZone) : null;
+  const initialTime = initialWall
+    ? `${String(initialWall.hour).padStart(2, '0')}:${String(initialWall.minute).padStart(2, '0')}`
+    : initial ? `${String(initial.getHours()).padStart(2, '0')}:${String(initial.getMinutes()).padStart(2, '0')}` : '19:00';
   const [day, setDay] = useState<string | null>(range.initialDay);
-  const [time, setTime] = useState<string | null>(initial ? `${String(initial.getHours()).padStart(2, '0')}:${String(initial.getMinutes()).padStart(2, '0')}` : '19:00');
+  const [time, setTime] = useState<string | null>(initialTime);
   const [note, setNote] = useState('');
   // Opening the sheet (or the window arriving) starts on a day that can be picked.
   useEffect(() => {
@@ -181,16 +187,20 @@ export function ShootSheet({ visible, onClose, window, initialAt, busy, error, o
   }, [visible, range.minDate, range.maxDate, range.initialDay]);
   const at = useMemo(() => {
     if (!day || !time) return null;
-    const d = parseDay(day)!;
+    const zoned = zonedInstant(day, time, timeZone);
+    if (zoned) return zoned;
+    const d = parseDay(day);
+    if (!d) return null;
     const [h, m] = time.split(':').map(Number);
     return new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m);
-  }, [day, time]);
+  }, [day, time, timeZone]);
   return <ProgramSheet visible={visible} onClose={onClose} title="Pick a time" snapPoints={['90%']} busy={busy}
     footer={<View style={styles.footerStack}>
       {error ? <ProgramNotice tone="error" text={error} /> : null}
-      <ProgramButton label={at ? `Send ${formatDateTime(at)}` : 'Pick a day and time'} busy={busy} disabled={!at} onPress={() => at && onSend(at.toISOString(), note)} />
+      <ProgramButton label={at ? `Send ${timeZone ? formatInZone(at, timeZone) : formatDateTime(at)}` : 'Pick a day and time'} busy={busy} disabled={!at} onPress={() => at && onSend(at.toISOString(), note)} />
     </View>}>
     {window ? <Text style={s.copy}>Shoot window {formatDateRange(window.start, window.end)}</Text> : null}
+    {timeZone ? <Text style={s.small}>Times are {zoneLabel(timeZone)}.</Text> : null}
     {/* Remount on a new range so the month shown is the window's first month. */}
     <CalendarGrid key={`${range.minDate}:${range.maxDate ?? ''}`} start={day} onPick={setDay} minDate={range.minDate} maxDate={range.maxDate} />
     <TimeChips value={time} onChange={setTime} options={['12:00', '15:00', '17:00', '18:00', '19:00', '20:00', '21:00']} />

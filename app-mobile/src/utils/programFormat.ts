@@ -234,6 +234,15 @@ export function formatDue(value: string | Date | null | undefined, now: Date = n
   return `Due ${formatShortDate(date, now, locale)}`;
 }
 
+/** formatDue for two calendar days already read in the same zone. */
+function formatDueDay(day: string, today: string, passed: boolean, now: Date, locale?: string): string {
+  const days = Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS);
+  if (passed && days < 0) return 'Overdue';
+  if (days <= 0) return 'Due today';
+  if (days === 1) return 'Due tomorrow';
+  return `Due ${formatShortDate(day, now, locale)}`;
+}
+
 /** Whole hours left until a deadline, never negative. */
 export function hoursLeft(value: string | Date | null | undefined, now: Date = new Date()): number | null {
   const date = parseDay(value);
@@ -460,17 +469,17 @@ export function proposalDueText(changes: Record<string, unknown>, now: Date = ne
  * never before today. The calendar opens on the picked day, else the first day
  * that can be picked (the window's first month).
  */
-export function shootPickRange(window: { start?: string | null; end?: string | null } | null | undefined, pickedAt: string | null | undefined, now: Date = new Date()): {
+export function shootPickRange(window: { start?: string | null; end?: string | null } | null | undefined, pickedAt: string | null | undefined, now: Date = new Date(), timeZone?: string | null): {
   minDate: string; maxDate: string | null; initialDay: string | null;
 } {
-  const today = toDayString(now);
+  const today = (timeZone && persistedDayInZone(now, timeZone)) || toDayString(now);
   const start = window?.start && /^\d{4}-\d{2}-\d{2}$/.test(window.start) ? window.start : null;
   const end = window?.end && /^\d{4}-\d{2}-\d{2}$/.test(window.end) ? window.end : null;
   const minDate = start && start > today ? start : today;
   const maxDate = end;
   if (maxDate && maxDate < minDate) return { minDate, maxDate, initialDay: null };
   const picked = parseDay(pickedAt);
-  const pickedDay = picked ? toDayString(picked) : null;
+  const pickedDay = picked ? ((timeZone && persistedDayInZone(picked, timeZone)) || toDayString(picked)) : null;
   const initialDay = pickedDay && pickedDay >= minDate && (!maxDate || pickedDay <= maxDate) ? pickedDay : minDate;
   return { minDate, maxDate, initialDay };
 }
@@ -534,14 +543,17 @@ function lowerFirst(text: string): string {
  * Working states: "Next · due Nov 25" (W3.1: the month stays "Nov", never "nov").
  * After release the creator has no Next; the card shows "Day-30 check · Nov 25" (W3.2).
  */
-export function contractCardLabel(state: string | null | undefined, deadlineAt: string | null | undefined, now: Date = new Date(), locale?: string): string {
+export function contractCardLabel(state: string | null | undefined, deadlineAt: string | null | undefined, now: Date = new Date(), locale?: string, timeZone?: string | null): string {
+  // #4402 (AC-12): read the deadline's day in the gig's zone, not the phone's.
+  const zoned = timeZone && deadlineAt ? persistedDayInZone(deadlineAt, timeZone) : '';
+  const dayValue = zoned || deadlineAt;
   if (RELEASED_STATES.includes(state ?? '')) {
-    const day = formatShortDate(deadlineAt, now, locale);
+    const day = formatShortDate(dayValue, now, locale);
     return day ? `Day-30 check · ${day}` : 'Day-30 check';
   }
   if (state === 'completed') return 'Done';
   if ((state ?? '').startsWith('resolved_')) return 'Dispute settled';
-  const due = formatDue(deadlineAt, now, locale);
+  const due = zoned ? formatDueDay(zoned, persistedDayInZone(now, timeZone), (parseDay(deadlineAt)?.getTime() ?? 0) < now.getTime(), now, locale) : formatDue(deadlineAt, now, locale);
   return due ? `Next · ${lowerFirst(due)}` : 'Next';
 }
 
@@ -782,20 +794,42 @@ export function uploadDueReason(due: { videoDueAt: string | null; postBy: string
 }
 
 /**
- * The calendar day ("2026-12-15") an instant falls on in a zone. Read from format(), not
- * formatToParts(): Hermes on iOS splits parts on punctuation, which gave a bad day and
- * crashed the upload step (#4402 walk).
+ * The wall clock of an instant in a zone, read from format() (Hermes on iOS splits
+ * formatToParts on punctuation, #4402 walk). Null when the zone is unknown.
  */
-function persistedDayInZone(iso: string, timeZone: string | null | undefined): string {
-  const date = parseDay(iso);
-  if (!date) return '';
-  if (!timeZone) return toDayString(date);
+export function zoneWallClock(date: Date, timeZone: string | null | undefined): { year: number; month: number; day: number; hour: number; minute: number } | null {
+  if (!timeZone) return null;
   try {
-    const text = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' }).format(date);
-    const m = /(\d{1,2})\D+(\d{1,2})\D+(\d{4})/.exec(text);
-    if (m) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
-  } catch { /* fall through */ }
-  return toDayString(date);
+    const text = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }).format(date);
+    const m = /(\d{1,2})\D+(\d{1,2})\D+(\d{4})\D+(\d{1,2})\D+(\d{2})/.exec(text);
+    if (!m) return null;
+    return { year: Number(m[3]), month: Number(m[1]), day: Number(m[2]), hour: Number(m[4]) % 24, minute: Number(m[5]) };
+  } catch { return null; }
+}
+
+/** "2026-11-14" + "19:00" read in the event's zone → the instant. Null without a zone. */
+export function zonedInstant(day: string, time: string, timeZone: string | null | undefined): Date | null {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  const tm = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!dm || !tm || !timeZone) return null;
+  const wanted = Date.UTC(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Number(tm[1]), Number(tm[2]));
+  let guess = wanted;
+  for (let i = 0; i < 2; i += 1) {
+    const wall = zoneWallClock(new Date(guess), timeZone);
+    if (!wall) return null;
+    const shown = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute);
+    guess += wanted - shown;
+  }
+  return new Date(guess);
+}
+
+/** The calendar day ("2026-12-15") an instant falls on in a zone; the device's day without one. */
+function persistedDayInZone(iso: string | Date, timeZone: string | null | undefined): string {
+  const date = iso instanceof Date ? iso : parseDay(iso);
+  if (!date) return '';
+  const wall = zoneWallClock(date, timeZone);
+  if (!wall) return toDayString(date);
+  return `${wall.year}-${String(wall.month).padStart(2, '0')}-${String(wall.day).padStart(2, '0')}`;
 }
 
 /** "2 passes under Ada Obi" for the text door pass. */
