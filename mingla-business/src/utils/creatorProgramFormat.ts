@@ -92,7 +92,7 @@ export function bookingFeeMinor(feeMinor: number): number {
  * minimum (OQ-7), so they return null.
  */
 const GIG_MIN_FEE_MINOR: Record<string, number> = {
-  NGN: 500000,
+  NGN: 10000,
   USD: 1000,
   EUR: 1000,
   GBP: 1000,
@@ -105,7 +105,7 @@ export function gigMinFeeMinor(currency: string | null | undefined): number | nu
     : null;
 }
 
-/** "The minimum creator fee is ₦5,000." — null when the fee is fine or no minimum applies. */
+/** "The minimum creator fee is ₦100." — null when the fee is fine or no minimum applies. */
 export function minFeeError(
   feeMinor: number | null | undefined,
   currency: string,

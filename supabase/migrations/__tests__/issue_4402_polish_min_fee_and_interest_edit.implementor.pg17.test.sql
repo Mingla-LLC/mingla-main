@@ -5,7 +5,7 @@
 -- an open interest can change its price (E31); host home reach count (H18).
 -- Every fixture rolls back.
 --
--- MINGLA-INVARIANT: I-4402-FEE-1 | issue #4402 | no offer, counter, gig budget or interest price below the currency minimum (NGN 500000, USD/EUR/GBP 1000 minor; none for other currencies)
+-- MINGLA-INVARIANT: I-4402-FEE-1 | issue #4402 | no offer, counter, gig budget or interest price below the currency minimum (NGN 10000 = ₦100 since 20280704504402, USD/EUR/GBP 1000 minor; none for other currencies)
 
 BEGIN;
 CREATE FUNCTION pg_temp.act(p_user uuid) RETURNS void LANGUAGE sql AS $$
@@ -51,7 +51,7 @@ DECLARE
   v_r jsonb; v_payload jsonb; v_int uuid; v_c uuid; v_day date := current_date + 5; v_prop uuid; v_cur text;
 BEGIN
   -- The minimum itself (D2) and no minimum elsewhere (OQ-7).
-  IF public.issue_4402_gig_min_fee_minor('NGN') <> 500000 OR public.issue_4402_gig_min_fee_minor('usd') <> 1000
+  IF public.issue_4402_gig_min_fee_minor('NGN') <> 10000 OR public.issue_4402_gig_min_fee_minor('usd') <> 1000
      OR public.issue_4402_gig_min_fee_minor('EUR') <> 1000 OR public.issue_4402_gig_min_fee_minor('GBP') <> 1000
      OR public.issue_4402_gig_min_fee_minor('CAD') IS NOT NULL THEN
     RAISE EXCEPTION 'T-M2 minimum table';

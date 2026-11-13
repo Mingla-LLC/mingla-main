@@ -120,16 +120,16 @@ describe("honest re-offer copy and the minimum fee (items 5, 27)", () => {
     );
   });
   it("knows the four minimums and no others", () => {
-    expect(gigMinFeeMinor("NGN")).toBe(500000);
+    expect(gigMinFeeMinor("NGN")).toBe(10000);
     expect(gigMinFeeMinor("usd")).toBe(1000);
     expect(gigMinFeeMinor("CAD")).toBeNull();
   });
   it("errors below the minimum and explains the 15% on the field", () => {
-    expect(minFeeError(499999, "NGN")).toBe("The minimum creator fee is ₦5,000.");
-    expect(minFeeError(500000, "NGN")).toBeNull();
+    expect(minFeeError(9999, "NGN")).toBe("The minimum creator fee is ₦100.");
+    expect(minFeeError(10000, "NGN")).toBeNull();
     expect(minFeeError(1, "CAD")).toBeNull();
     expect(minFeeHint("NGN", 4000000)).toBe(
-      "Minimum ₦5,000. You also pay Mingla's 15% booking fee on top, so ₦40,000 costs you ₦46,000.",
+      "Minimum ₦100. You also pay Mingla's 15% booking fee on top, so ₦40,000 costs you ₦46,000.",
     );
     expect(minFeeHint("USD", 20000)).toContain("$200 costs you $230");
     expect(minFeeHint("NGN", null, "creator")).toContain("The host also pays");
@@ -140,8 +140,8 @@ describe("honest re-offer copy and the minimum fee (items 5, 27)", () => {
     const errors = validateBrief(form, { currency: "USD", today: "2026-12-01" }, 500);
     expect(errors.pay).toBe("The minimum creator fee is $10.");
     expect(
-      briefServerErrors({ error: "fee_below_minimum", field: "pay_up_to_minor", min_minor: 500000, currency: "NGN" }).pay,
-    ).toBe("The minimum creator fee is ₦5,000.");
+      briefServerErrors({ error: "fee_below_minimum", field: "pay_up_to_minor", min_minor: 10000, currency: "NGN" }).pay,
+    ).toBe("The minimum creator fee is ₦100.");
   });
 });
 

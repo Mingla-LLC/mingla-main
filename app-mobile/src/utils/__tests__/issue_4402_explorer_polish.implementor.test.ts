@@ -64,13 +64,13 @@ test('item 7: the door pass is a text card under the creator name', () => {
 });
 
 test('item 27: the minimum fee per currency, the hint and the error (no minimum elsewhere)', () => {
-  assert.equal(isBelowMinFee(499_999, 'NGN'), true);
-  assert.equal(isBelowMinFee(500_000, 'NGN'), false);
+  assert.equal(isBelowMinFee(9_999, 'NGN'), true);
+  assert.equal(isBelowMinFee(10_000, 'NGN'), false);
   assert.equal(isBelowMinFee(999, 'USD'), true);
   assert.equal(isBelowMinFee(1, 'CAD'), false);
-  assert.equal(minFeeError('NGN'), 'The minimum creator fee is ₦5,000.');
+  assert.equal(minFeeError('NGN'), 'The minimum creator fee is ₦100.');
   assert.equal(minFeeError('CAD'), '');
-  assert.equal(minFeeHint('NGN', 4_000_000, { withBooking: true }), 'Minimum ₦5,000. The host also pays Mingla’s 15% booking fee on top, so ₦40,000 costs the host ₦46,000.');
+  assert.equal(minFeeHint('NGN', 4_000_000, { withBooking: true }), 'Minimum ₦100. The host also pays Mingla’s 15% booking fee on top, so ₦40,000 costs the host ₦46,000.');
   assert.equal(minFeeHint('USD', null), 'Minimum $10.');
 });
 

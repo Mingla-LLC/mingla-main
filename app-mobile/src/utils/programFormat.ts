@@ -786,8 +786,8 @@ export function postingStatusCopy(state: string, deadlineAt: string | null | und
 
 // ── #4402: minimum creator fee ─────────────────────────────────────────────
 
-/** Mirrors the server (issue_4402_gig_min_fee_minor): ₦5,000 / $10 / €10 / £10. Other currencies have none. */
-const MIN_FEE_MINOR: Record<string, number> = { NGN: 500_000, USD: 1_000, EUR: 1_000, GBP: 1_000 };
+/** Mirrors the server (issue_4402_gig_min_fee_minor): ₦100 / $10 / €10 / £10. Other currencies have none. */
+const MIN_FEE_MINOR: Record<string, number> = { NGN: 10_000, USD: 1_000, EUR: 1_000, GBP: 1_000 };
 export const BOOKING_FEE_PERCENT = 15;
 
 export function minFeeMinor(currency: string | null | undefined): number | null {
@@ -799,7 +799,7 @@ export function isBelowMinFee(minor: number | null | undefined, currency: string
   return min !== null && typeof minor === 'number' && minor > 0 && minor < min;
 }
 
-/** "The minimum creator fee is ₦5,000." Empty when the currency has no minimum. */
+/** "The minimum creator fee is ₦100." Empty when the currency has no minimum. */
 export function minFeeError(currency: string | null | undefined): string {
   const min = minFeeMinor(currency);
   return min === null ? '' : `The minimum creator fee is ${formatMoney(min, currency)}.`;

@@ -322,7 +322,8 @@
         "supabase/migrations/20280704004402_issue_4402_gig_posting_and_post_review.sql",
         "supabase/migrations/20280704104402_issue_4402_gig_min_fee_and_interest_edit.sql",
         "supabase/migrations/20280704204402_issue_4402_local_pick_window.sql",
-        "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql"
+        "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
+        "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql"
       ]
     },
     {
@@ -3642,7 +3643,8 @@
         "app-mobile/src/services/referralEarningsService.ts",
         "supabase/functions/payee-account-paystack-recipient/index.ts",
         "supabase/migrations/20280704304402_issue_4402_earnings_payout_floor.sql",
-        "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql"
+        "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
+        "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql"
       ]
     }
   ]
