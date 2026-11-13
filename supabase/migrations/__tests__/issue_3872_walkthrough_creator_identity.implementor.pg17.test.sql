@@ -99,11 +99,12 @@ BEGIN
 
   PERFORM pg_temp.act(v_admin);
   v_r:=public.admin_creator_decide(v_creator,'verify',NULL);
-  -- Verify hands back to the automatic checks (payout, showcase... missing).
-  IF v_r->>'verification'<>'incomplete' THEN RAISE EXCEPTION 'verify with missing checks: %',v_r; END IF;
-  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.admin_creator_queue('setting_up')) e WHERE e->>'creator_id'=v_creator::text)
-     OR (SELECT jsonb_array_length(e->'history') FROM jsonb_array_elements(public.admin_creator_queue('all')) e WHERE e->>'creator_id'=v_creator::text)<>3 THEN
-    RAISE EXCEPTION 'history / setting_up after verify';
+  -- #4402: Verify is refused until all six steps pass (payout, showcase...
+  -- missing) and writes nothing; the creator stays declined.
+  IF v_r->>'error' IS DISTINCT FROM 'checks_incomplete' OR NOT (v_r->'missing' ? 'payout') THEN RAISE EXCEPTION 'verify with missing checks: %',v_r; END IF;
+  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.admin_creator_queue('declined')) e WHERE e->>'creator_id'=v_creator::text)
+     OR (SELECT jsonb_array_length(e->'history') FROM jsonb_array_elements(public.admin_creator_queue('all')) e WHERE e->>'creator_id'=v_creator::text)<>2 THEN
+    RAISE EXCEPTION 'history / declined after a refused verify';
   END IF;
 
   IF has_function_privilege('anon','public.admin_creator_queue(text)','execute')

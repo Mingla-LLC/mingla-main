@@ -582,7 +582,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   // Hosts and Creators: the two exported pages each draw the one board page.
   // #4130 Wave 6: SupportPage and CommunityPage hand their page id to the
   // shared frame, SupportCommunityConsole, which draws every state.
-  const VIEWS = { "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"], "CommunitySupportPage.jsx": ["SupportCommunityConsole"] };
+  const VIEWS = { "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"], "CommunitySupportPage.jsx": ["SupportCommunityConsole"], "ProgramCreatorsPage.jsx": ["CreatorBoard", "CreatorRecord"] }; // #4402: the board and the full-page creator record each draw the header.
 
   function pageReturns(file) {
     const names = VIEWS[file] ?? [null];

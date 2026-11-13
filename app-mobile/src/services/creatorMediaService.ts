@@ -9,9 +9,11 @@ const uuid=()=>{const c=(globalThis as {crypto?:Crypto}).crypto;if(typeof c?.ran
 const base64Ascii=(value:string)=>{const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';let out='';for(let i=0;i<value.length;i+=3){const a=value.charCodeAt(i),b=i+1<value.length?value.charCodeAt(i+1):NaN,c=i+2<value.length?value.charCodeAt(i+2):NaN;out+=chars[a>>2]+chars[((a&3)<<4)|(b>>4)]+(Number.isNaN(b)?'=':chars[((b&15)<<2)|(c>>6)])+(Number.isNaN(c)?'=':chars[c&63]);}return out;};
 const resolveLocation=(base:string,location:string)=>{try{return new URL(location,base).toString();}catch{return location;}};
 
-export async function chooseAndUploadCreatorMedia(input:{purpose:Purpose;contractId?:string|null;localMonthId?:string|null;onProgress:(fraction:number)=>void}):Promise<{jobId:string;aspectWarning:boolean}>{
+/** #4402: onPicked runs once a video is chosen, so callers show upload progress only after the picker closes with a pick. */
+export async function chooseAndUploadCreatorMedia(input:{purpose:Purpose;contractId?:string|null;localMonthId?:string|null;onProgress:(fraction:number)=>void;onPicked?:()=>void}):Promise<{jobId:string;aspectWarning:boolean}>{
   const picked=await ImagePicker.launchImageLibraryAsync({mediaTypes:ImagePicker.MediaTypeOptions.Videos,allowsEditing:false,videoMaxDuration:90,quality:1});
   if(picked.canceled||!picked.assets[0])throw new ProgramActionError('picker_cancelled');
+  input.onPicked?.();
   const asset=picked.assets[0];const bytes=asset.fileSize??0;const durationSeconds=Math.max(0,(asset.duration??0)/1000);
   if(bytes<=0)throw new ProgramActionError('video_unreadable');
   if(bytes>157_286_400)throw new ProgramActionError('video_too_large');

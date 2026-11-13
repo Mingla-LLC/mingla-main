@@ -88,6 +88,9 @@ const CLASSIFIED: Record<string, Row> = {
   // [TEST-MOD-APPROVED #3720] This origin was previously navigation-only. The
   // in-app Guide player also fetches caption sidecars from it, so connect-src
   // must now admit the exact origin as well.
+  // [TEST-MOD-APPROVED #4402] CreatorVideoPlayer renders Bunny's signed embed page in an iframe.
+  'https://player.mediadelivery.net': { verdict: 'admitted', directives: ['frame-src'], why: 'creator showcase video embed player (Bunny), rendered as an iframe on Host web' },
+  'https://iframe.mediadelivery.net': { verdict: 'admitted', directives: ['frame-src'], why: 'creator showcase video embed player (Bunny legacy embed host), rendered as an iframe on Host web' },
   'https://usemingla.com': { verdict: 'admitted', directives: ['connect-src'], why: 'Host Guide caption sidecars under /help/captions/*.vtt; marketing links may also navigate here' },
 
   // --- governed by this policy, and REFUSED: reviewed gaps ---

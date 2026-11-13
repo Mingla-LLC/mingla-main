@@ -42,6 +42,35 @@ export function decideCreator(creatorId, decision, note) {
   });
 }
 
+// #4402 — the full creator record (handles, rates, showcase, history) in one
+// admin-gated read. {ok:false} (creator_not_found) throws like a write.
+export async function getCreatorDetail(creatorId) {
+  const data = await read("admin_creator_detail", { p_creator_id: creatorId });
+  if (!data || typeof data !== "object") throw new ProgramWriteError({ error: "creator_not_found" });
+  if (data.ok === false) throw new ProgramWriteError(data);
+  return data;
+}
+
+// #4402 — approve (recording the audience band the admin saw; required), reopen, or
+// reject (a short note the creator sees) one social account.
+export function decideCreatorHandle(handleId, decision, { note = null, band = null } = {}) {
+  return write("admin_creator_handle_decide", {
+    p_handle_id: handleId,
+    p_decision: decision,
+    p_note: note && String(note).trim() ? String(note).trim() : null,
+    p_band: band || null,
+  });
+}
+
+// #4402 — correct the audience band on an approved handle (a reason is required).
+export function changeCreatorHandleBand(handleId, band, note) {
+  return write("admin_creator_handle_band_change", {
+    p_handle_id: handleId,
+    p_band: band || null,
+    p_note: note && String(note).trim() ? String(note).trim() : null,
+  });
+}
+
 // ── Program conversations (#4187) ─────────────────────────────────────────
 
 export async function listLocalProgramPeople() {

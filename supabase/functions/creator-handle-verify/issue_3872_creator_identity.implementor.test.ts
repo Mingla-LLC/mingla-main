@@ -3,28 +3,13 @@ import { createCreatorVerifyHandler } from "../creator-verify/index.ts";
 import {
   createHandleVerifyHandler,
   decideHandleVerification,
-  followerBand,
 } from "./index.ts";
 
 const ACTOR = "00000000-3872-4000-8000-000000000001";
 const HANDLE = "00000000-3872-4000-8000-000000000002";
 const future = "2099-01-01T00:00:00.000Z";
 
-Deno.test("#3872 follower bands use deterministic launch boundaries", () => {
-  assertEquals(
-    [999, 1_000, 10_000, 50_000, 250_000, 1_000_000].map(followerBand),
-    [
-      "lt1k",
-      "1k_10k",
-      "10k_50k",
-      "50k_250k",
-      "250k_1m",
-      "gt1m",
-    ],
-  );
-});
-
-Deno.test("#3872 handle proof requires the exact code and takes provider followers when visible", () => {
+Deno.test("#3872 handle proof needs the exact code; #4402: it is evidence, never a verdict", () => {
   assertEquals(
     decideHandleVerification(
       { verify_code: "MINGLA-A1B2", verify_expires_at: future },
@@ -35,19 +20,19 @@ Deno.test("#3872 handle proof requires the exact code and takes provider followe
           '<meta content="hello MINGLA-A1B2"><script>{"followerCount":12500}</script>',
       },
     ),
-    {
-      status: "verified",
-      followerBand: "10k_50k",
-      followerSource: "provider",
-      reason: null,
-    },
+    { check: "code_seen", reason: "code_seen" },
   );
   assertEquals(
     decideHandleVerification(
       { verify_code: "MINGLA-A1B2", verify_expires_at: future },
-      { ok: true, blocked: false, body: "a different biography" },
-    ).status,
-    "pending",
+      {
+        ok: true,
+        blocked: false,
+        body:
+          '<meta property="og:description" content="120 Followers, 3 Following - a different biography">',
+      },
+    ).check,
+    "code_not_seen",
   );
 });
 
@@ -57,12 +42,7 @@ Deno.test("#3872 a blocked social fetch routes to review and never passes", () =
       { verify_code: "MINGLA-A1B2", verify_expires_at: future },
       { ok: false, blocked: true, body: "MINGLA-A1B2" },
     ),
-    {
-      status: "review",
-      followerBand: null,
-      followerSource: "self_reported",
-      reason: "provider_fetch_blocked",
-    },
+    { check: "unreadable", reason: "provider_fetch_blocked" },
   );
 });
 
@@ -71,14 +51,14 @@ Deno.test("#3872 an expired proof cannot verify even when the code is visible", 
     decideHandleVerification(
       { verify_code: "MINGLA-A1B2", verify_expires_at: "2020-01-01T00:00:00Z" },
       { ok: true, blocked: false, body: "MINGLA-A1B2" },
-    ).status,
+    ).check,
     "expired",
   );
 });
 
 Deno.test("#3872 handle endpoint owns the row and recomputes creator truth", async () => {
   let saved = "";
-  let conflict = true;
+  let recomputed = 0;
   const handler = createHandleVerifyHandler({
     actorId: () => Promise.resolve(ACTOR),
     load: () =>
@@ -95,11 +75,17 @@ Deno.test("#3872 handle endpoint owns the row and recomputes creator truth", asy
     fetchPublic: () =>
       Promise.resolve({ ok: true, blocked: false, body: "bio MINGLA-A1B2" }),
     save: (_id, decision) => {
-      saved = decision.status;
-      return Promise.resolve();
+      saved = decision.check;
+      return Promise.resolve({
+        saved: true,
+        last_check_status: decision.check,
+        verified: false,
+        follower_band: "lt1k",
+        follower_source: "self_reported",
+      });
     },
-    recompute: (_id, isConflict) => {
-      conflict = isConflict;
+    recompute: () => {
+      recomputed += 1;
       return Promise.resolve({ verification: "incomplete" });
     },
   });
@@ -114,8 +100,9 @@ Deno.test("#3872 handle endpoint owns the row and recomputes creator truth", asy
     }),
   );
   assertEquals(response.status, 200);
-  assertEquals(saved, "verified");
-  assertEquals(conflict, false);
+  assertEquals(saved, "code_seen");
+  assertEquals(recomputed, 1);
+  assertEquals((await response.json()).status, "review");
 });
 
 Deno.test("#3872 creator verification endpoint rejects anonymous callers", async () => {

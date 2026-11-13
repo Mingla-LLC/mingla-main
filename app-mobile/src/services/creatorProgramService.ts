@@ -7,13 +7,26 @@ import { cityOptions, homeCityFrom, homeCitySetParams, homeCityFromSetResult, pr
 
 export const CREATOR_NICHES = ['food', 'nightlife', 'culture', 'outdoors', 'wellness', 'music', 'family', 'travel'] as const;
 export const CREATOR_LANGUAGES = ['English', 'Yoruba', 'Igbo', 'Hausa', 'Pidgin', 'French', 'Spanish', 'Portuguese', 'Arabic'] as const;
-export const CREATOR_PLATFORMS = ['instagram', 'tiktok', 'youtube', 'x', 'snapchat'] as const;
+/** #4402: X is no longer a handle platform (a server can never read it). */
+export const CREATOR_PLATFORMS = ['instagram', 'tiktok', 'youtube', 'snapchat'] as const;
 export const POST_PLATFORMS = ['instagram', 'tiktok', 'youtube', 'x'] as const;
 export const CREATOR_FORMATS = FORMAT_INFO.map(({ key, name }) => ({ key, name }));
 
 export type CreatorVerification = 'incomplete' | 'review' | 'needs_more' | 'verified' | 'declined' | 'suspended';
 export type SetupCheck = { key: string; done: boolean; label: string };
-export type CreatorHandle = { id: string; platform: string; handle: string; verify_code: string; verified: boolean; review_required: boolean; expires_at: string; follower_band?: string | null };
+/** #4402: what the bio check last saw (evidence for Mingla's reviewer), or the reviewer's decision. */
+export type CreatorHandleCheckStatus = 'code_seen' | 'code_not_seen' | 'unreadable' | 'expired' | 'verified' | 'rejected';
+export type CreatorHandle = {
+  id: string; platform: string; handle: string; verify_code: string; verified: boolean; review_required: boolean; expires_at: string;
+  follower_band?: string | null;
+  /** #4402: where the band came from ('admin' = checked by Mingla; 'provider' only on old rows). */
+  follower_source?: 'self_reported' | 'provider' | 'admin' | null;
+  /** #4402: the server's last check outcome, so the screen survives a reload. */
+  last_check_status?: CreatorHandleCheckStatus | null;
+  last_checked_at?: string | null;
+  /** #4402: the reviewer's short note when Mingla could not confirm the account. */
+  rejected_note?: string | null;
+};
 export type CreatorPackage = {
   id: string; format_key: string; platforms: string[]; price_minor: number; currency: string; turnaround_days: number;
   includes_usage_days: 30 | 90 | 365; extra_usage_price_minor: number | null; active: boolean;
@@ -32,6 +45,8 @@ export type CreatorSetupStatus = {
   /** Legacy raw keys; never shown. */
   missing?: string[];
   handles?: CreatorHandle[];
+  /** #4402: handles from the person's Mingla Local application, for platforms not added yet. */
+  suggested_handles?: Partial<Record<string, string>> | null;
   packages?: CreatorPackage[];
   /** Round 2: the saved home city, live or not (`{id, name, is_live}`). */
   home_city?: { id: string | null; name: string; is_live: boolean } | null;
@@ -127,7 +142,8 @@ export const creatorProgramService = {
   saveHandle: (input: { platform: string; handle: string; followerBand?: string | null }) => programWrite<{ id: string; verify_code: string; expires_at: string }>('creator_handle_upsert', {
     p_platform: input.platform, p_handle: input.handle.trim().replace(/^@+/, '').toLowerCase(), p_follower_band: input.followerBand ?? null,
   }),
-  verifyHandle: (handleId: string) => programEdge<{ status: 'verified' | 'pending' | 'review' | 'expired' }>('creator-handle-verify', { handleId }),
+  /** #4402: records what the bio check saw for Mingla's reviewer; it never verifies. */
+  verifyHandle: (handleId: string) => programEdge<{ status: 'review' | 'expired' | 'rejected' | 'verified'; check: 'code_seen' | 'code_not_seen' | 'unreadable' | 'expired' | null }>('creator-handle-verify', { handleId }),
   savePackage: (input: { formatKey: string; platforms: string[]; priceMinor: number; currency: string; turnaroundDays: number; active?: boolean }) => programWrite('creator_package_upsert', {
     p_format_key: input.formatKey, p_platforms: input.platforms, p_price_minor: input.priceMinor,
     p_currency: input.currency, p_turnaround_days: input.turnaroundDays,

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4402_stripe_gig_arm.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4402-gig-stripe-arm",
+  "profile": "deno-1.46-stripe"
+}

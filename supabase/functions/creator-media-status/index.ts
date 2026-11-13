@@ -1,7 +1,8 @@
 // #3872 R3 C0 — creator media state and 1-hour playback grant.
 // The owner always sees their own media. A gig delivery (and dispute evidence)
 // is also visible to the contract's host team and to Mingla admins, so a host
-// can watch the video it is asked to approve. Nobody else gets a playback URL.
+// can watch the video it is asked to approve. A showcase or Local review is
+// visible to Mingla admins (#4402, #4182). Nobody else gets a playback URL.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   serviceClient,
@@ -94,7 +95,12 @@ export function createCreatorMediaStatusHandler(deps: MediaStatusDeps) {
       admin = contractHost ? false : await deps.isAdmin(actorId);
       allowed = contractHost || admin;
     }
-    if (!allowed && data.purpose === "local_review") {
+    // #4182 Local reviews and #4402 creator showcases: Mingla admins review
+    // the video before deciding, with playback only (no download grant).
+    if (
+      !allowed &&
+      (data.purpose === "local_review" || data.purpose === "showcase")
+    ) {
       admin = await deps.isAdmin(actorId);
       allowed = admin;
     }

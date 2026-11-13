@@ -59,6 +59,16 @@ import {
   isInstallmentPaystackReference,
   paystackAuthorizationFromVerifiedTxn,
 } from "./installments/paystackInstallmentWebhook.ts";
+// Issue #4402 — creator-hire payments (`ghold_` / `gtop_` references).
+import {
+  captureGigPaystackCharge,
+  type GigCaptureStore,
+  type GigMismatchAlertInput,
+  type GigMismatchReason,
+  notifyGigPaymentMismatch,
+  parseGigReference,
+  supabaseGigCaptureStore,
+} from "./gigPaymentCapture.ts";
 
 // Verifier is injected so tests can stub the network call deterministically.
 export type PaystackVerifier = (
@@ -94,7 +104,15 @@ export interface PaystackChargeResult {
     // confirmation or a partner-split fan-out).
     | "installment_collected"
     | "installment_refund_due"
-    | "installment_replayed";
+    | "installment_replayed"
+    // Issue #4402 — creator-hire payments. No order, no ticket email, no
+    // partner-split fan-out.
+    | "gig_captured"
+    | "gig_replayed"
+    | "gig_late_refund_due"
+    | "gig_mismatch";
+  /** #4402 — why a gig payment could not be matched (sets match_status). */
+  gigMismatchReason?: GigMismatchReason;
   orderId?: string;
   /** ORCH-1331 — verified txn paid_at (ISO), plumbed to the partner-split
    * fan-out so the partner relationship pins at sale time. Additive/optional. */
@@ -111,11 +129,107 @@ export interface PaystackChargeResult {
  *   4. amount==session.total_cents (both kobo) AND currency=="NGN".
  *   5. finalize via biz_ticket_checkout_finalize (idempotent: order_id early-return).
  */
+/** Issue #4402 — injectable seams for the gig arm (tests stub all three). */
+export interface GigPaystackWebhookDeps {
+  store: GigCaptureStore;
+  /** Ask gig-refund for the automatic payment_late refund. */
+  requestLateRefund: (contractId: string) => Promise<{ ok: boolean }>;
+  notifyMismatch: (input: GigMismatchAlertInput) => Promise<number>;
+}
+
+/**
+ * Issue #4402 — a verified Paystack charge for a creator hire.
+ *
+ * Invariant I-4402-A (declared in its #4402 test): every Paystack charge.success whose reference matches ^(ghold|gtop)_ is captured or flagged mismatched; it never reaches charge_orphan_reference
+ */
+export async function handleGigPaystackCharge(
+  supabase: SupabaseClient,
+  reference: string,
+  txn: Record<string, unknown>,
+  deps: Partial<GigPaystackWebhookDeps> = {},
+): Promise<PaystackChargeResult> {
+  const store = deps.store ?? supabaseGigCaptureStore(supabase);
+  const notify = deps.notifyMismatch ??
+    ((input: GigMismatchAlertInput) => notifyGigPaymentMismatch(input));
+  // A transient store error throws, so the inbox keeps the row retryable.
+  const outcome = await captureGigPaystackCharge(store, reference, txn);
+  if (outcome.status === "late_replayed") return { status: "gig_replayed" };
+  if (outcome.status === "captured" || outcome.status === "replayed") {
+    if (outcome.status === "captured") {
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: null,
+        action: "gig.payment_captured",
+        target_type: "gig_contract",
+        target_id: outcome.contractId,
+        after: { reference, kind: outcome.kind, source: "paystack-webhook" },
+      });
+    }
+    return {
+      status: outcome.status === "captured" ? "gig_captured" : "gig_replayed",
+    };
+  }
+  if (outcome.status === "late_capture_refund_due") {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: null,
+      action: "gig.payment_late_refund_due",
+      target_type: "gig_contract",
+      target_id: outcome.contractId,
+      after: { reference, kind: outcome.kind, source: "paystack-webhook" },
+    });
+    // The capture is recorded; a refund that fails here is retried by the
+    // 15-minute reconcile (reason refund_due), so it never fails the event.
+    if (deps.requestLateRefund) {
+      try {
+        const refund = await deps.requestLateRefund(outcome.contractId);
+        if (!refund.ok) {
+          console.error("[paystack-webhook] gig late refund not done yet", {
+            reference,
+          });
+        }
+      } catch (refundError) {
+        console.error(
+          "[paystack-webhook] gig late refund request failed",
+          refundError instanceof Error ? refundError.message : String(refundError),
+        );
+      }
+    }
+    return { status: "gig_late_refund_due" };
+  }
+  // A verified success that does not match the ledger: audible, not retried.
+  const reason: GigMismatchReason = outcome.status === "mismatch"
+    ? outcome.reason
+    : "metadata_mismatch";
+  await writeAudit(supabase, {
+    user_id: null,
+    brand_id: null,
+    action: "gig.payment_capture_mismatch",
+    target_type: "paystack_transaction",
+    target_id: reference,
+    after: {
+      reason,
+      contract_id: outcome.contractId ?? null,
+      verified_amount: Number(txn?.amount ?? NaN),
+      verified_currency: String(txn?.currency ?? ""),
+    },
+  });
+  await notify({
+    rail: "paystack",
+    source: "paystack-webhook",
+    reference,
+    reason,
+    contractId: outcome.contractId ?? null,
+  });
+  return { status: "gig_mismatch", gigMismatchReason: reason };
+}
+
 export async function handlePaystackChargeSuccess(
   supabase: SupabaseClient,
   data: Record<string, unknown>,
   verify: PaystackVerifier,
   installmentDeps: Partial<InstallmentWebhookDeps> = {},
+  gigDeps: Partial<GigPaystackWebhookDeps> = {},
 ): Promise<PaystackChargeResult> {
   const reference = typeof data?.reference === "string" ? data.reference : "";
   if (!reference) {
@@ -137,6 +251,18 @@ export async function handlePaystackChargeSuccess(
       after: { verify_status: txnStatus },
     });
     return { status: "verify_not_success" };
+  }
+
+  // Issue #4402 — a creator-hire payment. Discriminated by its deterministic
+  // prefix before every lookup, so it can never fall through to the orphan
+  // path (that is how the first live hire was charged and never recorded).
+  // A gig-prefixed reference that does not parse is flagged mismatched
+  // (reference_invalid) inside the handler, never filed as an orphan.
+  if (
+    parseGigReference(reference) || reference.startsWith("ghold_") ||
+    reference.startsWith("gtop_")
+  ) {
+    return await handleGigPaystackCharge(supabase, reference, txn, gigDeps);
   }
 
   // toward #3697 Wave 7c — Ads credit NGN top-up (`mingla_adc_` prefix).

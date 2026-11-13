@@ -224,17 +224,27 @@ export function platformLabel(platform: string | null | undefined): string {
 }
 
 /** "Instagram 10k–50k" — the band a host sees on an applicant row. */
+export const AUDIENCE_NOT_CHECKED = "Not checked yet";
+
+/**
+ * #4402: hosts see only a band a Mingla admin recorded; with none, "Not
+ * checked yet". The creator's own band is never shown to hosts.
+ */
 export function audienceLabel(
   bands:
-    | ReadonlyArray<{ platform?: string | null; band?: string | null }>
+    | ReadonlyArray<{ platform?: string | null; band?: string | null; source?: string | null }>
     | null
     | undefined,
 ): string {
-  if (!Array.isArray(bands)) return "";
-  return bands
-    .filter(
-      (item) => item && typeof item.band === "string" && item.band.length > 0,
-    )
+  const checked = (Array.isArray(bands) ? bands : []).filter(
+    (item) =>
+      item &&
+      item.source === "admin" &&
+      typeof item.band === "string" &&
+      item.band.length > 0,
+  );
+  if (checked.length === 0) return AUDIENCE_NOT_CHECKED;
+  return checked
     .map((item) =>
       `${platformLabel(item.platform)} ${followerBandLabel(item.band)}`.trim(),
     )
@@ -536,6 +546,20 @@ const ERROR_WORDS: Record<string, string> = {
     "We couldn't confirm the payment yet. If you paid, wait a minute and check again.",
   validation_error:
     "Something in this offer isn't valid. Check the fee and try again.",
+  // #4402 — creator-hire payment checks.
+  already_paid: "This offer is already paid. Opening it now.",
+  payment_pending:
+    "Your last payment for this creator is still being confirmed. You won't be charged twice. Open the offer to check it.",
+  payment_failed: "The payment didn't go through. Nothing was charged.",
+  payment_unfinished:
+    "This payment wasn't finished. You can start again; you won't be charged twice.",
+  refund_in_progress: "A refund for this offer is already on its way.",
+  payment_mismatch:
+    "We couldn't match this payment. Our team has been alerted.",
+  payment_check_failed:
+    "We couldn't check the payment right now. Try again in a minute.",
+  payment_late_refunded:
+    "This payment arrived after the offer closed, so it is being refunded in full.",
   invalid_quote: "Enter a fee above zero.",
   unauthorized: "Sign in again to continue.",
   counter_not_open: "This counter-offer is no longer open.",
@@ -715,3 +739,27 @@ export function resultsSince(period: ResultsPeriod, now: Date = new Date()): str
   since.setDate(since.getDate() - (period === "7d" ? 7 : 30));
   return since.toISOString();
 }
+
+/**
+ * #4402 — creator videos play through Bunny's signed EMBED page
+ * (player.mediadelivery.net/embed/...), not a media file. Fed to a raw video
+ * element it never loads (MediaError 4, a frozen 0:00 player). Explorer and
+ * Admin show it in a WebView / iframe; Host does the same. Anything else is an
+ * error state, never a silent player.
+ */
+export type CreatorVideoSurface = "iframe" | "webview" | "error";
+
+export function isCreatorEmbedUrl(url: string | null | undefined): boolean {
+  if (typeof url !== "string") return false;
+  return /^https:\/\/(player|iframe)\.mediadelivery\.net\/(embed|play)\/[^\s]+$/.test(url);
+}
+
+export function creatorVideoSurface(
+  url: string | null | undefined,
+  platformOS: string,
+): CreatorVideoSurface {
+  if (!isCreatorEmbedUrl(url)) return "error";
+  return platformOS === "web" ? "iframe" : "webview";
+}
+
+export const CREATOR_VIDEO_ERROR = "This video couldn't play. Close it and try again in a moment.";

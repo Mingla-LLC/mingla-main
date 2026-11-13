@@ -261,12 +261,17 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389: re-sealed after registering the four #4389 migrations (renumbered 20280629*4389, above main's 20280626*4398) and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes, skipping the brand setup migration in the #1931 template replay, and merging origin/main 811c033211.
 // #4389: re-sealed after skipping the brand setup and Ari brand operation migrations in the #2117 pre-landing replay (they re-emit #2117-gated readers before #2117 lands there).
 // #4389: re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows) and renumbering the four #4389 migrations to 20280701*4389 (above main's 20280630004402).
+// #4402: re-sealed after registering the shared payee bank account migration (20280701904402) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes, and skipping it in the #1931 template replay.
+// #4402: register the creator review migration (20280702004402) and its pg17 suite in the #1857, #1931 and #2117 replay lanes; re-sealed.
+// #4402 rework: register the tester's creator review pg17 proof beside the implementor's; re-sealed.
+// #4402: register the admin band-change migration (20280702104402, skipped in the #1931 template replay) and its pg17 proof; re-sealed.
+// #4402: re-sealed after merging origin/main 87e922d58f (the shared payee bank rows kept beside the creator review and band-change rows).
 // #3355 merge of #4404 (origin/main 7ace80fa0a; #4389 and #4402 rows kept beside the #3355 rows): renumbered the fifteen #3355 migrations to 20280702013355 … 20280702153355 (above main's 20280701304389), in order; re-sealed.
 // #3355 rework 9: register 20280702163355 (deleting a chat closes its Ari flow runs) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #3355 merge of origin/main c6941aac31 (#4402 payee_shared_bank_account rows kept beside the #3355 rows); re-sealed.
 // #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "1cf8ff6505ac0b791c67df5c8606ddf308da63c3b34858f95b7adb7e36d7f327";
+export const BOOTSTRAP_SHA256 = "eb2ed27852e63e97cb279126452df309bd583cf9e6047992e3f852b66236c84a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

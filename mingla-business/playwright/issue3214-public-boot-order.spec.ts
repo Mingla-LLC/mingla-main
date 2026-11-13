@@ -493,6 +493,9 @@ const OBSERVED_SOURCES: Array<[directive: 'script-src' | 'connect-src' | 'frame-
   ['frame-src', 'https://js.stripe.com'],
   ['frame-src', 'https://hooks.stripe.com'],
   ['frame-src', 'https://tr.snapchat.com'],
+  // [TEST-MOD-APPROVED #4402] creator showcase video (Bunny embed player iframe)
+  ['frame-src', 'https://player.mediadelivery.net'],
+  ['frame-src', 'https://iframe.mediadelivery.net'],
   ['media-src', 'https://vz-a16fce08-6c6.b-cdn.net'],
   ['media-src', 'https://cdnapi.bamboo-cloud.com'],
   ['img-src', 'https://gqnoajqerqhnvulmnyvv.supabase.co'],

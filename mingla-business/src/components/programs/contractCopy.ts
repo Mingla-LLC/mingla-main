@@ -332,3 +332,147 @@ export function contractNoticeKey(
     .join(",");
   return `${workspace.contract.state ?? ""}|v${workspace.contract.current_terms_version ?? ""}|${requests}`;
 }
+
+// ---------------------------------------------------------------------------
+// #4402 — what the host sees while a creator-hire payment is checked.
+//
+// Invariant I-4402-E: the host UI never says nothing was charged until the
+// server's payment_check is not_paid (declared in
+// src/components/creators/screens/__tests__/issue_4402_contract_pay_return.test.ts).
+// ---------------------------------------------------------------------------
+
+/** The server's answer (`payment_check`) plus the two client-only states. */
+export type HostPaymentCheckState =
+  | "checking"
+  | "paid"
+  | "pending"
+  | "unfinished"
+  | "not_paid"
+  | "mismatch"
+  | "refunded"
+  | "error";
+
+export type HostPaymentCard = {
+  title: string;
+  body: string;
+  /** retry → back to the applicant to offer again; check → ask the server again. */
+  action: "retry" | "check" | null;
+  actionLabel: string | null;
+  busy: boolean;
+};
+
+export const PAYMENT_CHECK_POLL_MS = 3000;
+export const PAYMENT_CHECK_LIMIT_MS = 30000;
+
+/** Map a confirm_reference answer to a state; anything unknown is an error, never "not paid". */
+export function paymentCheckState(answer: {
+  ok: boolean;
+  payment_check?: string;
+}): HostPaymentCheckState {
+  if (answer.ok) return "paid";
+  switch (answer.payment_check) {
+    case "paid":
+    case "pending":
+    case "unfinished":
+    case "not_paid":
+    case "mismatch":
+    case "refunded":
+      return answer.payment_check;
+    default:
+      return "error";
+  }
+}
+
+/** Keep polling a pending answer every 3 s for up to 30 s after the first check. */
+export function nextPaymentCheckDelay(
+  state: HostPaymentCheckState,
+  elapsedMs: number,
+): number | null {
+  if (state !== "pending") return null;
+  return elapsedMs + PAYMENT_CHECK_POLL_MS <= PAYMENT_CHECK_LIMIT_MS
+    ? PAYMENT_CHECK_POLL_MS
+    : null;
+}
+
+/** The payment card, or null when there is nothing to say (paid). */
+export function hostPaymentCard(
+  state: HostPaymentCheckState,
+  context: { creatorName: string; fromReturn: boolean },
+): HostPaymentCard | null {
+  switch (state) {
+    case "paid":
+      return null;
+    case "checking":
+      return {
+        title: context.fromReturn
+          ? "Confirming your payment…"
+          : "Checking your payment",
+        body: "This takes a few seconds.",
+        action: null,
+        actionLabel: null,
+        busy: true,
+      };
+    case "pending":
+      return {
+        title: "Your payment is still being confirmed",
+        body: "We'll update this page when it lands. You won't be charged twice.",
+        action: "check",
+        actionLabel: "Check again",
+        busy: false,
+      };
+    case "unfinished":
+      // #4402: Paystack keeps an unfinished checkout payable, so this is not
+      // "nothing was charged" (that is only after the server says not_paid).
+      return {
+        title: "This payment wasn't finished",
+        body: "If you closed the payment page, you can start again. You won't be charged twice.",
+        action: "retry",
+        actionLabel: "Start again",
+        busy: false,
+      };
+    case "not_paid":
+      return context.fromReturn
+        ? {
+            title: "The payment didn't go through",
+            body: "Nothing was charged.",
+            action: "retry",
+            actionLabel: "Try again",
+            busy: false,
+          }
+        : {
+            title: "Payment not completed",
+            body: `${context.creatorName} hasn't received this offer because the payment didn't go through. Nothing was charged.`,
+            action: "retry",
+            actionLabel: "Retry payment",
+            busy: false,
+          };
+    case "mismatch":
+      return {
+        title: "We couldn't match this payment",
+        body: "Our team has been alerted.",
+        action: null,
+        actionLabel: null,
+        busy: false,
+      };
+    case "refunded":
+      return {
+        title: "This payment is being refunded",
+        body: "It arrived after this offer had closed, so the full amount is on its way back to you.",
+        action: "retry",
+        actionLabel: "Make a new offer",
+        busy: false,
+      };
+    case "error":
+      return {
+        title: "We couldn't check your payment",
+        body: "Check your connection and try again.",
+        action: "check",
+        actionLabel: "Check payment",
+        busy: false,
+      };
+    default: {
+      const never: never = state;
+      return never;
+    }
+  }
+}

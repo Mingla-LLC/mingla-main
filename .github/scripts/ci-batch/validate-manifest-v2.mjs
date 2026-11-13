@@ -473,11 +473,16 @@ export function phase3dContractDigest(manifest) {
 // #4389: register the brand setup, Ari brand operation, native connect flag and BGN retirement migrations (20280701004389, 20280701104389, 20280701204389, 20280701304389; renumbered above main's 20280626*4398) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280701004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog). Re-sealed after merging origin/main 811c033211 (#3281 and #4398 rows kept beside the #4389 rows).
 // #4389: skip 20280701004389 and 20280701104389 in the #2117 pre-landing replay (brand setup re-emits resolve_event_pricing_inputs, a #2117-gated reader). Re-sealed.
 // #4389: renumber the four #4389 migrations to 20280701004389 to 20280701304389 (above main's 20280630004402) in the replay lanes; re-sealed after merging origin/main b638986fc0 (#4402 rows kept beside the #4389 rows).
+// #4402: register the shared payee bank account migration (20280701904402) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes, skipping it by exact filename in the #1931 template replay beside the skipped #3872 payee foundation; re-sealed.
+// #4402: register the creator review migration (20280702004402) in the #1857, #1931 and #2117 replay lanes.
+// #4402 rework: the tester's creator review pg17 proof joins the #1931 and #2117 lanes.
+// #4402: the admin band-change migration (20280702104402) joins the #1857, #1931 and #2117 lanes and the #1931 template-replay skip list.
+// #4402: re-sealed after merging origin/main 87e922d58f (the shared payee bank rows kept beside the creator review and band-change rows).
 // #3355 merge of #4404 (origin/main 7ace80fa0a; #4389 and #4402 rows kept beside the #3355 rows): renumbered the fifteen #3355 migrations to 20280702013355 … 20280702153355 (above main's 20280701304389), in order; re-sealed.
 // #3355 rework 9: register 20280702163355 (deleting a chat closes its Ari flow runs) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "6ad23fbd6bfb03f61d81a15cb8ee9ce3a0b0a7d0f15301858ec0da42f78c452a";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7a3eb6b3d8ee090540d140b236cc6b91dee05bba894352ae8e97393398b5ea21";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

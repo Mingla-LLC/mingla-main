@@ -45,13 +45,14 @@ test("Creators: pipeline from admin_creator_queue, decisions through admin_creat
   assert.match(service, /"admin_creator_queue", \{ p_status: status \}/);
   assert.match(service, /write\("admin_creator_decide", \{\s*p_creator_id: creatorId,\s*p_decision: decision,\s*p_note:/);
   assert.match(service, /data\.ok === false\) throw new ProgramWriteError/);
-  for (const words of ["Setting up", "Needs a person", "Verified", "Suspended"]) assert.match(read("lib/creatorPrograms.js"), new RegExp(`label: "${words}"`));
+  // #4402: five columns (Asked for more has its own) and a full-page record.
+  for (const words of ["Needs a person", "Setting up", "Waiting on creator", "Verified", "Declined or suspended"]) assert.match(read("lib/creatorPrograms.js"), new RegExp(`label: "${words}"`));
   assert.match(creators, /CREATOR_COLUMNS/);
   assert.match(creators, /aria-label="Setup checks"/);
-  assert.match(creators, /title="Flags"/);
   assert.match(creators, /title="History"/);
-  assert.match(creators, /decisionNoteError\(decision, note\)/, "a missing note blocks the decision before any call");
-  assert.match(creators, /setNoteError\(programErrorMessage\(cause\)\)/, "a failed decision shows next to the note");
+  assert.match(creators, /decisionNoteError\(kind, reason\)/, "a missing reason blocks Decline or Suspend before any call");
+  assert.match(creators, /decisionNoteError\("ask_more", askNote\)/, "a missing note blocks Ask for more before any call");
+  assert.match(creators, /setError\(programErrorMessage\(cause\)\)/, "a failed decision shows in its dialog");
 });
 
 test("Gigs: read-only list with plain state words, the gig's pay and the shared timeline in a drawer", () => {

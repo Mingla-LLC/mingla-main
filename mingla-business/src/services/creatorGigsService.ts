@@ -7,7 +7,28 @@ export type FollowerBand = {
   platform: string;
   band: string | null;
   verified: boolean;
+  /** #4402: 'admin' = recorded by a Mingla admin when approving the handle. */
+  source?: string | null;
 };
+
+/**
+ * #4402 — Hosts see only an audience band a Mingla admin recorded, never the
+ * creator's own. The server already filters; this keeps the screens honest
+ * against an older server or a stray row.
+ */
+export function adminAudienceBands(value: unknown): FollowerBand[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (x): x is FollowerBand =>
+      Boolean(x) &&
+      typeof x === "object" &&
+      typeof (x as FollowerBand).platform === "string" &&
+      (x as FollowerBand).source === "admin" &&
+      (x as FollowerBand).verified === true &&
+      typeof (x as FollowerBand).band === "string" &&
+      ((x as FollowerBand).band as string).length > 0,
+  );
+}
 
 export type GigApplicant = {
   interest_id: string;
@@ -313,11 +334,7 @@ export function normalizeApplicants(raw: unknown): GigApplicant[] {
       niches: Array.isArray(row.niches)
         ? row.niches.filter((x): x is string => typeof x === "string")
         : [],
-      follower_bands: Array.isArray(row.follower_bands)
-        ? (row.follower_bands as FollowerBand[]).filter(
-            (x) => x && typeof x.platform === "string",
-          )
-        : [],
+      follower_bands: adminAudienceBands(row.follower_bands),
       rating:
         typeof row.rating === "number"
           ? row.rating
@@ -556,10 +573,14 @@ export const creatorGigsService = {
   },
   applicants: async (gigId: string): Promise<GigApplicant[]> =>
     normalizeApplicants(await rpc("gig_applicants", { p_gig_id: gigId })),
-  prehireProfile: (creatorId: string) =>
-    rpc<PrehireProfile | null>("prehire_creator_profile", {
+  prehireProfile: async (creatorId: string) => {
+    const profile = await rpc<PrehireProfile | null>("prehire_creator_profile", {
       p_creator_account_id: creatorId,
-    }),
+    });
+    return profile
+      ? { ...profile, follower_bands: adminAudienceBands(profile.follower_bands) }
+      : profile;
+  },
   decideInterest: (interestId: string, status: "shortlisted" | "passed") =>
     writeRpc<WriteResult>("gig_interest_decide", {
       p_interest_id: interestId,

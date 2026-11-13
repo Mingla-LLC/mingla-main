@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/gig-hire/issue_4402_gig_return.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4402-gig-hire-return",
+  "profile": "deno-1.46-stripe"
+}

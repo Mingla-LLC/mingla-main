@@ -40,6 +40,7 @@ import {
   type PrehireProfile,
 } from "../../../services/creatorGigsService";
 import {
+  AUDIENCE_NOT_CHECKED,
   followerBandLabel,
   formatName,
   nicheLabel,
@@ -273,22 +274,23 @@ export default function PrehireCreatorProfile(): React.ReactElement {
             </>
           ) : null}
 
+          {/* #4402: only bands a Mingla admin recorded; otherwise "Not checked yet". */}
+          <SectionLabel>Verified audience</SectionLabel>
           {profile.follower_bands.length > 0 ? (
-            <>
-              <SectionLabel>Verified audience</SectionLabel>
-              <ListGroup>
-                {profile.follower_bands.map((band) => (
-                  <ListRow
-                    key={band.platform}
-                    compact
-                    title={platformLabel(band.platform)}
-                    right={followerBandLabel(band.band) || "Verified"}
-                    chevron={false}
-                  />
-                ))}
-              </ListGroup>
-            </>
-          ) : null}
+            <ListGroup>
+              {profile.follower_bands.map((band) => (
+                <ListRow
+                  key={band.platform}
+                  compact
+                  title={platformLabel(band.platform)}
+                  right={followerBandLabel(band.band) || "Verified"}
+                  chevron={false}
+                />
+              ))}
+            </ListGroup>
+          ) : (
+            <Muted>{AUDIENCE_NOT_CHECKED}</Muted>
+          )}
           <Text style={styles.tiny}>Handles are shared when you hire.</Text>
         </>
       ) : null}

@@ -473,6 +473,9 @@ const publicDocumentCspSources = () => [
   ["frame-src", "https://js.stripe.com", "Stripe.js controller and Payment Element frames"],
   ["frame-src", "https://hooks.stripe.com", "Stripe 3-D Secure card authentication frame"],
   ["frame-src", "https://tr.snapchat.com", "Snap pixel frame"],
+  // #4402: creator showcase videos play through Bunny's signed embed player (CreatorVideoPlayer iframe).
+  ["frame-src", "https://player.mediadelivery.net", "creator showcase video player (Bunny embed)"],
+  ["frame-src", "https://iframe.mediadelivery.net", "creator showcase video player (Bunny embed)"],
 ];
 
 const DIRECTIVE_ORDER = [

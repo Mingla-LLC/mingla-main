@@ -6,7 +6,14 @@
   "gateway_reason": "The scheduled Creator Gig state machine accepts the vault service-role bearer or optional cron secret and pauses every disputed contract.",
   "env": {
     "migration_fallback_top_level": [],
-    "optional_top_level": ["CRON_SECRET", "SENTRY_DSN", "SENTRY_ENVIRONMENT"],
+    "optional_top_level": [
+      "CRON_SECRET",
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "RESEND_API_KEY",
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "STRIPE_PUBLISHABLE_KEY"
+    ],
     "required_bundle_fields": {},
     "required_top_level": []
   }

@@ -24,6 +24,7 @@ import {
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { logError } from "../_shared/structuredLog.ts";
 import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
+import { requestGigLateRefund } from "../_shared/gigPaymentCapture.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -214,7 +215,23 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
   let processingError: string | null = null;
   let processingRetryable = false;
   try {
-    await routeStripeEvent(supabase, stripe, event);
+    const routed = await routeStripeEvent(supabase, stripe, event, {
+      // Issue #4402 — a late gig payment is refunded in full; reconcile
+      // retries it if this call does not land.
+      requestLateRefund: (contractId: string) =>
+        requestGigLateRefund(contractId, {
+          supabaseUrl: SUPABASE_URL,
+          serviceKey: SUPABASE_SERVICE_ROLE_KEY,
+        }),
+    });
+    if (routed.gigMismatchReason) {
+      await supabase.from("payment_webhook_events").update({
+        match_status: "mismatched",
+        match_reason_code: `gig_${routed.gigMismatchReason}`,
+        first_response_due_at: new Date(Date.now() + 4 * 60 * 60 * 1000)
+          .toISOString(),
+      }).eq("id", eventRowId);
+    }
   } catch (err) {
     processingError = err instanceof Error ? err.message : String(err);
     processingRetryable = isStripeWebhookRetryableError(err);

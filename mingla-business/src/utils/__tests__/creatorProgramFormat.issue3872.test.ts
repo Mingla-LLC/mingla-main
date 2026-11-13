@@ -86,8 +86,10 @@ describe("creator program audience and formats", () => {
     expect(followerBandLabel("under_1k")).toBe("Under 1k");
     expect(
       audienceLabel([
-        { platform: "instagram", band: "10k_50k" },
-        { platform: "tiktok", band: null },
+        // #4402: only an admin-recorded band reaches hosts.
+        { platform: "instagram", band: "10k_50k", source: "admin" },
+        { platform: "tiktok", band: null, source: "admin" },
+        { platform: "youtube", band: "gt1m", source: "self_reported" },
       ]),
     ).toBe("Instagram 10k–50k");
   });

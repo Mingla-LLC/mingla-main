@@ -100,6 +100,19 @@ import {
   isDoorTapStripeEvent,
   recordDoorCodeDecline,
 } from "./doorTapWebhook.ts";
+// Issue #4402 — creator-hire payments (metadata.mingla_kind gig_hold / gig_topup).
+import {
+  captureGigStripeIntent,
+  type GigCaptureOutcome,
+  type GigCaptureStore,
+  type GigMismatchAlertInput,
+  type GigMismatchReason,
+  type GigStripeIntentLike,
+  isGigPaymentKind,
+  notifyGigPaymentMismatch,
+  supabaseGigCaptureStore,
+} from "./gigPaymentCapture.ts";
+import { StripeWebhookRetryableError } from "./stripeWebhookRetry.ts";
 
 export const STRIPE_ROUTED_EVENT_TYPES = [
   "account.updated",
@@ -166,6 +179,120 @@ export interface RouteStripeEventResult {
   processed: boolean;
   eventType: string;
   brandId: string | null;
+  /** #4402 — set when a gig PaymentIntent did not match the ledger. */
+  gigMismatchReason?: GigMismatchReason;
+}
+
+/** Issue #4402 — injectable seams for the gig arm. */
+export interface GigStripeWebhookDeps {
+  store: GigCaptureStore;
+  requestLateRefund: (contractId: string) => Promise<{ ok: boolean }>;
+  notifyMismatch: (input: GigMismatchAlertInput) => Promise<number>;
+}
+
+/** A platform PaymentIntent created by gig-hire for a hold or a top-up. */
+export function isGigStripeEvent(event: StripeWebhookEvent): boolean {
+  // Gig holds are platform PaymentIntents; a connected account's event is
+  // never a gig payment, whatever its metadata says (#4402 P3).
+  if (event.account) return false;
+  const metadata = (event.data?.object as { metadata?: unknown } | undefined)
+    ?.metadata as Record<string, unknown> | null | undefined;
+  return isGigPaymentKind(metadata?.mingla_kind);
+}
+
+/**
+ * Issue #4402 — the Stripe backstop for a gig payment. The Host app records
+ * it right after the payment sheet; this catches a killed app or a lost
+ * network. Same capture core and outcomes as the Paystack arm.
+ */
+export async function handleGigStripeEvent(
+  supabase: SupabaseClient,
+  event: StripeWebhookEvent,
+  deps: Partial<GigStripeWebhookDeps> = {},
+): Promise<{ gigMismatchReason?: GigMismatchReason }> {
+  const pi = event.data.object as GigStripeIntentLike;
+  const reference = String(pi?.id ?? event.id);
+  if (event.type !== "payment_intent.succeeded") {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: null,
+      action: "gig.payment_not_completed",
+      target_type: "stripe_payment_intent",
+      target_id: reference,
+      after: { type: event.type, contract_id: pi?.metadata?.contract_id ?? null },
+    });
+    return {};
+  }
+  const store = deps.store ?? supabaseGigCaptureStore(supabase);
+  let outcome: GigCaptureOutcome;
+  try {
+    outcome = await captureGigStripeIntent(store, pi);
+  } catch (error) {
+    // Transient (database) failure: ask Stripe to redeliver.
+    throw new StripeWebhookRetryableError(
+      `gig_capture_failed:${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (outcome.status === "captured" || outcome.status === "replayed") {
+    if (outcome.status === "captured") {
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: null,
+        action: "gig.payment_captured",
+        target_type: "gig_contract",
+        target_id: outcome.contractId,
+        after: { reference, kind: outcome.kind, source: "stripe-webhook" },
+      });
+    }
+    return {};
+  }
+  if (outcome.status === "late_capture_refund_due") {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: null,
+      action: "gig.payment_late_refund_due",
+      target_type: "gig_contract",
+      target_id: outcome.contractId,
+      after: { reference, kind: outcome.kind, source: "stripe-webhook" },
+    });
+    if (deps.requestLateRefund) {
+      try {
+        await deps.requestLateRefund(outcome.contractId);
+      } catch (refundError) {
+        console.error(
+          "[stripe-webhook] gig late refund request failed",
+          refundError instanceof Error ? refundError.message : String(refundError),
+        );
+      }
+    }
+    return {};
+  }
+  if (
+    outcome.status === "pending" || outcome.status === "not_paid" ||
+    outcome.status === "late_replayed"
+  ) return {};
+  await writeAudit(supabase, {
+    user_id: null,
+    brand_id: null,
+    action: "gig.payment_capture_mismatch",
+    target_type: "stripe_payment_intent",
+    target_id: reference,
+    after: {
+      reason: outcome.reason,
+      contract_id: outcome.contractId ?? null,
+      amount: Number(pi?.amount ?? NaN),
+      currency: String(pi?.currency ?? ""),
+    },
+  });
+  await (deps.notifyMismatch ??
+    ((input: GigMismatchAlertInput) => notifyGigPaymentMismatch(input)))({
+      rail: "stripe",
+      source: "stripe-webhook",
+      reference,
+      reason: outcome.reason,
+      contractId: outcome.contractId ?? null,
+    });
+  return { gigMismatchReason: outcome.reason };
 }
 
 function objectString(
@@ -2161,8 +2288,10 @@ export async function routeStripeEvent(
   supabase: SupabaseClient,
   stripe: StripeClient,
   event: StripeWebhookEvent,
+  gigDeps: Partial<GigStripeWebhookDeps> = {},
 ): Promise<RouteStripeEventResult> {
   let brandId: string | null = null;
+  let gigMismatchReason: GigMismatchReason | undefined;
 
   switch (event.type) {
     case "account.updated":
@@ -2338,6 +2467,12 @@ export async function routeStripeEvent(
           break;
         }
       }
+      // Issue #4402 — a creator-hire hold or top-up (platform PaymentIntent).
+      if (isGigStripeEvent(event)) {
+        gigMismatchReason = (await handleGigStripeEvent(supabase, event, gigDeps))
+          .gigMismatchReason;
+        break;
+      }
       // ORCH-0869 [Tr3 Installment Payments]: discriminate by metadata.
       // Installment PIs (created by process-scheduled-installments cron) carry
       // `mingla_installment_id` in metadata. Route to installment handlers
@@ -2445,5 +2580,10 @@ export async function routeStripeEvent(
       break;
   }
 
-  return { processed: true, eventType: event.type, brandId };
+  return {
+    processed: true,
+    eventType: event.type,
+    brandId,
+    ...(gigMismatchReason ? { gigMismatchReason } : {}),
+  };
 }

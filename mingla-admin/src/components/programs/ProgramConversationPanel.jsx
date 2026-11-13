@@ -238,7 +238,9 @@ export function ProgramConversationPanel({ programKind, targetUserId, recipientN
   };
 
   const messages = Array.isArray(thread?.messages) ? thread.messages : [];
-  const name = thread?.recipient_name || recipientName || (programKind === "local" ? "this Local" : "this Creator");
+  // #4402 A3: a creator has one name in Admin, their creator display name.
+  const name = (programKind === "creator" && recipientName)
+    || thread?.recipient_name || recipientName || (programKind === "local" ? "this Local" : "this Creator");
   const canSend = Boolean(draft.trim() || selectedMedia) && !loading && !loadError;
 
   return (
