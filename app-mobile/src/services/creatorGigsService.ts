@@ -9,6 +9,8 @@ export type PublicGig = {
   rights_model?: 'legacy_timed' | 'creator_v1_perpetual'; agreement_version?: string | null; agreement_url?: string | null;
   /** When the video is due and the set shoot time (timestamptz), when the host gave them. */
   video_due_at?: string | null; shoot_at?: string | null;
+  /** #4402: the listing's IANA zone, so due times read the same on every phone. */
+  timezone?: string | null;
   saved?: boolean;
   /** The most the host pays each creator, in the gig's currency (null on gigs saved before pay existed). */
   pay_up_to_minor?: number | null; currency?: string | null;

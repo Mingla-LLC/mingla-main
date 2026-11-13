@@ -9,7 +9,7 @@ import { creatorGigsService } from '../../../src/services/creatorGigsService';
 import { ProgramActionError, programErrorText } from '../../../src/services/programResult';
 import {
   currencySymbol, deliverablesLabel, formatDateRange, formatInfo, formatMoney, formatName, interestPricePrefill, overPayUpToNote, payUpToText,
-  groupMoneyTyping, isBelowMinFee, minFeeError, minFeeHint, moneyInputValue, parseMoneyInput, salesShareText, usageLabel, videoDueText,
+  formatInZone, groupMoneyTyping, isBelowMinFee, minFeeError, minFeeHint, moneyInputValue, parseMoneyInput, salesShareText, usageLabel, videoDueText,
 } from '../../../src/utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { VideoTile, playPublicVideo } from '../../../src/components/programs/VideoTile';
@@ -156,7 +156,7 @@ export default function CreatorGigScreen(): React.ReactElement {
 
     <ProgramCard>
       <ProgramRow title="Shoot" value={formatDateRange(g.shoot_window.start, g.shoot_window.end)} chevron={false} />
-      <ProgramRow title="Video due" value={videoDueText(g.video_due_at, g.post_by)} chevron={false} />
+      <ProgramRow title="Video due" value={g.timezone && g.video_due_at ? formatInZone(g.video_due_at, g.timezone) : videoDueText(g.video_due_at, g.post_by)} chevron={false} />
       <ProgramRow title="Deliverables" value={deliverablesLabel(g.deliverables)} chevron={false} />
       <ProgramRow title="Marketing rights" value={g.rights_model === 'creator_v1_perpetual' ? 'Perpetual after full fee release' : usageLabel(g.usage_days)} chevron={false} />
       <ProgramRow title="Where" value={g.city_name} chevron={false} />
