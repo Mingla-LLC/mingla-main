@@ -194,3 +194,20 @@ test('Hermes-shaped Intl: zoned time never prints undefined; known currencies ke
   }
   assert.equal(formatMoney(10000, 'NGN'), '₦100');
 });
+
+// #4402 walk (2026-11-13, iPhone sim): the upload step crashed ("getFullYear of null") because
+// the zone day was read from Hermes' formatToParts. With parts that carry no types at all, the
+// reason must still render and still count the two days.
+test('Hermes-shaped Intl: the upload reason never throws and still reads the zone day', () => {
+  const realParts = Intl.DateTimeFormat.prototype.formatToParts;
+  Intl.DateTimeFormat.prototype.formatToParts = function (date) {
+    return [{ type: 'literal', value: this.format(date) }];
+  };
+  try {
+    const text = uploadDueReason({ videoDueAt: '2026-12-13T22:59:00Z', postBy: '2026-12-15' }, 'Africa/Lagos', NOW);
+    assert.equal(text, 'Upload by Sun Dec 13 — two days before your post-by date of Tue Dec 15, so the host has time to review.');
+    assert.equal(formatInZone('2026-12-15T17:00:00Z', 'Africa/Lagos', NOW), 'Tue Dec 15, 6:00 PM Lagos time');
+  } finally {
+    Intl.DateTimeFormat.prototype.formatToParts = realParts;
+  }
+});

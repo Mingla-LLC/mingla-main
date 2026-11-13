@@ -675,7 +675,15 @@ export function zoneLabel(timeZone: string | null | undefined): string {
 function zoneParts(date: Date, timeZone: string, locale: string): Record<string, string> | null {
   try {
     const parts = new Intl.DateTimeFormat(locale, { timeZone, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(date);
-    return Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    const out: Record<string, string> = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    // #4402 walk: Hermes on iOS splits formatToParts on punctuation, so fields can be missing
+    // or mistyped. A one-field format() is read whole by every engine; fill the date fields from it.
+    const one = (options: Intl.DateTimeFormatOptions): string => new Intl.DateTimeFormat(locale, { timeZone, ...options }).format(date);
+    if (!/^[A-Za-z]{2,}\.?$/.test(out.weekday ?? '')) out.weekday = one({ weekday: 'short' });
+    if (!/^[A-Za-z]{3,}\.?$/.test(out.month ?? '')) out.month = one({ month: 'short' });
+    if (!/^\d{1,2}$/.test(out.day ?? '')) out.day = one({ day: 'numeric' }).replace(/\D/g, '');
+    if (!/^\d{4}$/.test(out.year ?? '')) out.year = one({ year: 'numeric' }).replace(/\D/g, '');
+    return out;
   } catch { return null; }
 }
 
@@ -761,19 +769,33 @@ export function uploadDueReason(due: { videoDueAt: string | null; postBy: string
   if (!due.postBy) return null;
   const postBy = formatDayWithWeekday(due.postBy, null, now);
   const uploadLabel = due.videoDueAt && due.videoDueAt.length > 10 ? formatDayWithWeekday(due.videoDueAt, timeZone, now) : null;
-  if (!uploadLabel) return `Upload your video before your post-by date of ${postBy}, so the host has time to review.`;
-  const byDays = Math.round((startOfDay(parseDay(due.postBy)!) - startOfDay(parseDay(persistedDayInZone(due.videoDueAt!, timeZone))!)) / DAY_MS);
+  const plain = `Upload your video before your post-by date of ${postBy}, so the host has time to review.`;
+  if (!uploadLabel) return plain;
+  // #4402 walk: never assert these parse — a bad date here crashed the whole upload step.
+  const postByDate = parseDay(due.postBy);
+  const uploadDay = parseDay(persistedDayInZone(due.videoDueAt!, timeZone));
+  if (!postByDate || !uploadDay) return `Upload by ${uploadLabel}, before your post-by date of ${postBy}, so the host has time to review.`;
+  const byDays = Math.round((startOfDay(postByDate) - startOfDay(uploadDay)) / DAY_MS);
   return byDays === 2
     ? `Upload by ${uploadLabel} — two days before your post-by date of ${postBy}, so the host has time to review.`
     : `Upload by ${uploadLabel}, before your post-by date of ${postBy}, so the host has time to review.`;
 }
 
+/**
+ * The calendar day ("2026-12-15") an instant falls on in a zone. Read from format(), not
+ * formatToParts(): Hermes on iOS splits parts on punctuation, which gave a bad day and
+ * crashed the upload step (#4402 walk).
+ */
 function persistedDayInZone(iso: string, timeZone: string | null | undefined): string {
-  const date = parseDay(iso)!;
-  const parts = timeZone ? zoneParts(date, timeZone, 'en-CA') : null;
-  if (!parts) return toDayString(date);
-  const month = String(new Date(`${parts.month} 1, 2000`).getMonth() + 1).padStart(2, '0');
-  return `${parts.year}-${month}-${parts.day.padStart(2, '0')}`;
+  const date = parseDay(iso);
+  if (!date) return '';
+  if (!timeZone) return toDayString(date);
+  try {
+    const text = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' }).format(date);
+    const m = /(\d{1,2})\D+(\d{1,2})\D+(\d{4})/.exec(text);
+    if (m) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  } catch { /* fall through */ }
+  return toDayString(date);
 }
 
 /** "2 passes under Ada Obi" for the text door pass. */
