@@ -9,7 +9,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, Mail, Pencil, RotateCcw, Sear
 import { Badge } from "../../ui/Badge";
 import { Button } from "../../ui/Button";
 import { listCampaigns } from "../../../services/adminSendEmailService";
-import { communicationsErrorMessage } from "../../../lib/communicationsErrors";
+import { emailErrorWords } from "../../../lib/emailFailureWords";
 import {
   campaignAudienceLabel,
   listCount,
@@ -33,6 +33,16 @@ function Thumb({ url }) {
     <span className="flex h-12 w-16 shrink-0 items-center justify-center rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] text-[var(--color-text-tertiary)] max-[720px]:h-10 max-[720px]:w-12" aria-hidden="true">
       <Mail className="h-4 w-4" />
     </span>
+  );
+}
+
+function TechnicalDetail({ text }) {
+  if (!text) return null;
+  return (
+    <details className="w-full max-w-[44ch] text-left">
+      <summary className="cursor-pointer text-xs text-[var(--color-text-tertiary)]">Technical detail for engineering</summary>
+      <div className="mt-2 break-words rounded-lg bg-[var(--gray-50)] px-2.5 py-2 font-mono text-[11px] text-[var(--color-text-tertiary)]">{text}</div>
+    </details>
   );
 }
 
@@ -77,9 +87,11 @@ export function EmailsListBody({
   if (status === "loading") {
     body = <SkeletonRows />;
   } else if (status === "error") {
+    const said = emailErrorWords(error);
     body = (
-      <StateBox icon={AlertTriangle} tone="error" title="Couldn't load your emails" text={`${communicationsErrorMessage(error, "The connection dropped.")} Nothing was changed. Try again, and if it keeps happening, tell engineering.`}>
+      <StateBox icon={AlertTriangle} tone="error" title="Couldn't load your emails" text={said.words}>
         <Button icon={RotateCcw} onClick={onRetry}>Try again</Button>
+        <TechnicalDetail text={said.technical} />
       </StateBox>
     );
   } else if (!rows.length) {

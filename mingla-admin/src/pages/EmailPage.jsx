@@ -67,6 +67,7 @@ export function EmailPage() {
     const hash = window.location.hash;
     const detailId = emailDetailIdFromHash(hash);
     return {
+      hash,
       view: detailId ? "emails" : emailViewFromHash(hash, views),
       detailId,
       filter: emailListFilterFromHash(hash),
@@ -173,6 +174,10 @@ export function EmailPage() {
       )}
       {activeSubTab === "emails" && !address.detailId && (
         <EmailsListView
+          // #4419 (tester P3-1): a new address (#/email?view=scheduled from a
+          // link on this page) re-opens the list with its filter. Chip clicks
+          // rewrite the address without a hashchange, so they never remount.
+          key={address.hash}
           isAdmin={isAdmin}
           initialFilter={address.filter}
           onOpen={(id) => { window.location.hash = emailDetailHash(id); }}

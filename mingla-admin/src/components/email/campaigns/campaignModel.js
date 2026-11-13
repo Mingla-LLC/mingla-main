@@ -8,7 +8,7 @@
 // Pure module: no React, no Supabase.
 import { audienceFilterWords } from "../../../lib/emailAudience.js";
 import { formatInZone, isValidTimeZone } from "../../../lib/scheduleTime.js";
-import { emailFailureWords, partialCountWords } from "../../../lib/emailFailureWords.js";
+import { SNAPSHOT_FAILED_PARTWAY, emailFailureWords, partialCountWords } from "../../../lib/emailFailureWords.js";
 
 export const LIST_FILTERS = Object.freeze([
   Object.freeze({ id: "all", label: "All" }),
@@ -72,15 +72,16 @@ export function relativeWords(iso, now = Date.now()) {
   const abs = Math.abs(diff);
   const minute = 60_000;
   const hour = 60 * minute;
-  const day = 24 * hour;
-  let words;
   if (abs < minute) return "just now";
-  if (abs < hour) words = `${Math.floor(abs / minute)} min`;
-  else if (abs < day) {
-    const h = Math.floor(abs / hour);
-    words = `${h} hour${h === 1 ? "" : "s"}`;
-  } else {
-    const d = Math.floor(abs / day);
+  // #4419 (tester P3-2): rounded to the nearest unit, so 47 h 59 min is
+  // "in 2 days", never "in 1 day".
+  let words;
+  const minutes = Math.round(abs / minute);
+  const hours = Math.round(abs / hour);
+  if (minutes < 60) words = `${minutes} min`;
+  else if (hours < 24) words = `${hours} hour${hours === 1 ? "" : "s"}`;
+  else {
+    const d = Math.round(hours / 24);
     words = `${d} day${d === 1 ? "" : "s"}`;
   }
   return diff > 0 ? `in ${words}` : `${words} ago`;
@@ -196,7 +197,8 @@ export function viewLabel(kind) {
 /** The sentence for this email's failure, with the partial count when it is partial. */
 export function failureSentence(detail) {
   const code = detail?.failure?.summary_code || "other";
-  const sentence = emailFailureWords(code);
+  const someGotIt = Number(detail?.counts?.accepted || 0) > 0;
+  const sentence = code === "email_snapshot_failed" && someGotIt ? SNAPSHOT_FAILED_PARTWAY : emailFailureWords(code);
   if (detail?.campaign?.state === "partial") {
     const counts = detail?.counts || {};
     const missed = Math.max(Number(counts.to_send || 0) - Number(counts.accepted || 0), Number(counts.failed || 0));

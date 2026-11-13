@@ -19,6 +19,7 @@
 //   E-7  sending refresh stops when it leaves Sending and when the page closes
 //   E-8  export is counts and reasons only; Duplicate keeps words and audience
 //   E-9  dialogs close by clicking outside, Escape, then × (Modal)
+//   R-1..R-5  tester rework (P2-1 wording, P3-1..P3-4)
 //
 // FAILS-ON-REVERT: putting the old Scheduled / Sent views back in
 // lib/emailViews.js reds E-1; dropping the rebuilt branch from bannersFor reds
@@ -229,7 +230,7 @@ describe("E-3 the list in every state", () => {
     const html = h.list({ status: "ready", rows: ROWS, counts: COUNTS, total: 3, isAdmin: true });
     assert.equal((html.match(/data-email-row="/g) || []).length, 3);
     assert.match(html, /<button type="button" data-email-row="44190000-0000-4000-8000-0000000000e1"/);
-    assert.match(html, /Goes out Sun 15 Nov · 09:00 \(Africa\/Lagos\) · in 1 day/);
+    assert.match(html, /Goes out Sun 15 Nov · 09:00 \(Africa\/Lagos\) · in 2 days/);
     assert.match(html, /Sent 5 days ago · before exact copies/);
     assert.match(html, />Starting</);
     assert.match(html, /Starting now/);
@@ -444,5 +445,63 @@ describe("E-9 dialogs close by clicking outside, Escape, then ×", () => {
     const actions = read("components/email/campaigns/EmailActions.jsx");
     // A dialog that is busy refuses to close mid-request.
     assert.equal((actions.match(/onClose=\{\(\) => \(busy \? null : onClose\(\)\)\}/g) || []).length, 2);
+  });
+});
+
+describe("R tester rework", () => {
+  it("R-1 (P2-1) an unreadable copy after some were sent never says we didn't send it", () => {
+    const d = fixture("partial", { campaign: { started_at: "2026-11-01T08:00:02Z", completed_at: "2026-11-01T08:04:00Z", can_change: false }, counts: { accepted: 640, failed: 0 }, view: { kind: "exact" },
+      failure: { summary_code: "email_snapshot_failed", raw: "email_snapshot_failed:email_snapshot_document_invalid", by_reason: [] } });
+    const html = decode(h.detail({ status: "ready", detail: d, isAdmin: true }));
+    assert.ok(!html.includes("so we didn't send it"), "no 'we didn't send it' when 640 got it");
+    assert.ok(html.includes("We couldn't read the saved copy of this email partway through, so we stopped sending."));
+    assert.ok(html.includes("Partially sent: 640 of 6,850 got it"));
+    // Nobody got it: the D7 words stay.
+    const none = fixture("failed", { counts: { accepted: 0 }, view: { kind: "preview" }, failure: { summary_code: "email_snapshot_failed", raw: "x", by_reason: [] } });
+    assert.ok(decode(h.detail({ status: "ready", detail: none, isAdmin: true })).includes("so we didn't send it"));
+  });
+  it("R-2 (P3-1) a new address on the Email page re-opens the list with its filter", () => {
+    const page = read("pages/EmailPage.jsx");
+    assert.match(page, /return \{\s*hash,\s*view: detailId/);
+    assert.match(page, /<EmailsListView\s+(?:\/\/[^\n]*\n\s*)*key=\{address\.hash\}/);
+    assert.match(page, /initialFilter=\{address\.filter\}/);
+    assert.match(page, /window\.addEventListener\("hashchange", sync\)/);
+  });
+  it("R-3 (P3-2) relative times round to the nearest unit", () => {
+    const now = Date.parse("2026-11-13T12:00:00Z");
+    const at = (ms) => new Date(now + ms).toISOString();
+    const H = 3_600_000;
+    assert.equal(h.model.relativeWords(at(47 * H + 59 * 60_000), now), "in 2 days");
+    assert.equal(h.model.relativeWords(at(36 * H), now), "in 2 days");
+    assert.equal(h.model.relativeWords(at(30 * H), now), "in 1 day");
+    assert.equal(h.model.relativeWords(at(23 * H + 40 * 60_000), now), "in 1 day");
+    assert.equal(h.model.relativeWords(at(90 * 60_000), now), "in 2 hours");
+    assert.equal(h.model.relativeWords(at(59 * 60_000 + 40_000), now), "in 1 hour");
+    assert.equal(h.model.relativeWords(at(-5 * 24 * H), now), "5 days ago");
+    assert.equal(h.model.relativeWords(at(20_000), now), "just now");
+  });
+  it("R-4 (P3-3) error screens speak plainly; the raw code only under the fold", () => {
+    const server = { message: "campaign_list_failed:boom", status: 500 };
+    const html = decode(h.list({ status: "error", isAdmin: true, error: server }));
+    assert.ok(html.includes("Something went wrong on our side. Nothing was changed."));
+    assert.ok(!/connection/i.test(html), "a server error never blames the connection");
+    const fold = html.indexOf("Technical detail for engineering");
+    assert.ok(fold > 0 && html.indexOf("campaign_list_failed") > fold, "the code only inside the fold");
+    const network = decode(h.list({ status: "error", isAdmin: true, error: { name: "TypeError", message: "Failed to fetch" } }));
+    assert.ok(network.includes("We couldn't reach the server. Check your connection and try again."));
+    const detail = decode(h.detail({ status: "error", error: { message: "campaign_read_failed:timeout", status: 500 } }));
+    assert.ok(detail.includes("Something went wrong on our side."));
+    assert.ok(detail.indexOf("campaign_read_failed") > detail.indexOf("Technical detail for engineering"));
+    assert.ok(!/connection dropped/i.test(detail));
+    for (const page of ["components/email/campaigns/EmailDetailPage.jsx", "components/email/campaigns/EmailsListView.jsx"]) {
+      assert.doesNotMatch(read(page), /communicationsErrorMessage|The connection dropped/, page);
+    }
+  });
+  it("R-5 (P3-4) the heading shows the subject as Maya saw it", () => {
+    const d = fixture("sent", { campaign: { subject: "Lagos this weekend, {first_name}" }, view: { kind: "exact", subject: "Lagos this weekend, Maya" } });
+    const html = decode(h.detail({ status: "ready", detail: d, isAdmin: true }));
+    const heading = html.match(/<h2[^>]*>([^<]*)<\/h2>/)[1];
+    assert.equal(heading, "Lagos this weekend, Maya");
+    assert.ok(!html.includes("{first_name}"));
   });
 });

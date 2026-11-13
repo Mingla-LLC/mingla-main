@@ -10,7 +10,7 @@ import { Badge } from "../../ui/Badge";
 import { Button } from "../../ui/Button";
 import { useToast } from "../../../context/ToastContext";
 import { exportCsv } from "../../../lib/exportCsv";
-import { communicationsErrorMessage } from "../../../lib/communicationsErrors";
+import { emailErrorWords } from "../../../lib/emailFailureWords";
 import { checkLaterTime, utcToZonedInputs } from "../../../lib/scheduleTime";
 import { callEdgeFunction, getCampaignDetail, sendCampaignTest } from "../../../services/adminSendEmailService";
 import { EmailComposer } from "../EmailComposer";
@@ -44,6 +44,16 @@ function AudienceCard({ detail }) {
   );
 }
 
+function TechnicalDetail({ text }) {
+  if (!text) return null;
+  return (
+    <details className="w-full max-w-[44ch] text-left">
+      <summary className="cursor-pointer text-xs text-[var(--color-text-tertiary)]">Technical detail for engineering</summary>
+      <div className="mt-2 break-words rounded-lg bg-[var(--gray-50)] px-2.5 py-2 font-mono text-[11px] text-[var(--color-text-tertiary)]">{text}</div>
+    </details>
+  );
+}
+
 function BackButton({ onBack }) {
   return <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={onBack}>All emails</Button>;
 }
@@ -65,6 +75,7 @@ export function EmailDetailBody({ status, detail, error, isAdmin = false, busy =
   }
   if (status === "error" || status === "not_found") {
     const notFound = status === "not_found";
+    const said = emailErrorWords(error);
     return (
       <div className="flex flex-col gap-4" data-detail-state={status}>
         <div><BackButton onBack={onBack} /></div>
@@ -72,8 +83,9 @@ export function EmailDetailBody({ status, detail, error, isAdmin = false, busy =
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-error-50)] text-[var(--color-error-700)]"><AlertTriangle className="h-5 w-5" aria-hidden="true" /></span>
           <h3 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Couldn&apos;t open this email</h3>
           <p className="max-w-[44ch] text-sm text-[var(--color-text-secondary)]">
-            {notFound ? "This email doesn't exist or was removed." : `${communicationsErrorMessage(error, "The connection dropped.")} Nothing was changed.`}
+            {notFound ? "This email doesn't exist or was removed." : said.words}
           </p>
+          {notFound ? null : <TechnicalDetail text={said.technical} />}
           <div className="flex flex-wrap justify-center gap-2">
             {notFound ? null : <Button icon={RotateCcw} onClick={onRetry}>Try again</Button>}
             <Button variant="secondary" onClick={onBack}>Back to all emails</Button>
@@ -94,7 +106,8 @@ export function EmailDetailBody({ status, detail, error, isAdmin = false, busy =
             {detail.view?.kind === "rebuilt" ? <Badge variant="outline">No exact copy</Badge> : null}
             <span>{campaignAudienceLabel(c)}</span>
           </div>
-          <h2 className="break-words text-xl font-bold tracking-[-0.01em] text-[var(--color-text-primary)]">{c.subject}</h2>
+          {/* #4419 (tester P3-4): the subject as the sample (Maya) saw it, like the frame. */}
+          <h2 className="break-words text-xl font-bold tracking-[-0.01em] text-[var(--color-text-primary)]">{detail.view?.subject || c.subject}</h2>
         </div>
         <EmailActionButtons detail={detail} isAdmin={isAdmin} busy={busy} onAction={onAction} />
       </div>
@@ -129,7 +142,10 @@ export function EmailDetailPage({ campaignId, isAdmin, myEmail, providerConfigur
 
   const failed = useCallback((title, error) => {
     if (error?.name === "SessionExpiredError") { onSessionExpired?.(); return; }
-    addToast({ variant: "error", title, description: communicationsErrorMessage(error) });
+    // #4419 (tester P3-3): plain words; the raw code stays in the console for engineering.
+    const said = emailErrorWords(error);
+    if (said.technical) console.warn(`[email] ${title}: ${said.technical}`);
+    addToast({ variant: "error", title, description: said.words });
   }, [addToast, onSessionExpired]);
 
   const load = useCallback(async ({ quiet = false } = {}) => {
@@ -214,8 +230,7 @@ export function EmailDetailPage({ campaignId, isAdmin, myEmail, providerConfigur
       addToast({ variant: "success", title: "Test sent", description: `Check ${result?.to || "your inbox"} in a minute.` });
       setDialog(null);
     } catch (error) {
-      const limit = /test_send_limit/.test(String(error?.message || ""));
-      failed(limit ? "That's five tests this hour" : "Couldn't send the test", limit ? { message: "Try again in an hour." } : error);
+      failed("Couldn't send the test", error);
       setDialog(null);
     } finally { setBusy(null); }
   }
