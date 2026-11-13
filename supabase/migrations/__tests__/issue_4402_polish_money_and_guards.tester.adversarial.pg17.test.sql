@@ -85,7 +85,9 @@ BEGIN
     RAISE EXCEPTION 'B lower-case/padded USD bypassed the minimum';
   END IF;
   IF public.issue_4402_gig_fee_below_minimum(1000, 'usd', 'fee_minor') IS NOT NULL THEN RAISE EXCEPTION 'B USD at the minimum refused'; END IF;
-  IF public.issue_4402_gig_fee_below_minimum(499999, 'NGN', 'fee_minor') IS NULL THEN RAISE EXCEPTION 'B NGN 4,999.99 accepted'; END IF;
+  -- NGN minimum is ₦100 since 20280704504402 (Seth, 2026-11-13).
+  IF public.issue_4402_gig_fee_below_minimum(9999, 'NGN', 'fee_minor') IS NULL THEN RAISE EXCEPTION 'B NGN 99.99 accepted'; END IF;
+  IF public.issue_4402_gig_fee_below_minimum(10000, 'NGN', 'fee_minor') IS NOT NULL THEN RAISE EXCEPTION 'B NGN at the minimum refused'; END IF;
   IF public.issue_4402_gig_fee_below_minimum(999, 'eur', 'x') IS NULL OR public.issue_4402_gig_fee_below_minimum(999, 'GBP', 'x') IS NULL THEN
     RAISE EXCEPTION 'B EUR/GBP below minimum accepted';
   END IF;

@@ -104,7 +104,7 @@ CREATE OR REPLACE FUNCTION public.issue_4402_zone_label(p_tz text) RETURNS text
 LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $fn$
   -- "Africa/Lagos" -> "Lagos time"; UTC stays "UTC" (design delta a: phones
   -- print "GMT+1" for an abbreviation, so the city name is clearer).
-  SELECT CASE WHEN p_tz IS NULL OR p_tz IN ('UTC','Etc/UTC','GMT','Etc/GMT','Z') THEN 'UTC'
+  SELECT CASE WHEN p_tz IS NULL OR p_tz ~* '^(etc/)?(utc|gmt|z)$' THEN 'UTC'
     ELSE replace(regexp_replace(p_tz,'^.*/',''),'_',' ')||' time' END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4402_zone_label(text) FROM PUBLIC, anon, authenticated;
