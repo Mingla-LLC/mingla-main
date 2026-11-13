@@ -484,7 +484,8 @@ export function phase3dContractDigest(manifest) {
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
 // #4423 Wave 2: re-sealed after registering the four Wave 2 migrations and two pg17 proofs; MANIFEST.json phase3eContractSha256 matches.
 // #4423 Wave 3: re-sealed after registering the two Wave 3 migrations and their pg17 proof; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7146d35309b2dadf1e94c1bec1f991f91896cb0894080f10831ca95a53f9f539";
+// #4423 Wave 4a: re-sealed after registering the Wave 4a migration and its pg17 proof; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9465f6558f0a62ed81d2e69a5b089cd3c3a3e40460ef0d3344cff1967780f59e";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
