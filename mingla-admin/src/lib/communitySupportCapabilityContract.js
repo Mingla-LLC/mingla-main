@@ -163,11 +163,13 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     panel: "pages/EmailPage.jsx",
     // The panel reaches admin-send-email through its own fetch helper and the
     // shared drafts through components/email (lib/emailDrafts.js); both let
-    // any active teammate in (#4255 D5). #4383: the Scheduled section reads
-    // every scheduled email through one teammate-gated RPC, and changes a
-    // time or the words through admin-send-email (reschedule_campaign,
-    // update_scheduled_campaign).
-    rpcs: Object.freeze(["issue_4383_email_scheduled_list"]),
+    // any active teammate in (#4255 D5). #4419: the Emails tab (which
+    // replaced #4383's Scheduled list and its issue_4383_email_scheduled_list
+    // read) reaches everything through admin-send-email: list_campaigns,
+    // get_campaign_detail, send_test, reschedule_campaign,
+    // update_scheduled_campaign, cancel_campaign. The function checks the
+    // team (and admin for sent emails) before its service-role reads.
+    rpcs: Object.freeze([]),
     functions: Object.freeze([]),
   }),
   blog: Object.freeze({

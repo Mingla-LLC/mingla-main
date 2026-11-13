@@ -167,4 +167,6 @@ export interface RenderResult {
   html: string;
   text: string;
   from: SenderIdentity;
+  /** #4419 — the hidden inbox preview line the shell rendered (may be empty). */
+  preheader: string;
 }

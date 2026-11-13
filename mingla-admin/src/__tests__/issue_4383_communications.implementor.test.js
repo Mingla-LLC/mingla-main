@@ -269,17 +269,20 @@ describe("C-5 unknown and hostile addresses", () => {
 describe("C-6 the Email screen's sections", () => {
   const admin = { status: "active", role: "admin", areas: [AREA.ADMIN_CONSOLE] };
   const teammate = { status: "active", role: "growth", areas: [AREA.EMAIL_DRAFTS] };
-  it("admins see Sent and Unsubscribes; teammates do not", () => {
-    assert.deepEqual(emailViewsFor(admin).map((v) => v.id), ["write", "scheduled", "sent", "templates", "unsubscribes"]);
-    // #4383 (SC-10): every teammate who writes email sees Scheduled.
-    assert.deepEqual(emailViewsFor(teammate).map((v) => v.id), ["write", "scheduled", "templates"]);
+  it("admins see Unsubscribes; every teammate sees the one Emails list (#4419)", () => {
+    // #4419: Scheduled and Sent became one Emails tab. The server shows a
+    // non-admin their scheduled emails only (only admins see sent emails).
+    assert.deepEqual(emailViewsFor(admin).map((v) => v.id), ["write", "emails", "templates", "unsubscribes"]);
+    assert.deepEqual(emailViewsFor(teammate).map((v) => v.id), ["write", "emails", "templates"]);
   });
   it("the section is read from and written to the address", () => {
     assert.equal(emailViewFromHash("#/email", emailViewsFor(admin)), "write");
-    assert.equal(emailViewFromHash("#/email?view=sent", emailViewsFor(admin)), "sent");
-    assert.equal(emailViewFromHash("#/email?view=sent", emailViewsFor(teammate)), "write", "an admin-only section falls back");
-    assert.equal(emailViewFromHash("#/email?view=scheduled", emailViewsFor(teammate)), "scheduled");
-    assert.equal(emailViewFromHash("#/email?view=history", emailViewsFor(admin)), "sent", "the old History id");
+    // #4419: the old Sent / Scheduled / History addresses open the Emails list.
+    assert.equal(emailViewFromHash("#/email?view=sent", emailViewsFor(admin)), "emails");
+    assert.equal(emailViewFromHash("#/email?view=sent", emailViewsFor(teammate)), "emails");
+    assert.equal(emailViewFromHash("#/email?view=scheduled", emailViewsFor(teammate)), "emails");
+    assert.equal(emailViewFromHash("#/email?view=history", emailViewsFor(admin)), "emails", "the old History id");
+    assert.equal(emailViewFromHash("#/email?view=unsubscribes", emailViewsFor(teammate)), "write", "an admin-only section falls back");
     assert.equal(emailViewFromHash("#/email?view=send", emailViewsFor(admin)), "write", "the old Send id");
     assert.equal(emailViewFromHash("#/email?view=__proto__", emailViewsFor(admin)), "write");
     assert.equal(emailViewHash("write"), "#/email");
@@ -375,13 +378,17 @@ describe("C-9 the screens and the server", () => {
 describe("C-10 scheduled emails (Wave 3)", () => {
   const PAGE = read("pages/EmailPage.jsx");
   const COMPOSER = read("components/email/EmailComposer.jsx");
-  it("the Scheduled section lists every scheduled email with Change time, Edit and Cancel", () => {
-    assert.match(PAGE, /activeSubTab === "scheduled" && \(\s*<ScheduledSubView/);
-    assert.match(PAGE, /await listScheduledEmails\(\)/);
-    for (const action of ["reschedule_campaign", "get_scheduled_campaign", "cancel_campaign"]) assert.ok(PAGE.includes(`action: "${action}"`), action);
-    for (const words of ["Change time", ">Edit<", ">Cancel<", "Started sending", "(counted ", "To change who gets it, cancel and write a new email."]) assert.ok(PAGE.includes(words), words);
-    assert.match(PAGE, /const check = checkLaterTime\(moving\.later\);/);
-    assert.match(PAGE, /<LoadError title="Couldn't load scheduled emails"/);
+  it("a scheduled email's page offers Change time, Edit words and Cancel (#4419 moved them from the Scheduled list)", () => {
+    // #4419: the Scheduled list became the Emails list; its actions live on
+    // each email's page (components/email/campaigns/), same server actions.
+    const DETAIL = read("components/email/campaigns/EmailDetailPage.jsx");
+    const ACTIONS = read("components/email/campaigns/EmailActions.jsx");
+    const MODEL = read("components/email/campaigns/campaignModel.js");
+    assert.match(PAGE, /activeSubTab === "emails" && !address\.detailId && \(\s*<EmailsListView/);
+    for (const action of ["reschedule_campaign", "get_scheduled_campaign", "cancel_campaign"]) assert.ok(DETAIL.includes(`action: "${action}"`), action);
+    for (const words of ["Change time", "Edit words", "Cancel"]) assert.ok(MODEL.includes(`label: "${words}"`), words);
+    assert.ok(ACTIONS.includes("To change who gets it, cancel and write a new email."));
+    assert.match(DETAIL, /const check = checkLaterTime\(later\);/);
   });
   it("the composer's edit mode changes only the words, through update_scheduled_campaign", () => {
     assert.match(COMPOSER, /editingCampaign = null, onEditingDone = null/);

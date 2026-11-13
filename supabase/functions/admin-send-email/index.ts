@@ -19,18 +19,26 @@ import {
 import {
   assertSupportedPersonalization,
   type AudienceDefinition,
+  campaignFailureCode,
+  campaignState,
   documentPlainText,
   fallbackPersonalization,
   legacyBodyDocument,
   normalizeAudience,
   normalizedValidEmail,
   personalizeDocument,
+  maskEmail,
   personalizeText,
+  rebuildFromStoredSnapshots,
   type RecipientProfile,
+  SAMPLE_RECIPIENT,
   snapshotAudience,
+  storedRenderedDocument,
+  subjectSearchPattern,
   validateDocument,
   versionedDocument,
 } from "./model.ts";
+import type { EmailContentBlock } from "../_shared/email/types.ts";
 import {
   applyDirectoryFilters,
   appStatusLabel,
@@ -45,9 +53,13 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 
-const ADMIN_SENDER: SenderIdentity = {
+// #4419 (Seth, 13 Nov): Admin campaigns send from campaigns.usemingla.com,
+// the domain whose open tracking already works, so delivered / opened /
+// clicked come back for them. Ticket and system email keep usemingla.com
+// (_shared/email/senders.ts); no provider setting changes here.
+export const ADMIN_SENDER: SenderIdentity = {
   name: "Mingla",
-  address: "hello@usemingla.com",
+  address: "hello@campaigns.usemingla.com",
 };
 const ADMIN_REPLY_TO = "noreply@usemingla.com";
 const ADMIN_BLAST_BRAND_ID = "00000000-0000-4000-8000-372000000002";
@@ -62,6 +74,26 @@ interface CampaignRecord {
   subject: string;
   body: string;
   body_document: unknown;
+  /** #4419: set once, when the first batch saved the exact copy. */
+  rendered_at?: string | null;
+  rendered_document?: unknown;
+  /** Provider-accepted so far (updated after every batch). */
+  sent_count?: number | null;
+}
+
+/**
+ * #4419 (tester P2-1) — a copy problem is final only when it can't get
+ * better: the first save was refused (D7: send nothing) or the stored copy is
+ * unreadable. A failed read of a copy that exists is a blip: the campaign is
+ * handed back to the drain to retry, never failed halfway.
+ */
+class SnapshotError extends Error {
+  retryable: boolean;
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.name = "SnapshotError";
+    this.retryable = retryable;
+  }
 }
 
 /** Legacy API segment names retained only for compatibility; unknown values fail closed. */
@@ -239,29 +271,56 @@ async function buildUnsubscribeHeaders(
   };
 }
 
+/**
+ * #4419 — the one render of an Admin email for one person. The composer
+ * preview, the exact copy saved at send start, every send, the Rebuilt view
+ * and a test send all go through here, so they cannot drift.
+ */
+export function renderCampaignEmail(
+  subject: string,
+  resolvedDocument: EmailContentBlock[],
+  profile: RecipientProfile,
+  to?: string,
+) {
+  const rendered = renderTransactionalEmail({
+    variant: "admin_compose",
+    recipient: {
+      name: profile.first_name ?? null,
+      email: to ?? profile.email ?? SAMPLE_RECIPIENT.email ?? "member@example.com",
+    },
+    body: {
+      variant: "admin_compose",
+      title: personalizeText(subject, profile),
+      paragraphs: [],
+      document: personalizeDocument(resolvedDocument, profile),
+    },
+    sender: ADMIN_SENDER,
+  });
+  return {
+    subject: rendered.subject,
+    preheader: rendered.preheader ?? "",
+    html: rendered.html,
+    text: rendered.text,
+    from: rendered.from,
+  };
+}
+
 async function sendViaResend(input: {
   deliveryId: string;
   campaignId: string;
   to: string;
   subject: string;
-  document: ReturnType<typeof validateDocument>;
+  document: EmailContentBlock[];
   profile: RecipientProfile;
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
   try {
     assertNotResendSandbox(ADMIN_SENDER);
-    const subject = personalizeText(input.subject, input.profile);
-    const document = personalizeDocument(input.document, input.profile);
-    const rendered = renderTransactionalEmail({
-      variant: "admin_compose",
-      recipient: { name: input.profile.first_name ?? null, email: input.to },
-      body: {
-        variant: "admin_compose",
-        title: subject,
-        paragraphs: [],
-        document,
-      },
-      sender: ADMIN_SENDER,
-    });
+    const rendered = renderCampaignEmail(
+      input.subject,
+      input.document,
+      input.profile,
+      input.to,
+    );
     const marketingHeaders = await buildUnsubscribeHeaders(
       input.campaignId,
       input.to,
@@ -465,7 +524,11 @@ export type CampaignActor = { id: string; email: string | null };
 async function auditCampaignChange(
   supabase: ServiceClient,
   actor: CampaignActor | null,
-  action: "email_campaign_rescheduled" | "email_campaign_edited",
+  action:
+    | "email_campaign_rescheduled"
+    | "email_campaign_edited"
+    | "email_campaign_cancelled"
+    | "email_campaign_test_sent",
   campaignId: string,
   metadata: Record<string, unknown>,
 ) {
@@ -614,6 +677,51 @@ async function claimCampaignById(
   return queued;
 }
 
+// INVARIANT I-4419-EMAIL-ONE-DOCUMENT-PER-CAMPAIGN: every batch of a campaign
+// sends admin_email_log.rendered_document, saved once by the first batch.
+// A blog edit after that changes nothing anyone receives. Enforced here;
+// tested by issue_4419_email_snapshot.implementor.test.ts (blog edit case).
+async function frozenCampaignDocument(
+  supabase: ServiceClient,
+  campaign: CampaignRecord,
+  resolved: EmailContentBlock[],
+): Promise<EmailContentBlock[]> {
+  if (!campaign.rendered_at) {
+    const copy = renderCampaignEmail(campaign.subject, resolved, SAMPLE_RECIPIENT);
+    const { error } = await supabase.from("admin_email_log").update({
+      rendered_subject: copy.subject,
+      rendered_preheader: copy.preheader,
+      rendered_html: copy.html,
+      rendered_text: copy.text,
+      rendered_document: versionedDocument(resolved),
+      render_sample: { ...SAMPLE_RECIPIENT },
+      rendered_at: new Date().toISOString(),
+      // #4419 (tester P3-5): the row names the sender this copy goes out from.
+      from_name: ADMIN_SENDER.name,
+      from_email: ADMIN_SENDER.address,
+    }).eq("id", campaign.id).is("rendered_at", null);
+    if (error) throw new SnapshotError(`email_snapshot_failed:${error.message}`, false);
+  }
+  // Read the stored document back: another run may have saved it first, and
+  // the stored one is the one that goes out.
+  const { data, error } = await supabase.from("admin_email_log")
+    .select("rendered_at,rendered_document")
+    .eq("id", campaign.id)
+    .maybeSingle();
+  if (error) throw new SnapshotError(`email_snapshot_read_failed:${error.message}`, true);
+  if (!data?.rendered_at || !data.rendered_document) {
+    throw new SnapshotError("email_snapshot_read_failed:copy_missing", true);
+  }
+  try {
+    return storedRenderedDocument(data.rendered_document);
+  } catch (error) {
+    throw new SnapshotError(
+      `email_snapshot_failed:${error instanceof Error ? error.message : String(error)}`,
+      false,
+    );
+  }
+}
+
 export async function processClaimedCampaign(
   supabase: ServiceClient,
   campaign: CampaignRecord,
@@ -637,7 +745,42 @@ export async function processClaimedCampaign(
       error: `blog_post_not_published:${resolvedBlog.missing[0]}`,
     };
   }
-  const document = resolvedBlog.document;
+  // #4419 D6/D7: the blog post is frozen when sending starts. The first batch
+  // saves the exact copy and the resolved document; every batch (this one and
+  // each one after) sends that stored document. If the copy can't be saved,
+  // nothing is sent.
+  let document: EmailContentBlock[];
+  try {
+    document = await frozenCampaignDocument(
+      supabase,
+      campaign,
+      resolvedBlog.document,
+    );
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    if (error instanceof SnapshotError && error.retryable) {
+      // Nothing is claimed or sent this run. Hand the campaign back to the
+      // drain (queued, unclaimed) so the next run tries again; if even this
+      // write fails, the stale-claim recovery picks it up in 10 minutes.
+      await supabase.from("admin_email_log").update({
+        status: "queued",
+        processing_started_at: null,
+      }).eq("id", campaign.id);
+      return { ok: false, retry: true, error: raw };
+    }
+    const message = raw.startsWith("email_snapshot_failed")
+      ? raw
+      : `email_snapshot_failed:${raw}`;
+    const accepted = Number(campaign.sent_count ?? 0);
+    await supabase.from("admin_email_log").update({
+      // Some people already got it: say partial, never "failed, nobody".
+      status: accepted > 0 ? "partial" : "failed",
+      last_error: message.slice(0, 2000),
+      completed_at: new Date().toISOString(),
+      processing_started_at: null,
+    }).eq("id", campaign.id);
+    return { ok: false, error: message };
+  }
   const { data: deliveries, error: claimError } = await supabase.rpc(
     "claim_admin_email_delivery_batch",
     {
@@ -773,6 +916,537 @@ async function processDueCampaign(supabase: ServiceClient) {
     );
   }
   return await processClaimedCampaign(supabase, campaign);
+}
+
+// ─── #4419: cancel, the Emails list, one email's page, a test to yourself ───
+
+/** Is the caller an Admin admin (admin_users, active)? Fails closed. */
+export async function isAdminCaller(
+  userClient: { rpc: (fn: string) => PromiseLike<{ data: unknown; error: unknown }> },
+): Promise<boolean> {
+  try {
+    const { data, error } = await userClient.rpc("is_admin_user");
+    return !error && data === true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+/**
+ * #4419 — Cancel only before the first batch. Between batches a sending
+ * campaign is `queued` with no processing_started_at, so started_at is the
+ * guard that keeps Cancel from stopping a send halfway (campaign_not_cancellable).
+ * Who cancelled is stored and audited.
+ */
+export async function cancelCampaign(
+  supabase: ServiceClient,
+  raw: Record<string, unknown>,
+  actor: CampaignActor | null = null,
+) {
+  const campaignId = campaignIdFrom(raw);
+  const { data: campaign, error } = await supabase
+    .from("admin_email_log")
+    .update({
+      status: "cancelled",
+      completed_at: new Date().toISOString(),
+      cancelled_by: actor?.id ?? null,
+    })
+    .eq("id", campaignId)
+    .in("status", ["scheduled", "queued"])
+    .is("processing_started_at", null)
+    .is("started_at", null)
+    .select("id,status")
+    .maybeSingle();
+  if (error) throw new Error(`campaign_cancel_failed:${error.message}`);
+  if (!campaign) throw new Error("campaign_not_cancellable");
+  await auditCampaignChange(supabase, actor, "email_campaign_cancelled", campaignId, {});
+  return campaign;
+}
+
+const LIST_FILTERS = new Set([
+  "all",
+  "scheduled",
+  "sending",
+  "sent",
+  "attention",
+  "cancelled",
+]);
+export const LIST_PAGE_SIZE = 20;
+
+type ListRow = Record<string, unknown>;
+
+function toLabelFor(row: ListRow, isAdmin: boolean): string | null {
+  if (row.recipient_type !== "individual") return null;
+  const email = typeof row.recipient_email === "string" ? row.recipient_email : null;
+  return isAdmin ? email : maskEmail(email);
+}
+
+/**
+ * #4419 — the Emails tab. One read (issue_4419_admin_email_list) that never
+ * returns the stored HTML or a bulk address. Non-admins get scheduled emails
+ * only, as before (Seth, 13 Nov).
+ */
+export async function listCampaigns(
+  supabase: ServiceClient,
+  raw: Record<string, unknown>,
+  ctx: { isAdmin: boolean },
+) {
+  const filter = typeof raw.filter === "string" && LIST_FILTERS.has(raw.filter)
+    ? raw.filter
+    : "all";
+  const pageRaw = Number(raw.page ?? 0);
+  const page = Number.isInteger(pageRaw) && pageRaw >= 0 && pageRaw <= 10_000
+    ? pageRaw
+    : 0;
+  const { data, error } = await supabase.rpc("issue_4419_admin_email_list", {
+    p_filter: filter,
+    p_query: subjectSearchPattern(raw.query),
+    p_admin: ctx.isAdmin,
+    p_limit: LIST_PAGE_SIZE,
+    p_offset: page * LIST_PAGE_SIZE,
+  });
+  if (error) throw new Error(`campaign_list_failed:${error.message}`);
+  const result = (data ?? {}) as {
+    rows?: ListRow[];
+    counts?: Record<string, number>;
+    total?: number;
+  };
+  const sourceRows = Array.isArray(result.rows) ? result.rows : [];
+  const engagement = await listEngagement(
+    supabase,
+    sourceRows.map((row) => String(row.id)),
+  );
+  const rows = sourceRows.map((row) => {
+    const { state, label } = campaignState({
+      status: String(row.status ?? ""),
+      started_at: (row.started_at as string | null) ?? null,
+    });
+    const recipientCount = Number(row.recipient_count ?? 0);
+    const skipped = Number(row.skipped_count ?? 0);
+    const counts = engagement.get(String(row.id));
+    return {
+      id: row.id,
+      subject: row.subject,
+      preheader: row.preheader ?? null,
+      thumb_url: row.thumb_url ?? null,
+      audience: row.audience ?? null,
+      segment_filter: row.segment_filter ?? null,
+      recipient_type: row.recipient_type,
+      to_label: toLabelFor(row, ctx.isAdmin),
+      by_name: row.by_name ?? null,
+      state,
+      state_label: label,
+      scheduled_for: row.scheduled_for ?? null,
+      timezone: row.timezone ?? "UTC",
+      created_at: row.created_at ?? null,
+      started_at: row.started_at ?? null,
+      completed_at: row.completed_at ?? null,
+      matched: Number(row.matched ?? 0),
+      will_receive: Math.max(recipientCount - skipped, 0),
+      accepted: Number(row.accepted ?? 0),
+      failed: Number(row.failed ?? 0),
+      has_snapshot: row.has_snapshot === true,
+      delivered: counts?.delivered ?? null,
+      opened_unique: counts?.opened_unique ?? null,
+    };
+  });
+  return {
+    rows,
+    counts: {
+      all: Number(result.counts?.all ?? 0),
+      scheduled: Number(result.counts?.scheduled ?? 0),
+      sending: Number(result.counts?.sending ?? 0),
+      sent: Number(result.counts?.sent ?? 0),
+      attention: Number(result.counts?.attention ?? 0),
+      cancelled: Number(result.counts?.cancelled ?? 0),
+    },
+    total: Number(result.total ?? 0),
+    page,
+    page_size: LIST_PAGE_SIZE,
+  };
+}
+
+/** #4419 Part B — delivered and unique opens per listed campaign; empty on a failed read (the list still loads). */
+async function listEngagement(
+  supabase: ServiceClient,
+  ids: string[],
+): Promise<Map<string, { delivered: number; opened_unique: number }>> {
+  const out = new Map<string, { delivered: number; opened_unique: number }>();
+  if (!ids.length) return out;
+  const { data, error } = await supabase.rpc(
+    "issue_4419_admin_email_engagement_counts",
+    { p_campaign_ids: ids },
+  );
+  if (error) {
+    console.error("[admin-send-email] engagement counts failed", error.message);
+    return out;
+  }
+  for (const row of (Array.isArray(data) ? data : []) as ListRow[]) {
+    out.set(String(row.campaign_id), {
+      delivered: Number(row.delivered ?? 0),
+      opened_unique: Number(row.opened_unique ?? 0),
+    });
+  }
+  return out;
+}
+
+const DETAIL_COLUMNS =
+  "id,subject,body,body_document,status,from_name,from_email,recipient_type,recipient_email,segment_filter,audience,recipient_count,sent_count,failed_count,skipped_count,matched_count,no_contact_count,duplicate_count,no_consent_count,internal_excluded_count,sent_by,created_at,scheduled_for,timezone,started_at,completed_at,processing_started_at,last_error,cancelled_by,rendered_subject,rendered_preheader,rendered_html,rendered_text,rendered_at";
+
+type DetailRow = Record<string, unknown>;
+
+async function personLabels(
+  supabase: ServiceClient,
+  ids: Array<unknown>,
+): Promise<Map<string, string | null>> {
+  const unique = [
+    ...new Set(
+      ids.filter((id): id is string => typeof id === "string" && UUID_PATTERN.test(id)),
+    ),
+  ];
+  const out = new Map<string, string | null>();
+  await Promise.all(unique.map(async (id) => {
+    const { data, error } = await supabase.rpc("issue_4383_person_label", {
+      p_user_id: id,
+    });
+    out.set(id, error ? null : (typeof data === "string" ? data : null));
+  }));
+  return out;
+}
+
+/**
+ * #4419 — what the detail page shows in its frame. Exact copy when one was
+ * saved; a live Preview while it hasn't started; otherwise Rebuilt from the
+ * saved blocks (sent before Admin kept copies), labelled as such.
+ */
+export async function campaignView(supabase: ServiceClient, row: DetailRow) {
+  if (row.rendered_at) {
+    return {
+      kind: "exact" as const,
+      subject: String(row.rendered_subject ?? ""),
+      preheader: String(row.rendered_preheader ?? ""),
+      html: String(row.rendered_html ?? ""),
+      text: String(row.rendered_text ?? ""),
+      rendered_at: row.rendered_at as string,
+      notes: [] as string[],
+    };
+  }
+  const notes: string[] = [];
+  let document: EmailContentBlock[];
+  try {
+    document = validateDocument(
+      row.body_document ?? legacyBodyDocument(String(row.body ?? "")),
+    );
+  } catch {
+    document = legacyBodyDocument(String(row.body ?? ""));
+    notes.push("document_unreadable_used_plain_body");
+  }
+  const notStarted = !row.started_at;
+  const resolveLive = async (doc: EmailContentBlock[]) => {
+    try {
+      const resolved = await resolveBlogPostBlocks(supabase, doc, SUPABASE_URL);
+      for (const id of resolved.missing) notes.push(`blog_post_not_published:${id}`);
+      return resolved.document;
+    } catch (error) {
+      notes.push(
+        `blog_lookup_failed:${error instanceof Error ? error.message : String(error)}`,
+      );
+      return doc;
+    }
+  };
+  let kind: "preview" | "rebuilt";
+  if (notStarted) {
+    kind = "preview";
+    document = await resolveLive(document);
+  } else {
+    kind = "rebuilt";
+    const rebuilt = rebuildFromStoredSnapshots(document);
+    document = rebuilt.document;
+    if (rebuilt.fromSnapshot) notes.push("blog_from_saved_snapshot");
+    if (rebuilt.withoutSnapshot) {
+      notes.push("blog_resolved_live");
+      document = await resolveLive(document);
+    }
+  }
+  const copy = renderCampaignEmail(
+    String(row.subject ?? ""),
+    document,
+    SAMPLE_RECIPIENT,
+  );
+  return {
+    kind,
+    subject: copy.subject,
+    preheader: copy.preheader,
+    html: copy.html,
+    text: copy.text,
+    rendered_at: null,
+    notes,
+  };
+}
+
+type DeliverySummary = {
+  total: number;
+  accepted: number;
+  failed: number;
+  pending: number;
+  skipped_late: number;
+  by_reason: Array<{ code: string; count: number }>;
+  raw: string | null;
+};
+
+/**
+ * #4419 (tester P3-5): who an email is (or was) from. One that hasn't
+ * started goes out from today's Admin sender, whatever was stored when it
+ * was scheduled; one that went out says what the row recorded (the saved
+ * copy writes the sender it used).
+ */
+export function senderFor(row: DetailRow): { name: string; email: string } {
+  if (!row.rendered_at && !row.started_at) {
+    return { name: ADMIN_SENDER.name, email: ADMIN_SENDER.address };
+  }
+  return {
+    name: typeof row.from_name === "string" && row.from_name ? row.from_name : ADMIN_SENDER.name,
+    email: typeof row.from_email === "string" && row.from_email ? row.from_email : ADMIN_SENDER.address,
+  };
+}
+
+function sourceDocument(row: DetailRow): EmailContentBlock[] {
+  try {
+    return validateDocument(
+      row.body_document ?? legacyBodyDocument(String(row.body ?? "")),
+    );
+  } catch {
+    return legacyBodyDocument(String(row.body ?? ""));
+  }
+}
+
+/** #4419 — one email's whole page: state, timeline facts, the frame, counts, failures. */
+export async function getCampaignDetail(
+  supabase: ServiceClient,
+  raw: Record<string, unknown>,
+  ctx: { isAdmin: boolean },
+) {
+  const campaignId = campaignIdFrom(raw);
+  const { data, error } = await supabase
+    .from("admin_email_log")
+    .select(DETAIL_COLUMNS)
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (error) throw new Error(`campaign_read_failed:${error.message}`);
+  if (!data) throw new Error("campaign_not_found");
+  const row = data as DetailRow;
+  const { state, label } = campaignState({
+    status: String(row.status ?? ""),
+    started_at: (row.started_at as string | null) ?? null,
+  });
+  // Seth (13 Nov): only admins see sent emails, as before #4419.
+  if (!ctx.isAdmin && state !== "scheduled") throw new Error("email_admin_only");
+
+  const [view, summaryResult, auditResult, engagement] = await Promise.all([
+    campaignView(supabase, row),
+    supabase.rpc("issue_4419_admin_email_delivery_summary", {
+      p_campaign_id: campaignId,
+    }),
+    supabase.from("admin_audit_log")
+      .select("created_at,metadata")
+      .eq("target_type", "admin_email_log")
+      .eq("target_id", campaignId)
+      .eq("action", "email_campaign_rescheduled")
+      .order("created_at", { ascending: true })
+      .limit(20),
+    campaignEngagement(supabase, campaignId),
+  ]);
+  if (summaryResult.error) {
+    throw new Error(`campaign_summary_failed:${summaryResult.error.message}`);
+  }
+  if (auditResult.error) {
+    throw new Error(`campaign_history_failed:${auditResult.error.message}`);
+  }
+  const summary = (summaryResult.data ?? {}) as Partial<DeliverySummary>;
+  const audits = (auditResult.data ?? []) as Array<
+    { created_at: string; metadata: Record<string, unknown> | null }
+  >;
+  const names = await personLabels(supabase, [
+    row.sent_by,
+    row.cancelled_by,
+    ...audits.map((audit) => audit.metadata?.actor_user_id),
+  ]);
+  const nameOf = (id: unknown) =>
+    typeof id === "string" ? names.get(id) ?? null : null;
+
+  const hasLedger = Number(summary.total ?? 0) > 0;
+  const unsubscribed = Number(row.skipped_count ?? 0);
+  const recipientCount = Number(row.recipient_count ?? 0);
+  const byReason = Array.isArray(summary.by_reason) ? summary.by_reason : [];
+  const campaignCode = campaignFailureCode(row.last_error as string | null);
+  const failure = {
+    summary_code: campaignCode ?? byReason[0]?.code ?? null,
+    raw: (typeof row.last_error === "string" && row.last_error.trim()
+      ? row.last_error.trim()
+      : summary.raw ?? null)?.slice(0, 300) ?? null,
+    by_reason: byReason,
+  };
+  const audience = row.audience && typeof row.audience === "object"
+    ? (ctx.isAdmin
+      ? row.audience
+      : Object.fromEntries(
+        Object.entries(row.audience as Record<string, unknown>).filter(([key]) =>
+          key !== "email"
+        ),
+      ))
+    : null;
+  return {
+    campaign: {
+      id: row.id,
+      subject: row.subject,
+      state,
+      state_label: label,
+      raw_status: row.status,
+      from: senderFor(row),
+      to_label: toLabelFor(row, ctx.isAdmin),
+      recipient_type: row.recipient_type,
+      audience,
+      segment_filter: row.segment_filter ?? null,
+      created_at: row.created_at,
+      created_by_name: nameOf(row.sent_by),
+      scheduled_for: row.scheduled_for ?? null,
+      timezone: row.timezone ?? "UTC",
+      started_at: row.started_at ?? null,
+      completed_at: row.completed_at ?? null,
+      cancelled_at: state === "cancelled" ? row.completed_at ?? null : null,
+      cancelled_by_name: state === "cancelled" ? nameOf(row.cancelled_by) : null,
+      rescheduled: audits.map((audit) => ({
+        at: audit.created_at,
+        by_name: nameOf(audit.metadata?.actor_user_id),
+        scheduled_for: audit.metadata?.scheduled_for ?? null,
+        timezone: audit.metadata?.timezone ?? null,
+      })),
+      can_change: state === "scheduled" && !row.processing_started_at,
+      // The saved blocks (references, not the rendered copy), for "Duplicate as new".
+      document: sourceDocument(row),
+    },
+    counts: {
+      matched: Number(row.matched_count ?? 0),
+      internal: Number(row.internal_excluded_count ?? 0),
+      no_consent: Number(row.no_consent_count ?? 0),
+      unsubscribed,
+      no_contact: Number(row.no_contact_count ?? 0),
+      duplicate: Number(row.duplicate_count ?? 0),
+      to_send: Math.max(recipientCount - unsubscribed, 0),
+      accepted: hasLedger ? Number(summary.accepted ?? 0) : Number(row.sent_count ?? 0),
+      failed: hasLedger ? Number(summary.failed ?? 0) : Number(row.failed_count ?? 0),
+      pending: hasLedger ? Number(summary.pending ?? 0) : 0,
+    },
+    view,
+    failure,
+    engagement,
+  };
+}
+
+/** #4419 Part B — what happened after the provider accepted it. Null on a failed read. */
+async function campaignEngagement(supabase: ServiceClient, campaignId: string) {
+  const { data, error } = await supabase.rpc("issue_4419_admin_email_engagement", {
+    p_campaign_id: campaignId,
+  });
+  if (error) {
+    console.error("[admin-send-email] engagement read failed", error.message);
+    return null;
+  }
+  return data ?? null;
+}
+
+const TEST_SEND_LIMIT_PER_HOUR = 5;
+
+/**
+ * #4419 — "Send test to me": the caller's own address only, their own first
+ * name, the exact copy's document when one exists (else the live preview),
+ * "[Test] " in the subject, no delivery row, no unsubscribe header, five an
+ * hour.
+ */
+export async function sendCampaignTest(
+  supabase: ServiceClient,
+  raw: Record<string, unknown>,
+  ctx: { user: { id: string; email: string | null }; isAdmin: boolean },
+  now = Date.now(),
+) {
+  const campaignId = campaignIdFrom(raw);
+  const to = normalizedValidEmail(ctx.user.email);
+  if (!to) throw new Error("test_send_address_missing");
+  const { data, error } = await supabase
+    .from("admin_email_log")
+    .select("id,status,started_at,subject,body,body_document,rendered_at,rendered_document")
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (error) throw new Error(`campaign_read_failed:${error.message}`);
+  if (!data) throw new Error("campaign_not_found");
+  const row = data as DetailRow;
+  const { state } = campaignState({
+    status: String(row.status ?? ""),
+    started_at: (row.started_at as string | null) ?? null,
+  });
+  if (!ctx.isAdmin && state !== "scheduled") throw new Error("email_admin_only");
+
+  const { count, error: countError } = await supabase
+    .from("admin_audit_log")
+    .select("id", { count: "exact", head: true })
+    .eq("action", "email_campaign_test_sent")
+    .eq("metadata->>actor_user_id", ctx.user.id)
+    .gte("created_at", new Date(now - 3_600_000).toISOString());
+  if (countError) throw new Error(`test_send_count_failed:${countError.message}`);
+  if ((count ?? 0) >= TEST_SEND_LIMIT_PER_HOUR) throw new Error("test_send_limit");
+  if (!RESEND_API_KEY) throw new Error("NO_PROVIDER");
+
+  let document: EmailContentBlock[];
+  if (row.rendered_at && row.rendered_document) {
+    document = storedRenderedDocument(row.rendered_document);
+  } else {
+    const reference = validateDocument(
+      row.body_document ?? legacyBodyDocument(String(row.body ?? "")),
+    );
+    document = (await resolveBlogPostBlocks(supabase, reference, SUPABASE_URL)).document;
+  }
+  const { data: person } = await supabase
+    .rpc("admin_people_directory")
+    .select(DIRECTORY_COLUMNS)
+    .eq("user_id", ctx.user.id)
+    .limit(1)
+    .maybeSingle();
+  const profile: RecipientProfile = person
+    ? { ...directoryRowToRecipient(person as DirectoryRow), email: to }
+    : { email: to, first_name: SAMPLE_RECIPIENT.first_name };
+  const copy = renderCampaignEmail(String(row.subject ?? ""), document, profile, to);
+  assertNotResendSandbox(ADMIN_SENDER);
+  // no-attachment: a test send carries the campaign's own HTML; Admin campaigns never attach files.
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": `admin-email-test-${campaignId}-${ctx.user.id}-${
+        Math.floor(now / 60_000)
+      }`,
+    },
+    body: JSON.stringify({
+      from: formatSenderHeader(copy.from),
+      reply_to: ADMIN_REPLY_TO,
+      to: [to],
+      subject: `[Test] ${copy.subject}`,
+      html: copy.html,
+      text: copy.text,
+    }),
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 300);
+    throw new Error(`test_send_failed:Resend ${response.status}: ${detail}`);
+  }
+  await auditCampaignChange(
+    supabase,
+    { id: ctx.user.id, email: ctx.user.email },
+    "email_campaign_test_sent",
+    campaignId,
+    { from_snapshot: Boolean(row.rendered_at) },
+  );
+  return { sent: true, to };
 }
 
 /** Is the signed-in caller an active Mingla team member? Fails closed. */
@@ -1007,37 +1681,19 @@ export async function handler(req: Request) {
         document,
         SUPABASE_URL,
       );
+      // #4419: the same sample and the same render as the exact copy.
       const sample = {
-        email: "member@example.com",
-        first_name: "Maya",
-        display_name: "Maya Okafor",
-        username: "mayaexplores",
-        // orch-strict-grep-allow stripe-country-out-of-scope — recipient preview country, unrelated to Stripe account availability
-        country: "NG",
-        preferred_language: "en",
-        created_at: "2026-01-15T12:00:00.000Z",
+        ...SAMPLE_RECIPIENT,
         ...(body.sampleProfile && typeof body.sampleProfile === "object"
           ? body.sampleProfile
           : {}),
       } as RecipientProfile;
-      const rendered = renderTransactionalEmail({
-        variant: "admin_compose",
-        recipient: {
-          name: sample.first_name ?? null,
-          email: sample.email ?? "member@example.com",
-        },
-        body: {
-          variant: "admin_compose",
-          title: personalizeText(subject, sample),
-          paragraphs: [],
-          document: personalizeDocument(resolvedBlog.document, sample),
-        },
-        sender: ADMIN_SENDER,
-      });
+      const rendered = renderCampaignEmail(subject, resolvedBlog.document, sample);
       return jsonResponse({
         html: rendered.html,
         text: rendered.text,
         subject: rendered.subject,
+        preheader: rendered.preheader,
       });
     }
 
@@ -1059,25 +1715,36 @@ export async function handler(req: Request) {
     }
 
     if (action === "cancel_campaign") {
-      const campaignId = typeof body.campaignId === "string"
-        ? body.campaignId.trim()
-        : "";
-      if (!UUID_PATTERN.test(campaignId)) {
-        throw new Error("campaign_id_invalid");
-      }
-      const { data: campaign, error: cancelError } = await supabase
-        .from("admin_email_log")
-        .update({ status: "cancelled", completed_at: new Date().toISOString() })
-        .eq("id", campaignId)
-        .in("status", ["scheduled", "queued"])
-        .is("processing_started_at", null)
-        .select("id,status")
-        .maybeSingle();
-      if (cancelError) {
-        throw new Error(`campaign_cancel_failed:${cancelError.message}`);
-      }
-      if (!campaign) throw new Error("campaign_not_cancellable");
-      return jsonResponse({ campaign });
+      return jsonResponse({
+        campaign: await cancelCampaign(supabase, body, {
+          id: user.id,
+          email: user.email ?? null,
+        }),
+      });
+    }
+
+    // #4419: the Emails tab and its detail page, and a test to yourself.
+    if (action === "list_campaigns") {
+      return jsonResponse(
+        await listCampaigns(supabase, body, {
+          isAdmin: await isAdminCaller(userSupabase),
+        }),
+      );
+    }
+    if (action === "get_campaign_detail") {
+      return jsonResponse(
+        await getCampaignDetail(supabase, body, {
+          isAdmin: await isAdminCaller(userSupabase),
+        }),
+      );
+    }
+    if (action === "send_test") {
+      return jsonResponse(
+        await sendCampaignTest(supabase, body, {
+          user: { id: user.id, email: user.email ?? null },
+          isAdmin: await isAdminCaller(userSupabase),
+        }),
+      );
     }
 
     // Compatibility for the previous Admin client: both old actions now enter
@@ -1122,15 +1789,21 @@ export async function handler(req: Request) {
     return jsonResponse({ error: `Unknown action: ${action}` }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status =
-      error instanceof BlogPostBlockError && error.code === "blog_not_ready"
-        ? 503
-        : /invalid|required|unsupported|not_cancellable|not_reschedulable|time_past|email_block|email_document|recipient_email|no_eligible/
-            .test(message)
-        ? 400
-        : 500;
-    return jsonResponse({ error: message }, status);
+    return jsonResponse({ error: message }, errorStatus(error));
   }
+}
+
+/** The HTTP status for a thrown error (#4419: email_admin_only is 403; not_found and the test-send limit are 400). */
+export function errorStatus(error: unknown): number {
+  const message = error instanceof Error ? error.message : String(error);
+  return error instanceof BlogPostBlockError && error.code === "blog_not_ready"
+    ? 503
+    : /email_admin_only/.test(message)
+    ? 403
+    : /invalid|required|unsupported|not_cancellable|not_reschedulable|time_past|email_block|email_document|recipient_email|no_eligible|not_found|test_send_limit|test_send_address/
+        .test(message)
+    ? 400
+    : 500;
 }
 
 if (import.meta.main) serve(handler);

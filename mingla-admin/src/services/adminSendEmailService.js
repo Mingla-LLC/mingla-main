@@ -74,3 +74,17 @@ export async function callEdgeFunction(payload, { retried = false } = {}) {
   }
   return result;
 }
+
+// #4419 — the Emails tab, one email's page, and a test to yourself. Thin
+// wrappers so the screens keep the 401 refresh and SessionExpiredError.
+export function listCampaigns({ filter = "all", query = "", page = 0 } = {}) {
+  return callEdgeFunction({ action: "list_campaigns", filter, query, page });
+}
+
+export function getCampaignDetail(campaignId) {
+  return callEdgeFunction({ action: "get_campaign_detail", campaignId });
+}
+
+export function sendCampaignTest(campaignId) {
+  return callEdgeFunction({ action: "send_test", campaignId });
+}
