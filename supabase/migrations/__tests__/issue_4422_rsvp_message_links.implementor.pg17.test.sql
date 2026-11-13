@@ -1,7 +1,7 @@
 -- #4422 — RSVP messages: the RSVP-only switch, the pass row's event link and
 -- short event links.
 --
--- MINGLA-INVARIANT: I-4422-EVENT-LINK-HOST-ONLY | issue #4422 | An RSVP pass row and an event_page short link only ever point at the live public page on https://host.usemingla.com/(e|t|exp)/<brand>/<slug>; usemingla.com/e/ (404), a bearer query, an expiry over 400 days and a deleted event are refused.
+-- MINGLA-INVARIANT: I-4422-EVENT-LINK-HOST-ONLY | issue #4422 | An RSVP pass row and an event_page short link only ever point at the live public page on https://host.usemingla.com under /e/, /t/ or /exp/ (brand, then slug); usemingla.com/e/ (404), a bearer query, an expiry over 400 days and a deleted event are refused.
 -- MINGLA-INVARIANT: I-4422-RSVP-SWITCH-SCOPED | issue #4422 | rsvp_messages_v2 enriches RSVP rows (date, host event link, pass reason, QR) and keeps manual promotions silent, without turning on messages_v2 for ticket, reservation or food-order messages.
 --
 --   both switches off: no enrichment

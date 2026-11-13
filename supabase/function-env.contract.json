@@ -1329,6 +1329,7 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
+        "RESEND_API_KEY",
         "app.qr_token_pepper"
       ]
     },

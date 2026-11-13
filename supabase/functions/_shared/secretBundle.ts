@@ -732,13 +732,10 @@ export function resolveAlertRecipientValue(
  * One owner for the comma-split and the founder fallback, shared by
  * offering-invite-dispatch and the unreached-guest alert.
  */
-export function apiHealthAlertRecipients(
-  getEnv: SecretEnvGetter = defaultGetEnv,
-): string[] {
+export function apiHealthAlertRecipients(): string[] {
   const configured = resolveAlertRecipientValue(
     "api_health",
     "API_HEALTH_ALERT_EMAILS",
-    getEnv,
   );
   if (Array.isArray(configured)) return configured;
   return (configured ?? "seth@usemingla.com").split(",").map((value) =>
