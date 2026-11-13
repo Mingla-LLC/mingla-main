@@ -171,8 +171,11 @@ describe("#4423 listBoardWork: [TRANSITIONAL] fallback before the W2 migration",
     const refusesShape = new Function(`${body.replace("export function", "return function")}`)();
     assert.equal(refusesShape({ token: "invalid_query", message: 'The board cannot filter by "shape". It takes status, who, …' }), true);
     assert.equal(refusesShape({ token: "invalid_query", message: 'The board cannot filter by "per_status".' }), false);
+    // the new server's own filter errors mention "shape" and must not fall back
+    assert.equal(refusesShape({ token: "invalid_query", message: "A filter has the wrong shape. Use status (todo, doing, done…" }), false);
+    assert.equal(refusesShape({ token: "invalid_query", message: "The board takes shape full or board." }), false);
     assert.equal(refusesShape({ token: "network", message: "" }), false);
     assert.equal(refusesShape(null), false);
-    assert.match(svc, /\[TRANSITIONAL\] A server without 20280704014423/);
+    assert.match(svc, /\[TRANSITIONAL\] A server without the #4423 W2 ops_work_list migration/);
   });
 });
