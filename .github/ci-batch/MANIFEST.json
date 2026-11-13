@@ -21190,6 +21190,8 @@
         "supabase/migrations/__tests__/issue_4402_offer_prepare_race.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4402_payee_shared_bank_account.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4402_payee_shared_bank_account.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4419_admin_email.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4419_admin_email.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4419_admin_email_engagement.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4419_admin_email_engagement.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4419_admin_email_snapshot.implementor.pg17.test.sql",
@@ -26493,6 +26495,8 @@
         "supabase/migrations/__tests__/issue_4402_offer_prepare_race.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4402_payee_shared_bank_account.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4402_payee_shared_bank_account.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4419_admin_email.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4419_admin_email.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4419_admin_email_engagement.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4419_admin_email_engagement.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4419_admin_email_snapshot.implementor.pg17.test.sql",
@@ -53794,5 +53798,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "1dae2a8597e6da9304ee06e3c47ec7512e09dfbe7309da2d403c599fb5a3d72d"
+  "phase3eContractSha256": "a568140597358a7dc188187ca1dd149bd590d1e6465165dea96949b57685355f"
 }
