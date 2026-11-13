@@ -69,6 +69,8 @@ export function gigPaystackInitialize(
 
 export type RefundBranch =
   | "upload_missed"
+  // #4402: an approved video not posted by the post deadline: full refund.
+  | "post_missed"
   | "counter_lower"
   | "host_before_accept"
   | "host_after_accept_before_lock"
@@ -110,6 +112,7 @@ export function gigRefund(
   if (
     [
       "upload_missed",
+      "post_missed",
       "host_before_accept",
       "creator_after_accept",
       "creator_decline",

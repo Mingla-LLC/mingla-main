@@ -1,6 +1,6 @@
 export type TimerDecision = {
   action: string;
-  refundBranch?: "declined_or_expired" | "upload_missed";
+  refundBranch?: "declined_or_expired" | "upload_missed" | "post_missed";
   analytics: string;
 } | null;
 export function gigTimerDecision(
@@ -31,6 +31,26 @@ export function gigTimerDecision(
       analytics: "gig_upload_missed",
     },
     delivered: { action: "auto_approve", analytics: "gig_auto_approved" },
+    // #4402: an approved video must be posted by the post deadline
+    // (post_by end of day in the gig zone + 24 h grace). Missing it cancels
+    // the gig with a full host refund. posts_submitted deliberately has NO
+    // entry and NO deadline: Admin reviews it from the queue instead.
+    // MINGLA-INVARIANT: I-4402-POST-2 | issue #4402 | every state holding captured money has a timer action here or an Admin queue row (posts_submitted)
+    approved: {
+      action: "cancel_missed_post",
+      refundBranch: "post_missed",
+      analytics: "gig_post_missed",
+    },
+    posting: {
+      action: "cancel_missed_post",
+      refundBranch: "post_missed",
+      analytics: "gig_post_missed",
+    },
+    posts_failed: {
+      action: "cancel_missed_post",
+      refundBranch: "post_missed",
+      analytics: "gig_post_missed",
+    },
     posts_verified: { action: "release", analytics: "gig_released" },
     released: { action: "day30", analytics: "gig_day30" },
     day30: { action: "complete", analytics: "gig_completed" },
