@@ -21245,6 +21245,8 @@
         "supabase/migrations/__tests__/issue_4423_w4b_rls_parity.fixture.sql",
         "supabase/migrations/__tests__/issue_4423_w5_advisors.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4423_w5_advisors.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4423_w5_revoked_callers.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4423_w5_revoked_callers.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -26585,6 +26587,8 @@
         "supabase/migrations/__tests__/issue_4423_w4b_rls_parity.fixture.sql",
         "supabase/migrations/__tests__/issue_4423_w5_advisors.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4423_w5_advisors.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4423_w5_revoked_callers.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4423_w5_revoked_callers.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -53882,5 +53886,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "076f463eb189b4e41619555df72190dbfa0fd09f9aaa2c304ed95b8371804be4"
+  "phase3eContractSha256": "7ecefd169b8aed582fee333a1ba1caa274f0837e410f244d9545725e79e439ad"
 }
