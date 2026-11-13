@@ -322,7 +322,22 @@ export function formatInZone(
     }).formatToParts(date);
     const pick = (type: string): string =>
       parts.find((part) => part.type === type)?.value ?? "";
-    return `${pick("weekday")} ${pick("month")} ${pick("day")}, ${pick("hour")}:${pick("minute")} ${pick("dayPeriod").toUpperCase()} ${zoneLabel(timezone)}`;
+    // #4402: Hermes on iOS splits formatToParts on punctuation, so hour /
+    // minute / dayPeriod can be missing ("undefined:undefined"). The time
+    // comes from format() then, which every engine renders whole.
+    const time =
+      pick("hour") && pick("minute") && pick("dayPeriod")
+        ? `${pick("hour")}:${pick("minute")} ${pick("dayPeriod").toUpperCase()}`
+        : new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone,
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          })
+            .format(date)
+            .replace(/\u202f|\u00a0/g, " ")
+            .toUpperCase();
+    return `${pick("weekday")} ${pick("month")} ${pick("day")}, ${time} ${zoneLabel(timezone)}`;
   } catch {
     return shortDateTime(value);
   }

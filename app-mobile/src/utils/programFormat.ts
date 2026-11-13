@@ -45,14 +45,20 @@ export function formatMoney(minor: number | null | undefined, currency: string |
   const exponent = currencyExponent(code);
   const whole = value / 10 ** exponent;
   const fraction = Number.isInteger(whole) ? 0 : exponent;
+  const fallback = (): string => {
+    const symbol = SYMBOLS[code] ?? `${code} `;
+    return `${whole < 0 ? '-' : ''}${symbol}${formatPlainNumber(Math.abs(whole), locale, fraction)}`;
+  };
   try {
-    return new Intl.NumberFormat(locale, {
+    const out = new Intl.NumberFormat(locale, {
       style: 'currency', currency: code, currencyDisplay: 'narrowSymbol',
       minimumFractionDigits: fraction, maximumFractionDigits: fraction,
     }).format(whole);
+    // #4402: Hermes on iOS ignores narrowSymbol and prints the code ("NGN 100");
+    // a currency with a known symbol reads "₦100" everywhere.
+    return SYMBOLS[code] && out.includes(code) ? fallback() : out;
   } catch {
-    const symbol = SYMBOLS[code] ?? `${code} `;
-    return `${whole < 0 ? '-' : ''}${symbol}${formatPlainNumber(Math.abs(whole), locale, fraction)}`;
+    return fallback();
   }
 }
 
@@ -685,7 +691,21 @@ export function formatInZone(value: string | Date | null | undefined, timeZone: 
   if (!parts) return formatDateTime(date, now).replace(' · ', ', ');
   const sameYear = Number(parts.year) === now.getFullYear();
   const day = `${capitalizeFirst(parts.month)} ${parts.day}${sameYear ? '' : `, ${parts.year}`}`;
-  return `${parts.weekday} ${day}, ${parts.hour}:${parts.minute} ${String(parts.dayPeriod ?? '').toUpperCase()} ${zoneLabel(timeZone)}`.trim();
+  const time = parts.hour && parts.minute && parts.dayPeriod
+    ? `${parts.hour}:${parts.minute} ${parts.dayPeriod.toUpperCase()}`
+    : zoneTime(date, timeZone as string);
+  return `${parts.weekday} ${day}, ${time} ${zoneLabel(timeZone)}`.trim();
+}
+
+/**
+ * "6:00 PM" in a zone with format(), not formatToParts(): Hermes on iOS returns no
+ * hour/minute/dayPeriod parts, which printed "undefined:undefined" (#4402 walk).
+ */
+function zoneTime(date: Date, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true }).format(date)
+      .replace(/\u202f|\u00a0/g, ' ').toUpperCase();
+  } catch { return ''; }
 }
 
 /** "Tue Dec 15" for a calendar day ("2026-12-15") or an instant read in a zone. */

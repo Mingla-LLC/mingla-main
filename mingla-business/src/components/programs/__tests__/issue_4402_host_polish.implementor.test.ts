@@ -308,3 +308,23 @@ describe("roster, cities, listings, reach, poster", () => {
     expect(deliveryPosterUrl({})).toBeNull();
   });
 });
+
+// #4402 walk (2026-11-13): Hermes on iOS splits formatToParts on punctuation,
+// so hour / minute / dayPeriod went missing and a due time read "undefined:undefined".
+describe("formatInZone on a Hermes-shaped Intl", () => {
+  it("never prints undefined for the time", () => {
+    const real = Intl.DateTimeFormat.prototype.formatToParts;
+    Intl.DateTimeFormat.prototype.formatToParts = function (date?: Date | number) {
+      return real
+        .call(this, date)
+        .filter((p) => !["hour", "minute", "dayPeriod"].includes(p.type));
+    };
+    try {
+      const shown = formatInZone("2026-12-15T17:00:00Z", "Africa/Lagos");
+      expect(shown).not.toContain("undefined");
+      expect(shown).toContain("6:00 PM Lagos time");
+    } finally {
+      Intl.DateTimeFormat.prototype.formatToParts = real;
+    }
+  });
+});

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import {
-  agreedVideoDueZoned, capitalizeFirst, dayToTypedDob, dobWheelStart, doorPassLine, formatInZone, formatMonth, formatShortDate, formatTypedDob,
+  agreedVideoDueZoned, capitalizeFirst, formatMoney, dayToTypedDob, dobWheelStart, doorPassLine, formatInZone, formatMonth, formatShortDate, formatTypedDob,
   groupMoneyTyping, heldBelowFloorText, isBelowMinFee, minFeeError, minFeeHint, moneyInputValue, parseMoneyInput, pickWindowWords, postDeadlineText, postDueSoonLabel,
   postingStatusCopy, signBlockReason, visitedOnBounds, visitedOnError, typedDobToDay, uploadDueReason, waitingToReachText, zoneLabel,
 } from '../programFormat.ts';
@@ -165,4 +165,32 @@ test('W1: a successful pick waits for the Local queries to be read again, so the
   assert.match(screen, /const refresh = \(\): Promise<void> => queryClient\.refetchQueries\(\{ queryKey: \['local'\] \}/);
   assert.match(screen, /await localProgramService\.pickPlace\(id, false\); await onPicked\(\);/);
   assert.match(screen, /maximumDate=\{bounds\.max\}/);
+});
+
+// #4402 walk (2026-11-13, iPhone sim): Hermes on iOS split formatToParts on punctuation, so
+// "Video due" read "Tue Dec 15, undefined:und…", and ignored narrowSymbol so money read "NGN 100".
+test('Hermes-shaped Intl: zoned time never prints undefined; known currencies keep their symbol', () => {
+  const realParts = Intl.DateTimeFormat.prototype.formatToParts;
+  Intl.DateTimeFormat.prototype.formatToParts = function (date) {
+    return realParts.call(this, date).filter((p) => !['hour', 'minute', 'dayPeriod'].includes(p.type));
+  };
+  const nfFormat = Object.getOwnPropertyDescriptor(Intl.NumberFormat.prototype, 'format');
+  Object.defineProperty(Intl.NumberFormat.prototype, 'format', {
+    configurable: true,
+    get() {
+      const bound = nfFormat.get.call(this);
+      const code = this.resolvedOptions().currency;
+      return (n) => (code ? bound(n).replace(/[^\d.,\s-]+/u, `${code}\u00a0`) : bound(n));
+    },
+  });
+  try {
+    assert.equal(formatInZone('2026-12-15T17:00:00Z', 'Africa/Lagos', NOW), 'Tue Dec 15, 6:00 PM Lagos time');
+    assert.equal(formatMoney(10000, 'NGN'), '₦100');
+    assert.equal(formatMoney(4000000, 'NGN'), '₦40,000');
+    assert.equal(formatMoney(23000, 'USD'), '$230');
+  } finally {
+    Intl.DateTimeFormat.prototype.formatToParts = realParts;
+    Object.defineProperty(Intl.NumberFormat.prototype, 'format', nfFormat);
+  }
+  assert.equal(formatMoney(10000, 'NGN'), '₦100');
 });
