@@ -543,7 +543,7 @@ BEGIN
   SELECT 'creator.gig.post_reminder',contract.creator_account_id,contract.brand_id,jsonb_build_object(
       'title','Post your video by '||public.issue_4402_gig_deadline_when(contract.state_deadline_at,public.issue_3872_gig_timezone(contract.gig_id)),
       'body','Add your live links in Mingla before then, or the gig is cancelled and the host is refunded.',
-      'contract_id',contract.id,'post_by',terms.post_by,'deadline_at',contract.state_deadline_at,
+      'contract_id',contract.id,'post_by',terms.post_by,'video_due_at',terms.video_due_at,'deadline_at',contract.state_deadline_at,
       'deep_link','mingla://creator/contract/'||contract.id::text
     ),'creator.gig.post_reminder:'||contract.id::text||':'||extract(epoch FROM contract.state_deadline_at)::bigint::text,'pending'
   FROM public.gig_contracts contract
@@ -771,15 +771,27 @@ GRANT EXECUTE ON FUNCTION public.issue_3872_public_gig_json(uuid,uuid) TO servic
 -- ── Data ───────────────────────────────────────────────────────────────────
 -- Re-offer backfill: an interest left 'offered' with no live contract, whose
 -- latest contract was cancelled by the host before acceptance or retired as
--- unpaid, is open again (production: interest dcf7f167).
-UPDATE public.gig_interest i SET status='shortlisted',updated_at=now()
- WHERE i.status='offered'
-   AND NOT EXISTS(SELECT 1 FROM public.gig_contracts c
-     WHERE c.gig_id=i.gig_id AND c.creator_account_id=i.creator_account_id
-       AND c.state NOT IN ('declined','expired','cancelled','completed','resolved_release','resolved_partial','resolved_refund'))
-   AND (SELECT c.state='cancelled' AND c.cancel_reason IN ('host_before_accept','payment_not_completed')
-          FROM public.gig_contracts c WHERE c.gig_id=i.gig_id AND c.creator_account_id=i.creator_account_id
-          ORDER BY c.created_at DESC,c.id DESC LIMIT 1);
+-- unpaid, is open again (production: interest dcf7f167). A function so the
+-- pg17 suite proves the exact predicate the migration runs.
+CREATE OR REPLACE FUNCTION public.issue_4402_reopen_stuck_interest() RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_count integer;
+BEGIN
+  UPDATE public.gig_interest i SET status='shortlisted',updated_at=now()
+   WHERE i.status='offered'
+     AND NOT EXISTS(SELECT 1 FROM public.gig_contracts c
+       WHERE c.gig_id=i.gig_id AND c.creator_account_id=i.creator_account_id
+         AND c.state NOT IN ('declined','expired','cancelled','completed','resolved_release','resolved_partial','resolved_refund'))
+     AND coalesce((SELECT c.state='cancelled' AND c.cancel_reason IN ('host_before_accept','payment_not_completed')
+            FROM public.gig_contracts c WHERE c.gig_id=i.gig_id AND c.creator_account_id=i.creator_account_id
+            ORDER BY c.created_at DESC,c.id DESC LIMIT 1),false);
+  GET DIAGNOSTICS v_count=ROW_COUNT;
+  RETURN v_count;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4402_reopen_stuck_interest() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4402_reopen_stuck_interest() TO service_role;
+SELECT public.issue_4402_reopen_stuck_interest();
 
 -- Contracts already approved before this migration get a post deadline too,
 -- with at least 72 hours' notice so nobody is refunded the day this lands.

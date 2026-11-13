@@ -227,9 +227,11 @@ BEGIN
   IF public.gig_contract_workspace(v_c2)->'money_paid_at'<>'null'::jsonb THEN RAISE EXCEPTION 'refunded contract has money_paid_at'; END IF;
   IF public.gig_contract_workspace(v_c2)->>'money_state'<>'refunded' THEN RAISE EXCEPTION 'refunded contract: %',public.gig_contract_workspace(v_c2)->>'money_state'; END IF;
 
-  -- 3. Gig counts: Ada is hired, Bo was refunded, Cy is still interested.
+  -- 3. Gig counts: Ada is hired, Cy is still interested, and Bo, whose offer
+  -- the host cancelled before acceptance, is interested again (#4402: the
+  -- host can make Bo a new offer).
   SELECT g INTO v_gigrow FROM jsonb_array_elements(public.gig_host_home(v_brand)->'gigs') g WHERE g->>'id'=v_gig::text;
-  IF (v_gigrow->>'interest_count')::int<>1 OR (v_gigrow->>'hired_count')::int<>1 THEN RAISE EXCEPTION 'gig counts: %',v_gigrow; END IF;
+  IF (v_gigrow->>'interest_count')::int<>2 OR (v_gigrow->>'hired_count')::int<>1 THEN RAISE EXCEPTION 'gig counts: %',v_gigrow; END IF;
   v_r:=public.gig_applicants(v_gig);
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(v_r) e WHERE e->>'creator_id'=v_creator::text) THEN RAISE EXCEPTION 'hired creator listed as interested: %',v_r; END IF;
   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_r) e WHERE e->>'creator_id'=v_creator3::text) THEN RAISE EXCEPTION 'interested creator missing'; END IF;
@@ -249,7 +251,8 @@ BEGIN
   END IF;
   IF (v_r->'campaigns'->>'sent')::int<>2 OR v_r->'campaigns'->>'last_sent_at' IS NULL
      OR (v_r->'ads'->>'live')::int<>1 OR (v_r->'ads'->>'draft')::int<>1 OR jsonb_typeof(v_r->'ads'->'needs_setup')<>'boolean'
-     OR (v_r->'creators'->>'gigs_live')::int<>2 OR (v_r->'creators'->>'interested')::int<>1
+     -- #4402: Bo (offer cancelled before acceptance) counts as interested again.
+     OR (v_r->'creators'->>'gigs_live')::int<>2 OR (v_r->'creators'->>'interested')::int<>2
      OR (v_r->'creators'->>'hired')::int<>1 OR (v_r->'creators'->>'paid')::int<>1
      OR (v_r->'referrals'->>'offers_live')::int<>2 OR (v_r->'referrals'->>'promoters')::int<>3 THEN
     RAISE EXCEPTION 'brand-wide rows: %',v_r;
@@ -265,7 +268,7 @@ BEGIN
      OR (v_r->>'spent_minor')::bigint<>v_hold+1200
      OR (v_r->'campaigns'->>'sent')::int<>1 OR (v_r->'ads'->>'live')::int<>1 OR (v_r->'ads'->>'draft')::int<>0
      OR (v_r->'creators'->>'gigs_live')::int<>1 OR (v_r->'creators'->>'hired')::int<>1 OR (v_r->'creators'->>'paid')::int<>1
-     OR (v_r->'creators'->>'interested')::int<>1
+     OR (v_r->'creators'->>'interested')::int<>2
      OR (v_r->'referrals'->>'offers_live')::int<>1 OR (v_r->'referrals'->>'promoters')::int<>2
      OR jsonb_array_length(v_r->'listings')<>2 THEN
     RAISE EXCEPTION 'Sunset overview: %',v_r;

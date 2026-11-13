@@ -505,7 +505,7 @@ AS $function$
         'slots_left',public.issue_3872_gig_slots_left(g.id),
         -- #4402 H18: how many verified creators in the gig's city can see it.
         'city_name',(SELECT sc.name FROM public.seeding_cities sc WHERE sc.id=g.city_id),
-        'city_creator_count',(SELECT count(*) FROM public.creator_profiles cp
+        'verified_creator_count',(SELECT count(*) FROM public.creator_profiles cp
           WHERE cp.home_city_id=g.city_id AND cp.mode_enabled AND cp.verification='verified'),
         'min_fee_minor',public.issue_4402_gig_min_fee_minor(g.currency)
       ) ORDER BY g.updated_at DESC) FROM public.gigs g WHERE g.brand_id=p_brand_id),'[]'::jsonb),
