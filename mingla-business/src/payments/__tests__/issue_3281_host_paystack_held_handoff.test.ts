@@ -1294,3 +1294,58 @@ describe("#3281 6b — the create refusal with no held page", () => {
     expect(openBrowserAsync).not.toHaveBeenCalled();
   });
 });
+
+describe("#3281 6e — one checkout at a time (single flight)", () => {
+  it("a second tap while a checkout is in flight is a silent no-op: no second create", async () => {
+    let release: () => void = () => undefined;
+    createAnswer = () =>
+      new Promise((resolve) => {
+        release = () => resolve(paystackPage());
+      }) as never;
+    const first = pay(v2Input());
+    await Promise.resolve();
+    expect(await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 }))).toEqual({
+      outcome: "canceled",
+    });
+    // Refused before ANY edge call: only the first checkout's create so far.
+    expect(invoke).toHaveBeenCalledTimes(1);
+    release();
+    await first;
+    expect(calls("ticket-checkout-create")).toHaveLength(1);
+    // Released afterwards: the next tap runs.
+    createAnswer = paystackPage;
+    await pay(v2Input({ checkoutAttemptId: ATTEMPT_2 }));
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+  });
+
+  it("a sign-out frees the guard, and the old checkout never frees the new one's", async () => {
+    let releaseOld: () => void = () => undefined;
+    createAnswer = () =>
+      new Promise((resolve) => {
+        releaseOld = () => resolve(paystackPage());
+      }) as never;
+    const old = pay(v2Input());
+    await Promise.resolve();
+    clearAllStores(); // sign-out
+
+    let releaseNew: () => void = () => undefined;
+    createAnswer = () =>
+      new Promise((resolve) => {
+        releaseNew = () => resolve(paystackPage());
+      }) as never;
+    const fresh = pay(v2Input({ checkoutAttemptId: ATTEMPT_2 }));
+    await Promise.resolve();
+
+    releaseOld();
+    expect(await old).toEqual({ outcome: "canceled" });
+    // The new checkout still holds the guard.
+    expect(
+      await pay(
+        v2Input({ checkoutAttemptId: "32810000-0000-4000-8000-0000000000f3" }),
+      ),
+    ).toEqual({ outcome: "canceled" });
+    expect(calls("ticket-checkout-create")).toHaveLength(2);
+    releaseNew();
+    await fresh;
+  });
+});
