@@ -270,12 +270,14 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 rework 9: register 20280702163355 (deleting a chat closes its Ari flow runs) in the #1857, #1931 (skipped by exact filename) and #2117 replay lanes, and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #3355 merge of origin/main c6941aac31 (#4402 payee_shared_bank_account rows kept beside the #3355 rows); re-sealed.
 // #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay, and M2 in the #2117 one; re-sealed.
+// #4402 merge of origin/main d116790964 (#4422 rows and #1931 skips kept beside the #4402 ones); re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
 // #4402: register 20280704504402 (NGN minimum creator fee is ₦100) in the #1857, #1931 and #2117 replay lanes; re-sealed.
 // #4402: register 20280704604402 (upload deadline follows the agreed due) and its PostgreSQL proof; re-sealed.
 // #4402 merge of origin/main a5a5c59094 (#4419 20280706004419 rows kept after the #4402 rows); re-sealed.
 // #4402 CI fix: skip the seven polish migrations (gig tables from skipped #3872) by exact filename in the #1931 pre-landing replay, and M2 in the #2117 one; re-sealed.
-export const BOOTSTRAP_SHA256 = "91754650ba1b44d743c55a0d6a53c4bad715d7dcee4de7dc2760949f84cf5f0f";
+// #4402 merge of origin/main d116790964 (#4422 rows and #1931 skips kept beside the #4402 ones); re-sealed.
+export const BOOTSTRAP_SHA256 = "d6b7040ee3039c77287d5f2cc776af1933f54cf6e5fa385547d9eb3160edc3c2";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

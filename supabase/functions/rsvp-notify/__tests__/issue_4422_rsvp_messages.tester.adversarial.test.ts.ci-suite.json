@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/rsvp-notify/__tests__/issue_4422_rsvp_messages.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4422-rsvp-messages-tester-adversarial",
+  "profile": "deno-2-unit"
+}

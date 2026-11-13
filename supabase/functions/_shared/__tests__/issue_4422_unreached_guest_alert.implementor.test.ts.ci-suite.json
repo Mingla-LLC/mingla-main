@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4422_unreached_guest_alert.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4422-unreached-guest-alert-implementor",
+  "profile": "deno-2-unit"
+}

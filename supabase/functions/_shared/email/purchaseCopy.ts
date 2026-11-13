@@ -177,7 +177,8 @@ export function purchaseEmailCopy(input: PurchaseCopyInput): PurchaseEmailCopy {
         "Request sent.",
         "We'll text and email you when the host says yes.",
         false,
-        null,
+        // Issue #4422 — a button to the event page, never a raw URL.
+        "See the event",
       );
     case "rsvp_waitlisted":
       return copy(
@@ -185,7 +186,8 @@ export function purchaseEmailCopy(input: PurchaseCopyInput): PurchaseEmailCopy {
         "You're on the waitlist.",
         "We'll text and email you if a spot opens.",
         false,
-        null,
+        // Issue #4422 — a button to the event page, never a raw URL.
+        "See the event",
       );
     case "rsvp_maybe":
       return copy(
@@ -193,7 +195,8 @@ export function purchaseEmailCopy(input: PurchaseCopyInput): PurchaseEmailCopy {
         "Maybe saved.",
         "Change it any time from your invite.",
         false,
-        null,
+        // Issue #4422 — a button to the event page, never a raw URL.
+        "See the event",
       );
     case "rsvp_not_going":
       return copy(
@@ -201,7 +204,8 @@ export function purchaseEmailCopy(input: PurchaseCopyInput): PurchaseEmailCopy {
         "RSVP updated.",
         "We've let the host know you can't make it.",
         false,
-        null,
+        // Issue #4422 — a button to the event page, never a raw URL.
+        "See the event",
       );
     case "rsvp_declined":
       return copy(
