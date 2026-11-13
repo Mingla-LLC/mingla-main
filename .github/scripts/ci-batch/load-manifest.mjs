@@ -272,7 +272,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 CI fix 1: skip 20280702133355 (flow follow-up never cancels, typed on the skipped ari_flow_runs) by exact filename in the #1931 pre-landing replay; re-sealed.
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
 // #4423 Wave 2: register the four set-based ops/team_inbox migrations in the #1857, #1931 and #2117 lanes, and their two PostgreSQL proofs in #1931 and #2117; re-sealed.
-export const BOOTSTRAP_SHA256 = "65ef96e024f1088bff1d7870bfc7238c27bb23278b510d1a6f6c08916bffb15a";
+// #4423 Wave 3: register the pre-request limit and database health migrations in the #1857, #1931 and #2117 lanes, and their PostgreSQL proof in #1931 and #2117; re-sealed.
+export const BOOTSTRAP_SHA256 = "86b6b965b2dc6fbc8f435e1d929beffbca7824679b8a6f128ba454d8b2635c74";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
