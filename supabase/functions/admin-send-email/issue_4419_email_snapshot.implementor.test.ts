@@ -224,6 +224,19 @@ function fakeDb(options: {
           error: null,
         });
       }
+      if (fn === "issue_4419_admin_email_test_send_reserve") {
+        // The SQL function: count this person's rows in the last hour, write one, all at once.
+        const used = state.audits.filter((a) =>
+          a.action === "email_campaign_test_sent" && (a.metadata as Row)?.actor_user_id === params.p_actor
+        ).length;
+        if (used >= Number(params.p_limit)) return Promise.resolve({ data: null, error: null });
+        const id = `audit-${state.audits.length + 1}`;
+        state.audits.push({
+          id, action: "email_campaign_test_sent", metadata: { actor_user_id: params.p_actor, from_snapshot: params.p_from_snapshot },
+          created_at: new Date().toISOString(),
+        });
+        return Promise.resolve({ data: id, error: null });
+      }
       if (fn === "issue_4383_person_label") {
         const names: Row = { [ADMIN_ID]: "Abimbola A.", [MEMBER_ID]: "Seth O." };
         return Promise.resolve({ data: names[String(params.p_user_id)] ?? null, error: null });
@@ -641,8 +654,8 @@ Deno.test("S-12 (tester P2-1) a read blip on a later batch hands the send back t
     db.state.failLogReads = true;
     const result = await processClaimedCampaign(db.client, { ...current(db) } as never) as Row;
     assertEquals(result.retry, true);
-    assertEquals(current(db).status, "queued", "back in the queue, not failed");
-    assertEquals(current(db).processing_started_at, null);
+    assertEquals(current(db).status, "sending", "handed back to the drain with a later claim, not failed");
+    assertEquals(current(db).snapshot_attempts, 1);
     assertEquals(current(db).completed_at ?? null, null);
     assertEquals(String(current(db).last_error ?? "").includes("snapshot"), false);
     assertEquals(db.state.deliveries.filter((d) => d.status === "pending").length, 1, "the second person is still waiting");

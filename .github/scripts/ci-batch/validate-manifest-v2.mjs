@@ -484,7 +484,8 @@ export function phase3dContractDigest(manifest) {
 // #3355 CI fix 1b: withdraw 20280702103355 (discount codes Feature Guide sync) from the #1857, #1931 skip and #2117 lanes; re-sealed.
 // #4402: register 20280704504402 (NGN minimum creator fee is ₦100) in the #1857, #1931 and #2117 replay lanes; re-sealed.
 // #4402: register 20280704604402 (upload deadline follows the agreed due) and its PostgreSQL proof; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "1b09835975390042476156259e9527831beb92bc0fd1af13010671abe39e0966";
+// #4402 merge of origin/main a5a5c59094 (#4419 20280706004419 rows kept after the #4402 rows); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "42f743bac799bace302beb7cd3b4503a3aa7b0b4364ba8c8384efde7522452e7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
