@@ -79,13 +79,31 @@ Deno.test("auto-approved anonymous primary plus two guests", () => {
     notify.includes("buildRsvpPassPdf"),
     "eligible email must use the shared PDF renderer",
   );
-  // [TEST-MOD-APPROVED #4422] The dispatcher now carries every file the
-  // worker gives it (calendar file + QR PDF), so the PDF is pinned at both
-  // ends: the worker pushes it, the dispatcher forwards the list.
+  // [TEST-MOD-APPROVED #4422] The dispatcher carries every file the worker
+  // gives it. The QR PDF is attached on the LEGACY (switch-off) pass only:
+  // the one PDF build sits inside the legacy guard. The enriched (#4063 /
+  // rsvp_messages_v2) pass email carries the claim button and the calendar
+  // file and no PDF (Seth, 13 Nov: everything goes through the app).
+  const legacyGuard = notify.indexOf(
+    '} else if (\n    modernMessage === null && claim.template_key === "rsvp_pass" &&\n    claim.channel === "email"\n  ) {',
+  );
+  const pdfBuild = notify.indexOf("await buildRsvpPassPdf({");
+  const pdfPush = notify.indexOf(
+    "attachments.push({ filename: pdf.filename, content: pdf.contentBase64 });",
+  );
   assert(
     dispatcher.includes("? { attachments: input.attachments }") &&
-      notify.includes("attachments.push({\n          filename: pdf.filename,"),
-    "eligible email must attach the PDF",
+      legacyGuard >= 0 && pdfBuild > legacyGuard && pdfPush > pdfBuild &&
+      notify.split("buildRsvpPassPdf(").length === 2,
+    "eligible legacy email must attach the PDF, built only on the legacy path",
+  );
+  const calendarPush = notify.indexOf(
+    "if (modernCalendar !== null) {\n    attachments.push({\n      filename: modernCalendar.icsFilename,",
+  );
+  assert(
+    notify.includes("buttonUrl: buyerLink.url") && calendarPush >= 0 &&
+      calendarPush < legacyGuard,
+    "the enriched pass email carries the claim button and the calendar file, and no PDF",
   );
   assert(
     popup.includes("eligibleCredentials.map"),

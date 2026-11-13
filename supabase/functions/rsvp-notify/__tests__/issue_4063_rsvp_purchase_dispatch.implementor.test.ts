@@ -16,12 +16,15 @@ Deno.test("#4063 enriched RSVP passes use claim links and the shared purchase me
 });
 
 // [TEST-MOD-APPROVED #4422] The enriched pass email keeps the stable ICS and
-// the brand Reply-To, and now also attaches the QR pass PDF (default 1).
-Deno.test("#4063/#4422 enriched RSVP email attaches the ICS and the QR PDF and replies to the brand", () => {
+// the brand Reply-To; the QR PDF stays on the legacy (switch-off) path only.
+Deno.test("#4063/#4422 enriched RSVP email attaches only the ICS and replies to the brand", () => {
   assertStringIncludes(source, "uid: `mingla-rsvp-${entityId}@usemingla.com`");
   assertStringIncludes(source, "filename: modernCalendar.icsFilename");
   assertStringIncludes(source, "attachments,");
-  assertStringIncludes(source, '"rsvp_pass_pdf_skipped_no_qr"');
+  assertStringIncludes(
+    source,
+    '} else if (\n    modernMessage === null && claim.template_key === "rsvp_pass" &&',
+  );
   assertStringIncludes(
     source,
     "replyTo: eventUpdateReplyTo(pass?.brandContactEmail)",

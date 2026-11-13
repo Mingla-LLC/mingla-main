@@ -650,55 +650,38 @@ async function processClaim(
       link,
       legacyEventUpdate && eventSmsLink !== null ? eventSmsLink : link,
     );
+  // #4422 (Seth, 13 Nov): everything goes through the app. The enriched pass
+  // email carries the claim button, the date line and the calendar file and
+  // NO QR PDF: the guest claims the pass and shows its QR in the app. Rows
+  // without the enrichment (the switch off) keep the legacy QR PDF unchanged.
   const attachments: Array<{ filename: string; content: string }> = [];
   if (modernCalendar !== null) {
     attachments.push({
       filename: modernCalendar.icsFilename,
       content: bytesToBase64(modernCalendar.icsContent),
     });
-  }
-  if (
-    claim.channel === "email" && isPassTemplate &&
-    (modernMessage !== null || claim.template_key === "rsvp_pass")
+  } else if (
+    modernMessage === null && claim.template_key === "rsvp_pass" &&
+    claim.channel === "email"
   ) {
     const qrCode = text(p.qrCode);
-    if (!qrCode && modernMessage !== null) {
-      // #4422 — e.g. a promoted guest (the drain mints no QR): the claim link
-      // carries the pass, so the email still goes, with the calendar file.
-      console.info(JSON.stringify({
-        event: "rsvp_pass_pdf_skipped_no_qr",
-        notificationId: claim.notification_id,
-        deliveryId: claim.delivery_id,
-      }));
-    } else if (!qrCode) {
+    if (!qrCode) {
       await complete(admin, claim, "failed_retryable", null, "rsvp_qr_missing");
       return;
-    } else {
-      try {
-        const pdf = await buildRsvpPassPdf({
-          eventTitle: eventName ?? "your event",
-          dateLine: eventTime
-            ? `${eventTime.date}, ${eventTime.time}`
-            : text(p.dateLine),
-          venueLine: text(p.venueLine),
-          brandName: brandName ?? "Mingla",
-          attendeeName: text(p.recipientName),
-          qrPayload: qrCode,
-        });
-        attachments.push({
-          filename: pdf.filename,
-          content: pdf.contentBase64,
-        });
-      } catch {
-        await complete(
-          admin,
-          claim,
-          "failed_retryable",
-          null,
-          "rsvp_pdf_failed",
-        );
-        return;
-      }
+    }
+    try {
+      const pdf = await buildRsvpPassPdf({
+        eventTitle: text(p.eventName) ?? "your event",
+        dateLine: text(p.dateLine),
+        venueLine: text(p.venueLine),
+        brandName: text(p.brandName) ?? "Mingla",
+        attendeeName: text(p.recipientName),
+        qrPayload: qrCode,
+      });
+      attachments.push({ filename: pdf.filename, content: pdf.contentBase64 });
+    } catch {
+      await complete(admin, claim, "failed_retryable", null, "rsvp_pdf_failed");
+      return;
     }
   }
   try {

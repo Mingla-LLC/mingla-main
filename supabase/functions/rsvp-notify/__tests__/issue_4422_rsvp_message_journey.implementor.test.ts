@@ -1,6 +1,6 @@
 // Issue #4422 — the REAL rsvp-notify worker renders every RSVP message of the
-// version 4 design: the pass (claim button, date, calendar file AND the QR
-// PDF), the approved and spot-opened passes, and the Maybe, waitlisted,
+// version 4 design: the pass (claim button, date line and calendar file; no
+// QR PDF: Seth, 13 Nov, everything goes through the app), the approved and spot-opened passes, and the Maybe, waitlisted,
 // pending and can't-go messages with a short link to the live event page.
 //
 // Runs the actual handler (std serve() driven in memory by _stdServeHarness),
@@ -9,7 +9,7 @@
 // fixture does not recognise fails the test.
 //
 // fails-on-revert:
-//   - the PDF dropped from the modern pass        -> J-01 sees one attachment
+//   - a QR PDF added to the enriched pass          -> J-01 sees two attachments
 //   - passReason ignored                           -> J-02/J-03 see S4
 //   - the acknowledgement branch removed           -> J-04/J-05 see legacy copy
 //   - the no-link variant removed                  -> J-06 overflows to retry
@@ -258,37 +258,6 @@ async function run(
 const visibleText = (html: string): string =>
   html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
 
-async function pdfText(base64: string): Promise<string> {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  const raw = new TextDecoder("latin1").decode(bytes);
-  const out: string[] = [raw];
-  for (const match of raw.matchAll(/(?<!end)stream\r?\n/g)) {
-    const start = (match.index ?? 0) + match[0].length;
-    let end = raw.indexOf("endstream", start);
-    if (end < 0) continue;
-    while (end > start && (raw[end - 1] === "\n" || raw[end - 1] === "\r")) {
-      end -= 1;
-    }
-    try {
-      const stream = new Blob([bytes.slice(start, end)]).stream()
-        .pipeThrough(new DecompressionStream("deflate"));
-      out.push(
-        new TextDecoder("latin1").decode(
-          new Uint8Array(await new Response(stream).arrayBuffer()),
-        ),
-      );
-    } catch {
-      // Not a deflate stream.
-    }
-  }
-  return out.join("\n");
-}
-
-const hex = (value: string): string =>
-  Array.from(value).map((c) =>
-    c.charCodeAt(0).toString(16).padStart(2, "0").toUpperCase()
-  ).join("");
-
 async function save(name: string, content: string): Promise<void> {
   if (!RENDER_DIR) return;
   await Deno.mkdir(RENDER_DIR, { recursive: true });
@@ -301,7 +270,7 @@ const opts = { sanitizeOps: false, sanitizeResources: false };
 Deno.test({
   ...opts,
   name:
-    "J-01 the Going pass: claim button, date, calendar file AND the QR PDF; text S4",
+    "J-01 the Going pass: claim button, date and calendar file, no QR PDF; text S4",
   fn: async () => {
     const seen = await run(world, [
       claim("rsvp_pass", "email", enriched),
@@ -312,16 +281,16 @@ Deno.test({
     const attachments = email.attachments as Array<
       { filename: string; content: string }
     >;
+    // Seth, 13 Nov: everything goes through the app. No QR PDF on the
+    // enriched pass; the claim button and the calendar file carry it.
     same(
       attachments.map((a) => a.filename.split(".").at(-1)),
-      ["ics", "pdf"],
-      "calendar file and PDF",
+      ["ics"],
+      "the calendar file only, no QR PDF",
     );
-    const pdf = await pdfText(attachments[1].content);
     assert(
-      pdf.includes(hex("Sun 29 Nov, 7:00 PM")) ||
-        pdf.includes("Sun 29 Nov, 7:00 PM"),
-      "the PDF prints the date line",
+      !attachments.some((a) => atob(a.content).startsWith("%PDF-")),
+      "no PDF attachment on the enriched pass",
     );
     const html = String(email.html);
     assert(
@@ -393,10 +362,6 @@ Deno.test({
       attachments.map((a) => a.filename.split(".").at(-1)),
       ["ics"],
       "calendar file only",
-    );
-    assert(
-      seen.logs.some((line) => line.includes("rsvp_pass_pdf_skipped_no_qr")),
-      "the skipped PDF is logged",
     );
     assert(
       !seen.logs.some((line) => line.includes("ada@example.invalid")),

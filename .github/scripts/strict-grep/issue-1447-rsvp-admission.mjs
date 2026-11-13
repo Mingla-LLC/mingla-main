@@ -119,8 +119,15 @@ export function violations(files) {
     'event: "rsvp_notification_channel_result"',
   ]) need(notify, token, "durable per-channel worker", failures);
   need(files.dispatcher ?? "", 'client.rpc("can_send"', "unified can_send chokepoint", failures);
-  // #4422 — the email carries every file it is given (calendar file + QR PDF).
+  // #4422 — the email carries every file it is given. The QR PDF rides only
+  // the legacy (switch-off) pass, inside its guard; the enriched pass email
+  // goes through the app (claim button + calendar file, no PDF; Seth, 13 Nov).
   need(files.dispatcher ?? "", "{ attachments: input.attachments }", "email PDF attachment", failures);
+  need(notify, '} else if (\n    modernMessage === null && claim.template_key === "rsvp_pass" &&\n    claim.channel === "email"\n  ) {', "legacy-only PDF guard", failures);
+  need(notify, "attachments.push({ filename: pdf.filename, content: pdf.contentBase64 });", "legacy email PDF attachment", failures);
+  if (notify.split("buildRsvpPassPdf(").length !== 2) {
+    failures.push("legacy-only PDF guard: the pass PDF must be built in exactly one place");
+  }
 
   for (const token of ["RATE_MAX", 'caller.rpc("biz_rsvp_scan"', "qrPayload.length > 512"])
     need(files.scanEdge ?? "", token, "authenticated scan edge", failures);
@@ -227,6 +234,8 @@ function selfTest() {
     ["migration", "pass_recovery_token_hash=NULL,pass_recovery_token_created_at=NULL", "pass_recovery_token_hash=NULL,pass_recovery_token_created_at=NULL,checked_in_at=NULL,checked_in_by=NULL", "check-in history"],
     ["dispatcher", 'client.rpc("can_send"', 'client.rpc("send_anyway"', "can_send"],
     ["dispatcher", "{ attachments: input.attachments }", "{ attachments: [] }", "email PDF"],
+    ["notify", '} else if (\n    modernMessage === null && claim.template_key === "rsvp_pass" &&', '}\n  if (\n    claim.template_key === "rsvp_pass" &&', "legacy-only PDF guard"],
+    ["notify", "attachments.push({ filename: pdf.filename, content: pdf.contentBase64 });", "", "legacy email PDF attachment"],
     ["detail", 'label="Scan guests"', 'label="Guests"', "action order"],
     ["popup", "Download RSVP invite PDF", "Email sent", "founder-hidden"],
     ["popup", "You’re on the list", "You're going!", "You’re on the list"],
