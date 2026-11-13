@@ -214,6 +214,16 @@ export function creatorCardLine(creator) {
   return checksProgress(creator.checks).text;
 }
 
+export const PAYOUT_NAME_WARNING = "Payout name doesn't match: check before the first payout";
+
+/** #4402 (OQ-5): flag only, payouts are never blocked. Returns {warning, reason} or null. */
+export function payoutNameReview(source) {
+  const review = source?.payout_name_review;
+  const flagged = review?.required === true || (Array.isArray(source?.flags) && source.flags.includes("payout_name_review"));
+  if (!flagged) return null;
+  return { warning: PAYOUT_NAME_WARNING, reason: typeof review?.reason === "string" && review.reason.trim() ? review.reason.trim() : null };
+}
+
 /** Flags come back as strings or objects; always return readable lines. */
 export function flagLines(flags) {
   if (!Array.isArray(flags)) return [];
@@ -237,6 +247,7 @@ const FLAG_WORDS = {
   bio_code_missing: "Bio code not found",
   duplicate_account: "May be a second account",
   payout_missing: "Payout not connected",
+  payout_name_review: "Payout name doesn't match: check before the first payout",
 };
 
 // ── Creator social accounts (#4402) ─────────────────────────────────────────
@@ -472,6 +483,8 @@ export function creatorStepRows(detail) {
   rows.push(done("payout")
     ? { key: "payout", tone: "done", text: payoutWord(detail?.payout) }
     : { key: "payout", tone: "creator", tag: "Creator's turn", text: payoutWord(detail?.payout) });
+  const nameReview = payoutNameReview(detail);
+  if (nameReview) rows[rows.length - 1].nameReview = nameReview;
 
   if (done("agreement")) {
     const when = detail?.agreement?.signed_at ? ` on ${shortDateTime(detail.agreement.signed_at)}` : "";

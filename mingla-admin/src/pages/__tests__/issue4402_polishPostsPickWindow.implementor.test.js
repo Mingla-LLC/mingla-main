@@ -9,6 +9,8 @@ import {
   checkPickWindowDraft,
   checkPostFailReason,
   contractStateWord,
+  creatorStepRows,
+  payoutNameReview,
   creatorCardThumb,
   localAlreadyPicked,
   localHistoryLine,
@@ -141,4 +143,18 @@ test("#4402 board card: thumbnail when there is one, an icon with No video yet w
 
 test("#4402 the Posts failed state reads as a fix, not a check failure", () => {
   assert.equal(contractStateWord("posts_failed"), "A post needs a fix");
+});
+
+test("#4402 payout name mismatch: a warning on the card and the Payout account row, never a block", () => {
+  const flagged = { payout_name_review: { required: true, reason: "Bank name shares no word with the profile", checked_at: "2026-11-13T10:00:00Z" }, flags: ["payout_name_review"] };
+  assert.deepEqual(payoutNameReview(flagged), { warning: "Payout name doesn't match: check before the first payout", reason: "Bank name shares no word with the profile" });
+  assert.equal(payoutNameReview({ flags: ["payout_name_review"] }).reason, null);
+  assert.equal(payoutNameReview({ payout_name_review: { required: false }, flags: [] }), null);
+  assert.equal(payoutNameReview({ payout_name_review: null }), null);
+  const rows = creatorStepRows({ ...flagged, checks: [], payout: { provider: "paystack", status: "active" } });
+  assert.equal(rows.find((r) => r.key === "payout").nameReview.reason, "Bank name shares no word with the profile");
+  assert.equal(creatorStepRows({ checks: [] }).find((r) => r.key === "payout").nameReview, undefined);
+  assert.match(creators, /const nameReview = payoutNameReview\(creator\)/);
+  assert.match(creators, /row\.nameReview\.reason/);
+  assert.doesNotMatch(read("lib/creatorPrograms.js"), /payout_name_review[^\n]*(disabled|block)/i);
 });

@@ -46,6 +46,7 @@ import {
   bandWord,
   cardStepTones,
   creatorCardThumb,
+  payoutNameReview,
   checksProgress,
   creatorCardLine,
   creatorColumnFor,
@@ -114,6 +115,7 @@ function CreatorCard({ creator, onOpen }) {
   const progress = checksProgress(creator.checks);
   const handle = creator.handle?.handle ? ` · @${creator.handle.handle}` : "";
   const thumb = creatorCardThumb(creator);
+  const nameReview = payoutNameReview(creator);
   return (
     <button
       type="button"
@@ -139,6 +141,7 @@ function CreatorCard({ creator, onOpen }) {
           <span className="tabular-nums">{progress.text}</span>
         </span>
         <span className="mt-1 block truncate text-xs text-[var(--color-text-secondary)]">{line}</span>
+        {nameReview ? <span className="mt-1.5 block"><Badge variant="warning" dot>{nameReview.warning}</Badge></span> : null}
         <span className="mt-2 block"><CreatorStepMeter tones={cardStepTones(creator)} /></span>
       </span>
     </button>
@@ -495,6 +498,12 @@ function SetupSteps({ detail }) {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-[var(--color-text-primary)]">{stepWord(row.key)}</span>
                 <span className="block text-xs text-[var(--color-text-secondary)]">{row.text}</span>
+                {row.nameReview ? (
+                  <span className="mt-1.5 block">
+                    <Badge variant="warning" dot>{row.nameReview.warning}</Badge>
+                    {row.nameReview.reason ? <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">{row.nameReview.reason}</span> : null}
+                  </span>
+                ) : null}
               </span>
               <Badge variant={STEP_TAG[row.tone] ?? "default"}>{row.tone === "done" ? "Done" : row.tag}</Badge>
               <span className="sr-only">{row.tone === "done" ? "done" : "not done"}</span>
@@ -834,7 +843,7 @@ function RecordSkeleton() {
   );
 }
 
-function CreatorRecord({ creatorId, onBack, onChanged }) {
+function CreatorRecord({ creatorId, boardRow = null, onBack, onChanged }) {
   const { addToast } = useToast();
   const fetchDetail = useCallback(() => getCreatorDetail(creatorId), [creatorId]);
   const record = useProgramLoad(fetchDetail);
@@ -842,7 +851,8 @@ function CreatorRecord({ creatorId, onBack, onChanged }) {
   const [approving, setApproving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [changingBand, setChangingBand] = useState(null);
-  const detail = record.data;
+  // The name flag is read from the board row when the detail read carries none.
+  const detail = record.data && boardRow?.payout_name_review && !record.data.payout_name_review ? { ...record.data, payout_name_review: boardRow.payout_name_review } : record.data;
 
   const refresh = useCallback(() => { record.reload(); onChanged(); }, [record, onChanged]);
 
@@ -999,6 +1009,7 @@ export function ProgramCreatorsPage() {
       <CreatorRecord
         key={route.creatorId}
         creatorId={route.creatorId}
+        boardRow={(board.data ?? []).find((r) => r.creator_id === route.creatorId) ?? null}
         onBack={() => go({ tab: route.tab, creatorId: null })}
         onChanged={board.reload}
       />
