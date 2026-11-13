@@ -1,6 +1,6 @@
 -- Issue #4423 Wave 5: function EXECUTE grants.
 --
--- 58 SECURITY DEFINER functions that no client calls lose EXECUTE for
+-- 43 SECURITY DEFINER functions that no client calls lose EXECUTE for
 -- PUBLIC, anon and authenticated. service_role and the owner keep it, so
 -- edge functions, cron and the definer functions that call these still work.
 --
@@ -10,7 +10,9 @@
 -- supabase/functions (dynamic rpc name prefixes included), in any policy,
 -- view, default, check, trigger or index expression, in the body of any
 -- SECURITY INVOKER function, in an in-flight branch, in the last 30 days of
--- REST calls, or in the allowlist's intended-public section.
+-- REST calls, or in the allowlist's intended-public section. Mingla Sites
+-- functions are left to their own lane (#3381), and so is any function an
+-- existing suite exercises as anon or authenticated.
 -- Rollback: GRANT EXECUTE ON FUNCTION <same signature> TO anon, authenticated
 -- (and PUBLIC where it had it).
 
@@ -42,7 +44,6 @@ REVOKE EXECUTE ON FUNCTION public.admin_rules_run_affected_places(p_job_id uuid,
 REVOKE EXECUTE ON FUNCTION public.admin_rules_run_detail(p_job_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.admin_rules_run_diff(p_job_a uuid, p_job_b uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.admin_rules_runs(p_city_id uuid, p_limit integer, p_offset integer) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.admin_set_ad_pixel_consent_mode(p_country_code text, p_mode text) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.admin_set_trip_place(p_event_id uuid, p_side text, p_city text, p_country_code text) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.admin_uncategorized_places(p_country text, p_city text, p_limit integer, p_offset integer) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.admin_virtual_tile_intelligence(p_country text, p_city text) FROM PUBLIC, anon, authenticated;
@@ -51,26 +52,12 @@ REVOKE EXECUTE ON FUNCTION public.ari_admin_quality_dashboard() FROM PUBLIC, ano
 REVOKE EXECUTE ON FUNCTION public.biz_can_manage_orders_for_event(p_event_id uuid, p_user_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.biz_can_read_order(p_order_id uuid, p_user_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.biz_guest_roster_detail(p_event_id uuid, p_roster_key text) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.biz_is_event_manager_plus(p_event_id uuid, p_user_id uuid) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.brand_site_admin_entitlements(p_search text, p_limit integer) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.brand_site_admin_grant(p_brand_id uuid, p_reason_code text, p_note text) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.brand_site_admin_interest(p_limit integer) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.brand_site_admin_reserve_label(p_label text, p_reason text) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.brand_site_admin_revoke(p_brand_id uuid, p_reason_code text, p_note text) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.brand_site_customer_audit(p_site_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.business_move_event_date_time(p_event_id uuid, p_event_date_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_reason text) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.community_role(p_user_id uuid) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.get_muted_user_ids(user_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.is_muted_by(muter uuid, target uuid) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.issue_1977_rsvp_graph(p_event_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.issue_3720_community_comments(p_post_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.issue_3720_is_host_community_member(p_user_id uuid) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.issue_3720_list_data_room_access(p_limit integer) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.issue_4111_is_enquiry_team_member(p_brand_id uuid, p_user_id uuid) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.issue_4114_is_event_chat_team_member(p_conversation_id uuid, p_user_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.issue_4382_customer_can_view_conversation(p_conversation_id uuid, p_user_id uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.issue_4382_source_reporter_count(p_source_kind text, p_source_id uuid) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.phone_has_used_trial(p_phone text) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.release_advisory_lock_rules_run(p_lock_key bigint) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.rpc_force_deck_recycle(p_session_id uuid, p_exclude_place_ids uuid[]) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.try_advisory_lock_rules_run(p_lock_key bigint) FROM PUBLIC, anon, authenticated;

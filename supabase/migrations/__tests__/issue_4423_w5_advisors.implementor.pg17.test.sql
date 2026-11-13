@@ -3,7 +3,7 @@
 -- 20280705414423_issue_4423_w5_function_search_path.sql, on the fully
 -- replayed PG17 schema. Everything is rolled back.
 --
---   GRANTS   the 58 functions in the grants migration are not executable by
+--   GRANTS   the 43 functions in the grants migration are not executable by
 --            anon or authenticated, and are still executable by service_role.
 --   KEEP     nothing a client uses lost access: every intended-public signature
 --            in supabase/security/anon_executable_definer_allowlist.txt is still
@@ -21,7 +21,7 @@
 --            without a permission error; as a signed-in user, the main tables
 --            read without a permission error.
 --
--- FAILS-ON-REVERT: without the grants migration GRANTS fails (58 functions
+-- FAILS-ON-REVERT: without the grants migration GRANTS fails (43 functions
 -- still executable); without the search_path migration PATH fails.
 --
 -- Run from the repository root as supabase_admin.
@@ -65,7 +65,6 @@ insert into w5_revoked values
   ('admin_rules_run_detail(p_job_id uuid)'),
   ('admin_rules_run_diff(p_job_a uuid, p_job_b uuid)'),
   ('admin_rules_runs(p_city_id uuid, p_limit integer, p_offset integer)'),
-  ('admin_set_ad_pixel_consent_mode(p_country_code text, p_mode text)'),
   ('admin_set_trip_place(p_event_id uuid, p_side text, p_city text, p_country_code text)'),
   ('admin_uncategorized_places(p_country text, p_city text, p_limit integer, p_offset integer)'),
   ('admin_virtual_tile_intelligence(p_country text, p_city text)'),
@@ -74,26 +73,12 @@ insert into w5_revoked values
   ('biz_can_manage_orders_for_event(p_event_id uuid, p_user_id uuid)'),
   ('biz_can_read_order(p_order_id uuid, p_user_id uuid)'),
   ('biz_guest_roster_detail(p_event_id uuid, p_roster_key text)'),
-  ('biz_is_event_manager_plus(p_event_id uuid, p_user_id uuid)'),
-  ('brand_site_admin_entitlements(p_search text, p_limit integer)'),
-  ('brand_site_admin_grant(p_brand_id uuid, p_reason_code text, p_note text)'),
-  ('brand_site_admin_interest(p_limit integer)'),
-  ('brand_site_admin_reserve_label(p_label text, p_reason text)'),
-  ('brand_site_admin_revoke(p_brand_id uuid, p_reason_code text, p_note text)'),
-  ('brand_site_customer_audit(p_site_id uuid)'),
   ('business_move_event_date_time(p_event_id uuid, p_event_date_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_reason text)'),
-  ('community_role(p_user_id uuid)'),
-  ('get_muted_user_ids(user_id uuid)'),
   ('is_muted_by(muter uuid, target uuid)'),
-  ('issue_1977_rsvp_graph(p_event_id uuid)'),
   ('issue_3720_community_comments(p_post_id uuid)'),
   ('issue_3720_is_host_community_member(p_user_id uuid)'),
-  ('issue_3720_list_data_room_access(p_limit integer)'),
-  ('issue_4111_is_enquiry_team_member(p_brand_id uuid, p_user_id uuid)'),
-  ('issue_4114_is_event_chat_team_member(p_conversation_id uuid, p_user_id uuid)'),
   ('issue_4382_customer_can_view_conversation(p_conversation_id uuid, p_user_id uuid)'),
   ('issue_4382_source_reporter_count(p_source_kind text, p_source_id uuid)'),
-  ('phone_has_used_trial(p_phone text)'),
   ('release_advisory_lock_rules_run(p_lock_key bigint)'),
   ('rpc_force_deck_recycle(p_session_id uuid, p_exclude_place_ids uuid[])'),
   ('try_advisory_lock_rules_run(p_lock_key bigint)');
