@@ -49,7 +49,8 @@ Deno.test("#3720 delivery has no product count cap and uses provider idempotency
   );
   assertStringIncludes(edge, "Idempotency-Key");
   assertStringIncludes(edge, "reply_to: ADMIN_REPLY_TO");
-  assertStringIncludes(edge, 'address: "hello@usemingla.com"');
+  // #4419 (Seth, 13 Nov): Admin campaigns send from campaigns.usemingla.com.
+  assertStringIncludes(edge, 'address: "hello@campaigns.usemingla.com"');
   assertStringIncludes(edge, 'ADMIN_REPLY_TO = "noreply@usemingla.com"');
   assertEquals(edge.includes(".limit(500)"), false);
   assertStringIncludes(edge, 'select("id", { count: "exact", head: true })');

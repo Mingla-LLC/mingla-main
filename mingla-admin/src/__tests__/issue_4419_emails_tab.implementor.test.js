@@ -424,15 +424,16 @@ describe("E-8 export and duplicate", () => {
     const sentRows = h.model.exportRows(STATES.sent);
     assert.deepEqual(sentRows.find((r) => r.measure === "Clicked (people)"), { measure: "Clicked (people)", count: "click tracking is off" });
   });
-  it("Duplicate keeps the words, blocks and segment audience; a one-person audience is dropped", () => {
+  it("Duplicate keeps the words and blocks; its audience goes through the drafts' host-default guard", () => {
     const d = h.model.duplicateDraft(STATES.sent);
     assert.equal(d.subject, STATES.sent.campaign.subject);
     assert.deepEqual(d.document, STATES.sent.campaign.document);
-    assert.equal(d.audienceMode, "segment");
-    assert.deepEqual(d.filters, { city: "Lagos" });
-    const person = h.model.duplicateDraft(fixture("sent", { campaign: { audience: { mode: "person" } } }));
-    assert.equal(person.personDropped, true);
-    assert.match(read("components/email/EmailComposer.jsx"), /initialDraft = null \}\) \{/);
+    assert.deepEqual(d.audience, { audienceMode: "segment", filters: { city: "Lagos" } });
+    assert.deepEqual(h.model.duplicateDraft(fixture("sent", { campaign: { audience: { mode: "everyone" } } })).audience, { audienceMode: "everyone", filters: {} });
+    const composer = read("components/email/EmailComposer.jsx");
+    assert.match(composer, /initialDraft = null \}\) \{/);
+    // The composer never applies a duplicated audience directly (#3720 guard).
+    assert.match(composer, /applyComposerState\(composerStateFromDraft\(initialDraft, EMPTY_FILTERS\)\);/);
   });
 });
 

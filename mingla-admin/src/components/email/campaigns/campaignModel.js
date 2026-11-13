@@ -412,18 +412,24 @@ export function engagementView(detail) {
   return { state: "ready", rows, links, note: "Opens are approximate: some mail apps open every email to load images." };
 }
 
-/** Composer state for "Duplicate as new": same words and blocks, same audience when it can be restored. */
+/**
+ * A draft for "Duplicate as new": the same words and blocks. The audience is
+ * offered in the drafts' own shape, so the composer reads it through the
+ * #3720 host-default guard (composerStateFromDraft): a host segment comes
+ * back as it was; anything else (everyone, one person) starts at the hosts
+ * default for the teammate to choose again, never a wider audience.
+ */
 export function duplicateDraft(detail) {
   const c = detail?.campaign || {};
   const audience = c.audience && typeof c.audience === "object" ? c.audience : null;
-  const mode = audience?.mode === "everyone" ? "everyone" : "segment";
   return {
     key: `${c.id}:${Date.now()}`,
     subject: typeof c.subject === "string" ? c.subject : "",
     document: Array.isArray(c.document) ? c.document : [],
-    audienceMode: mode,
-    filters: mode === "segment" && audience?.filters && typeof audience.filters === "object" ? audience.filters : {},
-    personDropped: audience?.mode === "person",
+    audience: {
+      audienceMode: audience?.mode === "segment" ? "segment" : audience?.mode === "person" ? "person" : "everyone",
+      filters: audience?.mode === "segment" && audience.filters && typeof audience.filters === "object" ? audience.filters : {},
+    },
   };
 }
 
