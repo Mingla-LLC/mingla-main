@@ -39,12 +39,11 @@ describe("issue #3872 — Creator gig contract journeys", () => {
   });
 
   test("pre-lock cancellations use the party-specific reviewed refund branches", () => {
-    expect(host).toContain(
-      'creatorGigsService.refund(contractId, "host_before_accept")',
-    );
-    expect(host).toContain(
-      'creatorGigsService.refund(contractId, "host_after_accept_before_lock")',
-    );
+    // #4402: both money cancels sit behind a confirm sheet, one refund call
+    // that picks the branch from the sheet that is open.
+    expect(host).toContain("creatorGigsService.refund(");
+    expect(host).toContain('? "host_after_accept_before_lock"');
+    expect(host).toContain(': "host_before_accept"');
     expect(host).toContain(
       "Provider fees follow the payment provider’s refund rules",
     );
