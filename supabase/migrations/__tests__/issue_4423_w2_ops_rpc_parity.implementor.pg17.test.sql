@@ -713,9 +713,28 @@ end;
 $t$;
 
 -- ───────────────────────────── BOARD ─────────────────────────────
+-- The board value of key k, from the full value (rework 1, P3-2): the binding
+-- trims, written once here so the BOARD block compares every key.
+create function pg_temp.board_of(k text, v jsonb) returns jsonb language sql immutable as $fn$
+  select case
+    when v is null or jsonb_typeof(v) = 'null' then v
+    when k = 'anchor' and jsonb_typeof(v) = 'object' then jsonb_build_object('kind', v->'kind')
+    when k = 'links' then (select coalesce(jsonb_agg(jsonb_build_object('kind', l->'kind', 'id', l->'id') order by o), '[]'::jsonb)
+                             from jsonb_array_elements(v) with ordinality x(l, o))
+    when k = 'proof' and jsonb_typeof(v) = 'array' then
+      (select coalesce(jsonb_agg(case when jsonb_typeof(e) = 'object' then jsonb_build_object('kind', e->'kind', 'id', e->'id') else e end order by o), '[]'::jsonb)
+         from jsonb_array_elements(v) with ordinality x(e, o))
+    when k = 'working' then jsonb_build_object('name', v->'name', 'quiet', v->'quiet', 'last_update_at', v->'last_update_at')
+    when k = 'review' then jsonb_build_object('requested_at', v->'requested_at', 'waiting_on', v->'waiting_on')
+    when k = 'sent_back' then jsonb_build_object('reason', v->'reason')
+    when k = 'parent' then v - 'parent_id'
+    when k = 'goal' then v - 'state'
+    else v end
+$fn$;
 do $t$
 declare v_board jsonb; v_full jsonb; v_keys text; v_text jsonb; v_err text; v_same text;
-  v_contract text := 'anchor,archived,auto,auto_kind,blocked,blocked_kind,carried_count,claim,closed_at,depth,due_on,estimate_minutes,files_count,goal,id,in_backlog,links,number,overdue,owners,parent,person_reason,position,proof,release_items,review,revision,sent_back,start_on,status,status_id,subtasks,tag,thread_count,title,watchers,working';
+  -- Rework 1 (P3-2): claim, blocked_kind, carried_count, start_on and in_backlog left the board shape (no Admin list reads them).
+  v_contract text := 'anchor,archived,auto,auto_kind,blocked,closed_at,depth,due_on,estimate_minutes,files_count,goal,id,links,number,overdue,owners,parent,person_reason,position,proof,release_items,review,revision,sent_back,status,status_id,subtasks,tag,thread_count,title,watchers,working';
 begin
   perform pg_temp.login('own');
   v_board := public.ops_work_list('{"who":"all","limit":300,"per_status":true,"subtasks":true,"shape":"board"}'::jsonb);
@@ -730,9 +749,17 @@ begin
     from jsonb_array_elements(v_board->'cards') with ordinality bx(b, n)
     join jsonb_array_elements(v_full->'cards') with ordinality fx(f, n) using (n)
     cross join lateral jsonb_object_keys(b) k
-   where (k <> 'links' and b->k is distinct from f->k)
-      or (k = 'links' and b->k is distinct from (select coalesce(jsonb_agg(l - 'exists'), '[]'::jsonb) from jsonb_array_elements(f->'links') l));
-  perform pg_temp.chk('BOARD', 'every board value equals the full value (links without exists)', coalesce(v_same, 'same'), 'same');
+   where b->k is distinct from pg_temp.board_of(k, f->k);
+  perform pg_temp.chk('BOARD', 'every board value equals the full value, trimmed to what the Admin list reads', coalesce(v_same, 'same'), 'same');
+  perform pg_temp.chk('BOARD', 'the trims are real: the fixture has a link label, a review requester and a proof url, and the board drops each',
+    concat_ws(',',
+      (select bool_or(l ? 'label') from jsonb_array_elements(v_full->'cards') c, jsonb_array_elements(c->'links') l)
+        and not (select coalesce(bool_or(l ? 'label'), false) from jsonb_array_elements(v_board->'cards') c, jsonb_array_elements(c->'links') l),
+      (select bool_or(c->'review' ? 'requested_by_name') from jsonb_array_elements(v_full->'cards') c)
+        and not (select coalesce(bool_or(c->'review' ? 'requested_by_name'), false) from jsonb_array_elements(v_board->'cards') c),
+      (select bool_or(p ? 'url') from jsonb_array_elements(v_full->'cards') c, jsonb_array_elements(c->'proof') p)
+        and not (select coalesce(bool_or(p ? 'url'), false) from jsonb_array_elements(v_board->'cards') c, jsonb_array_elements(c->'proof') p)),
+    't,t,t');
   perform pg_temp.chk('BOARD', 'board links keep kind and id (Admin linked filter); proof keeps kind and id (draft ids)',
     (select string_agg(l->>'kind', ',' order by l->>'kind') from jsonb_array_elements(v_board->'cards') c, jsonb_array_elements(c->'links') l where c->>'id' = pg_temp.id('send')::text)
     || '|' || (select string_agg(p->>'kind', ',') from jsonb_array_elements(v_board->'cards') c, jsonb_array_elements(c->'proof') p where c->>'id' = pg_temp.id('send')::text),

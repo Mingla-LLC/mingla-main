@@ -8,6 +8,16 @@
 --            request; a public RPC, a table read, a look-alike name
 --            (/rpc/opsx_..., /rpc/teams_...), the root path and no path at
 --            all keep the role's own limit.
+--   SCOPE    (rework 1, P3-3) only role authenticated is capped: the same
+--            Admin paths as service_role (edge functions, cron) and anon keep
+--            their role limit, and so do the buyer public RPCs.
+--   HOSTILE  (rework 1, P2-2) '', '/rpc/', a 10,000-character path, unicode
+--            and LIKE wildcards in the path never raise and match only real
+--            Admin prefixes.
+--   LEAK     (rework 1, P2-2) the hook runs in a COMMITTED request
+--            transaction as each role, and the next transaction on the same
+--            connection shows the session default again: a session-level
+--            set_config(..., false) would cap every later pooled request.
 --   ROLE     authenticator points pgrst.db_pre_request at the function and
 --            closes a transaction left idle after 30 s; its existing settings
 --            (safeupdate, 8 s statement and lock limits) are kept.
@@ -29,11 +39,47 @@
 -- authenticated completes) needs a running PostgREST and is recorded on #4423.
 --
 -- FAILS-ON-REVERT: on origin/main (b7b76c8a14) public.pgrst_pre_request does
--- not exist and authenticator has no pgrst.db_pre_request.
+-- not exist and authenticator has no pgrst.db_pre_request. Rework 1 mutations
+-- proved red: set_config('statement_timeout', '3s', false) fails LEAK;
+-- dropping the current_user = 'authenticated' guard fails SCOPE.
 --
 -- Run from the repository root as supabase_admin.
 
 \set ON_ERROR_STOP on
+
+-- ───────────── LEAK (runs first, outside the rolled-back transaction) ─────────────
+-- Each block is one PostgREST-style request: path set, role set, hook run,
+-- COMMIT. Nothing is written; only settings. The value read in the NEXT
+-- transaction must be the session default captured before.
+select current_setting('statement_timeout') as leak_base \gset
+begin;
+select set_config('request.path', '/rpc/ops_work_list', true);
+set local role authenticated;
+select public.pgrst_pre_request();
+select current_setting('statement_timeout') as leak_inside_auth \gset
+commit;
+select current_setting('statement_timeout') as leak_after_auth \gset
+begin;
+select set_config('request.path', '/rpc/admin_people_directory', true);
+set local role service_role;
+select public.pgrst_pre_request();
+commit;
+select current_setting('statement_timeout') as leak_after_service \gset
+begin;
+select set_config('request.path', '/rpc/team_inbox', true);
+set local role anon;
+select public.pgrst_pre_request();
+commit;
+select current_setting('statement_timeout') as leak_after_anon \gset
+-- A request that ERRORS after the hook (rolled back) must not leak either.
+begin;
+select set_config('request.path', '/rpc/crm_record_get', true);
+set local role authenticated;
+select public.pgrst_pre_request();
+rollback;
+select current_setting('statement_timeout') as leak_after_rollback \gset
+set statement_timeout to default;
+
 begin;
 
 create temp table tx_results (seq serial primary key, test text, label text, ok boolean, detail text) on commit drop;
@@ -71,10 +117,49 @@ select pg_temp.chk('PATH', 'public RPCs, table reads, look-alikes and no path ke
             pg_temp.after_hook('/rpc/teams_list'), pg_temp.after_hook('/ops_work_cards'), pg_temp.after_hook('/'),
             pg_temp.after_hook(null), pg_temp.after_hook('/rpc/links_page_week', 'service_role', '0')),
   '8s,8s,3s,8s,8s,8s,8s,8s,0');
+-- ───────────── SCOPE (P3-3): only authenticated is capped ─────────────
+select pg_temp.chk('SCOPE', 'service_role on Admin paths keeps its own limit (edge functions and cron may run long)',
+  concat_ws(',', pg_temp.after_hook('/rpc/admin_refund_order_commit', 'service_role', '0'),
+            pg_temp.after_hook('/rpc/ops_work_list', 'service_role', '0'),
+            pg_temp.after_hook('/rpc/admin_people_directory', 'service_role', '120s'),
+            pg_temp.after_hook('/rpc/crm_ingest_sync', 'service_role', '0'),
+            pg_temp.after_hook('/rpc/team_inbox', 'service_role', '0')),
+  '0,0,2min,0,0');
+select pg_temp.chk('SCOPE', 'anon on Admin paths keeps its own role limit (the hook never sets it)',
+  concat_ws(',', pg_temp.after_hook('/rpc/ops_work_list', 'anon', '5s'), pg_temp.after_hook('/rpc/admin_x', 'anon', '7s')),
+  '5s,7s');
+select pg_temp.chk('SCOPE', 'buyer public RPCs keep the role limit for anon, authenticated and service_role',
+  concat_ws(',', pg_temp.after_hook('/rpc/pg_public_event_by_slug', 'anon', '3s'), pg_temp.after_hook('/rpc/pg_direct_event_checkout_bundle', 'authenticated', '8s'),
+            pg_temp.after_hook('/rpc/pg_public_brand_upcoming', 'service_role', '0'), pg_temp.after_hook('/rpc/pg_public_ticket_types_remaining', 'anon', '3s'),
+            pg_temp.after_hook('/rpc/issue_1384_supported_currencies', 'authenticated', '8s')),
+  '3s,8s,0,3s,8s');
+
+-- ───────────── HOSTILE request.path values (P2-2) ─────────────
+select pg_temp.chk('HOSTILE', 'empty, bare /rpc/, long, unicode and wildcard paths never raise and match only real Admin prefixes',
+  concat_ws(',', pg_temp.after_hook(''), pg_temp.after_hook('/rpc/'), pg_temp.after_hook('/rpc/' || repeat('a', 10000)),
+            pg_temp.after_hook('/rpc/ops_' || repeat('x', 10000)), pg_temp.after_hook('/rpc/öps_x'), pg_temp.after_hook('/rpc/ops_ü'),
+            pg_temp.after_hook('/rpc/ops%'), pg_temp.after_hook('/rpc/opsXwork'), pg_temp.after_hook('/rpc/%'), pg_temp.after_hook('/RPC/OPS_WORK_LIST'),
+            pg_temp.after_hook('x/rpc/ops_work_list'), pg_temp.after_hook(E'/rpc/ops_a\nb')),
+  '8s,8s,8s,3s,8s,3s,8s,8s,8s,8s,8s,3s');
+
+-- ───────────── LEAK verdicts (values captured above) ─────────────
+select pg_temp.chk('LEAK', 'inside the request the Admin limit was 3 s', :'leak_inside_auth', '3s');
+select pg_temp.chk('LEAK', 'the session default is not 3 s, so a leak would show', (:'leak_base' <> '3s')::text, 'true');
+select pg_temp.chk('LEAK', 'after a committed authenticated Admin request the next transaction is back to the session default',
+  :'leak_after_auth', :'leak_base');
+select pg_temp.chk('LEAK', 'after committed service_role and anon requests, and a rolled-back one, the default holds',
+  concat_ws(',', :'leak_after_service', :'leak_after_anon', :'leak_after_rollback'),
+  concat_ws(',', :'leak_base', :'leak_base', :'leak_base'));
+select pg_temp.chk('LEAK', 'the hook sets the limit transaction-locally (set_config third argument true), never session-wide',
+  (select (prosrc ~ $re$set_config\('statement_timeout', '3s', true\)$re$ and prosrc !~* $re$set_config\([^)]*false\)$re$)::text
+     from pg_proc where oid = 'public.pgrst_pre_request()'::regprocedure), 'true');
+
 -- The limit persists into the NEXT statement of the same transaction, which
 -- is how PostgREST's RPC statement sees it.
 select set_config('request.path', '/rpc/ops_work_list', true), set_config('statement_timeout', '8s', true);
+set local role authenticated;
 select public.pgrst_pre_request();
+reset role;
 select pg_temp.chk('PATH', 'the limit holds for the following statement in the request', current_setting('statement_timeout'), '3s');
 set local statement_timeout = 0;
 
@@ -138,7 +223,7 @@ begin
     if r.ok then raise notice 'PASS % %', r.test, r.label;
     else v_fail := v_fail + 1; raise notice 'FAIL % % (%)', r.test, r.label, coalesce(r.detail, ''); end if;
   end loop;
-  if v_all < 12 then raise exception '#4423 W3 recorded only % checks', v_all; end if;
+  if v_all < 21 then raise exception '#4423 W3 recorded only % checks', v_all; end if;
   if v_fail > 0 then raise exception '#4423 W3: % of % checks failed', v_fail, v_all; end if;
   raise notice '#4423 W3: % of % checks passed', v_all, v_all;
 end;

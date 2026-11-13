@@ -11,11 +11,16 @@
 -- the RPC that follows with 57014.
 --
 -- public.pgrst_pre_request():
---   For an Admin-only RPC path (/rpc/ops_*, /rpc/team_*, /rpc/admin_*,
---   /rpc/crm_*) it sets statement_timeout to 3 s for this request only
---   (set_config(..., true) is transaction-local, and PostgREST runs each
---   request in its own transaction). Every other path, public RPCs and table
---   reads included, keeps the role's own limit (anon 3 s, authenticated 8 s).
+--   For a signed-in person's (role authenticated) request to an Admin-only
+--   RPC path (/rpc/ops_*, /rpc/team_*, /rpc/admin_*, /rpc/crm_*) it sets
+--   statement_timeout to 3 s for this request only (set_config(..., true) is
+--   transaction-local, and PostgREST runs each request in its own
+--   transaction; a session-level set would leak onto the pooled connection
+--   and cap every later request on it, so the suite commits and checks).
+--   Every other request keeps the role's own limit: public RPCs and table
+--   reads, anon (already 3 s by its role), and service_role (rework 1, P3-3):
+--   edge functions and cron call admin_*, ops_*_ingest / sync and
+--   admin_people_directory as service_role and may run long by design.
 --   It reads no table: one setting read and a string match per request.
 --   SECURITY INVOKER with a pinned search_path; anon, authenticated and
 --   service_role can execute it because PostgREST calls it as the request role.
@@ -44,15 +49,16 @@ AS $function$
 DECLARE
   v_path text := pg_catalog.current_setting('request.path', true);
 BEGIN
-  IF v_path LIKE '/rpc/ops\_%' OR v_path LIKE '/rpc/team\_%'
-     OR v_path LIKE '/rpc/admin\_%' OR v_path LIKE '/rpc/crm\_%' THEN
+  IF current_user = 'authenticated'
+     AND (v_path LIKE '/rpc/ops\_%' OR v_path LIKE '/rpc/team\_%'
+          OR v_path LIKE '/rpc/admin\_%' OR v_path LIKE '/rpc/crm\_%') THEN
     PERFORM pg_catalog.set_config('statement_timeout', '3s', true);
   END IF;
 END;
 $function$;
 
 COMMENT ON FUNCTION public.pgrst_pre_request() IS
-  '#4423 W3: PostgREST db-pre-request. Admin-only RPC paths get a 3 s statement_timeout for that request; every other path keeps the role limit. No table access.';
+  '#4423 W3: PostgREST db-pre-request. A signed-in (authenticated) request to an Admin-only RPC path gets a 3 s statement_timeout for that request only; service_role, anon and every other path keep the role limit. No table access.';
 
 REVOKE ALL ON FUNCTION public.pgrst_pre_request() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.pgrst_pre_request() TO anon, authenticated, service_role;

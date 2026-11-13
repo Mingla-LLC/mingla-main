@@ -45,6 +45,13 @@ REVOKE ALL ON FUNCTION public.ops_names_for(text[]) FROM PUBLIC, anon, authentic
 -- The cards for p_ids, in p_ids order, as one jsonb array.
 --   'full'       : each element is exactly ops_card_json(card, p_today).
 --   'board'      : the Admin list subset (W2.2 board contract, see the test).
+--                  Rework 1 (P3-2): only the keys the Admin list reads, and
+--                  nested objects trimmed to the fields it reads (anchor kind;
+--                  links and proof kind and id; working name, quiet and last
+--                  update; review requested_at and waiting_on; sent_back
+--                  reason; parent id, number and title; goal id and title).
+--                  claim, blocked_kind, carried_count, start_on and in_backlog
+--                  ride on 'full' only.
 --   'board_text' : 'board' plus the full instructions text (used when the
 --                  list query carries q, because Admin re-filters on
 --                  title + instructions only then).
@@ -55,7 +62,7 @@ STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $function$
 DECLARE
-  v_names jsonb; v_anon text := public.ops_name(NULL); v_out jsonb;
+  v_names jsonb; v_anon text := public.ops_name(NULL); v_out jsonb; v_full boolean := p_shape = 'full';
 BEGIN
   IF p_shape IS NULL OR p_shape NOT IN ('full', 'board', 'board_text') THEN
     RAISE EXCEPTION 'invalid_query: shape must be full or board.' USING ERRCODE = '22023';
@@ -86,11 +93,12 @@ BEGIN
       FROM public.ops_work_people p WHERE p.card_id = ANY (p_ids) GROUP BY p.card_id
   ), lnk AS (
     SELECT l.card_id,
-           -- board links carry kind, id and label; only full checks each target still exists.
+           -- board links carry kind and id (the linked filter and the draft split);
+           -- only full carries the label and checks each target still exists.
            jsonb_agg(CASE WHEN p_shape = 'full'
                           THEN jsonb_build_object('kind', l.kind, 'id', l.target_id, 'label', l.label,
                                                   'exists', public.ops_link_label(l.kind, l.target_id) IS NOT NULL)
-                          ELSE jsonb_build_object('kind', l.kind, 'id', l.target_id, 'label', l.label) END
+                          ELSE jsonb_build_object('kind', l.kind, 'id', l.target_id) END
                      ORDER BY l.added_at, l.kind, l.target_id) AS links
       FROM public.ops_work_links l WHERE l.card_id = ANY (p_ids) GROUP BY l.card_id
   ), gh AS (
@@ -185,48 +193,63 @@ BEGIN
       FROM base b
   ), j AS (
     SELECT p.ord,
-      -- The fields both shapes carry, with the values ops_card_json gives them.
+      -- The fields both shapes carry: exactly ops_card_json's values for full,
+      -- trimmed to what the Admin list reads for board (rework 1, P3-2).
       jsonb_build_object(
         'id', p.id, 'number', p.number, 'title', p.title, 'status', p.status,
-        'blocked', p.blocked, 'blocked_kind', p.blocked_kind,
+        'blocked', p.blocked,
         'person_reason', p.person_reason, 'tag', p.person_reason,
-        'anchor', p.anchor,
+        'anchor', CASE WHEN NOT v_full AND jsonb_typeof(p.anchor) = 'object' THEN jsonb_build_object('kind', p.anchor->'kind') ELSE p.anchor END,
         'due_on', p.due_on, 'overdue', (p.due_on < p_today AND p.status <> 'done'),
-        'carried_count', p.carried_count,
         'owners', COALESCE(p.owners, '[]'::jsonb), 'watchers', COALESCE(p.watchers, '[]'::jsonb),
         'links', COALESCE(p.links, '[]'::jsonb),
-        'proof', p.proof, 'closed_at', p.closed_at,
-        'working', p.working,
+        'proof', CASE WHEN v_full OR jsonb_typeof(p.proof) IS DISTINCT FROM 'array' THEN p.proof
+                      ELSE (SELECT COALESCE(jsonb_agg(CASE WHEN jsonb_typeof(x.e) = 'object'
+                                                            THEN jsonb_build_object('kind', x.e->'kind', 'id', x.e->'id') ELSE x.e END
+                                                       ORDER BY x.o), '[]'::jsonb)
+                              FROM jsonb_array_elements(p.proof) WITH ORDINALITY x(e, o)) END,
+        'closed_at', p.closed_at,
+        'working', CASE WHEN v_full OR p.working IS NULL THEN p.working
+                        ELSE jsonb_build_object('name', p.working->'name', 'quiet', p.working->'quiet',
+                                                'last_update_at', p.working->'last_update_at') END,
         'revision', p.revision,
-        'claim', CASE WHEN p.working IS NOT NULL AND NOT (p.working->>'quiet')::boolean THEN jsonb_build_object(
-          'holder_name', v_names->>p.working_by, 'holder_via', p.working_via,
-          'holder_chat_label', p.working->'chat_label', 'since', p.working->'since',
-          'ends_at', COALESCE(p.working_seen_at, p.started_at) + interval '24 hours') END,
         'auto', p.auto_key IS NOT NULL,
         'auto_kind', CASE WHEN p.auto_key IS NOT NULL THEN split_part(p.auto_key, ':', 1) END,
         'archived', p.archived_at IS NOT NULL)
       || jsonb_build_object(
         'status_id', p.status_id,
         'parent', CASE WHEN p.parent_id IS NOT NULL AND p.pc_id IS NOT NULL THEN
-                    jsonb_build_object('id', p.pc_id, 'number', p.pc_number, 'title', p.pc_title,
-                                       'parent_id', p.pc_parent_id) END,
-        'depth', p.depth, 'position', p.position, 'start_on', p.start_on,
+                    CASE WHEN v_full THEN jsonb_build_object('id', p.pc_id, 'number', p.pc_number, 'title', p.pc_title,
+                                                             'parent_id', p.pc_parent_id)
+                         ELSE jsonb_build_object('id', p.pc_id, 'number', p.pc_number, 'title', p.pc_title) END END,
+        'depth', p.depth, 'position', p.position,
         'estimate_minutes', p.estimate_minutes,
         'subtasks', jsonb_build_object('total', COALESCE(p.kids_total, 0), 'done', COALESCE(p.kids_done, 0)),
         'files_count', COALESCE(p.files_n, 0), 'thread_count', COALESCE(p.msgs_n, 0),
         'goal', CASE WHEN p.goal_id IS NOT NULL AND p.gl_id IS NOT NULL THEN
-                  jsonb_build_object('id', p.gl_id, 'title', p.gl_title, 'state', p.gl_state) END,
-        'in_backlog', p.in_backlog,
-        'review', CASE WHEN p.review_requested_at IS NOT NULL THEN jsonb_build_object(
+                  CASE WHEN v_full THEN jsonb_build_object('id', p.gl_id, 'title', p.gl_title, 'state', p.gl_state)
+                       ELSE jsonb_build_object('id', p.gl_id, 'title', p.gl_title) END END,
+        'review', CASE WHEN p.review_requested_at IS NULL THEN NULL
+          WHEN v_full THEN jsonb_build_object(
             'requested_at', p.review_requested_at, 'requested_by_name', v_names->>p.review_requested_by,
             'requested_via', p.review_requested_via, 'kind', p.review_kind, 'reason', p.review_reason,
+            'waiting_on', CASE WHEN p.first_watcher IS NULL THEN v_anon ELSE v_names->>p.first_watcher END)
+          ELSE jsonb_build_object('requested_at', p.review_requested_at,
             'waiting_on', CASE WHEN p.first_watcher IS NULL THEN v_anon ELSE v_names->>p.first_watcher END) END,
-        'sent_back', CASE WHEN p.sent_back_at IS NOT NULL THEN jsonb_build_object('reason', p.sent_back_reason,
-            'by_name', v_names->>p.sent_back_by, 'at', p.sent_back_at) END,
+        'sent_back', CASE WHEN p.sent_back_at IS NULL THEN NULL
+          WHEN v_full THEN jsonb_build_object('reason', p.sent_back_reason, 'by_name', v_names->>p.sent_back_by, 'at', p.sent_back_at)
+          ELSE jsonb_build_object('reason', p.sent_back_reason) END,
         'release_items', p.release_items) AS common,
       -- The fields only 'full' carries.
       CASE WHEN p_shape = 'full' THEN
+        -- Read by no Admin list (rework 1, P3-2), so full only.
         jsonb_build_object(
+          'blocked_kind', p.blocked_kind, 'carried_count', p.carried_count, 'start_on', p.start_on, 'in_backlog', p.in_backlog,
+          'claim', CASE WHEN p.working IS NOT NULL AND NOT (p.working->>'quiet')::boolean THEN jsonb_build_object(
+            'holder_name', v_names->>p.working_by, 'holder_via', p.working_via,
+            'holder_chat_label', p.working->'chat_label', 'since', p.working->'since',
+            'ends_at', COALESCE(p.working_seen_at, p.started_at) + interval '24 hours') END)
+        || jsonb_build_object(
           'sprint', jsonb_build_object('id', p.sp_id, 'starts_on', p.sp_starts_on,
                                        'ends_on', p.sp_ends_on, 'goal', p.sp_goal),
           'column', CASE WHEN p.st_id IS NOT NULL THEN jsonb_build_object('id', p.st_id, 'name', p.st_name,

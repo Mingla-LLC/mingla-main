@@ -11,12 +11,16 @@
 // budget). A refresh held back keeps the data on screen and marks it stale.
 // The timer counts from the last refresh. refetch() (a person's own refresh)
 // skips the gate's hold but is still counted.
+//
+// #4423 rework 1 (P3-1): a read refused because the tab's request ceiling is
+// paused keeps what is on screen (stale and `paused`), never an error, even
+// on a person's Try again, and reads again once just after the pause ends.
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import * as ops from "../services/opsService";
 import { todayIso } from "../lib/opsModel";
 import * as pageReturn from "../lib/pageReturn";
-import { createPoller, tabPollGate } from "../lib/pollGate";
+import { ceilingPaused, createPoller, stateAfterFailure, tabPollGate, whenCeilingLifts } from "../lib/pollGate";
 
 let anonymousPolls = 0;
 
@@ -32,6 +36,8 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
   // A poll with no key still gets a gate key of its own.
   const anonId = useRef(0);
   if (!anonId.current) anonId.current = ++anonymousPolls;
+  const attemptRef = useRef(null);
+  const cancelResume = useRef(null);
 
   // { skipped } so the poller knows whether a request went out.
   const attempt = useCallback(async ({ quiet = false } = {}) => {
@@ -57,11 +63,16 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
     } catch (error) {
       tabPollGate.settle(gateKey, { ok: false, status: error?.status, code: error?.code, error }, { background: quiet });
       if (mine === seq.current) {
-        setState((prev) => (quiet && prev.key === key && prev.data ? { ...prev, stale: true } : { key, data: prev.key === key ? prev.data : null, error, loaded: true }));
+        const paused = ceilingPaused();
+        setState((prev) => stateAfterFailure(prev, { key, error, quiet, paused }));
+        if (paused && !cancelResume.current) {
+          cancelResume.current = whenCeilingLifts(() => { cancelResume.current = null; void attemptRef.current?.(); });
+        }
       }
       return { skipped: false, data: null };
     }
   }, [enabled, key, cache]);
+  useEffect(() => { attemptRef.current = attempt; });
 
   const run = useCallback(async (options) => (await attempt(options)).data, [attempt]);
 
@@ -72,6 +83,8 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
     return () => {
       seq.current += 1;
       poller.stop();
+      cancelResume.current?.();
+      cancelResume.current = null;
     };
   }, [enabled, intervalMs, attempt]);
 
@@ -81,6 +94,7 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
     data: current ? state.data : null,
     error: current ? state.error : null,
     stale: current ? !!state.stale : false,
+    paused: current ? !!state.paused : false,
     loading: !current || !state.loaded,
     refetch: run,
     setData,

@@ -15,6 +15,11 @@
 // "messages". Realtime changes keep their 600 ms debounce: the badge may read
 // on each one, the inbox (team_inbox, the heavy call) at most once every
 // INBOX_MIN_GAP_MS, with one trailing read so the last change is never lost.
+//
+// #4423 rework 1 (P2-1): a read that fails or is held back while numbers are
+// on screen keeps them and sets `stale` (MessagesBody shows "may be out of
+// date" with Try again). Refused by the ceiling pause: `paused` too, and one
+// read just after the pause ends.
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -22,9 +27,9 @@ import { canOpenPage } from "../lib/access";
 import { getInbox } from "../services/dashboardService";
 import { fetchBadge, setMyTimeZone } from "../services/teamChatService";
 import { SUPPORT_ALERT_TYPES } from "../lib/emailAlerts";
-import { createTimeZoneSync, deviceTimeZone, messagesBadge } from "../lib/messagesModel";
+import { createTimeZoneSync, deviceTimeZone, messagesAfterRefresh, messagesBadge } from "../lib/messagesModel";
 import * as pageReturn from "../lib/pageReturn";
-import { createPoller, tabPollGate } from "../lib/pollGate";
+import { ceilingPaused, createPoller, tabPollGate, whenCeilingLifts } from "../lib/pollGate";
 
 export const MESSAGES_POLL_MS = 30_000;
 export const MESSAGES_CHANGED = "mingla:messages-changed";
@@ -32,7 +37,7 @@ export const INBOX_MIN_GAP_MS = 5_000;
 const GATE_KEY = "messages";
 const BADGE_GATE_KEY = "messages-badge";
 
-const EMPTY = Object.freeze({ owner: null, badge: null, inbox: null, inboxError: null, badgeError: null, loading: true, stale: false });
+const EMPTY = Object.freeze({ owner: null, badge: null, inbox: null, inboxError: null, badgeError: null, loading: true, stale: false, paused: false });
 
 let state = EMPTY;
 const listeners = new Set();
@@ -45,6 +50,7 @@ let badgeSeq = 0;
 let inboxSeq = 0;
 let lastInboxAt = -Infinity;
 let owner = null;
+let cancelResume = null;
 
 function emit(next) {
   state = next;
@@ -62,7 +68,7 @@ export async function refreshMessages({ inbox = true, quiet = false } = {}) {
     const why = tabPollGate.why(key);
     if (why) {
       tabPollGate.allow(key);
-      if (why !== "in_flight" && state.owner === owner && (state.badge || state.inbox)) emit({ ...state, stale: true });
+      if (why !== "in_flight" && state.owner === owner && (state.badge || state.inbox)) emit({ ...state, stale: true, paused: state.paused || ceilingPaused() });
       return { skipped: true };
     }
   }
@@ -75,16 +81,15 @@ export async function refreshMessages({ inbox = true, quiet = false } = {}) {
   const failed = [badge, inbox ? box : null].find((r) => r && r.status === "rejected");
   tabPollGate.settle(key, failed ? { ok: false, status: failed.reason?.status, code: failed.reason?.code, error: failed.reason } : { ok: true }, { background: quiet });
   if (forUser !== owner) return { skipped: false };
-  const next = { ...state, owner: forUser, loading: false, stale: false };
-  if (mineBadge === badgeSeq) {
-    next.badge = badge.status === "fulfilled" ? badge.value : state.badge;
-    next.badgeError = badge.status === "rejected" ? badge.reason : null;
+  emit(messagesAfterRefresh(state, {
+    owner: forUser,
+    badge: mineBadge === badgeSeq ? badge : null,
+    inbox: inbox && mineInbox === inboxSeq ? box : null,
+    paused: !!failed && ceilingPaused(),
+  }));
+  if (failed && state.paused && !cancelResume) {
+    cancelResume = whenCeilingLifts(() => { cancelResume = null; void refreshMessages(); });
   }
-  if (inbox && mineInbox === inboxSeq) {
-    next.inbox = box.status === "fulfilled" ? box.value : state.inbox;
-    next.inboxError = box.status === "rejected" ? box.reason : null;
-  }
-  emit(next);
   return { skipped: false };
 }
 
@@ -128,6 +133,8 @@ function start() {
 function stop() {
   poller?.stop();
   poller = null;
+  cancelResume?.();
+  cancelResume = null;
   clearTimeout(debounce);
   clearTimeout(trailing);
   trailing = null;
@@ -188,6 +195,7 @@ export function useMessages() {
     badgeError: current.badgeError,
     loading: current.loading && !current.inbox,
     stale: !!current.stale,
+    paused: !!current.paused,
     count: messagesBadge({ badge: current.badge, inbox: current.inbox }),
     refetch,
   };

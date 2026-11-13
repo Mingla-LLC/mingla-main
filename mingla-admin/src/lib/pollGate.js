@@ -278,3 +278,36 @@ export function createPoller({
 
 // The tab's one gate. It reads the tab ceiling's transport-failure witness.
 export const tabPollGate = createPollGate({ transportFailureSeq: () => tabCeiling.transportFailureSeq() });
+
+// #4423 rework 1 (P2-1, P3-1): what a failed read leaves on screen.
+//
+// `prev` is a hook's { key, data, error, loaded, stale, paused }. When the
+// read failed in the background (`quiet`) or because the tab's request
+// ceiling is paused (`paused`), data already on screen for this key stays,
+// marked stale (and paused), and no error replaces it: a person's Try again
+// during the pause must never wipe the board. Otherwise (a first load, or a
+// person's own retry that the server refused) the error shows, with any
+// data for this key kept beside it.
+export function stateAfterFailure(prev, { key, error, quiet = false, paused = false } = {}) {
+  const had = !!prev && prev.key === key && prev.data != null;
+  if (had && (quiet || paused)) return { ...prev, stale: true, paused: !!paused };
+  return { key, data: had ? prev.data : null, error, loaded: true, stale: false, paused: !!paused };
+}
+
+/** Is the tab's request ceiling refusing to send right now (lib/requestCeiling)? */
+export function ceilingPaused(ceiling = tabCeiling) {
+  try { return !!ceiling.state().tripped; } catch { return false; }
+}
+
+/**
+ * Run `fn` once, just after the ceiling pause ends. Returns a cancel
+ * function. `setTimer` / `clearTimer` are injectable for tests.
+ */
+export function whenCeilingLifts(fn, { ceiling = tabCeiling, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+  let resumeInMs = 0;
+  try { resumeInMs = Number(ceiling.state().resumeInMs) || 0; } catch { resumeInMs = 0; }
+  const handle = setTimer(() => {
+    try { fn(); } catch (error) { console.error("[pollGate] retry after the pause failed:", error?.message || error); }
+  }, Math.max(250, resumeInMs + 50));
+  return () => clearTimer(handle);
+}

@@ -2,13 +2,16 @@ import { createContext, createElement, useCallback, useContext, useEffect, useRe
 import { useAuth } from "../context/AuthContext";
 import * as drafts from "../services/draftService";
 import * as pageReturn from "../lib/pageReturn";
-import { createPoller, tabPollGate } from "../lib/pollGate";
+import { ceilingPaused, createPoller, stateAfterFailure, tabPollGate, whenCeilingLifts } from "../lib/pollGate";
 
 // #4423 (W1.1): refreshes on the shared page-return signal and a timer that
 // counts from the last refresh, never on its own focus listeners. Every
 // background refresh goes through pollGate key "draft-counts"; overlapping
 // calls still fold into one follow-up. A refresh held back keeps the counts
 // on screen and marks them stale.
+// #4423 rework 1 (P2-1, P3-1): a failed read keeps counts already on screen
+// (stale; `paused` too under the ceiling pause, with one read when it ends).
+// RoleHomePage shows "may be out of date" with Try again.
 const GATE_KEY = "draft-counts";
 
 export const DRAFT_REFRESH_MS = 30_000;
@@ -28,6 +31,8 @@ export function useDraftCounts({ enabled = true } = {}) {
   const pending = useRef("");
   const queued = useRef("");
   const live = useRef(false);
+  const cancelResume = useRef(null);
+  const loadRef = useRef(null);
 
   useEffect(() => {
     live.current = enabled;
@@ -63,8 +68,12 @@ export function useDraftCounts({ enabled = true } = {}) {
     } catch (error) {
       tabPollGate.settle(GATE_KEY, { ok: false, status: error?.status, code: error?.code, error }, { background: quiet });
       if (live.current && mine === seq.current) {
-        if (!quiet) setState({ key, data: null, error, loaded: true });
-        else setState((prev) => (prev.key === key && prev.data ? { ...prev, stale: true } : prev));
+        const paused = ceilingPaused();
+        // A quiet read with nothing on screen yet keeps the quiet "no change".
+        setState((prev) => (quiet && !(prev.key === key && prev.data) ? prev : stateAfterFailure(prev, { key, error, quiet, paused })));
+        if (paused && !cancelResume.current) {
+          cancelResume.current = whenCeilingLifts(() => { cancelResume.current = null; void loadRef.current?.(); });
+        }
       }
     } finally {
       if (pending.current === key) pending.current = "";
@@ -74,6 +83,7 @@ export function useDraftCounts({ enabled = true } = {}) {
     }
     return { skipped: false };
   }, [enabled, key]);
+  useEffect(() => { loadRef.current = load; });
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -85,12 +95,14 @@ export function useDraftCounts({ enabled = true } = {}) {
     return () => {
       listeners.delete(refresh);
       poller.stop();
+      cancelResume.current?.();
+      cancelResume.current = null;
     };
   }, [enabled, load]);
 
   const current = state.key === key;
   const refetch = useCallback(() => load(), [load]);
-  return { data: current ? state.data : null, error: current ? state.error : null, stale: current ? !!state.stale : false, loading: !current || !state.loaded, refetch };
+  return { data: current ? state.data : null, error: current ? state.error : null, stale: current ? !!state.stale : false, paused: current ? !!state.paused : false, loading: !current || !state.loaded, refetch };
 }
 
 export function DraftCountProvider({ value, children }) {
@@ -98,5 +110,5 @@ export function DraftCountProvider({ value, children }) {
 }
 
 export function useDraftCountValue() {
-  return useContext(DraftCountContext) || { data: null, error: null, loading: true, refetch: () => {} };
+  return useContext(DraftCountContext) || { data: null, error: null, stale: false, paused: false, loading: true, refetch: () => {} };
 }

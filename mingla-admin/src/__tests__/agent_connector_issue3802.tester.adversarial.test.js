@@ -835,7 +835,13 @@ describe("#3802 TG-14: the checks on a shown key start and stop with the key", (
     assert.match(helper, /if \(!active\) return undefined;/);
     assert.match(helper, /isVisible: \(\) => document\.visibilityState === "visible",/);
     assert.match(helper, /isOnline: \(\) => navigator\.onLine !== false,/);
-    assert.match(helper, /document\.removeEventListener\("visibilitychange", onVisibility\);\s*watch\.stop\(\);/);
+    // [TEST-MOD-APPROVED ISSUE-4423] was: document.removeEventListener("visibilitychange", onVisibility); watch.stop();
+    // #4423 moved the listener into the shared lib/pageReturn signal. Still pinned: hidden pauses the watch, shown
+    // resumes it without a read, and on unmount the visibility subscription is dropped AND the watch stops.
+    assert.match(PAGE, /import \{ subscribeVisibility \} from "\.\.\/lib\/pageReturn";/);
+    assert.match(helper, /const unsubscribe = subscribeVisibility\(\(visible\) => \{\s*if \(visible\) watch\.visible\(false\);\s*else watch\.hidden\(\);\s*\}\);/);
+    assert.match(helper, /return \(\) => \{\s*unsubscribe\(\);\s*watch\.stop\(\);\s*\};/);
+    assert.equal(/addEventListener\(\s*["']visibilitychange["']/.test(helper), false, "no own listener: the shared signal owns it");
     assert.equal((PAGE.match(/setInterval\(/g) ?? []).length, 0, "nothing on this page ticks without an end or in a hidden tab");
     assert.match(PAGE, /const doneAndForget = useCallback\(\s*\(agentId\) => \{\s*done\(agentId\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);/);
     assert.match(PAGE, /onDone: doneAndForget,/);

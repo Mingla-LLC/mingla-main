@@ -24,6 +24,8 @@ export const REQUEST_CEILING_WINDOW_MS = 60_000;
 export const CEILING_PAUSE_MS = 60_000;
 export const REST_TIMEOUT_MS = 20_000;
 export const CEILING_MESSAGE = "admin_request_ceiling_tripped";
+// #4423 rework 1 (P3-1): under a "may be out of date" notice while the pause holds.
+export const STALE_PAUSED_WORDS = "Admin paused refreshing for a minute. This refreshes by itself when the pause ends.";
 
 /** Which bucket a URL falls in: "rest" | "functions" | "auth" | "storage" | "other". */
 export function requestKind(url) {
