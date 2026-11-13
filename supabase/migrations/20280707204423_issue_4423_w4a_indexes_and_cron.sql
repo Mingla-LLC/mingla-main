@@ -34,8 +34,11 @@
 --   CREATE UNIQUE INDEX idx_collaboration_sessions_unique_board ON
 --   public.collaboration_sessions (board_id) WHERE board_id IS NOT NULL;
 --   ALTER FUNCTION public.cron_refresh_admin_place_pool_mv() RESET work_mem;
+-- Locks: lock_timeout makes the file fail fast (55P03) rather than queue
+-- readers behind a long one; on 55P03 re-run it a minute later (idempotent).
 
 BEGIN;
+SET LOCAL lock_timeout = '3s';
 
 DROP INDEX IF EXISTS public.idx_collaboration_sessions_unique_board;
 

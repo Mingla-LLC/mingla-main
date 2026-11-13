@@ -13,8 +13,9 @@
 -- REST calls, or in the allowlist's intended-public section. Mingla Sites
 -- functions are left to their own lane (#3381), and so is any function an
 -- existing suite exercises as anon or authenticated.
--- Rollback: GRANT EXECUTE ON FUNCTION <same signature> TO anon, authenticated
--- (and PUBLIC where it had it).
+-- Exact rollback: generated from production state at apply time; see the
+-- private rollback pack (it restores each function's ACL as it was, not a
+-- blanket grant).
 
 BEGIN;
 

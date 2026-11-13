@@ -19,8 +19,16 @@
 -- Both functions are service_role only. The state table has RLS on and no
 -- policies (service_role only).
 --
--- Rollback: SELECT cron.unschedule('issue_4423_db_health_probe');
---           (the functions and the one-row table can stay).
+-- Apply order is safe either way. The deployed api-health-probe before this
+-- branch ignores the body and would run the full paid vendor tick every 5
+-- minutes, so the cron posts only once the state row exists, and only this
+-- branch's function writes it (its hourly tick marks the row; a db check
+-- updates it). Applied before the deploy, the job runs and posts nothing;
+-- the first database check follows the first hourly tick of the new code.
+--
+-- Rollback: SELECT cron.unschedule('issue_4423_db_health_probe'); run as
+--           postgres, the job owner (the functions and the one-row table can
+--           stay).
 
 BEGIN;
 
@@ -103,6 +111,7 @@ SELECT cron.schedule(
     body := '{"mode":"db"}'::jsonb,
     timeout_milliseconds := 30000
   )
+  WHERE EXISTS (SELECT 1 FROM public.issue_4423_db_health_state)
   $cron$
 );
 

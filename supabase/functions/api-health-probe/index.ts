@@ -1012,6 +1012,16 @@ serve(async (req) => {
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(SUPABASE_URL, SERVICE_KEY);
 
+    // #4423 Wave 3: tell the 5-minute database cron that this deploy
+    // understands {"mode":"db"}. The cron posts only once this row exists, so
+    // an older deploy (which ignores the body and would run this full vendor
+    // tick) is never called every 5 minutes. Inserts the one row if missing;
+    // never touches an existing row (streak and last alert time stay).
+    const { error: readyError } = await serviceClient
+      .from("issue_4423_db_health_state")
+      .upsert({ id: true }, { onConflict: "id", ignoreDuplicates: true });
+    if (readyError) logError("db health ready mark failed", readyError, { fn: "api-health-probe" });
+
     const checkRows: CheckRow[] = [];
 
     // ── ORCH-1201-R2: load the registry WITH monitoring_class + depletion_signal ──

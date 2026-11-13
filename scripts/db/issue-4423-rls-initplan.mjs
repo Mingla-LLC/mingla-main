@@ -167,9 +167,16 @@ export function generate(policies) {
       "-- the only change is that each auth.*() / current_setting() call is",
       "-- wrapped as a scalar sub-select, which Postgres evaluates once per",
       "-- statement instead of once per row. Same value, same rows.",
-      "-- Rollback: the same ALTER POLICY with the original expressions.",
+      "--",
+      "-- Locks: ALTER POLICY holds an ACCESS EXCLUSIVE lock on its table until",
+      "-- COMMIT. lock_timeout makes the file fail fast (55P03) instead of",
+      "-- queueing readers on every table it already altered behind one long",
+      "-- reader. On 55P03 re-run the file a minute later; it is idempotent.",
+      "-- Exact rollback: generated from production state at apply time; see the",
+      "-- private rollback pack (this script writes batchN.rollback.sql).",
       "",
       "BEGIN;",
+      "SET LOCAL lock_timeout = '3s';",
       "-- Names resolve exactly as they did when pg_policies printed them.",
       "SET LOCAL search_path = public;",
       "",
@@ -183,6 +190,7 @@ export function generate(policies) {
     const rollback = [
       `-- Rollback for ${BATCH_FILES[n]}: the original expressions.`,
       "BEGIN;",
+      "SET LOCAL lock_timeout = '3s';",
       "SET LOCAL search_path = public;",
       ...mine.map((p) => {
         const parts = [`ALTER POLICY ${ident(p.policyname)} ON public.${ident(p.tablename)}`];

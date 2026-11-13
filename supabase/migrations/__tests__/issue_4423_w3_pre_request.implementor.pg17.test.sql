@@ -28,7 +28,8 @@
 --            (no query text); issue_4423_db_health_record counts checks in a
 --            row with a high pool, resets on a low one and keeps the last
 --            alert time; both are service_role only; the state table has RLS
---            on; the 5-minute cron posts {"mode":"db"} to api-health-probe.
+--            on; the 5-minute cron posts {"mode":"db"} to api-health-probe,
+--            and posts nothing until the deployed function marked the row.
 --
 -- invariant: I-ADMIN-RPC-3S-PRE-REQUEST -- an Admin-only RPC request is
 --   limited to 3 s before its statement starts; every other request keeps
@@ -214,6 +215,24 @@ select pg_temp.chk('HEALTH', 'the 5-minute cron posts {"mode":"db"} to api-healt
   (select j.schedule || '|' || (j.command like '%/functions/v1/api-health-probe%' and j.command like '%{"mode":"db"}%')::text
      from cron.job j where j.jobname = 'issue_4423_db_health_probe'),
   '2-59/5 * * * *|true');
+-- Rework 2 (P3-D): before this branch's api-health-probe has marked the state
+-- row, the job posts nothing (an older deploy ignores the body and would run
+-- the paid vendor tick every 5 minutes). Once the row exists it posts once.
+-- The job reads its URL and key from Vault; a replayed database has none, so
+-- give it throwaway ones (rolled back with everything else).
+select vault.create_secret('http://localhost:54321', 'supabase_url')
+ where not exists (select 1 from vault.secrets where name = 'supabase_url');
+select vault.create_secret('w3-test-not-a-key', 'service_role_key')
+ where not exists (select 1 from vault.secrets where name = 'service_role_key');
+delete from public.issue_4423_db_health_state;
+create temp table w3_q0 on commit drop as select count(*) as n from net.http_request_queue;
+do $q$ begin execute (select command from cron.job where jobname = 'issue_4423_db_health_probe'); end $q$;
+select pg_temp.chk('HEALTH', 'no state row (old function still deployed): the cron posts nothing',
+  ((select count(*) from net.http_request_queue) - (select n from w3_q0))::text, '0');
+insert into public.issue_4423_db_health_state (id) values (true);
+do $q$ begin execute (select command from cron.job where jobname = 'issue_4423_db_health_probe'); end $q$;
+select pg_temp.chk('HEALTH', 'state row present (new function deployed): the cron posts one request',
+  ((select count(*) from net.http_request_queue) - (select n from w3_q0))::text, '1');
 
 do $r$
 declare r record; v_fail integer := 0; v_all integer := 0;
@@ -223,7 +242,7 @@ begin
     if r.ok then raise notice 'PASS % %', r.test, r.label;
     else v_fail := v_fail + 1; raise notice 'FAIL % % (%)', r.test, r.label, coalesce(r.detail, ''); end if;
   end loop;
-  if v_all < 21 then raise exception '#4423 W3 recorded only % checks', v_all; end if;
+  if v_all < 23 then raise exception '#4423 W3 recorded only % checks', v_all; end if;
   if v_fail > 0 then raise exception '#4423 W3: % of % checks failed', v_fail, v_all; end if;
   raise notice '#4423 W3: % of % checks passed', v_all, v_all;
 end;
