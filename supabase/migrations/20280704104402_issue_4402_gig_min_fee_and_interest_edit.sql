@@ -286,6 +286,15 @@ BEGIN
   IF NOT public.issue_3872_gig_host_writer(v_gig.brand_id,v_actor) THEN RAISE EXCEPTION 'permission_denied' USING ERRCODE='42501'; END IF;
   IF NOT public.issue_3872_creator_gigs_on(v_gig.brand_id) THEN RAISE EXCEPTION 'creator_gigs_disabled' USING ERRCODE='55000'; END IF;
   IF v_gig.status NOT IN ('open') THEN RETURN jsonb_build_object('ok',false,'error','gig_not_open'); END IF;
+  -- #4402 D2: the offered fee is at least the currency minimum. Checked
+  -- before anything changes, so a refused call never retires an unpaid offer
+  -- (tester P3-2). A malformed or non-positive fee falls through to the
+  -- existing fee_invalid answer below.
+  v_below:=public.issue_4402_gig_fee_below_minimum(CASE
+      WHEN coalesce(v_terms->>'fee_minor','')~'^[0-9]{1,15}$' THEN nullif((v_terms->>'fee_minor')::bigint,0)
+      WHEN nullif(v_terms->>'fee_minor','') IS NULL AND v_interest.quoted_minor>0 THEN v_interest.quoted_minor END,
+    v_gig.currency,'fee_minor');
+  IF v_below IS NOT NULL THEN RETURN v_below; END IF;
 
   SELECT * INTO v_live FROM public.gig_contracts c
    WHERE c.gig_id=v_gig.id AND c.creator_account_id=v_interest.creator_account_id
@@ -315,9 +324,6 @@ BEGIN
   END IF;
   v_fee:=coalesce(nullif(v_terms->>'fee_minor','')::bigint,v_interest.quoted_minor);
   IF v_fee IS NULL OR v_fee<=0 THEN RETURN jsonb_build_object('ok',false,'error','fee_invalid','field','fee_minor'); END IF;
-  -- #4402 D2: the offered fee is at least the currency minimum.
-  v_below:=public.issue_4402_gig_fee_below_minimum(v_fee,v_gig.currency,'fee_minor');
-  IF v_below IS NOT NULL THEN RETURN v_below; END IF;
   BEGIN
     v_shoot:=nullif(v_terms->>'shoot_date','')::date;
     v_post_by:=coalesce(nullif(v_terms->>'post_by','')::date,v_gig.post_by);

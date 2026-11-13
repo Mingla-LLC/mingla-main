@@ -3,7 +3,10 @@
 // (branch post_missed). posts_submitted never has a timer: Admin reviews it.
 //
 // MINGLA-INVARIANT: I-4402-POST-2 | issue #4402 | approved/posting/posts_failed map to the post_missed refund; posts_submitted has no timer action
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { gigTimerDecision } from "../_shared/gigTimers.ts";
 import { gigRefund } from "../_shared/gigMoney.ts";
 
@@ -37,7 +40,11 @@ Deno.test("#4402 posts_submitted has no timer (Admin review queue owns it)", () 
 
 Deno.test("#4402 post_missed refunds the host in full and pays the creator nothing (OQ-2)", () => {
   assertEquals(
-    gigRefund({ branch: "post_missed", feeMinor: 500000, bookingFeeMinor: 75000 }),
+    gigRefund({
+      branch: "post_missed",
+      feeMinor: 500000,
+      bookingFeeMinor: 75000,
+    }),
     { hostRefundMinor: 575000, creatorFeeMinor: 0 },
   );
 });

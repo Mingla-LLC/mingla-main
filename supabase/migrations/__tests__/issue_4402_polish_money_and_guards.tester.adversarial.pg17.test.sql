@@ -13,8 +13,8 @@
 --      resubmit after a failed review) leaves state_deadline_at NULL;
 --   E. the M1 deadline backfill on a contract with NO hold (the production
 --      shape of QA contract 5afe2353): it gets a deadline, the refund branch
---      opens, but gig_refund_claim says nothing_due, so the contract can never
---      reach post_missed. This pins today's behaviour so a fix is visible.
+--      opens and, since the #4402 P1-1 fix, gig_refund_claim cancels it with
+--      no refund and no provider call (it used to say nothing_due forever).
 -- Every fixture rolls back.
 
 BEGIN;
@@ -250,17 +250,22 @@ BEGIN
   IF (SELECT count(*) FROM public.gig_contracts WHERE id = ANY(v_c) AND state_deadline_at IS NULL AND state IN ('approved','posting','posts_failed')) <> 0 THEN
     RAISE EXCEPTION 'E backfill left a posting-state contract without a deadline';
   END IF;
-  -- 72 h later: the branch opens, the timer calls gig-refund, but there is no
-  -- hold, so the claim is nothing_due (gig-refund answers 409 refund_not_ready)
-  -- and the contract stays 'approved' and overdue on every timer tick.
+  -- 72 h later: the branch opens and the timer calls gig-refund. #4402 fix
+  -- (tester P1-1): with nothing held, gig_refund_claim closes the contract
+  -- itself (cancelled, post_missed, no provider call) and answers
+  -- 'completed', so gig-refund returns ok and the timer never retries it.
   PERFORM public.issue_3872_contract_apply_state(v_c[6], 'approved', now() - interval '1 minute', NULL, NULL, NULL);
   IF NOT public.issue_3872_gig_refund_branch_allowed(v_c[6], 'post_missed') THEN RAISE EXCEPTION 'E branch closed'; END IF;
   v_answer := public.gig_refund_claim(v_c[6], 'post_missed');
-  IF v_answer->>'reason' IS DISTINCT FROM 'nothing_due' THEN
-    RAISE EXCEPTION 'E behaviour changed (update this pin and the #4402 finding): %', v_answer;
+  IF v_answer->>'reason' IS DISTINCT FROM 'completed' OR (v_answer->>'closed_without_refund')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'E hold-less post_missed is not terminal: %', v_answer;
   END IF;
-  IF (SELECT state FROM public.gig_contracts WHERE id = v_c[6]) <> 'approved' THEN RAISE EXCEPTION 'E state moved'; END IF;
-  RAISE NOTICE 'E PINNED: a hold-less approved contract past its post deadline is never cancelled (claim=%)', v_answer->>'reason';
+  IF NOT EXISTS (SELECT 1 FROM public.gig_contracts WHERE id = v_c[6] AND state = 'cancelled' AND cancel_reason = 'post_missed' AND state_deadline_at IS NULL)
+     OR NOT EXISTS (SELECT 1 FROM public.gig_events WHERE contract_id = v_c[6] AND kind = 'post_missed_closed' AND (data->>'refund_minor')::bigint = 0)
+     OR EXISTS (SELECT 1 FROM public.gig_refund_claims WHERE contract_id = v_c[6]) THEN
+    RAISE EXCEPTION 'E hold-less close: wrong end state';
+  END IF;
+  RAISE NOTICE 'E: a hold-less approved contract past its post deadline is cancelled with no refund (claim=%)', v_answer->>'reason';
 END
 $test$;
 

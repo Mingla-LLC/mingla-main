@@ -214,7 +214,9 @@ export function gigPaymentReturnUrl(
 ): string {
   const origin = (input.origin ?? "").trim().replace(/\/+$/, "") ||
     "https://host.usemingla.com";
-  return `${origin}/brand/${encodeURIComponent(input.brandId)}/creators/contract/${
+  return `${origin}/brand/${
+    encodeURIComponent(input.brandId)
+  }/creators/contract/${
     encodeURIComponent(input.contractId)
   }?gig_pay=${input.kind}`;
 }

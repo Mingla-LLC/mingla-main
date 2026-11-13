@@ -90,6 +90,15 @@ BEGIN
   v_answer := public.admin_gig_post_decide(v_post2, 'passed', NULL);
   IF v_answer->>'state' <> 'posts_verified' THEN RAISE EXCEPTION 'A1 the fixed post did not verify: %', v_answer; END IF;
 
+  -- ── P2-1. No post is accepted once the post deadline has passed. ─────────
+  PERFORM pg_temp.act(NULL);
+  PERFORM public.issue_3872_contract_apply_state(v_c[1], 'posts_failed', now() - interval '1 minute', NULL, NULL, NULL);
+  PERFORM pg_temp.act(v_creator);
+  v_failed := false;
+  BEGIN PERFORM public.gig_posts_submit(v_c[1], '[{"platform":"tiktok","url":"https://tiktok.com/@c/video/late"}]'::jsonb);
+  EXCEPTION WHEN others THEN v_failed := SQLERRM = 'posting_closed'; END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'P2-1 a post was accepted after the post deadline'; END IF;
+
   -- ── A2. Payout account name check (OQ-5 / E21). ─────────────────────────
   PERFORM pg_temp.act(NULL);
   INSERT INTO public.payee_accounts(user_id, paystack_recipient_code, paystack_status, paystack_currency)

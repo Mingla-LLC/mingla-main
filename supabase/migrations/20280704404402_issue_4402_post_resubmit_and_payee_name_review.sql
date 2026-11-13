@@ -17,6 +17,19 @@
 --       payee-account-paystack-recipient function calls
 --       issue_4402_payee_name_review_set after a successful connect.
 --
+--   Tester P1-1. A contract with NO captured hold (production QA contract
+--       5afe2353, seeded without an offer) that misses its post deadline
+--       used to loop forever: gig_refund_claim answered nothing_due and
+--       gig-refund replied 409 on every timer tick. post_missed with nothing
+--       held is now terminal inside gig_refund_claim: the contract moves to
+--       cancelled (cancel_reason post_missed), a post_missed_closed event is
+--       recorded with refund_minor 0, and the claim answers 'completed', so
+--       gig-refund returns ok without any provider call.
+--   Tester P2-1. gig_posts_submit locks the contract row and refuses
+--       (posting_closed) once a post_missed refund claim exists or the post
+--       deadline has passed, so a submit can never slip between the refund
+--       claim (which holds the same row lock) and the refund record.
+--
 -- Replaced functions are copied from the production body (md5 matched) and
 -- changed only as described.
 -- Proof: __tests__/issue_4402_polish_post_resubmit_and_name_review.implementor.pg17.test.sql
@@ -69,16 +82,76 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_4402_payee_name_review_set(uuid,text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4402_payee_name_review_set(uuid,text) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.gig_refund_claim(p_contract_id uuid, p_branch text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $fn$
+DECLARE v public.gig_contracts; v_key text; v_hold uuid; v_adj uuid; v_claim public.gig_refund_claims;
+BEGIN
+  IF auth.uid() IS NOT NULL THEN RAISE EXCEPTION 'service_role_only' USING ERRCODE = '42501'; END IF;
+  SELECT * INTO v FROM public.gig_contracts WHERE id = p_contract_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'contract_not_found' USING ERRCODE = 'P0002'; END IF;
+  -- #4402 tester P1-1: a missed post with NOTHING held (no captured, released
+  -- or refunded hold) has nothing to refund. Close it here, under the row
+  -- lock, and answer 'completed' so gig-refund returns ok with no provider
+  -- call and the timer never retries it.
+  -- MINGLA-INVARIANT: I-4402-POST-5 | issue #4402 | a post_missed contract with nothing held ends cancelled with no provider call, never an endless 409 retry
+  IF p_branch = 'post_missed' AND public.issue_3872_gig_refund_branch_allowed(v.id, 'post_missed')
+     AND NOT EXISTS (SELECT 1 FROM public.gig_holds h WHERE h.contract_id = v.id
+                      AND h.status IN ('captured','released','refunded','partially_refunded')) THEN
+    PERFORM public.issue_3872_contract_apply_state(v.id, 'cancelled', NULL, NULL, NULL, 'post_missed');
+    UPDATE public.gig_contracts SET cancel_reason = 'post_missed' WHERE id = v.id;
+    INSERT INTO public.gig_events(contract_id, actor, kind, data)
+    VALUES (v.id, 'system', 'post_missed_closed', jsonb_build_object('held', false, 'refund_minor', 0, 'from_state', v.state));
+    RETURN jsonb_build_object('claimed', false, 'reason', 'completed', 'branch', 'post_missed',
+      'provider_ref', NULL, 'closed_without_refund', true);
+  END IF;
+  IF p_branch = 'counter_lower' THEN
+    SELECT id INTO v_adj FROM public.gig_hold_adjustments
+     WHERE contract_id = v.id AND kind = 'refund' AND status = 'pending' ORDER BY created_at LIMIT 1;
+    IF v_adj IS NULL THEN RETURN jsonb_build_object('claimed', false, 'reason', 'nothing_due'); END IF;
+    v_key := 'counter:' || v_adj::text;
+  ELSE
+    SELECT id INTO v_hold FROM public.gig_holds WHERE contract_id = v.id AND terms_version = v.current_terms_version;
+    IF v_hold IS NULL THEN RETURN jsonb_build_object('claimed', false, 'reason', 'nothing_due'); END IF;
+    v_key := 'hold:' || v_hold::text;
+  END IF;
+  INSERT INTO public.gig_refund_claims AS rc (claim_key, contract_id, branch, status)
+  VALUES (v_key, v.id, p_branch, 'claimed')
+  ON CONFLICT (claim_key) DO UPDATE SET status = 'claimed', branch = EXCLUDED.branch,
+    attempts = rc.attempts + 1, next_attempt_at = NULL
+  WHERE (rc.status = 'failed' AND rc.next_attempt_at <= now())
+     OR (rc.status = 'claimed' AND rc.updated_at < now() - interval '15 minutes')
+  RETURNING * INTO v_claim;
+  IF v_claim.id IS NOT NULL THEN
+    RETURN jsonb_build_object('claimed', true, 'claim_id', v_claim.id, 'attempt', v_claim.attempts, 'claim_key', v_key);
+  END IF;
+  SELECT * INTO v_claim FROM public.gig_refund_claims WHERE claim_key = v_key;
+  RETURN jsonb_build_object('claimed', false, 'claim_id', v_claim.id,
+    'reason', CASE v_claim.status WHEN 'completed' THEN 'completed' WHEN 'claimed' THEN 'in_flight'
+      WHEN 'gave_up' THEN 'gave_up' ELSE 'backoff' END,
+    'branch', v_claim.branch, 'next_attempt_at', v_claim.next_attempt_at, 'provider_ref', v_claim.provider_ref);
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.gig_refund_claim(uuid,text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.gig_refund_claim(uuid,text) TO service_role;
+
 CREATE OR REPLACE FUNCTION public.gig_posts_submit(p_contract_id uuid, p_posts jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
-DECLARE v_actor uuid:=auth.uid(); v_item jsonb; v_count integer:=0; v_platform text; v_url text;
+DECLARE v_actor uuid:=auth.uid(); v_item jsonb; v_count integer:=0; v_platform text; v_url text; v_contract public.gig_contracts;
 BEGIN
   IF public.issue_3872_contract_party(p_contract_id,v_actor)<>'creator' THEN RAISE EXCEPTION 'creator_only' USING ERRCODE='42501'; END IF;
   IF jsonb_typeof(p_posts)<>'array' OR jsonb_array_length(p_posts)=0 THEN RAISE EXCEPTION 'posts_required' USING ERRCODE='22023'; END IF;
+  -- #4402 tester P2-1: the same row lock gig_refund_claim takes, so a submit
+  -- cannot slip between a post_missed claim and its refund record.
+  -- MINGLA-INVARIANT: I-4402-POST-6 | issue #4402 | no post is accepted once a post_missed claim exists or the post deadline has passed
+  SELECT * INTO v_contract FROM public.gig_contracts WHERE id=p_contract_id FOR UPDATE;
+  IF EXISTS(SELECT 1 FROM public.gig_refund_claims rc WHERE rc.contract_id=p_contract_id AND rc.branch='post_missed')
+     OR (v_contract.state IN ('approved','posting','posts_failed') AND v_contract.state_deadline_at<=now()) THEN
+    RAISE EXCEPTION 'posting_closed' USING ERRCODE='55000';
+  END IF;
   -- #4402 A1: a new link for a platform replaces that platform's failed
   -- links, so a fixed post can pass review. History stays in gig_events.
   -- MINGLA-INVARIANT: I-4402-POST-4 | issue #4402 | a resubmitted platform never keeps an earlier failed link that would block posts_verified
