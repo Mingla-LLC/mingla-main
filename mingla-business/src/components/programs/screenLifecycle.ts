@@ -89,3 +89,28 @@ export function playbackNotice(
   if (status === "ready") return "We can't play this video right now. Try again soon.";
   return "The video is still processing. Try again in a minute.";
 }
+
+/**
+ * #4402 (item 8) — while a contract screen is focused and waiting on the
+ * creator, refetch every 20 s so their action shows without a touch. Acting
+ * states (the host's own move) do not poll.
+ */
+export const HOST_POLL_MS = 20_000;
+const HOST_WAITING_STATES: ReadonlySet<string> = new Set([
+  "offered",
+  "accepted",
+  "script_drafting",
+  "script_locked",
+  "fix_requested",
+  "approved",
+  "posting",
+  "posts_failed",
+  "posts_submitted",
+  "disputed",
+]);
+
+export function hostPollMs(state: string | null | undefined): number | false {
+  return typeof state === "string" && HOST_WAITING_STATES.has(state)
+    ? HOST_POLL_MS
+    : false;
+}

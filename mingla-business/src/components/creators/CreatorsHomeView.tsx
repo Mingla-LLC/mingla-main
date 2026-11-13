@@ -30,12 +30,9 @@ import {
 import { useMarketingActionRegistration } from "../people/MarketingBrandSwitcherContext";
 import {
   creatorGigsService,
+  fetchGigListingOptions,
   type HostHome,
 } from "../../services/creatorGigsService";
-import {
-  fetchReferralListingOptions,
-  type ReferralListingOption,
-} from "../../services/referralService";
 import {
   contractNeedsHost,
   gigStatusLabel,
@@ -64,9 +61,9 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [picking, setPicking] = useState(false);
-  const [listings, setListings] = useState<ReferralListingOption[] | null>(
-    null,
-  );
+  const [listings, setListings] = useState<
+    Awaited<ReturnType<typeof fetchGigListingOptions>> | null
+  >(null);
 
   const load = useCallback(async () => {
     if (!brandId) return;
@@ -94,7 +91,8 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
 
   useEffect(() => {
     if (!picking || listings !== null) return;
-    void fetchReferralListingOptions(brandId)
+    // #4402 — drafts, deleted and finished events never carry a gig.
+    void fetchGigListingOptions(brandId)
       .then(setListings)
       .catch(() => setListings([]));
   }, [picking, listings, brandId]);
@@ -130,13 +128,12 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
           onClose={() => setPicking(false)}
           snapPoint="half"
         >
-          <SheetBody title="What should creators promote?">
+          <SheetBody title="Which listing is the gig for?">
             {listings === null ? (
               <ProgramLoading />
             ) : listings.length === 0 ? (
               <Muted>
-                Publish an event or venue first. Creators promote a specific
-                listing.
+                Publish an upcoming event first, then post a gig for it.
               </Muted>
             ) : (
               <ListGroup>
@@ -155,6 +152,11 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
                 ))}
               </ListGroup>
             )}
+            {listings !== null && listings.length > 0 ? (
+              <Muted>
+                Only published, upcoming events and active venues are shown.
+              </Muted>
+            ) : null}
           </SheetBody>
         </ProgramSheet>
       }
@@ -197,7 +199,7 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
                 <ProgramEmpty
                   icon="video"
                   title="No gigs yet"
-                  body="Post a brief for an event or venue. Creators in your city tell you they're interested."
+                  body="Post a gig. Creators apply, and you hire from the applicants."
                 />
               ) : (
                 <ListGroup>

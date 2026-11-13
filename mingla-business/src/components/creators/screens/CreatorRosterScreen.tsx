@@ -44,6 +44,7 @@ import {
 import {
   platformLabel,
   programErrorMessage,
+  rosterInitialsName,
   programMoney,
   shortDate,
 } from "../../../utils/creatorProgramFormat";
@@ -72,6 +73,9 @@ export default function CreatorRoster({
   const [filter, setFilter] = useState<RosterFilter>("all");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // #4402 (H24/H25) — edit a creator in the same sheet; remove asks first.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<CreatorRosterRow | null>(null);
   const [selected, setSelected] = useState<CreatorRosterRow | null>(null);
   const [offerId, setOfferId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -150,6 +154,7 @@ export default function CreatorRoster({
     setError(null);
     try {
       await creatorRosterService.save(brandId, {
+        ...(editingId ? { id: editingId } : null),
         name: name.trim(),
         platform,
         handle: handle.trim().replace(/^@/, "").toLowerCase() || null,
@@ -159,11 +164,16 @@ export default function CreatorRoster({
       });
       postHogService.capture("roster_creator_added");
       setAdding(false);
+      setEditingId(null);
       setName("");
       setHandle("");
       setEmail("");
       setNotes("");
-      setNotice(`${name.trim()} is in your creators.`);
+      setNotice(
+        editingId
+          ? `${name.trim()} is updated.`
+          : `${name.trim()} is in your creators.`,
+      );
       await load();
     } catch (saveError) {
       setError(
@@ -177,8 +187,52 @@ export default function CreatorRoster({
     }
   };
 
-  const invite = async (row: CreatorRosterRow) => {
-    const offer = offers.find((item) => item.id === offerId);
+  const startEdit = (row: CreatorRosterRow) => {
+    setError(null);
+    setEditingId(row.id);
+    setName(row.name);
+    setHandle(row.handle ?? "");
+    setEmail(row.email ?? "");
+    setNotes(row.notes ?? "");
+    if (row.platform && PLATFORMS.some((item) => item === row.platform)) {
+      setPlatform(row.platform as (typeof PLATFORMS)[number]);
+    }
+    setSelected(null);
+    setAdding(true);
+  };
+
+  const remove = async (row: CreatorRosterRow) => {
+    setBusy(true);
+    setError(null);
+    try {
+      // The list hides archived rows, so this is how a creator leaves it.
+      await creatorRosterService.save(brandId, {
+        id: row.id,
+        name: row.name,
+        platform: row.platform,
+        handle: row.handle,
+        email: row.email,
+        notes: row.notes,
+        status: "archived",
+      });
+      setRemoving(null);
+      setSelected(null);
+      setNotice(`${row.name} is removed from your creators.`);
+      await load();
+    } catch (removeError) {
+      setError(
+        programErrorMessage(
+          removeError,
+          `We couldn't remove ${row.name}. Try again.`,
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const invite = async (row: CreatorRosterRow, offerOverride?: string) => {
+    const offer = offers.find((item) => item.id === (offerOverride ?? offerId));
     if (!row.email || !offer) return;
     setBusy(true);
     setError(null);
@@ -245,11 +299,14 @@ export default function CreatorRoster({
         <>
           <ProgramSheet
             visible={adding}
-            onClose={() => setAdding(false)}
+            onClose={() => {
+              setAdding(false);
+              setEditingId(null);
+            }}
             snapPoint="full"
           >
             <SheetBody
-              title="Add a creator"
+              title={editingId ? "Edit creator" : "Add a creator"}
               footer={
                 <Button
                   fullWidth
@@ -379,6 +436,31 @@ export default function CreatorRoster({
                     </>
                   )
                 ) : null}
+                {selected.referral_member_id && selected.email ? (
+                  <Button
+                    fullWidth
+                    variant="secondary"
+                    label="Resend invite"
+                    loading={busy}
+                    disabled={busy || (!offerId && offers.length === 0)}
+                    onPress={() => void invite(selected)}
+                  />
+                ) : null}
+                <Button
+                  fullWidth
+                  variant="secondary"
+                  label="Edit"
+                  onPress={() => startEdit(selected)}
+                />
+                <Button
+                  fullWidth
+                  variant="ghost"
+                  label="Remove"
+                  onPress={() => {
+                    setError(null);
+                    setRemoving(selected);
+                  }}
+                />
                 {selected.link_slug ? (
                   <Button
                     fullWidth
@@ -388,6 +470,35 @@ export default function CreatorRoster({
                   />
                 ) : null}
                 <FieldError message={error} />
+              </SheetBody>
+            ) : null}
+          </ProgramSheet>
+          <ProgramSheet
+            visible={removing !== null}
+            onClose={() => setRemoving(null)}
+            snapPoint="half"
+          >
+            {removing ? (
+              <SheetBody title="Remove from your roster?">
+                <Muted>
+                  They won't see your private gigs. Gigs already in progress
+                  carry on.
+                </Muted>
+                <FieldError message={error} />
+                <Button
+                  fullWidth
+                  variant="destructive"
+                  label="Remove"
+                  loading={busy}
+                  onPress={() => void remove(removing)}
+                />
+                <Button
+                  fullWidth
+                  variant="secondary"
+                  label="Keep"
+                  disabled={busy}
+                  onPress={() => setRemoving(null)}
+                />
               </SheetBody>
             ) : null}
           </ProgramSheet>
@@ -434,7 +545,7 @@ export default function CreatorRoster({
                       <ListRow
                         key={row.id}
                         compact
-                        leading={<Initials name={row.name} size={32} />}
+                        leading={<Initials name={rosterInitialsName(row.name, row.email)} size={32} />}
                         title={row.name}
                         subtitle={status.key === "on_mingla" || row.sales_count > 0
                           ? `${row.sales_count} sale${row.sales_count === 1 ? "" : "s"} · ${programMoney(row.revenue_minor, row.currency)} in sales`
