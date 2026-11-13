@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { PAYOUT_COUNTRIES, payoutCountry, payoutService, usesInAppAccountCheck } from '../../services/payoutService';
 import { programErrorText } from '../../services/programResult';
+import { creatorProgramService } from '../../services/creatorProgramService';
+import { fetchEarningsSummary } from '../../services/referralEarningsService';
 import { ProgramButton, ProgramCard, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, programStyles as s } from '../programs/ProgramUi';
 import { ChoiceField } from '../programs/ProgramPickers';
 
@@ -15,7 +17,16 @@ import { ChoiceField } from '../programs/ProgramPickers';
 export function PayoutConnect({ onConnected }: { onConnected?: () => void }): React.ReactElement {
   const queryClient = useQueryClient();
   const status = useQuery({ queryKey: ['creator', 'payout'], queryFn: () => payoutService.status(), retry: 0 });
+  // #4402 (E22): a creator sees one bank button for their own country; other countries sit behind "Paid in another currency?".
+  const profile = useQuery({ queryKey: ['creator', 'own-profile'], queryFn: () => creatorProgramService.ownProfile(), retry: 0 });
+  const homeCountry = (profile.data?.home_city?.countryCode ?? '').toUpperCase();
+  const suggested = homeCountry && payoutCountry(homeCountry) ? homeCountry : null;
+  // #4402 (E21): the server compares the bank account name with the profile and flags it; this only reads the flag.
+  const earnings = useQuery({ queryKey: ['earnings-wallet'], queryFn: fetchEarningsSummary, retry: 0 });
+  const nameReview = earnings.data?.payoutAccount?.paystack?.nameReviewRequired === true;
   const [country, setCountry] = useState<string | null>(null);
+  const [otherOpen, setOtherOpen] = useState(false);
+  useEffect(() => { if (suggested && country === null && !otherOpen) setCountry(suggested); }, [suggested, country, otherOpen]);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,12 +77,16 @@ export function PayoutConnect({ onConnected }: { onConnected?: () => void }): Re
 
   if (status.isLoading) return <ProgramLoading />;
   const current = status.data;
+  // #4402 — the error sits directly under the action that raised it, never
+  // at the bottom of the form where the sticky footer hides it.
+  const errorNotice = error ? <ProgramNotice tone="error" text={error} /> : null;
 
   if (current?.connected && !editing) {
     return <View style={{ gap: 12 }}>
       <ProgramCard>
         <ProgramRow icon="cash-outline" title="Payout account" subtitle={current.summary} value="Connected" chevron={false} isLast />
       </ProgramCard>
+      {nameReview ? <ProgramNotice tone="warning" text="We’ll check this account name with you before your first payout." /> : null}
       <Text style={s.small}>Mingla never shows money as paid until your bank confirms it.</Text>
       <ProgramButton label="Change bank" variant="secondary" onPress={() => { setEditing(true); setCountry(current.countryCode); }} />
     </View>;
@@ -84,9 +99,11 @@ export function PayoutConnect({ onConnected }: { onConnected?: () => void }): Re
     </ProgramCard>
     {current?.pending ? <ProgramNotice tone="warning" text={`${current.summary}. Tap Connect bank to finish.`} /> : null}
     {status.isError ? <ProgramNotice tone="error" text={programErrorText(status.error)} /> : null}
-    <ChoiceField label="Country of your bank" title="Country of your bank" placeholder="Choose a country" searchable value={country}
+    {suggested && !otherOpen ? <>
+      <Text style={s.title}>Get paid in {payoutCountry(suggested)?.currency ?? ''}</Text>
+    </> : <ChoiceField label="Country of your bank" title="Country of your bank" placeholder="Choose a country" searchable value={country}
       options={PAYOUT_COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
-      onChange={(v) => { setCountry(v); setError(null); setResolved(null); }} />
+      onChange={(v) => { setCountry(v); setError(null); setResolved(null); }} />}
     {country && inApp ? <>
       <ChoiceField label="Bank" title="Your bank" placeholder={banks.isLoading ? 'Loading banks…' : 'Choose your bank'} searchable value={bankCode}
         options={bankOptions} onChange={(v) => { setBankCode(v); setResolved(null); setError(null); }} disabled={banks.isLoading} error={banks.isError ? programErrorText(banks.error) : null} />
@@ -97,14 +114,20 @@ export function PayoutConnect({ onConnected }: { onConnected?: () => void }): Re
         <Text style={s.title}>{resolved.name}</Text>
         <Text style={s.copy}>{bankName} · {resolved.masked}</Text>
         <ProgramButton label="Yes, connect this account" busy={busy} onPress={() => void confirm()} />
+        {errorNotice}
         <ProgramButton label="Change details" variant="ghost" disabled={busy} onPress={() => setResolved(null)} />
-      </ProgramCard> : <ProgramButton label="Connect bank" busy={busy} disabled={!bankCode || account.length !== 10} onPress={() => void check()} />}
+      </ProgramCard> : <>
+        <ProgramButton label="Connect bank" busy={busy} disabled={!bankCode || account.length !== 10} onPress={() => void check()} />
+        {errorNotice}
+      </>}
     </> : null}
     {country && !inApp ? <>
       <Text style={s.copy}>You’ll add your bank details on a secure page, then come back here.</Text>
       <ProgramButton label="Connect bank" busy={busy} onPress={() => void connectLink()} />
+      {errorNotice}
     </> : null}
-    {error ? <ProgramNotice tone="error" text={error} /> : null}
+    {!country ? errorNotice : null}
+    {suggested && !otherOpen ? <ProgramButton label="Paid in another currency?" variant="ghost" onPress={() => { setOtherOpen(true); setCountry(null); setError(null); setResolved(null); }} /> : null}
     {editing ? <ProgramButton label="Keep my current bank" variant="ghost" onPress={() => setEditing(false)} /> : null}
     {country && !payoutCountry(country) ? <ProgramNotice tone="warning" text="Payouts aren’t available in that country yet." /> : null}
   </View>;

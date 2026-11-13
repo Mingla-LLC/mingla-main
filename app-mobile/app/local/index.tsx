@@ -6,10 +6,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { localCityRate, localProgramService, type LocalHome, type LocalLanding, type LocalMonth } from '../../src/services/localProgramService';
 import { payoutService } from '../../src/services/payoutService';
 import { programErrorText } from '../../src/services/programResult';
-import { formatDaysLeft, formatMoney, formatMonth, formatShortDate, parseDay, toDayString } from '../../src/utils/programFormat';
+import { formatMoney, formatMonth, formatShortDate, pickWindowWords, toDayString, visitedOnBounds, visitedOnError } from '../../src/utils/programFormat';
 import { APPLICATION_COPY, LOCAL_STEPS, localMoneyWord, localMonthWords, localStepIndex } from '../../src/components/local/localWords';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { CheckRow, ChoiceField, Chip, DateField, ToggleRow } from '../../src/components/programs/ProgramPickers';
+import { JOIN_IN_FLIGHT } from '../../src/components/programs/programRefresh';
+import { useRefreshOnFocus } from '../../src/components/programs/useProgramRefresh';
 import { Icon } from '../../src/components/ui/Icon';
 // #4261: the agreement document opens in Mingla's in-app document overlay.
 import { useOpenInMingla } from '../../src/components/InAppBrowserProvider';
@@ -19,7 +21,10 @@ export default function LocalScreen(): React.ReactElement {
   const landing = useQuery({ queryKey: ['local', 'landing'], queryFn: () => localProgramService.landing() });
   const signedLocal = Boolean(landing.data?.local?.agreement_signed_at);
   const home = useQuery({ queryKey: ['local', 'home'], queryFn: () => localProgramService.home(), enabled: signedLocal });
-  const refresh = (): void => { void queryClient.invalidateQueries({ queryKey: ['local'] }); };
+  // Reads the seat, the month and the pick window again. Returns the read so a caller can wait for it.
+  const refresh = (): Promise<void> => queryClient.refetchQueries({ queryKey: ['local'] }, { cancelRefetch: true });
+  // #4402: reopened or back from the background: read the seat, the month and the pick window again.
+  useRefreshOnFocus(() => { void queryClient.invalidateQueries({ queryKey: ['local'] }, JOIN_IN_FLIGHT); });
 
   if (landing.isLoading || (signedLocal && home.isLoading)) return <ProgramScreen title="Mingla Local"><ProgramLoading /></ProgramScreen>;
   if (landing.isError || !landing.data) return <ProgramScreen title="Mingla Local"><ProgramLoadError text={programErrorText(landing.error)} onRetry={refresh} /></ProgramScreen>;
@@ -109,7 +114,7 @@ function ApplicationStatus({ landing, refreshing, onRefresh }: { landing: LocalL
     { title: 'Applied', sub: formatShortDate(app.created_at), done: true },
     { title: 'Mingla reviews your samples', sub: null, done: false, now: reviewing },
     { title: 'Sign the Local agreement', sub: null, done: false },
-    { title: 'Pick your first place', sub: 'Picks open on the 1st of each month', done: false },
+    { title: 'Pick your first place', sub: 'You get 7 days to pick once your seat starts', done: false },
   ];
   return <ProgramScreen title="Mingla Local" refreshing={refreshing} onRefresh={onRefresh}>
     <ProgramCard tone={app.status === 'rejected' ? 'base' : 'highlight'}>
@@ -179,7 +184,7 @@ function LocalAgreementSign({ landing, refreshing, onRefresh }: { landing: Local
 
 // ── Month home ─────────────────────────────────────────────────────────────
 
-function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: LocalLanding; home: LocalHome; refreshing: boolean; onRefresh: () => void }): React.ReactElement {
+function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: LocalLanding; home: LocalHome; refreshing: boolean; onRefresh: () => void | Promise<void> }): React.ReactElement {
   const router = useRouter();
   const now = new Date();
   const thisMonth = toDayString(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -198,7 +203,8 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
   const placeName = (m: LocalMonth | null): string => (m?.place_name ?? (m?.place_id ? names.data?.[m.place_id] : null)) || 'Your place';
   const status = current?.status ?? '';
   const step = localStepIndex(status);
-  const pickBy = new Date(now.getFullYear(), now.getMonth(), 7);
+  // #4402: the server says whether a pick is open (no day-of-month rule on the phone).
+  const pickWords = pickWindowWords(home.pick_window, home.local.since, now);
   const payWords = current?.payout_amount_minor && current.payout_currency ? formatMoney(current.payout_amount_minor, current.payout_currency) : rate ? formatMoney(rate.minor, rate.currency) : null;
 
   return <ProgramScreen title={`Mingla Local · ${home.local.city}`} refreshing={refreshing} onRefresh={onRefresh}>
@@ -206,8 +212,10 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
 
     {selected === thisMonth ? <>
       <ProgramCard tone="highlight">
-        {!status ? <Text style={s.accentText}>Pick by {formatShortDate(pickBy)} · {formatDaysLeft(pickBy, now)}</Text> : <Text style={s.accentText}>{localMonthWords(status)}</Text>}
-        <Text style={s.title}>{!status ? 'Choose this month’s place' : placeName(current)}</Text>
+        {!status ? <Text style={s.accentText}>{pickWords.open ? 'Pick window open' : 'Closed'}</Text> : <Text style={s.accentText}>{localMonthWords(status)}</Text>}
+        <Text style={s.title}>{!status ? (pickWords.open ? 'Choose this month’s place' : 'Picks for this month are closed') : placeName(current)}</Text>
+        {!status ? <Text style={s.copy}>{pickWords.headline}</Text> : null}
+        {!status && pickWords.detail ? <Text style={s.small}>{pickWords.detail}</Text> : null}
         {payWords ? <Text style={s.copy}>{status === 'paid' ? `${payWords} paid to your bank.` : `${payWords} when your review is approved.`}</Text> : null}
         <View style={styles.stepBar}>{LOCAL_STEPS.map((label, i) => <View key={label} style={s.flex}>
           <View style={[styles.stepLine, i < step && styles.stepDone, i === step && styles.stepNow]} />
@@ -215,7 +223,7 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
         </View>)}</View>
       </ProgramCard>
 
-      {!status ? (now.getDate() <= 7 ? <PickPlace city={home.local.city} onPicked={onRefresh} /> : <ProgramNotice text="Picks for this month closed on the 7th. Picks open again on the 1st." />) : null}
+      {!status && pickWords.open ? <PickPlace city={home.local.city} onPicked={onRefresh} /> : null}
       {(status === 'picked' || status === 'confirmed') && current ? <MarkVisited month={current} onDone={onRefresh} /> : null}
       {(status === 'visited' || status === 'changes_requested') && current ? <ProgramCard>
         <Text style={s.title}>{status === 'changes_requested' ? 'Mingla asked for changes' : 'Write your review'}</Text>
@@ -244,7 +252,7 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
   </ProgramScreen>;
 }
 
-function PickPlace({ city, onPicked }: { city: string; onPicked: () => void }): React.ReactElement {
+function PickPlace({ city, onPicked }: { city: string; onPicked: () => void | Promise<void> }): React.ReactElement {
   const [query, setQuery] = useState('');
   const [term, setTerm] = useState('');
   const [tie, setTie] = useState(false);
@@ -258,7 +266,7 @@ function PickPlace({ city, onPicked }: { city: string; onPicked: () => void }): 
       { text: 'Not yet', style: 'cancel' },
       { text: 'Pick it', onPress: () => void (async () => {
         setBusyId(id); setError(null);
-        try { await localProgramService.pickPlace(id, false); onPicked(); } catch (e) { setError(programErrorText(e)); } finally { setBusyId(null); }
+        try { await localProgramService.pickPlace(id, false); await onPicked(); } catch (e) { setError(programErrorText(e)); } finally { setBusyId(null); }
       })() },
     ]);
   };
@@ -277,22 +285,23 @@ function PickPlace({ city, onPicked }: { city: string; onPicked: () => void }): 
   </View>;
 }
 
-function MarkVisited({ month, onDone }: { month: LocalMonth; onDone: () => void }): React.ReactElement {
+function MarkVisited({ month, onDone }: { month: LocalMonth; onDone: () => void | Promise<void> }): React.ReactElement {
   const [day, setDay] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const start = parseDay(month.month) ?? new Date();
+  const bounds = visitedOnBounds(month.month, typeof month.picked_at === 'string' ? month.picked_at : null);
+  const dayError = visitedOnError(day, bounds);
   const save = async (): Promise<void> => {
-    if (!day) return;
+    if (!day || dayError) return;
     setBusy(true); setError(null);
     try { await localProgramService.markVisited(month.id, day); onDone(); } catch (e) { setError(programErrorText(e)); } finally { setBusy(false); }
   };
   return <ProgramCard>
     <Text style={s.title}>Visit as a normal customer</Text>
     <Text style={s.copy}>Pay as usual, then tell us the day you went.</Text>
-    <DateField label="Visited on" value={day} onChange={setDay} minimumDate={start} maximumDate={new Date()} sheetTitle="Visited on" />
+    <DateField label="Visited on" value={day} onChange={setDay} minimumDate={bounds.min} maximumDate={bounds.max} sheetTitle="Visited on" error={dayError} />
     {error ? <ProgramNotice tone="error" text={error} /> : null}
-    <ProgramButton label="I’ve visited" busy={busy} disabled={!day} onPress={() => void save()} />
+    <ProgramButton label="I’ve visited" busy={busy} disabled={!day || Boolean(dayError)} onPress={() => void save()} />
   </ProgramCard>;
 }
 

@@ -61,6 +61,9 @@ export type EarningsSummary = {
       accountNumberMasked: string | null;
       country: string | null;
       currency: string | null;
+      /** #4402: the server flagged the bank account name for review (payouts are not blocked). */
+      nameReviewRequired?: boolean;
+      nameReviewReason?: string | null;
     };
   };
 };
