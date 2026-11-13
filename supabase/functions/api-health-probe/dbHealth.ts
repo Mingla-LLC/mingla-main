@@ -14,7 +14,6 @@
 //
 // Pure: the probe passes in the database calls, the timer and the sender, so
 // the Deno test drives it with fakes.
-// MINGLA-INVARIANT: I-4423-DB-POOL-ALERT | issue #4423 | The api-health-probe database check alerts when the PostgREST pool is at least 80 % in use on 2 checks in a row, or a public RPC takes over 1 s or fails, at most once per 30 minutes.
 
 export const DB_POOL_SIZE = 30;
 export const DB_POOL_HIGH_RATIO = 0.8;

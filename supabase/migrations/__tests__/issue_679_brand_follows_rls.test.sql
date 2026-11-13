@@ -272,7 +272,7 @@ BEGIN
   -- appear in qual or with_check
   SELECT count(*) INTO v_bad FROM pg_policies
    WHERE schemaname = 'public' AND tablename = 'brand_follows'
-     AND coalesce(qual, with_check) IS DISTINCT FROM '(( SELECT auth.uid() AS uid) = user_id)';
+     AND coalesce(qual, with_check, '') NOT IN ('(auth.uid() = user_id)', '(( SELECT auth.uid() AS uid) = user_id)');
   IF v_bad <> 0 THEN
     RAISE EXCEPTION
       'issue-679 A-7: % brand_follows policies carry a non-owner expression', v_bad;

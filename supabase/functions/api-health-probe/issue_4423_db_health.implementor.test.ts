@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4423-DB-POOL-ALERT | issue #4423 | The api-health-probe database check alerts when the PostgREST pool is at least 80 % in use on 2 checks in a row, or a public RPC takes over 1 s or fails, at most once per 30 minutes.
 // Issue #4423 Wave 3 — the database pool check alerts before public pages fail.
 //
 // A fake database keeps the streak and last-alert time exactly like
