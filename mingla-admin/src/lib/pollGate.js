@@ -311,3 +311,16 @@ export function whenCeilingLifts(fn, { ceiling = tabCeiling, setTimer = setTimeo
   }, Math.max(250, resumeInMs + 50));
   return () => clearTimer(handle);
 }
+
+// #4423 rework 2 (P3-A): a page whose FIRST load was refused by the ceiling
+// pause has nothing on screen to keep, so it shows the shared LoadError. While
+// the pause holds, that card says the tab is paused (not "tell an admin") and
+// the page loads again by itself just after the pause ends.
+export const PAUSED_LOAD_TITLE = "Paused for a minute";
+export const PAUSED_LOAD_WORDS = "Admin paused refreshing because this tab sent too many requests. This loads by itself when the pause ends.";
+
+/** What LoadError shows: the page's own words, or the pause words while paused. */
+export function loadErrorView({ title, message } = {}, paused = false) {
+  if (paused) return { title: PAUSED_LOAD_TITLE, message: PAUSED_LOAD_WORDS, variant: "warning", paused: true };
+  return { title, message, variant: "error", paused: false };
+}

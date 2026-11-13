@@ -8,18 +8,47 @@
 //   message   the reason, when there is one (optional)
 //   onRetry   loads again; the button is hidden only when there is no retry
 //   retrying  shows the button as busy while the retry runs (optional)
+//
+// #4423 rework 2 (P3-A): while the tab's request ceiling pause holds, the card
+// says so (lib/pollGate loadErrorView) instead of "tell an admin", and onRetry
+// runs once by itself just after the pause ends.
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { RotateCcw } from "lucide-react";
 import { AlertCard } from "./Card";
 import { Button } from "./Button";
+import { tabCeiling } from "../../lib/requestCeiling";
+import { ceilingPaused, loadErrorView, whenCeilingLifts } from "../../lib/pollGate";
 
 export const LOAD_ERROR_FALLBACK = "Something went wrong on our side. Check your connection and try again.";
 
+// The pause ends silently (no event), so re-render once just after it ends.
+// Admin renders only in the browser; the server snapshot reads the same
+// ceiling so a static render (the P3-A test) shows what the tab would show.
+const readPaused = () => ceilingPaused();
+function useCeilingPaused() {
+  const paused = useSyncExternalStore(tabCeiling.subscribe, readPaused, readPaused);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!paused) return undefined;
+    return whenCeilingLifts(() => setTick((n) => n + 1));
+  }, [paused]);
+  return paused;
+}
+
 export function LoadError({ title = "Couldn't load this", message, onRetry, retrying = false, className = "" }) {
+  const paused = useCeilingPaused();
+  const retryRef = useRef(onRetry);
+  retryRef.current = onRetry;
+  useEffect(() => {
+    if (!paused) return undefined;
+    return whenCeilingLifts(() => retryRef.current?.());
+  }, [paused]);
+  const view = loadErrorView({ title, message }, paused);
   return (
-    <div role="alert" className={className}>
+    <div role="alert" className={className} data-load-paused={view.paused ? "" : undefined}>
       <AlertCard
-        variant="error"
-        title={title}
+        variant={view.variant}
+        title={view.title}
         action={
           onRetry ? (
             <Button variant="secondary" size="sm" icon={RotateCcw} loading={retrying} onClick={onRetry}>
@@ -28,7 +57,7 @@ export function LoadError({ title = "Couldn't load this", message, onRetry, retr
           ) : undefined
         }
       >
-        {message || LOAD_ERROR_FALLBACK}
+        {view.message || LOAD_ERROR_FALLBACK}
       </AlertCard>
     </div>
   );

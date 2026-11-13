@@ -409,6 +409,8 @@ describe("#4130 W0-9: export and sort cover every filtered row", () => {
     const err = stripComments(read("components/ui/LoadError.jsx"));
     assert.ok(err.includes('role="alert"'));
     assert.ok(err.includes("Retry"));
-    assert.ok(err.includes('variant="error"'));
+    // #4423 rework 2: the variant comes from loadErrorView ("error" unless the ceiling pause holds).
+    assert.ok(err.includes("variant={view.variant}"));
+    assert.ok(/return \{ title, message, variant: "error", paused: false \};/.test(read("lib/pollGate.js")));
   });
 });
