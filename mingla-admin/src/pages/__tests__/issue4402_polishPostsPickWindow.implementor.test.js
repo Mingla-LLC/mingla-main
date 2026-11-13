@@ -104,7 +104,9 @@ test("#4402 Local pick window: labels, validation and the summary column", () =>
 
 test("#4402 Extend window when an admin window is open; disabled once picked", () => {
   assert.equal(pickWindowButtonLabel({ window: { open: true, reason: "admin" } }), "Extend window");
-  assert.equal(pickWindowButtonLabel({ window: { open: true, reason: "new_seat" } }), "Open pick window");
+  assert.equal(pickWindowButtonLabel({ window: { open: true, reason: "new_seat", open_until: "2026-11-19T00:00:00Z" } }), "Extend window");
+  assert.equal(pickWindowButtonLabel({ window: { open: true, reason: "month_start" } }), "Extend window");
+  assert.match(locals, /const extending = Boolean\(local\.window\?\.open\)/);
   assert.equal(pickWindowButtonLabel({ window: { open: false } }), "Open pick window");
   assert.equal(localAlreadyPicked({ pick: { status: "picked", place_name: "Nok" } }), true);
   assert.equal(localAlreadyPicked({ pick: null }), false);

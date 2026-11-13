@@ -365,7 +365,7 @@ function PickWindowDialog({ local, onClose, onConfirm }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const draft = checkPickWindowDraft({ days, reason });
-  const extending = local.window?.open && local.window.reason === "admin";
+  const extending = Boolean(local.window?.open);
   const submit = async () => {
     if (!draft.ok || saving) return;
     setSaving(true); setError("");

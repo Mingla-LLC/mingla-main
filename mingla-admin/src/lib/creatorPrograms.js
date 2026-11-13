@@ -632,7 +632,7 @@ export function localAlreadyPicked(local) {
 }
 
 export function pickWindowButtonLabel(local) {
-  return local?.window?.open && local.window.reason === "admin" ? "Extend window" : "Open pick window";
+  return local?.window?.open ? "Extend window" : "Open pick window";
 }
 
 export function pickWindowConfirmLabel(days) {
