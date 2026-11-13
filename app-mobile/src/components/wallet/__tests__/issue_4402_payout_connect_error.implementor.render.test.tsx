@@ -48,6 +48,8 @@ jest.mock("../../../services/payoutService", () => ({
 
 jest.mock("../../../services/creatorProgramService", () => ({ creatorProgramService: { ownProfile: jest.fn() } }));
 
+jest.mock("../../../services/referralEarningsService", () => ({ fetchEarningsSummary: jest.fn() }));
+
 jest.mock("../../../services/programResult", () => ({
   programErrorText: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
@@ -187,18 +189,14 @@ describe("#4402 PayoutConnect error placement", () => {
     expect(r.root.findAll((n) => (n.type as unknown) === "ChoiceField").map((n) => n.props.label)).toEqual(["Country of your bank"]);
   });
 
-  // #4402 E21: a bank name that shares no word with the profile name is flagged, and payouts are not blocked.
-  it("warns when the account name does not match the profile name, and still allows connecting", async () => {
-    mockQueries["creator/own-profile"] = { data: { display_name: "Ada Obi", home_city: { countryCode: "NG" } }, isLoading: false, isError: false };
-    mockCheckAccount.mockResolvedValue({ account_name: "USEMINGLA LIMITED", account_number_masked: "******0000" });
-    const r = await mount();
-    const bankField = r.root.find((n) => (n.type as unknown) === "ChoiceField" && n.props.label === "Bank");
-    await run(() => bankField.props.onChange("057"));
-    const accountField = r.root.find((n) => (n.type as unknown) === "ProgramField");
-    await run(() => accountField.props.onChangeText("0000000000"));
-    await run(() => button(r, "Connect bank").props.onPress());
-    const warning = r.root.findAll((n) => (n.type as unknown) === "ProgramNotice" && n.props.tone === "warning");
-    expect(warning.map((n) => n.props.text)).toContain("We’ll check this account name with you before your first payout.");
-    expect(button(r, "Yes, connect this account").props.disabled).toBeFalsy();
+  // #4402 E21: the server flag (not a client name comparison) shows the review notice; payouts are not blocked.
+  it("shows the review notice only when the server says the account name needs review", async () => {
+    const flagged = { data: { payoutAccount: { paystack: { nameReviewRequired: true, nameReviewReason: "no shared word" } } }, isLoading: false, isError: false };
+    mockQueries["creator/payout"] = { data: { connected: true, pending: false, summary: "GTBank ····4421" }, isLoading: false, isError: false };
+    mockQueries["earnings-wallet"] = flagged;
+    const warnings = (r: Renderer) => r.root.findAll((n) => (n.type as unknown) === "ProgramNotice" && n.props.tone === "warning").map((n) => n.props.text);
+    expect(warnings(await mount())).toContain("We’ll check this account name with you before your first payout.");
+    mockQueries["earnings-wallet"] = { data: { payoutAccount: { paystack: { nameReviewRequired: false } } }, isLoading: false, isError: false };
+    expect(warnings(await mount())).toEqual([]);
   });
 });

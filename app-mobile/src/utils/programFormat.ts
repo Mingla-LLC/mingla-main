@@ -905,11 +905,3 @@ export function signBlockReason(input: { hasVersion: boolean; birthDate: string 
   if (!input.agreed) return 'Tick the box to agree, then sign.';
   return null;
 }
-
-/** E21: true when the bank's account name shares no word with the profile name (both must have words). */
-export function accountNameMismatch(accountName: string | null | undefined, profileName: string | null | undefined): boolean {
-  const words = (text: string | null | undefined): string[] => (text ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 2);
-  const a = words(accountName); const b = words(profileName);
-  if (!a.length || !b.length) return false;
-  return !a.some((w) => b.includes(w));
-}

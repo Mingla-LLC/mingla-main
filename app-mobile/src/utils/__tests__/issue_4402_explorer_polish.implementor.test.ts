@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  accountNameMismatch, agreedVideoDueZoned, capitalizeFirst, dayToTypedDob, dobWheelStart, doorPassLine, formatInZone, formatMonth, formatShortDate, formatTypedDob,
+  agreedVideoDueZoned, capitalizeFirst, dayToTypedDob, dobWheelStart, doorPassLine, formatInZone, formatMonth, formatShortDate, formatTypedDob,
   groupMoneyTyping, heldBelowFloorText, isBelowMinFee, minFeeError, minFeeHint, moneyInputValue, parseMoneyInput, pickWindowWords, postDeadlineText, postDueSoonLabel,
   postingStatusCopy, signBlockReason, typedDobToDay, uploadDueReason, waitingToReachText, zoneLabel,
 } from '../programFormat.ts';
@@ -107,12 +107,6 @@ test('E25/E26: typed date of birth, the wheel start, and the sign button reason'
   assert.equal(signBlockReason({ hasVersion: true, birthDate: '2015-01-01', agreed: true }, NOW), 'You need to be 18 or older to join as a creator.');
   assert.equal(signBlockReason({ hasVersion: true, birthDate: '2001-03-15', agreed: false }, NOW), 'Tick the box to agree, then sign.');
   assert.equal(signBlockReason({ hasVersion: true, birthDate: '2001-03-15', agreed: true }, NOW), null);
-});
-
-test('E21: a bank account name that shares no word with the profile name is flagged', () => {
-  assert.equal(accountNameMismatch('USEMINGLA LIMITED', 'Ada Obi'), true);
-  assert.equal(accountNameMismatch('OBI ADA CHIOMA', 'Ada Obi'), false);
-  assert.equal(accountNameMismatch('', 'Ada Obi'), false);
 });
 
 test('item 16: every timeline event has words, the fallback is only for unknown kinds', () => {

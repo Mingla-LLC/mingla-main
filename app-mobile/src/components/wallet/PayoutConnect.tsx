@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PAYOUT_COUNTRIES, payoutCountry, payoutService, usesInAppAccountCheck } from '../../services/payoutService';
 import { programErrorText } from '../../services/programResult';
 import { creatorProgramService } from '../../services/creatorProgramService';
-import { accountNameMismatch } from '../../utils/programFormat';
+import { fetchEarningsSummary } from '../../services/referralEarningsService';
 import { ProgramButton, ProgramCard, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, programStyles as s } from '../programs/ProgramUi';
 import { ChoiceField } from '../programs/ProgramPickers';
 
@@ -21,6 +21,9 @@ export function PayoutConnect({ onConnected }: { onConnected?: () => void }): Re
   const profile = useQuery({ queryKey: ['creator', 'own-profile'], queryFn: () => creatorProgramService.ownProfile(), retry: 0 });
   const homeCountry = (profile.data?.home_city?.countryCode ?? '').toUpperCase();
   const suggested = homeCountry && payoutCountry(homeCountry) ? homeCountry : null;
+  // #4402 (E21): the server compares the bank account name with the profile and flags it; this only reads the flag.
+  const earnings = useQuery({ queryKey: ['earnings-wallet'], queryFn: fetchEarningsSummary, retry: 0 });
+  const nameReview = earnings.data?.payoutAccount?.paystack?.nameReviewRequired === true;
   const [country, setCountry] = useState<string | null>(null);
   const [otherOpen, setOtherOpen] = useState(false);
   useEffect(() => { if (suggested && country === null && !otherOpen) setCountry(suggested); }, [suggested, country, otherOpen]);
@@ -83,6 +86,7 @@ export function PayoutConnect({ onConnected }: { onConnected?: () => void }): Re
       <ProgramCard>
         <ProgramRow icon="cash-outline" title="Payout account" subtitle={current.summary} value="Connected" chevron={false} isLast />
       </ProgramCard>
+      {nameReview ? <ProgramNotice tone="warning" text="We’ll check this account name with you before your first payout." /> : null}
       <Text style={s.small}>Mingla never shows money as paid until your bank confirms it.</Text>
       <ProgramButton label="Change bank" variant="secondary" onPress={() => { setEditing(true); setCountry(current.countryCode); }} />
     </View>;
@@ -109,7 +113,6 @@ export function PayoutConnect({ onConnected }: { onConnected?: () => void }): Re
         <Text style={s.label}>Is this you?</Text>
         <Text style={s.title}>{resolved.name}</Text>
         <Text style={s.copy}>{bankName} · {resolved.masked}</Text>
-        {accountNameMismatch(resolved.name, profile.data?.display_name) ? <ProgramNotice tone="warning" text="We’ll check this account name with you before your first payout." /> : null}
         <ProgramButton label="Yes, connect this account" busy={busy} onPress={() => void confirm()} />
         {errorNotice}
         <ProgramButton label="Change details" variant="ghost" disabled={busy} onPress={() => setResolved(null)} />
