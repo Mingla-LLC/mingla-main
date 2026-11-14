@@ -4,7 +4,7 @@
 // most the host offered to pay on the gig ("Up to $300").
 
 import { useEffect, useMemo, useState } from "react";
-import { useProgramLoad } from "../hooks/useProgramLoad";
+import { PROGRAM_QUEUE_REFRESH, useProgramLoad } from "../hooks/useProgramLoad";
 import { Check, ExternalLink, RefreshCw, X } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Badge } from "../components/ui/Badge";
@@ -166,7 +166,9 @@ function PostCheckDrawer({ post, onClose, onDecided }) {
           <dt className="text-[var(--color-text-tertiary)]">Host</dt><dd className="text-[var(--color-text-primary)]">{post.brand_name ?? "—"}</dd>
           <dt className="text-[var(--color-text-tertiary)]">Must tag</dt><dd className="text-[var(--color-text-primary)]">{mustTagWords(post.must_tag) || "—"}</dd>
           <dt className="text-[var(--color-text-tertiary)]">Deliverables</dt><dd className="text-[var(--color-text-primary)]">{deliverablesSummary(post.deliverables) || "—"}</dd>
-          <dt className="text-[var(--color-text-tertiary)]">Post by</dt><dd className="text-[var(--color-text-primary)]">{post.post_by ? dayWord(post.post_by) : "—"}</dd>
+          {/* #4430 Q2: the deadline gig-timers enforces first, the agreed post-by day under it. */}
+          <dt className="text-[var(--color-text-tertiary)]">Posts due</dt><dd className="text-[var(--color-text-primary)]">{post.post_by ? postsDueWords(post.post_by, post.timezone) : "—"}</dd>
+          <dt className="text-[var(--color-text-tertiary)]">Post by (agreed)</dt><dd className="text-[var(--color-text-secondary)]">{post.post_by ? dayWord(post.post_by) : "—"}</dd>
           <dt className="text-[var(--color-text-tertiary)]">Submitted</dt><dd className="text-[var(--color-text-primary)]">{shortDateTimeOrDash(post.submitted_at)} · {postWaitingWord(post)} ago</dd>
         </dl>
         {mode === "fail" ? (
@@ -211,7 +213,7 @@ function PostChecksQueue({ queue }) {
               <th scope="col" className="px-4 py-2.5 font-semibold">Post</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Gig and creator</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Must include</th>
-              <th scope="col" className="px-4 py-2.5 font-semibold">Post by</th>
+              <th scope="col" className="px-4 py-2.5 font-semibold">Posts due</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Waiting</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Decision</th>
             </tr>
@@ -230,7 +232,10 @@ function PostChecksQueue({ queue }) {
                     <p className="text-xs text-[var(--color-text-tertiary)]">{[row.creator_name, row.brand_name].filter(Boolean).join(" · ")}</p>
                   </td>
                   <td className="px-4 py-3 text-[var(--color-text-secondary)]">{[mustTagWords(row.must_tag), deliverablesSummary(row.deliverables)].filter(Boolean).join(" · ") || "—"}</td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{row.post_by ? dayWord(row.post_by) : "—"}</td>
+                  <td className="px-4 py-3">
+                    <p className="text-[var(--color-text-primary)]">{row.post_by ? postsDueWords(row.post_by, row.timezone) : "—"}</p>
+                    {row.post_by ? <p className="text-xs text-[var(--color-text-tertiary)]">Post by (agreed) {dayWord(row.post_by)}</p> : null}
+                  </td>
                   <td className="px-4 py-3">
                     {postWaitingOverDay(row) ? <Badge variant="warning" dot>Waiting over a day</Badge> : null}
                     <p className="tabular-nums text-[var(--color-text-secondary)]">{postWaitingWord(row)}</p>
@@ -255,7 +260,7 @@ function GigsList() {
   const [stateFilter, setStateFilter] = useState("all");
   const [selected, setSelected] = useState(null);
 
-  const queue = useProgramLoad(getGigQueue);
+  const queue = useProgramLoad(getGigQueue, PROGRAM_QUEUE_REFRESH);
   const postCount = queue.data?.post_checks?.length;
   const list = useProgramLoad(listGigContracts);
   const rows = useMemo(() => list.data ?? [], [list.data]);

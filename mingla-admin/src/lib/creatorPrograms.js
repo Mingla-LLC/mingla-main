@@ -704,6 +704,56 @@ const EVENT_WORDS = {
 
 const ACTOR_WORDS = { host: "Host", creator: "Creator", system: "Mingla", admin: "Mingla team" };
 
+/**
+ * #4430 item 2: one action writes an action event and a fact event (for
+ * example `send_script` and `script_sent`). The action row is dropped when
+ * its fact partner from the same actor is within 5 seconds. Kept identical on
+ * Explorer, Host and Admin (checked by a test).
+ */
+export const GIG_EVENT_PAIRS = Object.freeze({
+  plan_confirmed: "shoot_plan_confirmed",
+  send_script: "script_sent",
+  deliver: "delivery_submitted",
+  approve: "approved",
+  request_fix: "fix_requested",
+  open_dispute: "dispute_opened",
+  submit_posts: "posts_submitted",
+});
+const PAIR_WINDOW_MS = 5000;
+
+export function dedupeGigEvents(events) {
+  const list = Array.isArray(events) ? events : [];
+  return list.filter((event) => {
+    const partner = GIG_EVENT_PAIRS[event?.kind];
+    if (!partner) return true;
+    const at = Date.parse(event.at ?? "");
+    return !list.some((other) => other !== event && other?.kind === partner && other.actor === event.actor
+      && Number.isFinite(at) && Math.abs(Date.parse(other.at ?? "") - at) <= PAIR_WINDOW_MS);
+  });
+}
+
+/** "Africa/Lagos" -> "Lagos time"; "UTC" stays "UTC". Never a zone slug. */
+export function zoneWords(timezone) {
+  if (typeof timezone !== "string" || !timezone) return "";
+  if (/^(etc\/)?(utc|gmt|z)$/i.test(timezone)) return "UTC";
+  return `${timezone.split("/").pop().replace(/_/g, " ")} time`;
+}
+
+/**
+ * #4430 item 4 / Q2: the posting deadline gig-timers enforces. The server sets
+ * it to the end of the post-by day in the gig's zone plus a 24 hour grace; people
+ * read its last minute: "Wed 16 Dec, 11:59 PM Lagos time" for post-by Tue 15 Dec.
+ */
+export function postsDueWords(postBy, timezone) {
+  if (typeof postBy !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(postBy)) return "";
+  const day = new Date(`${postBy}T00:00:00Z`);
+  if (Number.isNaN(day.getTime())) return "";
+  day.setUTCDate(day.getUTCDate() + 1);
+  const words = day.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  const zone = zoneWords(timezone);
+  return `${words}, 11:59 PM${zone ? ` ${zone}` : ""}`;
+}
+
 export function gigEventWord(kind) {
   return EVENT_WORDS[kind] ?? sentenceFromKey(kind);
 }
