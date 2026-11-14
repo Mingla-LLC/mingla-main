@@ -11,6 +11,7 @@
 -- Item 3  The script-locked push names the agreed upload deadline.
 -- Item 5  Split endings get their own money state; the workspace carries the
 --      pending counter refund and what the creator kept.
+-- Item 1a  Host gig rows carry the gig's zone (gig_host_home.gigs[].timezone).
 -- Q1   After any ending that is not a success, the host may offer the same
 --      creator again.
 -- L-1  local_review_submit: qualify unnest column.
@@ -934,6 +935,45 @@ BEGIN
       WHERE s.order_kind='gig' AND s.order_id=v.id AND s.payee_kind='gig_fee'),0),
     'format_structure',(SELECT f.structure FROM public.gigs g3 JOIN public.gig_formats f ON f.key=g3.format_key WHERE g3.id=v.gig_id));
 END;
+$function$;
+
+-- ── Item 1a: Host gig rows carry the gig zone ───────────────────────────
+CREATE OR REPLACE FUNCTION public.gig_host_home(p_brand_id uuid)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT CASE WHEN public.biz_is_brand_member_for_read(p_brand_id,auth.uid()) THEN jsonb_build_object(
+    'gigs',coalesce((SELECT jsonb_agg(to_jsonb(g)||jsonb_build_object(
+        'interest_count',(SELECT count(*) FROM public.gig_interest i WHERE i.gig_id=g.id AND i.status IN ('sent','shortlisted')
+           AND NOT public.issue_3872_creator_hired_on_gig(g.id,i.creator_account_id)),
+        'hired_count',(SELECT count(*) FROM public.gig_contracts x WHERE x.gig_id=g.id AND x.state NOT IN ('offered','declined','expired','cancelled','resolved_refund')),
+        'slots_left',public.issue_3872_gig_slots_left(g.id),
+        -- #4402 H18: how many verified creators in the gig's city can see it.
+        'city_name',(SELECT sc.name FROM public.seeding_cities sc WHERE sc.id=g.city_id),
+        'verified_creator_count',(SELECT count(*) FROM public.creator_profiles cp
+          WHERE cp.home_city_id=g.city_id AND cp.mode_enabled AND cp.verification='verified'),
+        'min_fee_minor',public.issue_4402_gig_min_fee_minor(g.currency),
+        -- #4430 item 1a: the gig's own zone, so its times read in it.
+        'timezone',public.issue_3872_gig_timezone(g.id)
+      ) ORDER BY g.updated_at DESC) FROM public.gigs g WHERE g.brand_id=p_brand_id),'[]'::jsonb),
+    'contracts',coalesce((SELECT jsonb_agg(jsonb_build_object(
+        'id',c.id,'gig_id',c.gig_id,'state',c.state,'deadline_at',c.state_deadline_at,'title',g.title_public,'creator',p.display_name,
+        'video_due_at',coalesce(tv.video_due_at,g.video_due_at),'post_by',coalesce(tv.post_by,g.post_by),
+        'due_at',CASE WHEN c.state IN ('approved','posting','posts_failed') THEN ((coalesce(tv.post_by,g.post_by)+1)::timestamp AT TIME ZONE 'UTC') ELSE c.state_deadline_at END,
+        'needs_host',(c.state IN ('accepted','shoot_planned','script_sent','delivered')
+            OR EXISTS(SELECT 1 FROM public.gig_change_proposals pr WHERE pr.contract_id=c.id AND pr.status='open' AND pr.proposed_by='creator')
+            OR EXISTS(SELECT 1 FROM public.gig_hold_adjustments a WHERE a.contract_id=c.id AND a.kind='topup' AND a.status='pending')
+            OR (c.state='offered' AND NOT EXISTS(SELECT 1 FROM public.gig_holds h WHERE h.contract_id=c.id AND h.status<>'pending'))),
+        'payment_pending',(c.state='offered' AND NOT public.issue_3872_offer_ready(c.id)),
+        'fee_minor',tv.fee_minor,'currency',tv.currency
+      ) ORDER BY c.updated_at DESC)
+      FROM public.gig_contracts c JOIN public.gigs g ON g.id=c.gig_id
+      JOIN public.creator_profiles p ON p.creator_account_id=c.creator_account_id
+      LEFT JOIN public.gig_terms_versions tv ON tv.contract_id=c.id AND tv.version=c.current_terms_version
+      WHERE c.brand_id=p_brand_id AND c.cancel_reason IS DISTINCT FROM 'payment_not_completed'),'[]'::jsonb)
+  ) ELSE NULL END;
 $function$;
 
 -- ── L-1: qualify unnest column ──────────────────────────────────────────

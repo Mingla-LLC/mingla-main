@@ -230,16 +230,17 @@ BEGIN
   PERFORM pg_temp.act(v_host);
   v_answer := public.gig_offer_prepare(v_int[5], '{"fee_minor":10000,"rights_accepted":true}'::jsonb, 'i4402p-reoffer-5');
   IF (v_answer->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'T-M1-d re-offer refused: %', v_answer; END IF;
-  -- creator_decline does not reopen.
+  -- #4430 Q1 (Seth, 14 Nov): a creator decline now reopens too, so the host
+  -- may offer the same creator again.
   PERFORM pg_temp.act(NULL);
   v_quote := public.gig_refund_quote(v_c[6], 'creator_decline');
   PERFORM public.gig_refund_record(v_c[6], 'creator_decline', (v_quote->>'refund_minor')::bigint, (v_quote->>'creator_fee_minor')::bigint, 're_i4402p_6');
-  IF (SELECT status FROM public.gig_interest WHERE id = v_int[6]) <> 'offered' THEN RAISE EXCEPTION 'T-M1-d creator decline reopened'; END IF;
+  IF (SELECT status FROM public.gig_interest WHERE id = v_int[6]) <> 'shortlisted' THEN RAISE EXCEPTION 'T-M1-d creator decline did not reopen (#4430 Q1)'; END IF;
   -- The backfill reopens a stuck row (the production dcf7f167 shape) and only that.
   PERFORM public.issue_3872_contract_apply_state(v_c[7], 'cancelled', NULL, NULL, NULL, 'host_before_accept');
   IF public.issue_4402_reopen_stuck_interest() <> 1 THEN RAISE EXCEPTION 'T-M1-d backfill count'; END IF;
   IF (SELECT status FROM public.gig_interest WHERE id = v_int[7]) <> 'shortlisted'
-     OR (SELECT status FROM public.gig_interest WHERE id = v_int[6]) <> 'offered' THEN
+     OR (SELECT status FROM public.gig_interest WHERE id = v_int[6]) <> 'shortlisted' THEN
     RAISE EXCEPTION 'T-M1-d backfill touched the wrong rows';
   END IF;
 

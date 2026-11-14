@@ -331,6 +331,13 @@ BEGIN
   IF public.issue_4402_gig_when('2026-12-15T11:00:00Z', 'Africa/Lagos') <> 'Tue Dec 15, 12:00 PM Lagos time' THEN RAISE EXCEPTION 'item 3 zone words'; END IF;
   IF v_body LIKE '%two days%' OR v_body ~ '[A-Za-z]+/[A-Za-z_]+' THEN RAISE EXCEPTION 'item 3 body has a fixed gap or a zone slug: %', v_body; END IF;
 
+  -- ── Item 1a: the Host gig list carries each gig's zone. ─────────────────
+  PERFORM pg_temp.act(v_host);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(public.gig_host_home(v_brand)->'gigs') g WHERE g->>'timezone' IS DISTINCT FROM 'Africa/Lagos') THEN
+    RAISE EXCEPTION 'item 1a gig_host_home timezone';
+  END IF;
+  PERFORM pg_temp.act(NULL);
+
   -- ── I-4430-P2 across every fixture: no refund difference ends superseded.
   IF EXISTS (SELECT 1 FROM public.gig_hold_adjustments WHERE kind = 'refund' AND status = 'superseded') THEN
     RAISE EXCEPTION 'I-4430-P2 a refund adjustment ended superseded';
