@@ -166,21 +166,24 @@ Deno.test("redditCapi: token UNSET → failed 'pending_config' (never errors, ne
   assertEquals(calls.length, 0); // no network attempted while pending
 });
 
-Deno.test("redditCapi: with a token it POSTs to the v2.0 conversions endpoint with the shared conversion_id", async () => {
+// #4238 (Step 0 Z5): v2.0 is deprecated; the sender moved to CAPI v3. The
+// ORCH-1405 400 ("unknown field events") on the v3 path came from posting the
+// v2 body there; v3 wants { data: { events } }. Rewritten for the v3 contract.
+Deno.test("redditCapi: with a token it POSTs to the CAPI v3 pixel endpoint with the shared conversion_id", async () => {
   const { fn, calls } = stubFetch(200, { data: { message: "Successfully processed 1 conversion events." } });
   const res = await sendRedditConversion(baseInput({ eventName: "Purchase" }), {
     pixelId: "a2_jcfwvnfcfqcs",
     tokenEnvVar: "REDDIT_ADS_CAPI_TOKEN",
   }, { fetchImpl: fn, getToken: () => "rtok" });
   assertEquals(res.status, "sent");
-  // ORCH-1405: account-scoped v2.0 endpoint (pixelId == account id). The v3
-  // /pixels/{id}/conversion_events path is rejected by Reddit (400) — proven by live fire.
-  assert(calls[0].url.includes("ads-api.reddit.com/api/v2.0/conversions/events/a2_jcfwvnfcfqcs"));
-  assert(!calls[0].url.includes("/pixels/"), "must NOT use the rejected v3 /pixels path");
+  assertEquals(
+    calls[0].url,
+    "https://ads-api.reddit.com/api/v3/pixels/a2_jcfwvnfcfqcs/conversion_events",
+  );
   assertEquals((calls[0].init.headers as Record<string, string>).Authorization, "Bearer rtok");
   const sent = JSON.parse(String(calls[0].init.body));
-  assertEquals(sent.events[0].event_metadata.conversion_id, EVENT_ID);
-  assertEquals(sent.events[0].event_type.tracking_type, "Purchase"); // tracking_type body (accepted by v2.0)
+  assertEquals(sent.data.events[0].metadata.conversion_id, EVENT_ID);
+  assertEquals(sent.data.events[0].type.tracking_type, "PURCHASE");
 });
 
 // ── ORCH-1405: consolidated CAPI-token resolver (100-secret-cap fix) ───────────

@@ -8,7 +8,8 @@
  *     its token env-var NAME resolves (names only; a value is never stored);
  *   - passive failures: the last hour's failed sends and their reasons;
  *   - a daily no-record probe at 06:00 UTC (Meta/TikTok test_event_code,
- *     Snap's validate endpoint; Reddit waits for CAPI v3). Google resolves
+ *     Snap's validate endpoint, Reddit CAPI v3 test_id from the same
+ *     extra.test_event_code). Google resolves
  *     its upload client (OAuth mint) every run, which is its key check;
  *     its mint result is also the daily probe result;
  *   - one alert email per (channel, reason) per 6 h through sendOpsAlertEmail
@@ -33,6 +34,7 @@ import { classifyReason } from "./adSendOutcome.ts";
 import { sendMetaConversion } from "./metaCapi.ts";
 import { probeGoogleUploadClient } from "./googleConversionUpload.ts";
 import { sendTikTokConversion } from "./tiktokEvents.ts";
+import { sendRedditConversion } from "./redditCapi.ts";
 import { sendSnapConversion, type SnapSenderDeps } from "./snapCapi.ts";
 import {
   type OpsAlertEmailInput,
@@ -374,7 +376,7 @@ export interface AdTrackingHealthDeps {
    * cached about an hour by google.ts). not_configured = keys missing.
    */
   googleProbe?: () => Promise<ProbeResult>;
-  senders?: Partial<Record<"meta" | "tiktok" | "snap", SendFn>>;
+  senders?: Partial<Record<"meta" | "tiktok" | "snap" | "reddit", SendFn>>;
   fetchImpl?: typeof fetch;
   sendAlert?: (input: OpsAlertEmailInput) => Promise<OpsAlertEmailResult>;
   recipients?: () => string[];
@@ -413,12 +415,6 @@ async function runProbe(
   deps: AdTrackingHealthDeps,
   nowMs: number,
 ): Promise<ProbeResult> {
-  if (channel === "reddit") {
-    // Step 0 Z5: Reddit's no-record flag is CAPI v3 `test_id`; the sender is
-    // still on v2.0. The probe lands with the v3 payload move (Wave 2/3).
-    // Until then key presence and passive failures cover Reddit.
-    return "skipped_no_test_code";
-  }
   const testEventCode = channel === "snap"
     ? null
     : await testEventCodeFor(db, channel);
@@ -426,7 +422,12 @@ async function runProbe(
   const day = new Date(nowMs).toISOString().slice(0, 10).replace(/-/g, "");
   const input: ConversionSendInput = {
     eventId: `health:${channel}:${day}`,
-    eventName: channel === "snap" ? "START_CHECKOUT" : "InitiateCheckout",
+    // Reddit has no checkout-start event; PageVisit is a standard v3 type.
+    eventName: channel === "snap"
+      ? "START_CHECKOUT"
+      : channel === "reddit"
+      ? "PageVisit"
+      : "InitiateCheckout",
     valueCents: 0,
     currency: null,
     contentId: null,
@@ -450,6 +451,12 @@ async function runProbe(
     return probeResultFromSend(
       await send(input, conn, { ...senderDeps, validateOnly: true }),
     );
+  }
+  if (channel === "reddit") {
+    // #4238 Step 0 Z5: CAPI v3 `test_id` (the Events Testing id, saved as
+    // extra.test_event_code) marks the probe as a test event.
+    const send = deps.senders?.reddit ?? sendRedditConversion;
+    return probeResultFromSend(await send(input, conn, senderDeps));
   }
   if (channel !== "meta" && channel !== "tiktok") return "skipped_no_test_code";
   const send = deps.senders?.[channel] ??

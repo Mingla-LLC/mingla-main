@@ -73,7 +73,8 @@ REVOKE ALL ON public.ad_tracking_health FROM anon, authenticated, PUBLIC;
 GRANT SELECT ON public.ad_tracking_health TO authenticated;
 GRANT ALL ON public.ad_tracking_health TO service_role;
 
--- ── 3. Test event code (Meta / TikTok, consumer lane) ───────────────────────
+-- ── 3. Test event code (Meta / TikTok / Reddit, consumer lane) ──────────────
+-- Reddit (#4238 Step 0 Z5): CAPI v3 `test_id`, the Events Testing id.
 CREATE OR REPLACE FUNCTION public.admin_set_ad_connection_test_code(
   p_platform text,
   p_code text
@@ -90,7 +91,7 @@ BEGIN
   IF NOT public.is_admin_user() THEN
     RAISE EXCEPTION 'admin_required' USING ERRCODE = '42501';
   END IF;
-  IF p_platform IS NULL OR p_platform NOT IN ('meta', 'tiktok') THEN
+  IF p_platform IS NULL OR p_platform NOT IN ('meta', 'tiktok', 'reddit') THEN
     RAISE EXCEPTION 'platform_invalid' USING ERRCODE = '22023';
   END IF;
   IF v_code IS NOT NULL AND v_code !~ '^[A-Za-z0-9_-]{1,64}$' THEN
@@ -116,6 +117,6 @@ GRANT EXECUTE ON FUNCTION public.admin_set_ad_connection_test_code(text, text)
   TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.admin_set_ad_connection_test_code(text, text) IS
-  'Issue #4238: admins save (or clear with NULL/blank) the Meta or TikTok test event code on the consumer ad connection. Writes only extra.test_event_code. 42501 for non-admins; 22023 for a bad platform or code.';
+  'Issue #4238: admins save (or clear with NULL/blank) the Meta, TikTok or Reddit test event code (Reddit: the CAPI v3 test_id) on the consumer ad connection. Writes only extra.test_event_code. 42501 for non-admins; 22023 for a bad platform or code.';
 
 COMMIT;

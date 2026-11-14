@@ -54,14 +54,14 @@
       "op": "add_member",
       "field": "allowed_identifier_references",
       "key": "getToken",
-      "value": "supabase/functions/_shared/adTrackingHealth.ts@15303:deps.getToken:grouped_reference:deps.getToken",
+      "value": "supabase/functions/_shared/adTrackingHealth.ts@15260:deps.getToken:grouped_reference:deps.getToken",
       "expectedAbsent": true
     },
     {
       "op": "add_member",
       "field": "allowed_identifier_references",
       "key": "getToken",
-      "value": "supabase/functions/_shared/adTrackingHealth.ts@16253:deps.getToken:grouped_reference:deps.getToken",
+      "value": "supabase/functions/_shared/adTrackingHealth.ts@16514:deps.getToken:grouped_reference:deps.getToken",
       "expectedAbsent": true
     },
     {
@@ -89,7 +89,7 @@
       "op": "add_member",
       "field": "allowed_identifier_references",
       "key": "getToken",
-      "value": "supabase/functions/_shared/redditCapi.ts@2476:deps.getToken:grouped_reference:deps.getToken",
+      "value": "supabase/functions/_shared/redditCapi.ts@4980:deps.getToken:grouped_reference:deps.getToken",
       "expectedAbsent": true
     },
     {
@@ -121,6 +121,6 @@
       "expectedAbsent": true
     }
   ],
-  "resultPolicySha256": "e064f223deeeccb2422d377d876f30919987442366e4affd366d13dcce72da7c",
+  "resultPolicySha256": "49c8db174904fec678eb81ea8821ce6b4e9dc9dfe9becea9f66af99b878fec4e",
   "reason": "Issue #4238 declares the four consumer CAPI tokens as governed AD_CONVERSION_TOKENS fields, so the resolver's reads are owned and a rewrite that drops one is refused."
 }

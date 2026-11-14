@@ -211,13 +211,25 @@ Deno.test("#4238 W1-2 the 06:00 UTC probe uses the test event code and records a
       seen.push({ channel: "snap", eventId: input.eventId, testEventCode: input.testEventCode, validateOnly: senderDeps?.validateOnly });
       return Promise.resolve({ channel: "snap", status: "sent" });
     },
+    // #4238 Reddit CAPI v3: the probe now runs with the saved test_id.
+    reddit: (input) => {
+      seen.push({ channel: "reddit", eventId: input.eventId, testEventCode: input.testEventCode });
+      return Promise.resolve({ channel: "reddit", status: "sent" });
+    },
   };
   const summary = await runAdTrackingHealth(db.client, deps);
   const byChannel = new Map(summary.rows.map((row) => [row.channel, row]));
   assertEquals(byChannel.get("meta")?.last_probe_result, "ok");
   assertEquals(byChannel.get("tiktok")?.last_probe_result, "auth_failed");
   assertEquals(byChannel.get("snap")?.last_probe_result, "ok");
-  assertEquals(byChannel.get("reddit")?.last_probe_result, "skipped_no_test_code");
+  // #4238 Reddit CAPI v3 (Step 0 Z5): the probe uses test_id; it waited for
+  // the v3 move in Wave 1 (was skipped_no_test_code).
+  assertEquals(byChannel.get("reddit")?.last_probe_result, "ok");
+  assertEquals(seen.find((call) => call.channel === "reddit"), {
+    channel: "reddit",
+    eventId: "health:reddit:20261114",
+    testEventCode: "TEST123",
+  });
   assertEquals(byChannel.get("google")?.last_probe_result, "ok");
   assertEquals(seen.find((call) => call.channel === "meta"), {
     channel: "meta",

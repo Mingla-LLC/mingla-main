@@ -7,7 +7,8 @@
 --   H1  ad_tracking_health: RLS on; anon has no access; a signed-in non-admin
 --       reads zero rows and cannot write; an admin reads the rows.
 --   H2  admin_set_ad_connection_test_code: 42501 for a non-admin; 22023 for a
---       bad platform or a bad code; saves and clears only test_event_code,
+--       bad platform (meta, tiktok and reddit are accepted) or a bad code;
+--       saves and clears only test_event_code,
 --       leaving every other extra key untouched; P0002 with no connection.
 --   H3  external_click_id_type: NULL and the seven known types are accepted;
 --       an unknown type is refused by the CHECK.
@@ -49,7 +50,7 @@ VALUES ('meta', 'consumer', 'Meta (fixture)', 'act_4238', 'system_user_token', '
         '{"dataset_id":"px-th","capi_env_var":"META_CAPI_ACCESS_TOKEN"}'::jsonb)
 ON CONFLICT (platform, lane) DO UPDATE
 SET extra = '{"dataset_id":"px-th","capi_env_var":"META_CAPI_ACCESS_TOKEN"}'::jsonb;
-DELETE FROM public.ad_connections WHERE platform = 'tiktok' AND lane = 'consumer';
+DELETE FROM public.ad_connections WHERE platform IN ('tiktok', 'reddit') AND lane = 'consumer';
 
 -- H1 / H4 ----------------------------------------------------------------------
 DO $h1$
@@ -103,7 +104,7 @@ BEGIN
     PERFORM public.admin_set_ad_connection_test_code('snapchat', 'TEST123');
     PERFORM pg_temp.th_assert(false, 'H2 a bad platform must be refused');
   EXCEPTION WHEN invalid_parameter_value THEN
-    PERFORM pg_temp.th_assert(true, 'H2 a platform other than meta/tiktok is refused with 22023');
+    PERFORM pg_temp.th_assert(true, 'H2 a platform other than meta/tiktok/reddit is refused with 22023');
   END;
   BEGIN
     PERFORM public.admin_set_ad_connection_test_code('meta', 'bad code; drop');
@@ -116,6 +117,14 @@ BEGIN
     PERFORM pg_temp.th_assert(false, 'H2 a missing connection must be refused');
   EXCEPTION WHEN no_data_found THEN
     PERFORM pg_temp.th_assert(true, 'H2 a missing consumer connection raises P0002');
+  END;
+  -- #4238 Reddit CAPI v3: reddit is an accepted platform (its test_id), so a
+  -- missing reddit connection reaches the P0002 branch, not 22023.
+  BEGIN
+    PERFORM public.admin_set_ad_connection_test_code('reddit', 'TEST4238');
+    PERFORM pg_temp.th_assert(false, 'H2 reddit with no connection must raise P0002');
+  EXCEPTION WHEN no_data_found THEN
+    PERFORM pg_temp.th_assert(true, 'H2 reddit is an accepted platform (P0002 with no connection)');
   END;
 
   v_out := public.admin_set_ad_connection_test_code('meta', '  TEST4238  ');
