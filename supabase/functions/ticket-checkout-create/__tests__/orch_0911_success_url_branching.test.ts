@@ -22,7 +22,7 @@ function stripComments(value: string): string {
 const activeSource = stripComments(source);
 const helperSource = stripComments(
   await Deno.readTextFile(
-    new URL("../buyerWebSurfacePath.ts", import.meta.url),
+    new URL("../../_shared/buyerWebSurfacePath.ts", import.meta.url),
   ),
 );
 

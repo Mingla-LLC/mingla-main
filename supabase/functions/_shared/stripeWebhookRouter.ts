@@ -2110,7 +2110,20 @@ async function handleTicketCheckoutPaymentIntent(
     // suspenders try/catch: the helper already never throws.
     try {
       if (orderId) {
-        await fireAdConversion(supabase as never, { orderId, surface: "web" });
+        // #4238 W1-5: event_time is when Stripe recorded the payment (the
+        // event's created second), else the PaymentIntent's; never send time.
+        const eventCreated = (event as { created?: unknown }).created;
+        const piCreated = paymentIntent.created;
+        const paidSeconds = typeof eventCreated === "number"
+          ? eventCreated
+          : typeof piCreated === "number"
+          ? piCreated
+          : NaN;
+        await fireAdConversion(supabase as never, {
+          orderId,
+          surface: "web",
+          eventTimeMs: Number.isFinite(paidSeconds) ? paidSeconds * 1000 : null,
+        });
       }
     } catch (adConvErr) {
       console.warn(

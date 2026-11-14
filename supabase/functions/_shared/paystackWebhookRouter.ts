@@ -676,7 +676,13 @@ export async function handlePaystackChargeSuccess(
   // = orderId. Belt-and-suspenders try/catch (the helper already never throws).
   try {
     if (orderId) {
-      await fireAdConversion(supabase as never, { orderId, surface: "web" });
+      // #4238 W1-5: event_time is Paystack's verified paid_at, not send time.
+      const paidAtMs = paidAtIso ? Date.parse(paidAtIso) : NaN;
+      await fireAdConversion(supabase as never, {
+        orderId,
+        surface: "web",
+        eventTimeMs: Number.isFinite(paidAtMs) ? paidAtMs : null,
+      });
     }
   } catch (adConvErr) {
     console.warn(

@@ -131,7 +131,9 @@ import {
 } from "../_shared/installments/paystackInstallmentPricing.ts";
 // #3645 — event_type → buyer-web surface path (trip / experience / event),
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
-import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
+// #4238 W1-5: moved to _shared so the server ad events build the same
+// checkout URL (event_source_url) from one owner.
+import { buyerWebSurfacePath } from "../_shared/buyerWebSurfacePath.ts";
 import { capacityEventDateIdFromError } from "./capacityEventDateId.ts";
 import { expectedSessionLineQuantity } from "./checkoutSessionLines.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
@@ -3620,7 +3622,12 @@ export const createTicketCheckoutCreateHandler = (
       // wait. Idempotent + fail-open; value_cents = 0 for a free RSVP. event_id
       // = orderId.
       if (finalizedRecord.replayed !== true) {
-        void fireAdConversion(supabase as never, { orderId, surface: "web" })
+        // #4238 W1-5: the free order finalized now; that is the action time.
+        void fireAdConversion(supabase as never, {
+          orderId,
+          surface: "web",
+          eventTimeMs: Date.now(),
+        })
           .catch(
             (adConvErr) => {
               console.warn(

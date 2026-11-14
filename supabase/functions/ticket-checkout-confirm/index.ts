@@ -724,6 +724,8 @@ serve(async (req) => {
       void fireAdConversion(supabase as never, {
         orderId: String(refreshedSession.order_id),
         surface: "web",
+        // #4238 W1-5: the finalize just committed; that is the action time.
+        eventTimeMs: Date.now(),
       }).catch((adConvErr) => {
         console.warn(
           "[ticket-checkout-confirm] ad-conversion fire failed (non-fatal):",

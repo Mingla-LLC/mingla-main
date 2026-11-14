@@ -41,6 +41,11 @@ import { sendTikTokConversion } from "./tiktokEvents.ts";
 import { sendSnapConversion } from "./snapCapi.ts";
 import { sendRedditConversion } from "./redditCapi.ts";
 import { sendGoogleConversion } from "./googleConversionUpload.ts";
+import {
+  brandPageUrl,
+  checkoutStartUrl,
+  eventPageUrl,
+} from "./adEventSourceUrl.ts";
 
 // ── Shared contract types (imported by the 4 senders, type-only — no cycle) ───
 
@@ -117,6 +122,12 @@ export interface FireAdConversionInput {
   lane?: Lane; // buyer conversions are consumer-lane by default
   eventType?: EventType; // default 'purchase' (order); reservations auto-tier (below)
   eventSourceUrl?: string | null;
+  /**
+   * #4238 W1-5 (I-4238-EVENT-TIME-IS-ACTION-TIME): when the buyer acted (the
+   * provider's paid time, or the finalize time). Absent → the first fire's
+   * ad_conversions.created_at (so a retry reuses it) → now().
+   */
+  eventTimeMs?: number | null;
   testEventCode?: string | null;
   /** Browser match and opt-out state when a durable checkout row is absent. */
   adContext?: CheckoutAdContextInput | null;
@@ -422,6 +433,25 @@ function reconstructFbc(fbclid: string | null, tsMs: number): string | null {
   return `fb.1.${tsMs}.${fbclid}`;
 }
 
+/** #4238 W1-5: a brand's public slug for event_source_url (null if unknown). */
+async function brandSlugFor(
+  supabase: SupabaseClient,
+  brandId: string | null,
+): Promise<string | null> {
+  if (!brandId) return null;
+  try {
+    const { data } = await supabase
+      .from("brands")
+      .select("slug")
+      .eq("id", brandId)
+      .maybeSingle();
+    const slug = (data as { slug?: unknown } | null)?.slug;
+    return typeof slug === "string" ? slug : null;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveOrderContext(
   supabase: SupabaseClient,
   orderId: string,
@@ -443,14 +473,26 @@ async function resolveOrderContext(
   if ((row.source ?? "online_checkout") !== "online_checkout") return null;
   // Resolve brand via events.brand_id (orders has no brand_id).
   let brandId: string | null = null;
+  let eventPage: string | null = null;
   const minglaEventId = (row.event_id as string | null) ?? null;
   if (minglaEventId) {
     const { data: ev } = await supabase
       .from("events")
-      .select("brand_id")
+      .select("brand_id, slug, event_type")
       .eq("id", minglaEventId)
       .maybeSingle();
-    brandId = (ev as { brand_id?: string } | null)?.brand_id ?? null;
+    const evRow = (ev ?? {}) as {
+      brand_id?: string;
+      slug?: unknown;
+      event_type?: unknown;
+    };
+    brandId = evRow.brand_id ?? null;
+    // #4238 W1-5: the buyer's public event page is the event_source_url.
+    eventPage = eventPageUrl({
+      brandSlug: await brandSlugFor(supabase, brandId),
+      eventSlug: evRow.slug,
+      eventType: evRow.event_type,
+    });
   }
 
   // Resolve the threaded click_id via the checkout session (WP-C threading).
@@ -496,7 +538,7 @@ async function resolveOrderContext(
     orderId,
     stayGroupId: null,
     clickId,
-    eventSourceUrl: input.eventSourceUrl ?? null,
+    eventSourceUrl: input.eventSourceUrl ?? eventPage,
     externalId: buyerUserId ? await sha256Hex(buyerUserId) : null,
     fbp: typeof sessRow.fbp === "string" ? sessRow.fbp : null,
     fbc: typeof sessRow.fbc === "string" ? sessRow.fbc : null,
@@ -585,7 +627,10 @@ async function resolveReservationContext(
     orderId: null,
     stayGroupId: null,
     clickId,
-    eventSourceUrl: input.eventSourceUrl ?? null,
+    eventSourceUrl: input.eventSourceUrl ??
+      brandPageUrl(
+        await brandSlugFor(supabase, (row.brand_id as string | null) ?? null),
+      ),
     externalId: consumerUserId ? await sha256Hex(consumerUserId) : null,
     fbp: supplied?.fbp ??
       (typeof session.fbp === "string" ? session.fbp : null),
@@ -658,7 +703,13 @@ async function resolveStayContext(
     clickId: typeof row.attribution_click_id === "string"
       ? row.attribution_click_id
       : null,
-    eventSourceUrl: input.eventSourceUrl ?? null,
+    eventSourceUrl: input.eventSourceUrl ??
+      brandPageUrl(
+        await brandSlugFor(
+          supabase,
+          typeof row.brand_id === "string" ? row.brand_id : null,
+        ),
+      ),
     externalId: typeof row.user_id === "string"
       ? await sha256Hex(row.user_id)
       : null,
@@ -845,7 +896,7 @@ export async function fireAdCheckoutStart(
     const { data: session, error } = await supabase
       .from("ticket_checkout_sessions")
       .select(
-        "id,event_id,brand_id,total_cents,buyer_total_cents,currency,buyer_user_id,attribution_click_id,fbp,fbc,scid,ttp,ad_tracking_opt_out,client_ip,client_user_agent,ad_checkout_start_sent_at,ad_checkout_start_provider_response",
+        "id,event_id,brand_id,total_cents,buyer_total_cents,currency,buyer_user_id,attribution_click_id,fbp,fbc,scid,ttp,ad_tracking_opt_out,client_ip,client_user_agent,ad_checkout_start_sent_at,ad_checkout_start_provider_response,created_at",
       )
       .eq("id", checkoutSessionId)
       .maybeSingle();
@@ -957,6 +1008,25 @@ export async function fireAdCheckoutStart(
       : typeof row.total_cents === "number"
       ? row.total_cents
       : null;
+    // #4238 W1-5: checkout start happened when the session was created; the
+    // page is that event's checkout surface.
+    const sessionCreatedMs = typeof row.created_at === "string"
+      ? Date.parse(row.created_at)
+      : NaN;
+    const checkoutStartMs = Number.isFinite(sessionCreatedMs)
+      ? sessionCreatedMs
+      : now();
+    let checkoutEventType: unknown = null;
+    if (typeof row.event_id === "string") {
+      const { data: ev } = await supabase
+        .from("events")
+        .select("event_type")
+        .eq("id", row.event_id)
+        .maybeSingle();
+      checkoutEventType = (ev as { event_type?: unknown } | null)?.event_type ??
+        null;
+    }
+    const checkoutPage = checkoutStartUrl(row.event_id, checkoutEventType);
     const results = await Promise.all(channels.map(async (channel) => {
       const connection = await resolveSenderConnection(
         supabase,
@@ -970,7 +1040,7 @@ export async function fireAdCheckoutStart(
         currency: typeof row.currency === "string" ? row.currency : null,
         contentId: typeof row.event_id === "string" ? row.event_id : null,
         brandId: typeof row.brand_id === "string" ? row.brand_id : null,
-        eventSourceUrl: null,
+        eventSourceUrl: checkoutPage,
         hashedEmail: null,
         hashedPhone: null,
         fbc: channel === "meta"
@@ -995,7 +1065,7 @@ export async function fireAdCheckoutStart(
         clientUserAgent: typeof row.client_user_agent === "string"
           ? row.client_user_agent
           : null,
-        eventTimeMs: now(),
+        eventTimeMs: checkoutStartMs,
       };
       return (deps.senders?.[channel] ?? DEFAULT_SENDERS[channel])(
         sendInput,
@@ -1127,7 +1197,8 @@ export async function fireAdConversion(
         // projected so the post-upsert backfill (step 4b) can COALESCE-fill ONLY
         // the columns the EARLY browser row left NULL — without ever clobbering an
         // already-set value.
-        "event_id, brand_id, order_id, stay_group_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
+        // #4238 W1-5: created_at is the first fire's time, reused by retries.
+        "event_id, created_at, brand_id, order_id, stay_group_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
       )
       .eq("event_id", key)
       .maybeSingle();
@@ -1269,7 +1340,17 @@ export async function fireAdConversion(
 
     // 6. Fan out to each channel whose status is still pending (parallel,
     //    bounded, fail-open). Non-Meta channels never receive fbc/fbp.
-    const eventTimeMs = now();
+    // #4238 W1-5: the action time, never the send time. A retry carries the
+    // same event_time as the first send.
+    const firstFireMs = typeof existingRow?.created_at === "string"
+      ? Date.parse(existingRow.created_at)
+      : NaN;
+    const eventTimeMs = typeof input.eventTimeMs === "number" &&
+        Number.isFinite(input.eventTimeMs)
+      ? input.eventTimeMs
+      : Number.isFinite(firstFireMs)
+      ? firstFireMs
+      : now();
     const attempts: { channel: Channel; run: Promise<SenderResult> }[] = [];
     for (
       const channel of [
