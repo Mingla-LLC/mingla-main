@@ -56,13 +56,29 @@ import {
   formatEventTime,
 } from "./appsFlyerDevice.ts";
 import { majorFromMinor } from "./money/formatMinor.ts";
+// #4238 W3-3 / W5-1: the host-funnel event names and per-platform hashing.
+import {
+  HOST_FUNNEL_EVENT_NAMES,
+  HOST_FUNNEL_EVENT_TYPE,
+  HOST_FUNNEL_GOOGLE_KIND,
+  type ServerHostFunnelKind,
+} from "./adEventCatalog.ts";
+import { identityHashes } from "./adIdentity.ts";
 
 // ── Shared contract types (imported by the 4 senders, type-only — no cycle) ───
 
 export type SendStatus = "sent" | "failed" | "skipped";
 export type Lane = "consumer" | "business";
 export type Surface = "web" | "ios" | "android";
-export type EventType = "purchase" | "reservation" | "lead" | "view";
+export type EventType =
+  | "purchase"
+  | "reservation"
+  | "lead"
+  | "view"
+  // #4238 W3-3: host-funnel kinds (ad_conversions.event_type, M-2).
+  | "host_signup"
+  | "host_first_publish"
+  | "host_first_sale";
 export type Channel = "meta" | "tiktok" | "snap" | "reddit" | "google";
 
 /** The normalized conversion the senders POST. PII is already hashed (SC-9). */
@@ -76,6 +92,10 @@ export interface ConversionSendInput {
   eventSourceUrl: string | null;
   hashedEmail: string | null; // SHA-256 hex
   hashedPhone: string | null; // SHA-256 hex
+  /** #4238 W5-1: SHA-256 of the E.164 phone WITH `+` (Google, Step 0 Z6). */
+  hashedPhoneE164?: string | null;
+  /** #4238 W5-1: SHA-256 of Google's normalised email (gmail rule, Z7). */
+  hashedEmailGoogle?: string | null;
   fbc: string | null; // UNHASHED (Meta only)
   fbp: string | null; // UNHASHED (Meta only)
   externalId?: string | null; // SHA-256 buyer user id (all three ad platforms)
@@ -109,6 +129,33 @@ export interface SenderConnection {
    * UNSPECIFIED. The 4 CAPI senders ignore it.
    */
   consent?: { adUserData?: string; adPersonalization?: string } | null;
+  /**
+   * #4238 W5-1 (I-4238-GOOGLE-ACTION-PER-KIND, google lane only): which
+   * conversion action conversionActionResource belongs to.
+   */
+  googleConversionKind?: GoogleConversionKind | null;
+}
+
+/** #4238 W5-1: one Google conversion action per kind (Step 0 Z8). */
+export type GoogleConversionKind =
+  | "purchase"
+  | "free_signup"
+  | "host_lead"
+  | "host_signup";
+
+/**
+ * #4238 W3-3: a host-funnel conversion (a host lead, sign-up, first publish or
+ * first sale). Its event_id is deterministic (adEventCatalog prefixes) and is
+ * shared with the browser where the browser fires a twin.
+ */
+export interface HostEventInput {
+  kind: ServerHostFunnelKind;
+  eventId: string;
+  subjectType: "host_user" | "lead";
+  subjectId: string;
+  valueCents?: number | null;
+  currency?: string | null;
+  brandId?: string | null;
 }
 
 export interface SenderDeps {
@@ -158,6 +205,8 @@ export interface FireAdConversionInput {
    * absent for non-ad traffic.
    */
   clickId?: string | null;
+  /** #4238 W3-3 (I-4238-HOST-FUNNEL-ONCE): a host-funnel conversion. */
+  hostEvent?: HostEventInput | null;
 }
 
 export interface FireAdConversionResult {
@@ -263,8 +312,7 @@ export async function sha256Hex(input: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
-const normEmail = (v: string): string => v.trim().toLowerCase();
-const normPhone = (v: string): string => v.replace(/[^0-9]/g, "");
+// #4238 W5-1: email / phone normalisation moved to adIdentity.ts.
 
 /**
  * ISSUE-865 WP-C threading (P2-1 rework) — best-effort, FAIL-OPEN persistence of
@@ -464,6 +512,9 @@ interface ConversionContext {
   currency: string | null;
   hashedEmail: string | null;
   hashedPhone: string | null;
+  /** #4238 W5-1 (Google): E.164-with-plus phone hash, gmail-normalised email. */
+  hashedPhoneE164?: string | null;
+  hashedEmailGoogle?: string | null;
   brandId: string | null;
   minglaEventId: string | null;
   orderId: string | null;
@@ -482,6 +533,14 @@ interface ConversionContext {
   nativeCheckout?: boolean;
   /** #4238 W4-1: the signed-in buyer, for the Explorer AppsFlyer device. */
   buyerUserId?: string | null;
+  /** #4238 W3-3: the host-funnel kind (catalogue event names). */
+  hostKind?: ServerHostFunnelKind | null;
+  /**
+   * #4238 W3-3: no web match context exists for this host subject (a native-
+   * only host, or a lead with no browser data): every channel is terminally
+   * skipped/no_web_context. Native hosts are measured by AppsFlyer (D10).
+   */
+  noWebContext?: boolean;
 }
 
 interface TouchContext {
@@ -499,14 +558,61 @@ interface TouchContext {
   consentState: "pending" | "granted" | "rejected" | "none";
 }
 
+/** #4238 W3-3: the host kind an ad_conversions.event_type stands for. */
+function hostKindForEventType(
+  eventType: EventType,
+): ServerHostFunnelKind | null {
+  if (eventType === "host_signup") return "host_signup";
+  if (eventType === "host_first_publish") return "host_first_publish";
+  if (eventType === "host_first_sale") return "host_first_sale";
+  return null;
+}
+
+/**
+ * The per-channel event name, or null when that platform gets nothing for this
+ * kind (#4238 W3-3, adEventCatalog: e.g. Snap for a host first publish, Google
+ * for any host kind without its own conversion action).
+ */
 function channelEventName(
   channel: Channel,
   eventType: EventType,
-): string {
+  hostKind: ServerHostFunnelKind | null = null,
+): string | null {
+  const kind = hostKind ?? hostKindForEventType(eventType);
+  if (kind) {
+    if (channel === "google") {
+      return HOST_FUNNEL_GOOGLE_KIND[kind]
+        ? HOST_FUNNEL_EVENT_NAMES[kind].meta
+        : null;
+    }
+    return HOST_FUNNEL_EVENT_NAMES[kind][channel];
+  }
   const names = CHANNEL_EVENT_NAME[channel];
   if (eventType === "reservation") return names.reservation;
   if (eventType === "lead") return names.follow;
   return names.purchase;
+}
+
+/** The row's event_name (NOT NULL): the Meta name, which every kind has. */
+function rowEventName(
+  eventType: EventType,
+  hostKind: ServerHostFunnelKind | null = null,
+): string {
+  return channelEventName("meta", eventType, hostKind) ?? eventType;
+}
+
+/**
+ * #4238 W5-1 (I-4238-GOOGLE-ACTION-PER-KIND): the Google conversion action a
+ * conversion uploads to. A free sign-up never lands on the purchase action.
+ */
+function googleKindFor(
+  eventType: EventType,
+  hostKind: ServerHostFunnelKind | null,
+): GoogleConversionKind | null {
+  if (hostKind) return HOST_FUNNEL_GOOGLE_KIND[hostKind] ?? null;
+  if (eventType === "purchase") return "purchase";
+  if (eventType === "reservation") return "free_signup";
+  return null;
 }
 
 /** Build fbc from a raw fbclid + observation time (A2-5: fb.1.{tsMs}.{fbclid}). */
@@ -615,8 +721,8 @@ async function resolveOrderContext(
     currency: eventType === "purchase"
       ? ((row.currency as string | null) ?? null)
       : null,
-    hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
-    hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
+    // #4238 W5-1: one place hashes each identity per platform (adIdentity).
+    ...(await identityHashes(email, phone)),
     brandId,
     minglaEventId,
     orderId,
@@ -730,8 +836,8 @@ async function resolveReservationContext(
     eventType,
     valueCents,
     currency: (row.fee_currency as string | null) ?? null,
-    hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
-    hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
+    // #4238 W5-1: one place hashes each identity per platform (adIdentity).
+    ...(await identityHashes(email, phone)),
     brandId: (row.brand_id as string | null) ?? null,
     minglaEventId: null,
     orderId: null,
@@ -827,8 +933,8 @@ async function resolveRsvpContext(
     eventType: "reservation",
     valueCents: 0,
     currency: null,
-    hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
-    hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
+    // #4238 W5-1: one place hashes each identity per platform (adIdentity).
+    ...(await identityHashes(email, phone)),
     brandId,
     minglaEventId,
     orderId: null,
@@ -889,8 +995,8 @@ async function resolveStayContext(
     eventType: input.eventType ?? "purchase",
     valueCents: Math.max(0, total - refunded),
     currency: typeof row.currency_code === "string" ? row.currency_code : null,
-    hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
-    hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
+    // #4238 W5-1: one place hashes each identity per platform (adIdentity).
+    ...(await identityHashes(email, phone)),
     brandId: typeof row.brand_id === "string" ? row.brand_id : null,
     minglaEventId: null,
     orderId: null,
@@ -917,6 +1023,117 @@ async function resolveStayContext(
     clientUserAgent: typeof row.client_user_agent === "string"
       ? row.client_user_agent
       : null,
+  };
+}
+
+/**
+ * #4238 W3-3: a host-funnel conversion's context. The browser match keys come
+ * from ad_match_contexts (written by host-attribution-attach or the lead
+ * functions); the identity from the host's account (creator_accounts) or the
+ * lead row. With no web context row, the conversion is recorded and every
+ * channel is terminally skipped (no_web_context).
+ */
+async function resolveHostContext(
+  supabase: SupabaseClient,
+  host: HostEventInput,
+  input: FireAdConversionInput,
+): Promise<ConversionContext | null> {
+  const eventId = host.eventId.trim();
+  if (!eventId || !host.subjectId) return null;
+  const eventType = HOST_FUNNEL_EVENT_TYPE[host.kind];
+  let match: Record<string, unknown> | null = null;
+  try {
+    const { data } = await supabase
+      .from("ad_match_contexts")
+      .select(
+        "click_id,fbp,fbc,ttp,scid,client_ip,client_user_agent,ad_tracking_opt_out,event_source_url,surface",
+      )
+      .eq("subject_type", host.subjectType)
+      .eq("subject_id", host.subjectId)
+      .maybeSingle();
+    match = (data ?? null) as Record<string, unknown> | null;
+  } catch {
+    match = null;
+  }
+  // The stored row (a trigger-queued sign-up / publish, or a retry) carries the
+  // brand, the event and a first-sale value when the input does not.
+  let prior: Record<string, unknown> = {};
+  try {
+    const { data } = await supabase
+      .from("ad_conversions")
+      .select("brand_id,mingla_event_id,value_cents,currency")
+      .eq("event_id", eventId)
+      .maybeSingle();
+    prior = (data ?? {}) as Record<string, unknown>;
+  } catch {
+    prior = {};
+  }
+  let email: string | null = null;
+  let phone: string | null = null;
+  let externalId: string | null = null;
+  try {
+    if (host.subjectType === "host_user") {
+      const { data } = await supabase
+        .from("creator_accounts")
+        .select("email,phone_e164")
+        .eq("id", host.subjectId)
+        .maybeSingle();
+      const acct = (data ?? {}) as Record<string, unknown>;
+      email = typeof acct.email === "string" ? acct.email : null;
+      phone = typeof acct.phone_e164 === "string" ? acct.phone_e164 : null;
+      externalId = await sha256Hex(host.subjectId);
+    } else if (host.subjectId.startsWith("tool:")) {
+      const { data } = await supabase
+        .from("tool_leads")
+        .select("email")
+        .eq("id", host.subjectId.slice("tool:".length))
+        .maybeSingle();
+      const lead = (data ?? {}) as Record<string, unknown>;
+      email = typeof lead.email === "string" ? lead.email : null;
+    } else {
+      const { data } = await supabase
+        .from("book_call_leads")
+        .select("email")
+        .eq("id", host.subjectId)
+        .maybeSingle();
+      const lead = (data ?? {}) as Record<string, unknown>;
+      email = typeof lead.email === "string" ? lead.email : null;
+    }
+  } catch {
+    // Identity is optional: the click id and cookies still match.
+  }
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v ? v : null;
+  const isSale = host.kind === "host_first_sale";
+  const priorValue = typeof prior.value_cents === "number"
+    ? prior.value_cents
+    : null;
+  const valueCents = isSale
+    ? (typeof host.valueCents === "number" ? host.valueCents : priorValue)
+    : null;
+  return {
+    eventId,
+    eventType,
+    hostKind: host.kind,
+    valueCents,
+    currency: isSale ? (host.currency ?? str(prior.currency)) : null,
+    ...(await identityHashes(email, phone)),
+    brandId: host.brandId ?? str(prior.brand_id),
+    minglaEventId: str(prior.mingla_event_id),
+    orderId: null,
+    stayGroupId: null,
+    clickId: str(match?.click_id) ?? input.clickId ?? null,
+    eventSourceUrl: input.eventSourceUrl ?? str(match?.event_source_url),
+    externalId,
+    fbp: str(match?.fbp),
+    fbc: str(match?.fbc),
+    scid: str(match?.scid),
+    ttp: str(match?.ttp),
+    trackingOptOut: match?.ad_tracking_opt_out === true,
+    clientIpAddress: str(match?.client_ip),
+    clientUserAgent: str(match?.client_user_agent),
+    // A native (Host app) context is not a website: AppsFlyer measures it.
+    noWebContext: match === null || match.surface !== "web",
   };
 }
 
@@ -990,6 +1207,7 @@ export async function resolveSenderConnection(
   supabase: SupabaseClient,
   platform: Channel,
   lane: Lane,
+  googleKind: GoogleConversionKind | null = "purchase",
 ): Promise<SenderConnection> {
   const dbPlatform = platform === "snap" ? "snapchat" : platform;
   const { data } = await supabase
@@ -1058,12 +1276,28 @@ export async function resolveSenderConnection(
         ? str(consentRaw.ad_personalization) ??
           str(consentRaw.adPersonalization)
         : null;
+      // #4238 W5-1 (I-4238-GOOGLE-ACTION-PER-KIND): one action per kind in
+      // extra.conversion_actions.<kind>. conversion_action_resource stays the
+      // purchase alias. Any other kind with no action of its own resolves to
+      // null (failed/pending_config, alerted), never to the purchase action.
+      const actions =
+        (extra.conversion_actions && typeof extra.conversion_actions ===
+              "object")
+          ? extra.conversion_actions as Record<string, unknown>
+          : {};
+      const kind: GoogleConversionKind | null = googleKind;
+      const resource = kind === null
+        ? null
+        : kind === "purchase"
+        ? str(actions.purchase) ?? str(extra.conversion_action_resource) ??
+          str(g.conversion_action_resource)
+        : str(actions[kind]);
       return {
         pixelId: null,
         tokenEnvVar: null,
         lane,
-        conversionActionResource: str(extra.conversion_action_resource) ??
-          str(g.conversion_action_resource),
+        googleConversionKind: kind,
+        conversionActionResource: resource,
         consent: (adUserData || adPersonalization)
           ? {
             adUserData: adUserData ?? undefined,
@@ -1385,7 +1619,7 @@ async function fireNativePurchase(
   await supabase.from("ad_conversions").upsert({
     event_id: key,
     event_type: ctx.eventType,
-    event_name: channelEventName("meta", ctx.eventType),
+    event_name: rowEventName(ctx.eventType, ctx.hostKind ?? null),
     value_cents: ctx.valueCents,
     currency: ctx.currency,
     surface,
@@ -1485,6 +1719,71 @@ async function fireNativePurchase(
 }
 
 /**
+ * #4238 W3-3: record a conversion that is never shared (no web context) and
+ * mark every still-pending channel terminally skipped with `reason`.
+ */
+async function recordUnsharedConversion(
+  supabase: SupabaseClient,
+  input: {
+    key: string;
+    ctx: ConversionContext;
+    lane: Lane;
+    surface: Surface;
+    existingResponse: Record<string, unknown>;
+    channelPending: Record<Channel, boolean>;
+    reason: string;
+  },
+): Promise<FireAdConversionResult> {
+  const { key, ctx } = input;
+  await supabase.from("ad_conversions").upsert({
+    event_id: key,
+    event_type: ctx.eventType,
+    event_name: rowEventName(ctx.eventType, ctx.hostKind ?? null),
+    value_cents: ctx.valueCents,
+    currency: ctx.currency,
+    surface: input.surface,
+    lane: input.lane,
+    brand_id: ctx.brandId,
+    mingla_event_id: ctx.minglaEventId,
+    click_id: ctx.clickId,
+    event_source_url: ctx.eventSourceUrl,
+    hashed_email: ctx.hashedEmail,
+    hashed_phone: ctx.hashedPhone,
+    shared_with_platforms: false,
+  }, { onConflict: "event_id", ignoreDuplicates: true });
+  const results: SenderResult[] = (
+    ["meta", "tiktok", "snap", "reddit", "google"] as Channel[]
+  )
+    .filter((channel) => input.channelPending[channel])
+    .map((channel) => ({
+      channel,
+      status: "skipped" as const,
+      reason: input.reason,
+    }));
+  const statusUpdate: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    shared_with_platforms: false,
+  };
+  const providerResponse: Record<string, unknown> = {
+    ...input.existingResponse,
+  };
+  for (const r of results) {
+    statusUpdate[STATUS_COL[r.channel]] = "skipped";
+    providerResponse[r.channel] = {
+      status: "skipped",
+      reason: input.reason,
+      http: null,
+    };
+  }
+  statusUpdate.provider_response = providerResponse;
+  await supabase.from("ad_conversions").update(statusUpdate).eq(
+    "event_id",
+    key,
+  );
+  return { ok: true, eventId: key, deduped: false, results };
+}
+
+/**
  * Atomic claim of the one AppsFlyer post for a conversion: flips
  * appsflyer_status pending → failed only if it is still pending (the post
  * then records sent). Two concurrent fires cannot both win.
@@ -1525,14 +1824,16 @@ export async function fireAdConversion(
   };
 
   try {
-    const key = (input.orderId ?? input.reservationId ?? input.stayGroupId ??
-      input.rsvpId ?? "").trim();
+    const key = (input.hostEvent?.eventId ?? input.orderId ??
+      input.reservationId ?? input.stayGroupId ?? input.rsvpId ?? "").trim();
     if (!key) return { ok: false, reason: "no_conversion_key" };
 
     // 1. Resolve the conversion context (order OR reservation OR stay OR RSVP).
     // #4238 W2-5: the retry lane re-fires a row with neither order nor stay id
     // as reservationId; an RSVP row resolves through the RSVP context.
-    const ctx = input.orderId
+    const ctx = input.hostEvent
+      ? await resolveHostContext(supabase, input.hostEvent, input)
+      : input.orderId
       ? await resolveOrderContext(supabase, input.orderId, input)
       : input.reservationId
       ? (await resolveReservationContext(
@@ -1630,6 +1931,20 @@ export async function fireAdConversion(
       });
     }
 
+    // #4238 W3-3: a host subject with no web context (native-only host, or a
+    // lead with no browser data) is recorded and terminally skipped.
+    if (ctx.noWebContext === true) {
+      return await recordUnsharedConversion(supabase, {
+        key,
+        ctx,
+        lane,
+        surface,
+        existingResponse,
+        channelPending,
+        reason: "no_web_context",
+      });
+    }
+
     // 3. Resolve the attributed touch (click_id → campaign/connection/fbc).
     const touch = await resolveTouch(supabase, ctx.clickId);
     const shareWithPlatforms = touch.consentAllowsShare &&
@@ -1640,7 +1955,7 @@ export async function fireAdConversion(
     const conversionRow = {
       event_id: key,
       event_type: ctx.eventType,
-      event_name: channelEventName("meta", ctx.eventType),
+      event_name: rowEventName(ctx.eventType, ctx.hostKind ?? null),
       value_cents: ctx.valueCents,
       currency: ctx.currency,
       surface,
@@ -1765,10 +2080,34 @@ export async function fireAdConversion(
       ] as Channel[]
     ) {
       if (!channelPending[channel]) continue;
-      const conn = await resolveSenderConnection(supabase, channel, lane);
+      // #4238 W3-3: a platform with no event for this kind gets nothing.
+      const eventName = channelEventName(
+        channel,
+        ctx.eventType,
+        ctx.hostKind ?? null,
+      );
+      if (eventName === null) {
+        attempts.push({
+          channel,
+          run: Promise.resolve({
+            channel,
+            status: "skipped",
+            reason: "no_channel_event",
+          }),
+        });
+        continue;
+      }
+      const conn = await resolveSenderConnection(
+        supabase,
+        channel,
+        lane,
+        channel === "google"
+          ? googleKindFor(ctx.eventType, ctx.hostKind ?? null)
+          : "purchase",
+      );
       const sendInput: ConversionSendInput = {
         eventId: key,
-        eventName: channelEventName(channel, ctx.eventType),
+        eventName,
         valueCents: ctx.valueCents,
         currency: ctx.currency,
         contentId: ctx.minglaEventId,
@@ -1776,6 +2115,8 @@ export async function fireAdConversion(
         eventSourceUrl: ctx.eventSourceUrl,
         hashedEmail: ctx.hashedEmail,
         hashedPhone: ctx.hashedPhone,
+        hashedPhoneE164: ctx.hashedPhoneE164 ?? null,
+        hashedEmailGoogle: ctx.hashedEmailGoogle ?? null,
         fbc: channel === "meta" ? (ctx.fbc ?? touch.fbc) : null,
         fbp: channel === "meta" ? ctx.fbp : null,
         externalId: ctx.externalId,

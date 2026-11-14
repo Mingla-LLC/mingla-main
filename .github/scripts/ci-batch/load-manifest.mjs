@@ -284,7 +284,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4423 integration: merged origin/main a5a5c59094 (#4419 20280706004419 rows kept beside the #4423 rows) and renamed the thirteen #4423 migrations 20280705*4423 to 20280707*4423 (after 20280706004419), in order; re-sealed.
 // #4423 integration 2: merged origin/main ce482c996c; re-sealed.
 // #4238 Wave 4: registered M-3 (checkout_surface) and its pg17 proof in the 1857/1931/2117 suites; re-sealed.
-export const BOOTSTRAP_SHA256 = "147bfe42fe6bdd5d5f86b6496cbe687b0eebdea42b9a67e0380efd8449d74e7d";
+// #4238 Wave 3: registered M-2 (host funnel: ad_match_contexts, host event types, sign-up and first-publish triggers) and its pg17 proof in the 1857/1931/2117 suites; re-sealed.
+export const BOOTSTRAP_SHA256 = "a0cb6eab4f150f5710108e920e863b3a759c1dc132bb40bb4bb08b650bd5db04";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

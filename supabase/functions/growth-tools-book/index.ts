@@ -82,6 +82,9 @@ import {
   SOCIAL_LABELS,
 } from "./bookingContext.ts";
 import { buildBookingLead, recordBookingLead } from "./bookingLead.ts";
+// #4238 W3-3: a Host booking with the page's ad context is a host lead.
+import { recordBookingAdLead } from "./bookingAdLead.ts";
+import { parseHostAdContext } from "../_shared/hostFunnelConversion.ts";
 import {
   type CalendarKeys,
   parseCalendarKeys,
@@ -434,6 +437,7 @@ async function handleSlots(token: string): Promise<Response> {
 async function handleBook(
   token: string,
   body: Record<string, unknown>,
+  req: Request,
 ): Promise<Response> {
   const start = typeof body.start === "string" ? body.start : "";
   // #3601 — sanitizeLine at PARSE TIME, so the event `summary` (which interpolates
@@ -531,24 +535,30 @@ async function handleBook(
   // #4339 round A — the booking becomes an Inbound lead in Mingla Admin. Awaited
   // so the write completes before the isolate is frozen; it never fails the
   // booking (recordBookingLead never throws and logs every failure loudly).
-  await recordBookingLead(
-    buildBookingLead({
-      eventId: ev.id ?? null,
-      startMs,
-      name,
-      email,
-      venue,
-      source,
-      context,
-      timeZone,
-      meetUrl: meet,
-      eventUrl: ev.htmlLink ?? null,
-    }),
-    {
-      supabaseUrl: Deno.env.get("SUPABASE_URL"),
-      serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
-    },
-  );
+  const leadRow = buildBookingLead({
+    eventId: ev.id ?? null,
+    startMs,
+    name,
+    email,
+    venue,
+    source,
+    context,
+    timeZone,
+    meetUrl: meet,
+    eventUrl: ev.htmlLink ?? null,
+  });
+  const leadConfig = {
+    supabaseUrl: Deno.env.get("SUPABASE_URL"),
+    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  };
+  const leadWrite = await recordBookingLead(leadRow, leadConfig);
+
+  // #4238 W3-3 (D7): a Host call booked with the page's ad context is a host
+  // lead. Creator and Local calls are not. Never fails the booking.
+  const ad = context.audience === "host" ? parseHostAdContext(body.ad, req) : null;
+  const leadEventId = ad && leadWrite === "written"
+    ? await recordBookingAdLead(leadRow.booking_key, ad, leadConfig)
+    : null;
 
   // Confirmation to the booker + notification to Seth. Best-effort and awaited
   // so the sends complete before the isolate is frozen; never fails the booking.
@@ -570,6 +580,7 @@ async function handleBook(
     event_url: ev.htmlLink ?? null,
     meet_url: meet,
     start: new Date(startMs).toISOString(),
+    lead_event_id: leadEventId,
   });
 }
 
@@ -596,7 +607,7 @@ export async function handler(req: Request): Promise<Response> {
 
   try {
     if (body.action === "slots") return await handleSlots(token);
-    if (body.action === "book") return await handleBook(token, body);
+    if (body.action === "book") return await handleBook(token, body, req);
     return json({ error: "validation" }, 400);
   } catch (err) {
     console.error(

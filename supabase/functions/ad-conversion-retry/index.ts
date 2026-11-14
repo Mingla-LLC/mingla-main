@@ -11,6 +11,7 @@ import {
   AD_CONVERSION_RETRY_BATCH,
   AD_CONVERSION_RETRY_WINDOW_MS,
   type AdConversionRetryRow,
+  RETRY_EVENT_TYPES,
   configRetryWindowCutoff,
   conversionRetryInput,
   retryableChannels,
@@ -57,7 +58,8 @@ serve(async (req) => {
     )
     .gte("created_at", configWindowStart)
     .lte("updated_at", graceCutoff)
-    .in("event_type", ["purchase", "reservation"])
+    // #4238 W3-3: host leads, sign-ups, first publishes and first sales too.
+    .in("event_type", [...RETRY_EVENT_TYPES])
     .or(
       "meta_capi_status.in.(pending,failed),tiktok_events_status.in.(pending,failed),snap_capi_status.in.(pending,failed),reddit_capi_status.in.(pending,failed),google_ads_status.in.(pending,failed)",
     )

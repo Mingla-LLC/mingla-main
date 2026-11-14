@@ -53,6 +53,8 @@ export const NOT_APPLICABLE_REASONS: ReadonlySet<string> = new Set([
   "no_google_click",
   "native_surface",
   "no_web_context",
+  // #4238 W3-3: the platform has no event for this host-funnel kind.
+  "no_channel_event",
 ]);
 
 export function classifyReason(reason: string | null | undefined): FailureClass {

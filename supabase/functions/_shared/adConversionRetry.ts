@@ -6,6 +6,21 @@ import type {
   Surface,
 } from "./adConversionFire.ts";
 import { classifyReason, isLongRetryClass } from "./adSendOutcome.ts";
+import { parseHostFunnelEventId } from "./adEventCatalog.ts";
+
+/**
+ * #4238 W3-3: the ad_conversions.event_type values the retry lane re-fires.
+ * `lead` is the host lead; the three host kinds are queued by the M-2 triggers
+ * (sign-up, first publish) and hostFirstSale.ts (first sale).
+ */
+export const RETRY_EVENT_TYPES = [
+  "purchase",
+  "reservation",
+  "lead",
+  "host_signup",
+  "host_first_publish",
+  "host_first_sale",
+] as const;
 
 export const AD_CONVERSION_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /**
@@ -100,6 +115,22 @@ export function retryableChannels(
 }
 
 export const conversionRetryInput = (
+  row: AdConversionRetryRow,
+): FireAdConversionInput => {
+  // #4238 W3-3: a host-funnel row re-fires as its host event.
+  const host = parseHostFunnelEventId(row.event_id);
+  if (host) {
+    return {
+      hostEvent: { ...host, eventId: row.event_id },
+      eventType: row.event_type,
+      surface: row.surface,
+      lane: row.lane,
+    };
+  }
+  return legacyRetryInput(row);
+};
+
+const legacyRetryInput = (
   row: AdConversionRetryRow,
 ): FireAdConversionInput => ({
   ...(row.order_id
