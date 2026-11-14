@@ -5,7 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { localProgramService } from '../../src/services/localProgramService';
 import { chooseAndUploadCreatorMedia, creatorMediaStatus, isPickerCancel } from '../../src/services/creatorMediaService';
-import { programErrorText } from '../../src/services/programResult';
+import { programErrorMessage, programErrorText, toProgramError } from '../../src/services/programResult';
+import { isAllowedSocialPostUrl } from '../../src/components/local/localReviewRules';
 import { parseDay, persistedDayString } from '../../src/utils/programFormat';
 import { SPEND_BANDS } from '../../src/components/local/localWords';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
@@ -44,12 +45,18 @@ export default function LocalReviewScreen(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  // #4430 L-1: the link is checked against the hosts the server accepts.
+  const [linkTouched, setLinkTouched] = useState(false);
+  const [linkRefused, setLinkRefused] = useState(false);
 
   const day = visitedOn ?? visitedDefault;
   const ready = clips.filter((c) => c.status === 'ready');
   const titleOk = title.trim().length >= 3 && title.trim().length <= 70;
   const bodyOk = body.trim().length >= 300 && body.trim().length <= 2000;
-  const linkOk = /^https:\/\/\S+\.\S+/i.test(link.trim());
+  const linkOk = isAllowedSocialPostUrl(link) && !linkRefused;
+  const linkError = (linkTouched || touched || linkRefused) && link.trim().length > 0 && !linkOk
+    ? programErrorMessage('social_post_url_not_allowed')
+    : touched && !link.trim() ? 'Paste the full link, starting with https://' : null;
   const valid = Boolean(day) && rating > 0 && titleOk && bodyOk && ready.length > 0 && linkOk && formatConfirmed && collaborationConfirmed && clips.every((c) => c.status === 'ready');
 
   const addClip = async (): Promise<void> => {
@@ -73,7 +80,11 @@ export default function LocalReviewScreen(): React.ReactElement {
       await localProgramService.submitReview({ monthId: month.id, rating, title, body, visitedOn: day, spendBand: spend, mediaJobIds: ready.map((c) => c.jobId), socialPostUrl: link });
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       router.back();
-    } catch (e) { setError(programErrorText(e)); } finally { setBusy(false); }
+    } catch (e) {
+      const refused = toProgramError(e);
+      // A server refusal of the link lands on the link field.
+      if (refused.code === 'social_post_url_not_allowed') { setLinkRefused(true); setError(null); } else setError(refused.message);
+    } finally { setBusy(false); }
   };
 
   if (home.isLoading) return <ProgramScreen title="Your review"><ProgramLoading /></ProgramScreen>;
@@ -121,8 +132,9 @@ export default function LocalReviewScreen(): React.ReactElement {
       <Text style={s.copy}>Publish it on your social account, tag Mingla and invite Mingla’s official account as a collaborator. Then paste the public post below.</Text>
       <Text style={s.small}>After approval, this video can also appear on this place’s expanded card and in Mingla marketing, as set out in your signed Local agreement.</Text>
     </ProgramCard>
-    <ProgramField label="Link to the post with your video" value={link} onChangeText={setLink} placeholder="https://instagram.com/p/…" autoCapitalize="none" autoCorrect={false} spellCheck={false}
-      keyboardType="url" textContentType="URL" error={touched && !linkOk ? 'Paste the full link, starting with https://' : null} />
+    <ProgramField label="Link to the post with your video" value={link} onChangeText={(v) => { setLink(v); setLinkRefused(false); }} onBlur={() => setLinkTouched(true)}
+      placeholder="https://instagram.com/p/…" autoCapitalize="none" autoCorrect={false} spellCheck={false}
+      keyboardType="url" textContentType="URL" error={linkError} />
     <CheckRow checked={formatConfirmed} onToggle={() => setFormatConfirmed((value) => !value)} label="My video follows the four-part Mingla format above" />
     <CheckRow checked={collaborationConfirmed} onToggle={() => setCollaborationConfirmed((value) => !value)} label="I posted this same video, tagged Mingla and invited Mingla’s official account as a collaborator" />
     {touched && !formatConfirmed ? <Text style={s.fieldErrorText}>Confirm that the submitted video follows the format.</Text> : null}
