@@ -435,7 +435,9 @@ function fireAdConversion(
     runtime.rdt?.(
       "track",
       purchase ? "Purchase" : "SignUp",
-      definedProps({ value, currency, conversion_id: eventId }),
+      // #4238 W2-3 (I-4238-REDDIT-CONVERSIONID): Reddit's documented pixel
+      // dedup key is `conversionId`; it equals the server CAPI conversion_id.
+      definedProps({ value, currency, conversionId: eventId }),
     ),
   );
 }

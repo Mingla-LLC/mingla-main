@@ -1,4 +1,5 @@
 // MINGLA-INVARIANT: I-4238-SPA-PIXEL-RUNTIME-ALWAYS-LOADS | issue #4238 | when ads are on, a server-rendered landing page never leaves the app's pixel runtime unset; browser conversions fire with the server's event id.
+// MINGLA-INVARIANT: I-4238-REDDIT-CONVERSIONID | issue #4238 | the Reddit browser dedup key is the platform's documented `conversionId`, and its value equals the server's conversion_id (the Mingla order or reservation id).
 /**
  * #4238 Wave 2 browser parity on buyer web (jest, node env, hand-rolled DOM).
  *
@@ -207,4 +208,19 @@ test("W2-1: a page with no SSR boot still boots all four providers once", async 
   await h.wa.initWebAnalytics();
   await h.wa.initWebAnalytics();
   expect(markers(h.injected).sort()).toEqual(["meta", "reddit", "snap", "tiktok"]);
+});
+
+test("W2-3: the Reddit browser Purchase carries conversionId (the order id) and no conversion_id", async () => {
+  const h = loadHarness({
+    href: "https://host.usemingla.com/e/wise/party",
+    ssrBooted: true,
+  });
+  await h.wa.initWebAnalytics();
+  h.wa.fireAdPurchase("ord-1", PROPS);
+  const rdt = h.win.rdt as { callQueue: unknown[][] };
+  const purchase = rdt.callQueue.find((a) => a[0] === "track" && a[1] === "Purchase");
+  expect(purchase).toBeDefined();
+  const payload = (purchase as unknown[])[2] as Record<string, unknown>;
+  expect(payload).toEqual({ value: 25, currency: "GBP", conversionId: "ord-1" });
+  expect(payload).not.toHaveProperty("conversion_id");
 });

@@ -6,7 +6,7 @@
  *   (B1) ALL FOUR browser pixels carry the shared event_id in the CORRECT
  *        per-channel dedup field + the correct event name — the browser half of
  *        SC-5/SC-15 (fbq eventID='Purchase', ttq event_id='CompletePayment',
- *        snaptr client_dedup_id='PURCHASE', rdt conversion_id='Purchase').
+ *        snaptr client_dedup_id='PURCHASE', rdt conversionId='Purchase', #4238 W2-3).
  *   (B2) toward #3697 Wave 0d: postAttributionConversion is a no-op (trusted
  *       server path only) — still asserts no browser conversion POST / no PII.
  * [TEST-MOD-APPROVED #3697]
@@ -163,11 +163,13 @@ test("B1 fireAdPurchase fires ALL FOUR pixels with the shared event_id + correct
   expect((snCall?.[2] as Record<string, unknown>).client_dedup_id).toBe(ORDER_ID);
   expect((snCall?.[2] as Record<string, unknown>).transaction_id).toBe(ORDER_ID);
 
-  // Reddit — rdt('track','Purchase', { ... conversion_id }); queues on callQueue.
+  // Reddit — rdt('track','Purchase', { ... conversionId }); queues on callQueue.
+  // #4238 W2-3: Reddit's documented pixel dedup key is `conversionId`
+  // (Step 0 Z5); the old `conversion_id` was never read by the pixel.
   const rdt = win.rdt as unknown as { callQueue: unknown[][] };
   const rdCall = rdt.callQueue.find((a) => a[0] === "track" && a[1] === "Purchase");
   expect(rdCall).toBeDefined();
-  expect((rdCall?.[2] as Record<string, unknown>).conversion_id).toBe(ORDER_ID);
+  expect((rdCall?.[2] as Record<string, unknown>).conversionId).toBe(ORDER_ID);
 });
 
 // [TEST-MOD-APPROVED #3697] Browser checkout-start parity on all three paid
