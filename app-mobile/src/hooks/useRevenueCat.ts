@@ -21,7 +21,7 @@ import {
   loginRevenueCat,
   logoutRevenueCatIfIdentified,
 } from '../services/revenueCatService'
-import { logAppsFlyerEvent } from '../services/appsFlyerService'
+import { getAppsFlyerUid, logAppsFlyerEvent } from '../services/appsFlyerService'
 import { mixpanelService } from '../services/mixpanelService'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,9 +82,47 @@ export function useCustomerInfoListener(): void {
   useEffect(() => {
     const cleanup = addCustomerInfoListener((info) => {
       queryClient.setQueryData(revenueCatKeys.customerInfo(), info)
+      // #4238 W6-3: each RevenueCat identity (anonymous, then the signed-in
+      // user) gets the AppsFlyer id once, so RevenueCat's server integration
+      // can attribute subscription revenue, renewals and refunds.
+      void linkAppsFlyerIdToRevenueCat(info.originalAppUserId)
     })
     return cleanup
   }, [queryClient])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #4238 W6-3 (I-4238-SUB-REVENUE-SERVER-ONLY) — AppsFlyer id → RevenueCat
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _appsFlyerLinkedFor = new Set<string>()
+
+/**
+ * Hand RevenueCat the AppsFlyer id via Purchases.setAppsflyerID (Step 0 Z13:
+ * it rejects until Purchases.configure ran, so it is called from the customer
+ * info listener, which only fires on a configured SDK). Once per RevenueCat
+ * user id; retried on the next update when AppsFlyer was not ready. Never
+ * throws.
+ */
+export async function linkAppsFlyerIdToRevenueCat(rcUserId: string | null | undefined): Promise<boolean> {
+  const key = typeof rcUserId === 'string' ? rcUserId : ''
+  if (key.length === 0 || _appsFlyerLinkedFor.has(key)) return false
+  const uid = await getAppsFlyerUid()
+  if (!uid) return false
+  try {
+    // Lazy: this hook file only type-imports the native SDK at module scope,
+    // so render suites that never configure RevenueCat never load it.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Purchases = (require('react-native-purchases') as {
+      default: { setAppsflyerID: (id: string | null) => Promise<void> }
+    }).default
+    await Purchases.setAppsflyerID(uid)
+    _appsFlyerLinkedFor.add(key)
+    return true
+  } catch (e) {
+    console.warn('[RevenueCat] setAppsflyerID failed:', e)
+    return false
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,10 +186,11 @@ export function usePurchasePackage(): UseMutationResult<
       // Push the fresh CustomerInfo into the cache immediately
       queryClient.setQueryData(revenueCatKeys.customerInfo(), customerInfo)
 
-      // ── Analytics: subscription revenue event ──
+      // ── Analytics: subscription funnel event ──
+      // #4238 W6-3 (I-4238-SUB-REVENUE-SERVER-ONLY): no af_revenue here. The
+      // client price is unvalidated and misses renewals and refunds; revenue
+      // reaches AppsFlyer only from RevenueCat's server integration.
       logAppsFlyerEvent('af_subscribe', {
-        af_revenue: pkg.product?.price ?? 0,
-        af_currency: pkg.product?.currencyCode ?? 'USD',
         af_content_type: 'mingla_plus',
         af_content_id: pkg.identifier,
         af_quantity: 1,
