@@ -98,4 +98,6 @@ test("item 4 / Q2: Posts due is the enforced deadline, the agreed day sits under
   const page = read("pages/ProgramGigsPage.jsx");
   assert.match(page, />Posts due<\/dt><dd[^>]*>\{post\.post_by \? postsDueWords\(post\.post_by, post\.timezone\)/);
   assert.match(page, />Post by \(agreed\)<\/dt>/);
+  // The page imports the helper it renders with (a missing import blanks the page).
+  assert.match(page, /import \{[^}]*\bpostsDueWords\b[^}]*\} from "\.\.\/lib\/creatorPrograms"/);
 });
