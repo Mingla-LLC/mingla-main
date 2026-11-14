@@ -58,12 +58,14 @@ export function violations(files) {
       "transaction: String(params.transactionId)",
       "async function resolveAndFindExistingRefund",
       "const identity = await resolveTransactionIdentity",
-      "const existing = await findExistingRefund",
+      "const { existing, rows } = await findExistingRefund(",
       "export async function reconcilePaystackRefund",
       "export async function createPaystackRefund",
-      "const reconciliation = await resolveAndFindExistingRefund(params)",
+      "const reconciliation = await resolveAndFindExistingRefund(\n    params,",
       "if (reconciliation.existing) return reconciliation.existing",
-      'if (reconciliation.identity.state !== "success")',
+      // #4430 P-3: a non-success state POSTs only for a partial refund the
+      // listed refunds explain and the transaction amount still covers.
+      'reconciliation.identity.state !== "success" &&\n    !partialRefundFitsReversedTransaction(',
       "fetch(`${PAYSTACK_BASE_URL}/refund`",
     ],
     "paystack verify -> approved-state list -> success-only POST",
@@ -81,9 +83,16 @@ export function violations(files) {
       '"paystack_refund_transaction_state_ambiguous"',
       "isDuplicateRefundSignal(res.status, providerCode, message)",
       "const duplicateReconciliation = await resolveAndFindExistingRefund(",
-      'if (duplicateReconciliation.identity.state !== "success")',
+      'duplicateReconciliation.identity.state !== "success" &&\n        !partialRefundFitsReversedTransaction(',
       '"paystack_refund_duplicate_ambiguous"',
       "error.status === 409",
+      // #4430 P-3 guards: partial only, the list was read, a live listed
+      // refund explains the reversal, and the sum stays within the amount.
+      "if (amountSubunits === undefined || rows === null) return false;",
+      "amountSubunits >= identity.amount",
+      "if (known === 0) return false;",
+      "return refunded + amountSubunits <= identity.amount;",
+      "tolerateUnreadableListWhenReversed: params.amountSubunits !== undefined",
     ]
   ) {
     requireToken(
@@ -348,18 +357,31 @@ function selfTest() {
     {
       key: "paystack",
       value: valid.paystack.replace(
-        'if (reconciliation.identity.state !== "success")',
-        'if (reconciliation.identity.state !== "reversal-pending")',
+        'reconciliation.identity.state !== "success" &&\n    !partialRefundFitsReversedTransaction(',
+        'reconciliation.identity.state !== "reversal-pending" &&\n    !partialRefundFitsReversedTransaction(',
       ),
       expected: 'reconciliation.identity.state !== "success"',
     },
     {
       key: "paystack",
       value: valid.paystack.replace(
-        'if (duplicateReconciliation.identity.state !== "success")',
-        'if (duplicateReconciliation.identity.state !== "reversed")',
+        'duplicateReconciliation.identity.state !== "success" &&\n        !partialRefundFitsReversedTransaction(',
+        'duplicateReconciliation.identity.state !== "reversed" &&\n        !partialRefundFitsReversedTransaction(',
       ),
       expected: 'duplicateReconciliation.identity.state !== "success"',
+    },
+    {
+      key: "paystack",
+      value: valid.paystack.replace(
+        "return refunded + amountSubunits <= identity.amount;",
+        "return true;",
+      ),
+      expected: "return refunded + amountSubunits <= identity.amount;",
+    },
+    {
+      key: "paystack",
+      value: valid.paystack.replace("if (known === 0) return false;", ""),
+      expected: "if (known === 0) return false;",
     },
     {
       key: "control",

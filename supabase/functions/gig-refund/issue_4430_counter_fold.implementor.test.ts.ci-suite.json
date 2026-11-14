@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/gig-refund/issue_4430_counter_fold.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4430-gig-refund-counter-fold",
+  "profile": "deno-1.46-stripe"
+}

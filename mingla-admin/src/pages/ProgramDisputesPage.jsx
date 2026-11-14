@@ -6,7 +6,7 @@
 // then moves the money). Silence never decides money.
 
 import { useState } from "react";
-import { useProgramLoad } from "../hooks/useProgramLoad";
+import { PROGRAM_QUEUE_REFRESH, useProgramLoad } from "../hooks/useProgramLoad";
 import { RefreshCw } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Badge } from "../components/ui/Badge";
@@ -88,7 +88,8 @@ export function ProgramDisputesPage() {
   const [deciding, setDeciding] = useState(false);
   const [decideError, setDecideError] = useState("");
 
-  const queue = useProgramLoad(getGigQueue);
+  // #4430 item 7: a decided dispute leaves the list without a manual reload.
+  const queue = useProgramLoad(getGigQueue, PROGRAM_QUEUE_REFRESH);
   const disputes = queue.data?.disputes ?? [];
   const loading = queue.loading;
   const error = queue.error ? programErrorMessage(queue.error, "Couldn't load disputes. Try again.") : "";

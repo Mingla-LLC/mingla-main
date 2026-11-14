@@ -30,8 +30,15 @@ export function currentTrackStep(state: string): TrackStep {
 
 export type NextAction = { title: string; text: string; cta: string | null };
 
+/**
+ * #4430 item 8: what the creator needs to know once a gig has ended.
+ * `creatorFee` and `refund` are already-formatted amounts ("₦90"), from the
+ * workspace's creator_kept_minor and refunded_minor.
+ */
+export type EndedContext = { cancelReason?: string | null; creatorFee?: string | null; refund?: string | null };
+
 /** The one next action for the creator, by state. */
-export function nextActionFor(state: string, ctx: { fixRoundsUsed?: number; hostProposedShoot?: boolean; creatorProposedShoot?: boolean } = {}): NextAction {
+export function nextActionFor(state: string, ctx: { fixRoundsUsed?: number; hostProposedShoot?: boolean; creatorProposedShoot?: boolean } & EndedContext = {}): NextAction {
   switch (state) {
     case 'accepted':
       if (ctx.hostProposedShoot) return { title: 'Confirm the shoot time', text: 'The host suggested a time. Confirm it or pick another inside the shoot window.', cta: 'Review the time' };
@@ -52,8 +59,61 @@ export function nextActionFor(state: string, ctx: { fixRoundsUsed?: number; host
     case 'day30': return { title: 'Payment released', text: 'Your fee is on its way to your bank. Keep the posts live for 30 days.', cta: null };
     case 'completed': return { title: 'Done', text: 'Thanks for the great work. Rate the host below; ratings show once both sides rate or after 7 days.', cta: null };
     case 'disputed': return { title: 'In dispute', text: 'You and the host see the same timeline. Settle with an offer, or Mingla decides.', cta: null };
+    case 'resolved_release': return { title: 'Dispute settled', text: 'You get the full fee.', cta: null };
+    case 'resolved_partial': return {
+      title: 'Dispute settled',
+      text: ctx.creatorFee && ctx.refund ? `You get ${ctx.creatorFee}; ${ctx.refund} went back to the host.` : 'You get part of the fee; the rest went back to the host.',
+      cta: null,
+    };
+    case 'resolved_refund': return { title: 'Dispute settled', text: 'The host was refunded in full.', cta: null };
+    case 'cancelled': return cancelledAction(ctx);
+    case 'declined': return { title: 'You declined this offer', text: 'The host was refunded. Nothing more to do here.', cta: null };
+    case 'expired': return { title: 'This offer expired', text: 'You didn’t answer in time, so the host was refunded.', cta: null };
     default: return { title: 'In progress', text: 'Pull down to refresh.', cta: null };
   }
+}
+
+/** #4430 item 8: a cancelled gig, in the same words as the notice (N-1). */
+function cancelledAction(ctx: EndedContext): NextAction {
+  switch (ctx.cancelReason) {
+    case 'host_after_accept_before_lock': return {
+      title: 'The host cancelled this gig',
+      text: ctx.creatorFee ? `You keep ${ctx.creatorFee} for the work so far.` : 'You keep part of the fee for the work so far.',
+      cta: null,
+    };
+    case 'creator_after_accept': return { title: 'You cancelled this gig', text: 'The host gets a full refund.', cta: null };
+    case 'upload_missed': return { title: 'This gig was cancelled', text: 'The video wasn’t uploaded by the deadline, so the host was refunded.', cta: null };
+    case 'post_missed': return { title: 'This gig was cancelled', text: 'The posts weren’t added by the deadline, so the host was refunded.', cta: null };
+    case 'host_before_accept': return { title: 'The host cancelled this offer', text: 'Nothing more to do. You can keep applying to other gigs.', cta: null };
+    default: return { title: 'This gig was cancelled', text: 'The host is refunded automatically. Nothing more to do here.', cta: null };
+  }
+}
+
+/**
+ * #4430 item 2: one action writes an action event and a fact event (for
+ * example `send_script` and `script_sent`). The timeline shows one line: the
+ * action row is dropped when its fact partner from the same actor is within
+ * 5 seconds. Kept identical on Explorer, Host and Admin (checked by a test).
+ */
+export const GIG_EVENT_PAIRS: Readonly<Record<string, string>> = {
+  plan_confirmed: 'shoot_plan_confirmed',
+  send_script: 'script_sent',
+  deliver: 'delivery_submitted',
+  approve: 'approved',
+  request_fix: 'fix_requested',
+  open_dispute: 'dispute_opened',
+  submit_posts: 'posts_submitted',
+};
+const PAIR_WINDOW_MS = 5_000;
+
+export function dedupeGigEvents<T extends { kind: string; actor: string; at: string }>(events: readonly T[]): T[] {
+  return events.filter((event) => {
+    const partner = GIG_EVENT_PAIRS[event.kind];
+    if (!partner) return true;
+    const at = Date.parse(event.at);
+    return !events.some((other) => other !== event && other.kind === partner && other.actor === event.actor
+      && Number.isFinite(at) && Math.abs(Date.parse(other.at) - at) <= PAIR_WINDOW_MS);
+  });
 }
 
 const EVENT_WORDS: Record<string, string> = {

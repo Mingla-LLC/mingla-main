@@ -14,6 +14,9 @@ export const APPLICANT_FILTERS: ReadonlyArray<readonly [ApplicantFilter, string]
   ["price", "Lowest price"],
 ];
 
+/** #4430 Q1: dispute decisions end a hire; the host may offer again. */
+const ENDED_DISPUTE_STATES: readonly string[] = ["resolved_release", "resolved_partial", "resolved_refund"];
+
 /** Contracts that count as hired (an unpaid offer is not a hire yet). */
 export function hiredContracts(
   contracts: readonly HostContractSummary[],
@@ -34,7 +37,13 @@ export function interestedApplicants(
   contracts: readonly HostContractSummary[],
   filter: ApplicantFilter,
 ): GigApplicant[] {
-  const hiredNames = new Set(hiredContracts(contracts).map((row) => row.creator));
+  // #4430 Q1: a creator whose hire on this gig ended (a settled dispute
+  // included) is offerable again, so only a live or completed hire hides them.
+  const hiredNames = new Set(
+    hiredContracts(contracts)
+      .filter((row) => !ENDED_DISPUTE_STATES.includes(row.state))
+      .map((row) => row.creator),
+  );
   const visible = items.filter(
     (item) =>
       item.status !== "passed" &&

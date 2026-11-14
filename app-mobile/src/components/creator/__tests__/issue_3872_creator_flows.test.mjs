@@ -47,7 +47,8 @@ test("#3872 the agreement step collects an 18+ date of birth, the tax line, and 
 
 test("#3872 the shoot is picked inside the window and posts use a URL keyboard", () => {
   const parts = read("src/components/creator/contract/ContractSections.tsx");
-  assert.match(parts, /shootPickRange\(window, initialAt\)/);
+  // #4430: the live call also passes today and the gig zone (#4402 AC-12).
+  assert.match(parts, /shootPickRange\(window, initialAt, new Date\(\), timeZone\)/);
   assert.match(parts, /minDate=\{range\.minDate\} maxDate=\{range\.maxDate\}/);
   assert.match(parts, /keyboardType="url"/);
   assert.match(parts, /autoCapitalize="none"/);
