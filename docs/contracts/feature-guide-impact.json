@@ -333,7 +333,8 @@
         "mingla-admin/src/pages/ProgramDisputesPage.jsx",
         "mingla-admin/src/pages/crm/GigTimeline.jsx",
         "mingla-business/src/components/programs/dueChange.ts",
-        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
+        "mingla-business/src/components/programs/applicantFilters.ts"
       ]
     },
     {
