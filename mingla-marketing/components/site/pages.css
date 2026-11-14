@@ -2161,3 +2161,23 @@
 [data-landing] [data-help-filtering] .help-chapter + .help-chapter {
   margin-top: 24px;
 }
+
+/* ---- #4339: a live city with no picked clip yet: a brand-colour field ---- */
+[data-landing] .city-field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+[data-landing] .city-field-moss {
+  background: var(--moss);
+}
+[data-landing] .city-field-night {
+  background: var(--night);
+}
+[data-landing] .city-field-clay {
+  background: var(--clay);
+}
+[data-landing] .city-field-sand {
+  background: var(--sand);
+}

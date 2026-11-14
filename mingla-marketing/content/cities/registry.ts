@@ -846,7 +846,10 @@ export function allCityHubsSearchReady(
   context: CityHubReadinessContext = { asOf: currentUtcDate() },
 ): boolean {
   if (historicalCityBuildEnabled()) return false
-  return CITY_HUBS.length === 10 && CITY_HUBS.every((record) => isCityHubSearchReady(record, context))
+  // #4339: the count follows the registry's own slug list, never a literal, so
+  // adding an eleventh guide (its slug and jurisdiction contract together) keeps
+  // the ten existing guides indexed.
+  return CITY_HUBS.length === CITY_HUB_SLUGS.length && CITY_HUBS.every((record) => isCityHubSearchReady(record, context))
 }
 
 export function cityHubEffectiveLifecycle(record: CityHubRecord): RouteLifecycle {

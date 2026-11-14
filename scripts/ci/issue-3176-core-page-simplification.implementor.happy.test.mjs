@@ -77,12 +77,13 @@ function verifySource(overrides = {}) {
   // each opening its city page. The #3176 cinematic
   // hero, pills and CityDirectory were replaced on purpose; the provenance
   // of the licensed city photos and the removed-copy rules stay pinned.
-  assert.match(cities, /CITY_HUBS\.map\(\(city\) =>[\s\S]*?<CityMedia slug=\{city\.slug\} \/>[\s\S]*?cityHubPath\(city\)|CITY_HUBS\.map\(\(city\) =>[\s\S]*?cityHubPath\(city\)[\s\S]*?<CityMedia slug=\{city\.slug\} \/>/, '/cities must render one tile per registry city')
+  // #4339 (live cities): one tile per LIVE city (lib/live-cities.ts), A to Z, each opening its city page.
+  assert.match(cities, /tiles\.map\(\(city\) =>[\s\S]*?<CityMedia slug=\{city\.slug\} \/>[\s\S]*?\/cities\/\$\{city\.slug\}|tiles\.map\(\(city\) =>[\s\S]*?\/cities\/\$\{city\.slug\}[\s\S]*?<CityMedia slug=\{city\.slug\} \/>/, '/cities must render one tile per live city')
   // #4339 round A (Seth, 8 Nov): every city now has its own picked loop, so
   // CITY_MEDIA is a full Record over the registry slugs and the licensed-photo
   // fallback is gone; the photos stay registered below for their provenance.
   assert.match(media, /CITY_MEDIA: Readonly<Record<CityHubSlug, LandingMediaRef>>/, 'every registry city must have a picked clip')
-  assert.match(media, /<LandingMedia media=\{CITY_MEDIA\[slug\]\} hero=\{hero\} \/>/, 'a city tile and its page hero must share the city clip')
+  assert.match(media, /<LandingMedia media=\{media\} hero=\{hero\} \/>/, 'a city tile and its page hero must share the city clip')
   for (const phrase of REMOVED_COPY) {
     assert(![about, explorer, cities, answer].join('\n').includes(phrase), `removed public copy remains: ${phrase}`)
   }
@@ -93,7 +94,8 @@ function verifySource(overrides = {}) {
   assert.match(hub, /if \(!historicalCityBuildEnabled\(\)\) return null/)
 
   assert.equal(manifest.schemaVersion, 1, 'city asset manifest needs its supported schema')
-  assert.equal(manifest.assets.length, 11, 'city asset manifest needs one hero and ten card images')
+  // #4339: the live-only cities' loops (role city-clip) are recorded beside the hero and the ten cards.
+  assert.equal(manifest.assets.filter((asset) => asset.role !== 'city-clip').length, 11, 'city asset manifest needs one hero and ten card images')
   const heroAsset = manifest.assets.find((asset) => asset.path === '/marketing/cities/cities-hero.jpg')
   assert(heroAsset, 'city hero must be registered in the asset manifest')
   assert.equal(heroAsset.role, 'cities-hero-poster')
@@ -333,7 +335,7 @@ async function verifyNarrowHeroGeometry(port) {
     await page.send('Runtime.enable')
     await page.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: false })
     await page.send('Page.navigate', { url: `http://127.0.0.1:${port}/cities` })
-    await waitFor(() => page.evaluate("document.readyState === 'complete' && document.querySelectorAll('.city-tiles a').length === 10"), '/cities did not load for 320px geometry proof')
+    await waitFor(() => page.evaluate("document.readyState === 'complete' && document.querySelectorAll('.city-tiles a').length >= 10"), '/cities did not load for 320px geometry proof')
     await page.evaluate('(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));})()')
     // #4339 phase 2b: the redesigned /cities is a tile grid, so the 320px
     // proof is ten full tiles, each a 44px+ target inside the 16px gutters,
@@ -344,7 +346,7 @@ async function verifyNarrowHeroGeometry(port) {
       return {tiles,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}
     })()`)
     const geometryEvidence = JSON.stringify(geometry)
-    assert.equal(geometry.tiles.length, 10, '320px /cities must show all ten city tiles')
+    assert(geometry.tiles.length >= 10, '320px /cities must show every city tile (the ten guides at least; the live list when a database is configured)')
     assert.equal(geometry.overflow, 0, '320px /cities must not create horizontal overflow')
     for (const [index, tile] of geometry.tiles.entries()) {
       assert(tile.width >= 44 && tile.height >= 44, `320px tile ${index + 1} lost its 44px target`)
@@ -423,7 +425,7 @@ if (!SOURCE_ONLY) await verifyRuntime()
 if (SELF_TEST) {
   const relative = 'mingla-marketing/app/(core)/cities/page.tsx'
   const reverted = read(relative).replace('<CityMedia slug={city.slug} />', '')
-  assert.throws(() => verifySource({ [relative]: reverted }), /one tile per registry city/, 'removing the city tiles must prove RED')
+  assert.throws(() => verifySource({ [relative]: reverted }), /one tile per live city/, 'removing the city tiles must prove RED')
   process.stdout.write('RED proof: removing the city tiles was rejected\n')
 }
 process.stdout.write('PASS #3176 simplified core pages and cinematic city directory\n')

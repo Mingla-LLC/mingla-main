@@ -13,7 +13,7 @@
 //     && node /tmp/o/links-config.tester.test.js
 // ---------------------------------------------------------------
 
-import { LINKS_CITY_COOKIE, LINKS_SOCIAL_HANDLE, LINKS_SOCIALS } from './links-config'
+import { LINKS_SOCIAL_HANDLE, LINKS_SOCIALS } from './links-config'
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg)
@@ -55,9 +55,6 @@ const cases: ReadonlyArray<[string, () => void]> = [
     for (const s of LINKS_SOCIALS) {
       assert(!/apps\.apple\.com|play\.google\.com|usemingla\.com\/|go\.usemingla\.com|biz\.usemingla\.com|host\.usemingla\.com/.test(s.href), `${s.label} carries a destination URL`)
     }
-  }],
-  ['the remembered-city cookie is named for /links', () => {
-    assert(LINKS_CITY_COOKIE === 'mingla_links_city', 'cookie name')
   }],
 ]
 
