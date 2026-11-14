@@ -54,6 +54,8 @@ import {
   programMoney,
   payUpToLabel,
   videoDueWords,
+  formatInZone,
+  gigZone,
 } from "../../../utils/creatorProgramFormat";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
 import {
@@ -168,7 +170,12 @@ export default function GigApplicants(): React.ReactElement {
         `Hiring ${gig.slots}`,
         payUpTo,
         gig.post_by || gig.video_due_at
-          ? `video by ${videoDueWords(gig.video_due_at, gig.post_by)}`
+          ? `video by ${
+              // #4430 item 1a: the gig's own zone, with its label.
+              gigZone(gig) && typeof gig.video_due_at === "string" && gig.video_due_at
+                ? formatInZone(gig.video_due_at, gigZone(gig))
+                : videoDueWords(gig.video_due_at, gig.post_by)
+            }`
           : null,
       ]
         .filter(Boolean)

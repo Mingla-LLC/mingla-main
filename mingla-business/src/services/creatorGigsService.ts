@@ -217,6 +217,10 @@ export type GigWorkspace = {
   counters?: unknown;
   next_action?: string | null;
   pending_topup?: unknown;
+  /** #4430 P-2: a lower-counter difference not yet paid back to the host. */
+  pending_refund?: { amount_minor?: number; currency?: string } | null;
+  /** #4430 item 5: what the creator kept on a split ending (minor units). */
+  creator_kept_minor?: number | null;
   rights?: GigRights | null;
 };
 

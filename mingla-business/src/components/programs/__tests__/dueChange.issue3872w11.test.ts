@@ -65,6 +65,34 @@ describe("the change sheet", () => {
   });
 });
 
+// #4430 item 1c/1d: with the gig's zone known, the prefill and the words are
+// the zone's wall clock, whatever the phone's zone is.
+describe("in the gig's zone (#4430)", () => {
+  const lagosNoon = "2026-12-15T11:00:00Z";
+  it("prefills the zone's wall clock, not the phone's", () => {
+    expect(dueChangeInitial({ videoDueAt: lagosNoon, postBy: "2026-12-15" }, "Africa/Lagos")).toEqual({
+      day: "2026-12-15",
+      time: "12:00",
+    });
+    expect(dueChangeInitial({ videoDueAt: "2026-12-15T23:30:00Z", postBy: "2026-12-16" }, "Africa/Lagos")).toEqual({
+      day: "2026-12-16",
+      time: "00:30",
+    });
+  });
+  it("labels the agreed and proposed dues with the zone in plain words", () => {
+    expect(agreedVideoDueWords({ videoDueAt: lagosNoon, postBy: "2026-12-15" }, "Africa/Lagos")).toBe(
+      "Tue Dec 15, 12:00 PM Lagos time",
+    );
+    // A proposal is saved as the zone's wall clock and shown as written.
+    expect(proposalChangeWords({ video_due_at: "2026-12-15T12:00" }, "Africa/Lagos")).toBe(
+      "Proposed: Tue Dec 15, 12:00 PM Lagos time",
+    );
+    expect(proposalChangeWords({ video_due_at: lagosNoon }, "Africa/Lagos")).toBe(
+      "Proposed: Tue Dec 15, 12:00 PM Lagos time",
+    );
+  });
+});
+
 describe("proposal cards", () => {
   it("show the proposed date and time", () => {
     expect(
@@ -85,7 +113,9 @@ describe("host contract screen", () => {
   });
   it("shows the agreed due on Video needed by and on proposal cards", () => {
     const src = contractSrc();
-    expect(src).toMatch(/title="Video needed by"[\s\S]{0,400}agreedVideoDueWords\(agreedDue\)/);
-    expect(src).toContain("proposalChangeWords(openChange.changes)");
+    // #4430: both read the gig's zone.
+    expect(src).toMatch(/title="Video needed by"[\s\S]{0,400}agreedVideoDueWords\(agreedDue, zone\)/);
+    expect(src).toContain("proposalChangeWords(openChange.changes, zone)");
+    expect(src).toContain("dueChangeInitial(agreedDue, zone)");
   });
 });

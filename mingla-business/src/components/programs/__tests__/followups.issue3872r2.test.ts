@@ -51,7 +51,7 @@ describe("video due date and time on gig and contract", () => {
     const contract = read("src/components/creators/screens/HostGigContractScreen.tsx");
     expect(contract).toMatch(
       // #3872 due change: the contract shows the agreed (current terms) due.
-      /title="Video needed by"[\s\S]{0,400}agreedVideoDueWords\(agreedDue\)/,
+      /title="Video needed by"[\s\S]{0,400}agreedVideoDueWords\(agreedDue, zone\)/,
     );
   });
 });

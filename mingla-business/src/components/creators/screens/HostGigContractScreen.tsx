@@ -121,6 +121,7 @@ import {
   postDeadlineShownIso,
   dueIn,
   formatName,
+  hostContractEndedWords,
   hostContractStep,
   platformLabel,
   programErrorMessage,
@@ -128,6 +129,8 @@ import {
   shortDate,
   shortDateTime,
   toIsoDay,
+  workspacePendingRefundMinor,
+  zoneLabel,
 } from "../../../utils/creatorProgramFormat";
 import {
   accent,
@@ -571,6 +574,8 @@ export default function HostGigContract(): React.ReactElement {
           : state === "offered"
             ? "creator answers"
             : null;
+    // #4430 item 5: an ended or disputed contract shows its status, not a step.
+    if (step === null) return hostContractEndedWords(state) ?? "";
     return [
       `Step ${step} of 6 · ${STEP_CAPTION[step]}`,
       autoWords && deadline ? `${autoWords} ${dueIn(deadline)}` : null,
@@ -895,7 +900,7 @@ export default function HostGigContract(): React.ReactElement {
             ) : null}
             {sheet === "change_dates" ? (
               <SheetBody title="Change the video-due date">
-                <Muted>{`Agreed now: ${agreedVideoDueWords(agreedDue)}. The fee can't change here.`}</Muted>
+                <Muted>{`Agreed now: ${agreedVideoDueWords(agreedDue, zone)}. The fee can't change here.`}</Muted>
                 <View style={styles.pair}>
                   <View style={styles.pairDate}>
                     <DateField
@@ -922,6 +927,7 @@ export default function HostGigContract(): React.ReactElement {
                     hasError={Boolean(dueErrors.day || dueErrors.time)}
                   />
                 </View>
+                {zone ? <Muted>{`Times are ${zoneLabel(zone)}.`}</Muted> : null}
                 <FieldError message={dueErrors.day ?? dueErrors.time ?? null} />
                 <Input
                   value={note}
@@ -948,6 +954,7 @@ export default function HostGigContract(): React.ReactElement {
                     isGig ? "gig" : "offer",
                     currentTerms?.fee_minor ?? 0,
                     currentTerms?.booking_fee_minor ?? 0,
+                    workspacePendingRefundMinor(workspace),
                   );
                   const back = programMoney(quote.totalMinor, money);
                   return (
@@ -972,6 +979,13 @@ export default function HostGigContract(): React.ReactElement {
                               right={programMoney(quote.bookingMinor, money)}
                               chevron={false}
                             />
+                            {quote.counterMinor > 0 ? (
+                              <ListRow
+                                title="Counter-offer difference"
+                                right={programMoney(quote.counterMinor, money)}
+                                chevron={false}
+                              />
+                            ) : null}
                             <ListRow
                               title="You get back"
                               right={back}
@@ -981,7 +995,7 @@ export default function HostGigContract(): React.ReactElement {
                         ) : (
                           <ListRow
                             title="Refund"
-                            subtitle={`Fee ${programMoney(quote.feeShareMinor, money)} + booking fee ${programMoney(quote.bookingMinor, money)}`}
+                            subtitle={`Fee ${programMoney(quote.feeShareMinor, money)} + booking fee ${programMoney(quote.bookingMinor, money)}${quote.counterMinor > 0 ? ` + counter-offer difference ${programMoney(quote.counterMinor, money)}` : ""}`}
                             right={back}
                             chevron={false}
                           />
@@ -1148,7 +1162,9 @@ export default function HostGigContract(): React.ReactElement {
                   </Text>
                   <StatusTag label={card.pill} tone={card.tone} />
                 </View>
-                <StepBar steps={HOST_CONTRACT_STEPS} current={step} />
+                {step !== null ? (
+                  <StepBar steps={HOST_CONTRACT_STEPS} current={step} />
+                ) : null}
                 <Muted>{card.line}</Muted>
                 {card.canRate ? (
                   <Button
@@ -1783,6 +1799,7 @@ export default function HostGigContract(): React.ReactElement {
                   moneyState,
                   workspaceRefundedMinor(workspace),
                   currentTerms.fee_minor + (currentTerms.booking_fee_minor ?? 0),
+                  workspace.creator_kept_minor ?? null,
                 )}
                 chevron={false}
               />
@@ -1820,7 +1837,7 @@ export default function HostGigContract(): React.ReactElement {
                 right={
                   agreedDue.videoDueAt && zone
                     ? when(agreedDue.videoDueAt)
-                    : agreedVideoDueWords(agreedDue)
+                    : agreedVideoDueWords(agreedDue, zone)
                 }
                 chevron={false}
               />
@@ -1840,7 +1857,7 @@ export default function HostGigContract(): React.ReactElement {
                   ? `${creatorName} asked to change the terms`
                   : "Your change request"}
               </Text>
-              <Muted>{proposalChangeWords(openChange.changes)}</Muted>
+              <Muted>{proposalChangeWords(openChange.changes, zone)}</Muted>
               {openChange.note ? (
                 <Text style={styles.quote}>{openChange.note}</Text>
               ) : null}
@@ -1891,7 +1908,7 @@ export default function HostGigContract(): React.ReactElement {
                 label="Change the video-due date"
                 onPress={() => {
                   setNote("");
-                  const initial = dueChangeInitial(agreedDue);
+                  const initial = dueChangeInitial(agreedDue, zone);
                   setDueDay(initial.day);
                   setDueTime(initial.time);
                   setDueErrors({});

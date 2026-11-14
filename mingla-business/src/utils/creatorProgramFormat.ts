@@ -139,24 +139,73 @@ export function minFeeHint(
  * #4402 — what a host gets back when they cancel (mirrors gig_refund_quote).
  * Before the creator accepts: everything paid. After accept, before the
  * script is approved: 75% of the fee plus the booking fee.
+ * #4430 P-2: plus any lower-counter difference not yet paid back
+ * (workspace.pending_refund), on both branches. 75% rounds down, as the
+ * server's integer division does.
  */
 export function cancelRefundQuote(
   kind: "offer" | "gig",
   feeMinor: number,
   bookingMinor: number,
+  pendingRefundMinor: number = 0,
 ): {
   feeShareMinor: number;
   bookingMinor: number;
+  counterMinor: number;
   totalMinor: number;
   creatorKeepsMinor: number;
 } {
-  const feeShareMinor = kind === "offer" ? feeMinor : Math.round((feeMinor * 75) / 100);
+  const feeShareMinor = kind === "offer" ? feeMinor : Math.floor((feeMinor * 7500) / 10000);
+  const counterMinor = Number.isFinite(pendingRefundMinor) && pendingRefundMinor > 0 ? pendingRefundMinor : 0;
   return {
     feeShareMinor,
     bookingMinor,
-    totalMinor: feeShareMinor + bookingMinor,
+    counterMinor,
+    totalMinor: feeShareMinor + bookingMinor + counterMinor,
     creatorKeepsMinor: feeMinor - feeShareMinor,
   };
+}
+
+/** #4430 P-2: gig_contract_workspace.pending_refund.amount_minor, else 0. */
+export function workspacePendingRefundMinor(workspace: unknown): number {
+  if (!workspace || typeof workspace !== "object") return 0;
+  const pending = (workspace as Record<string, unknown>).pending_refund;
+  if (!pending || typeof pending !== "object") return 0;
+  const amount = (pending as Record<string, unknown>).amount_minor;
+  return typeof amount === "number" && amount > 0 ? amount : 0;
+}
+
+/**
+ * #4430 item 1c: the wall clock of an instant in a zone ("2026-12-15",
+ * "12:00"), read from format() so Hermes on iOS reads it whole. Null when the
+ * zone is unknown or the instant does not parse.
+ */
+export function zoneDayAndTime(
+  value: string | null | undefined,
+  timezone: string | null | undefined,
+): { day: string; time: string } | null {
+  if (typeof value !== "string" || typeof timezone !== "string" || timezone.length === 0) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  try {
+    const text = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(date);
+    const match = /(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}):(\d{2})/.exec(text);
+    if (!match) return null;
+    return {
+      day: `${match[3]}-${match[1]}-${match[2]}`,
+      time: `${String(Number(match[4]) % 24).padStart(2, "0")}:${match[5]}`,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -579,8 +628,28 @@ export const HOST_CONTRACT_STEPS = [
   "Paid",
 ] as const;
 
-/** 1-based step number for the step bar ("Step 3 of 6"). */
-export function hostContractStep(state: string | null | undefined): number {
+/**
+ * #4430 item 5: a contract that ended or is in dispute is not on a step; its
+ * caption is the status itself, never "Paid".
+ */
+const HOST_ENDED_WORDS: Record<string, string> = {
+  cancelled: "Cancelled",
+  declined: "Declined",
+  expired: "Expired",
+  disputed: "In dispute",
+  resolved_release: "Dispute settled",
+  resolved_partial: "Dispute settled",
+  resolved_refund: "Dispute settled",
+};
+
+/** "Cancelled", "In dispute", "Dispute settled"… or null while on a step. */
+export function hostContractEndedWords(state: string | null | undefined): string | null {
+  return HOST_ENDED_WORDS[state ?? ""] ?? null;
+}
+
+/** 1-based step number for the step bar ("Step 3 of 6"); null once ended. */
+export function hostContractStep(state: string | null | undefined): number | null {
+  if (hostContractEndedWords(state)) return null;
   switch (state) {
     case "offered":
       return 1;

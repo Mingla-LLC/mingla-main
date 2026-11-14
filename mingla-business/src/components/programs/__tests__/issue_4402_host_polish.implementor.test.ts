@@ -89,6 +89,8 @@ describe("refund rows and cancel confirms (items 9, 10)", () => {
     expect(cancelRefundQuote("gig", 4000000, 600000)).toEqual({
       feeShareMinor: 3000000,
       bookingMinor: 600000,
+      // #4430 P-2: no pending counter difference here.
+      counterMinor: 0,
       totalMinor: 3600000,
       creatorKeepsMinor: 1000000,
     });
