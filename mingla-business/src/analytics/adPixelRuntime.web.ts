@@ -121,6 +121,14 @@ function bootstrapMetaPixel(pixelId: string, pageView = true): void {
     "https://connect.facebook.net/en_US/fbevents.js",
     "meta",
   );
+  // #4238 (Wave 2 note; Meta's SPA guide, read 14 Nov 2026: setting
+  // fbq.disablePushState to true stops the automatic PageView on history
+  // changes). Each buyer page sends its own PageView (fireAdPageView), so the
+  // automatic one double-counted buyer routes and counted host dashboard
+  // routes. Set before init, as Meta's pixel pages show it.
+  if (runtime.fbq) {
+    (runtime.fbq as unknown as { disablePushState?: boolean }).disablePushState = true;
+  }
   runtime.fbq?.("init", pixelId);
   if (pageView) runtime.fbq?.("track", "PageView");
 }

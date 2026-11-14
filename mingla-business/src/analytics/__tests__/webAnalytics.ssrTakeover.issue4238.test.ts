@@ -415,3 +415,13 @@ test.each([["?ScCid=SNAPCLICK1"], ["?sccid=SNAPCLICK1"]])(
     });
   },
 );
+
+// ── #4238: Meta's automatic SPA PageView is off (the app sends its own) ─────
+
+test("Meta disablePushState is set before init, so route changes add no automatic PageView", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/e/a/b" });
+  await h.wa.initWebAnalytics("/e/a/b");
+  const fbq = h.win.fbq as { disablePushState?: boolean; queue: unknown[][] };
+  expect(fbq.disablePushState).toBe(true);
+  expect(fbq.queue[0]?.[0]).toBe("init");
+});
