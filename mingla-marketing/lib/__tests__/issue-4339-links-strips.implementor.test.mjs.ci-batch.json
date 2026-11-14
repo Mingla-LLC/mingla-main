@@ -9,7 +9,7 @@
       "mingla-marketing/lib/__tests__/issue-4339-links-strips.implementor.test.mjs",
       "mingla-marketing/app/links/**",
       "mingla-marketing/components/marketing/links-experience*",
-      "mingla-marketing/lib/links-*.ts"
+      "mingla-marketing/lib/links-*"
     ],
     "steps": [
       {
