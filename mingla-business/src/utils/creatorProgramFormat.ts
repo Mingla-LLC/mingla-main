@@ -474,6 +474,26 @@ export function audienceLabel(
     .join(" · ");
 }
 
+/**
+ * #4430 H-A: the confirm shown before a host passes on an applicant. Passing
+ * is final for this gig's list, so it is never one tap.
+ */
+export function passConfirmCopy(name: string): {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  cancelLabel: string;
+} {
+  const who = name.trim() || "this creator";
+  return {
+    title: `Pass on ${who}?`,
+    description:
+      "You won't be able to send them an offer for this gig from this list.",
+    confirmLabel: "Pass",
+    cancelLabel: "Keep",
+  };
+}
+
 export function formatName(formatKey: string | null | undefined): string {
   const match = CREATOR_FORMATS.find((item) => item.key === formatKey);
   if (match) return match.name;

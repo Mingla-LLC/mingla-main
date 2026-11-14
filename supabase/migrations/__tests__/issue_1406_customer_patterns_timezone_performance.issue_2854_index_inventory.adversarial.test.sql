@@ -152,8 +152,15 @@ BEGIN
   -- Count 83 -> 85, hash d82eb3bebdb6d476c6ed48e69d36d940 -> 6b8508599f829dc2d9ce3d1e41f3543c,
   -- measured on a PG17 full replay of the #4334 branch; dropping those two
   -- indexes measures 83 / d82eb3bebdb6d476c6ed48e69d36d940 again.
-  IF v_index_count <> 85
-    OR v_index_fingerprint <> '6b8508599f829dc2d9ce3d1e41f3543c'
+  -- [TEST-MOD-APPROVED #4423] 20280707204423_issue_4423_w4a_indexes_and_cron
+  -- adds three foreign-key covering indexes on orders (orders_cancelled_by_fk4423_idx,
+  -- orders_created_by_scanner_id_fk4423_idx, orders_purchased_by_user_id_fk4423_idx),
+  -- already applied to production. Count 85 -> 88,
+  -- hash 6b8508599f829dc2d9ce3d1e41f3543c -> 3158b5e3ff37207ce334bd6bb4caa0d7,
+  -- measured on a PG17 full replay of 5253f49dd9; dropping exactly those three
+  -- indexes measures 85 / 6b8508599f829dc2d9ce3d1e41f3543c again.
+  IF v_index_count <> 88
+    OR v_index_fingerprint <> '3158b5e3ff37207ce334bd6bb4caa0d7'
   THEN
     RAISE EXCEPTION
       'T-2 FAIL: complete business-index inventory drift count=% hash=%',
@@ -161,7 +168,7 @@ BEGIN
       v_index_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 85 / 6b8508599f829dc2d9ce3d1e41f3543c';
+  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 88 / 3158b5e3ff37207ce334bd6bb4caa0d7';
 END;
 $test$;
 
@@ -211,9 +218,11 @@ BEGIN
   -- make the terminal inventory 83; excluding #871 → 82.
   -- [TEST-MOD-APPROVED #4334] #4334's events/brands location_geo_refreshed_at
   -- indexes make the terminal inventory 85; excluding #871 → 84.
+  -- [TEST-MOD-APPROVED #4423] #4423's three orders foreign-key covering
+  -- indexes make the terminal inventory 88; excluding #871 → 87.
   -- Fingerprint is recomputed each run against the live projected set so a second
   -- post-#1406 index still fails the count check below.
-  IF v_projected_count <> 84
+  IF v_projected_count <> 87
   THEN
     RAISE EXCEPTION
       'T-3 FAIL: projected #1406 inventory drift count=% hash=%',
@@ -221,7 +230,7 @@ BEGIN
       v_projected_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 84 rows (hash %)', v_projected_fingerprint;
+  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 87 rows (hash %)', v_projected_fingerprint;
 END;
 $test$;
 

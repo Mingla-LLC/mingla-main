@@ -106,17 +106,21 @@ function client(): InstanceType<typeof QueryClient> {
   return new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
 }
 
-async function mount<T>(qc: InstanceType<typeof QueryClient>, useIt: () => T): Promise<{ current: () => T; unmount: () => void }> {
+async function mount<T>(qc: InstanceType<typeof QueryClient>, useIt: () => T): Promise<{ current: () => T; seen: () => T[]; unmount: () => void }> {
   let last: T;
+  // Every render the hook produced, in order: a cache leak shows up here even
+  // when the refetch lands before the first assertion runs.
+  const seen: T[] = [];
   function Probe(): null {
     last = useIt();
+    seen.push(last);
     return null;
   }
   let tree: { unmount: () => void } | undefined;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(React.createElement(QueryClientProvider, { client: qc }, React.createElement(Probe)));
   });
-  return { current: () => last, unmount: () => tree?.unmount() };
+  return { current: () => last, seen: () => seen, unmount: () => tree?.unmount() };
 }
 
 async function settle(ms = 30): Promise<void> {
@@ -174,8 +178,13 @@ describe("the real hook against raw PostgREST answers", () => {
     mockUser.id = "user-b";
     mockRpc.mockResolvedValue({ data: { ...PLAN, brand: { id: "b", name: "B's view" } }, error: null });
     hook = await mount(qc, () => hooks.useBrandPlan("b", "2026-11-01", "2026-11-30"));
-    expect(hook.current().data).toBeUndefined();
+    // The mocked read resolves at once, so it can land inside mount's act
+    // before any assertion runs (that race flaked on main at 5253f49dd9). Read the
+    // render history instead: user B's first render has no data, and no render
+    // ever shows user A's cached plan.
+    expect(hook.seen()[0].data).toBeUndefined();
     await settle();
+    expect(hook.seen().map((render) => render.data?.brand.name ?? null)).not.toContain("A's view");
     expect(hook.current().data?.brand.name).toBe("B's view");
     hook.unmount();
   });

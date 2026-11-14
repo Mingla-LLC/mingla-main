@@ -22,6 +22,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
+import { scrollPaddingClearOfFloatingAction } from "../../utils/floatingActionClearance";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon, type IconName } from "../ui/Icon";
 import {
@@ -90,9 +92,18 @@ export function ProgramScreen({
     keyboardVisible,
     hasFooter: Boolean(footer),
   });
+  // #4430 H-B: an embedded program screen lives in the Blast tab, where the
+  // floating action ("Hire a creator") and the bottom nav sit over the
+  // content. Reserve their height (safe area included) so the last button
+  // scrolls clear of them, as the ad screens do (#4238).
+  const embeddedBottom = scrollPaddingClearOfFloatingAction(useStickyFooterOffset());
   const scroll = (
     <ScrollView
-      contentContainerStyle={[styles.content, embedded && styles.contentEmbedded]}
+      contentContainerStyle={[
+        styles.content,
+        embedded && styles.contentEmbedded,
+        embedded ? { paddingBottom: embeddedBottom } : null,
+      ]}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         onRefresh ? (
@@ -825,7 +836,6 @@ const styles = StyleSheet.create({
   contentEmbedded: {
     maxWidth: "100%",
     paddingTop: spacing.sm,
-    paddingBottom: 120,
   },
   programColumns: { width: "100%", gap: spacing.lg },
   programColumnsWide: { flexDirection: "row", alignItems: "flex-start" },

@@ -568,10 +568,16 @@ async function experienceToProposal(world: World, store: MemoryStore) {
   return await answer(world, store, (r) => form(r, { response: "₦25,000" }));
 }
 
+// The owner types "14 November at 6pm" with no year. parseEventStart
+// (ariFlows/offerings/eventFacts.ts) keeps the first candidate year whose
+// instant is still in the future, so on 14 November itself, before 6pm Lagos
+// time, the answer is this year. Mirror that instant rule: 18:00 Africa/Lagos
+// is 17:00 UTC (no daylight saving). Comparing calendar dates instead failed
+// on main at 5253f49dd9, which ran on 2026-11-14.
 function nextNov14Year(): number {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  return now.toISOString().slice(0, 10) < `${year}-11-14` ? year : year + 1;
+  const now = Date.now();
+  const year = new Date(now).getUTCFullYear();
+  return now < Date.UTC(year, 10, 14, 17, 0, 0) ? year : year + 1;
 }
 
 // ── Intent ──────────────────────────────────────────────────────────────────

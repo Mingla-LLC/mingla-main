@@ -234,9 +234,9 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
                         title={contract.creator}
                         subtitle={contract.payment_pending ? `${contract.title} · Retry payment` : contract.title}
                         right={<StatusTag label={pill.label} tone={pill.tone} />}
-                        onPress={() => contract.payment_pending
-                          ? router.push(`/brand/${brandId}/creators/${contract.gig_id}/interest` as never)
-                          : openContract(contract.id)}
+                        // #4430 H-C: an unpaid offer opens its contract page,
+                        // whose Retry payment reopens the Hire sheet for it.
+                        onPress={() => openContract(contract.id)}
                       />
                     );
                   })}
