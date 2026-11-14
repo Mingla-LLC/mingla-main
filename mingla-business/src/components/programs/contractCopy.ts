@@ -8,6 +8,7 @@ import {
   type HostStatusTone,
 } from "../../utils/creatorProgramFormat";
 import type {
+  GigApplicant,
   GigScript,
   GigScriptSection,
   GigWorkspace,
@@ -572,4 +573,28 @@ export function hostPaymentCard(
       return never;
     }
   }
+}
+
+/**
+ * #4430 H-C: "Retry payment" reopens the Hire sheet for the same offer: the
+ * same creator's interest on this gig at the offer's agreed fee. The server
+ * proves the old offer unpaid before it starts a new one (#4402 I-4402-C), so
+ * this is the one hire payment path, not a second one. Null when the
+ * creator's interest is not on the gig's list any more.
+ */
+export function retryHireMode(input: {
+  applicants: readonly GigApplicant[];
+  creatorAccountId: string | null | undefined;
+  feeMinor: number | null | undefined;
+}): { kind: "hire"; interestId: string; quoteMinor: number } | null {
+  if (!input.creatorAccountId) return null;
+  const interest = input.applicants.find(
+    (row) => row.creator_id === input.creatorAccountId,
+  );
+  if (!interest) return null;
+  const fee =
+    typeof input.feeMinor === "number" && input.feeMinor > 0
+      ? input.feeMinor
+      : interest.quote_minor;
+  return { kind: "hire", interestId: interest.interest_id, quoteMinor: fee };
 }

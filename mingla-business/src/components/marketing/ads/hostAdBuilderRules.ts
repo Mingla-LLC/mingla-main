@@ -1,3 +1,8 @@
+import {
+  FLOATING_ACTION_CLEARANCE,
+  scrollPaddingClearOfFloatingAction,
+} from "../../../utils/floatingActionClearance";
+
 /**
  * #4238 — small pure rules the Host ads builder shares across its load paths.
  */
@@ -34,7 +39,7 @@ export function hostAdMatchSubtitle(
 }
 
 /** Height of the floating marketing action button plus a gap above it. */
-export const HOST_AD_FLOATING_ACTION_CLEARANCE = 72;
+export const HOST_AD_FLOATING_ACTION_CLEARANCE = FLOATING_ACTION_CLEARANCE;
 
 /**
  * #4238: bottom padding for an ad screen's scroll content, so its last
@@ -42,7 +47,7 @@ export const HOST_AD_FLOATING_ACTION_CLEARANCE = 72;
  * floating action button on phones.
  */
 export function hostAdScrollBottomPadding(stickyFooterOffset: number): number {
-  return stickyFooterOffset + HOST_AD_FLOATING_ACTION_CLEARANCE;
+  return scrollPaddingClearOfFloatingAction(stickyFooterOffset);
 }
 
 /** The router calls the back link needs (expo-router's router fits). */
