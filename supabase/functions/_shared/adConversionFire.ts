@@ -827,6 +827,11 @@ export async function resolveSenderConnection(
  * id is the shared browser/server dedup id. Rejected/opted-out sessions are
  * terminal; pending touch consent stays unclaimed so the retry lane can
  * evaluate the latest consent within 24 hours.
+ *
+ * #4238 W1-3 (I-4238-CHECKOUT-START-PER-CHANNEL): a channel recorded `sent`
+ * (or terminally skipped) for a session is never sent again. A retry sends
+ * only the channels still open and merges their verdicts into the stored
+ * response, so one TikTok 401 no longer re-sends Meta and Snap every hour.
  */
 export async function fireAdCheckoutStart(
   supabase: SupabaseClient,
@@ -837,7 +842,7 @@ export async function fireAdCheckoutStart(
     const { data: session, error } = await supabase
       .from("ticket_checkout_sessions")
       .select(
-        "id,event_id,brand_id,total_cents,buyer_total_cents,currency,buyer_user_id,attribution_click_id,fbp,fbc,scid,ttp,ad_tracking_opt_out,client_ip,client_user_agent,ad_checkout_start_sent_at",
+        "id,event_id,brand_id,total_cents,buyer_total_cents,currency,buyer_user_id,attribution_click_id,fbp,fbc,scid,ttp,ad_tracking_opt_out,client_ip,client_user_agent,ad_checkout_start_sent_at,ad_checkout_start_provider_response",
       )
       .eq("id", checkoutSessionId)
       .maybeSingle();
@@ -863,7 +868,25 @@ export async function fireAdCheckoutStart(
         ? row.attribution_click_id
         : null,
     );
-    const channels: Channel[] = ["meta", "tiktok", "snap"];
+    const storedResponse = checkoutStartResponse(
+      row.ad_checkout_start_provider_response,
+    );
+    const channels: Channel[] = CHECKOUT_START_CHANNELS.filter((channel) =>
+      checkoutStartChannelOpen(storedResponse[channel])
+    );
+    if (channels.length === 0) {
+      // Every channel already settled (sent or terminally skipped): close it.
+      await supabase.from("ticket_checkout_sessions").update({
+        ad_checkout_start_sent_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", checkoutSessionId).is("ad_checkout_start_sent_at", null);
+      return {
+        ok: true,
+        eventId: checkoutSessionId,
+        deduped: true,
+        results: [],
+      };
+    }
     const trackingOptOut = row.ad_tracking_opt_out === true;
     if (!touch.consentAllowsShare || trackingOptOut) {
       const terminal = trackingOptOut || touch.consentState === "rejected";
@@ -880,13 +903,18 @@ export async function fireAdCheckoutStart(
       if (terminal) {
         await supabase.from("ticket_checkout_sessions").update({
           ad_checkout_start_sent_at: new Date().toISOString(),
-          ad_checkout_start_provider_response: Object.fromEntries(
-            results.map((result) => [result.channel, {
-              status: result.status,
-              reason: result.reason ?? null,
-              http: null,
-            }]),
-          ),
+          updated_at: new Date().toISOString(),
+          // Merge: an earlier `sent` verdict stays on record.
+          ad_checkout_start_provider_response: {
+            ...storedResponse,
+            ...Object.fromEntries(
+              results.map((result) => [result.channel, {
+                status: result.status,
+                reason: result.reason ?? null,
+                http: null,
+              }]),
+            ),
+          },
         }).eq("id", checkoutSessionId).is("ad_checkout_start_sent_at", null);
       }
       return {
@@ -972,22 +1000,29 @@ export async function fireAdCheckoutStart(
         senderDeps,
       );
     }));
-    const retryableFailure = results.some((result) =>
-      result.status === "failed"
-    );
-    await supabase.from("ticket_checkout_sessions").update({
-      // A failed lane clears the claim so the scheduled retry can re-evaluate
-      // latest consent and dedup safely with this same checkout-session id.
-      ad_checkout_start_sent_at: retryableFailure
-        ? null
-        : new Date().toISOString(),
-      ad_checkout_start_provider_response: Object.fromEntries(
+    // Merge per channel: keep every earlier verdict, overwrite only the
+    // channels attempted now.
+    const mergedResponse: Record<string, CheckoutStartVerdict> = {
+      ...storedResponse,
+      ...Object.fromEntries(
         results.map((result) => [result.channel, {
           status: result.status,
           reason: result.reason ?? null,
           http: result.httpStatus ?? null,
         }]),
       ),
+    };
+    const stillOpen = CHECKOUT_START_CHANNELS.some((channel) =>
+      checkoutStartChannelOpen(mergedResponse[channel])
+    );
+    const attemptedAt = new Date().toISOString();
+    await supabase.from("ticket_checkout_sessions").update({
+      // While any channel is still retryable the claim is cleared so the
+      // scheduled retry re-evaluates latest consent; it sends only the open
+      // channels. updated_at restarts the retry's 5-minute grace.
+      ad_checkout_start_sent_at: stillOpen ? null : attemptedAt,
+      updated_at: attemptedAt,
+      ad_checkout_start_provider_response: mergedResponse,
     }).eq("id", checkoutSessionId);
     return { ok: true, eventId: checkoutSessionId, deduped: false, results };
   } catch (err) {
@@ -997,6 +1032,47 @@ export async function fireAdCheckoutStart(
     );
     return { ok: false, eventId: checkoutSessionId, reason: "absorbed" };
   }
+}
+
+const CHECKOUT_START_CHANNELS: Channel[] = ["meta", "tiktok", "snap"];
+
+interface CheckoutStartVerdict {
+  status: string;
+  reason: string | null;
+  http: number | null;
+}
+
+function checkoutStartResponse(
+  raw: unknown,
+): Record<string, CheckoutStartVerdict> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, CheckoutStartVerdict> = {};
+  for (const [channel, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue;
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.status !== "string") continue;
+    out[channel] = {
+      status: entry.status,
+      reason: typeof entry.reason === "string" ? entry.reason : null,
+      http: typeof entry.http === "number" ? entry.http : null,
+    };
+  }
+  return out;
+}
+
+/**
+ * #4238 W1-3: a channel is still open unless it was sent or terminally
+ * skipped. A consent-pending skip stays open so a later Accept can send.
+ */
+function checkoutStartChannelOpen(
+  verdict: CheckoutStartVerdict | undefined,
+): boolean {
+  if (!verdict) return true;
+  if (verdict.status === "sent") return false;
+  if (verdict.status === "skipped") {
+    return verdict.reason === "consent_pending_retryable";
+  }
+  return true;
 }
 
 // ── The hook ──────────────────────────────────────────────────────────────────

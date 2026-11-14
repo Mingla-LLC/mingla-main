@@ -44,25 +44,11 @@
       "expectedPresent": true
     },
     {
-      "op": "add_member",
-      "field": "allowed_identifier_references",
-      "key": "getToken",
-      "value": "supabase/functions/_shared/adConversionFire.ts@33884:deps.getToken:grouped_reference:deps.getToken",
-      "expectedAbsent": true
-    },
-    {
       "op": "remove_member",
       "field": "allowed_identifier_references",
       "key": "getToken",
       "value": "supabase/functions/_shared/adConversionFire.ts@37386:deps.getToken:grouped_reference:deps.getToken",
       "expectedPresent": true
-    },
-    {
-      "op": "add_member",
-      "field": "allowed_identifier_references",
-      "key": "getToken",
-      "value": "supabase/functions/_shared/adConversionFire.ts@37520:deps.getToken:grouped_reference:deps.getToken",
-      "expectedAbsent": true
     },
     {
       "op": "add_member",
@@ -119,8 +105,22 @@
       "key": "getToken",
       "value": "supabase/functions/_shared/snapCapi.ts@2918:deps.getToken:grouped_reference:deps.getToken",
       "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@35079:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@40370:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
     }
   ],
-  "resultPolicySha256": "4af66b39e1a1bc8de31a061066ddba2acb705bb06f41e3b4667ff408d8bcbd33",
+  "resultPolicySha256": "76b606adb995c05d2290f2135c305c971de4511e885ff0a5e940a7d64d5f3bfb",
   "reason": "Issue #4238 declares the four consumer CAPI tokens as governed AD_CONVERSION_TOKENS fields, so the resolver's reads are owned and a rewrite that drops one is refused."
 }
