@@ -224,3 +224,50 @@ test("W2-3: the Reddit browser Purchase carries conversionId (the order id) and 
   expect(payload).toEqual({ value: 25, currency: "GBP", conversionId: "ord-1" });
   expect(payload).not.toHaveProperty("conversion_id");
 });
+
+// ── W2-4 (D14): no buyer pixel on host or staff routes ──────────────────────
+
+test("W2-4: initWebAnalytics on a dashboard route injects no pixel script", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/events" });
+  await h.wa.initWebAnalytics("/events");
+  expect(markers(h.injected)).toEqual([]);
+  expect(h.win.fbq).toBeUndefined();
+  expect(h.wa.adPixelsReady()).toBe(false);
+});
+
+test("W2-4: host sign-in loads no pixel and sends no PageView", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/auth" });
+  await h.wa.initWebAnalytics("/auth");
+  expect(markers(h.injected)).toEqual([]);
+  expect(h.win.fbq).toBeUndefined();
+});
+
+test("W2-4: a tab that booted on /e/... sends no PageView after moving into the dashboard", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/e/a/b" });
+  await h.wa.initWebAnalytics("/e/a/b");
+  const fbq = h.win.fbq as { queue: unknown[][] };
+  const pageViews = (): number =>
+    fbq.queue.filter((a) => a[0] === "track" && a[1] === "PageView").length;
+  const before = pageViews();
+  expect(before).toBe(1);
+  const location = h.win.location as Record<string, string>;
+  location.pathname = "/events";
+  location.href = "https://host.usemingla.com/events";
+  await h.wa.initWebAnalytics("/events");
+  h.wa.fireAdPageView();
+  h.wa.fireAdViewContent({ ...PROPS, eventId: "view-1" });
+  expect(pageViews()).toBe(before);
+  expect(fbq.queue.some((a) => a[1] === "ViewContent")).toBe(false);
+  // Back on a buyer page the PageView fires again.
+  location.pathname = "/e/a/c";
+  location.href = "https://host.usemingla.com/e/a/c";
+  h.wa.fireAdPageView();
+  expect(pageViews()).toBe(before + 1);
+});
+
+test("W2-4: turning ads on from the dashboard does not boot buyer pixels", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/account" });
+  await h.wa.savePrivacyChoice({ analytics: true, ads: false });
+  await h.wa.savePrivacyChoice({ analytics: true, ads: true });
+  expect(markers(h.injected)).toEqual([]);
+});

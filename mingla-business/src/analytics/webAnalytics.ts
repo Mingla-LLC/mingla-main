@@ -14,7 +14,7 @@
 
 const noopVoid = (..._args: unknown[]): void => {};
 
-export const initWebAnalytics = async (): Promise<void> => {};
+export const initWebAnalytics = async (_pathname?: string): Promise<void> => {};
 // #2331 — the privacy bar is web-only; native consent is asked in onboarding.
 export interface PrivacyChoice {
   analytics: boolean;

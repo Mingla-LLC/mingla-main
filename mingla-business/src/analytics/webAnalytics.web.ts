@@ -48,6 +48,7 @@ import {
   type SearchEventName,
   type SearchMeasurementProperties,
 } from "@mingla/search-measurement";
+import { isAdPixelRoute, isSignInRoute } from "../utils/coldLoadAuthGates";
 
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
 // literal here so the strict-grep gate sees it at the init site.
@@ -248,6 +249,32 @@ function resolveAdPixelIds(): void {
 
 function hasWindow(): boolean {
   return typeof window !== "undefined";
+}
+
+/**
+ * #4238 W2-4: the live route. A browser always has location.pathname; a
+ * partial test shell without one returns null (treated as a buyer page, the
+ * behaviour before route gating).
+ */
+function currentPathname(): string | null {
+  if (!hasWindow()) return null;
+  const location = (window as unknown as {
+    location?: { pathname?: unknown; href?: unknown };
+  }).location;
+  if (typeof location?.pathname === "string") return location.pathname;
+  if (typeof location?.href === "string") {
+    try {
+      return new URL(location.href).pathname;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** #4238 W2-4 (I-4238-NO-BUYER-PIXEL-ON-HOST-ROUTES). */
+function pixelRouteAllowed(pathname: string | null): boolean {
+  return pathname === null || isAdPixelRoute(pathname);
 }
 
 function isPrivacyChoice(value: unknown): value is PrivacyChoice {
@@ -678,13 +705,19 @@ function ensureAnalyticsBoot(): Promise<void> {
   return bootPromise;
 }
 
-export async function initWebAnalytics(): Promise<void> {
+export async function initWebAnalytics(pathname?: string): Promise<void> {
   if (!hasWindow()) return;
   resolveAdPixelIds();
   // #4238 W2-1: a server-rendered page may already have booted the pixels.
   // bootstrapAdPixels still loads the runtime and adopts them; it never
   // treats the page's flag as "this app's runtime is ready".
-  if (isAdsOn()) await bootstrapAdPixels();
+  // #4238 W2-4: pixels boot only on a buyer pixel route. Host sign-in loads
+  // the runtime code without booting a pixel or sending PageView, so the
+  // explicit host-funnel events can use it.
+  const route = pathname ?? currentPathname();
+  if (isAdsOn() && !pixelRouteAllowed(route)) {
+    if (route !== null && isSignInRoute(route)) await loadAdPixelRuntime();
+  } else if (isAdsOn()) await bootstrapAdPixels();
   if (isAnalyticsOn()) await ensureAnalyticsBoot();
 }
 
@@ -838,13 +871,24 @@ let adPixelRuntimePromise: Promise<
 > | null = null;
 let adPixelRuntime: typeof import("./adPixelRuntime.web") | null = null;
 
+/** #4238 W2-4: load the runtime code only (no provider boot, no PageView). */
+async function loadAdPixelRuntime(): Promise<
+  typeof import("./adPixelRuntime.web")
+> {
+  adPixelRuntimePromise ??= import("./adPixelRuntime.web");
+  return await adPixelRuntimePromise;
+}
+
 /** Load the provider shims on arrival without placing them in the eager chunk. */
-async function bootstrapAdPixels(): Promise<void> {
+async function bootstrapAdPixels(
+  pathname: string | null = currentPathname(),
+): Promise<void> {
   // Jest/SSR can execute consent actions without a browser global. Keep the
   // web-only runtime out of that path just as initWebAnalytics already does.
   if (!hasWindow() || !isAdsOn() || adPixelsBootstrapped) return;
-  adPixelRuntimePromise ??= import("./adPixelRuntime.web");
-  const runtime = await adPixelRuntimePromise;
+  // #4238 W2-4: never boot buyer pixels on a host or staff route.
+  if (!pixelRouteAllowed(pathname)) return;
+  const runtime = await loadAdPixelRuntime();
   // #4238 W2-1 (I-4238-SPA-PIXEL-RUNTIME-ALWAYS-LOADS): the runtime is
   // assigned before any early return, so a server-booted page never leaves
   // every browser conversion a silent no-op.
@@ -896,6 +940,9 @@ function stopAdPixels(): void {
 /** Public-page view — PageView across the four pixels. No-op until bootstrapped. */
 export function fireAdPageView(): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  // #4238 W2-4: a tab that booted on /e/... and moved into the dashboard
+  // sends no buyer PageView there.
+  if (!pixelRouteAllowed(currentPathname())) return;
   adPixelRuntime?.fireAdPageView();
 }
 
@@ -913,6 +960,7 @@ export function fireAdViewContent(
   },
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  if (!pixelRouteAllowed(currentPathname())) return;
   adPixelRuntime?.fireAdViewContent(props);
 }
 

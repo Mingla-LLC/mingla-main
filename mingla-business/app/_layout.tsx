@@ -285,7 +285,7 @@ function RootLayoutInner(): React.ReactElement {
   const pathname = usePathname();
   useEffect(() => {
     if (Platform.OS !== "web") return;
-    void initWebAnalytics().then(() => {
+    void initWebAnalytics(pathname).then(() => {
       captureHostPublicSearchPageView(pathname);
     });
   }, [pathname]);
@@ -614,7 +614,7 @@ function RootLayoutInner(): React.ReactElement {
         // guarded here so native never even invokes it. Never throws (graceful
         // no-op when keys are absent), so a missing env can't break boot.
         if (Platform.OS === "web") {
-          void initWebAnalytics();
+          void initWebAnalytics(pathname);
         }
       }, 0);
     });

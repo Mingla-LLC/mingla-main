@@ -126,7 +126,7 @@ describe("#3176 Host public search measurement", () => {
       .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
     expect(layout).toMatch(
-      /const pathname = usePathname\(\);\s*useEffect\(\(\) => \{\s*if \(Platform\.OS !== "web"\) return;\s*void initWebAnalytics\(\)\.then\(\(\) => \{\s*captureHostPublicSearchPageView\(pathname\);\s*\}\);\s*\}, \[pathname\]\);/,
+      /const pathname = usePathname\(\);\s*useEffect\(\(\) => \{\s*if \(Platform\.OS !== "web"\) return;\s*void initWebAnalytics\(pathname\)\.then\(\(\) => \{\s*captureHostPublicSearchPageView\(pathname\);\s*\}\);\s*\}, \[pathname\]\);/,
     );
   });
 
