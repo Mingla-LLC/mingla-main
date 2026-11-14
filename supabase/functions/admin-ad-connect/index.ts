@@ -109,6 +109,7 @@ import {
   tiktokFetchAdvertiser,
   tiktokFetchIdentity,
   tiktokFetchPixels,
+  selectTikTokPixel,
   tiktokFetchPurchaseSignal28d,
   type TikTokPixelSnapshot,
 } from "../_shared/tiktok.ts";
@@ -749,7 +750,17 @@ serve(async (req: Request): Promise<Response> => {
       } catch {
         pixels = [];
       }
-      const pixel = pixels[0] ?? null;
+      // #4238 W1-4: the Events API sends to the pixel CODE (Step 0 Z1). Admin
+      // may pass the browser's code as expected_pixel_code; see
+      // selectTikTokPixel for how a missing or ambiguous code is handled.
+      const rawExpectedCode = typeof body.expected_pixel_code === "string"
+        ? body.expected_pixel_code.trim()
+        : "";
+      const expectedPixelCode = /^[A-Za-z0-9]{6,64}$/.test(rawExpectedCode)
+        ? rawExpectedCode
+        : null;
+      const pixelSelection = selectTikTokPixel(pixels, expectedPixelCode);
+      const pixel = pixelSelection.pixel;
       let purchaseEvents28d: number | null = null;
       if (pixel) {
         try {
@@ -781,6 +792,8 @@ serve(async (req: Request): Promise<Response> => {
           identity_username: identity.username,
           identity_available_status: identity.availableStatus,
           pixel_id: pixel?.pixelId ?? null,
+          pixel_code: pixelSelection.pixelCode,
+          pixel_code_mismatch: pixelSelection.mismatch,
           pixel_activity_status: pixel?.activityStatus ?? null,
           pixel_events_count: pixel?.eventsCount ?? 0,
           purchase_events_28d: purchaseEvents28d,

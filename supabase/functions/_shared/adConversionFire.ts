@@ -766,7 +766,10 @@ export async function resolveSenderConnection(
       };
     case "tiktok":
       return {
-        pixelId: str(extra.pixel_id),
+        // #4238 W1-4 (I-4238-TIKTOK-PIXEL-CODE, Step 0 Z1): event_source_id is
+        // the pixel CODE the browser loads. No fallback to the numeric
+        // extra.pixel_id: a missing code is failed/no_pixel and alerts.
+        pixelId: str(extra.pixel_code),
         tokenEnvVar: str(extra.events_env_var) ?? "TIKTOK_EVENTS_ACCESS_TOKEN",
         lane,
       };

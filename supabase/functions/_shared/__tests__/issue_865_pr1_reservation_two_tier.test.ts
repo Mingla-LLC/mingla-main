@@ -83,7 +83,8 @@ const tokenFor = (
 ): string | undefined => (PROVISIONED.has(n) ? "tok" : undefined);
 
 const AD_CONNECTIONS = {
-  ad_connections: { extra: { dataset_id: "px-meta", pixel_id: "px" } },
+  // #4238 W1-4: TikTok sends to extra.pixel_code (never the numeric pixel_id).
+  ad_connections: { extra: { dataset_id: "px-meta", pixel_id: "px", pixel_code: "px" } },
 };
 
 // ── TIER 1: PAID reservation → value'd Purchase ───────────────────────────────

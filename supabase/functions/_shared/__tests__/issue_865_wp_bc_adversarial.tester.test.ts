@@ -102,7 +102,8 @@ const ORDER_TABLES = {
   // NAME (meta→META_CAPI_ACCESS_TOKEN, tiktok→TIKTOK_EVENTS_ACCESS_TOKEN,
   // snap→SNAPCHAT_CAPI_TOKEN, reddit→REDDIT_ADS_CAPI_TOKEN) — so getToken can
   // hand tokens to the first three and leave reddit pending-config.
-  ad_connections: { extra: { dataset_id: "px-meta", pixel_id: "px" } },
+  // #4238 W1-4: TikTok sends to extra.pixel_code (never the numeric pixel_id).
+  ad_connections: { extra: { dataset_id: "px-meta", pixel_id: "px", pixel_code: "px" } },
 };
 
 // ═══ A1 — REAL AbortController timeout is absorbed as 'timeout' (RT-1) ════════
@@ -192,7 +193,7 @@ Deno.test("A4 fireAdConversion: venue reservation keys on reservationId with the
       guest_email: PLAINTEXT_EMAIL, guest_phone_e164: PLAINTEXT_PHONE, payment_status: "paid",
     },
     ad_conversions: null,
-    ad_connections: { extra: { dataset_id: "px", pixel_id: "px" } },
+    ad_connections: { extra: { dataset_id: "px", pixel_id: "px", pixel_code: "px" } },
   });
   const { fn, calls } = capturingFetch();
   await fireAdConversion(client, { reservationId: RESV_ID, surface: "web", eventType: "reservation" }, {
