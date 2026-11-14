@@ -179,12 +179,13 @@ async function resolveTransactionIdentity(params: {
   };
 }
 
+/** The transaction's refund list (as Paystack returns it) plus this claim's match. */
 async function findExistingRefund(params: {
   transactionId: number;
   merchantNote: string;
   amountSubunits: number;
   providerRefundId?: string | null;
-}): Promise<PaystackRefundResult | null> {
+}): Promise<{ existing: PaystackRefundResult | null; rows: RefundRecord[] }> {
   const secret = resolvePaystackSecretKey();
   const query = new URLSearchParams({
     transaction: String(params.transactionId),
@@ -209,8 +210,49 @@ async function findExistingRefund(params: {
       (params.providerRefundId == null ||
         refundId === params.providerRefundId);
   });
-  if (!match) return null;
-  return resultFromRecord(match, true);
+  return { existing: match ? resultFromRecord(match, true) : null, rows };
+}
+
+/**
+ * #4430 P-3: after any partial refund Paystack reports the transaction as
+ * `reversed` or `reversal-pending`, so a later partial refund on the same
+ * payment (a counter-offer difference after a dispute split) was refused for
+ * good. A PARTIAL refund on such a transaction is allowed only when the refund
+ * list was read, no refund matches this claim, and every non-failed refund
+ * plus this one stays within the transaction amount. A full refund, an
+ * unreadable list, a list with no live refund to explain the reversal (#1430)
+ * or an over-refund stays ambiguous. `success` is untouched.
+ */
+function partialRefundFitsReversedTransaction(
+  identity: VerifiedTransactionIdentity,
+  rows: RefundRecord[] | null,
+  amountSubunits: number | undefined,
+): boolean {
+  if (identity.state === "success") return false;
+  if (amountSubunits === undefined || rows === null) return false;
+  if (
+    !Number.isSafeInteger(amountSubunits) || amountSubunits <= 0 ||
+    amountSubunits >= identity.amount
+  ) return false;
+  let refunded = 0;
+  let known = 0;
+  for (const row of rows) {
+    if (providerTransactionId(row.transaction) !== identity.id) continue;
+    if (
+      paystackRefundOutcomeStatus(
+        typeof row.status === "string" ? row.status : null,
+      ) === "failed"
+    ) continue;
+    const amount = Number(row.amount ?? NaN);
+    if (!Number.isSafeInteger(amount) || amount < 0) return false;
+    refunded += amount;
+    known += 1;
+  }
+  // #1430: the reversal must be explained by a refund on the list. A reversed
+  // transaction whose list shows no live refund (a lagging list, or a lost
+  // response) stays ambiguous, exactly as before.
+  if (known === 0) return false;
+  return refunded + amountSubunits <= identity.amount;
 }
 
 async function resolveAndFindExistingRefund(params: {
@@ -220,9 +262,11 @@ async function resolveAndFindExistingRefund(params: {
   amountSubunits?: number;
   currency?: string;
   providerRefundId?: string | null;
-}): Promise<{
+}, options: { tolerateUnreadableListWhenReversed?: boolean } = {}): Promise<{
   identity: VerifiedTransactionIdentity;
   existing: PaystackRefundResult | null;
+  /** The refund list; null only when it could not be read on a non-success transaction. */
+  rows: RefundRecord[] | null;
 }> {
   const identity = await resolveTransactionIdentity({
     reference: params.transaction,
@@ -234,13 +278,30 @@ async function resolveAndFindExistingRefund(params: {
   ) {
     throw new PaystackApiError("Paystack transaction identity mismatch", 502);
   }
-  const existing = await findExistingRefund({
+  const lookup = {
     transactionId: identity.id,
     merchantNote: params.merchantNote,
     amountSubunits: params.amountSubunits ?? identity.amount,
     providerRefundId: params.providerRefundId,
-  });
-  return { identity, existing };
+  };
+  if (
+    identity.state === "success" || !options.tolerateUnreadableListWhenReversed
+  ) {
+    const { existing, rows } = await findExistingRefund({ ...lookup });
+    return { identity, existing, rows };
+  }
+  // #4430 P-3 (partial refunds only): on a reversed transaction an
+  // unreadable list is returned as rows=null, which the caller treats as
+  // ambiguous, never as "no refunds yet".
+  try {
+    const { existing, rows } = await findExistingRefund({ ...lookup });
+    return { identity, existing, rows };
+  } catch (error) {
+    if (error instanceof PaystackApiError) {
+      return { identity, existing: null, rows: null };
+    }
+    throw error;
+  }
 }
 
 export async function reconcilePaystackRefund(params: {
@@ -282,9 +343,22 @@ export async function createPaystackRefund(params: {
       422,
     );
   }
-  const reconciliation = await resolveAndFindExistingRefund(params);
+  const partialOnly = {
+    tolerateUnreadableListWhenReversed: params.amountSubunits !== undefined,
+  };
+  const reconciliation = await resolveAndFindExistingRefund(
+    params,
+    partialOnly,
+  );
   if (reconciliation.existing) return reconciliation.existing;
-  if (reconciliation.identity.state !== "success") {
+  if (
+    reconciliation.identity.state !== "success" &&
+    !partialRefundFitsReversedTransaction(
+      reconciliation.identity,
+      reconciliation.rows,
+      params.amountSubunits,
+    )
+  ) {
     throw new PaystackApiError(
       "paystack_refund_transaction_state_ambiguous",
       409,
@@ -315,11 +389,19 @@ export async function createPaystackRefund(params: {
     if (isDuplicateRefundSignal(res.status, providerCode, message)) {
       const duplicateReconciliation = await resolveAndFindExistingRefund(
         params,
+        partialOnly,
       );
       if (duplicateReconciliation.existing) {
         return duplicateReconciliation.existing;
       }
-      if (duplicateReconciliation.identity.state !== "success") {
+      if (
+        duplicateReconciliation.identity.state !== "success" &&
+        !partialRefundFitsReversedTransaction(
+          duplicateReconciliation.identity,
+          duplicateReconciliation.rows,
+          params.amountSubunits,
+        )
+      ) {
         throw new PaystackApiError(
           "paystack_refund_transaction_state_ambiguous",
           409,
