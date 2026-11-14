@@ -3716,7 +3716,8 @@
         "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
         "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
         "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql",
-        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
+        "supabase/functions/_shared/paystackRefunds.ts"
       ]
     }
   ]
