@@ -117,10 +117,10 @@
       "op": "add_member",
       "field": "allowed_identifier_references",
       "key": "getToken",
-      "value": "supabase/functions/_shared/adConversionFire.ts@42864:deps.getToken:grouped_reference:deps.getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@43134:deps.getToken:grouped_reference:deps.getToken",
       "expectedAbsent": true
     }
   ],
-  "resultPolicySha256": "97429c2b7d17aac5a192dd66951e1881eed0037585736930bfe9af401472c880",
+  "resultPolicySha256": "e1f513760ea256b3735370e401ab83500f15b446ba0197b7ece5404330560280",
   "reason": "Issue #4238 declares the four consumer CAPI tokens as governed AD_CONVERSION_TOKENS fields, so the resolver's reads are owned and a rewrite that drops one is refused."
 }

@@ -1107,6 +1107,13 @@ export async function fireAdCheckoutStart(
   }
 }
 
+/** #4238 W1-6: the stored per-channel verdicts (an object), else empty. */
+function priorProviderResponse(raw: unknown): Record<string, unknown> {
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? { ...(raw as Record<string, unknown>) }
+    : {};
+}
+
 const CHECKOUT_START_CHANNELS: Channel[] = ["meta", "tiktok", "snap"];
 
 interface CheckoutStartVerdict {
@@ -1198,13 +1205,18 @@ export async function fireAdConversion(
         // the columns the EARLY browser row left NULL — without ever clobbering an
         // already-set value.
         // #4238 W1-5: created_at is the first fire's time, reused by retries.
-        "event_id, created_at, brand_id, order_id, stay_group_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
+        // #4238 W1-6: provider_response is read so a fire that attempts a
+        // subset of channels merges into it instead of erasing the others.
+        "event_id, created_at, brand_id, order_id, stay_group_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status, provider_response",
       )
       .eq("event_id", key)
       .maybeSingle();
     const existingRow = existing as
       | Record<string, string | number | null>
       | null;
+    const existingResponse = priorProviderResponse(
+      (existing as { provider_response?: unknown } | null)?.provider_response,
+    );
 
     const channelPending: Record<Channel, boolean> = {
       meta: (existingRow?.[STATUS_COL.meta] ?? "pending") === "pending",
@@ -1315,13 +1327,20 @@ export async function fireAdConversion(
       const statusUpdate: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
         shared_with_platforms: false,
-        provider_response: Object.fromEntries(
-          results.map((r) => [r.channel, {
-            status: r.status,
-            reason: r.reason,
-            http: null,
-          }]),
-        ),
+        // #4238 W1-6: record only the still-pending channels; a channel that
+        // already settled keeps its earlier verdict.
+        provider_response: {
+          ...existingResponse,
+          ...Object.fromEntries(
+            results
+              .filter((r) => channelPending[r.channel])
+              .map((r) => [r.channel, {
+                status: r.status,
+                reason: r.reason,
+                http: null,
+              }]),
+          ),
+        },
       };
       if (rejected) {
         for (const r of results) {
@@ -1408,7 +1427,9 @@ export async function fireAdConversion(
       updated_at: new Date().toISOString(),
       shared_with_platforms: true,
     };
-    const providerResponse: Record<string, unknown> = {};
+    // #4238 W1-6 (I-4238-PROVIDER-RESPONSE-MERGED): channels not attempted now
+    // keep their earlier verdict.
+    const providerResponse: Record<string, unknown> = { ...existingResponse };
     for (const r of results) {
       statusUpdate[STATUS_COL[r.channel]] = r.status;
       providerResponse[r.channel] = {

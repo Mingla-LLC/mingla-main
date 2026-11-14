@@ -1,4 +1,5 @@
 // MINGLA-INVARIANT: I-4238-EVENT-TIME-IS-ACTION-TIME | issue #4238 | a retried conversion carries the same event_time as its first send (the caller's action time, else the first fire's ad_conversions.created_at), and a website server event always carries event_source_url (the buyer's public page, or the checkout surface for checkout start).
+// MINGLA-INVARIANT: I-4238-PROVIDER-RESPONSE-MERGED | issue #4238 | a fire that attempts a subset of channels never erases another channel's recorded verdict in ad_conversions.provider_response.
 /**
  * #4238 W1-5 (D16). Server events used send time as event_time and carried no
  * page URL, so a retry two hours later looked like a new, page-less event.
@@ -202,4 +203,43 @@ Deno.test("#4238 W1-5 URL helpers: path per event type, brand page, nothing gues
   assertEquals(brandPageUrl("lagos-nights"), "https://host.usemingla.com/b/lagos-nights");
   assertEquals(checkoutStartUrl(EVENT_UUID, "trip"), `https://host.usemingla.com/checkout-trip/${EVENT_UUID}`);
   assertEquals(checkoutStartUrl("not an id", "event"), null);
+});
+
+Deno.test("#4238 W1-6 a retry attempting only TikTok keeps Google's earlier no_google_click verdict", async () => {
+  const nowRef = { ms: T };
+  const { client, state } = statefulDb(nowRef);
+  const attempted: string[][] = [];
+  let round = 0;
+  const sender = (channel: "meta" | "tiktok" | "snap" | "reddit" | "google") =>
+  (_input: ConversionSendInput): Promise<SenderResult> => {
+    attempted[round] = [...(attempted[round] ?? []), channel];
+    if (channel === "google") {
+      return Promise.resolve({ channel, status: "skipped", reason: "no_google_click" });
+    }
+    if (channel === "tiktok" && round === 0) {
+      return Promise.resolve({ channel, status: "failed", reason: "http_401", httpStatus: 401 });
+    }
+    return Promise.resolve({ channel, status: "sent", httpStatus: 200 });
+  };
+  const senders = {
+    meta: sender("meta"),
+    tiktok: sender("tiktok"),
+    snap: sender("snap"),
+    reddit: sender("reddit"),
+    google: sender("google"),
+  };
+  await fireAdConversion(client, { orderId: ORDER_ID }, { senders, now: () => nowRef.ms });
+  const row = state.ad_conversions as Record<string, unknown>;
+  assertEquals(
+    (row.provider_response as Record<string, { reason: string }>).google.reason,
+    "no_google_click",
+  );
+  row.tiktok_events_status = "pending"; // the retry lane's claim
+  round = 1;
+  await fireAdConversion(client, { orderId: ORDER_ID }, { senders, now: () => nowRef.ms });
+  assertEquals(attempted[1], ["tiktok"]);
+  const merged = row.provider_response as Record<string, { status: string; reason: string | null }>;
+  assertEquals(merged.google.reason, "no_google_click");
+  assertEquals(merged.meta.status, "sent");
+  assertEquals(merged.tiktok.status, "sent");
 });
