@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "shared-module-policy-patch",
+  "ownerIssue": "#4238",
+  "target": {
+    "kind": "shared_module",
+    "module_path": "supabase/functions/_shared/capiTokens.ts"
+  },
+  "basePolicySha256": "7d1f150b0111bc698d971ade3f2a4444297d0b171b8dfcc3c88328c580157332",
+  "operations": [
+    {
+      "op": "add_member",
+      "field": "allowed_bundle_fields",
+      "key": "AD_CONVERSION_TOKENS",
+      "value": "META_CAPI_ACCESS_TOKEN",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_bundle_fields",
+      "key": "AD_CONVERSION_TOKENS",
+      "value": "REDDIT_ADS_CAPI_TOKEN",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_bundle_fields",
+      "key": "AD_CONVERSION_TOKENS",
+      "value": "SNAPCHAT_CAPI_TOKEN",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_bundle_fields",
+      "key": "AD_CONVERSION_TOKENS",
+      "value": "TIKTOK_EVENTS_ACCESS_TOKEN",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "ca7d50b131497a4edb61ce48cfc1512e3e54291f920a9c5b1c5a7548d31a7f1f",
+  "reason": "Issue #4238 declares the four consumer CAPI tokens as governed AD_CONVERSION_TOKENS fields, so the resolver's reads are owned and a rewrite that drops one is refused."
+}
