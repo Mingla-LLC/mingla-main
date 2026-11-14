@@ -54,6 +54,7 @@ import {
   type AppsFlyerDeviceRow,
   fetchAppsFlyerDevice,
   formatEventTime,
+  hostMoneyEventValues,
 } from "./appsFlyerDevice.ts";
 import { majorFromMinor } from "./money/formatMinor.ts";
 // #4238 W3-3 / W5-1: the host-funnel event names and per-platform hashing.
@@ -156,6 +157,8 @@ export interface HostEventInput {
   valueCents?: number | null;
   currency?: string | null;
   brandId?: string | null;
+  /** #4238 W3-5: the processor of a first sale (AppsFlyer event value). */
+  provider?: "stripe" | "paystack" | null;
 }
 
 export interface SenderDeps {
@@ -1719,6 +1722,97 @@ async function fireNativePurchase(
 }
 
 /**
+ * #4238 W3-5: post `mingla_host_first_sale` to the Host app for the owner,
+ * once (atomic claim on appsflyer_status). Plain values, never revenue (W6-2).
+ * Returns the provider_response to carry forward. Never throws.
+ */
+async function postHostFirstSaleAppsFlyer(
+  supabase: SupabaseClient,
+  input: {
+    key: string;
+    ctx: ConversionContext;
+    lane: Lane;
+    surface: Surface;
+    existingResponse: Record<string, unknown>;
+    postAppsFlyer: AppsFlyerPostFn | null;
+    provider: string | null;
+    subjectId: string | null;
+    eventTimeMs: number;
+  },
+): Promise<Record<string, unknown>> {
+  const { key, ctx } = input;
+  const response: Record<string, unknown> = { ...input.existingResponse };
+  const storedSale = response.host_sale && typeof response.host_sale === "object"
+    ? response.host_sale as Record<string, unknown>
+    : {};
+  const provider = input.provider ??
+    (typeof storedSale.provider === "string" ? storedSale.provider : null);
+  try {
+    // The row must exist for the claim (and for the retry to find it).
+    await supabase.from("ad_conversions").upsert({
+      event_id: key,
+      event_type: ctx.eventType,
+      event_name: rowEventName(ctx.eventType, ctx.hostKind ?? null),
+      value_cents: ctx.valueCents,
+      currency: ctx.currency,
+      surface: input.surface,
+      lane: input.lane,
+      brand_id: ctx.brandId,
+      hashed_email: ctx.hashedEmail,
+      hashed_phone: ctx.hashedPhone,
+      shared_with_platforms: false,
+    }, { onConflict: "event_id", ignoreDuplicates: true });
+    if (provider) response.host_sale = { provider };
+    const owner = input.subjectId;
+    let status: SendStatus | null = null;
+    let reason: string | null = null;
+    if (!owner) {
+      status = "skipped";
+      reason = "no_owner";
+    } else if (input.postAppsFlyer === null) {
+      // This caller holds no AppsFlyer secret: the hourly retry posts it.
+      status = null;
+    } else if (!(await claimAppsFlyerSend(supabase, key))) {
+      status = null; // a concurrent fire owns the post
+    } else {
+      const ok = await input.postAppsFlyer({
+        supabase,
+        userId: owner,
+        app: "business",
+        eventName: "mingla_host_first_sale",
+        eventTime: formatEventTime(new Date(input.eventTimeMs)),
+        eventValues: {
+          af_content_id: ctx.brandId ?? undefined,
+          brand_id: ctx.brandId ?? undefined,
+          milestone: "first_ticket_sold",
+          provider: provider ?? undefined,
+          ...hostMoneyEventValues(
+            "ticket_gross",
+            ctx.valueCents ?? 0,
+            ctx.currency ?? "",
+          ),
+        },
+      });
+      status = ok ? "sent" : "failed";
+      reason = ok ? null : "appsflyer_post_failed";
+    }
+    const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (status !== null) {
+      update.appsflyer_status = status;
+      response.appsflyer = { status, reason, http: null };
+    }
+    update.provider_response = response;
+    await supabase.from("ad_conversions").update(update).eq("event_id", key);
+  } catch (err) {
+    console.warn(
+      "[adConversionFire] host first-sale AppsFlyer absorbed (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  return response;
+}
+
+/**
  * #4238 W3-3: record a conversion that is never shared (no web context) and
  * mark every still-pending channel terminally skipped with `reason`.
  */
@@ -1872,7 +1966,7 @@ export async function fireAdConversion(
     const existingRow = existing as
       | Record<string, string | number | null>
       | null;
-    const existingResponse = priorProviderResponse(
+    let existingResponse = priorProviderResponse(
       (existing as { provider_response?: unknown } | null)?.provider_response,
     );
 
@@ -1898,7 +1992,9 @@ export async function fireAdConversion(
       google: existingRow ? existingRow[STATUS_COL.google] === "pending" : true,
     };
     // #4238 W4-1: a native order is settled only when AppsFlyer is too.
-    const appsFlyerOpen = ctx.nativeCheckout === true &&
+    // #4238 W3-5: so is a host's first sale (mingla_host_first_sale).
+    const appsFlyerOpen =
+      (ctx.nativeCheckout === true || ctx.hostKind === "host_first_sale") &&
       (existingRow?.appsflyer_status ?? "pending") === "pending";
     if (
       existingRow && !channelPending.meta && !channelPending.tiktok &&
@@ -1928,6 +2024,29 @@ export async function fireAdConversion(
           ? Date.parse(existingRow.created_at)
           : now(),
         postAppsFlyer: deps.postAppsFlyer ?? null,
+      });
+    }
+
+    // #4238 W3-5 (I-4238-FIRST-SALE-BOTH-PROVIDERS): the host's first sale
+    // reaches AppsFlyer once, whatever the web context (most hosts are
+    // native-only). Without an injected poster it stays pending for the retry.
+    if (ctx.hostKind === "host_first_sale" && appsFlyerOpen) {
+      existingResponse = await postHostFirstSaleAppsFlyer(supabase, {
+        key,
+        ctx,
+        lane,
+        surface,
+        existingResponse,
+        postAppsFlyer: deps.postAppsFlyer ?? null,
+        provider: input.hostEvent?.provider ?? null,
+        subjectId: input.hostEvent?.subjectId ?? null,
+        eventTimeMs: typeof input.eventTimeMs === "number" &&
+            Number.isFinite(input.eventTimeMs)
+          ? input.eventTimeMs
+          : typeof existingRow?.created_at === "string" &&
+              Number.isFinite(Date.parse(existingRow.created_at))
+          ? Date.parse(existingRow.created_at)
+          : now(),
       });
     }
 

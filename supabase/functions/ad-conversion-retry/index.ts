@@ -111,7 +111,7 @@ serve(async (req) => {
   }
 
   // #4238 W4-1 (I-4238-NATIVE-PURCHASE-VIA-APPSFLYER): native purchases whose
-  // AppsFlyer post is still pending. Their ad channels are already skipped, so
+  // AppsFlyer post is still pending (and #4238 W3-5 host first sales). Their ad channels are already skipped, so
   // the query above never selects them. The fire claims the post atomically.
   const nativeBudget = Math.max(
     0,
@@ -126,8 +126,11 @@ serve(async (req) => {
       )
       .gte("created_at", configWindowStart)
       .lte("updated_at", graceCutoff)
-      .eq("event_type", "purchase")
-      .in("surface", ["ios", "android"])
+      // #4238 W3-5: plus host first sales whose mingla_host_first_sale post
+      // was left pending by a caller without the AppsFlyer secrets (Paystack).
+      .or(
+        "and(event_type.eq.purchase,surface.in.(ios,android)),event_type.eq.host_first_sale",
+      )
       .eq("appsflyer_status", "pending")
       .order("updated_at", { ascending: true })
       .limit(nativeBudget);

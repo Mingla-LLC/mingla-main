@@ -5,6 +5,8 @@
  * AppsFlyer secrets to every function that records a conversion.
  */
 
+import { majorFromMinor } from "./money/formatMinor.ts";
+
 // deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
 
@@ -73,4 +75,102 @@ export function formatEventTime(d: Date): string {
     ".",
     pad(d.getUTCMilliseconds(), 3),
   ].join("");
+}
+
+/**
+ * #4238 W6-2 (I-4238-HOST-EVENTS-NO-REVENUE): Host money (a host's first ticket
+ * sale, a payout) is the host's money, not Mingla revenue, so it never rides
+ * af_revenue. It goes as plain values: the stored minor amount, the major
+ * amount by the currency's own exponent (JPY 1500 stays 1500), and the code.
+ */
+export function hostMoneyEventValues(
+  prefix: "ticket_gross" | "payout",
+  amountMinor: number,
+  currency: string,
+): Record<string, string | number> {
+  const minor = Number.isFinite(amountMinor) ? Math.round(amountMinor) : 0;
+  const code = typeof currency === "string" ? currency.trim().toUpperCase() : "";
+  return {
+    [`${prefix}_minor`]: minor,
+    [prefix]: majorFromMinor(minor, code),
+    currency: code,
+  };
+}
+
+/**
+ * Resolve the Mingla Host owner user_id for a brand via creator_accounts.
+ * `brands.account_id` references `creator_accounts.id` which is the auth user
+ * UUID. Returns null if the brand has no owner (data anomaly) or is missing.
+ */
+export async function resolveBrandOwnerUserId(
+  supabase: SupabaseClient,
+  brandId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("brands")
+    .select("account_id")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error) {
+    console.warn(
+      "[AppsFlyerS2S] brand owner lookup failed:",
+      error.message ?? String(error),
+    );
+    return null;
+  }
+  return (data?.account_id as string | null) ?? null;
+}
+
+/**
+ * Set a brand milestone column atomically. Returns true if the column was
+ * NULL prior to this call (i.e. this is the "first" occurrence and the caller
+ * should fire the S2S event). Returns false if the column was already set
+ * (idempotent — the event already fired in a prior webhook).
+ *
+ * Uses a single UPDATE with WHERE clause on the NULL column to avoid a
+ * lock-prone two-step read/write race. The row is upserted first if missing.
+ */
+export async function claimBrandMilestone(
+  supabase: SupabaseClient,
+  brandId: string,
+  column:
+    | "first_ticket_sold_at"
+    | "first_payout_at"
+    // `first_activated_at` = Stripe charges_enabled (CHARGE-ready).
+    | "first_activated_at"
+    // #3645 PR10 — Paystack payout bank attached (PAYOUT-ready).
+    | "first_bank_added_at",
+): Promise<boolean> {
+  // Ensure the milestone row exists. No-op if already present.
+  const { error: upsertError } = await supabase
+    .from("brand_appsflyer_milestones")
+    .upsert({ brand_id: brandId }, { onConflict: "brand_id" });
+  if (upsertError) {
+    console.warn(
+      "[AppsFlyerS2S] milestone upsert failed:",
+      upsertError.message ?? String(upsertError),
+    );
+    return false;
+  }
+
+  // Atomic claim: UPDATE ... WHERE column IS NULL. Postgres returns the
+  // affected row only if the WHERE matched, so we know whether we won the
+  // race. RETURNING is necessary because supabase-js returns affected-row
+  // data only via .select() chained after .update().
+  const nowIso = new Date().toISOString();
+  const { data, error: updateError } = await supabase
+    .from("brand_appsflyer_milestones")
+    .update({ [column]: nowIso, updated_at: nowIso })
+    .eq("brand_id", brandId)
+    .is(column, null)
+    .select("brand_id")
+    .maybeSingle();
+  if (updateError) {
+    console.warn(
+      `[AppsFlyerS2S] milestone claim ${column} failed:`,
+      updateError.message ?? String(updateError),
+    );
+    return false;
+  }
+  return data !== null;
 }

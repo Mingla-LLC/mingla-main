@@ -10,6 +10,7 @@ export type Row = Record<string, unknown>;
 const UNIQUE: Record<string, string[]> = {
   ad_conversions: ["event_id"],
   ad_match_contexts: ["subject_type", "subject_id"],
+  brand_appsflyer_milestones: ["brand_id"],
 };
 
 const CONVERSION_DEFAULTS: Row = {
@@ -84,6 +85,10 @@ export function hostFakeDb(seed: Record<string, Row[]> = {}) {
       },
       eq: (col: string, val: unknown) => {
         filters.push((r) => r[col] === val);
+        return builder;
+      },
+      neq: (col: string, val: unknown) => {
+        filters.push((r) => r[col] !== val);
         return builder;
       },
       is: (col: string, val: unknown) => {

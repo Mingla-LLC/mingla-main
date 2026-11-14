@@ -76,11 +76,15 @@ Deno.test("#4238 W6-2 Stripe first sale is mingla_host_first_sale and no Host S2
     s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
   const read = (rel: string) => Deno.readTextFile(new URL(rel, import.meta.url)).then(strip);
   const router = await read("../stripeWebhookRouter.ts");
-  assert(router.includes('eventName: "mingla_host_first_sale"'));
+  // #4238 W3-5: the first-sale post moved from the Stripe router into the one
+  // helper both processors use (hostFirstSale.ts → adConversionFire.ts
+  // postHostFirstSaleAppsFlyer); the payout post stays in the router.
+  const fire = await read("../adConversionFire.ts");
+  assert(fire.includes('eventName: "mingla_host_first_sale"'));
+  assert(fire.includes('...hostMoneyEventValues(\n            "ticket_gross",'));
   assert(!router.includes('eventName: "af_purchase"'), "no af_purchase from the Host first sale");
-  assert(router.includes('...hostMoneyEventValues("ticket_gross", amountCents, currency)'));
   assert(router.includes('...hostMoneyEventValues("payout", amountCents, currency)'));
-  for (const rel of ["../stripeWebhookRouter.ts", "../organiserPayoutNotify.ts", "../stripeDisputeHandlers.ts"]) {
+  for (const rel of ["../stripeWebhookRouter.ts", "../organiserPayoutNotify.ts", "../stripeDisputeHandlers.ts", "../hostFirstSale.ts"]) {
     assert(!(await read(rel)).includes("af_revenue"), `${rel} must not send af_revenue`);
   }
 });
