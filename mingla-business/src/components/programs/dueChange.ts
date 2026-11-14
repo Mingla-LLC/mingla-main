@@ -7,7 +7,40 @@
  * the server in the event's time zone) and shows server refusals next to the
  * fields.
  */
-import { toIsoDay, videoDueWords } from "../../utils/creatorProgramFormat";
+import {
+  formatInZone,
+  toIsoDay,
+  videoDueWords,
+  zoneDayAndTime,
+  zoneLabel,
+} from "../../utils/creatorProgramFormat";
+
+/** A stored instant ("…Z" or "+01:00"), not a wall clock ("2026-12-15T12:00"). */
+function hasOffset(value: string): boolean {
+  return /(Z|[+-]\d{2}:?\d{2})$/.test(value);
+}
+
+/**
+ * #4430 item 1: a due in the gig's zone with its label ("Tue Dec 15, 12:00 PM
+ * Lagos time"). A change proposal is saved as the zone's wall clock, so it is
+ * shown as written, with the zone label. No zone: today's phone-time words.
+ */
+export function zonedDueWords(
+  videoDueAt: unknown,
+  postBy: unknown,
+  zone: string | null | undefined,
+): string {
+  if (zone && typeof videoDueAt === "string" && videoDueAt.length > 10) {
+    if (hasOffset(videoDueAt)) {
+      const words = formatInZone(videoDueAt, zone);
+      if (words) return words;
+    } else {
+      const words = formatInZone(`${videoDueAt.slice(0, 16)}:00Z`, "UTC");
+      if (words.endsWith(" UTC")) return `${words.slice(0, -4)} ${zoneLabel(zone)}`;
+    }
+  }
+  return videoDueWords(videoDueAt, postBy);
+}
 
 type TermsLike = Record<string, unknown> & { version?: unknown };
 
@@ -31,19 +64,31 @@ export function agreedVideoDue(input: {
   return { videoDueAt: pick("video_due_at"), postBy: pick("post_by") };
 }
 
-/** "Nov 22, 6:00 PM" for the agreed due. */
-export function agreedVideoDueWords(due: {
-  videoDueAt: string | null;
-  postBy: string | null;
-}): string {
-  return videoDueWords(due.videoDueAt, due.postBy);
+/** The agreed due: "Tue Dec 15, 12:00 PM Lagos time" (zone known) or "Nov 22, 6:00 PM". */
+export function agreedVideoDueWords(
+  due: {
+    videoDueAt: string | null;
+    postBy: string | null;
+  },
+  zone: string | null = null,
+): string {
+  return zonedDueWords(due.videoDueAt, due.postBy, zone);
 }
 
-/** Day ("YYYY-MM-DD") and time ("HH:MM") to prefill the sheet with. */
-export function dueChangeInitial(due: {
-  videoDueAt: string | null;
-  postBy: string | null;
-}): { day: string; time: string } {
+/**
+ * Day ("YYYY-MM-DD") and time ("HH:MM") to prefill the sheet with. #4430 1c:
+ * the server reads the sent wall clock in the gig's zone, so the prefill is
+ * the gig zone's wall clock too, not the phone's.
+ */
+export function dueChangeInitial(
+  due: {
+    videoDueAt: string | null;
+    postBy: string | null;
+  },
+  zone: string | null = null,
+): { day: string; time: string } {
+  const zoned = zone ? zoneDayAndTime(due.videoDueAt, zone) : null;
+  if (zoned) return zoned;
   if (due.videoDueAt) {
     const date = new Date(due.videoDueAt);
     if (!Number.isNaN(date.getTime())) {
@@ -92,12 +137,15 @@ export function dueChangeServerErrors(code: string): DueChangeErrors {
  * Words for an open change: "Proposed: Nov 22, 6:00 PM" for a due change,
  * then any other changed terms.
  */
-export function proposalChangeWords(changes: Record<string, unknown>): string {
+export function proposalChangeWords(
+  changes: Record<string, unknown>,
+  zone: string | null = null,
+): string {
   const parts: string[] = [];
   const due = changes.video_due_at;
   const postBy = changes.post_by;
   if (typeof due === "string" || typeof postBy === "string") {
-    parts.push(`Proposed: ${videoDueWords(due, postBy)}`);
+    parts.push(`Proposed: ${zonedDueWords(due, postBy, zone)}`);
   }
   for (const key of Object.keys(changes)) {
     if (key === "video_due_at" || key === "post_by") continue;
