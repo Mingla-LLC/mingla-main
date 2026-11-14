@@ -21,8 +21,11 @@ const BASELINE_SHA256 =
 // [TEST-MOD-APPROVED #4238] W6-7 (spec allowlist: AuthContext first-time branch
 // only): af_complete_registration once per user + the real sign-in method.
 // Three hunks (import, method, registration call); nothing in the #1881 paths.
+// [TEST-MOD-APPROVED #4238] W3-3 / W4-3 / W6-7 (same first-time branch): the
+// attach import and the server sign-up flag replacing the 30 s window as the
+// first-time decision; nothing in the #1881 paths.
 const APPROVED_PATCH_SHA256 =
-  "13725dab35c5dd907bca2650769aaf5162ce0bd36da71c9373c7016b205f3f12";
+  "dabc8e33450cbcec2070fd738102bfbcc95ccfe9e0c9fb99c2f4f5bc45a85ce0";
 const APPROVED_PATCH_HUNKS = 16;
 
 const SOURCE = fs.readFileSync(

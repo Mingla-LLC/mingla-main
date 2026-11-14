@@ -1,5 +1,6 @@
 // MINGLA-INVARIANT: I-4238-SPA-PIXEL-RUNTIME-ALWAYS-LOADS | issue #4238 | when ads are on, a server-rendered landing page never leaves the app's pixel runtime unset; browser conversions fire with the server's event id.
 // MINGLA-INVARIANT: I-4238-REDDIT-CONVERSIONID | issue #4238 | the Reddit browser dedup key is the platform's documented `conversionId`, and its value equals the server's conversion_id (the Mingla order or reservation id).
+// MINGLA-INVARIANT: I-4238-CLICK-ID-KEEPS-NETWORK | issue #4238 | host web (receiving half) adopts the hand-off first-party click id (mc_click) only when no click id is stored and ads are on; a network click id is never stored under another network's name.
 /**
  * #4238 Wave 2 browser parity on buyer web (jest, node env, hand-rolled DOM).
  *
@@ -308,4 +309,92 @@ test("W2-6: precedence keeps the id, its network and its type together (rdt_cid 
     external_click_id: "r1",
     external_click_id_type: "rdt_cid",
   });
+});
+
+// ── #4238 W3-2: the hand-off click id (mc_click) is adopted on host web ─────
+
+const AD_CLICK_KEY = "mingla_ad_click_v1";
+const storedClick = (h: Harness): string | null => {
+  const raw = (h.win.localStorage as { getItem(k: string): string | null }).getItem(AD_CLICK_KEY);
+  return raw === null ? null : (JSON.parse(raw) as { clickId: string }).clickId;
+};
+
+test("W3-2: landing on host web with ?mc_click=<uuid> and no stored id stores that id", async () => {
+  const id = "5f0c3a1e-4238-4b2a-9c3d-000000000042";
+  const h = loadHarness({ href: `https://host.usemingla.com/auth?fbclid=T4238&mc_click=${id}` });
+  await h.wa.initWebAnalytics("/auth");
+  expect(storedClick(h)).toBe(id);
+  // The sign-in route records no touch of its own (as before).
+  expect(touchBodies(h.fetchMock)).toEqual([]);
+});
+
+test("W3-2: an already stored click id wins; a malformed mc_click is ignored", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/auth?mc_click=5f0c3a1e-4238-4b2a-9c3d-000000000042" });
+  (h.win.localStorage as { setItem(k: string, v: string): void }).setItem(
+    AD_CLICK_KEY,
+    JSON.stringify({ clickId: "first-touch-click", expiresAt: Date.now() + 60_000 }),
+  );
+  await h.wa.initWebAnalytics("/auth");
+  expect(storedClick(h)).toBe("first-touch-click");
+  const bad = loadHarness({ href: "https://host.usemingla.com/auth?mc_click=%3Cscript%3E" });
+  await bad.wa.initWebAnalytics("/auth");
+  expect(storedClick(bad)).toBeNull();
+});
+
+test("W3-2: with ads turned off nothing is adopted", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/auth?mc_click=5f0c3a1e-4238-4b2a-9c3d-000000000042" });
+  await h.wa.savePrivacyChoice({ analytics: false, ads: false });
+  await h.wa.initWebAnalytics("/auth");
+  expect(storedClick(h)).toBeNull();
+});
+
+// ── #4238 W3-4 / W3-3: host sign-up started and host sign-up (browser) ──────
+
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+const fbqCalls = (h: Harness): unknown[][] =>
+  ((h.win.fbq as { queue?: unknown[][] } | undefined)?.queue ?? []);
+
+test("W3-4: the first sign-in attempt fires HostSignUpStarted once, with no PageView", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/auth" });
+  await h.wa.initWebAnalytics("/auth");
+  const id = h.wa.fireHostSignUpStarted();
+  expect(id).toMatch(/^hss:/);
+  await flush();
+  const calls = fbqCalls(h);
+  expect(calls).toContainEqual(["trackCustom", "HostSignUpStarted", {}, { eventID: id }]);
+  expect(calls.some((a) => a[1] === "PageView")).toBe(false);
+  // A second attempt within 24 h fires nothing.
+  expect(h.wa.fireHostSignUpStarted()).toBeNull();
+  await flush();
+  expect(fbqCalls(h).filter((a) => a[1] === "HostSignUpStarted")).toHaveLength(1);
+});
+
+test("W3-4: a browser that has signed in before (known-account flag) fires nothing", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/auth" });
+  h.wa.markHostKnownAccount();
+  expect(h.wa.fireHostSignUpStarted()).toBeNull();
+  await flush();
+  expect(h.win.fbq).toBeUndefined();
+});
+
+test("W3-4: with ads off nothing fires", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/auth" });
+  await h.wa.savePrivacyChoice({ analytics: false, ads: false });
+  expect(h.wa.fireHostSignUpStarted()).toBeNull();
+});
+
+test("W3-3: the browser HostSignUp twin carries the server id on all four pixels, no PageView", async () => {
+  const h = loadHarness({ href: "https://host.usemingla.com/auth/callback" });
+  await h.wa.fireHostFunnelBrowserEvent("host_signup", "host_signup:uid-1");
+  expect(fbqCalls(h)).toContainEqual(["trackCustom", "HostSignUp", {}, { eventID: "host_signup:uid-1" }]);
+  expect(fbqCalls(h).some((a) => a[1] === "PageView")).toBe(false);
+  const snapQueue = (h.win.snaptr as { queue: unknown[][] }).queue;
+  expect(snapQueue).toContainEqual(["track", "SIGN_UP", { client_dedup_id: "host_signup:uid-1" }]);
+  expect(snapQueue.some((a) => a[1] === "PAGE_VIEW")).toBe(false);
+  const rdtQueue = (h.win.rdt as { callQueue: unknown[][] }).callQueue;
+  expect(rdtQueue).toContainEqual([
+    "track",
+    "Custom",
+    { customEventName: "HostSignUp", conversionId: "host_signup:uid-1" },
+  ]);
 });

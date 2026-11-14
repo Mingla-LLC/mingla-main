@@ -23,9 +23,10 @@
 //   2. ad_attribution_touches.user_id = <uid> for that click id while null;
 //   3. when host_signup:<uid> exists and a channel is still pending, fire it
 //      (after the response when the runtime allows).
-// Response: { ok: true, host_signup_event_id: string | null, new_host: boolean }
+// Response: { ok: true, host_signup_event_id: string | null, new_host: boolean | null }
 //   new_host = this host's sign-up row exists AND this call created the
-//   host's context row (true exactly once per host).
+//   host's context row (true exactly once per host); null when the context
+//   could not be written (the app falls back to its own check).
 //
 // MINGLA-INVARIANT reference: I-4238-HOST-FUNNEL-ONCE (issue_4238_attach.test.ts).
 
@@ -222,7 +223,10 @@ export async function handleAttach(
   return json({
     ok: true,
     host_signup_event_id: signupRow ? eventId : null,
-    new_host: signupRow !== null && stored.created,
+    // null = unknown (the context could not be written, e.g. M-2 not applied
+    // yet): the Host app then keeps its own fallback instead of losing the
+    // registration event.
+    new_host: stored.ok ? signupRow !== null && stored.created : null,
   });
 }
 

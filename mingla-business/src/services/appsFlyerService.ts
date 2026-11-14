@@ -410,6 +410,78 @@ function saveInstallAttribution(attribution: HostInstallAttribution): void {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// #4238 W3-3 + W4-3 — the saved install attribution reaches the server, and
+// the server answers whether this is the host's first sign-in
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** What host-attribution-attach answered. newHost null = unknown. */
+export interface HostAttachResult {
+  newHost: boolean | null;
+  hostSignupEventId: string | null;
+}
+
+/** Pure: the server answer, or null when it is not a success. */
+export function parseHostAttachResponse(data: unknown): HostAttachResult | null {
+  if (!data || typeof data !== "object") return null;
+  const body = data as { ok?: unknown; new_host?: unknown; host_signup_event_id?: unknown };
+  if (body.ok !== true) return null;
+  return {
+    newHost: typeof body.new_host === "boolean" ? body.new_host : null,
+    hostSignupEventId:
+      typeof body.host_signup_event_id === "string" ? body.host_signup_event_id : null,
+  };
+}
+
+async function readSavedInstallAttribution(): Promise<Record<string, string> | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const AsyncStorage = (require("@react-native-async-storage/async-storage") as {
+      default: { getItem: (k: string) => Promise<string | null> };
+    }).default;
+    const raw = await AsyncStorage.getItem(HOST_INSTALL_ATTRIBUTION_KEY);
+    if (raw === null) return null;
+    const saved = JSON.parse(raw) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const key of ["media_source", "campaign", "af_sub1", "af_sub2", "af_sub3"]) {
+      const value = saved[key];
+      if (typeof value === "string" && value.length > 0) out[key] = value;
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Called once per sign-in (AuthContext). Sends the Host app's saved install
+ * attribution (never when the host turned analytics off) to
+ * host-attribution-attach, which stores it on the host's match context and
+ * answers new_host from the server's own sign-up record. Null on any failure
+ * (logged): the caller keeps its fallback. Never throws.
+ */
+export async function attachHostAttribution(): Promise<HostAttachResult | null> {
+  try {
+    const optedOut = isAnalyticsOptedOut();
+    const installAttribution = optedOut ? null : await readSavedInstallAttribution();
+    const { data, error } = await supabase.functions.invoke("host-attribution-attach", {
+      body: {
+        surface: Platform.OS === "android" ? "android" : "ios",
+        tracking_opt_out: optedOut,
+        ...(installAttribution ? { install_attribution: installAttribution } : {}),
+      },
+    });
+    if (error) {
+      console.warn("[AppsFlyer] host-attribution-attach failed:", error.message ?? error);
+      return null;
+    }
+    return parseHostAttachResponse(data);
+  } catch (e) {
+    console.warn("[AppsFlyer] host-attribution-attach unavailable:", e);
+    return null;
+  }
+}
+
 function registerInstallConversionData(sdk: AppsFlyerSdk): void {
   if (typeof sdk.onInstallConversionData !== "function") return;
   try {

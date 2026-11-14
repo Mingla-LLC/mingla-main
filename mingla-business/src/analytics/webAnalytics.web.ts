@@ -715,6 +715,9 @@ export async function initWebAnalytics(pathname?: string): Promise<void> {
   // the runtime code without booting a pixel or sending PageView, so the
   // explicit host-funnel events can use it.
   const route = pathname ?? currentPathname();
+  // #4238 W3-2: a hand-off from usemingla.com or a Mingla Site carries its
+  // first-party click id as ?mc_click=; adopt it before anything else runs.
+  adoptHandoffClickId();
   if (isAdsOn() && !pixelRouteAllowed(route)) {
     if (route !== null && isSignInRoute(route)) await loadAdPixelRuntime();
   } else if (isAdsOn()) await bootstrapAdPixels();
@@ -1266,6 +1269,104 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       });
   } catch (err) {
     console.warn("[webAnalytics] captureAdClickIds failed (non-fatal):", err);
+  }
+}
+
+// ── #4238 W3-2: the first-party click id handed over by usemingla.com / Sites ─
+
+/** A first-party click id (attribution-capture mints a UUID). */
+const HANDOFF_CLICK_ID_RE = /^[A-Za-z0-9_-]{8,200}$/;
+
+/**
+ * #4238 W3-2 (I-4238-CLICK-ID-KEEPS-NETWORK): `?mc_click=<click id>` on a host
+ * web landing is the first-party click id the sending site already recorded
+ * (its network id travels under its own name next to it). When no click id is
+ * stored yet, it becomes this browser's first touch, so sign-up and checkout
+ * carry it. A forged or unknown value resolves to no touch on the server and
+ * can never attribute anything. Ads off: nothing is stored. Never throws.
+ */
+export function adoptHandoffClickId(): string | null {
+  if (!hasWindow() || !isAdsOn()) return null;
+  try {
+    const value = new URLSearchParams(window.location.search).get("mc_click");
+    if (value === null || !HANDOFF_CLICK_ID_RE.test(value)) return null;
+    if (getStoredClickAttribution().clickId !== null) return null;
+    storeClickId(value);
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+// ── #4238 W3-3 / W3-4: host-funnel browser events (host web only) ───────────
+
+/** Set after any successful host sign-in in this browser. */
+export const HOST_KNOWN_ACCOUNT_KEY = "mingla_host_known_account";
+/** The last host sign-up-started id and when it was minted. */
+export const HOST_SIGNUP_STARTED_KEY = "mingla_hss_v1";
+export const HOST_SIGNUP_STARTED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type HostFunnelBrowserKind = "host_signup_started" | "host_signup";
+
+/** Fire one host-funnel pixel event (ads on only). Never throws. */
+export async function fireHostFunnelBrowserEvent(
+  kind: HostFunnelBrowserKind,
+  eventId: string,
+): Promise<void> {
+  if (!hasWindow() || !isAdsOn() || !eventId) return;
+  try {
+    resolveAdPixelIds();
+    const runtime = await loadAdPixelRuntime();
+    if (!isAdsOn()) return;
+    runtime.fireHostFunnelPixel(kind, eventId, adPixelIds);
+  } catch (err) {
+    console.warn("[webAnalytics] host-funnel pixel failed (non-fatal):", err);
+  }
+}
+
+/** Remember that this browser has signed in to a host account. */
+export function markHostKnownAccount(): void {
+  if (!hasWindow()) return;
+  try {
+    window.localStorage.setItem(HOST_KNOWN_ACCOUNT_KEY, "1");
+  } catch {
+    // Storage unavailable: a later sign-up-started may fire once more.
+  }
+}
+
+/**
+ * #4238 W3-4: the first sign-in attempt (email code request, Google or Apple
+ * tap) of a browser that has never signed in to a host account fires
+ * HostSignUpStarted once per 24 h, browser only (no identity exists yet).
+ * Returns the minted `hss:<uuid>` id, or null when nothing fired.
+ */
+export function fireHostSignUpStarted(): string | null {
+  if (!hasWindow() || !isAdsOn()) return null;
+  try {
+    const storage = window.localStorage;
+    if (storage.getItem(HOST_KNOWN_ACCOUNT_KEY) !== null) return null;
+    const prior = JSON.parse(storage.getItem(HOST_SIGNUP_STARTED_KEY) ?? "null") as
+      | { at?: unknown }
+      | null;
+    if (
+      prior !== null &&
+      typeof prior.at === "number" &&
+      Date.now() - prior.at < HOST_SIGNUP_STARTED_WINDOW_MS
+    ) {
+      return null;
+    }
+    const uuid =
+      globalThis.crypto?.randomUUID?.() ??
+      `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const eventId = `hss:${uuid}`;
+    storage.setItem(
+      HOST_SIGNUP_STARTED_KEY,
+      JSON.stringify({ id: eventId, at: Date.now() }),
+    );
+    void fireHostFunnelBrowserEvent("host_signup_started", eventId);
+    return eventId;
+  } catch {
+    return null;
   }
 }
 

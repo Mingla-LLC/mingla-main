@@ -140,6 +140,28 @@ Deno.test("#4238 W4-3 attach: a Host app sign-in stores install attribution, no 
   assertEquals(db.row("ad_conversions", (r) => r.event_id === `host_signup:${UID}`)?.meta_capi_status, "skipped");
 });
 
+Deno.test("#4238 attach: when the context cannot be written, new_host is unknown (null)", async () => {
+  const { db, deps } = setup();
+  const broken = {
+    ...db.client,
+    from: (table: string) =>
+      table === "ad_match_contexts"
+        ? {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({ data: null, error: { message: "relation does not exist" } }),
+              }),
+            }),
+          }),
+        }
+        : db.client.from(table),
+  };
+  const body = await (await handleAttach(post({}), { ...deps, db: broken })).json();
+  assertEquals(body.new_host, null);
+});
+
 Deno.test("#4238 attach: ads off stores the opt-out only and sends nothing", async () => {
   const { db, sent, deps } = setup();
   await handleAttach(post({ tracking_opt_out: true, click_id: CLICK, fbp: "fb.1.1.1" }), deps);
