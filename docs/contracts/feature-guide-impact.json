@@ -326,7 +326,14 @@
         "supabase/migrations/20280704204402_issue_4402_local_pick_window.sql",
         "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
         "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
-        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql"
+        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql",
+        "app-mobile/src/components/local/localReviewRules.ts",
+        "app-mobile/src/services/programApi.ts",
+        "mingla-admin/src/hooks/useProgramLoad.js",
+        "mingla-admin/src/pages/ProgramDisputesPage.jsx",
+        "mingla-admin/src/pages/crm/GigTimeline.jsx",
+        "mingla-business/src/components/programs/dueChange.ts",
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
       ]
     },
     {
@@ -553,7 +560,8 @@
       "capability_key": "social-referrals",
       "paths": [
         "app-mobile/src/components/ConnectionsPage.tsx",
-        "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql"
+        "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql",
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
       ]
     },
     {
@@ -2278,7 +2286,8 @@
         "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql",
         "supabase/migrations/20280508003645_issue_3645_payout_debt_returns.sql",
         "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
-        "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql"
+        "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql",
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
       ]
     },
     {
@@ -3703,7 +3712,8 @@
         "supabase/migrations/20280704304402_issue_4402_earnings_payout_floor.sql",
         "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
         "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
-        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql"
+        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql",
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
       ]
     }
   ]
