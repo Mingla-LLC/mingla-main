@@ -71,7 +71,10 @@ export type GigWorkspace = {
   /** The host still owes a top-up after accepting a higher counter. */
   pending_topup?: boolean | null;
   /** Round 2: where the creator's fee is (On the way · Ready · Paid, or refunded). */
-  money_state?: 'on_the_way' | 'ready' | 'paid' | 'refunded' | 'partially_refunded' | null;
+  money_state?: 'on_the_way' | 'ready' | 'paid' | 'refunded' | 'partially_refunded' | 'cancelled_partial' | 'dispute_partial' | null;
+  /** #4430: what was refunded to the host, and what the creator kept on a split ending. */
+  refunded_minor?: number | null;
+  creator_kept_minor?: number | null;
   /** When the payout was confirmed, if the server sends it (for "Paid to your bank on Nov 27"). */
   money_paid_at?: string | null;
   rights?: GigRights | null;

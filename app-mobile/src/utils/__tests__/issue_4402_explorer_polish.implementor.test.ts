@@ -49,10 +49,12 @@ test('items 3 and 4: the posting deadline reads 11:59 PM in the listing zone and
   assert.equal(postingStatusCopy('script_locked', null, null, null), null);
 });
 
-test('item 13: the upload date says why it is two days early', () => {
+// #4430 item 3 replaced the "two days before" wording: the card names the agreed upload
+// deadline in the gig zone and never claims a fixed gap.
+test('item 13: the upload date says why it is early (#4430: no fixed gap)', () => {
   const text = uploadDueReason({ videoDueAt: '2026-12-13T22:59:00Z', postBy: '2026-12-15' }, 'Africa/Lagos', NOW);
-  assert.equal(text, 'Upload by Sun Dec 13 — two days before your post-by date of Tue Dec 15, so the host has time to review.');
-  assert.match(uploadDueReason({ videoDueAt: '2026-12-14T10:00:00Z', postBy: '2026-12-15' }, 'Africa/Lagos', NOW), /before your post-by date of Tue Dec 15/);
+  assert.equal(text, 'Upload by Sun Dec 13, 11:59 PM Lagos time, so the host has time to review before you post.');
+  assert.doesNotMatch(uploadDueReason({ videoDueAt: '2026-12-14T10:00:00Z', postBy: '2026-12-15' }, 'Africa/Lagos', NOW), /two days/);
   assert.equal(uploadDueReason({ videoDueAt: null, postBy: null }, null), null);
 });
 
@@ -205,7 +207,7 @@ test('Hermes-shaped Intl: the upload reason never throws and still reads the zon
   };
   try {
     const text = uploadDueReason({ videoDueAt: '2026-12-13T22:59:00Z', postBy: '2026-12-15' }, 'Africa/Lagos', NOW);
-    assert.equal(text, 'Upload by Sun Dec 13 — two days before your post-by date of Tue Dec 15, so the host has time to review.');
+    assert.equal(text, 'Upload by Sun Dec 13, 11:59 PM Lagos time, so the host has time to review before you post.');
     assert.equal(formatInZone('2026-12-15T17:00:00Z', 'Africa/Lagos', NOW), 'Tue Dec 15, 6:00 PM Lagos time');
   } finally {
     Intl.DateTimeFormat.prototype.formatToParts = realParts;

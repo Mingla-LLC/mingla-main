@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { creatorGigsService, gigZone, type GigWorkspace } from '../../../src/services/creatorGigsService';
 import { programErrorText, toProgramError } from '../../../src/services/programResult';
 import {
-  contractCardLabel, contractMoneyLine, creatorStateWords, currencySymbol, formatMoney, formatName, formatShortDate, formatTimeLeft, moneyInputValue, parseMoneyInput,
+  contractCardLabel, contractMoneyLine, currencySymbol, formatMoney, formatName, formatShortDate, formatTimeLeft, moneyInputValue, parseMoneyInput,
   releasedCardText, toDayString, agreedVideoDue, agreedVideoDueText, dueChangeInitial, dueChangePayload, dueTimeOptions,
   formatInZone, groupMoneyTyping, isBelowMinFee, minFeeError, minFeeHint, postingStatusCopy,
 } from '../../../src/utils/programFormat';
@@ -137,14 +137,19 @@ export default function CreatorContractScreen(): React.ReactElement {
   }
 
   // ── Closed without work ──
+  // #4430 item 8: the ending in the same words as the notice, with the amounts.
+  const refundRecorded = w.events.find((e) => e.kind === 'refund_recorded');
+  const ended = {
+    cancelReason: w.contract.cancel_reason ?? (typeof refundRecorded?.data?.branch === 'string' ? refundRecorded.data.branch : null),
+    creatorFee: w.creator_kept_minor ? formatMoney(w.creator_kept_minor, currency) : null,
+    refund: w.refunded_minor ? formatMoney(w.refunded_minor, currency) : null,
+  };
   if (['declined', 'expired', 'cancelled'].includes(state)) {
-    const refund = w.events.find((e) => e.kind === 'refund_recorded');
-    const postMissed = w.contract.cancel_reason === 'post_missed' || refund?.data?.branch === 'post_missed';
-    const refundMinor = typeof refund?.data?.refund_minor === 'number' ? refund.data.refund_minor : typeof refund?.data?.amount_minor === 'number' ? refund.data.amount_minor : null;
+    const closed = nextActionFor(state, ended);
     return <ProgramScreen title={title}>
       <ProgramCard>
-        <Text style={s.title}>{postMissed ? 'This gig was cancelled' : creatorStateWords(state)}</Text>
-        <Text style={s.copy}>{postMissed ? 'This gig was cancelled because the posts weren’t added in time. The host was refunded.' : refundMinor !== null ? `The host was refunded ${formatMoney(refundMinor, currency)}.` : 'The host is refunded automatically.'} Nothing more to do here.</Text>
+        <Text style={s.title}>{closed.title}</Text>
+        <Text style={s.copy}>{closed.text}</Text>
       </ProgramCard>
       <Timeline events={w.events} />
     </ProgramScreen>;
@@ -154,7 +159,7 @@ export default function CreatorContractScreen(): React.ReactElement {
   const plan = w.shoot_plan;
   const hostProposedShoot = Boolean(plan && !plan.confirmed_at && plan.proposed_by === 'host');
   const creatorProposedShoot = Boolean(plan && !plan.confirmed_at && plan.proposed_by === 'creator');
-  const next = nextActionFor(state, { fixRoundsUsed: w.contract.fix_rounds_used, hostProposedShoot, creatorProposedShoot });
+  const next = nextActionFor(state, { fixRoundsUsed: w.contract.fix_rounds_used, hostProposedShoot, creatorProposedShoot, ...ended });
   const due = w.contract.state_deadline_at;
   const window = w.gig.shoot_window ?? (terms?.shoot_date ? { start: terms.shoot_date, end: terms.shoot_date } : null);
   const acceptedEvent = w.events.find((e) => e.kind === 'accepted');
@@ -200,7 +205,7 @@ export default function CreatorContractScreen(): React.ReactElement {
 
     <ShootCard workspace={w} state={state} />
 
-    {openProposal && !openCounter ? <ProposalCard proposal={openProposal} currency={currency} busy={busy === 'respond'}
+    {openProposal && !openCounter ? <ProposalCard proposal={openProposal} currency={currency} zone={zone} busy={busy === 'respond'}
       onRespond={(accept) => void act('respond', () => creatorGigsService.respondToChange(openProposal.id, accept))} /> : null}
     {errors.respond ? <ProgramNotice tone="error" text={errors.respond} /> : null}
 
@@ -230,7 +235,7 @@ export default function CreatorContractScreen(): React.ReactElement {
           ? `This older contract keeps its original ${w.rights.usage_days ?? ''}-day licence.`
           : 'The perpetual marketing licence stays pending until your full Creator fee is released.'} /> : null}
     {terms ? <TermsCard terms={terms} gig={w.gig} zone={zone} /> : null}
-    <TermsHistory terms={w.terms} />
+    <TermsHistory terms={w.terms} zone={zone} />
 
     {canChangeTerms && !openProposal ? <ProgramButton label="Ask to change the video-due date" variant="secondary" onPress={() => {
       // Prefill from the agreed (current terms) due date and time.

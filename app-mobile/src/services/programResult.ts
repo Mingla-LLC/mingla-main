@@ -147,6 +147,12 @@ const MESSAGES: Record<string, string> = {
   personal_tie_conflict: 'You can’t review a place where you know the owners or staff. Pick another place.',
   place_not_eligible: 'That place can’t be picked this month. Choose another.',
   invalid_review: 'Check the review: title 3–70 characters and 300–2,000 characters of text.',
+  // #4430 L-1: every code local_review_submit raises has words.
+  review_not_submittable: 'This month’s review can’t be sent right now. Go back to Mingla Local to see where you are.',
+  review_deadline_passed: 'The review window for this month has closed.',
+  visited_on_outside_month: 'Pick a visit date in this month that isn’t in the future.',
+  social_post_url_not_allowed: 'Paste the link to your public post on Instagram, TikTok, YouTube, Facebook, Threads or X.',
+  review_evidence_invalid: 'Add one ready video (or up to 6 photos) from this month, then send again.',
   network: 'You’re offline. Check your connection and try again.',
 };
 

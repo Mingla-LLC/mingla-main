@@ -543,7 +543,11 @@ function lowerFirst(text: string): string {
  * Working states: "Next · due Nov 25" (W3.1: the month stays "Nov", never "nov").
  * After release the creator has no Next; the card shows "Day-30 check · Nov 25" (W3.2).
  */
-export function contractCardLabel(state: string | null | undefined, deadlineAt: string | null | undefined, now: Date = new Date(), locale?: string, timeZone?: string | null): string {
+export function contractCardLabel(state: string | null | undefined, rawDeadlineAt: string | null | undefined, now: Date = new Date(), locale?: string, timeZone?: string | null): string {
+  // #4430 item 4: the posting deadline is shown as its last minute (11:59 PM),
+  // the same single rendering as the card body, so the header never says a day later.
+  const shownPost = POSTING_STATES.includes(state ?? '') ? postDeadlineShown(rawDeadlineAt) : null;
+  const deadlineAt = shownPost ? shownPost.toISOString() : rawDeadlineAt;
   // #4402 (AC-12): read the deadline's day in the gig's zone, not the phone's.
   const zoned = timeZone && deadlineAt ? persistedDayInZone(deadlineAt, timeZone) : '';
   const dayValue = zoned || deadlineAt;
@@ -557,8 +561,11 @@ export function contractCardLabel(state: string | null | undefined, deadlineAt: 
   return due ? `Next · ${lowerFirst(due)}` : 'Next';
 }
 
-/** Contract `money_state` from `gig_contract_workspace`. */
-export type ContractMoneyState = 'on_the_way' | 'ready' | 'paid' | 'refunded' | 'partially_refunded';
+/** The states whose deadline is the posting deadline (#4402). */
+const POSTING_STATES = ['approved', 'posting', 'posts_failed'];
+
+/** Contract `money_state` from `gig_contract_workspace`. #4430: split endings have their own value. */
+export type ContractMoneyState = 'on_the_way' | 'ready' | 'paid' | 'refunded' | 'partially_refunded' | 'cancelled_partial' | 'dispute_partial';
 
 /**
  * What happened to the creator's fee once the gig is released (W3.3), from the
@@ -574,6 +581,8 @@ export function contractMoneyLine(moneyState: string | null | undefined, paidAt?
     case 'ready': return 'Released and on its way to your bank';
     case 'refunded': return 'The host was refunded';
     case 'partially_refunded': return 'Part of the fee was refunded to the host';
+    case 'cancelled_partial': return 'The host cancelled; you keep part of the fee';
+    case 'dispute_partial': return 'The dispute was settled; you keep part of the fee';
     case 'on_the_way': return 'On its way to your bank';
     default: return '';
   }
@@ -776,21 +785,17 @@ export function postDueSoonLabel(deadlineAt: string | null | undefined, now: Dat
   return `Due in ${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
-/** Why the upload date is what it is, in one sentence. Null without a post-by date. */
+/**
+ * Why the upload date is what it is, in one sentence. Null without any date.
+ * #4430 item 3: it names the agreed upload deadline (in the gig zone, with the
+ * zone label) and never claims a fixed gap; the posting deadline itself is
+ * shown once, by postDeadlineText, after the video is approved.
+ */
 export function uploadDueReason(due: { videoDueAt: string | null; postBy: string | null }, timeZone: string | null | undefined, now: Date = new Date()): string | null {
+  const upload = due.videoDueAt && due.videoDueAt.length > 10 ? formatInZone(due.videoDueAt, timeZone, now) : '';
+  if (upload) return `Upload by ${upload}, so the host has time to review before you post.`;
   if (!due.postBy) return null;
-  const postBy = formatDayWithWeekday(due.postBy, null, now);
-  const uploadLabel = due.videoDueAt && due.videoDueAt.length > 10 ? formatDayWithWeekday(due.videoDueAt, timeZone, now) : null;
-  const plain = `Upload your video before your post-by date of ${postBy}, so the host has time to review.`;
-  if (!uploadLabel) return plain;
-  // #4402 walk: never assert these parse — a bad date here crashed the whole upload step.
-  const postByDate = parseDay(due.postBy);
-  const uploadDay = parseDay(persistedDayInZone(due.videoDueAt!, timeZone));
-  if (!postByDate || !uploadDay) return `Upload by ${uploadLabel}, before your post-by date of ${postBy}, so the host has time to review.`;
-  const byDays = Math.round((startOfDay(postByDate) - startOfDay(uploadDay)) / DAY_MS);
-  return byDays === 2
-    ? `Upload by ${uploadLabel} — two days before your post-by date of ${postBy}, so the host has time to review.`
-    : `Upload by ${uploadLabel}, before your post-by date of ${postBy}, so the host has time to review.`;
+  return 'Upload your video early, so the host has time to review before you post.';
 }
 
 /**
