@@ -335,7 +335,7 @@ async function verifyNarrowHeroGeometry(port) {
     await page.send('Runtime.enable')
     await page.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: false })
     await page.send('Page.navigate', { url: `http://127.0.0.1:${port}/cities` })
-    await waitFor(() => page.evaluate("document.readyState === 'complete' && document.querySelectorAll('.city-tiles a').length === 10"), '/cities did not load for 320px geometry proof')
+    await waitFor(() => page.evaluate("document.readyState === 'complete' && document.querySelectorAll('.city-tiles a').length >= 10"), '/cities did not load for 320px geometry proof')
     await page.evaluate('(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));})()')
     // #4339 phase 2b: the redesigned /cities is a tile grid, so the 320px
     // proof is ten full tiles, each a 44px+ target inside the 16px gutters,
@@ -346,7 +346,7 @@ async function verifyNarrowHeroGeometry(port) {
       return {tiles,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}
     })()`)
     const geometryEvidence = JSON.stringify(geometry)
-    assert.equal(geometry.tiles.length, 10, '320px /cities must show all ten city tiles')
+    assert(geometry.tiles.length >= 10, '320px /cities must show every city tile (the ten guides at least; the live list when a database is configured)')
     assert.equal(geometry.overflow, 0, '320px /cities must not create horizontal overflow')
     for (const [index, tile] of geometry.tiles.entries()) {
       assert(tile.width >= 44 && tile.height >= 44, `320px tile ${index + 1} lost its 44px target`)
