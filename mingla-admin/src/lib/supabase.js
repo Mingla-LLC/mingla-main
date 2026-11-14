@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { setCeilingReporter, tabCeiling } from "./requestCeiling.js";
+import { captureMessage } from "../diagnostics/sentry.js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -20,8 +22,14 @@ export const supabase = createClient(
       persistSession: true,
       detectSessionInUrl: false,
     },
+    // #4423 (W1.4): every REST and edge-function request goes through the
+    // tab's request ceiling (auth and storage pass straight through).
+    global: { fetch: tabCeiling.governedFetch },
   }
 );
+
+// #4423: a ceiling trip reaches Sentry once per trip (no-op when Sentry is not set up).
+setCeilingReporter((message, context) => captureMessage(message, context));
 
 export const SUPABASE_URL = supabaseUrl;
 export const SUPABASE_ANON_KEY = supabaseAnonKey;

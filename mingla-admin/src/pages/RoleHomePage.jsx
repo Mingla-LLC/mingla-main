@@ -7,6 +7,7 @@
 // every empty section says what to do next.
 import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { STALE_PAUSED_WORDS } from "../lib/requestCeiling";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import { useCrmConfig } from "../hooks/useCrmConfig";
@@ -78,6 +79,14 @@ export function RoleHomePage() {
       <AgentPromptStrip routine="my_plate" />
 
       <MyCardsPanels />
+
+      {/* #4423 rework 1 (P2-1): draft counts kept on a failed or held-back read; say so. */}
+      {!error && draftCounts.stale && (
+        <AlertCard variant="warning" title="Draft counts may be out of date"
+          action={<Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => draftCounts.refetch()}>Try again</Button>}>
+          {draftCounts.paused ? STALE_PAUSED_WORDS : null}
+        </AlertCard>
+      )}
 
       {error ? (
         error.token === "forbidden" ? (

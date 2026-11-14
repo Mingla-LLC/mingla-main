@@ -155,11 +155,11 @@ describe("ORCH-1013 ADVERSARIAL — poller lifecycle + leak protection", () => {
     );
   });
 
-  it("visibilitychange listener is removed on unmount", () => {
-    assert.ok(
-      src.includes('document.removeEventListener("visibilitychange"'),
-      "visibilitychange listener must be removed on unmount",
-    );
+  // #4423: the hook subscribes to the shared lib/pageReturn signal instead of
+  // its own visibilitychange listener; the subscription ends on unmount.
+  it("the page-return subscription is removed on unmount", () => {
+    assert.ok(src.includes("const unsubscribe = subscribePageReturn("), "subscribes to the shared signal");
+    assert.ok(/clearInterval\(interval\);\s*unsubscribe\(\);/.test(src), "the subscription must end on unmount");
   });
 
   it("ETA buffer cap = 12 (60s at 5s poll)", () => {

@@ -25,6 +25,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { AlertCard, SectionCard } from "../components/ui/Card";
+import { STALE_PAUSED_WORDS } from "../lib/requestCeiling";
 import { Button } from "../components/ui/Button";
 import { Drawer } from "../components/ui/Drawer";
 import { Skeleton } from "../components/ui/Skeleton";
@@ -292,7 +293,7 @@ export function WorkBoardPage() {
               onThisWeek={() => go({ week: null, goal: null }, { replace: true })}
               onPlan={() => go({ plan: true })}
             />
-            {list.stale && <AlertCard variant="warning" title="The board may be out of date" action={<Button variant="secondary" className="min-h-11" onClick={() => list.refetch()}>Try again</Button>} />}
+            {list.stale && <AlertCard variant="warning" title="The board may be out of date" action={<Button variant="secondary" className="min-h-11" onClick={() => list.refetch()}>Try again</Button>}>{list.paused ? STALE_PAUSED_WORDS : null}</AlertCard>}
             {showDrafts && myDrafts.error && !myDrafts.data && <LoadError title="Couldn’t load your message drafts" message={draftErrorWords(myDrafts.error)} onRetry={() => myDrafts.refetch()} />}
             {list.loading || (statuses.loading && !columns.length) ? (
               <div className="flex gap-2.5 overflow-hidden" aria-busy="true" aria-label="Loading the board"><div className="w-[280px] shrink-0"><Skeleton height={320} /></div><div className="w-[280px] shrink-0"><Skeleton height={320} /></div><div className="hidden w-[280px] shrink-0 md:block"><Skeleton height={320} /></div></div>

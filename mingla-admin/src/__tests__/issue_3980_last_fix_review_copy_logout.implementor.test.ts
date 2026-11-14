@@ -133,7 +133,7 @@ Deno.test("#3980 last: every way out of a session runs the sign-out cleanup", ()
   const clearAll = auth.slice(auth.indexOf("const clearAll = useCallback("), auth.indexOf("}, []);", auth.indexOf("const clearAll = useCallback(")));
   assertMatch(clearAll, /runSignOutCleanup\(\);/);
   // signOut, a rejected session and a session that ended all go through clearAll.
-  assertMatch(auth.slice(auth.indexOf("const signOut = async () => {")), /clearAll\(\);/);
+  assertMatch(auth.slice(auth.indexOf("const signOut = useCallback(async () => {") /* #4423: stable callbacks */), /clearAll\(\);/);
   assertMatch(auth.slice(auth.indexOf("const rejectSession = useCallback("), auth.indexOf("const resolveSession")), /clearAll\(\);/);
   assertMatch(auth.slice(auth.indexOf("const resolveSession = useCallback("), auth.indexOf("const twoFA")), /clearAll\(\);/);
 });

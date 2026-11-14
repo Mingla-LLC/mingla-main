@@ -8,6 +8,9 @@ import { TeamChats } from "./TeamChats";
 import { MessagesSettings } from "./MessagesSettings";
 import { MessagesActivity } from "./MessagesActivity";
 import { useActivity } from "../../hooks/useActivity";
+import { AlertCard } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { STALE_PAUSED_WORDS } from "../../lib/requestCeiling";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
@@ -33,6 +36,15 @@ export function MessagesBody({ messages, tab, threadId, onChange }) {
           </button>
         ))}
       </div>
+      {/* #4423 rework 1 (P2-1): the numbers and notifications are kept on a failed or held-back read; say so. */}
+      {messages.stale && (
+        <div data-messages-stale="" className="shrink-0 px-2.5 pt-2">
+          <AlertCard variant="warning" title="Messages may be out of date"
+            action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => messages.refetch()}>Try again</Button>}>
+            {messages.paused ? STALE_PAUSED_WORDS : null}
+          </AlertCard>
+        </div>
+      )}
       <div role="tabpanel" id={`${base}-panel`} aria-labelledby={`${base}-tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
         {tab === "notifications" && <MessagesNotifications messages={messages} onOpenChat={openChat} />}
         {tab === "activity" && <MessagesActivity activity={activity} />}

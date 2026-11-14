@@ -61,7 +61,7 @@ BEGIN
   IF v_check IS NULL OR v_check NOT LIKE '%mkt_brand_min_rank%' OR v_check LIKE '%account_id%' THEN
     RAISE EXCEPTION 'G-00 FAIL: marketing_campaigns_update WITH CHECK does not require brand rank on the resulting row (got: %)', v_check;
   END IF;
-  IF v_using IS NULL OR v_using NOT LIKE '%account_id = auth.uid()%' OR v_using NOT LIKE '%mkt_brand_min_rank%' THEN
+  IF v_using IS NULL OR v_using NOT LIKE '%account_id = ( SELECT auth.uid() AS uid)%' OR v_using NOT LIKE '%mkt_brand_min_rank%' THEN
     RAISE EXCEPTION 'G-00 FAIL: marketing_campaigns_update USING changed — team editing depends on it (got: %)', v_using;
   END IF;
 

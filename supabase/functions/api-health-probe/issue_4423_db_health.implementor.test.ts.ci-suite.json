@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/api-health-probe/issue_4423_db_health.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4423-db-health-implementor",
+  "profile": "deno-2-unit"
+}

@@ -48,6 +48,33 @@ async function call(run) {
 
 export const fetchOpsConfig = (today) => call(() => supabase.rpc("ops_config", { p_today: today || null }));
 export const listWork = (query = {}) => call(() => supabase.rpc("ops_work_list", { p_query: query }));
+
+// #4423 (W2.2): the list views read the light "board" shape (no drawer-only
+// fields); the card drawer still reads the full card through ops_work_get.
+export const BOARD_SHAPE = "board";
+
+// [TRANSITIONAL] A server without the #4423 W2 ops_work_list migration
+// (*_issue_4423_w2_ops_work_list_review_counts.sql) refuses the unknown key
+// with 'The board cannot filter by "shape"'; then this tab asks once more
+// without it and keeps doing so (the full shape, exactly as before #4423).
+// Only that exact refusal falls back: "A filter has the wrong shape" is a
+// real filter error and is shown as one.
+// Exit: remove once that migration is applied in production.
+let boardShapeRefused = false;
+export function refusesShape(error) {
+  return error?.token === "invalid_query" && /cannot filter by "shape"/.test(`${error?.message || ""} ${error?.detail || ""}`);
+}
+export const listBoardWork = async (query = {}) => {
+  if (boardShapeRefused) return listWork(query);
+  try {
+    return await listWork({ ...query, shape: BOARD_SHAPE });
+  } catch (error) {
+    if (!refusesShape(error)) throw error;
+    boardShapeRefused = true;
+    console.warn("[#4423] the server does not take shape:board yet; reading the full shape.");
+    return listWork(query);
+  }
+};
 export const getWork = (id, today) => call(() => supabase.rpc("ops_work_get", { p_id: id, p_today: today || null }));
 export const addWork = (items, requestKey) => call(() => supabase.rpc("ops_work_add", { p_items: items, p_request_key: requestKey }));
 export const updateWork = (id, changes, revision, requestKey) =>

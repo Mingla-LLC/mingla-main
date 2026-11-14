@@ -488,7 +488,13 @@ export function phase3dContractDigest(manifest) {
 // #4402 merge of origin/main a5a5c59094 (#4419 20280706004419 rows kept after the #4402 rows); re-sealed.
 // #4402 CI fix: skip the seven polish migrations (gig tables from skipped #3872) by exact filename in the #1931 pre-landing replay, and M2 in the #2117 one; re-sealed.
 // #4402 merge of origin/main d116790964 (#4422 rows and #1931 skips kept beside the #4402 ones); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c6466585266ad24157ffce4ec896356016e57a85237636ea329338ff2b2ce2cc";
+// #4423 Wave 2: re-sealed after registering the four Wave 2 migrations and two pg17 proofs; MANIFEST.json phase3eContractSha256 matches.
+// #4423 Wave 3: re-sealed after registering the two Wave 3 migrations and their pg17 proof; MANIFEST.json phase3eContractSha256 matches.
+// #4423 Wave 4a: re-sealed after registering the Wave 4a migration and its pg17 proof; MANIFEST.json phase3eContractSha256 matches.
+// #4423 Wave 4a CI fix: re-sealed after adding the Wave 4a migration to the #1931 and #2117 skip lists; MANIFEST.json phase3eContractSha256 matches.
+// #4423 integration: merged origin/main a5a5c59094 (#4419 20280706004419 rows kept beside the #4423 rows) and renamed the thirteen #4423 migrations 20280705*4423 to 20280707*4423 (after 20280706004419), in order; re-sealed.
+// #4423 integration 2: merged origin/main ce482c996c; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "92d521d5895f9b1c18a51c85c4c69329fc211a05e3168528aefa26c7f6d8abcf";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

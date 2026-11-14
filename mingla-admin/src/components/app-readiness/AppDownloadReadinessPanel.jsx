@@ -7,6 +7,7 @@ import { TargetSelector } from "./TargetSelector";
 import { SelectedTargetSummary } from "./SelectedTargetSummary";
 import { ProviderReadinessList } from "./ProviderReadinessList";
 import { FutureAppCampaignBoundary } from "./FutureAppCampaignBoundary";
+import { subscribeConnectivity, subscribePageReturn, subscribeVisibility } from "../../lib/pageReturn";
 
 const initialTarget = () => parseTargetQuery(window.location.search);
 const emptyEntry = () => ({ phase: "loading_saved", latest: null, error: null, stopped: false, requestId: 0 });
@@ -20,8 +21,8 @@ export function AppDownloadReadinessPanel() {
   const emit=useCallback((eventName, extra={}) => { recordAppReadinessEvent(analyticsPayload(eventName,{appKey,os,...extra})).then(({error})=>{if(error) console.warn("[ad_app_readiness] analytics unavailable");}); },[appKey,os]);
 
   useEffect(()=>{ mounted.current=true; const activeControllers=controllers.current; return()=>{mounted.current=false; Object.values(activeControllers).forEach((controller)=>controller?.abort());};},[]);
-  useEffect(()=>{const update=()=>setOnline(navigator.onLine); window.addEventListener("online",update);window.addEventListener("offline",update);return()=>{window.removeEventListener("online",update);window.removeEventListener("offline",update);};},[]);
-  useEffect(()=>{const refresh=()=>setEntries((current)=>Object.fromEntries(Object.entries(current).map(([key,value])=>[key,{...value,latest:refreshLatestFreshness(value.latest,Date.now()+serverOffsetMs.current)}])));const interval=window.setInterval(refresh,30000);const onVisibility=()=>{if(document.visibilityState==="visible")refresh();};window.addEventListener("focus",refresh);document.addEventListener("visibilitychange",onVisibility);return()=>{window.clearInterval(interval);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",onVisibility);};},[]);
+  useEffect(()=>{const update=()=>setOnline(navigator.onLine); return subscribeConnectivity(update);},[]); // #4423: shared lib/pageReturn signal
+  useEffect(()=>{const refresh=()=>setEntries((current)=>Object.fromEntries(Object.entries(current).map(([key,value])=>[key,{...value,latest:refreshLatestFreshness(value.latest,Date.now()+serverOffsetMs.current)}])));const interval=window.setInterval(refresh,30000);const offVisibility=subscribeVisibility((visible)=>{if(visible)refresh();});const offReturn=subscribePageReturn(refresh);return()=>{window.clearInterval(interval);offVisibility();offReturn();};},[]);
   useEffect(()=>{let active=true; const controller=new AbortController(); loadAppReadiness(appKey,os,{signal:controller.signal}).then(async({data,error})=>{if(!active||controller.signal.aborted)return; if(error){const parsed=await parseEdgeError(error);setEntries((current)=>({...current,[selectedKey]:{...current[selectedKey],phase:"error",error:{status:parsed?.status}}}));return;}const accepted=validateReadinessResponse(data,appKey,os);if(!accepted){setEntries((current)=>({...current,[selectedKey]:{...current[selectedKey],phase:"error",error:{status:500}}}));return;}serverOffsetMs.current=Date.parse(accepted.server_now)-Date.now();setTargets(accepted.targets);setEntries((current)=>Object.fromEntries(accepted.targets.map((target)=>{const key=targetKey(target.app_key,target.os);return[key,{...current[key],phase:"idle",latest:target.latest,error:null}];})));if(!viewed.current){viewed.current=true;emit("readiness_viewed",{freshnessBucket:accepted.selected.latest?"current":"none"});}});return()=>{active=false;controller.abort();}; // selected values are restored once on mount; checks own later refreshes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { validAgentGuide } from "../lib/agentPrompts";
 import { fetchAgentGuide } from "../services/teamAgentService";
+import { subscribePageReturn } from "../lib/pageReturn";
 
 let cache = { key: null, data: null, promise: null };
 
@@ -68,13 +69,14 @@ export function useAgentGuide() {
   const error = current ? state.error : null;
   useEffect(() => {
     if (!error) return undefined;
-    const onOnline = () => {
+    // #4423: one automatic retry when the page comes back (shared signal).
+    const unsubscribe = subscribePageReturn(() => {
+      unsubscribe();
       if (autoRetried.current === key) return;
       autoRetried.current = key;
       retry();
-    };
-    window.addEventListener("online", onOnline, { once: true });
-    return () => window.removeEventListener("online", onOnline);
+    });
+    return unsubscribe;
   }, [error, key, retry]);
 
   return {

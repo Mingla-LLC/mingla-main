@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import * as agent from "../services/teamAgentService";
+import { subscribePageReturn } from "../lib/pageReturn";
 
 /** How often the page refreshes by itself while it is visible ("last used"). */
 export const AGENT_REFRESH_MS = 30_000;
@@ -103,22 +104,15 @@ export function useAgentKeys() {
         if (mounted.current && mine === seq.current) setState({ key, data: null, error, loaded: true });
       }
     );
-    const onFocus = () => {
-      if (document.visibilityState === "visible") refetch({ quiet: true });
-    };
-    const onOnline = () => refetch({ quiet: true });
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
-    window.addEventListener("online", onOnline);
+    // #4423: the shared page-return signal (visible and online, once per gap).
+    const unsubscribe = subscribePageReturn(() => refetch({ quiet: true }));
     const timer = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       if (navigator.onLine === false) return;
       refetch({ quiet: true });
     }, AGENT_REFRESH_MS);
     return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
-      window.removeEventListener("online", onOnline);
+      unsubscribe();
       clearInterval(timer);
     };
   }, [key, isOwner, refetch]);

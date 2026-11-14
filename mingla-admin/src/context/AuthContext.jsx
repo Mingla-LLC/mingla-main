@@ -1,8 +1,15 @@
-import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { normalizeAccess } from "../lib/access";
 import { runSignOutCleanup } from "../lib/signOutCleanup";
 import { clearEmailDraftStorage } from "../lib/emailDrafts";
+import { decideAuthEvent, sameAccess } from "../lib/authEvents";
+import * as pageReturn from "../lib/pageReturn";
+import { createPoller, tabPollGate } from "../lib/pollGate";
+
+/** #4423: the access re-check's pollGate key and timer. */
+const ACCESS_GATE_KEY = "auth-access";
+const ACCESS_REFRESH_MS = 30_000;
 
 const AuthContext = createContext(null);
 
@@ -43,7 +50,7 @@ async function loadAccess() {
     const error = teamResult.error || operationalResult.error;
     if (error) {
       console.error("[AuthContext] access check failed:", error.message);
-      return { ok: false };
+      return { ok: false, error };
     }
     const access = normalizeAccess(teamResult.data);
     if (!access) return { ok: true, access };
@@ -56,16 +63,8 @@ async function loadAccess() {
     };
   } catch (err) {
     console.error("[AuthContext] access check failed:", err?.message || err);
-    return { ok: false };
+    return { ok: false, error: err };
   }
-}
-
-function sameAccess(a, b) {
-  return (
-    !!a && !!b &&
-    a.email === b.email && a.role === b.role && a.status === b.status &&
-    a.areas.length === b.areas.length && a.areas.every((x, i) => x === b.areas[i])
-  );
 }
 
 export function AuthProvider({ children }) {
@@ -257,21 +256,37 @@ export function AuthProvider({ children }) {
    */
   const refreshAccess = useCallback(async (sess) => {
     const loaded = await loadAccess();
-    if (!mountedRef.current) return;
-    if (!loaded.ok) return; // keep what we have; every request is still checked server-side
-    if (acceptedUserIdRef.current !== (sess.user?.id ?? null)) return;
+    if (!mountedRef.current) return loaded;
+    if (!loaded.ok) return loaded; // keep what we have; every request is still checked server-side
+    if (acceptedUserIdRef.current !== (sess.user?.id ?? null)) return loaded;
     if (!loaded.access || loaded.access.status !== "active") {
       await rejectSession(ACCESS_REMOVED_MESSAGE);
-      return;
+      return loaded;
     }
     setAccess((prev) => (sameAccess(prev, loaded.access) ? prev : loaded.access));
+    return loaded;
   }, [rejectSession]);
 
-  const refreshCurrentAccess = useCallback(async () => {
+  /**
+   * Re-read what the signed-in person may open. `quiet` (the timer and the
+   * page-return signal) goes through pollGate key "auth-access": no second
+   * check while one is in flight, backoff when the server fails. A call with
+   * no options (a person's own retry) is never held back.
+   * Resolves to { skipped }.
+   */
+  const refreshCurrentAccess = useCallback(async ({ quiet = false } = {}) => {
+    if (quiet && !tabPollGate.allow(ACCESS_GATE_KEY)) return { skipped: true };
     const { data, error } = await supabase.auth.getSession();
     const currentSession = data?.session ?? null;
-    if (error || !currentSession || acceptedUserIdRef.current !== currentSession.user?.id) return;
-    await refreshAccess(currentSession);
+    if (error || !currentSession || acceptedUserIdRef.current !== currentSession.user?.id) return { skipped: true };
+    tabPollGate.start(ACCESS_GATE_KEY, { background: quiet });
+    const loaded = await refreshAccess(currentSession);
+    tabPollGate.settle(
+      ACCESS_GATE_KEY,
+      loaded?.ok ? { ok: true } : { ok: false, status: loaded?.error?.status, code: loaded?.error?.code, error: loaded?.error },
+      { background: quiet },
+    );
+    return { skipped: false };
   }, [refreshAccess]);
 
   useEffect(() => {
@@ -301,7 +316,7 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (!mounted) return;
 
       // During password verification and invite set-up, ignore all auth state changes.
@@ -314,15 +329,19 @@ export function AuthProvider({ children }) {
       // The work is deferred so the auth client has finished its own update.
       setTimeout(() => {
         if (!mounted || suppressSessionRef.current) return;
-        if (
-          newSession &&
-          acceptedUserIdRef.current &&
-          acceptedUserIdRef.current === newSession.user?.id
-        ) {
-          setSession(newSession);
-          void refreshAccess(newSession);
-          return;
-        }
+        // #4423 (W1.2): auth-js sends SIGNED_IN on every hidden -> visible
+        // change and echoes it to every other tab. For the person already in
+        // the app nothing changes on screen: no setSession (the supabase
+        // client keeps its own tokens) and no access re-check (the timer and
+        // the page-return signal do that, through pollGate). A different
+        // person, signing out or a user update still goes the full way.
+        const decision = decideAuthEvent({
+          event,
+          sessionUserId: newSession?.user?.id ?? null,
+          acceptedUserId: acceptedUserIdRef.current,
+          visible: typeof document === "undefined" || document.visibilityState === "visible",
+        });
+        if (decision === "ignore") return;
         void resolveSession(newSession);
       }, 0);
     });
@@ -332,23 +351,20 @@ export function AuthProvider({ children }) {
       mountedRef.current = false;
       subscription.unsubscribe();
     };
-  }, [resolveSession, refreshAccess]);
+  }, [resolveSession]);
 
-  // Operational grants and revocations take effect without signing out. Focus
-  // and visibility changes refresh immediately; the light interval covers a
-  // user who keeps the Admin tab open continuously.
+  // Operational grants and revocations take effect without signing out. The
+  // page coming back (lib/pageReturn, at most once per 20 s) and a 30 s timer
+  // that counts from the last check re-read access, both through pollGate.
   useEffect(() => {
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void refreshCurrentAccess();
-    };
-    window.addEventListener("focus", refreshWhenVisible);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    const intervalId = window.setInterval(refreshWhenVisible, 30_000);
-    return () => {
-      window.removeEventListener("focus", refreshWhenVisible);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-      window.clearInterval(intervalId);
-    };
+    const poller = createPoller({
+      refresh: (options) => refreshCurrentAccess(options),
+      intervalMs: ACCESS_REFRESH_MS,
+      pageReturn,
+      initial: false, // init() and resolveSession make the first check
+    });
+    poller.start();
+    return () => poller.stop();
   }, [refreshCurrentAccess]);
 
   /**
@@ -377,7 +393,7 @@ export function AuthProvider({ children }) {
    * It never marks the session as fully signed in: that happens only once the
    * person has chosen their password.
    */
-  const acceptInvite = async (token) => {
+  const acceptInvite = useCallback(async (token) => {
     let data;
     try {
       const res = await supabase.functions.invoke("admin-team-accept-invite", {
@@ -416,7 +432,7 @@ export function AuthProvider({ children }) {
       return { state: "try_again" };
     }
     return { state: "ok" };
-  };
+  }, []);
 
   /**
    * Completes the invite setup flow.
@@ -424,7 +440,12 @@ export function AuthProvider({ children }) {
    * Sets the password on their account, signs their other sessions out,
    * activates their membership and accepts the session.
    */
-  const completeInviteSetup = async (password) => {
+  // #4423 (W1.3): read through a ref so the callback stays stable.
+  const inviteSetupRef = useRef(null);
+  useEffect(() => { inviteSetupRef.current = inviteSetup; }, [inviteSetup]);
+
+  const completeInviteSetup = useCallback(async (password) => {
+    const inviteSetup = inviteSetupRef.current;
     if (!inviteSetup) throw new Error("No invite setup session");
 
     // This flow drives the state itself; cancel anything in flight.
@@ -481,7 +502,7 @@ export function AuthProvider({ children }) {
     } finally {
       suppressSessionRef.current = false;
     }
-  };
+  }, [clearAll]);
 
   /**
    * Step 1 of 2FA: verify password.
@@ -491,7 +512,7 @@ export function AuthProvider({ children }) {
    * Whether this email is on the team is read from the server WHILE the
    * temporary session exists (no lookup happens before sign-in).
    */
-  const verifyPassword = async (email, password) => {
+  const verifyPassword = useCallback(async (email, password) => {
     suppressSessionRef.current = true;
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -526,18 +547,18 @@ export function AuthProvider({ children }) {
     } finally {
       suppressSessionRef.current = false;
     }
-  };
+  }, []);
 
   /**
    * Step 2a of 2FA: send OTP code to email.
    */
-  const sendOtp = async (email) => {
+  const sendOtp = useCallback(async (email) => {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { shouldCreateUser: false },
     });
     if (error) throw error;
-  };
+  }, []);
 
   /**
    * Step 2b of 2FA: verify the OTP code. Creates the real session.
@@ -547,7 +568,7 @@ export function AuthProvider({ children }) {
    * The ref ensures the handler accepts the new session immediately.
    * localStorage is then set for persistence across page refreshes.
    */
-  const verifyOtp = async (email, token) => {
+  const verifyOtp = useCallback(async (email, token) => {
     // Set ref BEFORE the call so onAuthStateChange accepts the session.
     otpVerifiedRef.current = true;
 
@@ -570,9 +591,9 @@ export function AuthProvider({ children }) {
       otpVerifiedRef.current = false;
       throw err;
     }
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     // Clear everything BEFORE signing out, so if onAuthStateChange fires
     // synchronously, neither flag is present to accept the session.
     localStorage.removeItem(FULL_AUTH_KEY);
@@ -589,27 +610,32 @@ export function AuthProvider({ children }) {
     // there is no accepted session for it to act on, so clear here as well.
     requestSeqRef.current += 1;
     clearAll();
-  };
+  }, [clearAll]);
+
+  // #4423 (W1.3): one value object per real change, so consumers re-render
+  // only when something they can read changed.
+  const value = useMemo(() => ({
+    session,
+    loading,
+    inviteSetup,
+    access,
+    accessError,
+    retryAccess,
+    refreshCurrentAccess,
+    authNotice,
+    clearAuthNotice,
+    verifyPassword,
+    sendOtp,
+    verifyOtp,
+    acceptInvite,
+    signOut,
+    endSession,
+    completeInviteSetup,
+  }), [session, loading, inviteSetup, access, accessError, retryAccess, refreshCurrentAccess, authNotice, clearAuthNotice,
+    verifyPassword, sendOtp, verifyOtp, acceptInvite, signOut, endSession, completeInviteSetup]);
 
   return (
-    <AuthContext.Provider value={{
-      session,
-      loading,
-      inviteSetup,
-      access,
-      accessError,
-      retryAccess,
-      refreshCurrentAccess,
-      authNotice,
-      clearAuthNotice,
-      verifyPassword,
-      sendOtp,
-      verifyOtp,
-      acceptInvite,
-      signOut,
-      endSession,
-      completeInviteSetup,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

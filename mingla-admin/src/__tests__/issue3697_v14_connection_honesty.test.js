@@ -104,7 +104,8 @@ describe("ISSUE-3697 v1.4 — connection copy and actions tell the truth", () =>
 
     assert.match(panel, /connectChannel\(platform, "status", "consumer"\)/);
     assert.match(panel, /AUTO_VERIFY_INTERVAL_MS/);
-    assert.match(panel, /visibilitychange/);
+    // #4423: the tab coming back reaches the panel through lib/pageReturn.
+    assert.match(panel, /subscribePageReturn\(verifyWhenVisible\)/);
     assert.match(panel, /reconnect\(row\.platform, row\.action\)/);
     assert.doesNotMatch(page, /Meta connection — detail/);
     assert.doesNotMatch(page, /Connect Meta/);

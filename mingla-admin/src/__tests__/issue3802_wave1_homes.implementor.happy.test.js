@@ -616,7 +616,7 @@ describe("#3802 M-12: the invite follow-ups", () => {
     );
     // Every other answer that is not "ok" still passes on the state and nothing else.
     assert.match(AUTH, /return \{ state: typeof data\?\.state === "string" \? data\.state : "invalid" \};/);
-    const fn = AUTH.slice(AUTH.indexOf("const acceptInvite = async (token) => {"), AUTH.indexOf("const completeInviteSetup"));
+    const fn = AUTH.slice(AUTH.indexOf("const acceptInvite = useCallback(async (token) => {") /* #4423: stable callbacks */, AUTH.indexOf("const completeInviteSetup"));
     assert.equal((fn.match(/email:/g) || []).length, 1, "the address is passed on in exactly one place");
     // The link's secret is handled exactly as before: sent once, in the request body, never stored or logged.
     assert.equal((fn.match(/\btoken\b/g) || []).length, 2);

@@ -333,7 +333,10 @@ test("the poller: 5 s while active, 30 s idle, nothing while hidden, error after
   assert.match(hook, /LIVE_IDLE_POLL_MS\s*=\s*30000\b/);
   assert.ok(hook.includes("activeRef.current ? LIVE_ACTIVE_POLL_MS : LIVE_IDLE_POLL_MS"));
   assert.ok(hook.includes("document.hidden) return"), "a hidden tab reads nothing");
-  assert.ok(hook.includes('addEventListener("visibilitychange"'), "it resumes when the tab is back");
+  // #4423: the tab coming back reaches the hook through the shared lib/pageReturn
+  // signal (one read per gap), and being shown again restarts the timer.
+  assert.ok(hook.includes("subscribePageReturn(() => tickRef.current?.())"), "it reads again when the tab is back");
+  assert.ok(hook.includes("subscribeVisibility((visible) =>"), "it resumes the timer when the tab is back");
   assert.match(hook, /ERROR_THRESHOLD\s*=\s*3\b/);
   assert.ok(hook.includes("failuresRef.current >= ERROR_THRESHOLD"), "an error only after 3 misses in a row");
   const catchBlock = hook.slice(hook.indexOf("} catch (err) {"), hook.indexOf("} finally {"));

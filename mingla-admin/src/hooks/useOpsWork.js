@@ -1,12 +1,28 @@
 // Issue #3980 — the Work board list (useOpsWork), and the one loader every ops
 // screen shares (useOpsPoll): loads, refreshes on a timer
-// while the page is visible, on focus and when the connection returns. A
+// while the page is visible, and when the page comes back. A
 // quiet refresh that fails keeps what is on screen; only the first load
 // shows an error. Answers that arrive after a newer request are dropped.
+//
+// #4423 (W1.1): "the page came back" (focus, visible again, online) is the one
+// shared lib/pageReturn signal, at most once per 20 s for the whole tab, and
+// every background refresh goes through lib/pollGate (no second request while
+// one is in flight, backoff when the server fails, the tab-wide breaker and
+// budget). A refresh held back keeps the data on screen and marks it stale.
+// The timer counts from the last refresh. refetch() (a person's own refresh)
+// skips the gate's hold but is still counted.
+//
+// #4423 rework 1 (P3-1): a read refused because the tab's request ceiling is
+// paused keeps what is on screen (stale and `paused`), never an error, even
+// on a person's Try again, and reads again once just after the pause ends.
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import * as ops from "../services/opsService";
 import { todayIso } from "../lib/opsModel";
+import * as pageReturn from "../lib/pageReturn";
+import { ceilingPaused, createPoller, stateAfterFailure, tabPollGate, whenCeilingLifts } from "../lib/pollGate";
+
+let anonymousPolls = 0;
 
 export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true, cache = null } = {}) {
   // With a cache (a Map), a remounted list shows its last answer for this key
@@ -17,40 +33,60 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
   const seq = useRef(0);
   const loadRef = useRef(load);
   useEffect(() => { loadRef.current = load; });
+  // A poll with no key still gets a gate key of its own.
+  const anonId = useRef(0);
+  if (!anonId.current) anonId.current = ++anonymousPolls;
+  const attemptRef = useRef(null);
+  const cancelResume = useRef(null);
 
-  const run = useCallback(async ({ quiet = false } = {}) => {
-    if (!enabled) return null;
+  // { skipped } so the poller knows whether a request went out.
+  const attempt = useCallback(async ({ quiet = false } = {}) => {
+    if (!enabled) return { skipped: true, data: null };
+    const gateKey = `ops:${key || `anon-${anonId.current}`}`;
+    if (quiet) {
+      const why = tabPollGate.why(gateKey);
+      if (why) {
+        tabPollGate.allow(gateKey); // counts the skip
+        // Held back by backoff, the breaker or the budget: keep what is on
+        // screen and say it may be out of date. In flight: the answer is coming.
+        if (why !== "in_flight") setState((prev) => (prev.key === key && prev.data ? { ...prev, stale: true } : prev));
+        return { skipped: true, data: null };
+      }
+    }
     const mine = ++seq.current;
+    tabPollGate.start(gateKey, { background: quiet });
     try {
       const data = await loadRef.current();
+      tabPollGate.settle(gateKey, { ok: true }, { background: quiet });
       if (mine === seq.current) { setState({ key, data, error: null, loaded: true }); cache?.set(key, data); }
-      return data;
+      return { skipped: false, data };
     } catch (error) {
+      tabPollGate.settle(gateKey, { ok: false, status: error?.status, code: error?.code, error }, { background: quiet });
       if (mine === seq.current) {
-        setState((prev) => (quiet && prev.key === key && prev.data ? { ...prev, stale: true } : { key, data: prev.key === key ? prev.data : null, error, loaded: true }));
+        const paused = ceilingPaused();
+        setState((prev) => stateAfterFailure(prev, { key, error, quiet, paused }));
+        if (paused && !cancelResume.current) {
+          cancelResume.current = whenCeilingLifts(() => { cancelResume.current = null; void attemptRef.current?.(); });
+        }
       }
-      return null;
+      return { skipped: false, data: null };
     }
   }, [enabled, key, cache]);
+  useEffect(() => { attemptRef.current = attempt; });
+
+  const run = useCallback(async (options) => (await attempt(options)).data, [attempt]);
 
   useEffect(() => {
     if (!enabled) return undefined;
-    run();
-    const refresh = () => {
-      if (document.visibilityState === "visible" && navigator.onLine !== false) run({ quiet: true });
-    };
-    window.addEventListener("focus", refresh);
-    window.addEventListener("online", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    const timer = intervalMs ? setInterval(refresh, intervalMs) : null;
+    const poller = createPoller({ refresh: attempt, intervalMs, pageReturn });
+    poller.start();
     return () => {
       seq.current += 1;
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("online", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-      if (timer) clearInterval(timer);
+      poller.stop();
+      cancelResume.current?.();
+      cancelResume.current = null;
     };
-  }, [enabled, intervalMs, run]);
+  }, [enabled, intervalMs, attempt]);
 
   const current = state.key === key;
   const setData = useCallback((updater) => setState((prev) => ({ ...prev, data: typeof updater === "function" ? updater(prev.data) : updater })), []);
@@ -58,6 +94,7 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
     data: current ? state.data : null,
     error: current ? state.error : null,
     stale: current ? !!state.stale : false,
+    paused: current ? !!state.paused : false,
     loading: !current || !state.loaded,
     refetch: run,
     setData,
@@ -80,7 +117,7 @@ export function useOpsWork({ who = "all", week = null, owner = null, q = "", lim
     // #4255 W2: subtasks on the board too, and one sprint goal's cards.
     ...(subtasks ? { subtasks: true } : {}), ...(goalId ? { goal_id: goalId } : {}) };
   // #4255: only while the board is on screen (the other tabs read their own window).
-  return useOpsPoll(() => ops.listWork(query), { key: `${access?.email || ""}|${who}|${week || ""}|${owner || ""}|${search}|${limit || ""}|${perStatus ? "cols" : ""}|${subtasks ? "subs" : ""}|${goalId || ""}`, intervalMs: 30_000, enabled });
+  return useOpsPoll(() => ops.listBoardWork(query), { key: `${access?.email || ""}|${who}|${week || ""}|${owner || ""}|${search}|${limit || ""}|${perStatus ? "cols" : ""}|${subtasks ? "subs" : ""}|${goalId || ""}`, intervalMs: 30_000, enabled });
 }
 
 /** The browser's time zone name, or UTC when it cannot say. */
@@ -105,8 +142,8 @@ export function useMyCards() {
   return useOpsPoll(async () => {
     const today = todayIso();
     const [mine, watching] = await Promise.all([
-      ops.listWork({ who: "mine", today, done_days: 0, limit: 50 }),
-      ops.listWork({ who: "watching", today, done_days: 0, limit: 20 }),
+      ops.listBoardWork({ who: "mine", today, done_days: 0, limit: 50 }),
+      ops.listBoardWork({ who: "watching", today, done_days: 0, limit: 20 }),
     ]);
     return { mine: Array.isArray(mine?.cards) ? mine.cards : [], watching: Array.isArray(watching?.cards) ? watching.cards : [] };
   }, { key: `${access?.email || ""}|my-cards`, intervalMs: 60_000 });

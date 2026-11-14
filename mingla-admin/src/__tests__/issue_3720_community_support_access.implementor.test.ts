@@ -123,12 +123,10 @@ Deno.test("the page applies scoped tabs and keeps staff-management admin-only", 
 
 Deno.test("operational access stays server-owned and refreshes without sign-out", () => {
   assertMatch(auth, /rpc\("admin_team_my_operational_areas"\)/);
-  assertMatch(auth, /window\.addEventListener\("focus", refreshWhenVisible\)/);
-  assertMatch(
-    auth,
-    /document\.addEventListener\("visibilitychange", refreshWhenVisible\)/,
-  );
-  assertMatch(auth, /window\.setInterval\(refreshWhenVisible, 30_000\)/);
+  // #4423: the page coming back (lib/pageReturn) and a 30 s timer re-read
+  // access, both through lib/pollGate key "auth-access".
+  assertMatch(auth, /const ACCESS_REFRESH_MS = 30_000;/);
+  assertMatch(auth, /refresh: \(options\) => refreshCurrentAccess\(options\),\s*intervalMs: ACCESS_REFRESH_MS,\s*pageReturn,/);
   assertMatch(auth, /refreshCurrentAccess,/);
   assert(!/role\s*===\s*["'](?:owner|admin|growth|partner)["']/.test(auth));
 });

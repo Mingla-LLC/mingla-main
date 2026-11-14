@@ -10,6 +10,7 @@ import { useAuth } from "../context/AuthContext";
 import { crmKeys } from "./useCrmConfig";
 import { BOARD_REFRESH_MS } from "../lib/crmModel";
 import * as crm from "../services/crmService";
+import { subscribeConnectivity, subscribePageReturn } from "../lib/pageReturn";
 
 /** Follows the browser's own online/offline signal. */
 export function useOnline() {
@@ -17,14 +18,8 @@ export function useOnline() {
     typeof navigator === "undefined" ? true : navigator.onLine !== false
   );
   useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
+    // #4423: the shared lib/pageReturn signal (display only, no request).
+    return subscribeConnectivity((isOnline) => setOnline(isOnline));
   }, []);
   return online;
 }
@@ -92,18 +87,8 @@ export function useCrmPipeline(pipeline, { enabled = true, paused = false } = {}
   useEffect(() => {
     if (!enabled) return undefined;
     refetch();
-    const onFocus = () => {
-      if (document.visibilityState === "visible") refetch({ quiet: true });
-    };
-    const onOnline = () => refetch({ quiet: true });
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
-    window.addEventListener("online", onOnline);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
-      window.removeEventListener("online", onOnline);
-    };
+    // #4423: the shared page-return signal (visible and online, once per gap).
+    return subscribePageReturn(() => refetch({ quiet: true }));
   }, [enabled, refetch]);
 
   // A quiet refresh on a timer, so a board left open does not go stale. Only

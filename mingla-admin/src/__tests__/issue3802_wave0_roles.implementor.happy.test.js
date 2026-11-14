@@ -598,13 +598,13 @@ describe("#3802 C-14: source contracts — the invite flow", () => {
       assert.equal(AUTH_CONTEXT.includes(gone), false, `AuthContext must not contain ${gone}`);
     }
     // Opening a link never marks the session as fully signed in.
-    const accept = AUTH_CONTEXT.slice(AUTH_CONTEXT.indexOf("const acceptInvite = async"), AUTH_CONTEXT.indexOf("const completeInviteSetup = async"));
+    const accept = AUTH_CONTEXT.slice(AUTH_CONTEXT.indexOf("const acceptInvite = useCallback(async"), AUTH_CONTEXT.indexOf("const completeInviteSetup = useCallback(async") /* #4423: stable callbacks */);
     assert.ok(accept.length > 200);
     assert.equal(accept.includes("localStorage.setItem"), false);
     assert.equal(/otpVerifiedRef\.current = true/.test(accept), false);
     assert.ok(accept.includes("localStorage.removeItem(FULL_AUTH_KEY)"));
     // Other sessions are signed out after the password is set and before activation.
-    const setup = AUTH_CONTEXT.slice(AUTH_CONTEXT.indexOf("const completeInviteSetup = async"), AUTH_CONTEXT.indexOf("const verifyPassword = async"));
+    const setup = AUTH_CONTEXT.slice(AUTH_CONTEXT.indexOf("const completeInviteSetup = useCallback(async"), AUTH_CONTEXT.indexOf("const verifyPassword = useCallback(async")); // #4423: stable callbacks
     const pw = setup.indexOf("updateUser({ password })");
     const others = setup.indexOf('signOut({ scope: "others" })');
     const activate = setup.indexOf('rpc("admin_team_activate_self")');

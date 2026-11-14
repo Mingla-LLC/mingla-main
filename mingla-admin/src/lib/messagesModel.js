@@ -311,3 +311,28 @@ export function createTimeZoneSync(save) {
 export function timeZoneLine(zone) {
   return zone ? `Time zone: ${zone} (from this device)` : null;
 }
+
+// #4423 rework 1 (P2-1): used by hooks/useMessages.
+/**
+ * Pure: the store after one refresh. `badge` / `inbox` are allSettled results
+ * (null = not this read's to apply). A failure keeps the numbers already on
+ * screen and marks them stale; it never blanks them.
+ */
+export function messagesAfterRefresh(prev, { owner: forUser, badge = null, inbox = null, paused = false }) {
+  const next = { ...prev, owner: forUser, loading: false, stale: false, paused: false };
+  let keptOld = false;
+  if (badge) {
+    next.badge = badge.status === "fulfilled" ? badge.value : prev.badge;
+    next.badgeError = badge.status === "rejected" ? badge.reason : null;
+    if (badge.status === "rejected" && prev.badge != null) keptOld = true;
+  }
+  if (inbox) {
+    next.inbox = inbox.status === "fulfilled" ? inbox.value : prev.inbox;
+    next.inboxError = inbox.status === "rejected" ? inbox.reason : null;
+    if (inbox.status === "rejected" && prev.inbox != null) keptOld = true;
+  }
+  if (keptOld) { next.stale = true; next.paused = !!paused; }
+  // A badge-only read says nothing new about the inbox: an old inbox stays stale.
+  else if (!inbox && prev.stale && prev.inbox != null) { next.stale = true; next.paused = !!prev.paused; }
+  return next;
+}

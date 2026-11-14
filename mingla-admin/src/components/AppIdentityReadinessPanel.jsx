@@ -15,6 +15,7 @@ import {
   transportErrorCopy,
   validateIdentityPreflightResponse,
 } from "../lib/adAppIdentityReadiness";
+import { subscribeConnectivity, subscribePageReturn, subscribeVisibility } from "../lib/pageReturn";
 
 const TABS = [{ id: "explorer", label: "Explorer" }, { id: "business", label: "Business" }];
 const initialEntry = () => ({ phase: "not_checked", result: null, error: null, stopped: false });
@@ -91,15 +92,15 @@ export function AppIdentityReadinessPanel() {
   useEffect(() => {
     const updateOnline = () => { setOnline(navigator.onLine); setNowMs(Date.now()); };
     const refresh = () => setNowMs(Date.now());
-    window.addEventListener("online", updateOnline);
-    window.addEventListener("offline", updateOnline);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    // #4423: the online indicator and the on-screen clock (no request) read
+    // the shared lib/pageReturn signals.
+    const offConnectivity = subscribeConnectivity(updateOnline);
+    const offVisibility = subscribeVisibility(refresh);
+    const offReturn = subscribePageReturn(refresh);
     return () => {
-      window.removeEventListener("online", updateOnline);
-      window.removeEventListener("offline", updateOnline);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      offConnectivity();
+      offVisibility();
+      offReturn();
     };
   }, []);
 

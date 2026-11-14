@@ -53,7 +53,13 @@ test("#1950 Admin IA, a11y, responsive, audited certification boundary, and web 
   assert.doesNotMatch(page,/AppIdentityReadinessPanel/);
   assert.match(page,/Campaign work/); assert.match(page,/title="Check the ad platforms"/);
   assert.doesNotMatch(page,/createCampaign|campaignAction|budget_usd/);
-  assert.match(panel,/aria-live="polite"/); assert.match(panel,/aria-busy/); assert.match(panel,/visibilitychange/); assert.match(panel,/window\.setInterval/); assert.match(selector,/role="tablist"/); assert.match(selector,/type="radio"/); assert.match(row,/aria-expanded/); assert.match(evidence,/<dl/);
+  assert.match(panel,/aria-live="polite"/); assert.match(panel,/aria-busy/); // [TEST-MOD-APPROVED ISSUE-4423] was: assert.match(panel,/visibilitychange/). #4423 moved every focus/visibility
+  // listener into the ONE shared lib/pageReturn signal. Still pinned: the freshness refreshes when the tab is shown
+  // again or the user returns, and both subscriptions are dropped on unmount.
+  assert.match(panel,/import \{[^}]*\bsubscribePageReturn\b[^}]*\bsubscribeVisibility\b[^}]*\} from "\.\.\/\.\.\/lib\/pageReturn";/);
+  assert.match(panel,/const offVisibility=subscribeVisibility\(\(visible\)=>\{if\(visible\)refresh\(\);\}\);const offReturn=subscribePageReturn\(refresh\);return\(\)=>\{window\.clearInterval\(interval\);offVisibility\(\);offReturn\(\);\};/);
+  assert.match(panel,/return subscribeConnectivity\(update\);/);
+  assert.match(panel,/window\.setInterval/); assert.match(selector,/role="tablist"/); assert.match(selector,/type="radio"/); assert.match(row,/aria-expanded/); assert.match(evidence,/<dl/);
   assert.match(boundary,/Native-app certification/); assert.match(boundary,/LAUNCH CERTIFICATION/); assert.match(boundary,/Stop and confirm provider/); assert.match(boundary,/Record bounded evidence/); assert.doesNotMatch(boundary,/coming later/);
   // [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: the approved admin shell (issue #3802) replaces the five per-width
   // gutters (px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12) with ONE gutter token on all sides. Still pinned: the shell,

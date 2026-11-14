@@ -105,7 +105,7 @@ export function TeamDashboardPage() {
   // #4130: the row of numbers, the runway and the waiting cards.
   const pulse = useOpsPoll(() => { const r = pulseRange(period); return fetchTeamPulse(r.from.toISOString(), r.to.toISOString()); }, { key: `${access?.email || ""}|team-pulse|${period}`, intervalMs: 120_000 });
   const overview = useOpsTeamOverview();
-  const waiting = useOpsPoll(() => ops.listWork({ status: ["person"], done_days: 0, limit: 1, today: todayIso() }), { key: `${access?.email || ""}|team-waiting`, intervalMs: 60_000 });
+  const waiting = useOpsPoll(() => ops.listBoardWork({ status: ["person"], done_days: 0, limit: 1, today: todayIso() }), { key: `${access?.email || ""}|team-waiting`, intervalMs: 60_000 });
   const targetsRef = useRef(null);
 
   const name = data?.me?.display_name || displayName(access?.email || "");

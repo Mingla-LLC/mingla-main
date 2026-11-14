@@ -1239,8 +1239,11 @@ describe("#3802 S-8: where the setup message and its code may go", () => {
     assert.match(PAGE, /useWatch\(watchUntil > 0, \(\) => \{\s*setNow\(Date\.now\(\)\);\s*refetch\(\{ quiet: true \}\);\s*\}, \{\s*until: watchUntil,/);
     assert.match(PAGE, /\}, \[active, everyMs, until\]\);/, "the watch starts again only when its end changes");
     assert.equal(/forMs|restart/.test(PAGE), false);
-    assert.match(PAGE, /if \(document\.visibilityState === "visible"\) watch\.visible\(false\);\s*else watch\.hidden\(\);/);
-    assert.match(HOOK, /const onFocus = \(\) => \{\s*if \(document\.visibilityState === "visible"\) refetch\(\{ quiet: true \}\);/, "the one read when the tab is shown again");
+    // #4423: visibility reaches the watch through lib/pageReturn's raw visibility
+    // signal (no request), and the one read when the tab is shown again is the
+    // hook's page-return subscription.
+    assert.match(PAGE, /subscribeVisibility\(\(visible\) => \{\s*if \(visible\) watch\.visible\(false\);\s*else watch\.hidden\(\);/);
+    assert.match(HOOK, /subscribePageReturn\(\(\) => refetch\(\{ quiet: true \}\)\)/, "the one read when the tab is shown again");
     // What became of the message is asked by its own id, on every read.
     assert.match(PAGE, /const result = setupVerdict\(\{ setup: list, id: st\.id, agentId: a\.id, expiresAt: st\.expiresAt, now: at \}\);\s*if \(result\.verdict === "wait"\) continue;\s*setCodes\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: null \}\)\);/);
     assert.match(PAGE, /useEffect\(\(\) => \{\s*if \(!loading && !error\) settle\(setup, keys, Date\.now\(\)\);\s*\}, \[keys, setup, loading, error, settle\]\);/);

@@ -31,6 +31,7 @@ import {
   buildConnectionRows,
   createReconnectHandler,
 } from "../lib/adConnections";
+import { subscribePageReturn } from "../lib/pageReturn";
 
 const STATE_BADGE = {
   connected: "success",
@@ -128,10 +129,11 @@ export function AdConnectionsPanel() {
       }
     };
     const intervalId = window.setInterval(verifyWhenVisible, AUTO_VERIFY_INTERVAL_MS);
-    document.addEventListener("visibilitychange", verifyWhenVisible);
+    // #4423: the shared page-return signal, not a listener of its own.
+    const unsubscribe = subscribePageReturn(verifyWhenVisible);
     return () => {
       window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", verifyWhenVisible);
+      unsubscribe();
     };
   }, [connections, verifyConnectedRows]);
 

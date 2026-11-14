@@ -122,9 +122,16 @@ describe("M-2 one count call, one 30 s poll, plus realtime", () => {
   const hook = stripComments(read("hooks/useMessages.js"));
   it("each tick reads the team badge and the inbox together, once", () => {
     assert.match(hook, /export const MESSAGES_POLL_MS = 30_000;/);
-    assert.equal((hook.match(/setInterval\(/g) || []).length, 1, "one timer");
-    assert.match(hook, /Promise\.allSettled\(\[fetchBadge\(\), getInbox\(SUPPORT_ALERT_TYPES\)\]\)/);
+    // #4423: one poller (lib/pollGate createPoller, its timer counting from the
+    // last refresh) instead of a setInterval; still one per tab, however many
+    // views are mounted, and through pollGate key "messages".
+    assert.equal((hook.match(/createPoller\(/g) || []).length, 1, "one timer");
+    assert.equal(/setInterval\(/.test(hook), false);
+    assert.match(hook, /createPoller\(\{ refresh: \(options\) => refreshMessages\(options\), intervalMs: MESSAGES_POLL_MS, pageReturn \}\)/);
+    assert.match(hook, /Promise\.allSettled\(\[fetchBadge\(\), inbox \? getInbox\(SUPPORT_ALERT_TYPES\) : Promise\.resolve\(null\)\]\)/);
     assert.equal((hook.match(/fetchBadge\(/g) || []).length, 1);
+    // #4423: realtime changes read the inbox (team_inbox) at most every 5 s.
+    assert.match(hook, /export const INBOX_MIN_GAP_MS = 5_000;/);
   });
   it("one timer however many views are mounted (button, panel, full page)", () => {
     assert.match(hook, /if \(consumers === 1 && owner\) start\(\);/);
@@ -383,7 +390,8 @@ describe("R2-1 this browser's time zone is saved for quiet hours and the 09:00 n
     assert.match(button, /useTeamTimeZoneSync\(messages\.enabled \? messages\.userId : null\);/);
     const hook = stripComments(read("hooks/useMessages.js"));
     assert.match(hook, /createTimeZoneSync\(\(zone\) => setMyTimeZone\(zone\)\)/);
-    assert.match(hook, /document\.addEventListener\("visibilitychange", onVisible\)/);
+    // #4423: "the tab coming back" is the shared lib/pageReturn signal.
+    assert.match(hook, /return pageReturn\.subscribePageReturn\(run\);/);
     assert.match(hook, /syncTeamTimeZone\(userId, deviceTimeZone\(\)\)\.catch\(/);
     const service = stripComments(read("services/teamChatService.js"));
     assert.match(service, /rpc\("team_set_my_timezone", \{ p_timezone: zone \}\)/);

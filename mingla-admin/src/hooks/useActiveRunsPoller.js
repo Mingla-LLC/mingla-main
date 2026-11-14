@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invokeWithRefresh } from "../lib/supabase";
+import { subscribePageReturn } from "../lib/pageReturn";
 
 const POLL_INTERVAL_MS = 5_000;
 const TERMINAL_DISPLAY_MS = 3_000;
@@ -167,18 +168,15 @@ export function useActiveRunsPoller() {
       if (tickRef.current) tickRef.current();
     }, POLL_INTERVAL_MS);
 
-    function onVisibility() {
-      if (document.visibilityState === "visible") {
-        // Resume with an immediate tick.
-        if (tickRef.current) tickRef.current();
-      }
-    }
-    document.addEventListener("visibilitychange", onVisibility);
+    // #4423: shown again reads through the shared page-return signal.
+    const unsubscribe = subscribePageReturn(() => {
+      if (tickRef.current) tickRef.current();
+    });
 
     return () => {
       isUnmountedRef.current = true;
       clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibility);
+      unsubscribe();
       // Clear all terminal-display timers.
       for (const handle of terminalTimersRef.current.values()) clearTimeout(handle);
       terminalTimersRef.current.clear();

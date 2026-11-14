@@ -115,7 +115,9 @@ Deno.test("#4389 4 — start_door_sale hands off to the door sale with tickets p
   assert(route.startsWith(`/event/${EVENT}/door/sell?draft=`), route);
   const draft = JSON.parse(atob(decodeURIComponent(route.split("draft=")[1])));
   assertEquals(draft.lines, [{ ticketTypeId: TIER, quantity: 2 }]);
-  const soon = new Date(Date.now() + 3600_000).toISOString();
+  // Started an hour ago, so both rows count as "today" at any clock time
+  // (now + 1h crossed midnight after 23:00 UTC and made this test fail).
+  const soon = new Date(Date.now() - 3600_000).toISOString();
   const later = new Date(Date.now() + 7200_000).toISOString();
   const two = fake(() => ({ data: null, error: null }), () => query([
     { id: "e1", title: "One", status: "live", event_dates: [{ start_at: soon, end_at: later }] },

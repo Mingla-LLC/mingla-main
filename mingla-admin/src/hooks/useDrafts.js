@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as service from "../services/draftService";
 import { announceDraftMutation } from "./useDraftCounts";
+import { subscribePageReturn } from "../lib/pageReturn";
 
 function changedDraft(a, b) {
   return a?.updated_at !== b?.updated_at || a?.body !== b?.body || a?.subject !== b?.subject || a?.state !== b?.state;
@@ -86,14 +87,10 @@ export function useDrafts({ state = "waiting", recordId = null, draftId = null, 
     const refresh = () => {
       if (!pausedRef.current && mutationActions.size === 0 && document.visibilityState === "visible" && navigator.onLine !== false) load({ quiet: true, announce: true });
     };
-    window.addEventListener("focus", refresh);
-    window.addEventListener("online", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    const unsubscribe = subscribePageReturn(refresh); // #4423: the shared page-return signal
     const timer = setInterval(refresh, 30_000);
     return () => {
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("online", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      unsubscribe();
       clearInterval(timer);
     };
   }, [key, load, mutationActions.size]);
@@ -130,15 +127,11 @@ export function useRecordDraftCount(recordId) {
     };
     const refresh = () => { if (document.visibilityState === "visible" && navigator.onLine !== false) load(); };
     load();
-    window.addEventListener("focus", refresh);
-    window.addEventListener("online", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    const unsubscribe = subscribePageReturn(refresh); // #4423: the shared page-return signal
     window.addEventListener("mingla:drafts-changed", refresh);
     return () => {
       live = false;
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("online", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      unsubscribe();
       window.removeEventListener("mingla:drafts-changed", refresh);
     };
   }, [recordId]);
