@@ -750,6 +750,29 @@ async function resolveOrderContext(
 }
 
 /**
+ * #4238: the stored checkout surface of a session (by its id). Its own read,
+ * fail-open: without the column (M-3 not applied yet) it answers null (web).
+ */
+async function sessionCheckoutSurface(
+  supabase: SupabaseClient,
+  checkoutSessionId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("ticket_checkout_sessions")
+      .select("checkout_surface")
+      .eq("id", checkoutSessionId)
+      .maybeSingle();
+    if (error) return null;
+    const value = (data as { checkout_surface?: unknown } | null)
+      ?.checkout_surface;
+    return typeof value === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * #4238 W4-1: the stored checkout surface for an order's session. Its own read,
  * so a database without the column yet loses only this answer (treated as web,
  * the pre-#4238 behaviour), never the session's click id or opt-out.
@@ -1375,6 +1398,37 @@ export async function fireAdCheckoutStart(
         eventId: checkoutSessionId,
         deduped: true,
         results: [],
+      };
+    }
+    // #4238 (apps wave finding; I-4238-NATIVE-PURCHASE-VIA-APPSFLYER, same
+    // rule as W4-1): a checkout started in the Explorer or Host app is not a
+    // website event. Every open channel is terminally skipped/native_surface.
+    if (await sessionCheckoutSurface(supabase, checkoutSessionId) === "native") {
+      const results: SenderResult[] = channels.map((channel) => ({
+        channel,
+        status: "skipped",
+        reason: "native_surface",
+      }));
+      const closedAt = new Date().toISOString();
+      await supabase.from("ticket_checkout_sessions").update({
+        ad_checkout_start_sent_at: closedAt,
+        updated_at: closedAt,
+        ad_checkout_start_provider_response: {
+          ...storedResponse,
+          ...Object.fromEntries(
+            results.map((result) => [result.channel, {
+              status: result.status,
+              reason: result.reason ?? null,
+              http: null,
+            }]),
+          ),
+        },
+      }).eq("id", checkoutSessionId).is("ad_checkout_start_sent_at", null);
+      return {
+        ok: true,
+        eventId: checkoutSessionId,
+        deduped: false,
+        results,
       };
     }
     const trackingOptOut = row.ad_tracking_opt_out === true;
