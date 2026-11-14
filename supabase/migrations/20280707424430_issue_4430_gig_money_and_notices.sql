@@ -12,7 +12,7 @@
 -- Item 5  Split endings get their own money state; the workspace carries the
 --      pending counter refund and what the creator kept.
 -- Item 1a  Host gig rows carry the gig's zone (gig_host_home.gigs[].timezone).
--- Q1   After any ending that is not a success, the host may offer the same
+-- Q1   After any ending of a hire (a dispute decision included), the host may offer the same
 --      creator again.
 -- L-1  local_review_submit: qualify unnest column.
 --
@@ -476,11 +476,12 @@ BEGIN
     PERFORM public.issue_3872_contract_apply_state(v.id,v_target,NULL,NULL,NULL,NULL);
     UPDATE public.gig_contracts SET cancel_reason=p_branch WHERE id=v.id;
   END IF;
-  -- #4402 / #4430 Q1: after any ending that is not a success, the host may
-  -- offer the same creator again (a fresh contract and hold); the creator is
-  -- free to accept or decline it.
+  -- #4402 / #4430 Q1 (Seth, 14 Nov): after any ending of a hire, a dispute
+  -- decision included, the host may offer the same creator again (a fresh
+  -- contract and hold); the creator is free to accept or decline it.
   IF p_branch IN ('host_before_accept','host_after_accept_before_lock','creator_after_accept',
-                  'creator_decline','declined_or_expired','upload_missed','post_missed') THEN
+                  'creator_decline','declined_or_expired','upload_missed','post_missed',
+                  'resolved_partial','resolved_refund') THEN
     UPDATE public.gig_interest SET status='shortlisted',updated_at=now()
      WHERE gig_id=v.gig_id AND creator_account_id=v.creator_account_id AND status='offered';
   END IF;
@@ -545,17 +546,24 @@ BEGIN
       RETURN jsonb_build_object('ok',false,'error','already_offered');
     END IF;
   ELSIF v_interest.status NOT IN ('sent','shortlisted')
-    -- #4430 Q1: an interest whose last hire on this gig ended without success
-    -- (cancelled, declined or expired, with or without money held) may be
-    -- offered again.
+    -- #4430 Q1 (Seth, 14 Nov): an interest whose last hire on this gig has
+    -- ended (cancelled, declined, expired, or any dispute decision), with or
+    -- without money held, may be offered again.
     AND NOT (v_interest.status='offered' AND (
       SELECT c.state FROM public.gig_contracts c
        WHERE c.gig_id=v_gig.id AND c.creator_account_id=v_interest.creator_account_id
-       ORDER BY c.created_at DESC, c.id DESC LIMIT 1) IN ('declined','expired','cancelled')) THEN
+       ORDER BY c.created_at DESC, c.id DESC LIMIT 1) IN ('declined','expired','cancelled','resolved_release','resolved_partial','resolved_refund')) THEN
     -- Withdrawn or passed interest cannot be offered.
     RETURN jsonb_build_object('ok',false,'error','interest_not_open');
   END IF;
-  IF public.issue_3872_gig_slots_left(v_gig.id)<=0 THEN RETURN jsonb_build_object('ok',false,'error','gig_full'); END IF;
+  -- #4430 Q1: a re-offer to the same creator reuses the slot their settled
+  -- dispute still counts (resolved_release / resolved_partial hold a slot).
+  IF (public.issue_3872_gig_slots_left(v_gig.id)
+      + (CASE WHEN (SELECT c.state FROM public.gig_contracts c
+                     WHERE c.gig_id=v_gig.id AND c.creator_account_id=v_interest.creator_account_id
+                     ORDER BY c.created_at DESC, c.id DESC LIMIT 1) IN ('resolved_release','resolved_partial') THEN 1 ELSE 0 END))<=0 THEN
+    RETURN jsonb_build_object('ok',false,'error','gig_full');
+  END IF;
 
   IF nullif(v_terms->>'fee_minor','') IS NOT NULL AND v_terms->>'fee_minor'!~'^[0-9]{1,15}$' THEN
     RETURN jsonb_build_object('ok',false,'error','fee_invalid','field','fee_minor');
@@ -586,6 +594,60 @@ BEGIN
   INSERT INTO public.gig_events(contract_id,actor,kind,data) VALUES(v_contract,'host','offer_created',jsonb_build_object('terms_version',1,'amount_minor',v_fee+v_booking));
   RETURN jsonb_build_object('ok',true,'contract_id',v_contract,'terms_version',1,'rail',v_rail,'fee_minor',v_fee,'booking_fee_minor',v_booking,'total_minor',v_fee+v_booking,'currency',v_gig.currency);
 END;
+$function$;
+
+-- ── Q1: a dispute released in full reopens the interest ─────────────────
+CREATE OR REPLACE FUNCTION public.issue_4216_gig_release_record_impl(p_contract_id uuid, p_provider_ref text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v public.gig_contracts; v_hold public.gig_holds; v_terms public.gig_terms_versions; v_share uuid;
+BEGIN
+  IF auth.uid() IS NOT NULL THEN RAISE EXCEPTION 'service_role_only' USING ERRCODE='42501'; END IF;
+  SELECT * INTO v FROM public.gig_contracts WHERE id=p_contract_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'release_not_ready' USING ERRCODE='55000'; END IF;
+  SELECT * INTO v_hold FROM public.gig_holds WHERE contract_id=v.id AND terms_version=v.current_terms_version FOR UPDATE;
+  SELECT * INTO v_terms FROM public.gig_terms_versions WHERE contract_id=v.id AND version=v.current_terms_version;
+  -- #12: a replay used to hit release_not_ready because the first call had
+  -- already moved the contract on. The released hold is the replay proof.
+  IF v_hold.status='released' THEN
+    SELECT id INTO v_share FROM public.payee_shares WHERE order_kind='gig' AND order_id=v.id AND payee_kind='gig_fee';
+    RETURN jsonb_build_object('ok',true,'replayed',true,'share_id',v_share,'rail',v_hold.rail);
+  END IF;
+  IF NOT (v.state='posts_verified' OR (v.state='disputed' AND EXISTS(SELECT 1 FROM public.gig_disputes d WHERE d.contract_id=v.id AND d.status='decided' AND d.decided_outcome='release'))) THEN RAISE EXCEPTION 'release_not_ready' USING ERRCODE='55000'; END IF;
+  IF v_hold.status<>'captured' THEN RAISE EXCEPTION 'captured_hold_required' USING ERRCODE='55000'; END IF;
+  INSERT INTO public.payee_shares(order_kind,order_id,payee_kind,member_id,payee_user_id,brand_id,rail,currency,gross_minor,mingla_fee_minor,net_minor,status,release_after)
+  VALUES('gig',v.id,'gig_fee',NULL,v.creator_account_id,v.brand_id,v_hold.rail,v_terms.currency,v_terms.fee_minor,0,v_terms.fee_minor,CASE WHEN v_hold.rail='stripe' THEN 'paid' ELSE 'releasable' END,now())
+  ON CONFLICT(order_kind,order_id,payee_kind) DO NOTHING RETURNING id INTO v_share;
+  IF v_share IS NULL THEN RAISE EXCEPTION 'gig_fee_share_exists' USING ERRCODE='55000'; END IF;
+  UPDATE public.gig_holds SET status='released' WHERE id=v_hold.id;
+  UPDATE public.gig_hold_adjustments SET status='released' WHERE contract_id=v.id AND kind='topup' AND status='captured';
+  IF v.state='posts_verified' THEN
+    PERFORM public.gig_transition(v.id,'posts_verified','release',jsonb_build_object('provider_ref',p_provider_ref,'share_id',v_share));
+  ELSE
+    PERFORM public.issue_3872_contract_apply_state(v.id,'resolved_release',NULL,NULL,NULL,NULL);
+    INSERT INTO public.gig_events(contract_id,actor,kind,data) VALUES(v.id,'system','dispute_release_recorded',jsonb_build_object('provider_ref',p_provider_ref,'share_id',v_share));
+    -- #4430 Q1: a settled dispute is an ending; the host may offer again.
+    UPDATE public.gig_interest SET status='shortlisted',updated_at=now()
+     WHERE gig_id=v.gig_id AND creator_account_id=v.creator_account_id AND status='offered';
+  END IF;
+  RETURN jsonb_build_object('ok',true,'share_id',v_share,'rail',v_hold.rail);
+END;
+$function$;
+
+-- ── Q1: an ended dispute does not count as hired on the gig ──────────────
+CREATE OR REPLACE FUNCTION public.issue_3872_creator_hired_on_gig(p_gig_id uuid, p_creator uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT EXISTS(SELECT 1 FROM public.gig_contracts x WHERE x.gig_id=p_gig_id AND x.creator_account_id=p_creator
+    -- #4430 Q1: a settled dispute is an ending, so the creator shows under
+    -- Interested again and can be offered.
+    AND x.state NOT IN ('offered','declined','expired','cancelled','resolved_refund','resolved_partial','resolved_release'));
 $function$;
 
 -- ── N-1: money in words for notices (whole units; cents only when not zero) ─

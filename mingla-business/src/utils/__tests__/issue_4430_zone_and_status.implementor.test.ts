@@ -23,6 +23,7 @@ import {
 } from "../creatorProgramFormat";
 import { agreedVideoDueWords, dueChangeInitial, proposalChangeWords } from "../../components/programs/dueChange";
 import { activityEvents, contractFeeWords, contractMoneyState, dedupeGigEvents } from "../../components/programs/contractCopy";
+import { hiredContracts, interestedApplicants } from "../../components/programs/applicantFilters";
 
 const LAGOS_NOON = "2026-12-15T11:00:00Z";
 const WANT = "Tue Dec 15, 12:00 PM Lagos time";
@@ -130,5 +131,23 @@ describe("#4430 item 2: Activity shows one row per action", () => {
     ];
     expect(dedupeGigEvents(events).map((e) => e.kind)).toEqual(["script_sent"]);
     expect(activityEvents(events)).toHaveLength(1);
+  });
+});
+
+describe("#4430 Q1: a settled dispute makes the creator offerable again", () => {
+  const applicant = { interest_id: "i1", creator_id: "c1", display_name: "Ada Creator", status: "shortlisted", quote_minor: 20000, completed: 0 };
+  it.each(["resolved_release", "resolved_partial", "resolved_refund", "cancelled", "declined", "expired"])(
+    "a %s contract does not hide the creator from Interested",
+    (state) => {
+      const contracts = [{ id: "k1", gig_id: "g1", state, creator: "Ada Creator", payment_pending: false }];
+      expect(interestedApplicants([applicant] as never, contracts as never, "best")).toHaveLength(1);
+    },
+  );
+  it("a live or completed hire still hides them, and stays under Hired", () => {
+    for (const state of ["accepted", "posts_submitted", "completed"]) {
+      const contracts = [{ id: "k1", gig_id: "g1", state, creator: "Ada Creator", payment_pending: false }];
+      expect(interestedApplicants([applicant] as never, contracts as never, "best")).toHaveLength(0);
+      expect(hiredContracts(contracts as never)).toHaveLength(1);
+    }
   });
 });

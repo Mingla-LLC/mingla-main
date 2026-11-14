@@ -162,8 +162,19 @@ BEGIN
     RAISE EXCEPTION 'P-2 (a) adjustment not recorded as refunded';
   END IF;
   IF public.issue_3872_contract_money_state(v_c) <> 'dispute_partial' THEN RAISE EXCEPTION 'item 5 dispute_partial: %', public.issue_3872_contract_money_state(v_c); END IF;
-  -- Q1 boundary: a dispute outcome is not one of the ended-hire states Seth listed.
-  IF pg_temp.reoffer(1, 'resolved_partial')->>'error' IS DISTINCT FROM 'interest_not_open' THEN RAISE EXCEPTION 'Q1 resolved_partial must not reopen'; END IF;
+  -- Q1 (Seth, 14 Nov): a settled dispute is an ending too. The creator shows
+  -- under Interested again and the host can offer them on this 1-slot gig
+  -- (the slot the settled contract holds is reused).
+  IF (SELECT status FROM public.gig_interest WHERE id = '44300000-0000-4000-8000-0000000b0001') <> 'shortlisted' THEN
+    RAISE EXCEPTION 'Q1 resolved_partial did not reopen the interest';
+  END IF;
+  PERFORM pg_temp.act(v_host);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(public.gig_applicants('44300000-0000-4000-8000-0000000a0001')) a WHERE (a->>'creator_id')::uuid = v_creator) THEN
+    RAISE EXCEPTION 'Q1 resolved_partial: the creator is hidden from Interested';
+  END IF;
+  PERFORM pg_temp.act(NULL);
+  v_answer := pg_temp.reoffer(1, 'resolved_partial');
+  IF (v_answer->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'Q1 re-offer after resolved_partial: %', v_answer; END IF;
 
   -- ── T-P2 (b) host cancels after accept: 75% + booking + counter back. ──
   v_c := pg_temp.hire(2, true);
@@ -267,6 +278,44 @@ BEGIN
   v_failed := false;
   BEGIN PERFORM public.gig_refund_quote(v_c, 'resolved_partial'); EXCEPTION WHEN OTHERS THEN v_failed := true; END;
   IF NOT v_failed THEN RAISE EXCEPTION 'P-2 (d) the partially_refunded guard opened for resolved_partial'; END IF;
+
+  -- ── Q1: the other two dispute endings (full refund, full release). ──────
+  v_c := pg_temp.hire(12, false);
+  PERFORM public.issue_3872_contract_apply_state(v_c, 'disputed', NULL, NULL, NULL, NULL);
+  INSERT INTO public.gig_disputes(contract_id, opened_by, reason, statement, status, decided_outcome, decided_refund_bps, decided_at)
+  VALUES (v_c, 'creator', 'other', 'The host asked for a different video.', 'decided', 'full_refund', 10000, now());
+  v_quote := pg_temp.refund(v_c, 'resolved_refund', 'ps_rf_12');
+  IF (v_quote->>'refund_minor')::bigint <> 23000 OR (SELECT state FROM public.gig_contracts WHERE id = v_c) <> 'resolved_refund' THEN
+    RAISE EXCEPTION 'Q1 resolved_refund fixture: %', v_quote;
+  END IF;
+  IF (SELECT status FROM public.gig_interest WHERE id = '44300000-0000-4000-8000-0000000b0012') <> 'shortlisted' THEN RAISE EXCEPTION 'Q1 resolved_refund did not reopen'; END IF;
+  v_answer := pg_temp.reoffer(12, 'resolved_refund');
+  IF (v_answer->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'Q1 re-offer after resolved_refund: %', v_answer; END IF;
+
+  v_c := pg_temp.hire(13, false);
+  PERFORM public.issue_3872_contract_apply_state(v_c, 'disputed', NULL, NULL, NULL, NULL);
+  INSERT INTO public.gig_disputes(contract_id, opened_by, reason, statement, status, decided_outcome, decided_refund_bps, decided_at)
+  VALUES (v_c, 'host', 'other', 'The video does not show the venue.', 'decided', 'release', 0, now());
+  -- The release ledger step itself (gig_release_record adds the rights
+  -- activation, which needs an accepted offer this fixture skips).
+  v_answer := public.issue_4216_gig_release_record_impl(v_c, 'tr_i4430_13');
+  IF (v_answer->>'ok')::boolean IS DISTINCT FROM true OR (SELECT state FROM public.gig_contracts WHERE id = v_c) <> 'resolved_release' THEN
+    RAISE EXCEPTION 'Q1 resolved_release fixture: %', v_answer;
+  END IF;
+  IF (SELECT status FROM public.gig_interest WHERE id = '44300000-0000-4000-8000-0000000b0013') <> 'shortlisted' THEN RAISE EXCEPTION 'Q1 resolved_release did not reopen'; END IF;
+  PERFORM pg_temp.act(v_host);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(public.gig_applicants('44300000-0000-4000-8000-0000000a0013')) a WHERE (a->>'creator_id')::uuid = v_creator) THEN
+    RAISE EXCEPTION 'Q1 resolved_release: the creator is hidden from Interested';
+  END IF;
+  PERFORM pg_temp.act(NULL);
+  v_answer := pg_temp.reoffer(13, 'resolved_release');
+  IF (v_answer->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'Q1 re-offer after resolved_release: %', v_answer; END IF;
+  -- The re-offer took the slot back: a second creator still cannot be offered
+  -- on this 1-slot gig while the new offer is live and paid.
+  v_c2 := (SELECT id FROM public.gig_contracts WHERE gig_id = '44300000-0000-4000-8000-0000000a0013' AND state = 'offered');
+  PERFORM public.gig_hold_set_provider_ref(v_c2, 1, 'gig_hold', 'ps_i4430_13b');
+  PERFORM public.gig_hold_mark_captured(v_c2, 1, 'ps_i4430_13b');
+  IF public.issue_3872_gig_slots_left('44300000-0000-4000-8000-0000000a0013') <> 0 THEN RAISE EXCEPTION 'Q1 slot accounting after a re-offer'; END IF;
 
   -- ── T-N1 self-initiated actions do not notify the actor; expiry; no-money close.
   v_c := pg_temp.hire(7, false);
