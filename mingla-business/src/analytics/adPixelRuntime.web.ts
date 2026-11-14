@@ -220,20 +220,61 @@ function bootstrapRedditPixel(pixelId: string): void {
   runtime.rdt?.("track", "PageVisit");
 }
 
-/** Bootstrap every configured provider once; one failure cannot block another. */
+type AdPixelProvider = keyof AdPixelIds;
+
+const PROVIDER_GLOBAL: Record<AdPixelProvider, "fbq" | "ttq" | "snaptr" | "rdt"> = {
+  meta: "fbq",
+  tiktok: "ttq",
+  snap: "snaptr",
+  reddit: "rdt",
+};
+
+const PROVIDER_BOOT: Record<AdPixelProvider, (id: string) => void> = {
+  meta: bootstrapMetaPixel,
+  tiktok: bootstrapTikTokPixel,
+  snap: bootstrapSnapPixel,
+  reddit: bootstrapRedditPixel,
+};
+
+/** A provider is booted when its global or its `data-mingla-pixel` script exists. */
+function providerBooted(provider: AdPixelProvider): boolean {
+  if (pixelWindow()[PROVIDER_GLOBAL[provider]] !== undefined) return true;
+  return (
+    window.document.querySelector(`script[data-mingla-pixel="${provider}"]`) !==
+    null
+  );
+}
+
+/**
+ * #4238 W2-1: per-provider idempotent boot. A provider that is already booted
+ * (by this runtime or by the server-rendered page) is never booted again, so
+ * its PageView is never re-sent. One failure cannot block another.
+ */
+function bootMissingProviders(pixelIds: AdPixelIds): void {
+  for (const provider of Object.keys(PROVIDER_BOOT) as AdPixelProvider[]) {
+    const id = pixelIds[provider];
+    if (!id || providerBooted(provider)) continue;
+    safePixel(() => PROVIDER_BOOT[provider](id));
+  }
+}
+
+/** Bootstrap every configured provider that is not booted yet. */
 export function bootstrapAdPixels(pixelIds: AdPixelIds): void {
   const runtime = pixelWindow();
-  if (runtime.__minglaAdPixelsBootstrapped === true) return;
   runtime.__minglaAdPixelsBootstrapped = true;
-  if (pixelIds.meta)
-    safePixel(() => bootstrapMetaPixel(pixelIds.meta as string));
-  if (pixelIds.tiktok)
-    safePixel(() => bootstrapTikTokPixel(pixelIds.tiktok as string));
-  if (pixelIds.snap)
-    safePixel(() => bootstrapSnapPixel(pixelIds.snap as string));
-  if (pixelIds.reddit)
-    safePixel(() => bootstrapRedditPixel(pixelIds.reddit as string));
+  bootMissingProviders(pixelIds);
   markAdPageViewFired();
+}
+
+/**
+ * #4238 W2-1 (I-4238-SPA-PIXEL-RUNTIME-ALWAYS-LOADS): take over pixels a
+ * server-rendered page booted. Providers the page left out (for example
+ * Reddit on an older page config) are booted here; providers it booted are
+ * left alone, and the page's PageView for this URL is not re-sent.
+ */
+export function adoptBootedPixels(pixelIds: AdPixelIds): void {
+  pixelWindow().__minglaAdPixelsBootstrapped = true;
+  bootMissingProviders(pixelIds);
 }
 
 function definedProps(obj: Record<string, unknown>): Record<string, unknown> {

@@ -681,9 +681,9 @@ function ensureAnalyticsBoot(): Promise<void> {
 export async function initWebAnalytics(): Promise<void> {
   if (!hasWindow()) return;
   resolveAdPixelIds();
-  if (window.__minglaAdPixelsBootstrapped === true) {
-    adPixelsBootstrapped = true;
-  }
+  // #4238 W2-1: a server-rendered page may already have booted the pixels.
+  // bootstrapAdPixels still loads the runtime and adopts them; it never
+  // treats the page's flag as "this app's runtime is ready".
   if (isAdsOn()) await bootstrapAdPixels();
   if (isAnalyticsOn()) await ensureAnalyticsBoot();
 }
@@ -845,11 +845,18 @@ async function bootstrapAdPixels(): Promise<void> {
   if (!hasWindow() || !isAdsOn() || adPixelsBootstrapped) return;
   adPixelRuntimePromise ??= import("./adPixelRuntime.web");
   const runtime = await adPixelRuntimePromise;
+  // #4238 W2-1 (I-4238-SPA-PIXEL-RUNTIME-ALWAYS-LOADS): the runtime is
+  // assigned before any early return, so a server-booted page never leaves
+  // every browser conversion a silent no-op.
   adPixelRuntime = runtime;
   // A visitor can turn ads off, or an SSR/test browser shim can disappear,
   // while the small runtime chunk is loading.
   if (!hasWindow() || !isAdsOn() || adPixelsBootstrapped) return;
-  runtime.bootstrapAdPixels(adPixelIds);
+  if (window.__minglaAdPixelsBootstrapped === true) {
+    runtime.adoptBootedPixels(adPixelIds);
+  } else {
+    runtime.bootstrapAdPixels(adPixelIds);
+  }
   adPixelsBootstrapped = window.__minglaAdPixelsBootstrapped === true;
 }
 
