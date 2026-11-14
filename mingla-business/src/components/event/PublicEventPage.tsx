@@ -118,7 +118,7 @@ import { BUYER_CLAIM_COPY } from "../../constants/buyerClaimCopy";
 // (captureWeb — postHogService is a deliberate no-op stub on web, I-1187).
 // LAZY (ORCH-1083 budget): the gate is tap-opened, never boot-path — a static
 // import re-enters the eager __common chunk and fails the budget gate.
-import { captureWeb } from "../../analytics/webAnalytics";
+import { captureWeb, fireAdReservation } from "../../analytics/webAnalytics";
 import {
   detectClientPlatform,
   openExternal,
@@ -1671,12 +1671,27 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         status: result.status,
         approval: result.approvalStatus,
       });
+      // #4238 W2-5 (I-4238-RSVP-CONVERSION-PAIRED): the browser twin of the
+      // server free sign-up, same id. No-op while ads are off.
+      if (
+        (result.status === "going" || result.status === "waitlisted") &&
+        result.rsvpId
+      ) {
+        // Optional call: partial analytics mocks in render suites omit it
+        // (the identifyAdBuyer?.() precedent in the checkout services).
+        fireAdReservation?.(result.rsvpId, {
+          value: 0,
+          currency: event.currency ?? undefined,
+          contentId: event.id,
+          brandId: event.brandId,
+        });
+      }
       if (result.credentials.length > 0) {
         captureWeb("rsvp_pass_viewed", { surface: "anonymous_web_success" });
       }
       return result;
     },
-    [engagementScope, event.id],
+    [engagementScope, event.id, event.currency, event.brandId],
   );
 
   // ── An anonymous guest's own reply, kept for this browser tab ──

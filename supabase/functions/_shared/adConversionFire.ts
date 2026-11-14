@@ -123,6 +123,11 @@ export interface FireAdConversionInput {
   reservationId?: string | null;
   /** Stay reservation group conversion — the exact multi-room/place group. */
   stayGroupId?: string | null;
+  /**
+   * #4238 W2-5 (I-4238-RSVP-CONVERSION-PAIRED): a public RSVP (event_rsvps.id)
+   * is a free sign-up. Its id is the dedup event_id, shared with the browser.
+   */
+  rsvpId?: string | null;
   surface?: Surface; // default 'web'
   lane?: Lane; // buyer conversions are consumer-lane by default
   eventType?: EventType; // default 'purchase' (order); reservations auto-tier (below)
@@ -658,6 +663,91 @@ async function resolveReservationContext(
   };
 }
 
+/** #4238 W2-5: only a positive public RSVP is a free sign-up. */
+const RSVP_CONVERSION_STATUSES = new Set(["going", "waitlisted"]);
+
+/**
+ * #4238 W2-5: the RSVP twin of resolveReservationContext. Reads the row the
+ * submit_event_rsvp_with_delivery RPC wrote; browser match keys come from
+ * input.adContext (an RSVP has no checkout session). A retry has no adContext,
+ * so it reuses the click id the first fire stored on ad_conversions.
+ */
+async function resolveRsvpContext(
+  supabase: SupabaseClient,
+  rsvpId: string,
+  input: FireAdConversionInput,
+): Promise<ConversionContext | null> {
+  const { data: rsvp, error } = await supabase
+    .from("event_rsvps")
+    .select("id, event_id, user_id, guest_email, guest_phone, rsvp_status")
+    .eq("id", rsvpId)
+    .maybeSingle();
+  if (error || !rsvp) return null;
+  const row = rsvp as Record<string, unknown>;
+  if (!RSVP_CONVERSION_STATUSES.has(String(row.rsvp_status ?? ""))) {
+    return null;
+  }
+  const minglaEventId = typeof row.event_id === "string" ? row.event_id : null;
+  let brandId: string | null = null;
+  let eventPage: string | null = null;
+  if (minglaEventId) {
+    const { data: ev } = await supabase
+      .from("events")
+      .select("brand_id, slug, event_type")
+      .eq("id", minglaEventId)
+      .maybeSingle();
+    const evRow = (ev ?? {}) as {
+      brand_id?: string;
+      slug?: unknown;
+      event_type?: unknown;
+    };
+    brandId = evRow.brand_id ?? null;
+    eventPage = eventPageUrl({
+      brandSlug: await brandSlugFor(supabase, brandId),
+      eventSlug: evRow.slug,
+      eventType: evRow.event_type,
+    });
+  }
+  const supplied = input.adContext ?? null;
+  let clickId = typeof input.clickId === "string" && input.clickId
+    ? input.clickId
+    : supplied?.clickId ?? null;
+  if (!clickId) {
+    const { data: prior } = await supabase
+      .from("ad_conversions")
+      .select("click_id")
+      .eq("event_id", rsvpId)
+      .maybeSingle();
+    const priorClick = (prior as { click_id?: unknown } | null)?.click_id;
+    clickId = typeof priorClick === "string" && priorClick ? priorClick : null;
+  }
+  const email = typeof row.guest_email === "string" ? row.guest_email : null;
+  const phone = typeof row.guest_phone === "string" ? row.guest_phone : null;
+  const userId = typeof row.user_id === "string" ? row.user_id : null;
+  return {
+    eventId: rsvpId,
+    eventType: "reservation",
+    valueCents: 0,
+    currency: null,
+    hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
+    hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
+    brandId,
+    minglaEventId,
+    orderId: null,
+    stayGroupId: null,
+    clickId,
+    eventSourceUrl: input.eventSourceUrl ?? eventPage,
+    externalId: userId ? await sha256Hex(userId) : null,
+    fbp: supplied?.fbp ?? null,
+    fbc: supplied?.fbc ?? null,
+    scid: supplied?.scid ?? null,
+    ttp: supplied?.ttp ?? null,
+    trackingOptOut: supplied?.trackingOptOut === true,
+    clientIpAddress: supplied?.clientIpAddress ?? null,
+    clientUserAgent: supplied?.clientUserAgent ?? null,
+  };
+}
+
 async function resolveStayContext(
   supabase: SupabaseClient,
   stayGroupId: string,
@@ -1187,20 +1277,24 @@ export async function fireAdConversion(
   };
 
   try {
-    const key =
-      (input.orderId ?? input.reservationId ?? input.stayGroupId ?? "").trim();
+    const key = (input.orderId ?? input.reservationId ?? input.stayGroupId ??
+      input.rsvpId ?? "").trim();
     if (!key) return { ok: false, reason: "no_conversion_key" };
 
-    // 1. Resolve the conversion context (order OR reservation).
+    // 1. Resolve the conversion context (order OR reservation OR stay OR RSVP).
+    // #4238 W2-5: the retry lane re-fires a row with neither order nor stay id
+    // as reservationId; an RSVP row resolves through the RSVP context.
     const ctx = input.orderId
       ? await resolveOrderContext(supabase, input.orderId, input)
       : input.reservationId
-      ? await resolveReservationContext(
+      ? (await resolveReservationContext(
         supabase,
         input.reservationId,
         input,
-      )
-      : await resolveStayContext(supabase, input.stayGroupId as string, input);
+      )) ?? (await resolveRsvpContext(supabase, input.reservationId, input))
+      : input.stayGroupId
+      ? await resolveStayContext(supabase, input.stayGroupId, input)
+      : await resolveRsvpContext(supabase, input.rsvpId as string, input);
     if (!ctx) return { ok: false, eventId: key, reason: "context_unresolved" };
 
     // 2. Idempotency read: if the row exists and NO channel is still pending,
