@@ -186,14 +186,25 @@ function buildConsent(conn: SenderConnection): Record<string, unknown> | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+/**
+ * #4238 W2-6 (I-4238-CLICK-ID-TYPED): the ClickConversion field for the click
+ * id's URL parameter. A legacy touch with no type was always a gclid.
+ */
+export function googleClickIdField(
+  type: string | null | undefined,
+): "gclid" | "gbraid" | "wbraid" {
+  return type === "gbraid" || type === "wbraid" ? type : "gclid";
+}
+
 /** Pure builder for one ClickConversion — testable without any network. */
 export function buildGoogleClickConversion(
   input: ConversionSendInput,
   conversionAction: string,
   conn: SenderConnection,
 ): Record<string, unknown> {
+  const clickField = googleClickIdField(input.externalClickIdType);
   const conversion: Record<string, unknown> = {
-    gclid: input.externalClickId?.trim(),
+    [clickField]: input.externalClickId?.trim(),
     conversionAction,
     conversionDateTime: formatGoogleConversionDateTime(input.eventTimeMs),
     orderId: input.eventId, // Mingla order/reservation id — the cross-side dedup key.
@@ -203,7 +214,12 @@ export function buildGoogleClickConversion(
     conversion.conversionValue = value;
     if (input.currency) conversion.currencyCode = input.currency;
   }
-  const userIdentifiers = buildUserIdentifiers(input);
+  // Step 0 Z7: with gbraid or wbraid and no gclid, Google ignores
+  // userIdentifiers (and refuses customVariables / cartData, which this
+  // builder never sends), so they are left off a braid conversion.
+  const userIdentifiers = clickField === "gclid"
+    ? buildUserIdentifiers(input)
+    : [];
   if (userIdentifiers.length > 0) conversion.userIdentifiers = userIdentifiers;
   const consent = buildConsent(conn);
   if (consent) conversion.consent = consent;

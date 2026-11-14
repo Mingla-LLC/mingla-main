@@ -271,3 +271,41 @@ test("W2-4: turning ads on from the dashboard does not boot buyer pixels", async
   await h.wa.savePrivacyChoice({ analytics: true, ads: true });
   expect(markers(h.injected)).toEqual([]);
 });
+
+// ── W2-6 (D18 capture half): gbraid / wbraid are Google clicks, typed ───────
+
+const touchBodies = (fetchMock: jest.Mock): Record<string, unknown>[] =>
+  fetchMock.mock.calls
+    .filter((call) => String(call[0]).endsWith("/functions/v1/attribution-capture"))
+    .map((call) => JSON.parse((call[1] as { body: string }).body) as Record<string, unknown>)
+    .filter((body) => body.kind === "touch");
+
+test.each([
+  ["?gbraid=abc", "abc", "gbraid"],
+  ["?wbraid=w1", "w1", "wbraid"],
+  ["?gclid=g1", "g1", "gclid"],
+])("W2-6: landing with %s posts a Google touch typed by its parameter", async (search, id, type) => {
+  const h = loadHarness({ href: `https://host.usemingla.com/e/a/b${search}` });
+  h.wa.captureAdClickIds({ pageType: "event" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const [touch] = touchBodies(h.fetchMock);
+  expect(touch).toMatchObject({
+    network: "google",
+    external_click_id: id,
+    external_click_id_type: type,
+  });
+});
+
+test("W2-6: precedence keeps the id, its network and its type together (rdt_cid before gclid)", async () => {
+  const h = loadHarness({
+    href: "https://host.usemingla.com/e/a/b?gclid=g1&rdt_cid=r1&gbraid=b1",
+  });
+  h.wa.captureAdClickIds({ pageType: "event" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const [touch] = touchBodies(h.fetchMock);
+  expect(touch).toMatchObject({
+    network: "reddit",
+    external_click_id: "r1",
+    external_click_id_type: "rdt_cid",
+  });
+});

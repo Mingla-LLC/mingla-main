@@ -72,6 +72,11 @@ export interface ConversionSendInput {
   ttp?: string | null; // UNHASHED TikTok _ttp cookie
   scCookie1?: string | null; // UNHASHED Snap _scid cookie
   externalClickId: string | null; // raw fbclid / ttclid / sccid / rdt_cid
+  /**
+   * #4238 W2-6 (I-4238-CLICK-ID-TYPED): which URL parameter the click id came
+   * from (gclid | gbraid | wbraid for Google). Null for legacy touches.
+   */
+  externalClickIdType?: string | null;
   clientIpAddress: string | null;
   clientUserAgent: string | null;
   eventTimeMs: number;
@@ -410,6 +415,8 @@ interface TouchContext {
   campaignId: string | null;
   network: string | null; // 'meta' | 'tiktok' | …
   externalClickId: string | null;
+  /** #4238 W2-6: the click id's URL parameter, or null (legacy row). */
+  externalClickIdType: string | null;
   fbc: string | null; // reconstructed from fbclid + touch time (A2-5)
   /** toward #3697 / #3703: outbound CAPI only when touch consent is granted. */
   consentAllowsShare: boolean;
@@ -735,6 +742,7 @@ async function resolveTouch(
     campaignId: null,
     network: null,
     externalClickId: null,
+    externalClickIdType: null,
     fbc: null,
     // No touch → no Reject latch; organic conversions may still share.
     consentAllowsShare: true,
@@ -744,7 +752,7 @@ async function resolveTouch(
   const { data: touch } = await supabase
     .from("ad_attribution_touches")
     .select(
-      "id, connection_id, campaign_id, network, external_click_id, created_at, consent_state",
+      "id, connection_id, campaign_id, network, external_click_id, external_click_id_type, created_at, consent_state",
     )
     .eq("click_id", clickId)
     .maybeSingle();
@@ -765,6 +773,9 @@ async function resolveTouch(
     campaignId: (t.campaign_id as string | null) ?? null,
     network,
     externalClickId,
+    externalClickIdType: typeof t.external_click_id_type === "string"
+      ? t.external_click_id_type
+      : null,
     // fbc is only meaningful for a Meta click id.
     fbc: network === "meta"
       ? reconstructFbc(
@@ -1058,6 +1069,9 @@ export async function fireAdCheckoutStart(
             ? touch.network === "snapchat"
             : touch.network === channel)
           ? touch.externalClickId
+          : null,
+        externalClickIdType: touch.network === channel
+          ? touch.externalClickIdType
           : null,
         clientIpAddress: typeof row.client_ip === "string"
           ? row.client_ip
@@ -1401,6 +1415,9 @@ export async function fireAdConversion(
             ? touch.network === "snapchat"
             : touch.network === channel)
           ? touch.externalClickId
+          : null,
+        externalClickIdType: touch.network === channel
+          ? touch.externalClickIdType
           : null,
         clientIpAddress: ctx.clientIpAddress,
         clientUserAgent: ctx.clientUserAgent,

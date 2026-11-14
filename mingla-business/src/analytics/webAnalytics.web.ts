@@ -1148,6 +1148,9 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     const ttclid = params.get("ttclid");
     const sccid = params.get("sccid") ?? params.get("ScCid");
     const gclid = params.get("gclid");
+    // #4238 W2-6: Google's iOS / privacy-limited click ids.
+    const gbraid = params.get("gbraid");
+    const wbraid = params.get("wbraid");
     const rdtCid = params.get("rdt_cid");
     const afCId = params.get("af_c_id") ?? params.get("c_id");
     // ISSUE-865 PR1 WP-1 — first-party campaign param. Forwarded to
@@ -1170,29 +1173,35 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       const v = params.get(k);
       if (v !== null && v.length > 0) utm[k] = v;
     }
-    const external = fbclid ?? ttclid ?? sccid ?? gclid ?? rdtCid ?? null;
+    // #4238 W2-6 (I-4238-CLICK-ID-TYPED): one touch per landing, precedence
+    // fbclid, ttclid, sccid, rdt_cid, gclid, gbraid, wbraid. The id, its
+    // network and its URL parameter always come from the same entry.
+    const clickCandidates: Array<[string | null, string, string]> = [
+      [fbclid, "meta", "fbclid"],
+      [ttclid, "tiktok", "ttclid"],
+      [sccid, "snapchat", "sccid"],
+      [rdtCid, "reddit", "rdt_cid"],
+      [gclid, "google", "gclid"],
+      [gbraid, "google", "gbraid"],
+      [wbraid, "google", "wbraid"],
+    ];
+    const click = clickCandidates.find(([value]) => value !== null && value !== "");
+    const external = click?.[0] ?? null;
+    const externalClickIdType = click?.[2] ?? null;
     const utmSource = (utm.utm_source ?? "").toLowerCase();
-    const network = fbclid
-      ? "meta"
-      : ttclid
-        ? "tiktok"
-        : sccid
-          ? "snapchat"
-          : rdtCid
-            ? "reddit"
-            : gclid
-              ? "google"
-              : utmSource === "facebook" || utmSource === "meta"
-                ? "meta"
-                : utmSource === "tiktok"
-                  ? "tiktok"
-                  : utmSource === "snapchat" || utmSource === "snap"
-                    ? "snapchat"
-                    : utmSource === "reddit"
-                      ? "reddit"
-                      : utmSource === "google"
-                        ? "google"
-                        : "other";
+    const network = click
+      ? click[1]
+      : utmSource === "facebook" || utmSource === "meta"
+        ? "meta"
+        : utmSource === "tiktok"
+          ? "tiktok"
+          : utmSource === "snapchat" || utmSource === "snap"
+            ? "snapchat"
+            : utmSource === "reddit"
+              ? "reddit"
+              : utmSource === "google"
+                ? "google"
+                : "other";
     // Referrer host enriches entry_source while analytics is on (ISSUE-855 PR-2).
     const refHost = readReferrerHost();
     const hasAdSignal =
@@ -1232,6 +1241,7 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     void postAttributionTouch({
       network,
       externalClickId: external,
+      externalClickIdType,
       afCId,
       mcId,
       adSetId,
@@ -1280,6 +1290,8 @@ export function readReferrerHost(): string | null {
 interface PostTouchInput {
   network: string;
   externalClickId: string | null;
+  /** #4238 W2-6: the URL parameter the click id came from. */
+  externalClickIdType?: string | null;
   afCId: string | null;
   mcId?: string | null;
   adSetId?: string | null;
@@ -1313,6 +1325,7 @@ export async function postAttributionTouch(
         lane: "consumer",
         network: input.network,
         external_click_id: input.externalClickId,
+        external_click_id_type: input.externalClickIdType ?? null,
         af_c_id: input.afCId,
         mc_id: input.mcId ?? null,
         ad_set_id: input.adSetId ?? null,

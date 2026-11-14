@@ -85,8 +85,10 @@ Deno.test("#3697 landing capture accepts provider click ids without case loss", 
     /params\.get\("sccid"\)\s*\?\?\s*params\.get\("ScCid"\)/,
   );
   assertMatch(capture, /external_click_id/);
-  assertEquals(
-    business.includes("const external = fbclid ?? ttclid ?? sccid"),
-    true,
+  // #4238 W2-6: the precedence moved into one typed list (fbclid, ttclid,
+  // sccid, rdt_cid, gclid, gbraid, wbraid); the first three keep their order.
+  assertMatch(
+    business,
+    /\[fbclid, "meta", "fbclid"\],\s*\[ttclid, "tiktok", "ttclid"\],\s*\[sccid, "snapchat", "sccid"\],/,
   );
 });

@@ -67,6 +67,8 @@ interface CaptureBody {
   consent_state?: ConsentState;
   network?: Network;
   external_click_id?: string;
+  /** #4238 W2-6: which URL parameter the click id came from. */
+  external_click_id_type?: string;
   af_c_id?: string;
   // ISSUE-865 PR1 WP-1 — first-party campaign param. `mc_id` (or the existing
   // AppsFlyer `af_c_id`) carries ad_campaigns.external_campaign_id; recordTouch
@@ -117,6 +119,32 @@ interface CaptureBody {
 export interface CaptureDeps {
   /** Returns a service-role Supabase client, or null when env is missing. */
   getClient: () => SupabaseClient | null;
+}
+
+/**
+ * #4238 W2-6 (I-4238-CLICK-ID-TYPED): the URL parameter a click id came from,
+ * and the one network it belongs to. Matches the
+ * ad_attribution_touches_external_click_id_type_check CHECK.
+ */
+const CLICK_ID_TYPE_NETWORK: Readonly<Record<string, Network>> = {
+  fbclid: "meta",
+  ttclid: "tiktok",
+  sccid: "snapchat",
+  gclid: "google",
+  gbraid: "google",
+  wbraid: "google",
+  rdt_cid: "reddit",
+};
+
+/** A known type that matches the claimed network, else null (the touch is kept). */
+export function validatedClickIdType(
+  rawType: unknown,
+  network: Network,
+  externalClickId: string | null,
+): string | null {
+  if (externalClickId === null || typeof rawType !== "string") return null;
+  const type = rawType.trim().toLowerCase();
+  return CLICK_ID_TYPE_NETWORK[type] === network ? type : null;
 }
 
 const NETWORKS: readonly Network[] = [
@@ -609,6 +637,11 @@ async function recordTouch(
     external_click_id: typeof body.external_click_id === "string"
       ? body.external_click_id
       : null,
+    external_click_id_type: validatedClickIdType(
+      body.external_click_id_type,
+      requestedNetwork,
+      externalClickId,
+    ),
     // Fill the connection from the resolved campaign when the per-lane lookup
     // above didn't resolve one (the campaign owns the authoritative connection).
     connection_id: connectionId ?? campaign.connectionId,
