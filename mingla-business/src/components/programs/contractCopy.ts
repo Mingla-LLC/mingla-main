@@ -182,7 +182,11 @@ export type ContractMoneyState =
   | "ready"
   | "paid"
   | "refunded"
-  | "partially_refunded";
+  | "partially_refunded"
+  // #4430 item 5: a part refund with a creator share (host cancel after
+  // accept, or a dispute split).
+  | "cancelled_partial"
+  | "dispute_partial";
 
 const MONEY_STATES: ReadonlySet<string> = new Set([
   "on_the_way",
@@ -190,6 +194,8 @@ const MONEY_STATES: ReadonlySet<string> = new Set([
   "paid",
   "refunded",
   "partially_refunded",
+  "cancelled_partial",
+  "dispute_partial",
 ]);
 
 /** gig_contract_workspace.money_state; null when no money was captured yet. */
@@ -210,6 +216,7 @@ export function contractFeeWords(
   moneyState: ContractMoneyState | null,
   refundedMinor?: number | null,
   totalPaidMinor?: number | null,
+  creatorKeptMinor?: number | null,
 ): string {
   const fee = programMoney(feeMinor, currency);
   const refunded =
@@ -232,6 +239,17 @@ export function contractFeeWords(
           ? `${refunded} refunded of ${programMoney(totalPaidMinor, currency)}`
           : `${refunded} refunded`
         : `${fee} · part refunded`;
+    // #4430 item 5: "₦90 back to you · ₦25 to the creator".
+    case "cancelled_partial":
+    case "dispute_partial": {
+      const kept =
+        typeof creatorKeptMinor === "number" && creatorKeptMinor > 0
+          ? programMoney(creatorKeptMinor, currency)
+          : null;
+      if (refunded && kept) return `${refunded} back to you · ${kept} to the creator`;
+      if (refunded) return `${refunded} back to you`;
+      return `${fee} · part refunded`;
+    }
     default:
       return fee;
   }
@@ -373,14 +391,49 @@ export function contractStatusCard(input: {
 }
 
 /**
+ * #4430 item 2: one action writes an action event and a fact event (for
+ * example `send_script` and `script_sent`). The action row is dropped when
+ * its fact partner from the same actor is within 5 seconds. Kept identical on
+ * Explorer, Host and Admin (checked by a test).
+ */
+export const GIG_EVENT_PAIRS: Readonly<Record<string, string>> = {
+  plan_confirmed: "shoot_plan_confirmed",
+  send_script: "script_sent",
+  deliver: "delivery_submitted",
+  approve: "approved",
+  request_fix: "fix_requested",
+  open_dispute: "dispute_opened",
+  submit_posts: "posts_submitted",
+};
+const PAIR_WINDOW_MS = 5_000;
+
+export function dedupeGigEvents<T extends { kind: string; actor?: string; at?: string }>(
+  events: readonly T[],
+): T[] {
+  return events.filter((event) => {
+    const partner = GIG_EVENT_PAIRS[event.kind];
+    if (!partner) return true;
+    const at = Date.parse(event.at ?? "");
+    return !events.some(
+      (other) =>
+        other !== event &&
+        other.kind === partner &&
+        other.actor === event.actor &&
+        Number.isFinite(at) &&
+        Math.abs(Date.parse(other.at ?? "") - at) <= PAIR_WINDOW_MS,
+    );
+  });
+}
+
+/**
  * Activity rows: events in words, newest first. A step recorded twice (the
  * button and the event) shows once; unknown kinds are left out.
  */
-export function activityEvents<T extends { kind: string }>(
+export function activityEvents<T extends { kind: string; actor?: string; at?: string }>(
   events: readonly T[],
 ): Array<T & { words: string }> {
   const out: Array<T & { words: string }> = [];
-  for (const event of [...events].reverse()) {
+  for (const event of [...dedupeGigEvents(events)].reverse()) {
     const words = activityWords(
       event.kind,
       (event as { data?: Record<string, unknown> | null }).data,
