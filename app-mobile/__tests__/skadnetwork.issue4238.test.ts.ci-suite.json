@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/__tests__/skadnetwork.issue4238.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-skadnetwork-explorer",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

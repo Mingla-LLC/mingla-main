@@ -95,6 +95,31 @@ export const REQUIRED_NETWORKS = {
     source: "https://developers.google.com/admob/ios/3p-skadnetworks",
     ids: ["cstr6suwn9.skadnetwork"],
   },
+  // #4238 W4-2 (D23, Step 0 Z11, approved by Seth 14 Nov 2026). TikTok, Snap
+  // and Reddit publish no identifier on their own pages (unchanged since
+  // #2286), so these three come from AppsFlyer's SKAN integrated-partners list,
+  // the MMP Mingla's install attribution runs through. Each id is the row of
+  // that network's own AppsFlyer partner id (CSV, read 2026-11-14):
+  //   bytedanceglobal_int / tiktokglobal_int → mj797d8u6f, 22mmun2rn5
+  //   snapchat_int → 424m5254lk · reddit_int → 2tdux39lx8
+  // 238da6jt44 and 899vrgt9g8 are bytedance_int (ByteDance China), NOT TikTok
+  // global, and are deliberately absent. Source is the MMP list, not a
+  // first-party page: re-verify there, not on the network's site.
+  tiktok: {
+    label: "TikTok (global, via AppsFlyer tiktokglobal_int)",
+    source: "https://support.appsflyer.com/hc/en-us/articles/360012640377-SKAN-integrated-partners-list",
+    ids: ["mj797d8u6f.skadnetwork", "22mmun2rn5.skadnetwork"],
+  },
+  snap: {
+    label: "Snapchat (via AppsFlyer snapchat_int)",
+    source: "https://support.appsflyer.com/hc/en-us/articles/360012640377-SKAN-integrated-partners-list",
+    ids: ["424m5254lk.skadnetwork"],
+  },
+  reddit: {
+    label: "Reddit (via AppsFlyer reddit_int)",
+    source: "https://support.appsflyer.com/hc/en-us/articles/360012640377-SKAN-integrated-partners-list",
+    ids: ["2tdux39lx8.skadnetwork"],
+  },
 };
 
 /**
@@ -108,20 +133,8 @@ export const REQUIRED_NETWORKS = {
  * with its source URL — that is the only legitimate way this list grows.
  */
 export const PUBLISHES_NO_IDENTIFIER = {
-  tiktok:
-    "TikTok for Business publishes NO .skadnetwork identifier on any advertiser " +
-    "or developer page. Its own iOS integration guide covers Info.plist twice " +
-    "(NSUserTrackingUsageDescription, SKIncludeConsumableInAppPurchaseHistory) and " +
-    "never mentions SKAdNetworkItems. TikTok states placements 'share the same " +
-    "Network ID under SKAN' without ever printing it. The only ByteDance ids in " +
-    "public are Pangle's, on Pangle's PUBLISHER monetisation page — irrelevant to " +
-    "an app that shows no Pangle ads. " +
-    "https://business-api.tiktok.com/portal/docs?id=1739585432134657",
-  snap:
-    "Snap publishes NO .skadnetwork identifier. Its advertiser SKAN setup is a " +
-    "Snap App ID + the Ads Manager opt-in toggle + MMP SDK — no plist step exists. " +
-    "Snap Audience Network (the publisher SDK that would have carried an id) is " +
-    "sunset. https://businesshelp.snapchat.com/s/article/skad-network-campaign",
+  // #4238 W4-2: tiktok and snap moved into REQUIRED_NETWORKS, sourced from
+  // AppsFlyer's partner list (their own pages still publish none).
   appleAds:
     "Apple Ads (Search Ads) has NO .skadnetwork identifier and structurally cannot: " +
     "it identifies in postbacks as 'com.apple.ads', and its ads run inside the App " +
