@@ -926,8 +926,16 @@ BEGIN
   -- Count 83 -> 85, hash d82eb3bebdb6d476c6ed48e69d36d940 -> 6b8508599f829dc2d9ce3d1e41f3543c,
   -- measured on a PG17 full replay of the #4334 branch; dropping those two
   -- indexes measures 83 / d82eb3bebdb6d476c6ed48e69d36d940 again.
-  IF v_index_count <> 85
-    OR v_index_fingerprint <> '6b8508599f829dc2d9ce3d1e41f3543c'
+  -- [TEST-MOD-APPROVED #4423] 20280707204423_issue_4423_w4a_indexes_and_cron
+  -- adds three foreign-key covering indexes on orders (orders_cancelled_by_fk4423_idx,
+  -- orders_created_by_scanner_id_fk4423_idx, orders_purchased_by_user_id_fk4423_idx),
+  -- already applied to production. Count 85 -> 88,
+  -- hash 6b8508599f829dc2d9ce3d1e41f3543c -> 3158b5e3ff37207ce334bd6bb4caa0d7,
+  -- measured on a PG17 full replay of 5253f49dd9; dropping exactly those three
+  -- indexes measures 85 / 6b8508599f829dc2d9ce3d1e41f3543c again. The seven
+  -- fingerprinted functions are unchanged by #4423.
+  IF v_index_count <> 88
+    OR v_index_fingerprint <> '3158b5e3ff37207ce334bd6bb4caa0d7'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION
