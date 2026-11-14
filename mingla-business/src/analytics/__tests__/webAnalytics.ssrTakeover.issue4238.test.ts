@@ -398,3 +398,20 @@ test("W3-3: the browser HostSignUp twin carries the server id on all four pixels
     { customEventName: "HostSignUp", conversionId: "host_signup:uid-1" },
   ]);
 });
+
+// ── #4238 W5-3 (Step 0 Z4): Snap appends ScCid itself; capture must keep it ──
+
+test.each([["?ScCid=SNAPCLICK1"], ["?sccid=SNAPCLICK1"]])(
+  "W5-3: a Snap landing with %s posts a snapchat touch with the raw click id, typed sccid",
+  async (search) => {
+    const h = loadHarness({ href: `https://host.usemingla.com/e/a/b${search}&utm_source=snapchat` });
+    h.wa.captureAdClickIds({ pageType: "event" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const [touch] = touchBodies(h.fetchMock);
+    expect(touch).toMatchObject({
+      network: "snapchat",
+      external_click_id: "SNAPCLICK1",
+      external_click_id_type: "sccid",
+    });
+  },
+);
