@@ -16,6 +16,8 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 export const metadata = searchRouteMetadata('/')
 
+export const revalidate = 300
+
 export default function ExplorerHomePage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>

@@ -50,6 +50,21 @@ export async function getCityWeekend(slug: CityHubSlug, nowIso: string): Promise
   const cities = registryLinksCities()
   const registryCity = cities.find((c) => c.slug === slug)
   if (!registryCity) throw new Error(`#4339 city weekend: ${slug} is not a registry city`)
+  return weekendFor(registryCity, cities, nowIso)
+}
+
+/**
+ * #4339 — "This weekend" for a live city with no registry guide (Abuja, Kano,
+ * ...). Listings are assigned across the registry cities AND every live city, so
+ * a listing in Abuja belongs to Abuja and not to nowhere.
+ */
+export async function getLiveCityWeekend(city: LinksCity, liveCities: readonly LinksCity[], nowIso: string): Promise<CityWeekendModel> {
+  const known = new Set(registryLinksCities().map((c) => c.slug))
+  const cities = [...registryLinksCities(), ...liveCities.filter((c) => !known.has(c.slug))]
+  return weekendFor(city, cities, nowIso)
+}
+
+async function weekendFor(registryCity: LinksCity, cities: LinksCity[], nowIso: string): Promise<CityWeekendModel> {
   const data = await getLinksData()
   const city = withLiveCityId(registryCity, linksCitiesFromRows(data.cities, registryLinksHints()))
   const readFailed = data.failed.includes('week')

@@ -4,9 +4,9 @@ import { SiteFooter } from '@/components/marketing/footer'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { LandingMedia } from '@/components/landing/landing-media'
 import { LandingRoot } from '@/components/landing/landing-root'
-import { cityHubForSlug, cityHubPath, type CityHubSlug } from '@/content/cities/registry'
+import { getCityTiles } from '@/lib/live-cities'
 import type { LandingMediaRef } from '@/content/host-landing/icps'
-import { CITY_MEDIA } from './city-media'
+import { CityMedia } from './city-media'
 import { ReelHero } from './reel-hero'
 import type { ReelCard } from './reel-stage'
 import { RotatingPhrase } from './rotating-phrase'
@@ -46,20 +46,13 @@ const AUDIENCES: readonly { media: LandingMediaRef; title: string; line: string 
   { media: 'v:a-solo', title: 'Solo', line: 'Some of the best plans only need you.' },
 ]
 
-/** City tiles: registry slugs, so a renamed hub fails the build, not a click.
- *  Each tile shows that city's own loop from CITY_MEDIA (the same clip as its
- *  /cities tile and its page hero). */
-const CITY_TILES: readonly CityHubSlug[] = ['lagos', 'raleigh-nc', 'durham-nc', 'cary-nc', 'brussels']
-
 const MARQUEE = ['Date night', 'Side quests', 'Live music', 'Brunch', 'Boat day', 'Gallery hop', 'Game night', 'Solo Saturday']
 
-function cityTile(slug: string) {
-  const record = cityHubForSlug(slug)
-  if (!record) throw new Error(`#4339 home: city hub "${slug}" is not in the registry`)
-  return { href: cityHubPath(record), name: record.city }
-}
-
-export function HomePage() {
+/** The cities row: every live Mingla city, A to Z (lib/live-cities.ts), each with
+ *  its own loop from CITY_MEDIA / LIVE_CITY_MEDIA (the same clip as its /cities
+ *  tile and its page hero), or a brand-colour card when it has none yet. */
+export async function HomePage() {
+  const { tiles: cityTiles } = await getCityTiles()
   return (
     <LandingRoot>
       <SiteNav surface="explorer" current="home" />
@@ -180,19 +173,16 @@ export function HomePage() {
             </div>
           </div>
           <div className="cityrow">
-            {CITY_TILES.map((slug) => {
-              const city = cityTile(slug)
-              return (
-                <Link href={city.href} className="reveal" key={slug}>
-                  <div className="ph scrim">
-                    <LandingMedia media={CITY_MEDIA[slug]} />
-                  </div>
-                  <div className="ov">
-                    <h3>{city.name}</h3>
-                  </div>
-                </Link>
-              )
-            })}
+            {cityTiles.map((city) => (
+              <Link href={`/cities/${city.slug}`} className="reveal" key={city.slug}>
+                <div className="ph scrim">
+                  <CityMedia slug={city.slug} />
+                </div>
+                <div className="ov">
+                  <h3>{city.name}</h3>
+                </div>
+              </Link>
+            ))}
           </div>
         </div>
       </section>

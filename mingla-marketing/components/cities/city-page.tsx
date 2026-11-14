@@ -32,7 +32,14 @@ import { cataloguePlaceView } from '@/content/page-system/shared'
 // FAQs). The historical #2983 layout stays in city-hub.tsx for its pinned
 // build lane.
 
-function CityHero({ record }: { readonly record: CityHubRecord }) {
+/** What the hero, breadcrumb and host band need of a city: a guide record or a live city. */
+export interface CityIdentity {
+  readonly slug: string
+  readonly city: string
+  readonly countryCode: string
+}
+
+export function CityHero({ record }: { readonly record: CityIdentity }) {
   // #4339 round B (SEO audit, ship-blocker 1): the H1 is the search phrase
   // "Things to do in <City>", set as the small pill; the brand line keeps the
   // big serif look but is not a heading.
@@ -65,7 +72,7 @@ function CityHero({ record }: { readonly record: CityHubRecord }) {
 }
 
 /** The visible trail that matches the BreadcrumbList (Home › Cities › <City>). */
-function CityBreadcrumb({ record }: { readonly record: CityHubRecord }) {
+export function CityBreadcrumb({ record }: { readonly record: CityIdentity }) {
   return (
     <nav className="city-crumbs wrap" aria-label="Breadcrumb">
       <ol>
@@ -151,7 +158,7 @@ function CityQuestions({ record }: { readonly record: CityHubRecord }) {
   )
 }
 
-function CityHostBand({ record }: { readonly record: CityHubRecord }) {
+export function CityHostBand({ record }: { readonly record: CityIdentity }) {
   return (
     <section className="sec" aria-labelledby="city-host-title">
       <div className="wrap">
