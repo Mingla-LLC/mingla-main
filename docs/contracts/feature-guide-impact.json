@@ -257,6 +257,7 @@
         "mingla-business/src/components/creators/screens/PrehireCreatorProfileScreen.tsx",
         "mingla-business/src/components/gigs/HireSheet.tsx",
         "mingla-business/src/components/programs/ShowcaseStrip.tsx",
+        "mingla-business/src/components/programs/ProgramKit.tsx",
         "mingla-business/src/components/gigs/hireTerms.ts",
         "mingla-business/src/services/creatorGigsService.ts",
         "mingla-business/src/utils/creatorProgramFormat.ts",
