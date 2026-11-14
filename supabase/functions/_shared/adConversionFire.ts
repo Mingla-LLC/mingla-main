@@ -731,8 +731,12 @@ async function resolveTouch(
   };
 }
 
-/** Resolve a lane's {pixel_id, capi token env-var NAME} from ad_connections.extra. */
-async function resolveSenderConnection(
+/**
+ * Resolve a lane's {pixel_id, capi token env-var NAME} from ad_connections.extra.
+ * #4238 W1-2: exported so the tracking-health run checks the exact same
+ * connection the senders use (one owner for the resolution).
+ */
+export async function resolveSenderConnection(
   supabase: SupabaseClient,
   platform: Channel,
   lane: Lane,
@@ -778,8 +782,8 @@ async function resolveSenderConnection(
     case "reddit":
       return {
         pixelId: str(extra.reddit_pixel_id) ?? str(extra.pixel_id),
-        // Reddit token is name-reserved but its VALUE is not provisioned yet →
-        // the sender fail-closes soft ('pending_config') until the env exists.
+        // An unset Reddit token makes the sender return failed/pending_config
+        // (#4238 W1-2: retried and alerted) until the value exists.
         tokenEnvVar: str(extra.capi_env_var) ?? "REDDIT_ADS_CAPI_TOKEN",
         lane,
       };

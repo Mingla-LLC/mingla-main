@@ -50,13 +50,13 @@ export async function sendTikTokConversion(
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const pixelCode = conn.pixelId?.trim();
-  if (!pixelCode) return { channel: "tiktok", status: "skipped", reason: "no_pixel" };
+  if (!pixelCode) return { channel: "tiktok", status: "failed", reason: "no_pixel" };
 
   const tokenName = conn.tokenEnvVar?.trim();
-  if (!tokenName) return { channel: "tiktok", status: "skipped", reason: "no_token_name" };
+  if (!tokenName) return { channel: "tiktok", status: "failed", reason: "no_token_name" };
   const token = getToken(tokenName);
   if (!token || !token.trim()) {
-    return { channel: "tiktok", status: "skipped", reason: "no_token" };
+    return { channel: "tiktok", status: "failed", reason: "no_token" };
   }
 
   const user = definedOnly({

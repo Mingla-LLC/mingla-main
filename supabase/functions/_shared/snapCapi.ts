@@ -68,23 +68,32 @@ function snapBodyFailure(payload: unknown): string | null {
   return null;
 }
 
+/**
+ * #4238 W1-2: the daily tracking-health probe posts to Snap's documented
+ * validate endpoint (`POST /v3/<asset_id>/events/validate`, Step 0 Z3), which
+ * checks the key and the event without recording a conversion.
+ */
+export interface SnapSenderDeps {
+  validateOnly?: boolean;
+}
+
 export async function sendSnapConversion(
   input: ConversionSendInput,
   conn: SenderConnection,
-  deps: SenderDeps = {},
+  deps: SenderDeps & SnapSenderDeps = {},
 ): Promise<SenderResult> {
   const getToken = deps.getToken ?? ((n: string) => resolveCapiToken(n));
   const fetchImpl = deps.fetchImpl ?? fetch;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const pixelId = conn.pixelId?.trim();
-  if (!pixelId) return { channel: "snap", status: "skipped", reason: "no_pixel" };
+  if (!pixelId) return { channel: "snap", status: "failed", reason: "no_pixel" };
 
   const tokenName = conn.tokenEnvVar?.trim();
-  if (!tokenName) return { channel: "snap", status: "skipped", reason: "no_token_name" };
+  if (!tokenName) return { channel: "snap", status: "failed", reason: "no_token_name" };
   const token = getToken(tokenName);
   if (!token || !token.trim()) {
-    return { channel: "snap", status: "skipped", reason: "no_token" };
+    return { channel: "snap", status: "failed", reason: "no_token" };
   }
 
   const userData = definedOnly({
@@ -118,7 +127,8 @@ export async function sendSnapConversion(
 
   // Snap authenticates the CAPI with the access token as a query param (its
   // documented method for the long-lived Conversions token).
-  const url = `${SNAP_CAPI_BASE}/${pixelId}/events?access_token=${encodeURIComponent(token)}`;
+  const path = deps.validateOnly === true ? "events/validate" : "events";
+  const url = `${SNAP_CAPI_BASE}/${pixelId}/${path}?access_token=${encodeURIComponent(token)}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

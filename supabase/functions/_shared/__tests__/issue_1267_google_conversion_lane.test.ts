@@ -224,19 +224,21 @@ Deno.test("googleConversionUpload: consent block is emitted only when configured
 
 // ── FAIL-OPEN skips (never throws, never egresses while unconfigured) ─────────
 
-Deno.test("googleConversionUpload: no conversion_action_resource → skipped 'pending_config', NO request (mirror reddit SC-12)", async () => {
+// #4238 W1-2: missing Google config is `failed` (retried + alerted), no request.
+Deno.test("googleConversionUpload: no conversion_action_resource → failed 'pending_config', NO request (mirror reddit SC-12)", async () => {
   const { impl, calls } = captureRequest();
   const res = await sendGoogleConversion(
     baseInput(),
     googleConn({ conversionActionResource: null }),
     { resolveClient: () => Promise.resolve(FAKE_CLIENT), requestImpl: impl },
   );
-  assertEquals(res.status, "skipped");
+  assertEquals(res.status, "failed");
   assertEquals(res.reason, "pending_config");
   assertEquals(calls.length, 0); // never resolves a client / POSTs while unconfigured
 });
 
-Deno.test("googleConversionUpload: no google gclid → skipped 'no_gclid', NO request", async () => {
+// #4238 W1-2: the reason is renamed no_google_click (it will cover gbraid/wbraid).
+Deno.test("googleConversionUpload: no google click → skipped 'no_google_click', NO request", async () => {
   const { impl, calls } = captureRequest();
   const res = await sendGoogleConversion(
     baseInput({ externalClickId: null }),
@@ -244,11 +246,11 @@ Deno.test("googleConversionUpload: no google gclid → skipped 'no_gclid', NO re
     { resolveClient: () => Promise.resolve(FAKE_CLIENT), requestImpl: impl },
   );
   assertEquals(res.status, "skipped");
-  assertEquals(res.reason, "no_gclid");
+  assertEquals(res.reason, "no_google_click");
   assertEquals(calls.length, 0);
 });
 
-Deno.test("googleConversionUpload: resolveClient throws (lane unprovisioned) → skipped 'pending_config', NEVER throws", async () => {
+Deno.test("googleConversionUpload: resolveClient throws (lane unprovisioned) → failed 'pending_config', NEVER throws", async () => {
   const { impl, calls } = captureRequest();
   let threw = false;
   let res: SenderResult | undefined;
@@ -263,7 +265,7 @@ Deno.test("googleConversionUpload: resolveClient throws (lane unprovisioned) →
     threw = true;
   }
   assertEquals(threw, false); // fail-open: a post-paid, off-critical-path send never throws
-  assertEquals(res?.status, "skipped");
+  assertEquals(res?.status, "failed");
   assertEquals(res?.reason, "pending_config");
   assertEquals(calls.length, 0);
 });

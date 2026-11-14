@@ -19,10 +19,10 @@
  *
  * FAIL-OPEN (mirrors redditCapi's pending_config, SC-12): a Google failure must
  * NEVER block a purchase/reservation nor the other 4 senders. This sender NEVER
- * throws upward. Soft-skips:
- *   • no conversion_action_resource on the connection → { skipped, pending_config }
- *   • no google gclid on the attributed touch          → { skipped, no_gclid }
- *   • resolveGoogleClient throws (lane unprovisioned)  → { skipped, pending_config }
+ * throws upward. #4238 W1-2: missing config is loud (failed, retried 72 h):
+ *   • no conversion_action_resource on the connection → { failed, pending_config }
+ *   • no google click id on the attributed touch      → { skipped, no_google_click }
+ *   • resolveGoogleClient throws (lane unprovisioned)  → { failed, pending_config }
  *   • a platform 4xx/5xx / network / timeout           → { failed, ... }
  *
  * ENHANCED CONVERSIONS: hashed email/phone (already SHA-256'd by adConversionFire,
@@ -76,6 +76,24 @@ async function loadGoogleModule(): Promise<typeof import("./google.ts")> {
 async function realResolveClient(lane: Lane): Promise<GoogleClient> {
   const { resolveGoogleClient } = await loadGoogleModule();
   return resolveGoogleClient(null, lane);
+}
+
+/**
+ * #4238 W1-2: the tracking-health key check for the Google upload lane. Resolves
+ * the client exactly as the sender does (an OAuth mint, cached by google.ts).
+ * google_not_provisioned = keys missing; any other refusal = the mint was
+ * rejected (revoked or expired refresh token). Never throws.
+ */
+export async function probeGoogleUploadClient(
+  lane: Lane,
+): Promise<"ok" | "not_configured" | "auth_failed"> {
+  try {
+    await realResolveClient(lane);
+    return "ok";
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "";
+    return detail === "google_not_provisioned" ? "not_configured" : "auth_failed";
+  }
 }
 
 /** Real default: resolve a Google client from a connection row (used by provisioning). */
@@ -207,10 +225,10 @@ export async function sendGoogleConversion(
 
   const conversionAction = conn.conversionActionResource?.trim();
   if (!conversionAction) {
-    // PENDING-CONFIG (mirror reddit SC-12): the conversion action has not been
-    // provisioned yet (the admin one-shot) — skip softly, NEVER error, so the
-    // lane stays green until admin-ad-google-provision-conversion has run.
-    return { channel, status: "skipped", reason: "pending_config" };
+    // PENDING-CONFIG: the conversion action has not been provisioned yet (the
+    // admin one-shot). #4238 W1-2: failed, so the retry lane and the
+    // tracking-health alert see it. Never throws.
+    return { channel, status: "failed", reason: "pending_config" };
   }
 
   const gclid = input.externalClickId?.trim();
@@ -218,7 +236,8 @@ export async function sendGoogleConversion(
     // Fail-open: no google click id on the attributed touch → nothing to anchor
     // the click conversion on. The userIdentifiers ride ALONGSIDE the gclid to
     // improve matching; a truly gclid-less conversion is skipped per contract.
-    return { channel, status: "skipped", reason: "no_gclid" };
+    // #4238 W1-2: renamed from no_gclid (it will also cover gbraid/wbraid).
+    return { channel, status: "skipped", reason: "no_google_click" };
   }
 
   const lane: Lane = conn.lane ?? "consumer";
@@ -229,8 +248,9 @@ export async function sendGoogleConversion(
   } catch {
     // resolveGoogleClient fail-closes (AdNotConnectedError) when the lane's
     // Google secrets are unset. For THIS post-paid, off-critical-path send that
-    // is a soft skip — the connect flow owns the hard 409/424, never this sender.
-    return { channel, status: "skipped", reason: "pending_config" };
+    // is a config failure (#4238 W1-2: failed, retried, alerted) — the connect
+    // flow owns the hard 409/424, never this sender.
+    return { channel, status: "failed", reason: "pending_config" };
   }
 
   const request = deps.requestImpl ?? realRequest;

@@ -9,9 +9,10 @@
  * PENDING-CONFIG (SC-12, hard requirement): the Reddit conversion access token
  * `REDDIT_ADS_CAPI_TOKEN` is name-reserved but its VALUE is NOT provisioned yet
  * (a human must generate it once in Reddit Events Manager). Until then this
- * sender FAIL-CLOSES SOFT — it returns { status:'skipped', reason:'pending_config' }
- * and NEVER errors, so the conversion pipeline runs green for the other three
- * channels. The moment the env var exists it starts sending — no code change.
+ * sender returns { status:'failed', reason:'pending_config' } (#4238 W1-2: a
+ * missing key is loud and retried for 72 h, never a silent skip). It still
+ * NEVER throws, so the other channels run. The moment the env var exists it
+ * starts sending — no code change.
  *
  * HARD CONTRACT (identical to metaCapi.ts): FAIL-OPEN, never throws; token from
  * the connection's env-var NAME via Deno.env.get(); PII SHA-256 HASHED by the
@@ -59,14 +60,15 @@ export async function sendRedditConversion(
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const pixelId = conn.pixelId?.trim();
-  if (!pixelId) return { channel: "reddit", status: "skipped", reason: "no_pixel" };
+  if (!pixelId) return { channel: "reddit", status: "failed", reason: "no_pixel" };
 
   const tokenName = conn.tokenEnvVar?.trim();
-  if (!tokenName) return { channel: "reddit", status: "skipped", reason: "no_token_name" };
+  if (!tokenName) return { channel: "reddit", status: "failed", reason: "no_token_name" };
   const token = getToken(tokenName);
   if (!token || !token.trim()) {
-    // PENDING-CONFIG (SC-12): token not generated yet — skip softly, NEVER error.
-    return { channel: "reddit", status: "skipped", reason: "pending_config" };
+    // PENDING-CONFIG (SC-12): token not set. #4238 W1-2: failed (retried and
+    // alerted by ad-conversion-retry), never a silent skip. Never throws.
+    return { channel: "reddit", status: "failed", reason: "pending_config" };
   }
 
   const user = definedOnly({

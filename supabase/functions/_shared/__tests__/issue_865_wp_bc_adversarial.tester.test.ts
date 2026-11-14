@@ -245,7 +245,8 @@ Deno.test("A5 fireAdConversion: a hanging sender never blocks past the bound and
 });
 
 // ═══ A6 — Reddit pending-config does NOT block the other three ════════════════
-Deno.test("A6 fireAdConversion: reddit pending-config → skipped, meta/tiktok/snap still send (isolation)", async () => {
+// #4238 W1-2: pending-config is now `failed` (retried + alerted); isolation holds.
+Deno.test("A6 fireAdConversion: reddit pending-config → failed, meta/tiktok/snap still send (isolation)", async () => {
   const { client } = fakeSupabase(ORDER_TABLES);
   const { fn, calls } = capturingFetch();
   const res = await fireAdConversion(client, { orderId: ORDER_ID }, {
@@ -253,7 +254,7 @@ Deno.test("A6 fireAdConversion: reddit pending-config → skipped, meta/tiktok/s
     getToken: tokenFor,
   });
   const reddit = res.results?.find((r) => r.channel === "reddit");
-  assertEquals(reddit?.status, "skipped");
+  assertEquals(reddit?.status, "failed");
   assertEquals(reddit?.reason, "pending_config");
   // Reddit made NO network call; the other three DID.
   assert(!calls.some((c) => c.url.includes("ads-api.reddit.com")), "reddit must not POST while pending");

@@ -35,8 +35,92 @@
       "key": "AD_CONVERSION_TOKENS",
       "value": "TIKTOK_EVENTS_ACCESS_TOKEN",
       "expectedAbsent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@33750:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@33884:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@37386:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@37520:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adTrackingHealth.ts@15303:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adTrackingHealth.ts@16253:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/metaCapi.ts@4912:getToken:call_argument:metaApiVersion:getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/metaCapi.ts@4915:getToken:call_argument:metaApiVersion:getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/redditCapi.ts@2453:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/redditCapi.ts@2476:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/snapCapi.ts@2613:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/snapCapi.ts@2918:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
     }
   ],
-  "resultPolicySha256": "ca7d50b131497a4edb61ce48cfc1512e3e54291f920a9c5b1c5a7548d31a7f1f",
+  "resultPolicySha256": "4af66b39e1a1bc8de31a061066ddba2acb705bb06f41e3b4667ff408d8bcbd33",
   "reason": "Issue #4238 declares the four consumer CAPI tokens as governed AD_CONVERSION_TOKENS fields, so the resolver's reads are owned and a rewrite that drops one is refused."
 }
