@@ -78,6 +78,18 @@ type AppsFlyerSdk = {
     fail: (e: unknown) => void,
   ) => void;
   performOnDeepLinking: () => void;
+  // #4238 — optional so a partial native module (or a partial test mock) never
+  // throws: every call site checks `typeof … === "function"` first.
+  onInstallConversionData?: (
+    cb: (res: { status?: string; type?: string; data?: Record<string, unknown> }) => void,
+  ) => () => void;
+  anonymizeUser?: (shouldAnonymize: boolean, ok?: (r: unknown) => void) => void;
+  updateServerUninstallToken?: (token: string, ok?: (r: unknown) => void) => void;
+  setUserEmails?: (
+    options: { emails: string[]; emailsCryptType: number },
+    ok: (r: unknown) => void,
+    fail: (e: unknown) => void,
+  ) => void;
 };
 
 let appsFlyer: AppsFlyerSdk | null = null;
@@ -124,6 +136,301 @@ const registeredDeviceKeys = new Set<string>();
 let _pendingAuthenticatedUserId: string | null = null;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// #4238 W6-1 / W6-6 / W6-5 / W6-11 — events before init, the privacy choice,
+// the uninstall token and hashed email
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Events logged before init are kept (oldest dropped past this) and replayed. */
+export const PRE_INIT_EVENT_QUEUE_MAX = 50;
+let _preInitEvents: Array<{
+  name: string;
+  values: Record<string, string | number | boolean>;
+}> = [];
+let _anonymized: boolean | null = null;
+let _privacySubscribed = false;
+let _pushTokenWatched = false;
+let _lastUninstallToken: string | null = null;
+let _pendingUninstallToken: string | null = null;
+let _emailSetForUserId: string | null = null;
+let _signedInUserId: string | null = null;
+
+/**
+ * AppsFlyer `emailsCryptType` 3 is SHA-256 (the SDK hashes the plain email).
+ * Never 2: the 6.x iOS bridge maps every value except 3 to "none" and would
+ * send the email in plain text (#4238 Step 0 Z22). setUserEmails is the 6.x
+ * plugin API; plugin 7.x replaces it with setUserEmail.
+ */
+export const APPSFLYER_EMAIL_CRYPT_SHA256 = 3;
+
+/**
+ * W6-6 (I-4238-AF-RESPECTS-OPT-OUT): the in-app Analytics opt-out
+ * (analyticsPrefsStore). Lazy so a node test or a store that cannot load reads
+ * "not opted out", never throws.
+ */
+function isAnalyticsOptedOut(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useAnalyticsPrefsStore } = require("../store/analyticsPrefsStore") as
+      typeof import("../store/analyticsPrefsStore");
+    return useAnalyticsPrefsStore.getState().analyticsOptOut === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Apply the current privacy choice to the SDK: anonymize when opted out. */
+function applyPrivacyChoice(): void {
+  if (!_initialized || !appsFlyer) return;
+  const optedOut = isAnalyticsOptedOut();
+  if (_anonymized === optedOut) return;
+  const wasOptedOut = _anonymized === true;
+  if (typeof appsFlyer.anonymizeUser === "function") {
+    try {
+      appsFlyer.anonymizeUser(optedOut, () => {
+        if (__DEV__) console.log("[AppsFlyer] anonymizeUser:", optedOut);
+      });
+    } catch (e) {
+      console.warn("[AppsFlyer] anonymizeUser failed:", e);
+    }
+  }
+  _anonymized = optedOut;
+  if (optedOut) {
+    _preInitEvents = [];
+    clearAppsFlyerUserEmails();
+  } else if (wasOptedOut && _signedInUserId) {
+    // Re-enabled: the hashed email goes back.
+    void syncAppsFlyerUserEmail(_signedInUserId);
+  }
+}
+
+function subscribePrivacyChoice(): void {
+  if (_privacySubscribed) return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useAnalyticsPrefsStore } = require("../store/analyticsPrefsStore") as
+      typeof import("../store/analyticsPrefsStore");
+    useAnalyticsPrefsStore.subscribe((state, prev) => {
+      if (state.analyticsOptOut !== prev.analyticsOptOut) applyPrivacyChoice();
+    });
+    _privacySubscribed = true;
+  } catch (e) {
+    console.warn("[AppsFlyer] privacy subscription unavailable:", e);
+  }
+}
+
+/**
+ * W6-11: after sign-in, hand AppsFlyer the account email for advanced
+ * matching, SHA-256 hashed by the SDK (crypt type 3). Skipped when opted out.
+ */
+async function syncAppsFlyerUserEmail(userId: string): Promise<void> {
+  if (!_initialized || !appsFlyer) return;
+  if (typeof appsFlyer.setUserEmails !== "function") return;
+  if (isAnalyticsOptedOut()) return;
+  if (_emailSetForUserId === userId) return;
+  let email: string | null = null;
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user?.id !== userId) return;
+    email = typeof user.email === "string" ? user.email.trim().toLowerCase() : null;
+  } catch (e) {
+    console.warn("[AppsFlyer] email lookup failed:", e);
+    return;
+  }
+  if (!email || _signedInUserId !== userId) return;
+  try {
+    appsFlyer.setUserEmails(
+      { emails: [email], emailsCryptType: APPSFLYER_EMAIL_CRYPT_SHA256 },
+      () => {
+        if (__DEV__) console.log("[AppsFlyer] setUserEmails (SHA-256) ok");
+      },
+      (err: unknown) => {
+        console.warn("[AppsFlyer] setUserEmails failed:", err);
+      },
+    );
+    _emailSetForUserId = userId;
+  } catch (e) {
+    console.warn("[AppsFlyer] setUserEmails threw:", e);
+  }
+}
+
+function clearAppsFlyerUserEmails(): void {
+  _emailSetForUserId = null;
+  if (!_initialized || !appsFlyer) return;
+  if (typeof appsFlyer.setUserEmails !== "function") return;
+  try {
+    appsFlyer.setUserEmails(
+      { emails: [], emailsCryptType: APPSFLYER_EMAIL_CRYPT_SHA256 },
+      () => {},
+      (err: unknown) => console.warn("[AppsFlyer] clear emails failed:", err),
+    );
+  } catch (e) {
+    console.warn("[AppsFlyer] clear emails threw:", e);
+  }
+}
+
+export type UninstallTokenVerdict =
+  | { ok: true; token: string }
+  | { ok: false; reason: "empty" | "not_apns_hex" | "android_fid" | "not_fcm" };
+
+/**
+ * W6-5 (#4238 Step 0 Z14): iOS takes the APNs token as hex (OneSignal v5
+ * returns lower-case hex); Android takes the FCM registration token. OneSignal
+ * can return a Firebase Installation ID on Android (22 url-safe chars), which
+ * cannot measure uninstalls: refused loudly, never sent.
+ */
+export function classifyUninstallToken(
+  token: string | null | undefined,
+  platform: string,
+): UninstallTokenVerdict {
+  const raw = typeof token === "string" ? token.trim() : "";
+  if (raw.length === 0) return { ok: false, reason: "empty" };
+  if (platform === "ios") {
+    const hex = raw.replace(/[<>\s]/g, "").toLowerCase();
+    return /^[0-9a-f]{64,}$/.test(hex)
+      ? { ok: true, token: hex }
+      : { ok: false, reason: "not_apns_hex" };
+  }
+  if (/^[A-Za-z0-9_-]{1,32}$/.test(raw)) return { ok: false, reason: "android_fid" };
+  return raw.length >= 100 ? { ok: true, token: raw } : { ok: false, reason: "not_fcm" };
+}
+
+/**
+ * W6-5: pass the device push token to AppsFlyer for uninstall measurement,
+ * once per token change. Before init the latest token is held and sent at init.
+ */
+export function updateAppsFlyerUninstallToken(token: string | null | undefined): void {
+  const verdict = classifyUninstallToken(token, Platform.OS);
+  if (!verdict.ok) {
+    if (verdict.reason === "android_fid") {
+      console.error(
+        "[AppsFlyer] uninstall token skipped: OneSignal returned a Firebase Installation ID, not an FCM token. Uninstall measurement is OFF on this device (#4238 W6-5).",
+      );
+    } else if (verdict.reason !== "empty") {
+      console.warn(`[AppsFlyer] uninstall token skipped (${verdict.reason}).`);
+    }
+    return;
+  }
+  if (verdict.token === _lastUninstallToken) return;
+  if (isAnalyticsOptedOut()) return;
+  if (!_initialized || !appsFlyer) {
+    _pendingUninstallToken = verdict.token;
+    return;
+  }
+  if (typeof appsFlyer.updateServerUninstallToken !== "function") return;
+  try {
+    appsFlyer.updateServerUninstallToken(verdict.token, () => {
+      if (__DEV__) console.log("[AppsFlyer] updateServerUninstallToken ok");
+    });
+    _lastUninstallToken = verdict.token;
+    _pendingUninstallToken = null;
+  } catch (e) {
+    console.warn("[AppsFlyer] updateServerUninstallToken failed:", e);
+  }
+}
+
+/** W6-5: follow the OneSignal push token (initial value and every change). */
+function watchPushTokenForUninstall(): void {
+  if (_pushTokenWatched) return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { onPushSubscriptionToken } = require("./oneSignalService") as
+      typeof import("./oneSignalService");
+    if (typeof onPushSubscriptionToken !== "function") return;
+    onPushSubscriptionToken(updateAppsFlyerUninstallToken);
+    _pushTokenWatched = true;
+  } catch (e) {
+    console.warn("[AppsFlyer] push token watch unavailable:", e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #4238 W4-3 — install attribution is saved
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** AsyncStorage key holding the first non-organic install's attribution. */
+export const HOST_INSTALL_ATTRIBUTION_KEY = "@mingla_host_install_attribution";
+
+export interface HostInstallAttribution {
+  media_source: string | null;
+  campaign: string | null;
+  af_sub1: string | null;
+  af_sub2: string | null;
+  af_sub3: string | null;
+  surface: "ios" | "android";
+  captured_at: string;
+}
+
+/**
+ * Pure: the fields saved from AppsFlyer install conversion data. Only a first
+ * launch with a non-organic install yields a row; organic installs and later
+ * launches yield null.
+ */
+export function installAttributionFromConversionData(
+  data: Record<string, unknown> | null | undefined,
+  platform: string,
+  nowIso: string,
+): HostInstallAttribution | null {
+  if (!data || typeof data !== "object") return null;
+  const first = data["is_first_launch"];
+  if (first !== true && first !== "true") return null;
+  const status = typeof data["af_status"] === "string" ? (data["af_status"] as string) : "";
+  if (status.toLowerCase() !== "non-organic") return null;
+  const field = (key: string): string | null => {
+    const v = data[key];
+    return typeof v === "string" && v.trim().length > 0 ? v.trim().slice(0, 200) : null;
+  };
+  return {
+    media_source: field("media_source"),
+    campaign: field("campaign"),
+    af_sub1: field("af_sub1"),
+    af_sub2: field("af_sub2"),
+    af_sub3: field("af_sub3"),
+    surface: platform === "android" ? "android" : "ios",
+    captured_at: nowIso,
+  };
+}
+
+function saveInstallAttribution(attribution: HostInstallAttribution): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const AsyncStorage = (require("@react-native-async-storage/async-storage") as {
+      default: { getItem: (k: string) => Promise<string | null>; setItem: (k: string, v: string) => Promise<void> };
+    }).default;
+    void AsyncStorage.getItem(HOST_INSTALL_ATTRIBUTION_KEY)
+      .then((existing) =>
+        existing === null
+          ? AsyncStorage.setItem(HOST_INSTALL_ATTRIBUTION_KEY, JSON.stringify(attribution))
+          : undefined,
+      )
+      .catch((e: unknown) => console.warn("[AppsFlyer] install attribution save failed:", e));
+  } catch (e) {
+    console.warn("[AppsFlyer] install attribution save unavailable:", e);
+  }
+}
+
+function registerInstallConversionData(sdk: AppsFlyerSdk): void {
+  if (typeof sdk.onInstallConversionData !== "function") return;
+  try {
+    sdk.onInstallConversionData((res) => {
+      try {
+        const row = installAttributionFromConversionData(
+          res?.data ?? null,
+          Platform.OS,
+          new Date().toISOString(),
+        );
+        if (row) saveInstallAttribution(row);
+      } catch (e) {
+        console.warn("[AppsFlyer] install conversion handler failed:", e);
+      }
+    });
+  } catch (e) {
+    console.warn("[AppsFlyer] onInstallConversionData registration failed:", e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ORCH-1318 (§A.2/§B.3/§C.1) — OneLink deferred deep-linking (BUSINESS, B1)
 //
 // B1 business scope is deliberately minimal: enable the listeners, register
@@ -144,24 +451,62 @@ let _pendingAuthenticatedUserId: string | null = null;
 // (deepLinkStatus: NOT_FOUND) — the referral/download sink never fires. `go.`
 // is CONSUMER-only and must never be registered here.
 
-// §B.1 payload contract (shared with consumer). B1 business only acts on the
-// referral discriminator + a piggybacked `af_sub1`; everything else is a no-op
-// landing (universal-download links, and content links whose per-entity routing
-// is B2). `null` only for a genuinely empty/missing payload.
+// §B.1 payload contract (shared with consumer).
+//
+// #4238 W4-3 (I-4238-AF-SUB1-NOT-REFERRAL): `af_sub1` carries CAMPAIGN tags on
+// paid links, so it is a referral code ONLY when it starts with `ref:` (the
+// code is what follows). #4238 W6-8: content links open their screen
+// (`content`), carrying a `ref:` referral alongside when present. Unknown
+// non-empty `deep_link_value`s land on Home; a link with no value stays the
+// universal-download no-op. `null` only for a genuinely empty/missing payload.
 export type BusinessOneLinkDestination =
   | { kind: "referral"; referralCode: string }
+  | { kind: "content"; target: string; referralCode: string | null }
   | { kind: "download" }
   | null;
 
+/** W4-3: the prefix that marks an `af_sub1` value as a referral code. */
+export const AF_SUB1_REFERRAL_PREFIX = "ref:";
+
+const HOME_TARGET = "/(tabs)/home";
+const UUID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** W4-3: a referral code from `af_sub1`, or null when it is a campaign tag. */
+export function referralCodeFromAfSub1(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw.toLowerCase().startsWith(AF_SUB1_REFERRAL_PREFIX)) return null;
+  const code = raw.slice(AF_SUB1_REFERRAL_PREFIX.length).trim();
+  return code.length > 0 ? code : null;
+}
+
+/** W6-8: the Host screen a content OneLink opens (Home when unroutable). */
+function contentTargetFor(type: string, sub1: string): string {
+  const id = UUID_SHAPE.test(sub1) ? sub1 : null;
+  switch (type) {
+    case "event":
+      return id ? `/event/${id}` : HOME_TARGET;
+    case "brand":
+      return id ? `/brand/${id}` : HOME_TARGET;
+    case "payouts":
+      return id ? `/brand/${id}/payments` : HOME_TARGET;
+    case "create_event":
+      return "/event/create";
+    default:
+      return HOME_TARGET;
+  }
+}
+
 /**
  * Pure — never throws, never navigates, never transmits. Maps a FOUND OneLink
- * payload (`res.data`, §B.1) to the minimal B1 business destination.
+ * payload (`res.data`, §B.1) to the business destination.
  *
  * - `deep_link_value === 'referral'` → referral (code = `deep_link_sub1`).
- * - ANY payload carrying `af_sub1` → referral (a content/entity link piggybacks
- *   the referral code; B1 persists it for attribution even though the entity
- *   itself is not routed until B2).
- * - anything else (universal-download, or B2 content links) → `download` (no-op).
+ * - `deep_link_value` of event / brand / payouts / create_event → content
+ *   (the event or brand id is `deep_link_sub1`); any other value → Home.
+ * - no `deep_link_value` → referral when `af_sub1` is `ref:<code>`, else the
+ *   universal-download no-op. A campaign `af_sub1` is never a referral.
  */
 export function resolveBusinessOneLinkDestination(
   data: Record<string, unknown> | null | undefined,
@@ -174,18 +519,49 @@ export function resolveBusinessOneLinkDestination(
     typeof data["deep_link_sub1"] === "string"
       ? (data["deep_link_sub1"] as string).trim()
       : "";
-  const afSub1 =
-    typeof data["af_sub1"] === "string"
-      ? (data["af_sub1"] as string).trim()
-      : "";
+  const afSub1Referral = referralCodeFromAfSub1(data["af_sub1"]);
 
   if (type === "referral" && sub1.length > 0) {
     return { kind: "referral", referralCode: sub1 };
   }
-  if (afSub1.length > 0) {
-    return { kind: "referral", referralCode: afSub1 };
+  if (type.length > 0 && type !== "referral") {
+    return {
+      kind: "content",
+      target: contentTargetFor(type, sub1),
+      referralCode: afSub1Referral,
+    };
+  }
+  if (afSub1Referral) {
+    return { kind: "referral", referralCode: afSub1Referral };
   }
   return { kind: "download" };
+}
+
+/**
+ * W6-8: open a content OneLink's screen. Signed in → navigate now; signed out
+ * → stash it for the post-sign-in replay (the push replay key). Never throws.
+ */
+export async function deliverBusinessOneLinkTarget(
+  target: string,
+  deps: {
+    navigate: (target: string) => void;
+    stashForAfterSignIn: (target: string) => Promise<void>;
+  },
+): Promise<"navigated" | "stashed" | "failed"> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.user?.id) {
+      deps.navigate(target);
+      return "navigated";
+    }
+    await deps.stashForAfterSignIn(target);
+    return "stashed";
+  } catch (e) {
+    console.warn("[AppsFlyer] OneLink delivery failed:", e);
+    return "failed";
+  }
 }
 
 // §A.4 — sink + buffer + dedup state.
@@ -307,6 +683,12 @@ export function initializeAppsFlyer(): void {
     // itself is only called post-ATT (`_layout.tsx`), so this stays behind the
     // ATT gate; registering a listener transmits nothing.
     registerOneLinkDeepLink(sdk);
+    // #4238 W4-3 — install conversion data, registered before initSdk like
+    // onDeepLink (the SDK drops a first-launch payload with no listener).
+    registerInstallConversionData(sdk);
+    // #4238 W6-6 / W6-5 — follow the privacy toggle and the push token.
+    subscribePrivacyChoice();
+    watchPushTokenForUninstall();
 
     // ORCH-1318 (§C.1) — treat the branded subdomain as a OneLink host so the
     // SDK resolves `biz.usemingla.com` links as OneLinks (#1050). Own try/catch
@@ -349,6 +731,16 @@ export function initializeAppsFlyer(): void {
       (result: unknown) => {
         if (__DEV__) console.log("[AppsFlyer] SDK initialized:", result);
         _initialized = true;
+        // #4238 W6-6 — the privacy choice applies before anything is replayed.
+        applyPrivacyChoice();
+        // #4238 W6-1 (I-4238-AF-START-NEVER-LOST) — replay, in order, the
+        // events logged before init (none when opted out).
+        const queued = _preInitEvents;
+        _preInitEvents = [];
+        for (const event of queued) logAppsFlyerEvent(event.name, event.values);
+        if (_pendingUninstallToken) {
+          updateAppsFlyerUninstallToken(_pendingUninstallToken);
+        }
         const pendingUserId = _pendingAuthenticatedUserId;
         _pendingAuthenticatedUserId = null;
         if (pendingUserId) {
@@ -384,6 +776,7 @@ export function initializeAppsFlyer(): void {
  * Call immediately after a successful Supabase sign-in.
  */
 export function setAppsFlyerUserId(userId: string): void {
+  _signedInUserId = userId;
   if (!_initialized || !appsFlyer) {
     _pendingAuthenticatedUserId = userId;
     return;
@@ -395,6 +788,8 @@ export function setAppsFlyerUserId(userId: string): void {
   } catch (e) {
     console.warn("[AppsFlyer] setCustomerUserId failed:", e);
   }
+  // #4238 W6-11 — hashed email for advanced matching (skipped when opted out).
+  void syncAppsFlyerUserEmail(userId);
 }
 
 /**
@@ -406,6 +801,11 @@ export function setAppsFlyerUserId(userId: string): void {
  */
 export function clearAppsFlyerUserId(): void {
   _pendingAuthenticatedUserId = null;
+  _signedInUserId = null;
+  // #4238 W6-1 — events queued for the signed-out user are dropped.
+  _preInitEvents = [];
+  // #4238 W6-11 — sign-out clears the email.
+  clearAppsFlyerUserEmails();
   if (!_initialized || !appsFlyer) return;
   try {
     appsFlyer.setCustomerUserId("", (result: unknown) => {
@@ -522,7 +922,16 @@ export function logAppsFlyerEvent(
   eventName: string,
   eventValues: Record<string, string | number | boolean> = {},
 ): void {
-  if (!_initialized || !appsFlyer) return;
+  // #4238 W6-6 (I-4238-AF-RESPECTS-OPT-OUT) — analytics off: nothing logged.
+  if (isAnalyticsOptedOut()) return;
+  if (!_initialized || !appsFlyer) {
+    // #4238 W6-1 — keep it for the init replay (bounded, oldest dropped).
+    if (hasAppsFlyerEnv && appsFlyer) {
+      _preInitEvents.push({ name: eventName, values: eventValues });
+      if (_preInitEvents.length > PRE_INIT_EVENT_QUEUE_MAX) _preInitEvents.shift();
+    }
+    return;
+  }
   try {
     appsFlyer.logEvent(
       eventName,
@@ -539,4 +948,42 @@ export function logAppsFlyerEvent(
   } catch (e) {
     console.warn("[AppsFlyer] logEvent failed:", e);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #4238 W6-7 — registration counts once; the sign-in method is right
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Supabase `app_metadata.provider` → the AppsFlyer method value. */
+export function appsFlyerAuthMethod(provider: unknown): string {
+  const p = typeof provider === "string" ? provider.trim().toLowerCase() : "";
+  if (p === "apple" || p === "google" || p === "phone" || p === "email") return p;
+  return p.length > 0 ? "other" : "email";
+}
+
+const REGISTRATION_SENT_KEY_PREFIX = "@mingla_host_af_registration_sent:";
+
+/**
+ * Logs `af_complete_registration` at most once per user on this device (a
+ * persisted flag keyed by user id), so a second session before the first one
+ * settled cannot count the same account twice. Returns whether it logged.
+ */
+export async function logAppsFlyerRegistrationOnce(
+  userId: string,
+  eventValues: Record<string, string | number | boolean>,
+): Promise<boolean> {
+  const key = `${REGISTRATION_SENT_KEY_PREFIX}${userId}`;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const AsyncStorage = (require("@react-native-async-storage/async-storage") as {
+      default: { getItem: (k: string) => Promise<string | null>; setItem: (k: string, v: string) => Promise<void> };
+    }).default;
+    if ((await AsyncStorage.getItem(key)) !== null) return false;
+    await AsyncStorage.setItem(key, new Date().toISOString());
+  } catch (e) {
+    // Storage unavailable: still count it (better once-per-session than lost).
+    console.warn("[AppsFlyer] registration flag unavailable:", e);
+  }
+  logAppsFlyerEvent("af_complete_registration", eventValues);
+  return true;
 }

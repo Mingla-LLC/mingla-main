@@ -26,6 +26,8 @@ import {
   registerAppsFlyerDevice,
   resetAppsFlyerDeviceCache,
   logAppsFlyerEvent,
+  appsFlyerAuthMethod,
+  logAppsFlyerRegistrationOnce,
 } from "../services/appsFlyerService";
 // ORCH-0808-FOLLOWUP — Mixpanel identity binding.
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
@@ -864,10 +866,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                           | { provider?: string }
                           | undefined
                       )?.provider ?? "email";
-                    const method =
-                      provider === "google" || provider === "apple"
-                        ? provider
-                        : "email";
+                    // #4238 W6-7: the real provider (apple / google / email /
+                    // phone), not "email" for everything that isn't social.
+                    const method = appsFlyerAuthMethod(provider);
                     const { data: account } = await supabase
                       .from("creator_accounts")
                       .select("created_at, email, display_name")
@@ -879,7 +880,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     const isFirstTime =
                       createdAt !== null && Date.now() - createdAt < 30_000;
                     if (isFirstTime) {
-                      logAppsFlyerEvent("af_complete_registration", {
+                      // #4238 W6-7: once per account on this device, even when
+                      // a second sign-in lands inside the first-time window.
+                      void logAppsFlyerRegistrationOnce(userForDeferred.id, {
                         af_registration_method: method,
                       });
                     } else {

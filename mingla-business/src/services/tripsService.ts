@@ -1669,6 +1669,20 @@ export async function publishTrip(
   if (refreshed === null) {
     throw new Error("publishTrip: trip not found after publish");
   }
+  // #4238 W6-12 — supply funnel event, the trip twin of mingla_event_published
+  // (fired at the same success point: the publish command succeeded). Lazy so
+  // a service test without the native SDK never loads it; never throws.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { logAppsFlyerEvent } = require("./appsFlyerService") as
+      typeof import("./appsFlyerService");
+    logAppsFlyerEvent("mingla_trip_published", {
+      event_id: eventId,
+      brand_id: refreshed.brandId,
+    });
+  } catch (e) {
+    console.warn("[tripsService] mingla_trip_published not logged:", e);
+  }
   return refreshed;
 }
 
