@@ -131,10 +131,17 @@ Deno.test("googleConversionUpload: wire shape — endpoint, gclid, conversionAct
 
 Deno.test("googleConversionUpload: Enhanced-Conversions userIdentifiers carry the already-hashed email + phone (SC-9)", async () => {
   const { impl, calls } = captureRequest();
-  await sendGoogleConversion(baseInput(), googleConn(), {
-    resolveClient: () => Promise.resolve(FAKE_CLIENT),
-    requestImpl: impl,
-  });
+  // #4238 W5-1 (Step 0 Z6): Google's phone hash is the E.164-with-plus one
+  // (hashedPhoneE164). The digits-only hash (Meta/Snap, "b") is never sent to
+  // Google, so this case now supplies the E.164 hash ("c") and expects it.
+  await sendGoogleConversion(
+    baseInput({ hashedPhoneE164: "c".repeat(64) }),
+    googleConn(),
+    {
+      resolveClient: () => Promise.resolve(FAKE_CLIENT),
+      requestImpl: impl,
+    },
+  );
   const conv = (calls[0].body.conversions as Record<string, unknown>[])[0];
   const ids = conv.userIdentifiers as Record<string, unknown>[];
   assertEquals(ids.length, 2);
@@ -143,7 +150,7 @@ Deno.test("googleConversionUpload: Enhanced-Conversions userIdentifiers carry th
     userIdentifierSource: "FIRST_PARTY",
   });
   assertEquals(ids[1], {
-    hashedPhoneNumber: "b".repeat(64),
+    hashedPhoneNumber: "c".repeat(64),
     userIdentifierSource: "FIRST_PARTY",
   });
   // No plaintext PII was passed in this path (the fire helper hashes upstream),

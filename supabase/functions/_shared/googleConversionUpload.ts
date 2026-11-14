@@ -45,6 +45,7 @@
 
 import type {
   ConversionSendInput,
+  GoogleConversionKind,
   Lane,
   SenderConnection,
   SenderDeps,
@@ -62,6 +63,20 @@ import type { GoogleClient } from "./google.ts";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_ATTRIBUTION_WINDOW_DAYS = 30;
+
+/**
+ * #4238 W5-1 (Step 0 Z7, read 14 Nov 2026): the conversion upload and the
+ * conversion-action provisioning call Google Ads API v26, the version the
+ * current ClickConversion / ConversionAction references document. Campaign
+ * management keeps the configured google_ads_api_version (google.ts); only
+ * these two paths are pinned here.
+ */
+export const GOOGLE_ADS_CONVERSION_API_VERSION = "v26";
+
+/** The resolved client, on the conversion API version. */
+function onConversionApiVersion(client: GoogleClient): GoogleClient {
+  return { ...client, apiVersion: GOOGLE_ADS_CONVERSION_API_VERSION };
+}
 
 let googleModule: typeof import("./google.ts") | null = null;
 /** Load google.ts safely (adChannel-registry cycle initialized FIRST), then cache. */
@@ -156,20 +171,27 @@ export function formatGoogleConversionDateTime(eventTimeMs: number): string {
   return `${iso.slice(0, 19).replace("T", " ")}+00:00`; // 2027-01-18 10:30:00+00:00
 }
 
-/** Enhanced-Conversions identifiers from the already-hashed PII (SC-9). */
+/**
+ * Enhanced-Conversions identifiers from the already-hashed PII (SC-9).
+ * #4238 W5-1 (Step 0 Z6/Z7): Google wants the phone hashed in E.164 WITH the
+ * `+` and the email in its own normalisation (gmail dots / +suffix dropped).
+ * The digits-only phone hash (Meta/Snap) is never sent to Google: with no
+ * E.164 hash the phone is left out.
+ */
 function buildUserIdentifiers(
   input: ConversionSendInput,
 ): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
-  if (input.hashedEmail) {
+  const email = input.hashedEmailGoogle ?? input.hashedEmail;
+  if (email) {
     out.push({
-      hashedEmail: input.hashedEmail,
+      hashedEmail: email,
       userIdentifierSource: "FIRST_PARTY",
     });
   }
-  if (input.hashedPhone) {
+  if (input.hashedPhoneE164) {
     out.push({
-      hashedPhoneNumber: input.hashedPhone,
+      hashedPhoneNumber: input.hashedPhoneE164,
       userIdentifierSource: "FIRST_PARTY",
     });
   }
@@ -260,7 +282,7 @@ export async function sendGoogleConversion(
   let client: GoogleClient;
   try {
     const resolveClient = deps.resolveClient ?? realResolveClient;
-    client = await resolveClient(lane);
+    client = onConversionApiVersion(await resolveClient(lane));
   } catch {
     // resolveGoogleClient fail-closes (AdNotConnectedError) when the lane's
     // Google secrets are unset. For THIS post-paid, off-critical-path send that
@@ -315,6 +337,13 @@ export interface GoogleConversionActionProvisionResult {
   validated: boolean;
   /** Google request id — what Google support asks for; audit-bound. */
   requestId: string | null;
+  /** #4238 W5-1: the kind created. */
+  kind?: GoogleConversionKind;
+  /**
+   * #4238 W5-1: the primary_for_goal=false update for a secondary kind —
+   * "updated", "failed", "not_needed" (purchase) or "skipped_validate_only".
+   */
+  secondaryUpdate?: "updated" | "failed" | "not_needed" | "skipped_validate_only";
 }
 
 /** Clamp the click-through lookback to Google's supported 1..90 day range. */
@@ -325,15 +354,59 @@ function clampAttributionWindow(days?: number): number {
   return Math.min(90, Math.max(1, Math.round(days)));
 }
 
+/**
+ * #4238 W5-1 (I-4238-GOOGLE-ACTION-PER-KIND, Step 0 Z8): one conversion action
+ * per kind. Only the purchase action is primary for its goal; the others are
+ * created and then updated to primary_for_goal=false (Z8: the field is a plain
+ * bool that defaults to true, so it is set by an update after create).
+ */
+export const GOOGLE_CONVERSION_KINDS: Record<
+  GoogleConversionKind,
+  { category: string; name: string; primary: boolean }
+> = {
+  purchase: {
+    category: "PURCHASE",
+    name: "Mingla Purchase (server upload)",
+    primary: true,
+  },
+  free_signup: {
+    category: "SIGNUP",
+    name: "Mingla Free ticket sign-up (server upload)",
+    primary: false,
+  },
+  host_lead: {
+    category: "SUBMIT_LEAD_FORM",
+    name: "Mingla Host lead (server upload)",
+    primary: false,
+  },
+  host_signup: {
+    category: "SIGNUP",
+    name: "Mingla Host sign-up (server upload)",
+    primary: false,
+  },
+};
+
+export function isGoogleConversionKind(
+  value: unknown,
+): value is GoogleConversionKind {
+  return typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(GOOGLE_CONVERSION_KINDS, value);
+}
+
 /** Pure builder for the conversionActions:mutate create operation — testable. */
 export function buildConversionActionCreateOperation(
-  opts: { name?: string; attributionWindowDays?: number } = {},
+  opts: {
+    name?: string;
+    attributionWindowDays?: number;
+    kind?: GoogleConversionKind;
+  } = {},
 ): Record<string, unknown> {
-  const name = opts.name?.trim() || "Mingla Purchase (server upload)";
+  const kind = GOOGLE_CONVERSION_KINDS[opts.kind ?? "purchase"];
+  const name = opts.name?.trim() || kind.name;
   return {
     create: {
       name,
-      category: "PURCHASE",
+      category: kind.category,
       type: "UPLOAD_CLICKS",
       status: "ENABLED",
       countingType: "ONE_PER_CLICK",
@@ -346,6 +419,19 @@ export function buildConversionActionCreateOperation(
         alwaysUseDefaultValue: false,
       },
     },
+  };
+}
+
+/**
+ * #4238 W5-1 (Step 0 Z8): the follow-up update that makes a secondary action
+ * not primary for its goal. It is never part of the create operation.
+ */
+export function buildConversionActionSecondaryUpdateOperation(
+  resourceName: string,
+): Record<string, unknown> {
+  return {
+    update: { resourceName, primaryForGoal: false },
+    updateMask: "primaryForGoal",
   };
 }
 
@@ -382,6 +468,8 @@ export async function provisionGoogleConversionAction(
     validateOnly?: boolean;
     name?: string;
     attributionWindowDays?: number;
+    /** #4238 W5-1: which conversion action to create (default purchase). */
+    kind?: GoogleConversionKind;
     resolveClient?: (
       conn: AdConnectionRow | null,
       lane?: Lane,
@@ -392,25 +480,57 @@ export async function provisionGoogleConversionAction(
   const lane: Lane = conn?.lane ?? opts.lane ?? "consumer";
   const resolveClient = opts.resolveClient ?? realResolveClientForConn;
   const request = opts.requestImpl ?? realRequest;
-  const client = await resolveClient(conn ?? null, lane);
+  const client = onConversionApiVersion(
+    await resolveClient(conn ?? null, lane),
+  );
+  const kind: GoogleConversionKind = opts.kind ?? "purchase";
   const body = {
     operations: [
       buildConversionActionCreateOperation({
         name: opts.name,
         attributionWindowDays: opts.attributionWindowDays,
+        kind,
       }),
     ],
     partialFailure: false,
     validateOnly: opts.validateOnly === true,
   };
-  const { payload, requestId } = await request(
-    client,
-    `customers/${client.customerId}/conversionActions:mutate`,
-    body,
-  );
+  const path = `customers/${client.customerId}/conversionActions:mutate`;
+  const { payload, requestId } = await request(client, path, body);
+  const resourceName = parseConversionActionResourceName(payload);
+  let secondaryUpdate: GoogleConversionActionProvisionResult[
+    "secondaryUpdate"
+  ] = "not_needed";
+  if (!GOOGLE_CONVERSION_KINDS[kind].primary) {
+    if (opts.validateOnly === true) {
+      secondaryUpdate = "skipped_validate_only";
+    } else if (resourceName) {
+      try {
+        await request(client, path, {
+          operations: [
+            buildConversionActionSecondaryUpdateOperation(resourceName),
+          ],
+          partialFailure: false,
+        });
+        secondaryUpdate = "updated";
+      } catch (err) {
+        // The action exists; only its goal role is unset. Loud, never thrown:
+        // the caller stores the resource and reports the failed update.
+        console.error(
+          "[googleConversionUpload] primary_for_goal=false update failed:",
+          err instanceof Error ? err.message : String(err),
+        );
+        secondaryUpdate = "failed";
+      }
+    } else {
+      secondaryUpdate = "failed";
+    }
+  }
   return {
-    resourceName: parseConversionActionResourceName(payload),
+    resourceName,
     validated: opts.validateOnly === true,
     requestId,
+    kind,
+    secondaryUpdate,
   };
 }
