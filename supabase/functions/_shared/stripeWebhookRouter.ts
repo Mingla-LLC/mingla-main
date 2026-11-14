@@ -73,6 +73,7 @@ import {
 import {
   claimBrandMilestone,
   postAppsFlyerS2SEvent,
+  hostMoneyEventValues,
   resolveBrandOwnerUserId,
 } from "./appsFlyerS2S.ts";
 import {
@@ -969,11 +970,12 @@ async function handlePayout(
             supabase,
             userId: ownerUserId,
             eventName: "mingla_first_payout",
+            // #4238 W6-2: a payout is the host's money — plain values only.
             eventValues: {
-              af_revenue: Math.round(amountCents) / 100,
-              af_currency: currency,
               brand_id: brandId,
               stripe_payout_id: payoutId,
+              provider: "stripe",
+              ...hostMoneyEventValues("payout", amountCents, currency),
             },
           });
         }
@@ -2165,16 +2167,19 @@ async function handleTicketCheckoutPaymentIntent(
           if (ownerUserId) {
             const amountCents = Number(paymentIntent.amount ?? 0);
             const currency = char3(paymentIntent.currency, "USD");
-            const revenue = Math.round(amountCents) / 100;
+            // #4238 W6-2 (I-4238-HOST-EVENTS-NO-REVENUE): the buyer's gross is
+            // the host's sale, not Mingla revenue — a funnel event with plain
+            // values, never af_purchase / af_revenue.
             await postAppsFlyerS2SEvent({
               supabase,
               userId: ownerUserId,
-              eventName: "af_purchase",
+              eventName: "mingla_host_first_sale",
               eventValues: {
-                af_revenue: revenue,
-                af_currency: currency,
+                af_content_id: brandId,
                 brand_id: brandId,
                 milestone: "first_ticket_sold",
+                provider: "stripe",
+                ...hostMoneyEventValues("ticket_gross", amountCents, currency),
               },
             });
           }

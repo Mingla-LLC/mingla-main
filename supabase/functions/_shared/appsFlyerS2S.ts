@@ -28,6 +28,7 @@
 
 // ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
 import { recordApiCall } from "./apiHealthLog.ts";
+import { majorFromMinor } from "./money/formatMinor.ts";
 
 // deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
@@ -43,6 +44,26 @@ const APPSFLYER_S2S_BASE = "https://api3.appsflyer.com/inappevent";
  */
 export function ensureIdPrefix(appleId: string): string {
   return appleId.startsWith("id") ? appleId : `id${appleId}`;
+}
+
+/**
+ * #4238 W6-2 (I-4238-HOST-EVENTS-NO-REVENUE): Host money (a host's first ticket
+ * sale, a payout) is the host's money, not Mingla revenue, so it never rides
+ * af_revenue. It goes as plain values: the stored minor amount, the major
+ * amount by the currency's own exponent (JPY 1500 stays 1500), and the code.
+ */
+export function hostMoneyEventValues(
+  prefix: "ticket_gross" | "payout",
+  amountMinor: number,
+  currency: string,
+): Record<string, string | number> {
+  const minor = Number.isFinite(amountMinor) ? Math.round(amountMinor) : 0;
+  const code = typeof currency === "string" ? currency.trim().toUpperCase() : "";
+  return {
+    [`${prefix}_minor`]: minor,
+    [prefix]: majorFromMinor(minor, code),
+    currency: code,
+  };
 }
 
 export interface AppsFlyerS2SEventValues {
