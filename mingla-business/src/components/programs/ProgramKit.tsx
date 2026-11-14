@@ -23,7 +23,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
-import { hostAdScrollBottomPadding } from "../marketing/ads/hostAdBuilderRules";
+import { scrollPaddingClearOfFloatingAction } from "../../utils/floatingActionClearance";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon, type IconName } from "../ui/Icon";
 import {
@@ -96,7 +96,7 @@ export function ProgramScreen({
   // floating action ("Hire a creator") and the bottom nav sit over the
   // content. Reserve their height (safe area included) so the last button
   // scrolls clear of them, as the ad screens do (#4238).
-  const embeddedBottom = hostAdScrollBottomPadding(useStickyFooterOffset());
+  const embeddedBottom = scrollPaddingClearOfFloatingAction(useStickyFooterOffset());
   const scroll = (
     <ScrollView
       contentContainerStyle={[

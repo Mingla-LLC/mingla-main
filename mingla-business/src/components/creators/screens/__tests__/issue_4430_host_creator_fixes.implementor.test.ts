@@ -74,7 +74,9 @@ describe("#4430 H-B: embedded creator screens clear the floating button", () => 
   const FAB_HEIGHT = 48;
 
   it("reserves the sticky-footer offset plus the floating action clearance", () => {
-    expect(kit).toContain("hostAdScrollBottomPadding(useStickyFooterOffset())");
+    expect(kit).toContain("scrollPaddingClearOfFloatingAction(useStickyFooterOffset())");
+    // Eager screens must not import ad rules (bundle-baseline-movement gate).
+    expect(kit).not.toContain("marketing/ads/hostAdBuilderRules");
     expect(kit).toContain("embedded ? { paddingBottom: embeddedBottom } : null");
     const embeddedStyle = kit.slice(
       kit.indexOf("contentEmbedded: {"),
