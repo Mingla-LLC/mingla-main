@@ -95,6 +95,7 @@ import {
   shootInstant,
   contractNoticeKey,
   hostPaymentCard,
+  retryHireMode,
   nextPaymentCheckDelay,
   paymentCheckState,
   shootWindowWords,
@@ -203,6 +204,9 @@ export default function HostGigContract(): React.ReactElement {
   const [stars, setStars] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
   const [topup, setTopup] = useState<HireSheetMode | null>(null);
+  // #4430 H-C: Retry payment reopens the Hire sheet here for this offer.
+  const [retryHire, setRetryHire] = useState<HireSheetMode | null>(null);
+  const [retryOpening, setRetryOpening] = useState(false);
   // #4402 — the header says what is happening while an action runs.
   const [working, setWorking] = useState<string | null>(null);
   const focusedRef = useRef(true);
@@ -466,6 +470,34 @@ export default function HostGigContract(): React.ReactElement {
       setBusy(false);
     }
   };
+  const openRetryHire = async () => {
+    const gigId = gigIdForRetry ?? workspace?.contract.gig_id ?? null;
+    if (retryOpening) return;
+    setError(null);
+    if (!gigId) {
+      setError("We couldn't reopen the payment. Pull to refresh and try again.");
+      return;
+    }
+    setRetryOpening(true);
+    try {
+      const mode = retryHireMode({
+        applicants: await creatorGigsService.applicants(gigId),
+        creatorAccountId: workspace?.contract.creator_account_id,
+        feeMinor: currentTerms?.fee_minor,
+      });
+      if (!mode) throw new Error("interest_not_found");
+      setRetryHire(mode);
+    } catch (retryError) {
+      setError(
+        programErrorMessage(
+          retryError,
+          "We couldn't reopen the payment. Pull to refresh and try again.",
+        ),
+      );
+    } finally {
+      setRetryOpening(false);
+    }
+  };
   const left = fixesLeft(workspace?.contract.fix_rounds_used);
   const terms = workspace?.terms ?? [];
   const currentTerms = terms.length ? terms[terms.length - 1] : null;
@@ -637,6 +669,33 @@ export default function HostGigContract(): React.ReactElement {
       onRefresh={() => void refresh()}
       overlay={
         <>
+          {retryHire && workspace ? (
+            <HireSheet
+              visible
+              onClose={() => setRetryHire(null)}
+              mode={retryHire}
+              creatorName={creatorName}
+              currency={currentTerms?.currency ?? "USD"}
+              salesShareBps={
+                typeof currentTerms?.sales_share_bps === "number"
+                  ? currentTerms.sales_share_bps
+                  : null
+              }
+              usageDays={
+                typeof gig?.usage_days === "number" ? gig.usage_days : null
+              }
+              onPaid={(paidContractId) => {
+                setRetryHire(null);
+                if (paidContractId === contractId) {
+                  void refresh();
+                  return;
+                }
+                router.replace(
+                  `/brand/${brandId}/creators/contract/${paidContractId}` as never,
+                );
+              }}
+            />
+          ) : null}
           {topup && workspace ? (
             <HireSheet
               visible
@@ -1141,12 +1200,10 @@ export default function HostGigContract(): React.ReactElement {
                         void checkPayment(Date.now());
                         return;
                       }
-                      router.push(
-                        (gigIdForRetry
-                          ? `/brand/${brandId}/creators/${gigIdForRetry}/interest`
-                          : `/brand/${brandId}/creators`) as never,
-                      );
+                      void openRetryHire();
                     }}
+                    loading={retryOpening}
+                    disabled={retryOpening}
                   />
                 ) : null}
               </Card>

@@ -8,6 +8,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { Button } from "../../../components/ui/Button";
+import { SimpleConfirmDialog } from "../../../components/ui/SimpleConfirmDialog";
 import {
   HireSheet,
   type HireSheetMode,
@@ -46,6 +47,7 @@ import {
   nicheLabel,
   platformLabel,
   programErrorMessage,
+  passConfirmCopy,
   programMoney,
 } from "../../../utils/creatorProgramFormat";
 
@@ -66,6 +68,8 @@ export default function PrehireCreatorProfile(): React.ReactElement {
   const [actionError, setActionError] = useState<string | null>(null);
   const [hireMode, setHireMode] = useState<HireSheetMode | null>(null);
   const [passing, setPassing] = useState(false);
+  // #4430 H-A: "Not now" asks first; passing only happens from the dialog.
+  const [confirmingPass, setConfirmingPass] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -109,8 +113,10 @@ export default function PrehireCreatorProfile(): React.ReactElement {
     applicant !== null &&
     applicant.status !== "passed" &&
     applicant.status !== "hired";
+  const passCopy = passConfirmCopy(name);
   const notNow = async () => {
     if (!applicant) return router.back();
+    if (passing) return;
     setPassing(true);
     setActionError(null);
     try {
@@ -129,6 +135,7 @@ export default function PrehireCreatorProfile(): React.ReactElement {
       );
     } finally {
       setPassing(false);
+      setConfirmingPass(false);
     }
   };
 
@@ -146,7 +153,7 @@ export default function PrehireCreatorProfile(): React.ReactElement {
       right={
         canHire ? (
           <Pressable
-            onPress={() => void notNow()}
+            onPress={() => setConfirmingPass(true)}
             accessibilityRole="button"
             accessibilityLabel={`Not now: pass on ${name}`}
             hitSlop={8}
@@ -179,7 +186,20 @@ export default function PrehireCreatorProfile(): React.ReactElement {
         ) : undefined
       }
       overlay={
-        hireMode && applicant ? (
+        <>
+          <SimpleConfirmDialog
+            visible={confirmingPass}
+            onClose={() => setConfirmingPass(false)}
+            onConfirm={() => void notNow()}
+            title={passCopy.title}
+            description={passCopy.description}
+            confirmLabel={passCopy.confirmLabel}
+            cancelLabel={passCopy.cancelLabel}
+            destructive
+            confirmLoading={passing}
+            testID="prehire-pass-confirm"
+          />
+          {hireMode && applicant ? (
           <HireSheet
             visible
             onClose={() => setHireMode(null)}
@@ -195,7 +215,8 @@ export default function PrehireCreatorProfile(): React.ReactElement {
               );
             }}
           />
-        ) : undefined
+          ) : null}
+        </>
       }
     >
       {profile === undefined ? <ProgramLoading /> : null}
