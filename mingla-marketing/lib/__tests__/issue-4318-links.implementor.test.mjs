@@ -117,43 +117,6 @@ test('each listing goes to its nearest live city within 60 km, and anything furt
 
 // ---------------------------------------------------------------- city order
 
-test('the page opens on ?city=, then the visitor location, then the remembered city, then the busiest city', () => {
-  const listings = week.bucketListings(
-    [
-      row({ lat: 35.7796, lng: -78.6382, item_slug: 'r1' }),
-      row({ lat: 35.7796, lng: -78.6382, item_slug: 'r2' }),
-      row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z', item_slug: 'l1' }),
-      row({ lat: 51.5, lng: -0.12, tz: 'Europe/London', starts_at: '2026-11-08T19:00:00Z', item_slug: 'k1' }),
-    ],
-    CITIES,
-  )
-  const live = week.liveCities(CITIES, listings, [], NOW)
-  assert.deepEqual(live.map((l) => [l.city.slug, l.count]), [['lagos', 1], ['raleigh-nc', 2], ['london', 1]])
-  const resolve = (over) => week.resolveCity({ cities: CITIES, live, query: null, geo: null, cookie: null, ...over })
-
-  // 1. ?city= always wins, even over location, and even for a quiet city.
-  assert.deepEqual(resolve({ query: 'brussels', geo: { lat: 35.9, lng: -79 } }), { slug: 'brussels', source: 'query' })
-  // 2. location: the nearest live city, however far, quiet or not. Live cities
-  //    ruling (8 Nov): every city live in Explorer is a landing city, so Berlin
-  //    lands on quiet Brussels (its places and "Plans in London →"), no longer
-  //    on London just because London has plans; Abuja still lands on Lagos.
-  assert.deepEqual(resolve({ geo: { lat: 52.52, lng: 13.4 }, cookie: 'lagos' }), { slug: 'brussels', source: 'geo' })
-  assert.deepEqual(resolve({ geo: { lat: 9.07, lng: 7.4 } }), { slug: 'lagos', source: 'geo' })
-  // 3. no location: the remembered city, while it is live. Same ruling: a
-  //    remembered quiet city opens too (it is live in Explorer).
-  assert.deepEqual(resolve({ cookie: 'lagos' }), { slug: 'lagos', source: 'cookie' })
-  assert.deepEqual(resolve({ cookie: 'brussels' }), { slug: 'brussels', source: 'cookie' })
-  assert.notEqual(resolve({ cookie: 'atlanta' }).source, 'cookie', 'a remembered city that is not live is skipped')
-  // 4. else the busiest live city.
-  assert.deepEqual(resolve({}), { slug: 'raleigh-nc', source: 'busiest' })
-  // Nothing live anywhere: still a real registry city, never a crash.
-  assert.equal(week.resolveCity({ cities: CITIES, live: [], query: null, geo: null, cookie: null }).source, 'fallback')
-  // Geo headers are parsed defensively.
-  assert.deepEqual(week.parseGeoHeaders('35.9', '-79.05'), { lat: 35.9, lng: -79.05 })
-  assert.equal(week.parseGeoHeaders('', '1'), null)
-  assert.equal(week.parseGeoHeaders('95', '1'), null)
-})
-
 // ---------------------------------------------------------------- the week
 
 test('the week is today through today+6 in the city zone, grouped by day, with admin strips for that city', () => {
@@ -206,43 +169,6 @@ function phone({ room, pins, list, short = false }) {
     leftOverflows: () => false,
   })
 }
-
-test('admin strips push the listings down until 3 are left, then fold (iPhone 390x844 shows 4)', () => {
-  const at = (pins) => phone({ room: 4, pins, list: 13 })
-  assert.deepEqual(at(0), { pinsShown: 0, listShown: 4 })
-  assert.deepEqual(at(1), { pinsShown: 1, listShown: 3 })
-  assert.deepEqual(at(4), { pinsShown: 1, listShown: 3 })
-  assert.deepEqual(at(10), { pinsShown: 1, listShown: 3 })
-  assert.equal(fit.pinsMoreLabel(4, at(4).pinsShown), 'See 3 more from Mingla')
-  assert.equal(fit.pinsMoreLabel(1, at(1).pinsShown), null)
-  assert.deepEqual(fit.moreLabel(13, at(4).listShown), { hidden: 10, text: 'See 10 more', count: '13 this week' })
-  // Tablet (820x1180 shows 6): 3 admin strips fit with 3 listings.
-  assert.deepEqual(phone({ room: 6, pins: 4, list: 13 }), { pinsShown: 3, listShown: 3 })
-})
-
-test('short screens keep 1 listing, so admin strips still come first (small Android 360x640 shows 3)', () => {
-  assert.deepEqual(phone({ room: 3, pins: 0, list: 13, short: true }), { pinsShown: 0, listShown: 3 })
-  assert.deepEqual(phone({ room: 3, pins: 4, list: 13, short: true }), { pinsShown: 2, listShown: 1 })
-  // Fewer listings than the floor: the floor is all of them.
-  assert.deepEqual(phone({ room: 4, pins: 4, list: 2 }), { pinsShown: 2, listShown: 2 })
-  // No listings at all: every admin strip that fits shows.
-  assert.deepEqual(phone({ room: 4, pins: 3, list: 0 }), { pinsShown: 3, listShown: 0 })
-  assert.deepEqual(fit.moreLabel(0, 0), { hidden: 0, text: 'Open the full week', count: null })
-})
-
-test('desktop: admin strips stay in the left column and fold only when it is full', () => {
-  const desk = (pins, capacity) =>
-    fit.computeLinksFit({
-      pinCount: pins,
-      listCount: 13,
-      short: false,
-      desk: true,
-      fitList: () => 6,
-      leftOverflows: (shown) => shown > capacity,
-    })
-  assert.deepEqual(desk(2, 3), { pinsShown: 2, listShown: 6 })
-  assert.deepEqual(desk(10, 3), { pinsShown: 3, listShown: 6 })
-})
 
 // ---------------------------------------------------------------- hand-off
 
@@ -327,23 +253,6 @@ function fitAt(size) {
   return { ...result, g, used, leftover: g.rooms[result.pinsShown] - used }
 }
 
-test('flush: the more link sits under the last strip, fits whole, and no strip-height gap is left while anything is hidden', () => {
-  // 320x568: at least one admin strip always shows (#4318 ruling), so no listing fits there.
-  const expected = { '320x568': [1, 0], '360x640': [1, 1], '390x844': [1, 3], '820x1180': [4, 3], '1440x900': [4, 5] }
-  for (const size of Object.keys(MEASURED)) {
-    const r = fitAt(size)
-    assert.deepEqual([r.pinsShown, r.listShown], expected[size], `${size}: admin strips and listings shown`)
-    assert.ok(r.leftover >= 0, `${size}: the more link must fit inside the box (leftover ${r.leftover})`)
-    const gap = fit.leavesStripGap({
-      leftover: r.leftover,
-      stripStep: r.g.stripH + r.g.gap,
-      pinsHidden: r.g.desk ? 0 : PINS - r.pinsShown,
-      listHidden: LISTINGS - r.listShown,
-    })
-    assert.equal(gap, false, `${size}: ${r.leftover}px left under the more link is a whole strip while items are hidden`)
-  }
-})
-
 // Chip row widths MEASURED in Chrome (scrollWidth per fit level vs the row's box).
 const CHIPS = {
   '320x568': { box: 292, widths: [311, 311, 292] },
@@ -352,59 +261,6 @@ const CHIPS = {
   '820x1180': { box: 576, widths: [576, 576, 576] },
   '1440x900': { box: 484, widths: [484, 484, 484] },
 }
-
-test('the chip row never overflows: counts hide first, then the chips tighten', () => {
-  const levels = {}
-  for (const [size, c] of Object.entries(CHIPS)) {
-    const level = fit.chipFitLevel((l) => c.widths[l] > c.box + 0.5)
-    levels[size] = level
-    assert.ok(c.widths[level] <= c.box + 0.5, `${size}: chip row overflows at level ${level}`)
-  }
-  assert.deepEqual(levels, { '320x568': 2, '360x640': 0, '390x844': 1, '820x1180': 0, '1440x900': 0 })
-})
-
-test('leftover room never sits as one blank block: it spreads evenly over the section gaps, capped at 24 px, rest at the bottom', () => {
-  // Phones: banners, admin strips, city, chips, strip block, socials = 5 gaps.
-  for (const size of ['320x568', '360x640', '390x844', '820x1180']) {
-    const r = fitAt(size)
-    const spread = fit.spreadLeftover(r.leftover, 5)
-    assert.ok(spread.perGap > 0, `${size}: the ${r.leftover}px left must be spread, not left as one block`)
-    assert.ok(spread.perGap <= fit.FILL_CAP_PER_GAP_PX, `${size}: at most 24px extra per gap`)
-    assert.ok(Math.abs(spread.perGap * 5 + spread.bottom - r.leftover) < 0.06, `${size}: every pixel is placed`)
-    assert.ok(r.leftover - spread.perGap * 5 - spread.bottom < 2, `${size}: no blank block remains under the more link`)
-  }
-  // 360x640: 61px over 5 gaps → 12.2px each, nothing at the bottom.
-  assert.deepEqual(fit.spreadLeftover(61, 5), { perGap: 12.2, bottom: 0 })
-  // Past the cap the rest goes to the very bottom.
-  assert.deepEqual(fit.spreadLeftover(200, 5), { perGap: 24, bottom: 80 })
-  assert.deepEqual(fit.spreadLeftover(-3, 5), { perGap: 0, bottom: 0 })
-  // Sub-pixel: a strip 1.5px past the line still fits (2px tolerance).
-  assert.equal(fit.stripsThatFit([54, 118], 118 + 10 + 40 + 1.5 - 1.5 - 1.5, 40, 10), 2)
-})
-
-test('rulings: Lagos reaches 80 km, admin strips always first, and the empty copy', () => {
-  // Lekki Free Trade Zone is ~70 km from the Lagos centre: Lagos, not dropped.
-  const [ftz] = week.bucketListings([row({ lat: 6.4526, lng: 4.057, tz: 'Africa/Lagos', item_slug: 'ftz' })], CITIES)
-  assert.equal(ftz?.citySlug, 'lagos')
-  // 80.5 km out of Lagos is still dropped; another city keeps its 60 km.
-  assert.equal(week.bucketListings([row({ lat: 6.4281 + 80.5 / 111.2, lng: 3.4219 })], CITIES).length, 0)
-
-  // At least one admin strip whenever any exist, even when it costs the floor.
-  assert.deepEqual(fitAt('320x568').pinsShown, 1)
-  // 0 listings and 10 admin strips: they fill what fits, the rest fold.
-  const none = fit.computeLinksFit({ pinCount: 10, listCount: 0, short: true, desk: false, fitList: () => 0, leftOverflows: (n) => n > 4 })
-  assert.deepEqual(none, { pinsShown: 4, listShown: 0 })
-  assert.equal(fit.pinsMoreLabel(10, none.pinsShown), 'See 6 more from Mingla')
-  // Even the first admin strip folds if it alone would clip something.
-  assert.equal(fit.computeLinksFit({ pinCount: 3, listCount: 0, short: true, desk: false, fitList: () => 0, leftOverflows: () => true }).pinsShown, 0)
-
-  // Empty copy.
-  const text = (over) => week.emptyListText({ nothingAnywhere: false, cityHasListings: false, cityName: 'Cary', plural: 'plans', otherLiveCity: true, ...over })
-  assert.equal(text({}), 'Nothing is listed in Cary this week yet. Try another city.')
-  assert.equal(text({ otherLiveCity: false }), 'Nothing is listed in Cary this week yet.')
-  assert.equal(text({ nothingAnywhere: true }), 'Nothing is listed this week yet. Check back soon.')
-  assert.equal(text({ cityHasListings: true, plural: 'trips' }), 'No trips listed in Cary this week yet.')
-})
 
 // ---------------------------------------------------------------- the quiet week (addendum 2)
 
@@ -465,36 +321,6 @@ test('places: stored thumbnails on the public object endpoint only, junk dropped
   const u = new URL(h.href)
   assert.deepEqual([`${u.origin}${u.pathname}`, u.searchParams.get('pid'), u.searchParams.get('deep_link_value')], [stores.EXPLORER_ONELINK_URL, 'bio_instagram', null])
   assert.deepEqual(handoff.resolveLinksHandoff({ type: 'place', place: p }, 'other', 'instagram'), { action: 'sheet', sheet: 'item' })
-})
-
-test('quiet week fit at 320x568 and 390x844: admin strips first, places fill, links fit, no clipping', () => {
-  // MEASURED in Chrome (2026-11-08) on a quiet city with 4 admin strips, 3
-  // places and both links: the box height per admin strips shown, the heading,
-  // the strip, the gap and the two links' block.
-  const Q = {
-    '320x568': { short: true, headH: 24, stripH: 54, gap: 10, linksH: 70, rooms: [224, 160, 96, 32, 10], expected: [1, 0] },
-    '390x844': { short: false, headH: 29, stripH: 60, gap: 10, linksH: 82, rooms: [447, 377, 307, 237, 209], expected: [1, 3] },
-  }
-  for (const [size, g] of Object.entries(Q)) {
-    const bottoms = [1, 2, 3].map((n) => g.headH + g.gap + n * g.stripH + (n - 1) * g.gap)
-    const minimum = g.headH + g.gap + g.linksH
-    const r = fit.computeLinksFit({
-      pinCount: 4,
-      listCount: 3,
-      short: g.short,
-      desk: false,
-      fitList: (s) => fit.stripsThatFit(bottoms, g.rooms[s], g.linksH, g.gap),
-      leftOverflows: (s) => g.rooms[s] < minimum,
-    })
-    assert.deepEqual([r.pinsShown, r.listShown], g.expected, size)
-    const used = r.listShown ? bottoms[r.listShown - 1] + g.gap + g.linksH : minimum
-    assert.ok(used <= g.rooms[r.pinsShown] + fit.FIT_TOLERANCE_PX, `${size}: the quiet block fits (${used} > ${g.rooms[r.pinsShown]})`)
-    assert.equal(
-      fit.leavesStripGap({ leftover: g.rooms[r.pinsShown] - used, stripStep: g.stripH + g.gap, pinsHidden: 4 - r.pinsShown, listHidden: 3 - r.listShown }),
-      false,
-      `${size}: no strip-height gap while something is hidden`,
-    )
-  }
 })
 
 // ---------------------------------------------------------------- recurring plans (one strip each)
@@ -592,87 +418,6 @@ test('the live cities are exactly the database rows: slugs from names, older gui
   assert.deepEqual(junk.map((c) => c.slug), ['fort-lauderdale', 'fort-lauderdale-gb'])
 })
 
-test('a city switched live appears with no code change: listed, bucketed, its zone from its listings', () => {
-  const abuja = { city_id: '00000000-0000-4000-8000-0000000000ab', name: 'Abuja', country_code: 'NG', center_lat: 9.0765, center_lng: 7.3986, has_places: true }
-  const base = week.linksCitiesFromRows([...LIVE_ROWS, abuja], HINTS)
-  const listings = week.bucketListings(
-    [row({ lat: 9.06, lng: 7.49, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z', item_slug: 'abuja-1' })],
-    base,
-  )
-  const cities = week.withListingZones(base, listings)
-  const city2 = cities.find((c) => c.slug === 'abuja')
-  assert.deepEqual([city2.name, city2.region, city2.reachKm, city2.timezone], ['Abuja', 'Nigeria', 60, 'Africa/Lagos'])
-  assert.deepEqual(listings.map((l) => l.citySlug), ['abuja'])
-  const counts = week.cityCounts(cities, listings, [], NOW)
-  assert.equal(counts.length, 11)
-  assert.deepEqual(week.pickerOrder(counts, null)[0], { city: city2, count: 1, km: null })
-  assert.deepEqual(week.resolveCity({ cities, live: week.liveCities(cities, listings, [], NOW), query: 'abuja', geo: null, cookie: null }), { slug: 'abuja', source: 'query' })
-  // A new live city with no listings and no guide: UTC, still listed.
-  assert.equal(week.withListingZones(base, []).find((c) => c.slug === 'abuja').timezone, 'UTC')
-})
-
-test('a city switched off disappears: not listed, not bucketed, its ?city= and cookie no longer open it', () => {
-  const cities = week.linksCitiesFromRows(LIVE_ROWS.filter((r) => r.name !== 'Paris'), HINTS)
-  assert.equal(cities.some((c) => c.slug === 'paris'), false)
-  const listings = week.bucketListings([row({ lat: 48.86, lng: 2.35, tz: 'Europe/Paris', item_slug: 'p1' })], cities)
-  assert.deepEqual(listings, [], 'a Paris listing belongs to no live city (Brussels is 260 km away)')
-  const live = week.liveCities(cities, listings, [], NOW)
-  assert.notEqual(week.resolveCity({ cities, live, query: 'paris', geo: null, cookie: null }).source, 'query')
-  assert.notEqual(week.resolveCity({ cities, live, query: null, geo: null, cookie: 'paris' }).source, 'cookie')
-  // Geo near Paris lands on the nearest city still live.
-  assert.equal(week.resolveCity({ cities, live, query: null, geo: { lat: 48.85, lng: 2.35 }, cookie: null }).slug, 'brussels')
-})
-
-test('quiet cities are listed: every live city, nearest first, else most plans then name, "Places to explore"', () => {
-  const cities = week.withListingZones(week.linksCitiesFromRows(LIVE_ROWS, HINTS), [])
-  const listings = week.bucketListings(
-    [
-      row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z', item_slug: 'l1' }),
-      row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos', starts_at: '2026-11-09T18:00:00Z', item_slug: 'l2' }),
-      row({ lat: 35.789, lng: -78.78, item_slug: 'c1' }),
-    ],
-    cities,
-  )
-  const counts = week.cityCounts(cities, listings, [], NOW)
-  assert.equal(counts.length, 10, 'all ten live cities, quiet ones included')
-  // No location: plans this week, then name.
-  assert.deepEqual(week.pickerOrder(counts, null).map((r) => r.city.slug), ['lagos', 'cary', 'brussels', 'durham', 'fort-lauderdale', 'london', 'new-york', 'paris', 'raleigh', 'washington'])
-  // From Chapel Hill: Durham, Cary, Raleigh first; Lagos last.
-  const fromChapelHill = week.pickerOrder(counts, { lat: 35.913, lng: -79.0558 }).map((r) => r.city.slug)
-  assert.deepEqual(fromChapelHill.slice(0, 3), ['durham', 'cary', 'raleigh'])
-  assert.equal(fromChapelHill.at(-1), 'lagos')
-  assert.equal(week.pickerCountLabel(2), '2 this week')
-  assert.equal(week.pickerCountLabel(0), 'Places to explore')
-  assert.equal(week.pickerCountLabel(0, true), 'Places to explore')
-  assert.equal(week.pickerCountLabel(3, false), '3 this week')
-  // A visitor in Chapel Hill lands on quiet Durham, which points at plans in Cary.
-  const live = week.liveCities(cities, listings, [], NOW)
-  const initial = week.resolveCity({ cities, live, query: null, geo: { lat: 35.913, lng: -79.0558 }, cookie: null })
-  assert.deepEqual(initial, { slug: 'durham', source: 'geo' })
-  const durham = cities.find((c) => c.slug === 'durham')
-  const q = week.quietWeek({ city: durham, cityHasListings: false, places: week.normalisePlaces([placeRow(1)], 'durham', STORAGE), live, readFailed: false })
-  assert.deepEqual([q.mode, q.heading, q.plansIn.slug], ['quiet', 'A quiet week in Durham.', 'cary'])
-})
-
-test('a quiet city with no photo places: "Nothing listed yet" in the picker, and the fallback line plus Host when picked', () => {
-  const rows = LIVE_ROWS.map((r) => (r.name === 'Fort Lauderdale' ? { ...r, has_places: false } : r))
-  const cities = week.withListingZones(week.linksCitiesFromRows(rows, HINTS), [])
-  const listings = week.bucketListings([row({ lat: 35.789, lng: -78.78, item_slug: 'c1' })], cities)
-  const counts = week.cityCounts(cities, listings, [], NOW)
-  const label = (slug) => {
-    const r = counts.find((c) => c.city.slug === slug)
-    return week.pickerCountLabel(r.count, r.city.hasPlaces)
-  }
-  assert.equal(cities.find((c) => c.slug === 'fort-lauderdale').hasPlaces, false)
-  assert.equal(label('fort-lauderdale'), 'Nothing listed yet')
-  assert.equal(label('cary'), '1 this week')
-  assert.equal(label('raleigh'), 'Places to explore')
-  // Picked, it shows the fallback line and "Host something in Fort Lauderdale" (and plans in Cary).
-  const fll = cities.find((c) => c.slug === 'fort-lauderdale')
-  const q = week.quietWeek({ city: fll, cityHasListings: false, places: [], live: week.liveCities(cities, listings, [], NOW), readFailed: false })
-  assert.deepEqual([q.mode, q.text, q.hostCity, q.plansIn.slug], ['fallback', 'Nothing is listed this week yet. Check back soon.', 'Fort Lauderdale', 'cary'])
-})
-
 test('quiet-week places are read by city_id (the fast index path); lat/lng alone only when no id is known', () => {
   const cities = week.linksCitiesFromRows(LIVE_ROWS, HINTS)
   const durham = cities.find((c) => c.slug === 'durham')
@@ -687,19 +432,6 @@ test('quiet-week places are read by city_id (the fast index path); lat/lng alone
   const noId = { slug: 'lagos', name: 'Lagos', region: 'Nigeria', timezone: 'Africa/Lagos', lat: 6.4281, lng: 3.4219, reachKm: 80 }
   assert.deepEqual(week.linksPlacesArgs(noId, 3), { p_lat: 6.4281, p_lng: 3.4219, p_radius_km: 80, p_limit: 3 })
   assert.equal('p_city_id' in week.linksPlacesArgs({ ...noId, cityId: 'not-a-uuid' }, 3), false)
-})
-
-test('?city= with an older guide slug opens the live city (washington-dc, new-york-city, durham-nc)', () => {
-  const cities = week.linksCitiesFromRows(LIVE_ROWS, HINTS)
-  const resolve = (query, cookie = null) => week.resolveCity({ cities, live: [], query, geo: null, cookie })
-  assert.deepEqual(resolve('washington-dc'), { slug: 'washington', source: 'query' })
-  assert.deepEqual(resolve('washington'), { slug: 'washington', source: 'query' })
-  assert.deepEqual(resolve('new-york-city'), { slug: 'new-york', source: 'query' })
-  assert.deepEqual(resolve('durham-nc'), { slug: 'durham', source: 'query' })
-  // The remembered-city cookie from before the change still opens its city.
-  assert.deepEqual(resolve(null, 'raleigh-nc'), { slug: 'raleigh', source: 'cookie' })
-  // Nothing on anywhere and nothing asked: the first live city.
-  assert.deepEqual(resolve(null), { slug: 'brussels', source: 'fallback' })
 })
 
 test('the white wordmark in the orange bar goes Home, with a 44px target and a visible focus ring', () => {

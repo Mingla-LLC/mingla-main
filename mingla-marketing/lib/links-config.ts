@@ -39,8 +39,3 @@ export const LINKS_SOCIALS: readonly LinksSocial[] = [
   { id: 'facebook', label: 'Facebook', href: 'https://www.facebook.com/usemingla' },
   { id: 'linkedin', label: 'LinkedIn', href: 'https://www.linkedin.com/company/usemingla' },
 ]
-
-// The remembered city: a plain preference cookie holding a city slug and
-// nothing about the person, scoped to /links.
-export const LINKS_CITY_COOKIE = 'mingla_links_city'
-export const LINKS_CITY_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180

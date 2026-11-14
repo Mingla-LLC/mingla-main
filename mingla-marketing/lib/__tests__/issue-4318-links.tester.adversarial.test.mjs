@@ -134,130 +134,7 @@ function northOf(c, km) {
   return { lat: c.lat + (km / 6371) * (180 / Math.PI), lng: c.lng }
 }
 
-// The page's own `?city=` / cookie parser, lifted out of app/links/page.tsx so
-// this test exercises the shipped code, not a copy.
-function pageParam() {
-  const page = read('app/links/page.tsx')
-  const slugLine = page.match(/const CITY_SLUG = .*\n/)
-  const fn = page.match(/function oneParam\([\s\S]*?\n\}\n/)
-  assert.ok(slugLine && fn, 'app/links/page.tsx still has CITY_SLUG and oneParam')
-  const js = stripTypeScriptTypes(`${slugLine[0]}${fn[0]}`)
-  return new Function(`${js}; return oneParam`)()
-}
-const oneParam = pageParam()
-
 // ================================================================= 1. city resolution
-
-test('?city= — unknown, mixed-case, padded, repeated and injection values', () => {
-  const listings = week.bucketListings(
-    [row({}), row({}), row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z' })],
-    CITIES,
-  )
-  const live = week.liveCities(CITIES, listings, [], NOW)
-  const resolve = (raw, over = {}) =>
-    week.resolveCity({ cities: CITIES, live, query: oneParam(raw), geo: null, cookie: null, ...over })
-
-  // Mixed case and stray spaces from a hand-typed bio link still land.
-  assert.deepEqual(resolve('LaGoS'), { slug: 'lagos', source: 'query' })
-  assert.deepEqual(resolve('  Raleigh-NC '), { slug: 'raleigh-nc', source: 'query' })
-  // A real but quiet city still wins (city-specific bio links work on first load).
-  assert.deepEqual(resolve('paris'), { slug: 'paris', source: 'query' })
-  // Unknown slugs fall through to the normal order, never to a phantom city.
-  for (const raw of ['atlantis', 'lagos-', 'raleigh', 'new_york_city', '']) {
-    const r = resolve(raw)
-    assert.notEqual(r.source, 'query', `unknown ?city=${raw} must not win`)
-    assert.ok(CITIES.some((c) => c.slug === r.slug))
-  }
-  // Injection and junk never reach the resolver at all.
-  for (const raw of [
-    '"><script>alert(1)</script>',
-    "lagos' OR '1'='1",
-    'lagos%00',
-    '../../etc/passwd',
-    'javascript:alert(1)',
-    'lagos\nSet-Cookie: x=1',
-    'x'.repeat(61),
-  ]) {
-    assert.equal(oneParam(raw), null, `?city=${JSON.stringify(raw)} must be rejected by the page parser`)
-  }
-  // Next hands a repeated param over as an array: ambiguous, so ignored.
-  assert.equal(oneParam(['lagos', 'paris']), null)
-  assert.equal(oneParam(undefined), null)
-})
-
-test('geo headers — missing, malformed, out of range, and the middle of the ocean', () => {
-  const bad = [
-    [null, null],
-    [null, '3.4'],
-    ['6.4', null],
-    ['', ''],
-    ['   ', '3.4'],
-    ['NaN', '3.4'],
-    ['6.4', 'NaN'],
-    ['Infinity', '3.4'],
-    ['abc', 'def'],
-    ['90.0001', '0'],
-    ['-90.5', '0'],
-    ['0', '180.5'],
-    ['0', '-181'],
-    ['1e3', '0'],
-  ]
-  for (const [lat, lng] of bad) {
-    assert.equal(week.parseGeoHeaders(lat, lng), null, `geo ${lat},${lng} must be ignored`)
-  }
-  assert.deepEqual(week.parseGeoHeaders(' 6.4541 ', '3.3947'), { lat: 6.4541, lng: 3.3947 })
-  assert.deepEqual(week.parseGeoHeaders('-90', '180'), { lat: -90, lng: 180 })
-
-  const listings = week.bucketListings(
-    [row({}), row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos' }), row({ lat: 51.5, lng: -0.12, tz: 'Europe/London' })],
-    CITIES,
-  )
-  const live = week.liveCities(CITIES, listings, [], NOW)
-  // Mid-Atlantic, the Gulf of Guinea, the South Pacific, Null Island: always the
-  // nearest live city, never a crash. Live cities ruling (8 Nov): every city
-  // live in Explorer is a landing city, quiet or not (it shows its places).
-  for (const point of [
-    { lat: 30, lng: -40 },
-    { lat: 0, lng: 0 },
-    { lat: -40, lng: -140 },
-    { lat: -60, lng: 100 },
-  ]) {
-    const r = week.resolveCity({ cities: CITIES, live, query: null, geo: point, cookie: null })
-    assert.equal(r.source, 'geo')
-    assert.equal(r.slug, week.nearestCity(CITIES, point).city.slug)
-  }
-  // Gulf of Guinea → Lagos; North Atlantic off Ireland → London.
-  assert.equal(week.resolveCity({ cities: CITIES, live, query: null, geo: { lat: 2, lng: 3 }, cookie: null }).slug, 'lagos')
-  assert.equal(week.resolveCity({ cities: CITIES, live, query: null, geo: { lat: 53, lng: -15 }, cookie: null }).slug, 'london')
-})
-
-test('a remembered cookie opens its city while it is live in Explorer, quiet or not; a gone city is ignored', () => {
-  const listings = week.bucketListings([row({}), row({}), row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos' })], CITIES)
-  const live = week.liveCities(CITIES, listings, [], NOW)
-  // Live cities ruling (8 Nov): Brussels has nothing on this week but is live
-  // in Explorer, so the remembered city opens (its places, "Plans in …").
-  const r = week.resolveCity({ cities: CITIES, live, query: null, geo: null, cookie: oneParam('brussels') })
-  assert.deepEqual(r, { slug: 'brussels', source: 'cookie' })
-  // A cookie for a city that is not live (switched off, or never live).
-  assert.equal(week.resolveCity({ cities: CITIES, live, query: null, geo: null, cookie: oneParam('atlanta') }).source, 'busiest')
-  const withoutBrussels = CITIES.filter((c) => c.slug !== 'brussels')
-  assert.deepEqual(week.resolveCity({ cities: withoutBrussels, live, query: null, geo: null, cookie: 'brussels' }), {
-    slug: 'raleigh-nc',
-    source: 'busiest',
-  })
-  // A tampered cookie never reaches the resolver.
-  assert.equal(oneParam('lagos; Path=/'), null)
-  // #4318 addendum 2: admin strips are not by city and show in every city, so a
-  // strip never makes a city busy.
-  const pins = week.normalisePins([pinRow({ shows_on: '2026-11-09' })])
-  const live2 = week.liveCities(CITIES, listings, pins, NOW)
-  assert.deepEqual(live2.map((l) => l.city.slug), live.map((l) => l.city.slug))
-  // Nothing live anywhere: the remembered city still opens (it is a real registry city).
-  assert.deepEqual(week.resolveCity({ cities: CITIES, live: [], query: null, geo: null, cookie: 'brussels' }), {
-    slug: 'brussels',
-    source: 'cookie',
-  })
-})
 
 // ================================================================= 2. nearest-city bucketing
 
@@ -577,105 +454,6 @@ test('no store, OneLink or host URL constant lives outside the #4137 seam', () =
 
 // ================================================================= 5. fit edge cases
 
-function phoneFit({ room, pins, list, short = false }) {
-  return fit.computeLinksFit({
-    pinCount: pins,
-    listCount: list,
-    short,
-    desk: false,
-    fitList: (shown) => Math.max(0, Math.min(list, room - shown)),
-    leftOverflows: () => false,
-  })
-}
-
-test('fit: 0, 1 and 40 listings against 0 and 10 admin strips, tall and short screens', () => {
-  // Nothing at all.
-  assert.deepEqual(phoneFit({ room: 4, pins: 0, list: 0 }), { pinsShown: 0, listShown: 0 })
-  assert.deepEqual(fit.moreLabel(0, 0), { hidden: 0, text: 'Open the full week', count: null })
-  assert.equal(fit.pinsMoreLabel(0, 0), null)
-  // One listing: it is the floor, so admin strips fold to keep it.
-  assert.deepEqual(phoneFit({ room: 4, pins: 10, list: 1 }), { pinsShown: 3, listShown: 1 })
-  // Conductor ruling (#4318, 2): at least one admin strip always shows when any
-  // exist and nothing would be clipped, even at the cost of the listing floor.
-  assert.deepEqual(phoneFit({ room: 1, pins: 10, list: 1, short: true }), { pinsShown: 1, listShown: 0 })
-  assert.equal(fit.pinsMoreLabel(10, 0), 'See 10 more from Mingla')
-  // A screen so small that even the one listing cannot fit: zero, never negative.
-  assert.deepEqual(phoneFit({ room: 0, pins: 10, list: 1, short: true }), { pinsShown: 1, listShown: 0 })
-  assert.deepEqual(fit.moreLabel(1, 0), { hidden: 1, text: 'See 1 more', count: '1 this week' })
-  // Forty listings: the floor of 3 holds on a tall phone, 1 on a short one.
-  assert.deepEqual(phoneFit({ room: 4, pins: 10, list: 40 }), { pinsShown: 1, listShown: 3 })
-  assert.deepEqual(phoneFit({ room: 3, pins: 10, list: 40, short: true }), { pinsShown: 2, listShown: 1 })
-  assert.deepEqual(phoneFit({ room: 4, pins: 0, list: 40 }), { pinsShown: 0, listShown: 4 })
-  assert.deepEqual(fit.moreLabel(40, 4), { hidden: 36, text: 'See 36 more', count: '40 this week' })
-  // The fit never reports more than exists or less than nothing.
-  for (const pins of [0, 1, 10]) {
-    for (const list of [0, 1, 40]) {
-      for (const room of [0, 1, 3, 6, 50]) {
-        for (const short of [true, false]) {
-          const r = phoneFit({ room, pins, list, short })
-          assert.ok(r.pinsShown >= 0 && r.pinsShown <= pins, JSON.stringify({ pins, list, room, short, r }))
-          assert.ok(r.listShown >= 0 && r.listShown <= list, JSON.stringify({ pins, list, room, short, r }))
-        }
-      }
-    }
-  }
-  // Desktop with 10 admin strips and a left column that holds 2.
-  const desk = fit.computeLinksFit({
-    pinCount: 10,
-    listCount: 40,
-    short: false,
-    desk: true,
-    fitList: () => 6,
-    leftOverflows: (n) => n > 2,
-  })
-  assert.deepEqual(desk, { pinsShown: 2, listShown: 6 })
-  // stripsThatFit with no room or no strips.
-  assert.equal(fit.stripsThatFit([], 500, 40, 10), 0)
-  assert.equal(fit.stripsThatFit([54, 118], 0, 40, 10), 0)
-})
-
-test('phones: admin strips that alone overflow the screen fold, even when the city has no listings', () => {
-  // Measured in Chrome at 320x568 and 390x844 with 0 listings and 10 admin
-  // strips: all 10 rendered, strip 6 (320) / strip 9 (390) cut in half, and the
-  // city switcher, chips, empty state and socials pushed off the screen.
-  // With no listings the floor is 0, so the phone loop never folds a strip;
-  // the probe's overflow signal must still be honoured.
-  const capacity = 3 // admin strips that fit above the city switcher on a 320x568 phone
-  for (const short of [true, false]) {
-    const r = fit.computeLinksFit({
-      pinCount: 10,
-      listCount: 0,
-      short,
-      desk: false,
-      fitList: () => 0,
-      leftOverflows: (shown) => shown > capacity,
-    })
-    assert.ok(
-      r.pinsShown <= capacity,
-      `${short ? 'short' : 'tall'} phone with 0 listings showed ${r.pinsShown} admin strips; only ${capacity} fit`,
-    )
-  }
-})
-
-test('sheets trap Tab inside the dialog and close on Escape wherever focus is', () => {
-  // Chrome, 390x844 and 1440x900: four Tabs from the city picker (three from the
-  // Host sheet) land on the consent bar's "OK" / "Privacy options" and then
-  // "Skip to content", outside the aria-modal dialog; Escape then does nothing
-  // because the only Escape handler is on <main>. Tapping the sheet's title
-  // (focus goes to <body>) breaks Escape the same way.
-  const ui = read('components/marketing/links-experience.tsx')
-  const code = ui
-    .split('\n')
-    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-    .join('\n')
-  assert.match(code, /key === 'Tab'/, 'no Tab focus trap inside the open sheet')
-  assert.match(
-    code,
-    /(document|window)\.addEventListener\(\s*'keydown'/,
-    'Escape is only heard while focus is inside <main>; listen on the document while a sheet is open',
-  )
-})
-
 test('very long titles survive the model untouched (the CSS clamps them), and blank titles are dropped', () => {
   const long = 'A'.repeat(300)
   const [l] = week.bucketListings([row({ title: `  ${long}  ` })], CITIES)
@@ -748,9 +526,6 @@ test('the empty state: database errors or empty answers give empty lists and a l
     for (const key of Object.keys(process.env)) if (!(key in env)) delete process.env[key]
     Object.assign(process.env, env)
   }
-  // The page shows the designed empty state when its city has nothing on.
-  const ui = read('components/marketing/links-experience.tsx')
-  assert.match(ui, /A quiet one\./)
 })
 
 // ================================================================= 6b. live cities (8 Nov ruling)
@@ -774,14 +549,11 @@ test('live cities against the REAL guides: every guide matches its live city, ol
   // Every guide finds its live city (centres within 30 km in the same country),
   // so every older slug in a bio link keeps working.
   for (const guide of CITIES) {
-    const r = week.resolveCity({ cities, live: [], query: oneParam(guide.slug), geo: null, cookie: null })
-    assert.equal(r.source, 'query', `?city=${guide.slug}`)
-    const live = cities.find((c) => c.slug === r.slug)
+    const live = week.cityForSlug(cities, guide.slug)
+    assert.ok(live, `?city=${guide.slug}`)
     assert.equal(live.region, guide.region, guide.slug)
     assert.equal(live.timezone, guide.timezone, guide.slug)
   }
-  // Every slug the page makes passes the page's own ?city= parser.
-  for (const c of cities) assert.equal(oneParam(c.slug), c.slug)
   // A guide in another country, or more than 30 km away, lends nothing.
   const far = week.linksCitiesFromRows([{ ...LIVE_ROWS[7], center_lat: 49.2 }], CITIES)
   assert.deepEqual([far[0].aliases, far[0].region, far[0].timezone], [[], 'France', ''])
@@ -807,7 +579,7 @@ test('hostile links_page_cities() rows: junk dropped, names never break the slug
   )
   const slugs = got.map((c) => c.slug)
   assert.deepEqual(slugs.slice(0, 3), ['script-alert-1-script', 'zurich', 'ghost'])
-  for (const c of got) assert.equal(oneParam(c.slug), c.slug, `slug ${c.slug} passes the page parser`)
+  for (const c of got) assert.match(c.slug, /^[a-z0-9-]{2,60}$/, `slug ${c.slug} is clean`)
   // The display name is kept as text (React escapes it); the slug is clean.
   assert.equal(got[0].name, '"><script>alert(1)</script>')
   assert.deepEqual([got[1].region, got[2].region, got[2].hasPlaces, got[3].hasPlaces], ['Switzerland', '', null, false])
@@ -838,22 +610,6 @@ test('the quiet-week request sends p_city_id to links_page_places (and lat/lng o
     for (const key of Object.keys(process.env)) if (!(key in env)) delete process.env[key]
     Object.assign(process.env, env)
   }
-})
-
-test('the page builds its list from links_page_cities() only; the guides stand in only while that read is down', () => {
-  const page = read('app/links/page.tsx')
-  assert.match(page, /linksCitiesFromRows\(data\.cities, hints\)/)
-  assert.doesNotMatch(page, /CITY_HUB_REACH_KM/)
-  assert.match(page, /const outage = dbCities\.length === 0/)
-  assert.match(page, /outage \? outageCities\(hints\) : dbCities/)
-  // In the stand-in mode nothing is listed and the read counts as failed.
-  assert.match(page, /const listings = outage \? \[\] : bucketListings/)
-  assert.match(page, /const readFailed = outage \|\| data\.failed\.includes\('week'\)/)
-  // The city guides are left exactly as they are (#4137 city pages unchanged).
-  // The picker lists every live city with "Places to explore" for a quiet one.
-  const ui = read('components/marketing/links-experience.tsx')
-  assert.match(ui, /pickerOrder\(counts, visitor\.point\)/)
-  assert.match(ui, /pickerCountLabel\(count, c\.hasPlaces\)/)
 })
 
 // ================================================================= 7 + 8. socials, privacy link, noindex

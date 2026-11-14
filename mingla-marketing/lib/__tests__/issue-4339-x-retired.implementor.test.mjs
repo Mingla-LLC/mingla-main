@@ -114,7 +114,7 @@ test('X-3 the hosted email signature links exactly the approved seven, each with
 
 test('X-4 /links has a current title and description', () => {
   const page = read('app/links/page.tsx')
-  assert.match(page, /title: 'Mingla · What’s on this week',/)
+  assert.match(page, /title: 'Mingla · Links',/)
   assert.doesNotMatch(page, /title: 'Get Mingla'/)
   assert.doesNotMatch(page, /experiences app for date nights/)
 })
