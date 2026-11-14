@@ -495,7 +495,8 @@ export function phase3dContractDigest(manifest) {
 // #4423 integration: merged origin/main a5a5c59094 (#4419 20280706004419 rows kept beside the #4423 rows) and renamed the thirteen #4423 migrations 20280705*4423 to 20280707*4423 (after 20280706004419), in order; re-sealed.
 // #4423 integration 2: merged origin/main ce482c996c; re-sealed.
 // #4238 Wave 1: re-sealed after registering M-1 (click-id type + tracking health) and its pg17 proof; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "4d86ca561a65b74153cd047613cf38cde695be90a99c745f0503eb75aa63729f";
+// #4238 Wave 4: re-sealed after registering M-3 (ticket_checkout_sessions.checkout_surface) and its pg17 proof; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7136235fc886c2df054b7ff4b7f0193309dbc37e82f8e5a41a221d2dcd730185";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -8,6 +8,7 @@ import {
   fireAdCheckoutStart,
   fireAdConversion,
   persistCheckoutAdContext,
+  persistCheckoutSurface,
 } from "../_shared/adConversionFire.ts";
 // #3682 — auto-follow brand after signed-in free reservation (fail-open).
 import { autoFollowBrandBestEffort } from "../_shared/autoFollowBrand.ts";
@@ -3168,6 +3169,9 @@ export const createTicketCheckoutCreateHandler = (
           ? body.client_user_agent
           : null),
     });
+    // #4238 W4-1 (D20): the finalize-time conversion reads this to keep a
+    // native app purchase off the website ad lanes. Own fail-open write.
+    await persistCheckoutSurface(supabase as never, checkoutSessionId, surface);
     scheduleCheckoutAdStart(
       fireAdCheckoutStart(supabase as never, checkoutSessionId),
     );

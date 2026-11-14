@@ -64,8 +64,10 @@ Deno.test("#3697 retry edge re-evaluates consent through the shared fire helpers
   const fireSource = await Deno.readTextFile(
     new URL("../adConversionFire.ts", import.meta.url),
   );
+  // #4238 W4-1: the retry now also injects the AppsFlyer poster (third arg)
+  // for native purchases; the shared fire helper still owns the consent read.
   assertEquals(
-    source.includes("fireAdConversion(db, conversionRetryInput(row))"),
+    source.includes("fireAdConversion(db, conversionRetryInput(row), {"),
     true,
   );
   assertEquals(source.includes("fireAdCheckoutStart(db, id)"), true);

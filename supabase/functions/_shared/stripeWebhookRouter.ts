@@ -2119,11 +2119,13 @@ async function handleTicketCheckoutPaymentIntent(
           : typeof piCreated === "number"
           ? piCreated
           : NaN;
+        // #4238 W4-1: a native (Explorer app) order posts af_purchase to
+        // AppsFlyer from here; this function already holds the S2S secrets.
         await fireAdConversion(supabase as never, {
           orderId,
           surface: "web",
           eventTimeMs: Number.isFinite(paidSeconds) ? paidSeconds * 1000 : null,
-        });
+        }, { postAppsFlyer: postAppsFlyerS2SEvent });
       }
     } catch (adConvErr) {
       console.warn(

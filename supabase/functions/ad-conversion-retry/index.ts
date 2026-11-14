@@ -22,6 +22,9 @@ import {
   fireAdCheckoutStart,
   fireAdConversion,
 } from "../_shared/adConversionFire.ts";
+// #4238 W4-1: this run posts native (Explorer app) af_purchase events that a
+// caller without the AppsFlyer secrets left pending.
+import { postAppsFlyerS2SEvent } from "../_shared/appsFlyerS2S.ts";
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -90,7 +93,9 @@ serve(async (req) => {
         continue;
       }
     }
-    const result = await fireAdConversion(db, conversionRetryInput(row));
+    const result = await fireAdConversion(db, conversionRetryInput(row), {
+      postAppsFlyer: postAppsFlyerS2SEvent,
+    });
     conversionResults.push({
       event_id: row.event_id,
       status: result.ok ? "evaluated" : "failed",
@@ -100,6 +105,46 @@ serve(async (req) => {
         status: item.status,
         reason: item.reason ?? null,
       })) ?? [],
+    });
+  }
+
+  // #4238 W4-1 (I-4238-NATIVE-PURCHASE-VIA-APPSFLYER): native purchases whose
+  // AppsFlyer post is still pending. Their ad channels are already skipped, so
+  // the query above never selects them. The fire claims the post atomically.
+  const nativeBudget = Math.max(
+    0,
+    AD_CONVERSION_RETRY_BATCH - conversionResults.length,
+  );
+  const { data: nativeRows, error: nativeQueryError } = nativeBudget === 0
+    ? { data: [], error: null }
+    : await db
+      .from("ad_conversions")
+      .select(
+        "event_id,order_id,stay_group_id,event_type,surface,lane,created_at,updated_at",
+      )
+      .gte("created_at", configWindowStart)
+      .lte("updated_at", graceCutoff)
+      .eq("event_type", "purchase")
+      .in("surface", ["ios", "android"])
+      .eq("appsflyer_status", "pending")
+      .order("updated_at", { ascending: true })
+      .limit(nativeBudget);
+  if (nativeQueryError) {
+    console.warn(
+      "[ad-conversion-retry] native AppsFlyer query failed:",
+      nativeQueryError.message,
+    );
+  }
+  for (const raw of nativeRows ?? []) {
+    const row = raw as AdConversionRetryRow;
+    const result = await fireAdConversion(db, conversionRetryInput(row), {
+      postAppsFlyer: postAppsFlyerS2SEvent,
+    });
+    conversionResults.push({
+      event_id: row.event_id,
+      status: result.ok ? "evaluated_native" : "failed",
+      reason: result.reason ?? null,
+      channels: [],
     });
   }
 

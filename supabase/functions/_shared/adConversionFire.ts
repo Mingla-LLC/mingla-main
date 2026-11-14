@@ -46,6 +46,16 @@ import {
   checkoutStartUrl,
   eventPageUrl,
 } from "./adEventSourceUrl.ts";
+// #4238 W4-1: env-free AppsFlyer helpers only. The poster (which reads the
+// AppsFlyer secrets) is injected by the callers whose functions declare them
+// (stripe-webhook, ad-conversion-retry), never imported here.
+import {
+  type AppsFlyerApp,
+  type AppsFlyerDeviceRow,
+  fetchAppsFlyerDevice,
+  formatEventTime,
+} from "./appsFlyerDevice.ts";
+import { majorFromMinor } from "./money/formatMinor.ts";
 
 // ── Shared contract types (imported by the 4 senders, type-only — no cycle) ───
 
@@ -164,8 +174,30 @@ type SenderFn = (
   deps?: SenderDeps,
 ) => Promise<SenderResult>;
 
+/**
+ * #4238 W4-1: the AppsFlyer S2S poster's shape (postAppsFlyerS2SEvent in
+ * appsFlyerS2S.ts). Injected; without it a native purchase leaves
+ * appsflyer_status pending for the hourly retry, which injects it.
+ */
+export type AppsFlyerPostFn = (input: {
+  // deno-lint-ignore no-explicit-any
+  supabase: any;
+  userId: string;
+  eventName: string;
+  eventValues?: {
+    af_revenue?: number;
+    af_currency?: string;
+    [k: string]: string | number | boolean | undefined;
+  };
+  eventTime?: string;
+  app?: AppsFlyerApp;
+  device?: AppsFlyerDeviceRow | null;
+}) => Promise<boolean>;
+
 export interface FireAdConversionDeps {
   senders?: Partial<Record<Channel, SenderFn>>;
+  /** #4238 W4-1: native purchases post af_purchase through this. */
+  postAppsFlyer?: AppsFlyerPostFn;
   getToken?: (name: string) => string | undefined;
   fetchImpl?: typeof fetch;
   now?: () => number;
@@ -318,6 +350,40 @@ export async function persistCheckoutAdContext(
   }
 }
 
+/** #4238 W4-1: the three checkout surfaces ticket-checkout-create accepts. */
+export type CheckoutSurface = "web" | "mobile-web" | "native";
+
+/**
+ * #4238 W4-1 (D20): store which surface created the checkout session, so the
+ * finalize-time conversion knows a native app purchase from a website one. Its
+ * own write (never merged into persistCheckoutAdContext): if the column is not
+ * there yet, only this is skipped and the click id and opt-out still persist.
+ * Fail-open, never throws.
+ */
+export async function persistCheckoutSurface(
+  supabase: SupabaseClient,
+  checkoutSessionId: string,
+  surface: CheckoutSurface,
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from("ticket_checkout_sessions")
+      .update({ checkout_surface: surface })
+      .eq("id", checkoutSessionId);
+    if (error) {
+      console.warn(
+        "[adConversionFire] checkout_surface persist skipped (non-fatal):",
+        error.message,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[adConversionFire] checkout_surface persist threw (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 /**
  * ISSUE-865 PR1 WP-2 — the reservation twin of persistAttributionClickId. Writes
  * the ad click_id onto a reservation_checkout_sessions row, DECOUPLED from the
@@ -412,6 +478,10 @@ interface ConversionContext {
   trackingOptOut: boolean;
   clientIpAddress: string | null;
   clientUserAgent: string | null;
+  /** #4238 W4-1: the order was bought in the Explorer app (session surface). */
+  nativeCheckout?: boolean;
+  /** #4238 W4-1: the signed-in buyer, for the Explorer AppsFlyer device. */
+  buyerUserId?: string | null;
 }
 
 interface TouchContext {
@@ -523,6 +593,8 @@ async function resolveOrderContext(
   const buyerUserId = typeof sessRow.buyer_user_id === "string"
     ? sessRow.buyer_user_id
     : null;
+  const nativeCheckout = await orderCheckoutSurface(supabase, orderId) ===
+    "native";
 
   const email = (row.buyer_email as string | null) ?? null;
   const phone = (row.buyer_phone as string | null) ?? null;
@@ -563,7 +635,33 @@ async function resolveOrderContext(
     clientUserAgent: typeof sessRow.client_user_agent === "string"
       ? sessRow.client_user_agent
       : null,
+    nativeCheckout,
+    buyerUserId,
   };
+}
+
+/**
+ * #4238 W4-1: the stored checkout surface for an order's session. Its own read,
+ * so a database without the column yet loses only this answer (treated as web,
+ * the pre-#4238 behaviour), never the session's click id or opt-out.
+ */
+async function orderCheckoutSurface(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("ticket_checkout_sessions")
+      .select("checkout_surface")
+      .eq("order_id", orderId)
+      .maybeSingle();
+    if (error) return null;
+    const value = (data as { checkout_surface?: unknown } | null)
+      ?.checkout_surface;
+    return typeof value === "string" ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveReservationContext(
@@ -1259,6 +1357,156 @@ function checkoutStartChannelOpen(
   return true;
 }
 
+// ── #4238 W4-1: native (Explorer app) purchases ───────────────────────────────
+
+interface NativePurchaseInput {
+  key: string;
+  ctx: ConversionContext;
+  lane: Lane;
+  existingRow: Record<string, string | number | null> | null;
+  existingResponse: Record<string, unknown>;
+  channelPending: Record<Channel, boolean>;
+  eventTimeMs: number;
+  postAppsFlyer: AppsFlyerPostFn | null;
+}
+
+async function fireNativePurchase(
+  supabase: SupabaseClient,
+  input: NativePurchaseInput,
+): Promise<FireAdConversionResult> {
+  const { key, ctx, existingRow } = input;
+  const device: AppsFlyerDeviceRow | null = ctx.buyerUserId
+    ? await fetchAppsFlyerDevice(supabase, ctx.buyerUserId, "consumer")
+    : null;
+  // The row's surface is the buyer's Explorer device platform (iOS when the
+  // device is unknown: the spec's default).
+  const surface: Surface = device?.platform ?? "ios";
+
+  await supabase.from("ad_conversions").upsert({
+    event_id: key,
+    event_type: ctx.eventType,
+    event_name: channelEventName("meta", ctx.eventType),
+    value_cents: ctx.valueCents,
+    currency: ctx.currency,
+    surface,
+    lane: input.lane,
+    order_id: ctx.orderId,
+    stay_group_id: ctx.stayGroupId,
+    brand_id: ctx.brandId,
+    mingla_event_id: ctx.minglaEventId,
+    click_id: ctx.clickId,
+    event_source_url: null,
+    hashed_email: ctx.hashedEmail,
+    hashed_phone: ctx.hashedPhone,
+    shared_with_platforms: false,
+  }, { onConflict: "event_id", ignoreDuplicates: true });
+
+  const results: SenderResult[] = (
+    ["meta", "tiktok", "snap", "reddit", "google"] as Channel[]
+  )
+    .filter((channel) => input.channelPending[channel])
+    .map((channel) => ({
+      channel,
+      status: "skipped" as const,
+      reason: "native_surface",
+    }));
+  const statusUpdate: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    shared_with_platforms: false,
+  };
+  const providerResponse: Record<string, unknown> = {
+    ...input.existingResponse,
+  };
+  for (const r of results) {
+    statusUpdate[STATUS_COL[r.channel]] = "skipped";
+    providerResponse[r.channel] = {
+      status: "skipped",
+      reason: "native_surface",
+      http: null,
+    };
+  }
+
+  const afPending = (existingRow?.appsflyer_status ?? "pending") === "pending";
+  if (afPending) {
+    const isPaid = ctx.eventType === "purchase" && (ctx.valueCents ?? 0) > 0;
+    let afStatus: SendStatus;
+    let afReason: string | null = null;
+    if (!isPaid) {
+      afStatus = "skipped";
+      afReason = "not_a_purchase";
+    } else if (ctx.trackingOptOut) {
+      afStatus = "skipped";
+      afReason = "tracking_opt_out";
+    } else if (!device || !ctx.buyerUserId) {
+      afStatus = "skipped";
+      afReason = "no_appsflyer_device";
+    } else if (input.postAppsFlyer === null) {
+      // This caller's function holds no AppsFlyer secret: the hourly
+      // ad-conversion-retry run posts it (appsflyer_status stays pending).
+      afStatus = "skipped";
+      afReason = "deferred_to_retry";
+    } else if (!(await claimAppsFlyerSend(supabase, key))) {
+      // A concurrent fire (confirm vs webhook) already owns the post.
+      afStatus = "skipped";
+      afReason = "claimed_elsewhere";
+    } else {
+      const ok = await input.postAppsFlyer({
+        supabase,
+        userId: ctx.buyerUserId,
+        app: "consumer",
+        device,
+        eventName: "af_purchase",
+        eventTime: formatEventTime(new Date(input.eventTimeMs)),
+        eventValues: {
+          af_revenue: majorFromMinor(ctx.valueCents ?? 0, ctx.currency),
+          af_currency: (ctx.currency ?? "").toUpperCase() || undefined,
+          af_order_id: ctx.orderId ?? key,
+          af_content_id: ctx.minglaEventId ?? undefined,
+        },
+      });
+      afStatus = ok ? "sent" : "failed";
+      afReason = ok ? null : "appsflyer_post_failed";
+    }
+    if (afReason !== "claimed_elsewhere" && afReason !== "deferred_to_retry") {
+      statusUpdate.appsflyer_status = afStatus;
+      providerResponse.appsflyer = {
+        status: afStatus,
+        reason: afReason,
+        http: null,
+      };
+    }
+  }
+  statusUpdate.provider_response = providerResponse;
+  await supabase.from("ad_conversions").update(statusUpdate).eq(
+    "event_id",
+    key,
+  );
+  return { ok: true, eventId: key, deduped: false, results };
+}
+
+/**
+ * Atomic claim of the one AppsFlyer post for a conversion: flips
+ * appsflyer_status pending → failed only if it is still pending (the post
+ * then records sent). Two concurrent fires cannot both win.
+ */
+async function claimAppsFlyerSend(
+  supabase: SupabaseClient,
+  key: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("ad_conversions")
+      .update({ appsflyer_status: "failed" })
+      .eq("event_id", key)
+      .eq("appsflyer_status", "pending")
+      .select("event_id")
+      .maybeSingle();
+    return !error && data !== null;
+  } catch {
+    return false;
+  }
+}
+
 // ── The hook ──────────────────────────────────────────────────────────────────
 
 export async function fireAdConversion(
@@ -1315,7 +1563,8 @@ export async function fireAdConversion(
         // #4238 W1-5: created_at is the first fire's time, reused by retries.
         // #4238 W1-6: provider_response is read so a fire that attempts a
         // subset of channels merges into it instead of erasing the others.
-        "event_id, created_at, brand_id, order_id, stay_group_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status, provider_response",
+        // #4238 W4-1: appsflyer_status gates the native af_purchase post.
+        "event_id, created_at, brand_id, order_id, stay_group_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status, appsflyer_status, provider_response",
       )
       .eq("event_id", key)
       .maybeSingle();
@@ -1347,11 +1596,38 @@ export async function fireAdConversion(
       //     above precisely so an absent value ≠ a fresh-pending value.)
       google: existingRow ? existingRow[STATUS_COL.google] === "pending" : true,
     };
+    // #4238 W4-1: a native order is settled only when AppsFlyer is too.
+    const appsFlyerOpen = ctx.nativeCheckout === true &&
+      (existingRow?.appsflyer_status ?? "pending") === "pending";
     if (
       existingRow && !channelPending.meta && !channelPending.tiktok &&
-      !channelPending.snap && !channelPending.reddit && !channelPending.google
+      !channelPending.snap && !channelPending.reddit && !channelPending.google &&
+      !appsFlyerOpen
     ) {
       return { ok: true, eventId: key, deduped: true, results: [] };
+    }
+
+    // #4238 W4-1 (I-4238-NATIVE-PURCHASE-VIA-APPSFLYER): an Explorer app
+    // purchase is not a website event. The ad networks get nothing (terminal
+    // skipped/native_surface); AppsFlyer gets af_purchase once, server side.
+    if (ctx.nativeCheckout === true) {
+      return await fireNativePurchase(supabase, {
+        key,
+        ctx,
+        lane,
+        existingRow,
+        existingResponse,
+        channelPending,
+        // The action time; a retry reuses the first fire's created_at.
+        eventTimeMs: typeof input.eventTimeMs === "number" &&
+            Number.isFinite(input.eventTimeMs)
+          ? input.eventTimeMs
+          : typeof existingRow?.created_at === "string" &&
+              Number.isFinite(Date.parse(existingRow.created_at))
+          ? Date.parse(existingRow.created_at)
+          : now(),
+        postAppsFlyer: deps.postAppsFlyer ?? null,
+      });
     }
 
     // 3. Resolve the attributed touch (click_id → campaign/connection/fbc).
