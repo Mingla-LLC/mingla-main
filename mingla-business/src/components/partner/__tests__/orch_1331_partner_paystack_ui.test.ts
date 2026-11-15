@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 import fs from "node:fs";
 import path from "node:path";
 
@@ -28,7 +29,7 @@ describe("ORCH-1331 · T-15 — badge + provider-neutral labels", () => {
   // [TEST-MOD-APPROVED #3645] was "Blocked — Paystack": partner copy no longer names the payment provider.
   it("earnings StatusBadge maps blocked_no_paystack → 'Blocked — no Nigerian bank' (error tint)", () => {
     expect(earnings).toMatch(
-      /blocked_no_paystack:\s*\{\s*label:\s*"Blocked — no Nigerian bank",\s*color:\s*semantic\.error,\s*bg:\s*semantic\.errorTint\s*\}/,
+      /blocked_no_paystack:\s*\{\s*label:\s*"Blocked — no Nigerian bank",\s*color:\s*color\.danger,\s*bg:\s*color\.errorTint\s*\}/,
     );
   });
 

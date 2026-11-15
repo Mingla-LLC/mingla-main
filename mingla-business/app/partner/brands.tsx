@@ -42,7 +42,7 @@ import {
   type PartnerBrandLinkWithStatus,
 } from "../../src/services/partnerBrandLinksService";
 import { useAuth } from "../../src/context/AuthContext";
-import { color as dsColor, space, type } from "../../src/constants/designSystem";
+import { color, space, type } from "../../src/constants/designSystem";
 import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { IconChrome } from "../../src/components/ui/IconChrome";
@@ -296,7 +296,7 @@ export default function PartnerBrandsScreen(): React.ReactElement {
       <ScrollView contentContainerStyle={styles.scroll}>
         {linksQuery.isLoading ? (
           <View style={styles.center}>
-            <ActivityIndicator color={dsColor.accent} />
+            <ActivityIndicator color={color.accent} />
           </View>
         ) : linksQuery.error ? (
           <GlassCard variant="elevated" radius="md" padding={space[6]}>
@@ -468,14 +468,14 @@ function StatusDot({
 }): React.ReactElement {
   // §4.2 dot matrix — expired = semantic.error (the token is dead; the label
   // carries the words, color is never the sole signal).
-  const color = status === "active"
-    ? dsColor.success
+  const dotColor = status === "active"
+    ? color.success
     : status === "awaiting_stripe"
-    ? dsColor.warning
+    ? color.warning
     : status === "awaiting_owner"
-    ? (expired ? dsColor.danger : dsColor.accent)
-    : dsColor.text3;
-  return <View style={[styles.dot, { backgroundColor: color }]} />;
+    ? (expired ? color.danger : color.accent)
+    : color.text3;
+  return <View style={[styles.dot, { backgroundColor: dotColor }]} />;
 }
 
 function timeAgo(iso: string): string {
@@ -497,7 +497,7 @@ function timeAgo(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: dsColor.canvas },
+  safe: { flex: 1, backgroundColor: color.canvas },
   scroll: {
     paddingHorizontal: space[4],
     paddingTop: space[4],
@@ -519,21 +519,21 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: dsColor.text1,
+    color: color.text1,
   },
   headerSub: {
     fontSize: type.caption.fontSize,
-    color: dsColor.text3,
+    color: color.text3,
     marginTop: 2,
   },
   cardTitle: {
     ...type.h1,
-    color: dsColor.text1,
+    color: color.text1,
     marginTop: space[1],
   },
   cardBody: {
     ...type.body,
-    color: dsColor.text2,
+    color: color.text2,
     marginTop: space[1],
   },
   rowPressed: {
@@ -560,25 +560,25 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   thumbFallback: {
-    backgroundColor: dsColor.accentLine,
+    backgroundColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
   },
   thumbFallbackCancelled: {
-    backgroundColor: dsColor.fill.tile,
+    backgroundColor: color.fill.tile,
     alignItems: "center",
     justifyContent: "center",
   },
   thumbFallbackText: {
     fontSize: 22,
     fontWeight: "800",
-    color: dsColor.accent,
+    color: color.accent,
   },
   thumbFallbackTextCancelled: {
     fontSize: 22,
     fontWeight: "800",
     // Decorative — the name beside it carries identity (DESIGN §2.3).
-    color: dsColor.text3,
+    color: color.text3,
   },
   rowBody: {
     flex: 1,
@@ -587,14 +587,14 @@ const styles = StyleSheet.create({
   brandName: {
     ...type.row,
     fontWeight: "700",
-    color: dsColor.text1,
+    color: color.text1,
   },
   brandNameCancelled: {
     ...type.row,
     fontWeight: "600",
     // text.secondary (9.6:1) — recessed but fully AA. NEVER text.quaternary
     // (2.91:1 measured fail — BANNED for meaningful text, DESIGN §4.3).
-    color: dsColor.text2,
+    color: color.text2,
   },
   statusRow: {
     flexDirection: "row",
@@ -610,18 +610,18 @@ const styles = StyleSheet.create({
   statusLabel: {
     ...type.label,
     fontWeight: "700",
-    color: dsColor.text2,
+    color: color.text2,
     letterSpacing: 0.5,
   },
   statusLabelCancelled: {
     ...type.label,
     fontWeight: "700",
     // text.tertiary — 5.58:1 on the base card, AA (DESIGN §2.3/§4.3).
-    color: dsColor.text3,
+    color: color.text3,
     letterSpacing: 0.5,
   },
   subText: {
     ...type.caption,
-    color: dsColor.text3,
+    color: color.text3,
   },
 });

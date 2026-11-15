@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 /**
  * Issue #2725/#2781 — Competition task sheets are an opt-in presentation.
  *
@@ -44,7 +45,7 @@ describe("issue 2725 opt-in Competition task Sheet", () => {
     for (const owner of [add, brief])
       expect(owner).toContain('presentation="competition"');
     for (const owner of [add, brief]) {
-      expect(owner).toContain("panelBackground={competition.surface}");
+      expect(owner).toContain("panelBackground={materials.pane.solidFill}");
       // [TEST-MOD-APPROVED #4420] the elevated competition rim is the Graphite line token the
       // transitional `glass.border.profileElevated` alias resolved to (color.lineStrong).
       expect(owner).toContain("borderColor: color.lineStrong");
@@ -53,7 +54,7 @@ describe("issue 2725 opt-in Competition task Sheet", () => {
     expect(add).toContain("shadowOpacity: 0.32");
     expect(add).toContain("minHeight: 56");
     expect(add).toContain("maxHeight: 360");
-    expect(add).toContain("backgroundColor: competition.surface");
+    expect(add).toContain("backgroundColor: materials.pane.solidFill");
     expect(brief).toContain("maxWidth: competitorSheet.briefMaxWidth");
     expect(brief).toContain('padding: Platform.OS === "web" ? 24 : 20');
     expect(brief).toContain("backgroundColor: competitionCardSurface");

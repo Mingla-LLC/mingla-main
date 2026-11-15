@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 import { readFileSync } from "fs";
 import path from "path";
 
@@ -51,8 +52,8 @@ describe("F-2 — the 52pt dismiss band must not cover interactive sheet content
     // [TEST-MOD-APPROVED #4420] the handle grew to the kit's 36×5 and its wrap
     // pads top 10 / bottom 9 (HANDLE_PAD_TOP / HANDLE_PAD_BOTTOM), still a
     // 24pt region; read those constants and the handle height token.
-    const padTop = /HANDLE_PAD_TOP\s*=\s*spacing\.sm\s*\+\s*(\d+)/.exec(s);
-    const padBottom = /HANDLE_PAD_BOTTOM\s*=\s*spacing\.sm\s*\+\s*(\d+)/.exec(s);
+    const padTop = /HANDLE_PAD_TOP\s*=\s*space\[2\]\s*\+\s*(\d+)/.exec(s);
+    const padBottom = /HANDLE_PAD_BOTTOM\s*=\s*space\[2\]\s*\+\s*(\d+)/.exec(s);
     const handleH = /HANDLE_HEIGHT\s*=\s*size\.handle\.height/.test(s) ? ["", "5"] : null;
     expect(padTop).not.toBeNull();
     expect(padBottom).not.toBeNull();
@@ -99,11 +100,11 @@ describe("F-4 — motion tiles must fit two-up at the narrowest shipped width", 
     expect(tile).not.toBeNull();
     const tileWidth = Number(tile?.[1]);
 
-    // Sheet body inset is `paddingHorizontal: spacing.md` (16) per side
+    // Sheet body inset is `paddingHorizontal: space[4]` (16) per side
     // (SheetMobile styles.body), so content width = screen - 32.
     //   iPhone SE / iPhone 8      375 -> 343
     //   Samsung SM-A725F (tested) 384 -> 352
-    // The design specifies a 2-column grid (§3.7). `gap: spacing.sm` = 8.
+    // The design specifies a 2-column grid (§3.7). `gap: space[2]` = 8.
     const NARROWEST_CONTENT_WIDTH = 343;
     const GAP = 8;
 

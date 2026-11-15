@@ -21,7 +21,7 @@
 // FAILS-ON-REVERT: delete `cardBodyInset` from Sheet.web.tsx and the inset
 // tests go red; delete the opaque base View and the opacity tests go red.
 
-// MINGLA-INVARIANT: I-SHEET-BREATHING-ROOM | issue #3355 | Every default wide-web sheet card reserves spacing.lg below its content, so a pinned footer never sits flush on the card's bottom border.
+// MINGLA-INVARIANT: I-SHEET-BREATHING-ROOM | issue #3355 | Every default wide-web sheet card reserves space[6] below its content, so a pinned footer never sits flush on the card's bottom border.
 
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
@@ -87,10 +87,11 @@ describe("#3827 wide-desktop Sheet card", () => {
 
   test("#3355 the body keeps breathing room under its content (pinned footers never sit on the border)", async () => {
     mockWide = true;
-    const { spacing } = jest.requireActual<{ spacing: { lg: number } }>("../../../constants/designSystem");
+    // [TEST-MOD-APPROVED #4420] wave 6: spacing.lg is space[6] (24).
+    const { space } = jest.requireActual<{ space: Record<number, number> }>("../../../constants/designSystem");
     const root = await mount();
     const pad = flat(byTestID(root, "probe-desktop-body")[0].props.style).paddingBottom;
-    expect(pad).toBe(spacing.lg);
+    expect(pad).toBe(space[6]);
     expect(pad).toBeGreaterThanOrEqual(16);
   });
 

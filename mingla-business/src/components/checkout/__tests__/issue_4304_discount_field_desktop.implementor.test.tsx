@@ -229,7 +229,8 @@ describe("#4304 dark discount field states", () => {
     // Expanded: the field, dark (no hard-coded white anywhere).
     const input = tree.root.findByType(TextInput);
     expect(input.props.accessibilityLabel).toBe("Discount code");
-    expect(flatStyle(input.props.style).backgroundColor).toBe("#1a1e24");
+    // [TEST-MOD-APPROVED #4420] the dark field surface is the Graphite card token.
+    expect(flatStyle(input.props.style).backgroundColor).toBe(jest.requireActual<{ color: { card: string } }>("../../../constants/designSystem").color.card);
     // No white surface anywhere in the field (white text on orange is fine).
     expect(textOf(tree).toLowerCase()).not.toMatch(
       /"backgroundcolor":"(#fff(fff)?|white)"/,

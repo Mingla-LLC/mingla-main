@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 import { readFileSync } from "fs";
 import path from "path";
 
@@ -72,7 +73,7 @@ describe("F-2 — the drag band must never overlay consumer content", () => {
     const s = src(SHEET_MOBILE);
     const band = /SHEET_DRAG_BAND_HEIGHT\s*=\s*(\d+)/.exec(s);
     expect(band).not.toBeNull();
-    // handleWrap paddingVertical (spacing.sm + 2 = 10) x2 + 4pt handle = 24
+    // handleWrap paddingVertical (space[2] + 2 = 10) x2 + 4pt handle = 24
     expect(Number(band?.[1])).toBeLessThanOrEqual(24);
   });
 
@@ -81,8 +82,8 @@ describe("F-2 — the drag band must never overlay consumer content", () => {
     // [TEST-MOD-APPROVED #4420] the handle grew 4 → 5 (kit 36×5) and took the
     // point back from the bottom padding: 10 + 5 + 9 is still 24.
     expect(s).toMatch(/HANDLE_REGION_HEIGHT\s*=\s*HANDLE_PAD_TOP \+ HANDLE_HEIGHT \+ HANDLE_PAD_BOTTOM/);
-    expect(s).toMatch(/HANDLE_PAD_TOP\s*=\s*spacing\.sm \+ 2;/);
-    expect(s).toMatch(/HANDLE_PAD_BOTTOM\s*=\s*spacing\.sm \+ 1;/);
+    expect(s).toMatch(/HANDLE_PAD_TOP\s*=\s*space\[2\] \+ 2;/);
+    expect(s).toMatch(/HANDLE_PAD_BOTTOM\s*=\s*space\[2\] \+ 1;/);
     expect(s).toContain("SHEET_DRAG_BAND_HEIGHT !== HANDLE_REGION_HEIGHT");
   });
 

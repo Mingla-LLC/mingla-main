@@ -240,11 +240,12 @@ describe("#1564 — the form is painted from the page's palette", () => {
     );
     const colours = renderWith(RED_VENUE, true);
     expect(colours.length).toBeGreaterThan(15);
-    // `#ef4444` is passed to the phone field's borderError/errorText on every
-    // palette; it is a constant by design.
-    expect(colours).toContain("#ef4444");
+    // [TEST-MOD-APPROVED #4420] the phone field's borderError is the Graphite
+    // danger token on every palette; it is a constant by design.
+    const { color: graphite } = jest.requireActual<{ color: { danger: string } }>("../../../constants/designSystem");
+    expect(colours).toContain(graphite.danger);
     // …and the red venue's own accent is a DIFFERENT value, so the two are
     // still distinguishable to a guest.
-    expect(RED_VENUE.accent.toLowerCase()).not.toBe("#ef4444");
+    expect(RED_VENUE.accent.toLowerCase()).not.toBe(graphite.danger);
   });
 });

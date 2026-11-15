@@ -167,7 +167,8 @@ jest.mock("../../ui/Icon", () => ({ Icon: mockLeaf("mock-icon") }));
 jest.mock("../../ui/IconChrome", () => ({
   IconChrome: mockLeaf("mock-icon-chrome"),
 }));
-jest.mock("../../ui/Stepper", () => ({ Stepper: mockLeaf("mock-stepper") }));
+// [TEST-MOD-APPROVED #4420] the Event wizard also imports the shared StepperFooter.
+jest.mock("../../ui/Stepper", () => ({ Stepper: mockLeaf("mock-stepper"), StepperFooter: mockLeaf("mock-stepper-footer") }));
 jest.mock("../../ui/TopBar", () => ({ TopBar: mockLeaf("mock-topbar") }));
 jest.mock("../../ui/Toast", () => ({ Toast: mockLeaf("mock-toast") }));
 jest.mock("../../ui/Sheet", () => ({ Sheet: mockLeaf("mock-sheet") }));

@@ -91,7 +91,12 @@ describe("META-ORCH-1059 Sub-A · FIX 2 — create wizard footers clear the phon
     expect(src).toContain("useSafeAreaInsets");
     // [TEST-MOD-APPROVED #4420] — the floating dock became the sticky
     // footer (B7); it still adds the bottom inset on phone.
-    expect(src).toMatch(/paddingBottom:\s*space\[3\]\s*\+\s*\(isWideDesktop \? 0 : insets\.bottom\)/);
+    // [TEST-MOD-APPROVED #4420] wave 6: the footer is the shared StepperFooter, which adds the
+    // bottom inset itself off desktop (`safeArea = !wide` on native).
+    expect(src).toMatch(/<StepperFooter\s+wide=\{isWideDesktop\}/);
+    const footer = read("ui/Stepper.tsx");
+    expect(footer).toMatch(/safeArea = Platform\.OS !== "web" && !wide/);
+    expect(footer).toMatch(/paddingBottom: space\[3\] \+ \(safeArea \? insets\.bottom : 0\)/);
     // The static dock style must NOT still hardcode marginBottom (it would
     // override / fight the inline inset value or re-introduce the bleed).
     expect(src).not.toMatch(/dock:\s*\{[\s\S]*?marginBottom:\s*spacing\.lg/);

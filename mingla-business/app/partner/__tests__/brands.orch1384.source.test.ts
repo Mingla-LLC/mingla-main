@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 // ORCH-1384 — implementor regression: /partner/brands contract (T-6 / T-10 +
 // cancelled/expired row treatment).
 //
@@ -188,15 +189,15 @@ describe("OQ-3 — cancelled rows shown greyed + sorted last (executed sort slic
     expect(SRC).toContain('variant={cancelled ? "base" : "elevated"}');
     expect(SRC).toContain("opacity: 0.55");
     const nameStyle = slice("  brandNameCancelled:");
-    expect(nameStyle).toContain("textTokens.secondary");
+    expect(nameStyle).toContain("color.text2");
     // DESIGN §4.3 ban: 2.91:1 measured fail for meaningful text. Assert no
     // STYLE USAGE of the token (the ban note in a comment is fine).
-    expect(SRC).not.toContain("color: textTokens.quaternary");
-    expect(SRC).not.toContain("textTokens.quaternary,");
+    expect(SRC).not.toContain("color: color.text4");
+    expect(SRC).not.toContain("color.text4,");
   });
 
   test("expired derivation: error dot + honest label; rank untouched", () => {
-    expect(SRC).toContain("expired ? semantic.error : accent.warm");
+    expect(SRC).toContain("expired ? color.danger : color.accent");
     expect(SRC).toContain('"Invite expired"');
     // Rank map unchanged — awaiting_owner stays rank 0 (needs attention).
     const rank = slice("const STATUS_RANK");
