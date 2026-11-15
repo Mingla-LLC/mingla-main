@@ -20,12 +20,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../../src/constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
@@ -84,14 +81,6 @@ const formatRelativeTime = (iso: string): string => {
     return `${Math.floor(delta / RELATIVE_TIME_MS.hour)}h ago`;
   }
   return `${Math.floor(delta / RELATIVE_TIME_MS.day)}d ago`;
-};
-
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
 };
 
 const getInitials = (name: string): string => {
@@ -456,7 +445,7 @@ export default function GuestDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -481,7 +470,7 @@ export default function GuestDetailRoute(): React.ReactElement {
     (orderRead.status === "loading" || orderRead.status === "disabled")
   ) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <View style={styles.chromeRow}>
           <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
           <Text style={styles.chromeTitle}>Guest</Text>
@@ -496,7 +485,7 @@ export default function GuestDetailRoute(): React.ReactElement {
 
   if (parsed?.kind === "door" && doorSalesRead.isLoading) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <View style={styles.chromeRow}>
           <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
           <Text style={styles.chromeTitle}>Guest</Text>
@@ -511,7 +500,7 @@ export default function GuestDetailRoute(): React.ReactElement {
 
   if (parsed?.kind === "door" && doorSalesRead.isError) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <View style={styles.chromeRow}>
           <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
           <Text style={styles.chromeTitle}>Guest</Text>
@@ -531,7 +520,7 @@ export default function GuestDetailRoute(): React.ReactElement {
 
   if (parsed?.kind === "order" && orderRead.status === "error") {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <View style={styles.chromeRow}>
           <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
           <Text style={styles.chromeTitle}>Guest</Text>
@@ -562,7 +551,7 @@ export default function GuestDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -618,7 +607,6 @@ export default function GuestDetailRoute(): React.ReactElement {
     : isDoor
       ? sale.buyerPhone
       : "";
-  const hue = hashStringToHue(parsed.innerId);
   const initials = getInitials(name);
 
   // Cycle 12 — door refund handler. Per OBS-1, the buyer stays CHECKED IN
@@ -641,7 +629,7 @@ export default function GuestDetailRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -667,7 +655,7 @@ export default function GuestDetailRoute(): React.ReactElement {
         {/* Hero */}
         <View style={styles.hero}>
           <View
-            style={[styles.heroAvatar, { backgroundColor: `hsl(${hue}, 60%, 45%)` }]}
+            style={styles.heroAvatar}
           >
             <Text style={styles.heroAvatarText}>{initials}</Text>
           </View>
@@ -733,7 +721,7 @@ export default function GuestDetailRoute(): React.ReactElement {
         {/* Tickets section — Cycle 11 J-S5: per-ticket rows with check-in
             state pill + "Mark checked in" CTA per row. */}
         <Text style={styles.sectionLabel}>TICKETS</Text>
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
+        <GlassCard variant="base" radius="md" padding={space[4]}>
           {isOrder ? (
             <View style={styles.ticketRowsList}>
               {ticketRows.length === 0 ? (
@@ -831,7 +819,7 @@ export default function GuestDetailRoute(): React.ReactElement {
         {isGuestList && order.compReason !== null && order.compReason !== undefined && order.compReason.trim() !== "" ? (
           <>
             <Text style={styles.sectionLabel}>NOTE</Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               <Text style={styles.notesText}>{order.compReason}</Text>
             </GlassCard>
           </>
@@ -841,7 +829,7 @@ export default function GuestDetailRoute(): React.ReactElement {
         {isGuestList && brought.length > 0 ? (
           <>
             <Text style={styles.sectionLabel}>{`BROUGHT (${brought.length})`}</Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               <View style={styles.linesList}>
                 {brought.map((guest) => {
                   const rows = buildGuestTicketRows(guest);
@@ -872,7 +860,7 @@ export default function GuestDetailRoute(): React.ReactElement {
         {isOrder && !isGuestList ? (
           <>
             <Text style={styles.sectionLabel}>ORDER ACTIVITY</Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Paid</Text>
                 <Text style={styles.summaryValue}>
@@ -934,7 +922,7 @@ export default function GuestDetailRoute(): React.ReactElement {
         {isDoor ? (
           <>
             <Text style={styles.sectionLabel}>PAYMENT</Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Payment method</Text>
                 <Text style={styles.summaryValue}>
@@ -994,7 +982,7 @@ export default function GuestDetailRoute(): React.ReactElement {
               OTHER ORDERS BY THIS BUYER
               {brand.displayName.length > 0 ? ` FOR ${brand.displayName}` : ""}
             </Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               <View style={styles.linesList}>
                 {otherOrders.map((other) => (
                   <View key={other.id} style={styles.otherRow}>
@@ -1092,7 +1080,7 @@ export default function GuestDetailRoute(): React.ReactElement {
                 value={cancelReason}
                 onChangeText={setCancelReason}
                 placeholder="Reason (optional, the guest sees it)"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 multiline
                 numberOfLines={3}
                 maxLength={200}
@@ -1165,16 +1153,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -1185,94 +1173,95 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   hero: {
     alignItems: "center",
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingTop: space[4],
+    paddingBottom: space[2],
   },
   heroAvatar: {
+    backgroundColor: color.fill.step,
     width: 72,
     height: 72,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   heroAvatarText: {
     fontSize: 26,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   heroName: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     marginBottom: 4,
   },
   heroEmail: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginBottom: 2,
   },
   heroPhone: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginBottom: 4,
   },
   heroAdded: {
     fontSize: 12,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    color: color.text3,
+    marginTop: space[1],
   },
   cameWithRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     minHeight: 44,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    marginBottom: space[2],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   cameWithText: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   cameWithChevron: {
     fontSize: 18,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   cancelCaption: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   cancelError: {
     fontSize: 12,
-    color: accent.warm,
-    marginTop: spacing.xs,
+    color: color.text1,
+    marginTop: space[1],
   },
   heroPills: {
     flexDirection: "row",
     gap: 6,
-    marginTop: spacing.sm,
+    marginTop: space[2],
     flexWrap: "wrap",
     justifyContent: "center",
   },
@@ -1280,39 +1269,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radiusTokens.sm,
-    backgroundColor: "rgba(120, 120, 120, 0.18)",
+    backgroundColor: color.fill.step,
     borderWidth: 1,
-    borderColor: "rgba(120, 120, 120, 0.32)",
+    borderColor: color.lineStrong,
   },
   checkInPillText: {
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.0,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[2],
+    marginBottom: space[1],
   },
   linesList: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   ticketRowsList: {
-    gap: spacing.md - 2,
+    gap: space[4] - 2,
   },
   perTicketRow: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
     gap: 6,
   },
   perTicketHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   perTicketCol: {
     flex: 1,
@@ -1321,26 +1310,26 @@ const styles = StyleSheet.create({
   perTicketName: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   perTicketSubline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   perTicketPillNone: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radiusTokens.sm,
-    backgroundColor: "rgba(120, 120, 120, 0.18)",
+    backgroundColor: color.fill.step,
     borderWidth: 1,
-    borderColor: "rgba(120, 120, 120, 0.32)",
+    borderColor: color.lineStrong,
   },
   perTicketPillNoneText: {
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.0,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   perTicketCtaWrap: {
     alignSelf: "flex-end",
@@ -1349,7 +1338,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   lineCol: {
     flex: 1,
@@ -1358,17 +1347,17 @@ const styles = StyleSheet.create({
   lineName: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   lineSubline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   lineTotal: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   summaryRow: {
@@ -1379,84 +1368,84 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   summaryValue: {
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   summaryValueWarn: {
     fontSize: 13,
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "500",
   },
   divider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   notesLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     marginBottom: 4,
   },
   notesText: {
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     lineHeight: 18,
   },
   otherRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   removeCtaWrap: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
+    marginTop: space[6],
+    marginBottom: space[4],
   },
   removeSheet: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   removeTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   removeSubhead: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   removeReasonLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     marginBottom: 6,
   },
   removeReasonRequired: {
-    color: accent.warm,
+    color: color.text1,
   },
   removeReasonInputWrap: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: space[2] + 2,
     paddingVertical: 4,
   },
   removeReasonInputError: {
-    borderColor: "rgba(235, 120, 37, 0.5)",
+    borderColor: color.lineStrong,
   },
   removeReasonInput: {
     fontSize: 15,
-    color: textTokens.primary,
+    color: color.text1,
     minHeight: 64,
     paddingVertical: 6,
     textAlignVertical: "top",
@@ -1466,25 +1455,25 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 6,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   removeReasonHelper: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   removeReasonHelperOk: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   removeReasonCount: {
     fontSize: 11,
-    color: textTokens.quaternary,
+    color: color.text4,
     fontVariant: ["tabular-nums"],
   },
   removeActions: {
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
   removeActionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
   toastWrap: {
     position: "absolute",

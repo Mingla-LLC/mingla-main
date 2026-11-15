@@ -12,13 +12,10 @@ import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type {
   MultiDateEntry,
@@ -177,7 +174,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                 value={extra.name}
                 onChangeText={(name) => update(extra.id, { name })}
                 placeholder="Friday dinner"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 maxLength={120}
                 style={styles.textInput}
                 accessibilityLabel="Extra name"
@@ -194,7 +191,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                   })
                 }
                 placeholder="Three courses, seated at 20:00"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 maxLength={280}
                 style={styles.textInput}
                 accessibilityLabel="Extra description"
@@ -220,7 +217,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                   });
                 }}
                 placeholder="0"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 keyboardType="decimal-pad"
                 selectTextOnFocus
                 style={styles.textInput}
@@ -285,7 +282,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                       });
                     }}
                     placeholder="40"
-                    placeholderTextColor={textTokens.quaternary}
+                    placeholderTextColor={color.text4}
                     keyboardType="number-pad"
                     selectTextOnFocus
                     style={styles.textInput}
@@ -312,7 +309,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                   });
                 }}
                 placeholder="1"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 keyboardType="number-pad"
                 selectTextOnFocus
                 style={styles.textInput}
@@ -430,85 +427,85 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginTop: space[6],
+    marginBottom: space[2],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginTop: space[2],
+    marginBottom: space[1],
   },
   helperHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
+    marginBottom: space[2],
   },
   helperError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
   },
   row: {
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    padding: space[4],
+    marginBottom: space[2],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   rowError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   rowTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowMeta: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
   },
   editor: {
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    padding: space[4],
+    marginBottom: space[2],
     borderRadius: radiusTokens.md,
     borderLeftWidth: 2,
-    borderLeftColor: accent.warm,
-    backgroundColor: glass.tint.profileBase,
+    borderLeftColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   editorActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   inputWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     height: 44,
     flexDirection: "row",
     alignItems: "center",
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   inputWrapDisabled: {
     opacity: 0.5,
   },
   textInput: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     padding: 0,
     margin: 0,
   },
@@ -517,59 +514,61 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     minHeight: 44,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   toggleLabelCol: {
     flex: 1,
-    paddingRight: spacing.md,
+    paddingRight: space[4],
   },
   toggleLabel: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
   },
   toggleSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   toggleTrack: {
     width: 44,
     height: 26,
     borderRadius: 13,
     padding: 3,
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.fill.step,
     justifyContent: "center",
   },
   toggleTrackOn: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   toggleThumb: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: textTokens.primary,
+    backgroundColor: color.text1,
   },
   toggleThumbOn: {
+    backgroundColor: color.ink,
     alignSelf: "flex-end",
   },
   toggleThumbOff: {
+    backgroundColor: color.text1,
     alignSelf: "flex-start",
   },
   dayRow: {
     minHeight: 44,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     justifyContent: "center",
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.xs,
+    borderColor: color.line,
+    marginBottom: space[1],
   },
   dayRowOn: {
-    borderColor: accent.warm,
+    borderColor: color.lineStrong,
   },
   dayLabel: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
   },
   disabledRow: {
     opacity: 0.5,

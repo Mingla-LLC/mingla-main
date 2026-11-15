@@ -20,15 +20,18 @@ import { ActionTile } from "./ActionTile";
 export interface ReconciliationCtaTileProps {
   brandId: string | null;
   onPress: () => void;
+  /** #4420 — fill an equal-width cell of the tile page row. */
+  fill?: boolean;
 }
 
 export const ReconciliationCtaTile: React.FC<ReconciliationCtaTileProps> = ({
   brandId,
   onPress,
+  fill = false,
 }) => {
   const { rank } = useCurrentBrandRole(brandId);
   if (!canPerformAction(rank, "VIEW_RECONCILIATION")) return null;
-  return <ActionTile icon="receipt" label="Reconciliation" onPress={onPress} />;
+  return <ActionTile icon="receipt" label="Reconcile" accessibilityLabel="Reconciliation" fill={fill} onPress={onPress} />;
 };
 
 export default ReconciliationCtaTile;

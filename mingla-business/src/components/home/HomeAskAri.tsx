@@ -15,11 +15,11 @@ import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { HomeAriOrb } from "./HomeAriOrb";
 
@@ -53,7 +53,7 @@ export function HomeAskAri({
           value={text}
           onChangeText={setText}
           placeholder="Ask Ari to do something…"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           style={styles.askInput}
           returnKeyType="send"
           onSubmitEditing={submit}
@@ -79,19 +79,19 @@ export function HomeAskAri({
 
 const styles = StyleSheet.create({
   host: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   askRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-    backgroundColor: "rgba(30, 33, 39, 0.85)",
-    paddingLeft: spacing.md,
-    paddingRight: spacing.xs,
-    paddingVertical: spacing.xs,
+    borderColor: color.lineStrong,
+    backgroundColor: color.card2,
+    paddingLeft: space[4],
+    paddingRight: space[1],
+    paddingVertical: space[1],
   },
   mark: {
     width: 28,
@@ -102,20 +102,20 @@ const styles = StyleSheet.create({
   askInput: {
     flex: 1,
     minHeight: 36,
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     ...(Platform.OS === "web" ? { outlineStyle: "none" as never } : null),
   },
   send: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
   },
   sendGlyph: {
-    color: "#101216",
+    color: color.ink,
     fontSize: 18,
     lineHeight: 20,
     fontWeight: "800",

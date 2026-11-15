@@ -22,11 +22,10 @@ import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color as colorToken,
+  space,
+  color,
 } from "../../constants/designSystem";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { DraftEvent } from "../../store/draftEventStore";
@@ -91,6 +90,11 @@ export interface EventManageMenuProps {
    * existing call sites remain backward compatible.
    */
   canEditEvent?: boolean;
+  /**
+   * #4420 (TILE_MATRIX) — the event home carries Edit as a tile, so its
+   * Manage menu leaves Edit out. Other callers keep it. Default `true`.
+   */
+  showEdit?: boolean;
   canUseLifecycleActions?: boolean;
   /**
    * #3872 — opens this listing's Promote hub (creators, referrals, tracking
@@ -126,6 +130,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
   onOpenOrders,
   onTransitionalToast,
   canEditEvent = true,
+  showEdit = true,
   canUseLifecycleActions = true,
   onPromote,
 }) => {
@@ -139,7 +144,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     // EditPublishedScreen via ?mode=edit-published. The route handler
     // (edit.tsx) branches on the mode query param. Cycle 9b-2.
     // Cycle 13a J-T6 G1: gated on EDIT_EVENT — hidden for sub-rank users.
-    if (canEditEvent) {
+    if (canEditEvent && showEdit) {
       list.push({
         key: "edit",
         icon: "edit",
@@ -407,13 +412,14 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     onOpenOrders,
     onTransitionalToast,
     canEditEvent,
+    showEdit,
     canUseLifecycleActions,
     onPromote,
   ]);
 
   // Snap calculation — content fit per DEC-084 numeric snap support.
   // Each row ~52px + header padding ~32 + safe spacing ~28 = ~112 + N×52.
-  const snapPx = 32 + 28 + actions.length * 52 + spacing.md;
+  const snapPx = 32 + 28 + actions.length * 52 + space[4];
 
   // Avoid noisy "unused brand var" lint if we don't read it directly:
   void brand;
@@ -439,10 +445,10 @@ interface ActionRowProps {
 }
 
 const TONE_COLOR: Record<ActionTone, string> = {
-  default: textTokens.secondary,
-  accent: accent.warm,
-  warn: semantic.warning,
-  danger: semantic.error,
+  default: colorToken.text2,
+  accent: colorToken.accent,
+  warn: colorToken.warning,
+  danger: colorToken.danger,
 };
 
 const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
@@ -465,16 +471,16 @@ const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
+    // #4420: the Sheet owns the 20 side padding.
+    paddingTop: space[4],
+    paddingBottom: space[6],
   },
   heading: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: colorToken.text3,
+    marginBottom: space[2],
   },
   actionsList: {
     gap: 4,
@@ -482,14 +488,14 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm + 4,
-    paddingHorizontal: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2] + 4,
+    paddingHorizontal: space[2],
     borderRadius: radiusTokens.md,
     minHeight: 48,
   },
   actionRowPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   actionLabel: {
     fontSize: 15,

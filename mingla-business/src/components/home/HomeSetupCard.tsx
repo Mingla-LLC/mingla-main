@@ -8,11 +8,11 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../constants/designSystem";
 import type { BrandSetupChecklist } from "../../services/brandSetupService";
 import { HOME_SETUP_COPY as C } from "./homeSetupCopy";
@@ -71,29 +71,29 @@ export const HomeSetupCard: React.FC<HomeSetupCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    gap: spacing.sm,
+    marginBottom: space[4],
+    padding: space[4],
+    gap: space[2],
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
-  head: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  title: { ...typography.bodyLg, flex: 1, color: textTokens.primary, fontWeight: "600" },
-  count: { ...typography.caption, color: textTokens.secondary },
-  bar: { flexDirection: "row", gap: spacing.xs },
-  seg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.14)" },
-  segOn: { backgroundColor: accent.warm },
-  sub: { ...typography.caption, color: textTokens.secondary },
+  head: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
+  title: { ...type.row, flex: 1, color: color.text1, fontWeight: "600" },
+  count: { ...type.caption, color: color.text2 },
+  bar: { flexDirection: "row", gap: space[1] },
+  seg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: color.fill.step },
+  segOn: { backgroundColor: color.accent },
+  sub: { ...type.caption, color: color.text2 },
   cta: {
     minHeight: 44,
     borderRadius: radiusTokens.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
-  ctaLabel: { ...typography.bodySm, color: "#101216", fontWeight: "700" },
+  ctaLabel: { ...type.btnSm, color: color.ink },
   pressed: { opacity: 0.72 },
 });

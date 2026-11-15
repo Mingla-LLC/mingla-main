@@ -11,7 +11,11 @@
 import React from "react";
 import { Platform, StyleSheet, Text } from "react-native";
 
-import { spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import {
+  color,
+  space,
+  type,
+} from "../../../constants/designSystem";
 import { tapOnboardingCopy } from "../../../constants/tapToPayName";
 import { tapToPayBrandEligible, useTapToPaySettingsEntry } from "../../../hooks/useTapToPaySettingsEntry";
 import { Button } from "../../ui/Button";
@@ -28,7 +32,7 @@ export const TapToPayOnboardingCard = ({ brand, onSetUp }: TapToPayOnboardingCar
   if (entry === null || onSetUp === undefined || !tapToPayBrandEligible(brand)) return null;
   const copy = tapOnboardingCopy(Platform.OS);
   return (
-    <GlassCard variant="base" radius="md" padding={spacing.md}>
+    <GlassCard variant="base" radius="md" padding={space[4]}>
       <Text style={styles.title} testID="tap-onboarding-card">
         {copy.title}
       </Text>
@@ -47,6 +51,6 @@ export const TapToPayOnboardingCard = ({ brand, onSetUp }: TapToPayOnboardingCar
 };
 
 const styles = StyleSheet.create({
-  title: { ...typography.bodySm, fontWeight: "600", color: textTokens.primary },
-  body: { ...typography.caption, color: textTokens.secondary, marginTop: 2, marginBottom: spacing.sm },
+  title: { ...type.small, fontWeight: "600", color: color.text1 },
+  body: { ...type.caption, color: color.text2, marginTop: 2, marginBottom: space[2] },
 });

@@ -646,9 +646,11 @@ describe("#1780 A1 — on-screen Back waits for the invite pre-check", () => {
       />,
     );
     await settle();
+    // [TEST-MOD-APPROVED #4420] — the phone footer's Back is named after the
+    // previous step (B7), so the probe finds it by its testID.
     await expectBackWaitsForPreCheck(
       tree,
-      () => buttons(tree, "Back")[0],
+      () => tree.root.findAll((node) => node.type === "ButtonProbe" && node.props.testID === "event-wizard-back")[0],
       () => buttons(tree, "Publish event")[0],
     );
   });

@@ -44,10 +44,9 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Pill } from "../ui/Pill";
 import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCanTakeDoorPayment } from "../../hooks/useEventDoorSales";
@@ -119,7 +118,7 @@ const ScannerEventRow: React.FC<ScannerEventRowProps> = ({ item, onOpen, onSell 
                 <Pill variant="accent">Sell at door</Pill>
               </Pressable>
             ) : null}
-            <Icon name="chevR" size={20} color={accent.warm} />
+            <Icon name="chevR" size={20} color={color.text1} />
           </View>
         </View>
       </GlassCard>
@@ -170,7 +169,7 @@ export const ScannerHome: React.FC = () => {
         keyExtractor={(it) => it.id}
         contentContainerStyle={[
           styles.listContent,
-          { paddingBottom: insets.bottom + spacing.xxl },
+          { paddingBottom: insets.bottom + space[9] },
         ]}
         renderItem={({ item }) => (
           <ScannerEventRow item={item} onOpen={handleOpen} onSell={handleSell} />
@@ -194,74 +193,74 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     gap: 4,
   },
   headerTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h1.fontSize,
-    lineHeight: typography.h1.lineHeight,
-    fontWeight: typography.h1.fontWeight,
-    letterSpacing: typography.h1.letterSpacing,
+    color: color.text1,
+    fontSize: type.title.fontSize,
+    lineHeight: type.title.lineHeight,
+    fontWeight: type.title.fontWeight,
+    letterSpacing: type.title.letterSpacing,
   },
   headerSubtitle: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    fontWeight: type.small.fontWeight,
   },
   listContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[2],
   },
   row: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
   },
   rowContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   rowTextCol: {
     flex: 1,
     gap: 4,
   },
   rowName: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
   },
   rowMeta: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
   rowCta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   empty: {
     alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xxl,
-    gap: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingTop: space[9],
+    gap: space[2],
   },
   emptyTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
     textAlign: "center",
   },
   emptyBody: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text2,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlign: "center",
   },
 });

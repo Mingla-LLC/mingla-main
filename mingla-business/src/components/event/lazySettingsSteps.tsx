@@ -17,7 +17,10 @@
 import React from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
-import { spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  space,
+} from "../../constants/designSystem";
 import type { StepBodyProps } from "./types";
 
 const LazyCreatorStep6Settings = React.lazy(() =>
@@ -39,7 +42,7 @@ const StepLoading: React.FC<{ testID: string }> = ({ testID }) => (
     accessibilityLabel="Loading settings"
     testID={testID}
   >
-    <ActivityIndicator color={textTokens.secondary} />
+    <ActivityIndicator color={color.text2} />
   </View>
 );
 
@@ -59,7 +62,7 @@ export const RsvpStep5SetupLazy: React.FC<RsvpStep5SetupProps> = (props) => (
 
 const styles = StyleSheet.create({
   loading: {
-    paddingVertical: spacing.xl,
+    paddingVertical: space[7],
     alignItems: "center",
     justifyContent: "center",
   },

@@ -22,7 +22,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { radius as radiusTokens, spacing } from "../../../constants/designSystem";
+import {
+  radius as radiusTokens,
+  space,
+  color,
+  scrim,
+} from "../../../constants/designSystem";
 import {
   TAP_TO_PAY_AWARENESS,
   TAP_TO_PAY_AWARENESS_CTA,
@@ -293,7 +298,7 @@ const AwarenessTerms = ({ onClose }: { onClose: () => void }): React.ReactElemen
   const insets = useSafeAreaInsets();
   return (
     <View style={styles.termsBackdrop} testID="tap-awareness-terms-sheet">
-      <View style={[styles.termsPanel, { paddingBottom: insets.bottom + spacing.md }]} accessibilityViewIsModal>
+      <View style={[styles.termsPanel, { paddingBottom: insets.bottom + space[4] }]} accessibilityViewIsModal>
         <View style={styles.termsHeader}>
           <Text style={styles.termsTitle} accessibilityRole="header">
             Terms
@@ -322,9 +327,10 @@ const AwarenessTerms = ({ onClose }: { onClose: () => void }): React.ReactElemen
 
 const MIN_TARGET = 44;
 // Apple's banner template, not the app theme: white paper, near-black ink, grey.
-const ART_PAPER = "#ffffff";
-const ART_INK = "#1d1d1f";
-const ART_MUTED = "#6e6e73";
+const ART_PAPER = color.paper;
+// #4420: Apple ink #1d1d1f and grey #6e6e73 map to the nearest tokens (ink, text4).
+const ART_INK = color.ink;
+const ART_MUTED = color.text4;
 
 const styles = StyleSheet.create({
   host: { flex: 1, backgroundColor: ART_PAPER },
@@ -334,7 +340,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     backgroundColor: ART_PAPER,
     borderWidth: 1,
     borderColor: ART_INK,
@@ -344,19 +350,19 @@ const styles = StyleSheet.create({
   ctaText: { fontSize: 15, fontWeight: "600", color: ART_INK, textAlign: "center" },
   notNow: { position: "absolute", minHeight: MIN_TARGET, justifyContent: "center" },
   notNowText: { fontSize: 15, color: ART_MUTED },
-  termsBackdrop: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+  termsBackdrop: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end", backgroundColor: scrim.modal },
   termsPanel: {
     maxHeight: "80%",
     backgroundColor: ART_PAPER,
     borderTopLeftRadius: radiusTokens.lg,
     borderTopRightRadius: radiusTokens.lg,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingTop: space[2],
   },
   termsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   termsTitle: { fontSize: 17, fontWeight: "600", color: ART_INK },
   termsClose: { minHeight: MIN_TARGET, minWidth: MIN_TARGET, alignItems: "flex-end", justifyContent: "center" },
   termsCloseText: { fontSize: 17, color: ART_INK, fontWeight: "600" },
-  termsBody: { gap: spacing.md, paddingVertical: spacing.sm },
+  termsBody: { gap: space[4], paddingVertical: space[2] },
   termsText: { fontSize: 13, lineHeight: 18, color: ART_MUTED },
 });

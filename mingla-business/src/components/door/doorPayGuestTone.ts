@@ -8,7 +8,9 @@
  * would be hoisted into the eager web __common chunk. The #4271 polish test
  * pins these values to DOOR_TONE_STYLES so the two cannot drift.
  */
-import { glass, semantic, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+} from "../../constants/designSystem";
 import type { IconName } from "../ui/Icon";
 
 export type DoorPayGuestTone = "ok" | "neutral" | "bad";
@@ -22,15 +24,15 @@ export interface DoorPayGuestToneStyle {
 }
 
 export const DOOR_PAY_GUEST_TONE_STYLES: Readonly<Record<DoorPayGuestTone, DoorPayGuestToneStyle>> = {
-  ok: { ringFill: semantic.successTint, ringBorder: null, iconColor: semantic.success, iconSize: 30, defaultIcon: "check" },
+  ok: { ringFill: color.successTint, ringBorder: null, iconColor: color.success, iconSize: 30, defaultIcon: "check" },
   neutral: {
-    ringFill: glass.tint.profileElevated,
-    ringBorder: glass.border.profileElevated,
-    iconColor: textTokens.secondary,
+    ringFill: color.fill.tile,
+    ringBorder: color.lineStrong,
+    iconColor: color.text2,
     iconSize: 28,
     defaultIcon: "clock",
   },
-  bad: { ringFill: semantic.errorRing, ringBorder: null, iconColor: semantic.errorText, iconSize: 28, defaultIcon: "close" },
+  bad: { ringFill: color.errorTint, ringBorder: null, iconColor: color.errorText, iconSize: 28, defaultIcon: "close" },
 };
 
 /** Paid is green, expired and cancelled charged nothing (grey), failed is red. */

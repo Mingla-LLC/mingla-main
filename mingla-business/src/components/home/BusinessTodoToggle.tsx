@@ -10,7 +10,7 @@
  *
  * Contents are prop-driven/presentational: it takes the already-derived,
  * already-ordered list and an `onAction` dispatcher. The parent wraps it with
- * `paddingHorizontal: spacing.md` so its width is flush with the TopBar's
+ * `paddingHorizontal: space[4]` so its width is flush with the TopBar's
  * inner content. The open/closed POSITION, however, is owned by the persisted
  * `todoToggleCollapseStore` (#882) — shared by every render site and
  * hydration-gated (nothing renders before `hasHydrated`), so the first
@@ -29,12 +29,11 @@ import {
 } from "react-native";
 
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { useTodoToggleCollapseStore } from "../../store/todoToggleCollapseStore";
 import type { BusinessTodo } from "../../utils/businessTodos";
@@ -98,7 +97,7 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
   if (!hasHydrated) return null;
 
   return (
-    <GlassCard variant="elevated" padding={spacing.md} testID={testID}>
+    <GlassCard variant="elevated" padding={space[4]} testID={testID}>
       <Pressable
         onPress={toggleOpen}
         accessibilityRole="button"
@@ -110,11 +109,11 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
         testID={testID !== undefined ? `${testID}-header` : undefined}
       >
         <View style={styles.headerLeft}>
-          <Icon name="list" size={16} color={accent.warm} />
+          <Icon name="list" size={16} color={color.text1} />
           <Text style={styles.headerTitle}>To-do</Text>
           <Text style={styles.headerCount}>{headerCountLabel(count)}</Text>
         </View>
-        <Icon name={open ? "chevU" : "chevD"} size={18} color={textTokens.secondary} />
+        <Icon name={open ? "chevU" : "chevD"} size={18} color={color.text2} />
       </Pressable>
 
       {open ? (
@@ -168,7 +167,7 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
                       <Text style={styles.badgeText}>{todo.badge}</Text>
                     </View>
                   ) : null}
-                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                  <Icon name="chevR" size={16} color={color.text3} />
                 </Pressable>
               )}
               {todo.retryReadinessBrandId !== undefined ? (
@@ -228,20 +227,20 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   headerTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   headerCount: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-    marginLeft: spacing.xs,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
+    marginLeft: space[1],
   },
   list: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   // ORCH-1256 — capacity bound (F-4): ≈6 rows visible; rows beyond scroll
   // internally so the Home/Hub dashboard beneath the toggle stays reachable.
@@ -253,17 +252,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.10)",
-    gap: spacing.sm,
+    borderTopColor: color.lineStrong,
+    gap: space[2],
   },
   rowMain: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowFirst: {
     borderTopWidth: 0,
@@ -272,29 +271,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rowLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSublabel: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     marginTop: 2,
   },
   // ORCH-1064 — "N to fix" count pill (matches the VenueClaimStatusBanner badge:
   // worded, warning-tinted, finite-punch-list framing — not an anxiety dot).
   badge: {
     borderRadius: radius.full,
-    backgroundColor: semantic.warning,
-    paddingHorizontal: spacing.sm,
+    backgroundColor: color.warning,
+    paddingHorizontal: space[2],
     height: 22,
     minWidth: 18,
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: {
-    ...typography.micro,
-    color: "#1a1206",
+    ...type.label,
+    color: materials.sheet.solidFill,
   },
 });
 

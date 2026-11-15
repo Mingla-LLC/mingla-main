@@ -39,13 +39,9 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { HELP_AND_SUPPORT_ROUTE } from "../../constants/supportHostFacing";
 import {
@@ -869,7 +865,7 @@ export const DoorModeScreen = ({
         {tiers.length === 0 ? (
           <CenteredState
             fill
-            icon={<Icon name="ticket" size={24} color={textTokens.tertiary} />}
+            icon={<Icon name="ticket" size={24} color={color.text3} />}
             title={DOOR_MODE_COPY.noTiers}
             testID="door-mode-no-tiers"
           />
@@ -965,7 +961,7 @@ export const DoorModeScreen = ({
                 {chip === "tap_to_pay" ? (
                   <TapToPayIcon size={20} />
                 ) : (
-                  <Icon name={CHIP_ICON[chip]} size={20} color={on ? textTokens.primary : textTokens.secondary} />
+                  <Icon name={CHIP_ICON[chip]} size={20} color={on ? color.text1 : color.text2} />
                 )}
                 <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={2}>
                   {label}
@@ -982,7 +978,7 @@ export const DoorModeScreen = ({
         ) : null}
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + space[2] }]}>
         <View style={styles.totalRow}>
           <Text style={styles.muted}>{DOOR_MODE_COPY.ticketCount(ticketCount)}</Text>
           <Text style={styles.total} testID="door-mode-total">
@@ -1038,7 +1034,7 @@ export const DoorModeScreen = ({
           testID="door-mode-paid"
         >
           <View style={styles.paidTick}>
-            <Icon name="check" size={44} color="#063d1c" />
+            <Icon name="check" size={44} color={color.success} />
           </View>
           <Text style={styles.paidTitle} accessibilityRole="header">
             {DOOR_MODE_COPY.paid(paid.total)}
@@ -1100,14 +1096,14 @@ export const DoorModeScreen = ({
                   <Text style={styles.menuRowText} numberOfLines={1}>
                     {label}
                   </Text>
-                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                  <Icon name="chevR" size={16} color={color.text3} />
                 </Pressable>
               );
             })
           )}
           <Pressable onPress={openAllSales} accessibilityRole="button" accessibilityLabel={DOOR_MODE_COPY.allSales} style={styles.menuRow}>
             <Text style={styles.menuRowText}>{DOOR_MODE_COPY.allSales}</Text>
-            <Icon name="chevR" size={16} color={textTokens.tertiary} />
+            <Icon name="chevR" size={16} color={color.text3} />
           </Pressable>
           <Pressable
             onPress={() => switchOverlay("buyer")}
@@ -1120,7 +1116,7 @@ export const DoorModeScreen = ({
               <Text style={styles.menuRowText}>{DOOR_MODE_COPY.addBuyer}</Text>
               <Text style={styles.faint}>{DOOR_MODE_COPY.addBuyerSub}</Text>
             </View>
-            <Icon name="user" size={16} color={textTokens.tertiary} />
+            <Icon name="user" size={16} color={color.text3} />
           </Pressable>
           <Pressable
             onPress={() => {
@@ -1136,7 +1132,7 @@ export const DoorModeScreen = ({
               <Text style={styles.menuRowText}>{DOOR_MODE_COPY.manual}</Text>
               <Text style={styles.faint}>{DOOR_MODE_COPY.manualSub}</Text>
             </View>
-            <Icon name="receipt" size={16} color={textTokens.tertiary} />
+            <Icon name="receipt" size={16} color={color.text3} />
           </Pressable>
         </ScrollView>
       </Sheet>
@@ -1172,7 +1168,7 @@ export const DoorModeScreen = ({
                 </Text>
                 <Text style={styles.faint}>{c.live ? DOOR_MODE_COPY.liveNow : DOOR_MODE_COPY.today}</Text>
               </View>
-              <Icon name="chevR" size={16} color={textTokens.tertiary} />
+              <Icon name="chevR" size={16} color={color.text3} />
             </Pressable>
           ))}
         </ScrollView>
@@ -1198,53 +1194,53 @@ const BannerRow = ({
     accessibilityLiveRegion={tone === "error" ? "assertive" : "polite"}
     testID={testID}
   >
-    {icon !== undefined ? <Icon name={icon} size={18} color={textTokens.primary} /> : null}
+    {icon !== undefined ? <Icon name={icon} size={18} color={color.text1} /> : null}
     <Text style={styles.bannerText}>{text}</Text>
   </View>
 );
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: canvas.discover },
+  host: { flex: 1, backgroundColor: color.canvas },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   headerText: { flex: 1, minWidth: 0 },
-  headerTitle: { fontSize: 16, lineHeight: 21, fontWeight: "600", color: textTokens.primary },
-  headerSub: { fontSize: 13, lineHeight: 17, color: textTokens.secondary },
+  headerTitle: { fontSize: 16, lineHeight: 21, fontWeight: "600", color: color.text1 },
+  headerSub: { fontSize: 13, lineHeight: 17, color: color.text2 },
   scroll: { flex: 1 },
   // flexGrow: an empty state centres in the space left (#4389).
-  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm },
-  muted: { fontSize: 14, lineHeight: 20, color: textTokens.secondary },
-  faint: { fontSize: 12, lineHeight: 16, color: textTokens.tertiary },
-  help: { fontSize: 13, lineHeight: 18, color: textTokens.secondary },
+  scrollContent: { flexGrow: 1, paddingHorizontal: space[4], paddingBottom: space[6], gap: space[2] },
+  muted: { fontSize: 14, lineHeight: 20, color: color.text2 },
+  faint: { fontSize: 12, lineHeight: 16, color: color.text3 },
+  help: { fontSize: 13, lineHeight: 18, color: color.text2 },
   pillRow: { alignItems: "flex-start" },
   sectionLabel: {
     fontSize: 11,
     lineHeight: 14,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: textTokens.tertiary,
+    color: color.text3,
     textTransform: "uppercase",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   banner: {
     overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm + 2,
+    gap: space[2],
+    padding: space[2] + 2,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
   },
-  bannerError: { borderColor: semantic.error, backgroundColor: semantic.errorTint },
-  bannerWarn: { borderColor: semantic.warning, backgroundColor: semantic.warningTint },
-  bannerHint: { borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
-  bannerText: { flex: 1, fontSize: 13, lineHeight: 18, color: textTokens.primary },
-  tiles: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.xs },
+  bannerError: { borderColor: color.danger, backgroundColor: color.errorTint },
+  bannerWarn: { borderColor: color.warning, backgroundColor: color.warningTint },
+  bannerHint: { borderColor: color.line, backgroundColor: color.fill.inset },
+  bannerText: { flex: 1, fontSize: 13, lineHeight: 18, color: color.text1 },
+  tiles: { flexDirection: "row", flexWrap: "wrap", gap: space[1], marginTop: space[1] },
   tile: {
     overflow: "hidden",
     width: "48.5%",
@@ -1252,14 +1248,14 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     justifyContent: "space-between",
   },
-  tileOn: { borderColor: accent.border, backgroundColor: accent.faint },
+  tileOn: { borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
   pressed: { opacity: 0.8 },
-  tileName: { fontSize: 14, lineHeight: 18, fontWeight: "600", color: textTokens.primary, paddingRight: 28 },
-  tilePrice: { fontSize: 13, lineHeight: 17, color: textTokens.secondary },
+  tileName: { fontSize: 14, lineHeight: 18, fontWeight: "600", color: color.text1, paddingRight: 28 },
+  tilePrice: { fontSize: 13, lineHeight: 17, color: color.text2 },
   qtyBadge: {
     position: "absolute",
     top: 8,
@@ -1270,9 +1266,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
-  qtyText: { fontSize: 13, fontWeight: "700", color: "#ffffff", fontVariant: ["tabular-nums"] },
+  qtyText: { fontSize: 13, fontWeight: "700", color: color.ink, fontVariant: ["tabular-nums"] },
   minus: {
     overflow: "hidden",
     position: "absolute",
@@ -1284,20 +1280,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
   },
-  minusText: { fontSize: 18, lineHeight: 20, fontWeight: "700", color: textTokens.primary },
-  dates: { gap: spacing.xs },
+  minusText: { fontSize: 18, lineHeight: 20, fontWeight: "700", color: color.text1 },
+  dates: { gap: space[1] },
   dateRow: {
     overflow: "hidden",
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   chips: { flexDirection: "row", gap: 6 },
   chip: {
@@ -1311,60 +1307,63 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  chipOn: { borderColor: accent.border, backgroundColor: accent.faint },
+  chipOn: { borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
   chipOff: { opacity: 0.5 },
-  chipText: { fontSize: 12, lineHeight: 15, fontWeight: "600", color: textTokens.secondary, textAlign: "center" },
-  chipTextOn: { color: textTokens.primary },
+  chipText: { fontSize: 12, lineHeight: 15, fontWeight: "600", color: color.text2, textAlign: "center" },
+  chipTextOn: { color: color.text1 },
   footer: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[1],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   totalRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-  total: { fontSize: 30, lineHeight: 36, fontWeight: "700", color: textTokens.primary, fontVariant: ["tabular-nums"] },
-  blocking: { ...StyleSheet.absoluteFillObject, backgroundColor: canvas.discover, zIndex: 4 },
+  total: { fontSize: 30, lineHeight: 36, fontWeight: "700", color: color.text1, fontVariant: ["tabular-nums"] },
+  blocking: { ...StyleSheet.absoluteFillObject, backgroundColor: color.canvas, zIndex: 4 },
   paid: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 5,
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    padding: spacing.lg,
-    backgroundColor: "rgba(10, 40, 24, 0.96)",
+    padding: space[6],
+    // #4420: the paid takeover sits on the canvas; the tick tile carries the green.
+    backgroundColor: color.canvas,
   },
   paidTick: {
     width: 84,
     height: 84,
-    borderRadius: 42,
+    borderRadius: radiusTokens.xxl,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: semantic.success,
+    backgroundColor: color.successTint,
+    borderWidth: 1,
+    borderColor: color.success,
   },
-  paidTitle: { fontSize: 26, lineHeight: 32, fontWeight: "700", color: "#ffffff", textAlign: "center" },
-  paidLine: { fontSize: 14, lineHeight: 20, color: "rgba(255, 255, 255, 0.82)", textAlign: "center" },
-  paidLink: { fontSize: 14, lineHeight: 20, color: "#ffffff", textDecorationLine: "underline", paddingVertical: 12 },
-  paidHint: { fontSize: 12, lineHeight: 16, color: "rgba(255, 255, 255, 0.72)", textAlign: "center" },
-  sheetBody: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm },
-  sheetTitle: { fontSize: 20, lineHeight: 26, fontWeight: "700", color: textTokens.primary },
+  paidTitle: { fontSize: 26, lineHeight: 32, fontWeight: "700", color: color.textStrong, textAlign: "center" },
+  paidLine: { fontSize: 14, lineHeight: 20, color: color.textOnPhoto2, textAlign: "center" },
+  paidLink: { fontSize: 14, lineHeight: 20, color: color.textStrong, textDecorationLine: "underline", paddingVertical: 12 },
+  paidHint: { fontSize: 12, lineHeight: 16, color: color.textSelectedMeta, textAlign: "center" },
+  sheetBody: { paddingHorizontal: space[6], paddingTop: space[4], paddingBottom: space[6], gap: space[2] },
+  sheetTitle: { fontSize: 20, lineHeight: 26, fontWeight: "700", color: color.text1 },
   menuRow: {
     overflow: "hidden",
     minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  menuRowCol: { flex: 1, minWidth: 0, paddingVertical: spacing.xs },
-  menuRowText: { flex: 1, fontSize: 15, fontWeight: "600", color: textTokens.primary },
+  menuRowCol: { flex: 1, minWidth: 0, paddingVertical: space[1] },
+  menuRowText: { flex: 1, fontSize: 15, fontWeight: "600", color: color.text1 },
 });
 
 export default DoorModeScreen;

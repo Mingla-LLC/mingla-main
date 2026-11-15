@@ -10,12 +10,11 @@ import React from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
 import {
-  androidOpaque,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  materials,
+  space,
+  type,
 } from "../../../constants/designSystem";
 
 export interface TapFact {
@@ -49,22 +48,22 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   listAndroid: {
-    borderColor: androidOpaque.rowBorder,
-    backgroundColor: androidOpaque.rowFill,
+    borderColor: color.card2,
+    backgroundColor: materials.pane.solidFill,
   },
   row: {
     paddingVertical: 12,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     gap: 2,
   },
   rowDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
-  title: { ...typography.body, fontWeight: "600", color: textTokens.primary },
-  sub: { ...typography.bodySm, color: textTokens.secondary },
+  title: { ...type.body, fontWeight: "600", color: color.text1 },
+  sub: { ...type.small, color: color.text2 },
 });

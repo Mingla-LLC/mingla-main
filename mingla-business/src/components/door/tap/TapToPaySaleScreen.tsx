@@ -20,12 +20,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  canvas,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 import {
@@ -453,7 +450,7 @@ export const TapToPaySaleScreen = ({
             link={receiptLink("approved", state.amount, state.cardLabel)}
             testID="tap-state-approved"
           >
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               {/* Only a name the host typed. Never a made-up "Walk-up". */}
               {draft.buyerName != null ? (
                 <View style={styles.kv} testID="tap-guest-row">
@@ -631,7 +628,7 @@ export const TapToPaySaleScreen = ({
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.md, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, paddingBottom: insets.bottom + space[4], backgroundColor: color.canvas },
       ]}
     >
       {chrome}
@@ -647,34 +644,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
-  chromeTitle: { ...typography.h3, color: textTokens.primary, flexShrink: 1, textAlign: "center" },
+  chromeTitle: { ...type.h1, color: color.text1, flexShrink: 1, textAlign: "center" },
   chromeRightSlot: { width: 44 },
-  waitHost: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  amountHost: { flex: 1, alignItems: "center", paddingTop: spacing.xxl, gap: spacing.xs },
-  amount: { ...typography.display, fontSize: 44, lineHeight: 56, color: textTokens.primary },
-  lines: { ...typography.body, color: textTokens.secondary, textAlign: "center", paddingHorizontal: spacing.lg },
-  statusRow: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
-  paidLine: { ...typography.bodySm, fontWeight: "600", color: textTokens.primary, textAlign: "center" },
+  waitHost: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[2] },
+  amountHost: { flex: 1, alignItems: "center", paddingTop: space[9], gap: space[1] },
+  amount: { ...type.display, fontSize: 44, lineHeight: 56, color: color.text1 },
+  lines: { ...type.body, color: color.text2, textAlign: "center", paddingHorizontal: space[6] },
+  statusRow: { marginTop: space[6], paddingHorizontal: space[6] },
+  paidLine: { ...type.small, fontWeight: "600", color: color.text1, textAlign: "center" },
   kv: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   kvLast: { borderBottomWidth: 0 },
-  kvLabel: { ...typography.bodySm, color: textTokens.secondary },
-  kvValue: { ...typography.bodySm, color: textTokens.primary, flexShrink: 1, textAlign: "right" },
-  kvValueOk: { ...typography.bodySm, color: semantic.success },
+  kvLabel: { ...type.small, color: color.text2 },
+  kvValue: { ...type.small, color: color.text1, flexShrink: 1, textAlign: "right" },
+  kvValueOk: { ...type.small, color: color.success },
   inlineError: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     textAlign: "center",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingBottom: space[2],
   },
 });

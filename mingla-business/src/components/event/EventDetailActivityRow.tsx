@@ -18,10 +18,8 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
@@ -156,47 +154,47 @@ const activityKindSpec = (event: ActivityEvent): ActivityKindSpec => {
   if (event.kind === "purchase") {
     return {
       iconName: "ticket",
-      iconColor: "#34c759",
-      badgeBg: "rgba(34, 197, 94, 0.18)",
-      amountColor: "#34c759",
+      iconColor: color.successText,
+      badgeBg: color.successTint,
+      amountColor: color.success,
       amountSign: "+",
     };
   }
   if (event.kind === "refund") {
     return {
       iconName: "refund",
-      iconColor: accent.warm,
-      badgeBg: "rgba(235, 120, 37, 0.18)",
-      amountColor: accent.warm,
+      iconColor: color.text1,
+      badgeBg: color.fill.tabOn,
+      amountColor: color.text1,
       amountSign: "-",
     };
   }
   if (event.kind === "cancel") {
     return {
       iconName: "close",
-      iconColor: textTokens.tertiary,
-      badgeBg: "rgba(120, 120, 120, 0.18)",
+      iconColor: color.text3,
+      badgeBg: color.fill.step,
       amountColor: null,
       amountSign: null,
     };
   }
   if (event.kind === "event_edit") {
-    // Severity drives color: additive = info-blue (quiet), material = accent.warm (louder).
+    // Severity drives color: additive = info-blue (quiet), material = color.accent (louder).
     // "destructive" not reachable here — those are order-level (refund/cancel) and
     // already rendered via the order streams + filtered out at recentActivity build.
     if (event.severity === "material") {
       return {
         iconName: "edit",
-        iconColor: accent.warm,
-        badgeBg: "rgba(235, 120, 37, 0.18)",
+        iconColor: color.text1,
+        badgeBg: color.fill.tabOn,
         amountColor: null,
         amountSign: null,
       };
     }
     return {
       iconName: "edit",
-      iconColor: "#3b82f6",
-      badgeBg: "rgba(59, 130, 246, 0.18)",
+      iconColor: color.infoText,
+      badgeBg: color.infoTint,
       amountColor: null,
       amountSign: null,
     };
@@ -204,8 +202,8 @@ const activityKindSpec = (event: ActivityEvent): ActivityKindSpec => {
   if (event.kind === "event_sales_ended") {
     return {
       iconName: "clock",
-      iconColor: "#3b82f6",
-      badgeBg: "rgba(59, 130, 246, 0.18)",
+      iconColor: color.infoText,
+      badgeBg: color.infoTint,
       amountColor: null,
       amountSign: null,
     };
@@ -215,8 +213,8 @@ const activityKindSpec = (event: ActivityEvent): ActivityKindSpec => {
     // emphasise check-in vs new sale.
     return {
       iconName: "check",
-      iconColor: "#34c759",
-      badgeBg: "rgba(52, 199, 89, 0.18)",
+      iconColor: color.successText,
+      badgeBg: color.successTint,
       amountColor: null,
       amountSign: null,
     };
@@ -227,9 +225,9 @@ const activityKindSpec = (event: ActivityEvent): ActivityKindSpec => {
     // "(door)" suffix for the buyer to disambiguate.
     return {
       iconName: "refund",
-      iconColor: accent.warm,
-      badgeBg: "rgba(235, 120, 37, 0.18)",
-      amountColor: accent.warm,
+      iconColor: color.text1,
+      badgeBg: color.fill.tabOn,
+      amountColor: color.text1,
       amountSign: "-",
     };
   }
@@ -237,8 +235,8 @@ const activityKindSpec = (event: ActivityEvent): ActivityKindSpec => {
   // signal "everyone affected" vs grey "one buyer affected".
   return {
     iconName: "close",
-    iconColor: semantic.error,
-    badgeBg: "rgba(239, 68, 68, 0.18)",
+    iconColor: color.danger,
+    badgeBg: color.errorTint,
     amountColor: null,
     amountSign: null,
   };
@@ -339,8 +337,8 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   iconBadge: {
     width: 32,
@@ -357,16 +355,16 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   summary: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 1,
   },
   time: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 1,
   },
   amount: {
@@ -374,6 +372,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
     flexShrink: 0,
-    marginLeft: spacing.sm,
+    marginLeft: space[2],
   },
 });

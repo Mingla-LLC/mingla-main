@@ -114,9 +114,15 @@ export function HomeAriOrb({ size = "sm" }: { size?: HomeAriOrbSize }): React.Re
   return reduceMotion === null ? <StaticAriMark size={size} /> : <AnimatedAriMark size={size} reduceMotion={reduceMotion} />;
 }
 
+// #4420 content colours: the Ari orb mark is Ari's identity art (the same
+// values as components/ari/AriOrb.tsx), not chrome. Token requested as
+// `ariPalette.orb` / `ariPalette.orbCore`; until then they stay here.
+const ARI_ORB = "#f07a3d";
+const ARI_ORB_CORE = "#ffb07c";
+
 const mark = StyleSheet.create({
   host: { alignItems: "center", justifyContent: "center" },
-  outer: { position: "absolute", borderWidth: 1.5, borderColor: "#f07a3d" },
-  middle: { position: "absolute", borderWidth: 2, borderColor: "#f07a3d" },
-  core: { position: "absolute", borderWidth: 1, borderColor: "#ffb07c", backgroundColor: "#f07a3d" },
+  outer: { position: "absolute", borderWidth: 1.5, borderColor: ARI_ORB },
+  middle: { position: "absolute", borderWidth: 2, borderColor: ARI_ORB },
+  core: { position: "absolute", borderWidth: 1, borderColor: ARI_ORB_CORE, backgroundColor: ARI_ORB },
 });

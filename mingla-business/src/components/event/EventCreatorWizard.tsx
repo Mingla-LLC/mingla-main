@@ -55,13 +55,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 
 import {
-  accent,
-  canvas,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  edge,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   DESKTOP_BEZEL_MARGIN,
@@ -186,12 +184,28 @@ const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
 
 const TOTAL_STEPS = STEP_DEFS.length;
 
+// #4420 — the collapsed sidebar as an icon rail: the same grouped IA as the
+// desktop sidebar (Home, Hub, Ari · Promote · Audience), and no Blast item.
 const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
   { label: "Hub", icon: "calendar", href: "/(tabs)/hub/events", active: true },
   { label: "Ari", icon: "sparkle", href: "/(tabs)/ari", active: false },
-  { label: "Blast", icon: "send", href: "/(tabs)/marketing", active: false },
+  { label: "Promote", icon: "trending", href: "/(tabs)/marketing", active: false },
+  { label: "Audience", icon: "users", href: "/(tabs)/marketing/people", active: false },
 ] as const;
+
+/** #4420 — the save line under the wizard title. `null` = no server save state. */
+const saveStateLabel = (
+  state: EventCreatorWizardProps["serverSaveState"],
+): string | null => {
+  if (state === undefined) return null;
+  if (state.hasError) return "Unsaved changes - retrying";
+  if (state.isSaving) return "Saving...";
+  // issue #3040 — `lastSavedAt === null` means NOTHING has been written to
+  // `events` yet. It once read "Server draft", which stated the opposite of the
+  // truth and sent two investigations down the wrong path.
+  return state.lastSavedAt !== null ? "Saved" : "Not saved yet";
+};
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -454,13 +468,6 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       .filter(({ index }) => inviteEnabled || index !== 6),
     [inviteEnabled],
   );
-  const visibleStepperSteps = useMemo<StepperStep[]>(
-    () => visibleStepDefs.map(({ definition, index }) => ({
-      id: `step-${index + 1}`,
-      label: definition.title,
-    })),
-    [visibleStepDefs],
-  );
   const visibleStepNumber = !inviteEnabled && currentStep === 7 ? 7 : currentStep + 1;
   const [toast, setToast] = useState<ToastState>({
     visible: false,
@@ -644,6 +651,33 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     () => validateStep(currentStep, liveDraft),
     [currentStep, liveDraft],
   );
+
+  // #4420 B7 — the clickable stepper. Stepper indices are ordinals among the
+  // VISIBLE steps (Invite people hides when the invite flag is off). A step is
+  // reachable up to the first step the EXISTING validator rejects; no new rule.
+  const currentOrdinal = Math.max(
+    0,
+    visibleStepDefs.findIndex(({ index }) => index === currentStep),
+  );
+  const furthestValidOrdinal = useMemo((): number => {
+    const firstInvalid = visibleStepDefs.findIndex(
+      ({ index }) => validateStep(index, liveDraft).length > 0,
+    );
+    return firstInvalid === -1 ? visibleStepDefs.length - 1 : firstInvalid;
+  }, [visibleStepDefs, liveDraft]);
+  const visibleStepperSteps = useMemo<StepperStep[]>(
+    () => visibleStepDefs.map(({ definition, index }) => {
+      const firstError =
+        index === currentStep && showStepErrors ? stepErrors[0]?.message : undefined;
+      return firstError !== undefined
+        ? { id: `step-${index + 1}`, label: definition.title, state: "error" as const, firstError }
+        : { id: `step-${index + 1}`, label: definition.title };
+    }),
+    [visibleStepDefs, currentStep, showStepErrors, stepErrors],
+  );
+  const previousStepLabel =
+    currentOrdinal > 0 ? visibleStepDefs[currentOrdinal - 1].definition.title : undefined;
+  const saveLabel = saveStateLabel(serverSaveState);
 
   // Track that the user has reached this step (for resume semantics).
   useEffect(() => {
@@ -905,6 +939,18 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       ? 7
       : Math.min(TOTAL_STEPS - 1, prev + 1));
   }, [currentStep, liveDraft, inviteEnabled, inviteNavigation]);
+
+  // #4420 B7 — jump to a reachable step from the stepper. Same guards as the
+  // dock Back: never while Invite people is still saving its selection, and
+  // never while Publish is re-reading the invite plan (#1780).
+  const handleStepPress = useCallback((ordinal: number): void => {
+    const target = visibleStepDefs[ordinal]?.index;
+    if (target === undefined || target === currentStep) return;
+    if (currentStep === 6 && inviteNavigation?.phase !== "ready") return;
+    if (checkingInvitePublish || isPublishing) return;
+    setShowStepErrors(false);
+    setCurrentStep(target);
+  }, [visibleStepDefs, currentStep, inviteNavigation?.phase, checkingInvitePublish, isPublishing]);
 
   // ---- Publish gate ----
 
@@ -1257,17 +1303,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         >
           <Icon
             name={item.icon}
-            size={22}
-            color={item.active ? accent.warm : textTokens.tertiary}
+            size={20}
+            color={item.active ? color.accent : color.text2}
           />
-          <Text
-            style={[
-              styles.desktopRailItemText,
-              item.active ? styles.desktopRailItemTextActive : null,
-            ]}
-          >
-            {item.label}
-          </Text>
         </Pressable>
       ))}
     </View>
@@ -1276,8 +1314,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const renderDesktopStepRail = (): React.ReactElement => (
     <GlassCard
       variant="base"
-      padding={spacing.md}
-      radius="lg"
+      padding={space[5]}
       style={styles.desktopStepRail}
     >
       <View style={styles.desktopStepRailHeader}>
@@ -1285,54 +1322,18 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         <Text style={styles.desktopStepRailTitle} numberOfLines={2}>
           {liveDraft.name.trim().length > 0 ? liveDraft.name : "Untitled event"}
         </Text>
-        <Text style={styles.desktopStepRailSub} numberOfLines={1}>
-          {brand?.displayName ?? "Brand"} · Draft saved
-        </Text>
+        {/* COPY_RULES 2: the brand and the save state already sit in the
+            top bar, so the rail does not repeat them. */}
       </View>
-      <View style={styles.desktopStepList}>
-        {visibleStepDefs.map(({ definition: step, index }, ordinal) => {
-          const active = index === currentStep;
-          return (
-            <View
-              key={step.title}
-              style={[
-                styles.desktopStepItem,
-                active ? styles.desktopStepItemActive : null,
-              ]}
-            >
-              <View
-                style={[
-                  styles.desktopStepIndex,
-                  active ? styles.desktopStepIndexActive : null,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.desktopStepIndexText,
-                    active ? styles.desktopStepIndexTextActive : null,
-                  ]}
-                >
-                  {ordinal + 1}
-                </Text>
-              </View>
-              <View style={styles.desktopStepCopy}>
-                <Text
-                  style={[
-                    styles.desktopStepTitle,
-                    active ? styles.desktopStepTitleActive : null,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {step.title}
-                </Text>
-                <Text style={styles.desktopStepSub} numberOfLines={1}>
-                  {step.subtitle}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
+      {/* #4420 B7 — the 280 clickable step list (done / current / error / todo). */}
+      <Stepper
+        layout="list"
+        steps={visibleStepperSteps}
+        currentIndex={currentOrdinal}
+        furthestValidIndex={furthestValidOrdinal}
+        onStepPress={handleStepPress}
+        testID="event-wizard-steps"
+      />
     </GlassCard>
   );
 
@@ -1364,7 +1365,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         styles.host,
         {
           paddingTop: isWideDesktop ? 0 : insets.top,
-          backgroundColor: canvas.discover,
+          backgroundColor: color.canvas,
         },
       ]}
     >
@@ -1376,66 +1377,57 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
           <TopBar
             leftKind="brand"
             rightSlot={
-              <IconChrome
-                icon="close"
-                size={36}
-                onPress={handleClose}
-                accessibilityLabel="Close wizard"
-              />
+              <View style={styles.desktopTopBarRight}>
+                {saveLabel !== null ? (
+                  <Text
+                    style={[styles.desktopSaveState, serverSaveState?.hasError === true ? styles.saveStateError : null]}
+                    numberOfLines={1}
+                  >
+                    {saveLabel}
+                  </Text>
+                ) : null}
+                <IconChrome
+                  icon="close"
+                  size={36}
+                  onPress={handleClose}
+                  accessibilityLabel="Close wizard"
+                />
+              </View>
             }
           />
         </View>
       ) : (
-        <View style={styles.chromeRow}>
-          <IconChrome
-            icon="close"
-            size={36}
-            onPress={handleClose}
-            accessibilityLabel="Close wizard"
-          />
-          <View style={styles.stepperWrap}>
-            <Stepper
-              steps={visibleStepperSteps}
-              currentIndex={visibleStepNumber - 1}
-              showCaption={false}
+        <View style={styles.mobileChrome}>
+          <View style={styles.chromeRow}>
+            <IconChrome
+              icon="close"
+              size={44}
+              onPress={handleClose}
+              accessibilityLabel="Close wizard"
             />
+            <View style={styles.chromeTitleCol}>
+              <Text style={styles.chromeTitle} numberOfLines={1}>
+                {liveDraft.name.trim().length > 0 ? liveDraft.name : "Untitled event"}
+              </Text>
+              <Text
+                style={[styles.chromeSub, serverSaveState?.hasError === true ? styles.saveStateError : null]}
+                numberOfLines={1}
+              >
+                {brand?.displayName ?? "Brand"}
+                {saveLabel !== null ? ` · ${saveLabel}` : ""}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.stepCounter}>
-            {visibleStepNumber}/{visibleStepDefs.length}
-          </Text>
+          {/* #4420 B7 — progress segments, tappable step chips and the n / N Steps sheet. */}
+          <Stepper
+            layout="chips"
+            steps={visibleStepperSteps}
+            currentIndex={currentOrdinal}
+            furthestValidIndex={furthestValidOrdinal}
+            onStepPress={handleStepPress}
+            testID="event-wizard-stepper"
+          />
         </View>
-      )}
-
-      {/* Brand subtitle */}
-      {isWideDesktop ? null : (
-      <View style={styles.subtitleRow}>
-        <Text style={styles.subtitle}>
-              {brand?.displayName ?? "Brand"} · Step {visibleStepNumber} of{" "}
-              {visibleStepDefs.length}
-        </Text>
-        {serverSaveState !== undefined ? (
-          <Text
-            style={[
-              styles.saveState,
-              serverSaveState.hasError ? styles.saveStateError : null,
-            ]}
-          >
-            {serverSaveState.hasError
-              ? "Unsaved changes - retrying"
-              : serverSaveState.isSaving
-                ? "Saving..."
-                : serverSaveState.lastSavedAt !== null
-                  ? "Saved"
-                  // issue #3040 — this branch is `lastSavedAt === null`, i.e.
-                  // NOTHING has been written to `events` yet. It read "Server
-                  // draft", which states the opposite of the truth and sent two
-                  // separate investigations down the wrong path: it was taken as
-                  // evidence that a server row existed while the cover pipeline
-                  // was failing precisely because none did.
-                  : "Not saved yet"}
-          </Text>
-        ) : null}
-      </View>
       )}
 
       <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
@@ -1476,89 +1468,64 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         </View>
       </ScrollView>
 
-      {/* Dock — sleek + compact (rework v3). Tight vertical padding,
-          radius xxl for the rounded float, button size md (44 — the
-          minimum touch target).
-          Hidden when the keyboard is open so the focused input sits
-          immediately above the keyboard with no dock occupying space
-          between them. Reappears the instant the keyboard dismisses. */}
+      {/* #4420 B7 — the sticky wizard footer: a hairline top, Back named
+          after the previous step, and the one primary action. Hidden while
+          the keyboard is open so the focused field sits flush above it.
+          Step 1 has no Back (the close chrome exits the wizard). */}
       {keyboardVisible ? null : (
-      <GlassCard
-        variant="elevated"
-        padding={0}
-        radius="xxl"
-                style={[
-                  styles.dock,
-                  { marginBottom: insets.bottom + spacing.lg },
-                ]}
-      >
-        {isLastStep ? (
-          // Step 7 — uniform Back + Publish dock. The Stripe-blocked
-          // banner was removed from the dock in Cycle 5; the Connect
-          // Stripe CTA now lives inside the body's StripeBlockedCard.
-          // Publish button is disabled when blocked-stripe so the user
-          // is forced to use the body-side CTA before publishing.
-          <View style={styles.dockButtonRow}>
-            <View style={styles.dockBackCell}>
+        <View
+          style={[
+            styles.footer,
+            isWideDesktop ? styles.footerDesktop : null,
+            { paddingBottom: space[3] + (isWideDesktop ? 0 : insets.bottom) },
+          ]}
+        >
+          {isFirstStep ? null : (
+            <View style={isWideDesktop ? null : styles.footerCell}>
               <Button
-                label="Back"
-                variant="ghost"
-                size="md"
+                label={isWideDesktop ? "Back" : previousStepLabel ?? "Back"}
+                variant="secondary"
+                size="lg"
                 leadingIcon="chevL"
                 onPress={handleStepBack}
-                // #1780 — no stepping back to Invite while Publish re-reads the plan.
-                disabled={checkingInvitePublish}
-                fullWidth
+                // #1780 — no stepping back to Invite while Publish re-reads the
+                // plan, and no leaving Invite people before its save settles.
+                disabled={
+                  isLastStep
+                    ? checkingInvitePublish
+                    : currentStep === 6 && inviteNavigation?.phase !== "ready"
+                }
+                fullWidth={!isWideDesktop}
+                testID="event-wizard-back"
               />
             </View>
-            <View style={styles.dockPublishCell}>
+          )}
+          <View style={isWideDesktop ? styles.footerContinueDesktop : styles.footerCell}>
+            {isLastStep ? (
               <Button
                 label="Publish event"
                 variant="primary"
-                size="md"
+                size="lg"
                 onPress={() => void handlePublishTap()}
                 loading={isPublishing || checkingInvitePublish}
                 disabled={publishDisabled || isPublishing}
-                fullWidth
+                fullWidth={!isWideDesktop}
+                testID="event-wizard-publish"
               />
-            </View>
-          </View>
-        ) : isFirstStep ? (
-          // Step 1 has no in-wizard back — chrome close X handles exit.
-          <Button
-            label="Continue"
-            variant="primary"
-            size="md"
-            onPress={handleContinue}
-            fullWidth
-          />
-        ) : (
-          // Step 2-6 — Back + Continue side by side.
-          <View style={styles.dockButtonRow}>
-            <View style={styles.dockBackCell}>
-              <Button
-                label="Back"
-                variant="ghost"
-                size="md"
-                onPress={handleStepBack}
-                disabled={currentStep === 6 && inviteNavigation?.phase !== "ready"}
-                fullWidth
-              />
-            </View>
-            <View style={styles.dockPrimaryCell}>
+            ) : (
               <Button
                 label={currentStep === 6 ? inviteNavigation?.primaryLabel ?? "Checking…" : "Continue"}
                 variant="primary"
-                size="md"
+                size="lg"
                 onPress={handleContinue}
                 loading={currentStep === 6 && inviteNavigation?.phase === "saving"}
                 disabled={currentStep === 6 && inviteNavigation?.blocked === true}
-                fullWidth
+                fullWidth={!isWideDesktop}
+                testID="event-wizard-continue"
               />
-            </View>
+            )}
           </View>
-        )}
-      </GlassCard>
+        </View>
       )}
         </View>
       </View>
@@ -1633,64 +1600,63 @@ const styles = StyleSheet.create({
   mobileFormPane: {
     flex: 1,
   },
+  // #4420 — the collapsed sidebar (80 icon rail) on wizard routes.
   desktopAppRail: {
     position: "absolute",
     zIndex: 20,
     elevation: 20,
-    top: 0,
-    left: 0,
-    bottom: 0,
-    width: DESKTOP_RAIL_WIDTH,
+    top: DESKTOP_BEZEL_MARGIN,
+    left: DESKTOP_BEZEL_MARGIN,
+    bottom: DESKTOP_BEZEL_MARGIN,
+    width: DESKTOP_RAIL_WIDTH - DESKTOP_BEZEL_MARGIN,
     alignItems: "center",
-    paddingTop: spacing.xl,
-    gap: spacing.sm,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: "rgba(255, 255, 255, 0.06)",
+    paddingTop: space[4],
+    gap: space[2],
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    ...edge.edge,
   },
   desktopRailBrandMark: {
-    width: 42,
-    height: 42,
-    marginBottom: spacing.md,
+    width: 40,
+    height: 40,
+    marginBottom: space[4],
     alignItems: "center",
     justifyContent: "center",
   },
   desktopRailLogo: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
   },
   desktopRailItem: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "transparent",
   },
   desktopRailItemActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.055)",
-    borderColor: "rgba(235, 120, 37, 0.45)",
-  },
-  desktopRailItemText: {
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: "700",
-    color: textTokens.tertiary,
-  },
-  desktopRailItemTextActive: {
-    color: accent.warm,
+    backgroundColor: color.fill.railOn,
+    ...edge.rimRailOn,
   },
   desktopTopBarWrap: {
     paddingTop: DESKTOP_TOP_INSET,
     paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
     paddingRight: DESKTOP_BEZEL_MARGIN,
-    paddingBottom: spacing.sm,
+    paddingBottom: space[3],
+  },
+  desktopTopBarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+  },
+  desktopSaveState: {
+    ...type.caption,
+    color: color.text3,
   },
   desktopShell: {
     flex: 1,
     flexDirection: "row",
-    gap: spacing.md,
+    gap: space[6],
     paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
     paddingRight: DESKTOP_BEZEL_MARGIN,
     paddingBottom: DESKTOP_BEZEL_MARGIN,
@@ -1698,185 +1664,109 @@ const styles = StyleSheet.create({
   desktopStepRail: {
     width: DESKTOP_WIZARD_RAIL_WIDTH,
     flexShrink: 0,
+    alignSelf: "flex-start",
   },
   desktopStepRailHeader: {
-    marginBottom: spacing.lg,
+    marginBottom: space[5],
+    gap: space[1],
   },
+  // Orange is allowed on steppers and progress (TOKENS §2).
   desktopStepEyebrow: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.4,
+    ...type.label,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: spacing.sm,
+    color: color.accentText,
   },
   desktopStepRailTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-  },
-  desktopStepRailSub: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-  },
-  desktopStepList: {
-    gap: spacing.sm,
-  },
-  desktopStepItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 12,
-  },
-  desktopStepItemActive: {
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(235, 120, 37, 0.45)",
-  },
-  desktopStepIndex: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
-  },
-  desktopStepIndexActive: {
-    backgroundColor: accent.warm,
-  },
-  desktopStepIndexText: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "800",
-    color: textTokens.tertiary,
-  },
-  desktopStepIndexTextActive: {
-    color: textTokens.inverse,
-  },
-  desktopStepCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  desktopStepTitle: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "700",
-    color: textTokens.tertiary,
-  },
-  desktopStepTitleActive: {
-    color: textTokens.primary,
-  },
-  desktopStepSub: {
-    marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.quaternary,
+    ...type.h1,
+    color: color.text1,
   },
   desktopFormPane: {
     flex: 1,
     maxWidth: DESKTOP_WIZARD_FORM_MAX_WIDTH,
     minWidth: 0,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    backgroundColor: "rgba(255, 255, 255, 0.018)",
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    ...edge.edge,
     overflow: "hidden",
+  },
+  mobileChrome: {
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[3],
+    gap: space[3],
   },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    gap: space[3],
   },
-  stepperWrap: {
+  chromeTitleCol: {
     flex: 1,
+    minWidth: 0,
   },
-  stepCounter: {
-    fontSize: 12,
-    color: textTokens.tertiary,
-    fontVariant: ["tabular-nums"],
-    minWidth: 28,
-    textAlign: "right",
+  chromeTitle: {
+    ...type.h2,
+    color: color.text1,
   },
-  subtitleRow: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.md,
-  },
-  subtitle: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-  },
-  saveState: {
-    marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.quaternary,
+  chromeSub: {
+    ...type.caption,
+    color: color.text3,
   },
   saveStateError: {
-    color: semantic.error,
+    color: color.errorText,
   },
   body: {
-    paddingHorizontal: spacing.md + 8,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    // 24, the same gutter as the trip wizard (TripCreatorWidthParity).
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   eyebrow: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.4,
+    ...type.label,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: 6,
+    color: color.accentText,
+    marginBottom: space[1],
   },
   stepTitle: {
-    fontSize: 26,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    color: textTokens.primary,
-    marginBottom: 6,
+    ...type.title,
+    color: color.text1,
+    marginBottom: space[1],
   },
   stepSub: {
-    fontSize: 14,
-    color: textTokens.secondary,
-    marginBottom: spacing.lg,
+    ...type.small,
+    color: color.text2,
+    marginBottom: space[6],
   },
   stepBodyWrap: {
     // step body content
   },
-  dock: {
-    marginHorizontal: spacing.md,
-    // marginBottom is applied inline as insets.bottom + spacing.lg so the
-    // floating dock clears the phone's bottom nav / home-indicator on both
-    // Android gesture-nav and iOS (META-ORCH-1059 Sub-A footer-bleed fix).
-    // Sleek + compact: tight vertical padding, generous horizontal.
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
-  dockButtonRow: {
+  footer: {
     flexDirection: "row",
-    gap: 6,
     alignItems: "center",
+    gap: space[3],
+    paddingHorizontal: space[4],
+    paddingTop: space[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+    backgroundColor: color.canvas,
   },
-  dockBackCell: {
+  footerDesktop: {
+    justifyContent: "space-between",
+    paddingHorizontal: space[6],
+    backgroundColor: color.card,
+  },
+  footerCell: {
     flex: 1,
   },
-  dockPrimaryCell: {
-    flex: 1,
-  },
-  dockPublishCell: {
-    flex: 2,
+  footerContinueDesktop: {
+    marginLeft: "auto",
   },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
     top: 0,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.md,
-  },
-  // suppress unused
-  _unused: {
-    color: glass.tint.profileBase,
+    paddingTop: space[6],
+    paddingHorizontal: space[4],
   },
 });

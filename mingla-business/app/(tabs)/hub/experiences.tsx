@@ -41,12 +41,10 @@ import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
 import { DraftSelectBar } from "../../../src/components/offering/DraftSelectBar";
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
@@ -336,7 +334,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
         showsVerticalScrollIndicator={false}
       >
         {filteredExperiences.length === 0 ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.emptyTitle}>
               {filter === "all" ? "No experiences yet" : "No experiences here"}
             </Text>
@@ -546,88 +544,88 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
+    padding: space[7],
+    gap: space[4],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   // META-ORCH-1235 (§4.2) — Retry affordance on the error state.
   retryButton: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    marginTop: space[2],
+    paddingHorizontal: space[6],
+    paddingVertical: space[2],
     borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   retryButtonLabel: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: "#ffffff",
+    color: color.ink,
   },
   // ORCH-1123 — long-press discoverability caption.
   selectHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text3,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
+    gap: space[4],
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   desktopListGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 0,
-    marginHorizontal: -spacing.xs,
+    marginHorizontal: -space[1],
   },
   desktopListCell: {
     width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
-    paddingHorizontal: spacing.xs,
-    marginBottom: spacing.sm,
+    paddingHorizontal: space[1],
+    marginBottom: space[2],
   },
   pillsScroll: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     // ORCH-0857 [Hub events list flush-with-pills] precedent — flexGrow:0
     // mandatory to avoid double-ScrollView vertical space split.
     flexGrow: 0,
     flexShrink: 0,
   },
   pillsRow: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    gap: space[2],
   },
   pill: {
     height: 34,
-    paddingHorizontal: spacing.md - 2,
+    paddingHorizontal: space[4] - 2,
     borderRadius: radiusTokens.full,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.55)",
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   pillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   pillPressed: {
     opacity: 0.7,
@@ -636,33 +634,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   pillLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   pillCount: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   pillCountActive: {
-    color: accent.warm,
+    color: color.text1,
   },
   emptyTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
+    marginBottom: space[1],
   },
   emptyBody: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   emptyCtaRow: {
     flexDirection: "row",
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
 });

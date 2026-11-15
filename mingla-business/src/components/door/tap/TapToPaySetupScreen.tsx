@@ -24,14 +24,10 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 import { loadHasDoorSaleEvent, openDoorSaleFromTapSetup } from "./tapSetupTakePayment";
@@ -525,7 +521,7 @@ export const TapToPaySetupScreen = ({
           {/* Apple allows no art of the feature on iPhone. */}
           {Platform.OS === "android" ? (
             <View style={styles.heroIcon}>
-              <Icon name="tap" size={28} color={accent.warm} />
+              <Icon name="tap" size={28} color={color.text1} />
             </View>
           ) : null}
           <Text style={styles.setupTitle} accessibilityRole="header">
@@ -560,7 +556,7 @@ export const TapToPaySetupScreen = ({
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.md, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, paddingBottom: insets.bottom + space[4], backgroundColor: color.canvas },
       ]}
     >
       {chrome}
@@ -590,12 +586,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
-  chromeTitle: { ...typography.h3, color: textTokens.primary },
+  chromeTitle: { ...type.h1, color: color.text1 },
   chromeRightSlot: { width: 36 },
-  scrollContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm },
+  scrollContent: { paddingHorizontal: space[4], paddingBottom: space[6], gap: space[2] },
   heroIcon: {
     width: 54,
     height: 54,
@@ -603,37 +599,37 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
-    marginTop: spacing.sm,
+    backgroundColor: color.fill.tabOn,
+    marginTop: space[2],
   },
-  heroTitle: { ...typography.h3, color: textTokens.primary, textAlign: "center" },
+  heroTitle: { ...type.h1, color: color.text1, textAlign: "center" },
   setupTitle: {
-    ...typography.h2,
+    ...type.h1,
     lineHeight: 32,
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "left",
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    marginTop: space[2],
+    marginBottom: space[1],
   },
   bar: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   error: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     textAlign: "center",
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    paddingHorizontal: space[4],
+    marginTop: space[2],
   },
   helpLink: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   helpLinkText: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     textDecorationLine: "underline",
   },
 });

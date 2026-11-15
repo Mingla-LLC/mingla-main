@@ -33,12 +33,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../../src/constants/designSystem";
 import type {
   DoorPaymentMethod,
@@ -89,14 +86,6 @@ const formatRelativeTime = (iso: string): string => {
     return `${Math.floor(delta / RELATIVE_TIME_MS.hour)}h ago`;
   }
   return `${Math.floor(delta / RELATIVE_TIME_MS.day)}d ago`;
-};
-
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
 };
 
 const getInitials = (name: string): string => {
@@ -330,7 +319,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -356,7 +345,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -392,7 +381,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -441,11 +430,11 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
               pressed && styles.viewReconCtaPressed,
             ]}
           >
-            <Icon name="chart" size={16} color={accent.warm} />
+            <Icon name="chart" size={16} color={color.text1} />
             <Text style={styles.viewReconCtaLabel}>
               View full reconciliation report
             </Text>
-            <Icon name="chevR" size={16} color={textTokens.tertiary} />
+            <Icon name="chevR" size={16} color={color.text3} />
           </Pressable>
         ) : null}
 
@@ -613,7 +602,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
 
       {/* issue #4271 — the primary way to start a sale. */}
       <View
-        style={[styles.sellBar, { paddingBottom: insets.bottom + spacing.sm }]}
+        style={[styles.sellBar, { paddingBottom: insets.bottom + space[2] }]}
         pointerEvents="box-none"
       >
         <Button
@@ -652,7 +641,6 @@ const DoorSaleRowCard: React.FC<DoorSaleRowCardProps> = ({ sale, onPress }) => {
     sale.buyerName.length > 0 ? sale.buyerName : "Walk-up";
   const ticketSummary = summarizeDoorTickets(sale.lines);
   const relativeTime = formatRelativeTime(sale.recordedAt);
-  const hue = hashStringToHue(sale.id);
   const initials = getInitials(buyerName);
   // #962 G5 — the recorded sale's own frozen currency is real (paid door sales
   // are gated behind a set currency); null-guarded for gate-cleanliness so a
@@ -671,10 +659,7 @@ const DoorSaleRowCard: React.FC<DoorSaleRowCardProps> = ({ sale, onPress }) => {
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <View
-        style={[
-          styles.avatar,
-          { backgroundColor: `hsl(${hue}, 60%, 45%)` },
-        ]}
+        style={styles.avatar}
       >
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
@@ -705,29 +690,29 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    backgroundColor: canvas.discover,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    backgroundColor: color.canvas,
   },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
   chromeRight: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chromeRightSlot: {
     width: 36,
@@ -736,21 +721,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
 
   // Cycle 13 — D-CYCLE13-RECON-FOR-4 polish CTA -----------------------
   viewReconCta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm + 2,
+    gap: space[2],
+    padding: space[2] + 2,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   viewReconCtaPressed: {
     opacity: 0.7,
@@ -759,42 +744,42 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
 
   // Reconciliation card ----------------------------------------------
   reconCard: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   reconHeading: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
     textTransform: "uppercase",
   },
   currencyWarning: {
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.30)",
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
-    marginBottom: spacing.sm,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
+    marginBottom: space[2],
   },
   currencyWarningTitle: {
     fontSize: 12,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   currencyWarningBody: {
     fontSize: 11,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 2,
   },
   reconRow: {
@@ -810,62 +795,62 @@ const styles = StyleSheet.create({
   },
   reconLabel: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   reconLabelHint: {
     fontSize: 11,
-    color: textTokens.quaternary,
+    color: color.text4,
     fontVariant: ["tabular-nums"],
   },
   reconLabelStrong: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   reconValue: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   reconValueWarn: {
     fontSize: 14,
     fontWeight: "500",
-    color: accent.warm,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   reconValueStrong: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   reconDivider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   byScannerToggle: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     paddingVertical: 6,
   },
   byScannerToggleText: {
     fontSize: 13,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   scannerCard: {
-    marginTop: spacing.sm,
-    padding: spacing.sm + 2,
+    marginTop: space[2],
+    padding: space[2] + 2,
     borderRadius: radiusTokens.sm,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
   scannerName: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 4,
   },
   scannerSubRow: {
@@ -875,41 +860,42 @@ const styles = StyleSheet.create({
   },
   scannerSubLabel: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   scannerTotal: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
 
   // List -------------------------------------------------------------
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 2,
-    padding: spacing.md - 2,
+    gap: space[2] + 2,
+    padding: space[4] - 2,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   rowPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   avatar: {
+    backgroundColor: color.fill.step,
     width: 40,
     height: 40,
     borderRadius: 999,
@@ -920,7 +906,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowBody: {
     flex: 1,
@@ -929,11 +915,11 @@ const styles = StyleSheet.create({
   rowName: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSubline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   rowPills: {

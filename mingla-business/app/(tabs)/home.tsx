@@ -53,12 +53,10 @@ import { RecentRow } from "../../src/components/home/RecentRow";
 import { RecentFullScreen } from "../../src/components/home/RecentFullScreen";
 import { RecentStatePanel } from "../../src/components/home/RecentStatePanel";
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import {
@@ -959,7 +957,7 @@ export default function HomeTab(): React.ReactElement {
       style={[
         styles.host,
         {
-          paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+          paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
         },
       ]}
     >
@@ -1111,7 +1109,7 @@ export default function HomeTab(): React.ReactElement {
           }
           contentContainerStyle={[
             styles.mobileUpcomingContent,
-            { paddingBottom: spacing.xl * 4 + insets.bottom },
+            { paddingBottom: space[7] * 4 + insets.bottom },
           ]}
           showsVerticalScrollIndicator={false}
         />
@@ -1190,7 +1188,7 @@ export default function HomeTab(): React.ReactElement {
           }
           contentContainerStyle={[
             styles.mobileUpcomingContent,
-            { paddingBottom: spacing.xl * 4 + insets.bottom },
+            { paddingBottom: space[7] * 4 + insets.bottom },
           ]}
           refreshControl={
             <RefreshControl
@@ -1288,28 +1286,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   brandLoading: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
+    gap: space[4],
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   // ORCH-1038 — to-do toggle wrapper: matches the top bar's horizontal padding
   // so the toggle is flush + the same width as the bar above it.
   todoWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   // #4389 — H1 card + Tap to Pay card, between To do and the money panel.
   setupWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingBottom: spacing.xl * 4,
+    paddingHorizontal: space[4],
+    paddingVertical: space[6],
+    paddingBottom: space[7] * 4,
   },
   desktopOuterScroll: {
     flex: 1,
@@ -1319,7 +1317,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minHeight: 0,
     paddingHorizontal: 0,
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
     paddingBottom: 0,
   },
   desktopUpcomingPane: {
@@ -1330,17 +1328,17 @@ const styles = StyleSheet.create({
   desktopUpcomingList: {
     flex: 1,
     minHeight: 0,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   emptyScroll: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingBottom: spacing.xl * 4,
+    paddingHorizontal: space[4],
+    paddingVertical: space[6],
+    paddingBottom: space[7] * 4,
   },
   mobileBody: {
     flex: 1,
     minHeight: 0,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     // #1616 — `paddingTop` deliberately ABSENT (not `0`): `spacing` has no zero
     // token, and an absent key is honest where a `0` invites someone to
     // "restore" it. It was one of the three paddings that stacked to 56pt of
@@ -1349,8 +1347,8 @@ const styles = StyleSheet.create({
   mobileNoVenueBody: {
     flex: 1,
     minHeight: 0,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   lockedZone: {
     flexShrink: 0,
@@ -1360,77 +1358,77 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 0,
-    // #1616 — spacing.lg (24) -> spacing.sm (8). Converges on the desktop
-    // pane's `sectionHeaderRow`, which already uses spacing.sm; the mobile pane
+    // #1616 — space[6] (24) -> space[2] (8). Converges on the desktop
+    // pane's `sectionHeaderRow`, which already uses space[2]; the mobile pane
     // was the outlier. Post-change rhythm: 16pt between adjacent cards, 24pt
     // before a section header.
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingTop: space[2],
+    paddingBottom: space[4],
   },
   mobileUpcomingList: {
     flex: 1,
     minHeight: 0,
   },
   mobileUpcomingContent: {
-    paddingBottom: spacing.xl * 4,
+    paddingBottom: space[7] * 4,
   },
   mobileRecentHeaderWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   mobileRecentRowWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   mobileUpcomingSep: {
-    height: spacing.sm,
+    height: space[2],
   },
   smallPhoneLadderHost: {
     flexShrink: 0,
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    bottom: space[7],
+    paddingHorizontal: space[4],
   },
 
   // Empty state ---------------------------------------------------------
   emptyCol: {
-    gap: spacing.md,
+    gap: space[4],
   },
   emptyTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
-    marginTop: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginTop: space[1],
   },
   emptyBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginTop: space[2],
   },
   emptyChipName: {
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "600",
   },
   // ORCH-0826 M0: emphasis style for the empty-state copy pointing at
   // the top-bar "+" universal creator.
   emptyEmphasis: {
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
 
   // Greeting ------------------------------------------------------------
   greetingTier: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 0.4,
-    color: textTokens.tertiary,
+    color: color.text3,
     textTransform: "uppercase",
   },
 
@@ -1439,19 +1437,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[1],
+    paddingTop: space[2],
   },
   sectionTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
   },
   sectionLink: {
-    fontSize: typography.bodySm.fontSize,
-    color: accent.warm,
+    fontSize: type.small.fontSize,
+    color: color.text1,
     fontWeight: "600",
   },
   sectionLinkButton: {
@@ -1459,13 +1457,14 @@ const styles = StyleSheet.create({
     minWidth: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radiusTokens.sm,
   },
   sectionLinkButtonPressed: { opacity: 0.65 },
+  // #4420: the focus ring is paper (TOKENS §5), not orange.
   sectionLinkButtonFocused: {
     borderWidth: 2,
-    borderColor: accent.warm,
+    borderColor: color.focus,
   },
   recentBannerRow: {
     minHeight: 44,
@@ -1475,57 +1474,57 @@ const styles = StyleSheet.create({
   recentRetryButton: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   recentBanner: {
     flex: 1,
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    paddingBottom: spacing.sm,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    paddingBottom: space[2],
   },
   recentSkeletons: {
     width: "100%",
-    gap: spacing.sm,
-    paddingBottom: spacing.md,
+    gap: space[2],
+    paddingBottom: space[4],
   },
   recentSkeleton: {
     minHeight: 84,
     borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     opacity: 0.55,
   },
   nextActionChooser: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
 
   // Event rows ----------------------------------------------------------
   eventsCol: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   desktopEventsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 0,
-    marginHorizontal: -spacing.xs,
-    paddingBottom: spacing.lg,
+    marginHorizontal: -space[1],
+    paddingBottom: space[6],
   },
   desktopEventCell: {
     width: "25%",
-    paddingHorizontal: spacing.xs,
-    marginBottom: spacing.sm,
+    paddingHorizontal: space[1],
+    marginBottom: space[2],
   },
   eventRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   eventCoverWrap: {
     width: 56,
@@ -1541,16 +1540,16 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   eventTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   eventWhen: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   eventSoldCol: {
     alignItems: "flex-end",
@@ -1558,20 +1557,20 @@ const styles = StyleSheet.create({
     minWidth: 74,
   },
   eventSoldValue: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   eventRevenueValue: {
     fontSize: 11,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
     marginTop: 2,
   },
   eventSoldLabel: {
     fontSize: 10,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 
   // Empty action --------------------------------------------------------
@@ -1579,20 +1578,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: spacing.xs,
+    gap: space[1],
     minHeight: 40,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
-    marginTop: spacing.md,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
+    marginTop: space[4],
   },
   emptyBuildActionText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 });

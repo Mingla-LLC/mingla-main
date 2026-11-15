@@ -37,11 +37,10 @@ import {
 } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useEventTicketCheckoutAccess } from "../../hooks/useEventTicketCheckoutAccess";
 import {
@@ -191,7 +190,7 @@ export const EventTicketCheckoutAccessCard: React.FC<
       <View style={styles.host} testID={`${testID}-loading`}>
         <Text style={styles.heading}>Eligible buyers</Text>
         <View style={styles.row}>
-          <ActivityIndicator size="small" color={accent.warm} />
+          <ActivityIndicator size="small" color={color.text2} />
           <Text style={styles.body}>Loading who can buy…</Text>
         </View>
       </View>
@@ -333,7 +332,7 @@ export const EventTicketCheckoutAccessCard: React.FC<
         autoCapitalize="none"
         autoCorrect={false}
         placeholder="exact username"
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         editable={!saving}
         accessibilityLabel="Approve by Mingla username"
         style={styles.input}
@@ -404,7 +403,7 @@ export const EventTicketCheckoutAccessCard: React.FC<
 
       {saving ? (
         <View style={styles.row} testID={`${testID}-saving`}>
-          <ActivityIndicator size="small" color={accent.warm} />
+          <ActivityIndicator size="small" color={color.text2} />
           <Text style={styles.body}>Saving…</Text>
         </View>
       ) : null}
@@ -416,102 +415,102 @@ const styles = StyleSheet.create({
   host: {
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: accent.border,
-    padding: spacing.md,
-    gap: spacing.sm,
+    borderColor: color.lineStrong,
+    padding: space[4],
+    gap: space[2],
   },
   heading: {
-    fontSize: typography.h3.fontSize,
+    fontSize: type.h1.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   banner: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "600",
   },
   announcement: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     fontWeight: "600",
   },
   warning: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "600",
   },
-  list: { gap: spacing.xs },
+  list: { gap: space[1] },
   member: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   memberLabel: {
     flex: 1,
     minWidth: 0,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
     fontWeight: "600",
   },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  row: { flexDirection: "row", alignItems: "center", gap: space[2] },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   input: {
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
-    borderColor: accent.border,
-    paddingHorizontal: spacing.sm,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[2],
     paddingVertical: 10,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
   },
   primaryButton: {
     alignSelf: "flex-start",
     borderRadius: radiusTokens.sm,
-    backgroundColor: accent.warm,
-    paddingHorizontal: spacing.md,
+    backgroundColor: color.paper,
+    paddingHorizontal: space[4],
     paddingVertical: 10,
   },
   primaryButtonText: {
-    fontSize: typography.buttonMd.fontSize,
+    fontSize: type.btnSm.fontSize,
     fontWeight: "700",
-    color: textTokens.inverse,
+    color: color.ink,
   },
   secondaryButton: {
     alignSelf: "flex-start",
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
-    borderColor: accent.border,
-    paddingHorizontal: spacing.md,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[4],
     paddingVertical: 10,
   },
   secondaryButtonText: {
-    fontSize: typography.buttonMd.fontSize,
+    fontSize: type.btnSm.fontSize,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
   },
   dangerButton: {
     alignSelf: "flex-start",
     borderRadius: radiusTokens.sm,
-    backgroundColor: accent.warm,
-    paddingHorizontal: spacing.md,
+    backgroundColor: color.danger,
+    paddingHorizontal: space[4],
     paddingVertical: 10,
   },
   dangerButtonText: {
-    fontSize: typography.buttonMd.fontSize,
+    fontSize: type.btnSm.fontSize,
     fontWeight: "700",
-    color: textTokens.inverse,
+    color: color.textStrong,
   },
-  confirm: { gap: spacing.sm },
+  confirm: { gap: space[2] },
 });

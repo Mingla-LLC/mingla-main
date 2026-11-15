@@ -84,7 +84,9 @@ describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
       "CreatorStep5Tickets",
       "CreatorStep6Settings",
       "CreatorStep7Preview",
-      "label=\"Continue\"",
+      // [TEST-MOD-APPROVED #4420] — the one sticky footer names Continue
+      // (Invite people uses its own label), so the token is the fallback.
+      ': "Continue"}',
       "onPublishDraft",
     ]) {
       expect(wizard).toContain(token);

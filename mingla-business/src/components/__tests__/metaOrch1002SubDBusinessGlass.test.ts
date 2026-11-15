@@ -182,6 +182,8 @@ describe("Sub-D Symptom-A — swept surfaces carry overflow: 'hidden'", () => {
     const code = stripComments(read("event/CreatorStep2When.tsx"));
     const block = styleBlock(code, "countInputWrap");
     expect(block).not.toBeNull();
-    expect(block!).toMatch(/backgroundColor:\s*glass\.tint\.profileBase/);
+    // [TEST-MOD-APPROVED #4420] — the same translucent wash now comes from
+    // its Graphite role token (`glass.tint.profileBase` aliased `color.fill.inset`).
+    expect(block!).toMatch(/backgroundColor:\s*color\.fill\.inset/);
   });
 });

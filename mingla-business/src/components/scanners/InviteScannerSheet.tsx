@@ -24,11 +24,10 @@ import {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useInviteScanner } from "../../hooks/useScannerInvitations";
 import {
@@ -39,6 +38,7 @@ import type { LiveEvent } from "../../store/liveEventStore";
 import { scannerDoorPaymentsCopy } from "../door/scannerDoorPaymentsCopy";
 
 import { Button } from "../ui/Button";
+import { Segmented } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 
@@ -203,7 +203,7 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
                 value={name}
                 onChangeText={setName}
                 placeholder="Tunde Olu"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 maxLength={NAME_MAX}
                 style={styles.input}
                 editable={!submitting}
@@ -230,7 +230,7 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
                 value={email}
                 onChangeText={setEmail}
                 placeholder="tunde@example.com"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -245,57 +245,30 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
             ) : null}
           </View>
 
-          {/* Scope picker */}
+          {/* #4420 (round-3 item 5) — scanner access is a two-tab switcher,
+              "This event" | "Brand events", with the consequence on one
+              line under it. Brand-only opens show the brand line alone. */}
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Access</Text>
             {eventScopeAllowed ? (
-              <Pressable
-                onPress={() => !submitting && setScope("event")}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: scope === "event" }}
-                accessibilityLabel="This event only"
-                disabled={submitting}
-                style={[
-                  styles.scopeOption,
-                  scope === "event" && styles.scopeOptionOn,
+              <Segmented<ScannerInvitationScope>
+                options={[
+                  { key: "event", label: "This event", disabled: submitting, testID: "scanner-scope-event" },
+                  { key: "brand", label: "Brand events", disabled: submitting, testID: "scanner-scope-brand" },
                 ]}
-              >
-                <View style={styles.scopeBullet}>
-                  {scope === "event" ? (
-                    <View style={styles.scopeBulletDot} />
-                  ) : null}
-                </View>
-                <View style={styles.scopeBody}>
-                  <Text style={styles.scopeLabel}>This event only</Text>
-                  <Text style={styles.scopeSub}>
-                    They can scan {event?.name ?? "this event"}.
-                  </Text>
-                </View>
-              </Pressable>
+                value={scope}
+                onChange={(next) => {
+                  if (!submitting) setScope(next);
+                }}
+                accessibilityLabel="Scanner access"
+                testID="scanner-scope"
+              />
             ) : null}
-            <Pressable
-              onPress={() => !submitting && setScope("brand")}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: scope === "brand" }}
-              accessibilityLabel="Every event in this brand"
-              disabled={submitting}
-              style={[
-                styles.scopeOption,
-                scope === "brand" && styles.scopeOptionOn,
-              ]}
-            >
-              <View style={styles.scopeBullet}>
-                {scope === "brand" ? (
-                  <View style={styles.scopeBulletDot} />
-                ) : null}
-              </View>
-              <View style={styles.scopeBody}>
-                <Text style={styles.scopeLabel}>Every event in this brand</Text>
-                <Text style={styles.scopeSub}>
-                  They can scan tickets at any of your events — now and later.
-                </Text>
-              </View>
-            </Pressable>
+            <Text style={styles.scopeSub}>
+              {scope === "event"
+                ? `They can scan ${event?.name ?? "this event"}.`
+                : "They can scan tickets at any of your events — now and later."}
+            </Text>
           </View>
 
           {/* Accept door payments toggle */}
@@ -366,117 +339,77 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    // #4420: the Sheet owns the 20 side padding.
+    paddingTop: space[4],
+    paddingBottom: space[7],
     flex: 1,
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   subhead: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   scroll: {
     flex: 1,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   scrollContent: {
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   fieldGroup: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   label: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     marginBottom: 6,
   },
   required: {
-    color: accent.warm,
+    color: color.text1,
   },
   inputWrap: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: space[2] + 2,
     paddingVertical: 4,
   },
   inputError: {
-    borderColor: "rgba(235, 120, 37, 0.5)",
+    borderColor: color.lineStrong,
   },
   input: {
     fontSize: 15,
-    color: textTokens.primary,
+    color: color.text1,
     minHeight: 40,
     paddingVertical: 6,
   },
   errorText: {
     fontSize: 12,
-    color: accent.warm,
+    color: color.text1,
     marginTop: 4,
   },
-  scopeOption: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    marginBottom: spacing.xs + 2,
-  },
-  scopeOptionOn: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235, 120, 37, 0.08)",
-  },
-  scopeBullet: {
-    width: 18,
-    height: 18,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
-  },
-  scopeBulletDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: accent.warm,
-  },
-  scopeBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  scopeLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
   scopeSub: {
-    fontSize: 12,
-    color: textTokens.tertiary,
-    marginTop: 2,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[2],
   },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
-    marginBottom: spacing.xs,
+    paddingVertical: space[2],
+    gap: space[4],
+    marginBottom: space[1],
   },
   toggleCol: {
     flex: 1,
@@ -485,38 +418,39 @@ const styles = StyleSheet.create({
   toggleLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   toggleSubline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   toggleTrack: {
     width: 44,
     height: 26,
     borderRadius: 999,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: color.fill.step,
     padding: 3,
     justifyContent: "center",
   },
   toggleTrackOn: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   toggleThumb: {
     width: 20,
     height: 20,
     borderRadius: 999,
-    backgroundColor: "#ffffff",
+    backgroundColor: color.text1,
   },
   toggleThumbOn: {
+    backgroundColor: color.ink,
     transform: [{ translateX: 18 }],
   },
   actions: {
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
   actionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
 });
 
