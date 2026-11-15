@@ -93,6 +93,8 @@ export function resolveBusinessOneLinkDestination(
 
 export const PRE_INIT_EVENT_QUEUE_MAX = 50;
 export const APPSFLYER_EMAIL_CRYPT_SHA256 = 3;
+export const APPSFLYER_CLEARED_EMAILS: string[] = [""];
+export const UNINSTALL_TOKEN_SENT_KEY = "@mingla_business_af_uninstall_token_sent";
 export const HOST_INSTALL_ATTRIBUTION_KEY = "@mingla_host_install_attribution";
 export const AF_SUB1_REFERRAL_PREFIX = "ref:";
 

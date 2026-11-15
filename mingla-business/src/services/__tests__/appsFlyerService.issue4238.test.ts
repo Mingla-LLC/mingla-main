@@ -1,5 +1,6 @@
 // MINGLA-INVARIANT: I-4238-AF-RESPECTS-OPT-OUT | issue #4238 | with the Host analytics opt-out on, AppsFlyer is anonymized and no AppsFlyer event, hashed email or uninstall token is sent.
 // MINGLA-INVARIANT: I-4238-AF-START-NEVER-LOST | issue #4238 | a Host AppsFlyer event or customer id set before init completes is applied exactly once after init, in order (at most 50 events, dropped on sign-out).
+// MINGLA-INVARIANT: I-4238-AF-UNINSTALL-AFTER-START | issue #4238 | the Host uninstall (push) token reaches AppsFlyer only after initSdk (which runs post-ATT and starts the SDK), and the same token is not re-applied on a later launch unless the user opted out and back in.
 /**
  * #4238 Wave 6, Host app (mingla-business): W6-1 pre-init queue, W6-5
  * uninstall token, W6-6 opt-out, W6-7 registration once + method, W6-8 OneLink
@@ -22,7 +23,18 @@ const rt: {
 const store = new Map<string, string>();
 
 const mockLogEvent = jest.fn();
-const mockSetUserEmails = jest.fn((_o: unknown, ok: (r: unknown) => void) => ok({}));
+// Mirrors react-native-appsflyer 6.18: iOS and Android reject an empty list.
+const mockClearRejected = jest.fn();
+const mockSetUserEmails = jest.fn(
+  (o: { emails?: string[] }, ok: (r: unknown) => void, fail: (e: unknown) => void) => {
+    if (!o.emails || o.emails.length === 0) {
+      mockClearRejected(o);
+      fail({ code: "ENO ARGUMENTS FOUND OR LIST IS CORRUPTED0" });
+      return;
+    }
+    ok({});
+  },
+);
 const mockAnonymize = jest.fn();
 const mockUninstall = jest.fn();
 const mockSetCustomerUserId = jest.fn();
@@ -173,10 +185,11 @@ describe("#4238 Wave 6 Host AppsFlyer", () => {
     expect(svc.APPSFLYER_EMAIL_CRYPT_SHA256).toBe(3);
     svc.clearAppsFlyerUserId();
     expect(mockSetUserEmails).toHaveBeenLastCalledWith(
-      { emails: [], emailsCryptType: 3 },
+      { emails: [""], emailsCryptType: 3 },
       expect.any(Function),
       expect.any(Function),
     );
+    expect(mockClearRejected).not.toHaveBeenCalled();
     mockSetUserEmails.mockClear();
     setOptOut(true);
     svc.setAppsFlyerUserId("u-1");
@@ -189,13 +202,80 @@ describe("#4238 Wave 6 Host AppsFlyer", () => {
     svc.initializeAppsFlyer();
     expect(rt.tokenListener).not.toBeNull();
     rt.tokenListener?.(APNS.toUpperCase());
+    await flush();
     expect(mockUninstall).not.toHaveBeenCalled();
     rt.initOk?.({});
+    await flush();
     expect(mockUninstall).toHaveBeenCalledWith(APNS, expect.any(Function));
     rt.tokenListener?.(APNS);
+    await flush();
     expect(mockUninstall).toHaveBeenCalledTimes(1);
     rt.tokenListener?.("b".repeat(64));
+    await flush();
     expect(mockUninstall).toHaveBeenCalledTimes(2);
+  });
+
+  test("sim rework F2 sign-out clears the hashed email with a list the bridge accepts; a signed-out launch makes no call", async () => {
+    rt.user = { id: "u-1", email: "host@example.com" };
+    const svc = await importService();
+    svc.initializeAppsFlyer();
+    rt.initOk?.({});
+    svc.clearAppsFlyerUserId(); // signed-out launch: nothing was set
+    expect(mockSetUserEmails).not.toHaveBeenCalled();
+    svc.setAppsFlyerUserId("u-1");
+    await flush();
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      svc.clearAppsFlyerUserId();
+      expect(mockClearRejected).not.toHaveBeenCalled();
+      expect(warn.mock.calls.some((c) => String(c[0]).includes("clear emails"))).toBe(false);
+    } finally {
+      warn.mockRestore();
+    }
+    const last = mockSetUserEmails.mock.calls.at(-1);
+    expect(last?.[0]).toEqual({ emails: [""], emailsCryptType: 3 });
+    expect(JSON.stringify(last?.[0])).not.toContain("host@example.com");
+  });
+
+  test("sim rework F1 the uninstall token is never sent before initSdk's callback (post-ATT start)", async () => {
+    const svc = await importService();
+    svc.updateAppsFlyerUninstallToken(APNS); // before initializeAppsFlyer (ATT pending)
+    svc.initializeAppsFlyer();
+    rt.tokenListener?.(APNS);
+    await flush();
+    expect(mockUninstall).not.toHaveBeenCalled();
+    rt.initOk?.({});
+    await flush();
+    expect(mockUninstall).toHaveBeenCalledTimes(1);
+  });
+
+  test("sim rework F3 the same token is not re-applied on the next launch; a new token or an opt-out round trip re-applies", async () => {
+    const launch = async (token: string) => {
+      jest.resetModules();
+      rt.listeners = [];
+      const svc = await importService();
+      svc.initializeAppsFlyer();
+      rt.initOk?.({});
+      rt.tokenListener?.(token);
+      await flush();
+      await flush();
+      return svc;
+    };
+    await launch(APNS);
+    expect(mockUninstall).toHaveBeenCalledTimes(1);
+    await launch(APNS);
+    expect(mockUninstall).toHaveBeenCalledTimes(1);
+    await launch("b".repeat(64));
+    expect(mockUninstall).toHaveBeenCalledTimes(2);
+    setOptOut(true);
+    await flush();
+    rt.tokenListener?.("b".repeat(64));
+    await flush();
+    expect(mockUninstall).toHaveBeenCalledTimes(2);
+    setOptOut(false);
+    await flush();
+    await flush();
+    expect(mockUninstall).toHaveBeenCalledTimes(3);
   });
 
   test("W6-5 Android sends the FCM token and refuses a Firebase Installation ID loudly", async () => {
@@ -208,6 +288,7 @@ describe("#4238 Wave 6 Host AppsFlyer", () => {
     expect(mockUninstall).not.toHaveBeenCalled();
     expect(err).toHaveBeenCalledWith(expect.stringContaining("Firebase Installation ID"));
     rt.tokenListener?.(FCM);
+    await flush();
     expect(mockUninstall).toHaveBeenCalledWith(FCM, expect.any(Function));
     err.mockRestore();
     expect(svc.classifyUninstallToken("not-hex", "ios")).toEqual({ ok: false, reason: "not_apns_hex" });
