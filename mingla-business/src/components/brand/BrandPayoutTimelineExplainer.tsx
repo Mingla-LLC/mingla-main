@@ -139,7 +139,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: space[2],
     paddingBottom: space[4],
     gap: space[4],
   },

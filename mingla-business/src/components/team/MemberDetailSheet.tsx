@@ -389,9 +389,9 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: space[6],
     paddingTop: space[4],
     paddingBottom: space[7],
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   title: {
     fontSize: 20,

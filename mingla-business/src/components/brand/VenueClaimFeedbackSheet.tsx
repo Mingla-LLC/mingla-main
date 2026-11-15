@@ -385,9 +385,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: space[6],
     paddingTop: space[4],
     paddingBottom: space[7],
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   headerTitle: {
     ...type.h1,

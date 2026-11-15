@@ -113,9 +113,9 @@ export const RolePickerSheet: React.FC<RolePickerSheetProps> = ({
 
 const styles = StyleSheet.create({
   sheetContent: {
-    paddingHorizontal: space[6],
     paddingTop: space[4],
     paddingBottom: space[7],
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   sheetTitle: {
     fontSize: 22,

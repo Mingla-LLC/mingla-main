@@ -699,6 +699,6 @@ const styles = StyleSheet.create({
   pgfill: { height: "100%", backgroundColor: ui.accent },
   phoneBody: { padding: 14, paddingBottom: 120 },
   phoneActions: { padding: 14, gap: 8 },
-  sheetBody: { padding: space[4], gap: 8 },
+  sheetBody: { paddingVertical: space[4], gap: space[2] },
   readyBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" },
 });

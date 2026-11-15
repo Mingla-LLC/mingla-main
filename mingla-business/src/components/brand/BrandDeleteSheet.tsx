@@ -579,9 +579,9 @@ export const BankPayoutsPreviewRow: React.FC<{ hasBankPayouts: boolean }> = ({ h
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: space[6],
     paddingTop: space[6],
     paddingBottom: space[7],
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   title: {
     fontSize: type.h1.fontSize,

@@ -438,10 +438,10 @@ function errorMessageFor(err: unknown): string {
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: space[6],
     paddingTop: space[4],
     paddingBottom: space[7],
     flex: 1,
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   title: {
     fontSize: 22,

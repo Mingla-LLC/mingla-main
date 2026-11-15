@@ -366,7 +366,6 @@ const styles = StyleSheet.create({
   },
   sheetWrap: {
     flex: 1,
-    paddingHorizontal: space[4],
     paddingTop: space[4],
     paddingBottom: space[6],
     gap: space[2],

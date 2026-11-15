@@ -275,10 +275,10 @@ export const BrandAvatarPickerSheet: React.FC<BrandAvatarPickerSheetProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: space[6],
     paddingTop: space[6],
     paddingBottom: space[7],
     gap: space[4],
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   title: {
     fontSize: type.h1.fontSize,
