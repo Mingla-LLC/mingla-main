@@ -26,8 +26,8 @@ import { GlassCard } from '../ui/GlassCard';
 import { GlassIconButton } from '../ui/GlassIconButton';
 import { Icon, type IconName } from '../ui/Icon';
 import { BaseBottomSheet, BottomSheetTextInput } from '../ui/BaseBottomSheet';
-import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
-import { useKeyboard } from '../../hooks/useKeyboard';
+import { ScrollView as SmartScrollView } from '../../wrappers/SmartScrollView';
+import { useKeyboardIsVisible } from '../../wrappers/useKeyboardIsVisible';
 import { programBackNav, runProgramNav } from './programNav';
 import { glass } from '../../constants/designSystem';
 
@@ -92,20 +92,19 @@ type ScreenProps = {
  * automatic scroll insets re-measured when a pushed screen came back and
  * counted the status bar twice, leaving a gap at the top.
  *
- * Keyboard rule: the focused field scrolls to just above the keyboard
- * (KeyboardAwareScrollView), and the footer button hides while typing so it
- * never rides up over the field.
+ * Keyboard rule (#4430): the library's native scroll view follows the focused
+ * field. The footer stays mounted and is only hidden while typing, so the scroll
+ * frame never changes size while the keyboard moves.
  */
 export function ProgramScreen({ title, children, footer, right, onBack, refreshing, onRefresh, contentStyle }: ScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
-  const { isVisible: typing } = useKeyboard({ disableLayoutAnimation: true });
-  const showFooter = Boolean(footer) && !typing;
+  const typing = useKeyboardIsVisible();
   return <View style={[styles.safe, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
     <Stack.Screen options={{ headerShown: false }} />
     <ProgramHeader title={title} right={right} onBack={onBack} />
-    <KeyboardAwareScrollView
+    <SmartScrollView
       style={styles.flex}
-      contentContainerStyle={[styles.content, contentStyle, !showFooter && { paddingBottom: 48 + insets.bottom }]}
+      contentContainerStyle={[styles.content, contentStyle, !footer && { paddingBottom: 48 + insets.bottom }]}
       automaticallyAdjustContentInsets={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustKeyboardInsets={false}
@@ -114,8 +113,9 @@ export function ProgramScreen({ title, children, footer, right, onBack, refreshi
       refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={C.accent} /> : undefined}
     >
       {children}
-    </KeyboardAwareScrollView>
-    {showFooter ? <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}>{footer}</View> : null}
+    </SmartScrollView>
+    {footer ? <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }, typing && styles.footerHidden]} pointerEvents={typing ? 'none' : 'auto'}
+      accessibilityElementsHidden={typing} importantForAccessibility={typing ? 'no-hide-descendants' : 'auto'}>{footer}</View> : null}
   </View>;
 }
 
@@ -267,9 +267,13 @@ export function ProgramField({ label, error, hint, prefix, suffix, counter, inSh
       />
       {suffix ? <Text style={styles.affix}>{suffix}</Text> : null}
     </View>
-    {error ? <Text style={styles.fieldErrorText} accessibilityLiveRegion="polite">{error}</Text>
-      : under ? <Text style={styles.fieldHint}>At least {counter!.min!.toLocaleString()} characters</Text>
-      : hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+    {/* #4430: the helper row always takes one line, so a hint or error appearing never moves the fields below. */}
+    <View style={styles.fieldHelp}>
+      {error ? <Text style={styles.fieldErrorText} accessibilityLiveRegion="polite">{error}</Text>
+        : under ? <Text style={styles.fieldHint}>At least {counter!.min!.toLocaleString()} characters</Text>
+        : hint ? <Text style={styles.fieldHint}>{hint}</Text>
+        : <Text style={styles.fieldHint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{' '}</Text>}
+    </View>
   </View>;
 }
 
@@ -340,6 +344,7 @@ export const programStyles = StyleSheet.create({
   headerTitle: { flex: 1, color: C.text, fontSize: 17, fontWeight: '800', textAlign: 'center' },
   headerRight: { minWidth: 40, alignItems: 'flex-end' },
   content: { padding: 16, paddingBottom: 48, gap: 14 },
+  footerHidden: { opacity: 0 },
   footer: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border, backgroundColor: C.canvas },
   card: { marginHorizontal: 0, marginBottom: 0, paddingHorizontal: 16, paddingVertical: 16 },
   cardInner: { gap: 10 },
@@ -393,6 +398,7 @@ export const programStyles = StyleSheet.create({
   select: { justifyContent: 'space-between' },
   selectText: { paddingVertical: 14 },
   fieldErrorText: { color: C.danger, fontSize: 13, lineHeight: 18 },
+  fieldHelp: { minHeight: 18 },
   fieldHint: { color: C.faint, fontSize: 12, lineHeight: 17 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingTop: 4, paddingBottom: 12 },
   sheetTitle: { flex: 1, color: C.text, fontSize: 19, fontWeight: '900' },

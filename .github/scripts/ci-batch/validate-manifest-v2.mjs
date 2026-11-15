@@ -500,7 +500,9 @@ export function phase3dContractDigest(manifest) {
 // #4238 integration: merged origin/main 10ffda1eb5 (#4430 20280707424430 kept before the three #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 integration 2: merged origin/main ad97118a28 (#4339 20280708004339 and its implementor/tester proofs kept after the three #4238 rows); re-sealed.
 // #4238 order after production: renamed the three #4238 migrations (M-1, M-3, M-2) from 20280707*4238 to 20280708014238/20280708024238/20280708034238 (after 20280708004339, already applied in production), same relative order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7dd0311f4e61034f58c5023bba506a3e0da6a4c7e381fdf0efdf4b0854e01ec9";
+// #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4238 integration 3: merged origin/main f512401461 (#4438 #4430 local review owner-read pg17 suite kept beside the #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "77a3064bccb83a7c628d4b752200073497b6f942f3d4f9b4e5aa3cbf4a162181";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
