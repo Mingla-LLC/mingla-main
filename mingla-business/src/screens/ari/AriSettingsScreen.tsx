@@ -26,6 +26,8 @@ import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useAriKnowledge } from "../../hooks/useAriKnowledge";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { DesktopColumns } from "../../components/ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Icon } from "../../components/ui/Icon";
 // #4420 round 3 item 12: a time zone is never shown as a slug
 // ("America/New_York"); the shared picker shows "Eastern Time (New York) ·
@@ -91,6 +93,7 @@ export const AriSettingsScreen: React.FC = () => {
   const prefs = useAriPreferences();
   const currentBrand = useCurrentBrand();
   const knowledge = useAriKnowledge(currentBrand?.id ?? null);
+  const { isWideDesktop } = useResponsiveLayout();
   const [displayName, setDisplayName] = useState(
     prefs.profile?.display_name ?? "",
   );
@@ -235,24 +238,7 @@ export const AriSettingsScreen: React.FC = () => {
     }
   };
 
-  return (
-    <View style={[styles.host, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Back to chat"
-        >
-          <Icon name="chevL" size={20} color={color.text2} />
-          <Text style={styles.backText}>Back</Text>
-        </Pressable>
-        <Text style={styles.title} accessibilityRole="header">Ari Settings</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Mode */}
+  const modeSection = (
         <Section title="Mode">
           <View style={styles.row}>
             <Text style={styles.rowLabel}>
@@ -264,8 +250,8 @@ export const AriSettingsScreen: React.FC = () => {
             Autopilot for reads is coming in a future update.
           </Text>
         </Section>
-
-        {/* What Ari knows */}
+  );
+  const knowsSection = (
         <Section title="What Ari knows about you">
           <FieldRow label="Display name">
             <TextInput
@@ -293,7 +279,8 @@ export const AriSettingsScreen: React.FC = () => {
             <Text style={styles.saveBtnText}>Save</Text>
           </Pressable>
         </Section>
-
+  );
+  const remembersSection = (
         <Section
           title={`What Ari remembers${currentBrand ? ` · ${currentBrand.displayName}` : ""}`}
         >
@@ -417,7 +404,8 @@ export const AriSettingsScreen: React.FC = () => {
             );
           })}
         </Section>
-
+  );
+  const tasksSection = (
         <Section title="Long-running tasks">
           <Text style={styles.about}>
             Ari keeps completed steps when you close the app. Pause, resume, or
@@ -491,8 +479,8 @@ export const AriSettingsScreen: React.FC = () => {
             </View>
           ))}
         </Section>
-
-        {/* Privacy */}
+  );
+  const privacySection = (
         <Section title="Privacy">
           <Pressable
             onPress={handleDeleteAll}
@@ -506,8 +494,8 @@ export const AriSettingsScreen: React.FC = () => {
             <Text style={styles.destructiveText}>Delete all Ari data</Text>
           </Pressable>
         </Section>
-
-        {/* About */}
+  );
+  const aboutSection = (
         <Section title="About">
           <Text style={styles.about}>
             {"Ari is powered by Mingla's AI. Your conversations are stored so "}
@@ -515,8 +503,9 @@ export const AriSettingsScreen: React.FC = () => {
             {"or tax advisor."}
           </Text>
         </Section>
-
-        {__DEV__ ? (
+  );
+  const previewSection = (
+        __DEV__ ? (
           <Section title="Local preview">
             <Text style={styles.about}>
               Inspect every Ari response, research, recovery, and memory state
@@ -534,7 +523,44 @@ export const AriSettingsScreen: React.FC = () => {
               <Text style={styles.previewBtnText}>Open 65-state gallery</Text>
             </Pressable>
           </Section>
-        ) : null}
+        ) : null
+  );
+
+  return (
+    <View style={[styles.host, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Back to chat"
+        >
+          <Icon name="chevL" size={20} color={color.text2} />
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
+        <Text style={styles.title} accessibilityRole="header">Ari Settings</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* #4420 kit (ari-settings__form, web): desktop lays the cards in
+            two columns; the phone keeps one column in the original order. */}
+        {isWideDesktop ? (
+          <DesktopColumns
+            main={<View style={styles.column}>{modeSection}{remembersSection}{tasksSection}</View>}
+            aside={<View style={styles.column}>{knowsSection}{privacySection}{aboutSection}{previewSection}</View>}
+          />
+        ) : (
+          <>
+            {modeSection}
+            {knowsSection}
+            {remembersSection}
+            {tasksSection}
+            {privacySection}
+            {aboutSection}
+            {previewSection}
+          </>
+        )}
       </ScrollView>
       <ConfirmDialog
         visible={forgetTarget !== null}
@@ -621,9 +647,10 @@ const styles = StyleSheet.create({
     gap: space[4],
     paddingBottom: space[9],
     width: "100%",
-    maxWidth: 720,
+    maxWidth: 1120,
     alignSelf: "center",
   },
+  column: { gap: space[4] },
   // #4420 kit (ari-settings__form): each section is one card with its label
   // inside, phone card radius, 20 inner padding.
   section: {

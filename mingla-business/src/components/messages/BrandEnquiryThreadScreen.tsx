@@ -50,6 +50,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { SafeScreen } from "../ui/SafeScreen";
 import { Toast } from "../ui/Toast";
+import { webPrivacyMaxHeight } from "./webViewportPin";
 import { BrandEnquiryStatusPill } from "./BrandEnquiryListSection";
 
 export const BRAND_ENQUIRY_REPORT_REASONS: ReadonlyArray<{ key: string; label: string }> = [
@@ -189,6 +190,8 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
         Platform.OS === "web" && windowHeight > 0
           ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
           : null,
+        // #4420: capped clear of the Privacy & ad choices strip.
+        webPrivacyMaxHeight(),
       ]}
       testID="brand-enquiry-thread"
     >

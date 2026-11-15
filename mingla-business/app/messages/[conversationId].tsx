@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { webPrivacyMaxHeight } from "../../src/components/messages/webViewportPin";
 import {
   ActivityIndicator,
   Alert,
@@ -192,6 +193,8 @@ function BrandGroupMessagesShell({ conversationId }: { conversationId: string | 
       style={[
         styles.desktopShell,
         Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight } : null,
+        // #4420: capped clear of the Privacy & ad choices strip.
+        webPrivacyMaxHeight(),
       ]}
       testID="brand-group-desktop-shell"
     >
@@ -799,6 +802,8 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
         Platform.OS === "web" && windowHeight > 0
           ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
           : null,
+        // #4420: capped clear of the Privacy & ad choices strip.
+        webPrivacyMaxHeight(),
       ]}
       testID="brand-group-thread"
     >

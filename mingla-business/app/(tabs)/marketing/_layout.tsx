@@ -22,6 +22,7 @@ import {
 } from "../../../src/components/marketing/MarketingActionContext";
 import { MarketingActionButton } from "../../../src/components/marketing/MarketingActionButton";
 import { isMarketingDetailRoute } from "../../../src/components/marketing/marketingSubNavTabs";
+import { webPrivacyMaxHeight } from "../../../src/components/messages/webViewportPin";
 import { MarketingBrandSwitcherProvider } from "../../../src/components/people/MarketingBrandSwitcherContext";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { color, space } from "../../../src/constants/designSystem";
@@ -131,6 +132,9 @@ export default function MarketingTabLayout(): React.ReactElement {
         Platform.OS === "web" && windowHeight > 0
           ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
           : null,
+        // #4420: capped clear of the Privacy & ad choices strip (the
+        // composer's commit bar sat 28px under it).
+        webPrivacyMaxHeight(),
       ]}
       testID="marketing-tab-layout-host"
     >

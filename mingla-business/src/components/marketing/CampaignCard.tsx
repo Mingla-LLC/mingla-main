@@ -18,6 +18,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
+import { Icon, type IconName } from "../ui/Icon";
 import {
   LIST_METHOD_LABEL,
   type CampaignListGroup,
@@ -25,6 +26,10 @@ import {
 
 export interface CampaignCardProps {
   group: CampaignListGroup;
+  /** #4420: a row inside the grouped list card (no card of its own). */
+  inList?: boolean;
+  /** #4420: draws the hairline above every row but the first. */
+  divided?: boolean;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
   /** Ids of the failed or cancelled methods to delete. */
@@ -33,13 +38,15 @@ export interface CampaignCardProps {
   onOpenReport: (id: string) => void;
 }
 
-const STATUS_ICON: Record<string, string> = {
-  scheduled: "⏰",
-  sent: "✉",
-  sending: "⚡",
-  draft: "📝",
-  failed: "⚠",
-  cancelled: "—",
+// #4420 kit (marketing-campaigns__list): a line icon in a 36 tile, never an
+// emoji (emoji render in each platform's colour font, off the Graphite look).
+const STATUS_ICON: Record<string, IconName> = {
+  scheduled: "clock",
+  sent: "mail",
+  sending: "flash",
+  draft: "edit",
+  failed: "flag",
+  cancelled: "close",
 };
 
 function timeAgo(iso: string | null): string {
@@ -75,9 +82,11 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
   onCancel,
   onDelete,
   onOpenReport,
+  inList = false,
+  divided = false,
 }) => {
   const campaign = group.primary;
-  const icon = STATUS_ICON[group.status] ?? "•";
+  const icon: IconName = STATUS_ICON[group.status] ?? "send";
   const single = group.members.length === 1;
   const scheduled = group.members.filter((row) => row.status === "scheduled");
   const sent = group.members.filter((row) => row.status === "sent");
@@ -196,10 +205,14 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
       }
       style={({ pressed }) => [
         styles.host,
+        inList ? styles.hostInList : null,
+        divided ? styles.hostDivided : null,
         pressed ? styles.hostPressed : null,
       ]}
     >
-      <Text style={styles.statusIcon}>{icon}</Text>
+      <View style={styles.statusIcon}>
+        <Icon name={icon} size={18} color={group.status === "failed" ? color.warning : color.text1} />
+      </View>
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>{campaign.name}</Text>
         {renderMeta()}
@@ -227,26 +240,39 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: space[2],
+    gap: space[3],
     paddingHorizontal: space[4],
-    paddingVertical: space[4],
+    paddingVertical: space[3],
+    minHeight: 64,
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: color.line,
     backgroundColor: color.fill.inset,
   },
+  hostInList: {
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: "transparent",
+  },
+  hostDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+  },
   hostPressed: {
     opacity: 0.85,
   },
   statusIcon: {
-    ...type.h1,
-    color: color.text1,
-    width: 28,
-    textAlign: "center",
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.fill.tile,
   },
   body: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   name: {
