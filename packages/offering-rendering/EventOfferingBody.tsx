@@ -1292,35 +1292,8 @@ export const EventOfferingFloatingBar: React.FC<
 // compact date chip; date/time now renders as the FULL-WIDTH solid-fill `dateRow`
 // inline above the pills band (section 3). No other consumer remained.
 
-// ORCH-1167-R3 (change 2) — EVERY pill carries the SOLID accent fill
-// (palette.accentWash + a border), matching the prior tickets-left chip. The old
-// outlined/translucent `surface.card` variant is gone; `surface` is retained in
-// the signature only for call-site parity (no behavioral use now). Theme-aware
-// (accentWash is derived from the page palette) and Android opaque-glass safe
-// (accentWash is an opaque-ish accent tint, NOT the translucent glass card).
-const Pill: React.FC<{
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  font: string;
-  accent?: boolean;
-  children: React.ReactNode;
-}> = ({ palette, font, children }) => (
-  <View
-    style={[
-      styles.pill,
-      { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
-    ]}
-  >
-    <Text
-      style={[
-        styles.pillText,
-        { color: palette.primaryText, ...themeFontFace(font) },
-      ]}
-    >
-      {children}
-    </Text>
-  </View>
-);
+// issue #4420 — the pills row became the fact rows + the quiet tag line
+// (OfferingFactRows), so the solid-fill Pill component is gone.
 
 const TicketStepperRow: React.FC<{
   ticket: PublicTicketProps;
@@ -1579,46 +1552,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -0.5,
   },
-  // ORCH-1167-R3 (change 1) — date/time is its OWN FULL-WIDTH ROW (`dateRow`),
-  // spanning the content column on mobile + desktop, styled like the solid-fill
-  // pills (palette.accentWash + border) — just full width. The legacy compact
-  // date `metaChip`/`metaGlyph`/`metaText` chip styles were removed with the chip.
-  // `metaRow` (flex-wrap) is retained as the row-wrapper token the R2 regression
-  // asserts; it is no longer applied to the date chips (those moved to dateRow).
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
-  dateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "stretch",
-    width: "100%",
-    gap: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginTop: 12,
-  },
-  dateGlyph: { fontSize: 18, fontWeight: "900" },
-  dateTextCol: { flex: 1, minWidth: 0 },
-  dateLine: { fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
-  dateSubline: { fontSize: 13, fontWeight: "700", marginTop: 2 },
-  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
-  pill: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  pillText: { fontSize: 13, fontWeight: "700" },
+  // issue #4420 — the date band, chip row and pill styles went with the
+  // fact rows (OfferingFactRows owns their layout).
   section: { marginTop: 24 },
   // issue #4420 — the premium rhythm: sections breathe 34pt apart.
   sectionLg: { marginTop: 34 },
-  secTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: -0.3,
-    marginBottom: 12,
-  },
   about: { fontSize: 15.5, lineHeight: 25 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
