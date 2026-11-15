@@ -9,7 +9,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,7 +20,7 @@ import {
   space,
   type,
 } from "../../../src/constants/designSystem";
-import { Icon } from "../../../src/components/ui/Icon";
+import { TopBar } from "../../../src/components/ui/TopBar";
 
 export default function BrandPricingDefaultsRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -41,17 +41,14 @@ export default function BrandPricingDefaultsRoute(): React.ReactElement {
         backgroundColor: color.canvas,
       }}
     >
+      {/* #4420 — the shared pushed-screen bar carries the one title. */}
       <View style={styles.header}>
-        <Pressable
-          onPress={handleBack}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={8}
-          style={styles.backBtn}
-        >
-          <Icon name="chevL" size={22} color={color.text1} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Pricing</Text>
+        <TopBar
+          leftKind="back"
+          title="Pricing defaults"
+          onBack={handleBack}
+          rightSlot={<View />}
+        />
       </View>
       {typeof idParam === "string" && idParam.length > 0 ? (
         <BrandPricingDefaultsView brandId={idParam} />
@@ -62,21 +59,7 @@ export default function BrandPricingDefaultsRoute(): React.ReactElement {
 
 const styles = StyleSheet.create({
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: space[2],
-    paddingVertical: space[2],
-    gap: space[1],
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    fontSize: type.h1.fontSize,
-    fontWeight: "600",
-    color: color.text1,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
 });

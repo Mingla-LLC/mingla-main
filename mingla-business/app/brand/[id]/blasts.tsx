@@ -36,6 +36,8 @@ import { BlastCustomersCta } from "../../../src/components/marketing/BlastCustom
 import { BuyerRow } from "../../../src/components/marketing/BuyerRow";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { Button } from "../../../src/components/ui/Button";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import {
   color,
@@ -51,6 +53,7 @@ import type {
 export default function BrandBlastsRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brandId =
@@ -156,24 +159,39 @@ export default function BrandBlastsRoute(): React.ReactElement {
           leftKind="back"
           title={brand?.displayName ?? "Blasts"}
           onBack={handleBack}
-          rightSlot={null}
+          rightSlot={
+            // #4420 — desktop puts the send action in the header (mockup);
+            // phones keep the sticky bar below.
+            isWideDesktop && customers !== undefined ? (
+              <Button
+                label={`Send blast (${customers.reach.reachable_email})`}
+                variant="primary"
+                size="sm"
+                leadingIcon="send"
+                disabled={customers.reach.reachable_email === 0}
+                onPress={() => handleBlast("brand", brandId ?? "")}
+                accessibilityLabel={`Send blast (${customers.reach.reachable_email})`}
+              />
+            ) : null
+          }
         />
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isWideDesktop && styles.scrollContentDesktop,
+        ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* #4420 — the section label and counts sit above the pane. */}
+        {headerCounts !== null ? (
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardHeaderLabel}>BUYERS</Text>
+            <Text style={styles.cardHeaderCounts}>{headerCounts}</Text>
+          </View>
+        ) : null}
         <GlassCard variant="base" padding={0}>
-          {headerCounts !== null ? (
-            <>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardHeaderLabel}>BUYERS</Text>
-                <Text style={styles.cardHeaderCounts}>{headerCounts}</Text>
-              </View>
-              <View style={styles.cardDivider} />
-            </>
-          ) : null}
           {customers !== undefined
             ? customers.rows.map((buyer) => (
                 <BuyerRow key={buyer.contact_key} buyer={buyer} />
@@ -182,7 +200,7 @@ export default function BrandBlastsRoute(): React.ReactElement {
         </GlassCard>
       </ScrollView>
 
-      {customers !== undefined ? (
+      {customers !== undefined && !isWideDesktop ? (
         <View style={styles.ctaWrap}>
           <BlastCustomersCta
             audienceKind="brand"
@@ -220,8 +238,8 @@ const styles = StyleSheet.create({
   // the old "bare bodyLg text floating on canvas" pattern that read as
   // orphaned per operator visual review 2026-05-12.
   cardHeader: {
-    paddingHorizontal: space[4],
-    paddingVertical: space[4],
+    paddingHorizontal: space[1],
+    paddingBottom: space[2],
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
@@ -243,6 +261,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4], // page margin around the GlassCard
     paddingTop: space[2],
     paddingBottom: 140, // breathe room for sticky CTA (60pt + 8pt + safe-area + buffer)
+  },
+  scrollContentDesktop: {
+    paddingHorizontal: space[6],
+    paddingBottom: space[8],
   },
   ctaWrap: {
     // CTA is glass — DO NOT set an opaque backgroundColor here. The glass

@@ -28,7 +28,9 @@ import {
   scrim,
   space,
   type,
+  suiteFormMaxWidth,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { formatCurrencyRound, currencyCodeOrNull } from "../../utils/currency";
 import { useBrand, brandKeys } from "../../hooks/useBrands";
@@ -56,6 +58,7 @@ export const BrandPricingDefaultsView: React.FC<
   const brand = brandQuery.data ?? null;
   const rqClient = useQueryClient();
   const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const role = useCurrentBrandRole(brandId);
   const taxRegistration = useBrandTaxRegistration(brandId);
   const canEdit = !role.isLoading && !role.isError && canPerformAction(role.rank, "EDIT_TICKET_PRICE");
@@ -138,10 +141,10 @@ export const BrandPricingDefaultsView: React.FC<
   return (
     <ScrollView
       style={styles.host}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, isWideDesktop && styles.contentDesktop]}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.screenTitle}>Pricing defaults</Text>
+      {/* #4420 — the title lives in the route's top bar (no repeat). */}
       <Text style={styles.screenSubtitle}>
         Set once. Every new event, trip and experience starts from these — you
         can override per offering.
@@ -198,6 +201,13 @@ const styles = StyleSheet.create({
   content: {
     padding: space[4],
     paddingBottom: space[7],
+    gap: space[4],
+  },
+  // #4420 — desktop (T4 form column): a readable 720 column, not full width.
+  contentDesktop: {
+    width: "100%",
+    maxWidth: suiteFormMaxWidth + space[6] * 2,
+    paddingHorizontal: space[6],
   },
   screenTitle: {
     fontSize: type.h1.fontSize,
@@ -209,7 +219,7 @@ const styles = StyleSheet.create({
     fontSize: type.small.fontSize,
     lineHeight: type.small.lineHeight,
     color: color.text2,
-    marginTop: space[1],
+    paddingHorizontal: space[1],
   },
   regionChip: {
     paddingVertical: space[1],
