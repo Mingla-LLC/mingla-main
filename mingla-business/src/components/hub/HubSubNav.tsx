@@ -32,7 +32,7 @@ import {
 } from "../../constants/designSystem";
 
 export type HubSubTabId = "events" | "experiences" | "trips" | "venue";
-export type HubDataDrivenTabId = HubSubTabId | "getstarted";
+export type HubDataDrivenTabId = HubSubTabId;
 
 interface HubSubTab {
   readonly id: HubDataDrivenTabId;
@@ -52,7 +52,6 @@ const SUB_TABS: readonly HubSubTab[] = [
 ] as const;
 
 const LABELS: Record<HubDataDrivenTabId, string> = {
-  getstarted: "Get started",
   events: "Events",
   trips: "Trips",
   experiences: "Experiences",
@@ -66,7 +65,6 @@ const LABELS: Record<HubDataDrivenTabId, string> = {
 // the non-existent `/(tabs)/hub/venue` → expo-router 404. Exported so there is
 // exactly ONE place that knows `venue → listing`.
 export const HUB_TAB_ROUTES: Record<HubDataDrivenTabId, string> = {
-  getstarted: "/(tabs)/hub/getstarted",
   events: "/(tabs)/hub/events",
   trips: "/(tabs)/hub/trips",
   experiences: "/(tabs)/hub/experiences",
@@ -77,7 +75,6 @@ const ROUTES = HUB_TAB_ROUTES;
 
 export const detectActiveSubTab = (pathname: string): HubDataDrivenTabId => {
   const lower = pathname.toLowerCase();
-  if (lower.includes("/hub/getstarted")) return "getstarted";
   if (lower.includes("/hub/experiences")) return "experiences";
   if (lower.includes("/hub/trips")) return "trips";
   // ORCH-1145 — Venue tab route file is `listing.tsx` → URL `/(tabs)/hub/listing`.
@@ -88,9 +85,8 @@ export const detectActiveSubTab = (pathname: string): HubDataDrivenTabId => {
 /**
  * #1565 — the visible text of one Hub pill.
  *
- * A data-driven pill reads `"<Label> · <count>"`. Two ids never take a count:
+ * A data-driven pill reads `"<Label> · <count>"`. One id never takes a count:
  *
- *  - `getstarted` is an action, not a collection (pre-existing rule).
  *  - `venue` at ZERO. `deriveHubVisibleTabs` (useHubTabs.ts) shows the Venue
  *    pill when `venueCount > 0` OR one of the legacy `hasPhysicalLocation` /
  *    `hasPlacePool` arms fires. In that second case the tab exists for a
@@ -114,7 +110,6 @@ export const hubPillLabel = (
   count: number | undefined,
 ): string => {
   if (count === undefined) return label;
-  if (id === "getstarted") return label;
   if (id === "venue" && count <= 0) return label;
   return `${label} · ${count}`;
 };

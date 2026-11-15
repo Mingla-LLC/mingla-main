@@ -25,7 +25,6 @@ import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutSt
 export type OfferingKind = "event" | "trip" | "experience" | "rsvp" | "venue";
 export type OfferingChooserVariant =
   | "home-empty"
-  | "hub-getstarted"
   | "brand-create-welcome";
 
 export interface OfferingChooserProps {
@@ -62,10 +61,6 @@ const VARIANT_COPY: Record<
   "home-empty": {
     headline: "Make your first thing",
     subhead: "Start anywhere — you can add the rest anytime.",
-  },
-  "hub-getstarted": {
-    headline: "What are you creating?",
-    subhead: "Pick one and we’ll walk you through it.",
   },
 };
 

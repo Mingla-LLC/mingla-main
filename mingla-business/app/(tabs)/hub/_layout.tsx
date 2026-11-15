@@ -179,16 +179,14 @@ export default function HubTabLayout(): React.ReactElement {
     // back + nav locks"). Only run the visible-tab redirect when we are
     // actually ON a hub sub-route; never hijack navigation to another stack.
     if (!activePath.includes("/hub/")) return;
-    const active: HubTabName = activePath.includes("/hub/getstarted")
-      ? "getstarted"
-      : activePath.includes("/hub/trips")
-        ? "trips"
-        : activePath.includes("/hub/experiences")
-          ? "experiences"
-          : // ORCH-1145 — the Venue tab route file is `listing.tsx`.
-            activePath.includes("/hub/listing")
-            ? "venue"
-            : "events";
+    const active: HubTabName = activePath.includes("/hub/trips")
+      ? "trips"
+      : activePath.includes("/hub/experiences")
+        ? "experiences"
+        : // ORCH-1145 — the Venue tab route file is `listing.tsx`.
+          activePath.includes("/hub/listing")
+          ? "venue"
+          : "events";
     if (!visibleTabs.data.includes(active)) {
       // ORCH-1145 nav-away fix: resolve the target through HUB_TAB_ROUTES (the
       // SAME map HubSubNav uses) instead of string-concatenating the bare tab
@@ -207,13 +205,13 @@ export default function HubTabLayout(): React.ReactElement {
   }, []);
 
   // META-ORCH-1148 — the venue module row's "‹ Hub" chip routes back to a
-  // non-venue offering tab (the first visible one that isn't venue/getstarted),
+  // non-venue offering tab (the first visible one that isn't the venue),
   // which leaves the Venue route → the suite unmounts → its store flag clears →
   // the Hub offering pills render again. Uses the SAME HUB_TAB_ROUTES map the
   // nav-lock redirect uses; no new routing logic.
   const handleBackToHub = useCallback((): void => {
     const tabs = visibleTabs.data ?? [];
-    const fallback = tabs.find((t) => t !== "venue" && t !== "getstarted");
+    const fallback = tabs.find((t) => t !== "venue");
     const dest = fallback ?? "events";
     const segment = HUB_TAB_ROUTES[dest].replace("/(tabs)/hub/", "");
     router.replace(`/(tabs)/hub/${segment}` as never);

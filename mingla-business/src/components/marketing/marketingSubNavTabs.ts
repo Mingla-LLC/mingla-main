@@ -60,8 +60,7 @@ export function isMarketingDetailRoute(pathname: string): boolean {
 
 export function detectMarketingSubNavActive(pathname: string): MarketingSubNavId {
   const lower = pathname.toLowerCase();
-  if (lower.includes("/marketing/people") || lower.includes("/marketing/audiences"))
-    return "people";
+  if (lower.includes("/marketing/people")) return "people";
   if (lower.includes("/marketing/campaigns")) return "campaigns";
   if (lower.includes("/marketing/templates")) return "templates";
   if (lower.includes("/marketing/ads")) return "ads";
