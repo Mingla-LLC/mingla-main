@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4238_phone_e164_tiktok_reddit.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-phone-e164-tiktok-reddit",
+  "profile": "deno-2-unit"
+}

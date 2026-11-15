@@ -91,7 +91,8 @@ export function buildRedditConversionBody(
 ): Record<string, unknown> {
   const user = definedOnly({
     email: input.hashedEmail ?? undefined, // SHA-256 hex (hashed by caller)
-    phone_number: input.hashedPhone ?? undefined,
+    // #4238 P2-1 (Step 0 Z5/Z6): Reddit's phone_number is E.164 (with `+`).
+    phone_number: input.hashedPhoneE164 ?? undefined,
     ip_address: input.clientIpAddress ?? undefined,
     user_agent: input.clientUserAgent ?? undefined,
   } as Record<string, unknown>);

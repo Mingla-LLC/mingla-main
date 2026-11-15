@@ -61,7 +61,8 @@ export async function sendTikTokConversion(
 
   const user = definedOnly({
     email: input.hashedEmail ?? undefined, // SHA-256 hex (hashed by caller)
-    phone: input.hashedPhone ?? undefined, // SHA-256 hex
+    // #4238 P2-1 (Step 0 Z6): TikTok wants SHA-256 of E.164 WITH the `+`.
+    phone: input.hashedPhoneE164 ?? undefined,
     ttclid: input.externalClickId ?? undefined, // raw TikTok click id
     external_id: input.externalId ?? undefined,
     ttp: input.ttp ?? undefined,
