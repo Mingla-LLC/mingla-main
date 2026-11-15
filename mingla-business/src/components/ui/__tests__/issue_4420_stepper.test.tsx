@@ -29,12 +29,12 @@ jest.mock("../Icon", () => ({ Icon: () => null }));
 jest.mock("../Button", () => ({ Button: () => null }));
 jest.mock("../Sheet", () => ({ Sheet: ({ children }: { children: React.ReactNode }) => children }));
 
-import { Stepper, isStepReachable, resolveStepState } from "../Stepper";
+import { Stepper, chipScrollOffset, isStepReachable, isStepSegmentFilled, resolveStepState } from "../Stepper";
 import type { StepperStep } from "../Stepper";
 
 type Node = { type: unknown; props: Record<string, unknown> };
 const TestRenderer = require("react-test-renderer") as {
-  create: (element: React.ReactElement) => { root: { findAll: (p: (n: Node) => boolean) => Node[] }; unmount: () => void };
+  create: (element: React.ReactElement, options?: unknown) => { root: { findAll: (p: (n: Node) => boolean) => Node[] }; update: (element: React.ReactElement) => void; unmount: () => void };
   act: (callback: () => void | Promise<void>) => Promise<void> | void;
 };
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -100,3 +100,71 @@ describe("#4420 Stepper — reachability", () => {
     renderer.unmount();
   });
 });
+
+describe("#4420 Stepper — phone progress and chip scroll", () => {
+  // Brand setup's Get paid step: Basics and Contact were saved and are locked.
+  const BRAND: StepperStep[] = [
+    { id: "basics", label: "Basics", state: "locked", lockedReason: "Saved" },
+    { id: "contact", label: "Contact", state: "locked", lockedReason: "Saved" },
+    { id: "pay", label: "Get paid" },
+    { id: "review", label: "Review", state: "locked", lockedReason: "Finish Get paid first" },
+  ];
+
+  test("a locked step the host already passed fills its segment; a locked step ahead does not", () => {
+    expect(BRAND.map((step, i) => isStepSegmentFilled(step, i, 2))).toEqual([true, true, true, false]);
+  });
+
+  test("`passed` fills a segment wherever it sits; error steps never count as filled", () => {
+    expect(isStepSegmentFilled({ id: "x", label: "X", state: "locked", passed: true }, 3, 1)).toBe(true);
+    expect(isStepSegmentFilled({ id: "x", label: "X", state: "error" }, 0, 2)).toBe(false);
+    expect(isStepSegmentFilled({ id: "x", label: "X" }, 3, 2)).toBe(false);
+  });
+
+  test("chips render the filled segments for passed locked steps", async () => {
+    let renderer!: ReturnType<typeof TestRenderer.create>;
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(<Stepper steps={BRAND} currentIndex={2} onStepPress={() => undefined} layout="chips" testID="brand" />);
+    });
+    const { StyleSheet } = require("react-native") as { StyleSheet: { flatten: (s: unknown) => Record<string, unknown> } };
+    const segments = renderer.root
+      .findAll((n) => typeof n.type === "string" && Array.isArray(n.props.style) && n.props.testID === undefined)
+      .map((n) => StyleSheet.flatten(n.props.style))
+      .filter((st) => st.height === 3);
+    expect(segments).toHaveLength(4);
+    expect(segments.map((st) => st.backgroundColor === segments[2].backgroundColor)).toEqual([true, true, true, false]);
+    renderer.unmount();
+  });
+
+  test("the chip row centres the current chip, never scrolling before the start", () => {
+    expect(chipScrollOffset(400, 80, 300)).toBe(290);
+    expect(chipScrollOffset(20, 80, 300)).toBe(0);
+  });
+
+  test("the chip row scrolls to the current chip on mount and when the step changes", async () => {
+    const scrollTo = jest.fn();
+    let renderer!: ReturnType<typeof TestRenderer.create>;
+    const element = (current: number) => (
+      <Stepper steps={STEPS} currentIndex={current} furthestValidIndex={4} onStepPress={() => undefined} layout="chips" testID="wiz" />
+    );
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(element(3), {
+        createNodeMock: (el: { props: { testID?: string } }) => (el.props.testID === "wiz-chips" ? { scrollTo } : null),
+      } as never);
+    });
+    const layout = (testID: string, x: number, width: number) => {
+      const [node] = renderer.root.findAll((n) => n.props.testID === testID && typeof n.props.onLayout === "function");
+      (node.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { x, y: 0, width, height: 36 } } });
+    };
+    await TestRenderer.act(async () => {
+      layout("wiz-chips", 0, 300);
+      [0, 1, 2, 3, 4].forEach((i) => layout(`wiz-chip-${i}`, i * 100, 90));
+    });
+    expect(scrollTo).toHaveBeenLastCalledWith({ x: chipScrollOffset(300, 90, 300), animated: true });
+    await TestRenderer.act(async () => {
+      renderer.update(element(4));
+    });
+    expect(scrollTo).toHaveBeenLastCalledWith({ x: chipScrollOffset(400, 90, 300), animated: true });
+    renderer.unmount();
+  });
+});
+

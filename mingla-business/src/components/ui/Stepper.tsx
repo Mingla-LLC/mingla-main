@@ -25,7 +25,7 @@
  * Orange is allowed here: steppers and progress are one of the four places.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -70,6 +70,12 @@ export interface StepperStep {
   lockedReason?: string;
   /** #4420: the first validation error on an `error` step. */
   firstError?: string;
+  /**
+   * #4420: the host already got past this step (e.g. a saved step that is now
+   * locked). Its progress segment fills even when its state is `locked`.
+   * Omitted → a locked step before the current one counts as passed.
+   */
+  passed?: boolean;
 }
 
 export type StepperLayout = "inline" | "list" | "chips";
@@ -98,6 +104,26 @@ export const resolveStepState = (step: StepperStep, index: number, currentIndex:
   if (index === currentIndex) return "current";
   return index < currentIndex ? "done" : "todo";
 };
+
+/**
+ * Whether a step's progress segment fills: done and current always; a step
+ * the host has passed (`passed`, or a locked step before the current one)
+ * too. Error steps draw their own red segment.
+ */
+export const isStepSegmentFilled = (step: StepperStep, index: number, currentIndex: number): boolean => {
+  const state = resolveStepState(step, index, currentIndex);
+  if (state === "error") return false;
+  if (state === "done" || state === "current") return true;
+  if (step.passed === true) return true;
+  return state === "locked" && index < currentIndex;
+};
+
+/**
+ * The scroll offset that centres a chip in the chip row, clamped at the start.
+ * The ScrollView clamps the far end itself.
+ */
+export const chipScrollOffset = (chipX: number, chipWidth: number, viewportWidth: number): number =>
+  Math.max(0, chipX + chipWidth / 2 - viewportWidth / 2);
 
 /** Whether pressing step `index` may navigate there. */
 export const isStepReachable = (
@@ -319,6 +345,19 @@ const StepList: React.FC<StepListProps> = ({ steps, currentIndex, onStepPress, f
 const StepChips: React.FC<StepperProps> = (props) => {
   const { steps, currentIndex, onStepPress, furthestValidIndex, sheetTitle = "Steps", testID, style } = props;
   const [sheetOpen, setSheetOpen] = useState(false);
+  // #4420: keep the current step's chip in view, on mount and on every step change.
+  const scrollRef = useRef<ScrollView | null>(null);
+  const chipFrames = useRef<Record<number, { x: number; width: number }>>({});
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [measured, setMeasured] = useState(0);
+  const scrollToCurrent = useCallback((): void => {
+    const frame = chipFrames.current[currentIndex];
+    if (frame === undefined || viewportWidth <= 0) return;
+    scrollRef.current?.scrollTo?.({ x: chipScrollOffset(frame.x, frame.width, viewportWidth), animated: true });
+  }, [currentIndex, viewportWidth]);
+  useEffect(() => {
+    scrollToCurrent();
+  }, [scrollToCurrent, measured]);
   return (
     <View style={[styles.chipsWrap, style]} testID={testID}>
       <View style={styles.segments}>
@@ -329,7 +368,7 @@ const StepChips: React.FC<StepperProps> = (props) => {
               key={step.id}
               style={[
                 styles.segment,
-                state === "done" || state === "current" ? styles.segmentOn : null,
+                isStepSegmentFilled(step, index, currentIndex) ? styles.segmentOn : null,
                 state === "error" ? styles.segmentError : null,
               ]}
             />
@@ -337,7 +376,15 @@ const StepChips: React.FC<StepperProps> = (props) => {
         })}
       </View>
       <View style={styles.chipsRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll} style={styles.chipsScroller}>
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsScroll}
+          style={styles.chipsScroller}
+          onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
+          testID={testID !== undefined ? `${testID}-chips` : undefined}
+        >
           {steps.map((step, index) => {
             const state = resolveStepState(step, index, currentIndex);
             const reachable = onStepPress !== undefined && isStepReachable(step, index, currentIndex, furthestValidIndex);
@@ -350,6 +397,11 @@ const StepChips: React.FC<StepperProps> = (props) => {
                 accessibilityState={{ disabled: !reachable, selected: state === "current" }}
                 accessibilityLabel={`${index + 1}. ${step.label}`}
                 testID={testID !== undefined ? `${testID}-chip-${index}` : undefined}
+                onLayout={(event) => {
+                  const { x, width } = event.nativeEvent.layout;
+                  chipFrames.current[index] = { x, width };
+                  if (index === currentIndex) setMeasured((n) => n + 1);
+                }}
                 style={[
                   styles.chip,
                   state === "current" ? styles.chipOn : null,
