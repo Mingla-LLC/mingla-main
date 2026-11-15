@@ -685,6 +685,8 @@ function GuestVenueReservationBody({
               label={slot.slotLocalLabel}
               note={slot.isFull ? "Full" : null}
               disabled={slot.isFull}
+              // issue #2734 — a full time stays readable, never dimmed.
+              readableWhenDisabled
               selected={
                 !slot.isFull && selectedSlot?.slotStartUtc === slot.slotStartUtc
               }

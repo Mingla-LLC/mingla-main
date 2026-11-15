@@ -190,6 +190,12 @@ export interface OfferingChoiceChipProps {
   accessibilityLabel?: string;
   /** "radio" for one-of chips (default), "button" for toggles. */
   role?: "radio" | "button";
+  /**
+   * issue #2734 — a disabled chip that must stay READABLE (a sold-out
+   * reservation time): no dimming and no strike, the label and note in
+   * secondary text as "7:30 PM · Full". Default false (dimmed and struck).
+   */
+  readableWhenDisabled?: boolean;
   testID?: string;
 }
 
@@ -203,8 +209,11 @@ export const OfferingChoiceChip = ({
   onPress,
   accessibilityLabel,
   role = "radio",
+  readableWhenDisabled = false,
   testID,
-}: OfferingChoiceChipProps) => (
+}: OfferingChoiceChipProps) => {
+  const readable = disabled && readableWhenDisabled;
+  return (
   <Pressable
     onPress={disabled ? undefined : onPress}
     disabled={disabled}
@@ -222,28 +231,37 @@ export const OfferingChoiceChip = ({
       selected
         ? { backgroundColor: palette.primaryText, borderColor: palette.primaryText }
         : { backgroundColor: palette.card, borderColor: palette.panelBorder },
-      disabled ? styles.chipDisabled : null,
+      disabled && !readable ? styles.chipDisabled : null,
       pressed && !disabled ? styles.pressed : null,
     ]}
     testID={testID}
   >
-    <Text
-      style={[
-        styles.chipText,
-        { color: selected ? palette.page : palette.primaryText },
-        disabled ? styles.struck : null,
-      ]}
-      numberOfLines={1}
-    >
-      {label}
-      {note !== null ? (
-        <Text style={[styles.chipNote, { color: selected ? palette.page : palette.accent }]}>
-          {`  ${note}`}
-        </Text>
-      ) : null}
-    </Text>
+    {readable ? (
+      <Text style={[styles.chipText, { color: palette.secondaryText }]} numberOfLines={1}>
+        {label}
+        {note !== null ? " · " : null}
+        {note}
+      </Text>
+    ) : (
+      <Text
+        style={[
+          styles.chipText,
+          { color: selected ? palette.page : palette.primaryText },
+          disabled ? styles.struck : null,
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+        {note !== null ? (
+          <Text style={[styles.chipNote, { color: selected ? palette.page : palette.accent }]}>
+            {`  ${note}`}
+          </Text>
+        ) : null}
+      </Text>
+    )}
   </Pressable>
-);
+  );
+};
 
 /** A wrapping row of chips (`.chips`). */
 export interface OfferingChipRowProps {
