@@ -87,6 +87,7 @@ export const Menu: React.FC<MenuProps> = ({ visible, onClose, items, title, anch
                 onPress={() => run(item)}
                 disabled={item.disabled}
                 accessibilityRole="menuitem"
+                accessibilityLabel={item.label}
                 accessibilityState={{ disabled: item.disabled === true }}
                 testID={item.testID}
               >
@@ -118,6 +119,7 @@ export const Menu: React.FC<MenuProps> = ({ visible, onClose, items, title, anch
             onPress={() => run(item)}
             disabled={item.disabled}
             accessibilityRole="menuitem"
+            accessibilityLabel={item.label}
             accessibilityState={{ disabled: item.disabled === true }}
             testID={item.testID}
             style={({ pressed }) => [styles.sheetRow, index > 0 ? styles.divider : null, pressed ? styles.pressed : null, item.disabled ? styles.disabled : null]}
@@ -131,6 +133,7 @@ export const Menu: React.FC<MenuProps> = ({ visible, onClose, items, title, anch
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
+          accessibilityLabel={cancelLabel}
           style={({ pressed }) => [styles.sheetRow, styles.cancel, pressed ? styles.pressed : null]}
         >
           <Text style={[styles.sheetLabel, styles.cancelLabel]}>{cancelLabel}</Text>

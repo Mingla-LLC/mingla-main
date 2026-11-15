@@ -63,6 +63,7 @@ export function ReservationListTablesSwitch({
             key={key}
             onPress={() => onChange(key)}
             accessibilityRole="tab"
+            accessibilityLabel={key === "list" ? "List" : "Tables"}
             accessibilityState={{ selected: on }}
             style={[styles.seg, full ? styles.segFull : null, on ? styles.segOn : null]}
             testID={`reservations-view-${key}`}

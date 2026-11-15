@@ -125,9 +125,13 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD-APPROVED #3281] Re-derived after #3281 added the locally declared
   // Ari experience parity gate (issue-3281-ari-experience-parity, +2 batch:A
   // executions: self-test and plain). Read off the plan command as above.
-  executions: 1057,
-  loadsSeconds: [385.5, 385.6, 385.6],
-  counts: [351, 353, 353],
+  // [TEST-MOD-APPROVED #4420] Re-derived after #4420 added two locally
+  // declared gates (issue-4420-host-chrome-tokens-only and
+  // issue-4420-host-wiring, +4 batch:A executions: self-test and plain).
+  // Read off the plan command as above.
+  executions: 1061,
+  loadsSeconds: [385.7, 385.7, 385.7],
+  counts: [353, 354, 354],
 });
 
 const tempDir = (label) =>

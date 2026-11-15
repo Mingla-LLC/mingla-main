@@ -52,6 +52,30 @@ function isMetaOrch0952PR() {
   }
 }
 
+// #4420 — this is a LANE fence: ORCH-0948 (the waitlist work) must not touch
+// the buyer-confirm files META-ORCH-0952 owns. It only has meaning on an
+// ORCH-0948 branch. On any other PR it fired on every later edit to
+// TicketQrCarousel (e.g. the #4420 design-token migration, forced by the
+// retired aliases), which is not the lane it guards.
+function isOrch0948Lane() {
+  try {
+    const log = execSync("git log origin/main..HEAD --pretty=%s%n%b", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return /ORCH-0948\b/.test(log);
+  } catch {
+    return true; // cannot read the branch: keep the fence on (fail closed)
+  }
+}
+
+if (!isOrch0948Lane()) {
+  console.log(
+    "ORCH-0948 waitlist strict-grep SKIPPED — not an ORCH-0948 branch (the fence guards that lane only).",
+  );
+  process.exit(0);
+}
+
 if (isMetaOrch0952PR()) {
   console.log(
     "ORCH-0948 waitlist strict-grep SKIPPED — PR is META-ORCH-0952 (owner of the protected files).",

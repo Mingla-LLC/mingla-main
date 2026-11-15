@@ -30,6 +30,11 @@ export interface TableProps<Row> {
   rows: readonly Row[];
   rowKey: (row: Row) => string;
   onRowPress?: (row: Row) => void;
+  /**
+   * The spoken name of a pressable row. Defaults to the row's plain-text
+   * cells joined ("Ada Obi, Owner, Active").
+   */
+  rowAccessibilityLabel?: (row: Row) => string;
   selectedKey?: string | null;
   /** Shown in place of rows when `rows` is empty. */
   empty?: React.ReactNode;
@@ -40,13 +45,18 @@ export interface TableProps<Row> {
 export const TABLE_HEADER_HEIGHT = 44;
 export const TABLE_ROW_HEIGHT = 56;
 
-export function Table<Row>({ columns, rows, rowKey, onRowPress, selectedKey, empty, testID, style }: TableProps<Row>): React.ReactElement {
+export function Table<Row>({ columns, rows, rowKey, onRowPress, rowAccessibilityLabel, selectedKey, empty, testID, style }: TableProps<Row>): React.ReactElement {
   const minTableWidth = columns.reduce((sum, c) => sum + (c.minWidth ?? 0), 0);
   const cellStyle = (c: TableColumn<Row>): ViewStyle => ({
     flex: c.flex ?? 1,
     minWidth: c.minWidth ?? 0,
     alignItems: c.align === "right" ? "flex-end" : "flex-start",
   });
+  const defaultRowLabel = (row: Row): string =>
+    columns
+      .map((c) => c.render(row))
+      .filter((v): v is string | number => typeof v === "string" || typeof v === "number")
+      .join(", ");
   const renderCell = (c: TableColumn<Row>, row: Row): React.ReactNode => {
     const content = c.render(row);
     return typeof content === "string" || typeof content === "number" ? (
@@ -92,7 +102,13 @@ export function Table<Row>({ columns, rows, rowKey, onRowPress, selectedKey, emp
             return onRowPress === undefined ? (
               <View key={key}>{cells(false)}</View>
             ) : (
-              <Pressable key={key} onPress={() => onRowPress(row)} accessibilityRole="button" accessibilityState={{ selected }}>
+              <Pressable
+                key={key}
+                onPress={() => onRowPress(row)}
+                accessibilityRole="button"
+                accessibilityLabel={rowAccessibilityLabel?.(row) ?? defaultRowLabel(row)}
+                accessibilityState={{ selected }}
+              >
                 {(state: PressableStateCallbackType & { hovered?: boolean }) => cells(state.pressed || state.hovered === true)}
               </Pressable>
             );
