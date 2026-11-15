@@ -17,11 +17,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import {
-  ariPalette,
-  ariThread,
-  glass,
-} from "../../constants/designSystem";
+import { ariPalette, ariThread, color, materials } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
 
 export interface StreamingTextProps {
@@ -80,7 +76,7 @@ const styles = StyleSheet.create({
   bubble: {
     // Android opaque equivalent; iOS/web keep glass + hairline (matches ChatBubble).
     backgroundColor:
-      Platform.OS === "android" ? ariThread.ariBubbleAndroid : glass.tint.profileBase,
+      Platform.OS === "android" ? materials.pane.solidFill : color.fill.inset,
     borderTopLeftRadius: ariThread.bubbleTail, // 4 tail
     borderTopRightRadius: ariThread.bubbleRadius, // 16
     borderBottomLeftRadius: ariThread.bubbleRadius,
@@ -90,7 +86,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...(Platform.OS === "android"
       ? {}
-      : { borderWidth: 1, borderColor: glass.border.profileBase }),
+      : { borderWidth: 1, borderColor: color.line }),
     minWidth: 36,
     justifyContent: "center",
   },

@@ -9,7 +9,7 @@ import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import { accent, spacing, text as textTokens } from "../../src/constants/designSystem";
+import { color, space } from "../../src/constants/designSystem";
 
 /*
  * #2830 — AriChatScreen loads as one on-demand chunk, used by this route and
@@ -50,7 +50,7 @@ export default function AriTab(): React.ReactElement {
           accessibilityLabel="Opening Ari conversation"
           accessibilityLiveRegion="polite"
         >
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.text2} />
           <Text style={styles.loadingCopy}>Opening conversation…</Text>
         </View>
       }
@@ -61,6 +61,6 @@ export default function AriTab(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md },
-  loadingCopy: { color: textTokens.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4] },
+  loadingCopy: { color: color.text2, fontSize: 14, lineHeight: 20, fontWeight: "500" },
 });

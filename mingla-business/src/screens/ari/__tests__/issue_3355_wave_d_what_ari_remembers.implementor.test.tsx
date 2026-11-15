@@ -73,7 +73,16 @@ jest.mock("../../../constants/designSystem", () => {
     {},
     { get: (_target, key) => (key === Symbol.toPrimitive ? () => 0 : token) },
   );
+  // [TEST-MOD-APPROVED #4420] Graphite token names join the permissive mock.
   return {
+    color: token,
+    space: token,
+    type: token,
+    edge: token,
+    materials: token,
+    scrim: token,
+    shadow: token,
+    size: token,
     ariPalette: token,
     ariThread: token,
     canvas: token,

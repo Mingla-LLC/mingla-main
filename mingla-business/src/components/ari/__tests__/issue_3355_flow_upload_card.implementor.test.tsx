@@ -27,11 +27,17 @@ jest.mock("react-native", () => {
       ReactModule.createElement("view", props, children),
   };
 });
-jest.mock("../../../constants/designSystem", () => ({
+// [TEST-MOD-APPROVED #4420] the Graphite token names (color/space/type/…) join
+// the partial mock: the screens now read them instead of the retired names.
+jest.mock("../../../constants/designSystem", () => {
+  const token: object = new Proxy({}, { get: (_t, key) => (key === Symbol.toPrimitive ? () => 0 : token) });
+  return {
+    color: token, space: token, type: token, edge: token, materials: token, scrim: token, shadow: token, size: token, ariPalette: token,
   spacing: { sm: 8 },
   text: { secondary: "grey" },
   typography: { bodySm: { fontSize: 13 } },
-}));
+  };
+});
 const brandState: { data: Record<string, unknown> | null; isLoading: boolean } = {
   data: {
     id: "b1",

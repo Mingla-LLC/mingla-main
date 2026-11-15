@@ -23,16 +23,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import {
-  ariPalette,
-  ariThread,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { ariPalette, ariThread, color, radius, space, type } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
 import { GlassChrome } from "../ui/GlassChrome";
 
@@ -205,8 +196,8 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
       </View>
       <GlassChrome
         intensity="cardElevated"
-        tintColor={glass.tint.profileElevated}
-        borderColor={glass.border.profileElevated}
+        tintColor={color.fill.tile}
+        borderColor={color.lineStrong}
         radius="lg"
         style={[styles.card, state === "disabled" && styles.cardDisabled]}
       >
@@ -242,57 +233,57 @@ const styles = StyleSheet.create({
     padding: ariThread.cardPad,
   },
   eyebrow: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
     letterSpacing: 1.1,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   titleRow: {
     marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   thumbnail: {
     width: 44,
     height: 44,
     borderRadius: radius.sm,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   title: {
     flexShrink: 1,
     fontSize: ariThread.cardTitleFont,
     lineHeight: ariThread.cardTitleLine,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   rows: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     gap: 4,
   },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowLabel: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    color: color.text3,
     letterSpacing: 0.3,
   },
   rowValue: {
     fontSize: 13,
     lineHeight: 17,
-    color: textTokens.primary,
+    color: color.text1,
     flexShrink: 1,
     textAlign: "right",
   },
   actions: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 6,
@@ -300,13 +291,13 @@ const styles = StyleSheet.create({
   actionBtn: {
     height: ariThread.btnHeight,
     borderRadius: 10,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     alignItems: "center",
     justifyContent: "center",
   },
   ghostBtn: {
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   primaryBtn: {
     backgroundColor: ariPalette.userBubble,
@@ -315,26 +306,26 @@ const styles = StyleSheet.create({
   ghostText: {
     fontSize: 13,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   primaryText: {
     fontSize: 13,
     fontWeight: "600",
-    color: ariThread.onUserBubble,
+    color: color.ink,
     letterSpacing: -0.1,
   },
   pressed: {
     opacity: 0.85,
   },
   skeletonWrap: {
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 4,
   },
   skeletonRow: {
     height: 14,
     borderRadius: radius.sm,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   errorRow: {
     paddingVertical: 4,
@@ -342,7 +333,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 13,
     lineHeight: 17,
-    color: semantic.error,
+    color: color.danger,
   },
 });
 

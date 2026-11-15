@@ -17,9 +17,9 @@ import {
   RotateCw,
   Search,
   Settings,
-  Sparkles,
   Square,
 } from "lucide-react-native";
+import { AriOrb } from "./AriOrb";
 import type { LucideIcon } from "lucide-react-native";
 import Animated, {
   Easing,
@@ -33,13 +33,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  accent,
   ariPalette,
   ariThread,
-  glass,
+  color,
+  materials,
   radius,
-  spacing,
-  text as textTokens,
+  space,
 } from "../../constants/designSystem";
 import type { AriActiveTurn } from "../../hooks/useAgentChat";
 import type { AriActivityEventType } from "../../services/ariTurnService";
@@ -62,7 +61,8 @@ const PHASES: Record<
   VisiblePhase,
   {
     label: string;
-    icon: LucideIcon;
+    /** #4420 round 3: Ari's own phases show the Ari orb, never a sparkle. */
+    icon: LucideIcon | "orb";
     duration: number;
     motion: "translateY" | "opacity" | "scale" | "translateX" | "rotate";
   }
@@ -81,13 +81,13 @@ const PHASES: Record<
   },
   model_started: {
     label: "Ari is thinking…",
-    icon: Sparkles,
+    icon: "orb",
     duration: 1200,
     motion: "scale",
   },
   planning_started: {
     label: "Ari is building the plan…",
-    icon: Sparkles,
+    icon: "orb",
     duration: 1000,
     motion: "scale",
   },
@@ -123,7 +123,7 @@ const PHASES: Record<
   },
   finalizing_started: {
     label: "Ari is finishing up…",
-    icon: Sparkles,
+    icon: "orb",
     duration: 800,
     motion: "opacity",
   },
@@ -177,7 +177,11 @@ const MotionIcon: React.FC<{ phase: VisiblePhase }> = ({ phase }) => {
 
   return (
     <Animated.View style={[styles.iconBox, animated]}>
-      <Icon size={16} color={ariPalette.flame} strokeWidth={2} />
+      {Icon === "orb" ? (
+        <AriOrb size="xs" thinking decorative />
+      ) : (
+        <Icon size={16} color={ariPalette.flame} strokeWidth={2} />
+      )}
     </Animated.View>
   );
 };
@@ -266,7 +270,7 @@ export const AriActivity: React.FC<{
           accessibilityLabel="Try again"
           onPress={() => void onRetry()}
         >
-          <RotateCw size={16} color={ariThread.onUserBubble} />
+          <RotateCw size={16} color={color.ink} />
           <Text style={styles.primaryActionText}>Try again</Text>
         </Pressable>
       </View>
@@ -308,7 +312,7 @@ export const AriActivity: React.FC<{
                 void onStop();
               }}
             >
-              <Square size={15} color={ariThread.onUserBubble} />
+              <Square size={15} color={color.ink} />
               <Text style={styles.primaryActionText}>Stop Ari</Text>
             </Pressable>
           </View>
@@ -348,21 +352,21 @@ const styles = StyleSheet.create({
     borderRadius: ariThread.bubbleRadius,
     borderTopLeftRadius: ariThread.bubbleTail,
     borderWidth: Platform.OS === "android" ? 0 : 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor:
       Platform.OS === "android"
-        ? ariThread.ariBubbleAndroid
-        : glass.tint.profileElevated,
+        ? materials.pane.solidFill
+        : color.fill.tile,
     overflow: "hidden",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[2],
   },
   labelRow: {
     minHeight: 28,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   iconBox: {
     width: 16,
@@ -372,7 +376,7 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: ariThread.labelFont,
     lineHeight: ariThread.labelLine,
     fontWeight: "500",
@@ -383,29 +387,29 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   stopText: {
-    color: accent.warm,
+    color: color.text1,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
   },
-  longWait: { gap: spacing.sm },
-  longWaitText: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  longWait: { gap: space[2] },
+  longWaitText: { color: color.text2, fontSize: 14, lineHeight: 20 },
   actionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
     justifyContent: "flex-end",
   },
   secondaryAction: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   secondaryActionText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -414,13 +418,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   primaryActionText: {
-    color: ariThread.onUserBubble,
+    color: color.ink,
     fontSize: 14,
     fontWeight: "700",
   },

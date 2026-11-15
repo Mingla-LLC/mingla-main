@@ -21,17 +21,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  ariPalette,
-  ariThread,
-  canvas,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { ariPalette, ariThread, color, radius, space, type } from "../../constants/designSystem";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useAriKnowledge } from "../../hooks/useAriKnowledge";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
@@ -276,7 +266,7 @@ export const AriSettingsScreen: React.FC = () => {
               value={displayName}
               onChangeText={setDisplayName}
               placeholder="Your name"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               style={styles.input}
               accessibilityLabel="Display name for Ari"
             />
@@ -286,7 +276,7 @@ export const AriSettingsScreen: React.FC = () => {
               value={timezone}
               onChangeText={setTimezone}
               placeholder="e.g. America/New_York"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               style={styles.input}
               accessibilityLabel="Preferred timezone for Ari"
             />
@@ -341,7 +331,7 @@ export const AriSettingsScreen: React.FC = () => {
             multiline
             maxLength={1200}
             placeholder="What should Ari remember?"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             style={styles.memoryInput}
             accessibilityLabel="Memory content"
           />
@@ -593,58 +583,58 @@ const FieldRow: React.FC<{ label: string; children: React.ReactNode }> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   backBtn: {
     height: 44,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     alignItems: "center",
     justifyContent: "center",
     width: 64,
   },
   backText: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   pressed: {
     opacity: 0.7,
   },
   content: {
-    padding: spacing.md,
-    gap: spacing.lg,
-    paddingBottom: spacing.xxl,
+    padding: space[4],
+    gap: space[6],
+    paddingBottom: space[9],
   },
   section: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   sectionTitle: {
-    fontSize: typography.labelCap.fontSize,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
   sectionInner: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radius.md,
     overflow: "hidden",
-    padding: spacing.md,
-    gap: spacing.md,
+    padding: space[4],
+    gap: space[4],
   },
   row: {
     flexDirection: "row",
@@ -653,32 +643,32 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   rowLabel: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     flex: 1,
   },
   rowValue: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
   },
   hint: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
   },
   fieldRow: {
     gap: 4,
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    letterSpacing: typography.caption.letterSpacing,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
+    letterSpacing: type.caption.letterSpacing,
   },
   input: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.pending,
+    borderBottomColor: color.fill.pager,
     minHeight: 44,
   },
   kindRow: {
@@ -691,173 +681,173 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     justifyContent: "center",
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   kindChipSelected: {
     backgroundColor: ariPalette.userBubble,
     borderColor: ariPalette.userBubble,
   },
   kindChipText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
   },
   kindChipTextSelected: {
-    color: ariThread.onUserBubble,
+    color: color.ink,
     fontWeight: "700",
   },
   memoryInput: {
     minHeight: 88,
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlignVertical: "top",
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   inlineActions: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
   },
   primaryAction: {
     minHeight: 40,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: ariPalette.userBubble,
   },
   primaryActionText: {
-    color: ariThread.onUserBubble,
-    fontSize: typography.bodySm.fontSize,
+    color: color.ink,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   secondaryAction: {
     minHeight: 40,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
   secondaryActionText: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
   disabled: {
     opacity: 0.45,
   },
   emptyText: {
-    color: textTokens.tertiary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text3,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   memoryCard: {
-    gap: spacing.sm,
-    paddingTop: spacing.md,
+    gap: space[2],
+    paddingTop: space[4],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   memoryKind: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   memoryContent: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
   cardMeta: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
   },
   textAction: {
     minHeight: 40,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   textActionLabel: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
   forgetLabel: {
-    color: semantic.error,
-    fontSize: typography.bodySm.fontSize,
+    color: color.danger,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
   jobTitle: {
     flex: 1,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
   },
   statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: glass.tint.profileElevated,
+    borderRadius: radius.full,
+    backgroundColor: color.fill.tile,
   },
   statusText: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
   },
   errorText: {
-    color: semantic.error,
-    fontSize: typography.bodySm.fontSize,
+    color: color.danger,
+    fontSize: type.small.fontSize,
   },
   saveBtn: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     height: 44,
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
   saveBtnText: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   destructiveBtn: {
     height: 44,
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.5)",
+    borderColor: color.errorLine,
     alignItems: "center",
     justifyContent: "center",
   },
   destructiveText: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.danger,
   },
   about: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   previewBtn: {
     minHeight: 44,
@@ -865,12 +855,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radius.md,
     backgroundColor: ariPalette.userBubble,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   previewBtnText: {
-    color: ariThread.onUserBubble,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.ink,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
   },
 });

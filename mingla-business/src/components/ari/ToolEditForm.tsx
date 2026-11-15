@@ -8,13 +8,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import {
-  ariThread,
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { ariThread, color, space, type } from "../../constants/designSystem";
 
 export interface ToolEditFormProps {
   toolName: string;
@@ -243,7 +237,7 @@ const Field: React.FC<FieldProps> = ({
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      placeholderTextColor={textTokens.tertiary}
+      placeholderTextColor={color.text3}
       multiline={multiline}
       style={[styles.input, multiline && styles.inputMulti]}
       accessibilityLabel={accessibilityLabel}
@@ -253,37 +247,37 @@ const Field: React.FC<FieldProps> = ({
 
 const styles = StyleSheet.create({
   form: {
-    marginTop: spacing.md,
-    gap: spacing.md,
+    marginTop: space[4],
+    gap: space[4],
   },
   fieldRow: {
     gap: 4,
   },
   label: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: typography.caption.fontWeight,
-    color: textTokens.tertiary,
-    letterSpacing: typography.caption.letterSpacing,
+    fontSize: type.caption.fontSize,
+    fontWeight: type.caption.fontWeight,
+    color: color.text3,
+    letterSpacing: type.caption.letterSpacing,
   },
   input: {
     // ORCH-1101: 13pt density (was body 16) to match the proposal-card field
     // values; hairline underline + a11y labels preserved verbatim.
     fontSize: 13,
     lineHeight: 17,
-    color: textTokens.primary,
+    color: color.text1,
     paddingVertical: ariThread.inputPadV, // 6 (was 8)
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.pending,
+    borderBottomColor: color.fill.pager,
   },
   inputMulti: {
     minHeight: 60,
     textAlignVertical: "top",
   },
   hourRow: {
-    gap: spacing.sm,
-    paddingBottom: spacing.sm,
+    gap: space[2],
+    paddingBottom: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.pending,
+    borderBottomColor: color.fill.pager,
   },
   hourHeader: {
     flexDirection: "row",
@@ -291,13 +285,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   hourDay: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   hourTimes: {
     flexDirection: "row",
-    gap: spacing.md,
+    gap: space[4],
   },
   hourTimeField: {
     flex: 1,
@@ -308,21 +302,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: glass.border.pending,
+    borderColor: color.fill.pager,
     borderRadius: 12,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   closedTogglePressed: {
     opacity: 0.72,
   },
   closedToggleText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
   },
   note: {
-    marginTop: spacing.md,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    marginTop: space[4],
+    fontSize: type.small.fontSize,
+    color: color.text3,
   },
 });
 
