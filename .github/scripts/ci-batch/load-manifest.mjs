@@ -283,7 +283,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4423 Wave 4a CI fix: skip 20280707204423 (indexes on order_attributions, order_add_on_line_items, conversations.program_target_user_id) by exact filename in the #1931 and #2117 filtered replays, which never create them; re-sealed.
 // #4423 integration: merged origin/main a5a5c59094 (#4419 20280706004419 rows kept beside the #4423 rows) and renamed the thirteen #4423 migrations 20280705*4423 to 20280707*4423 (after 20280706004419), in order; re-sealed.
 // #4423 integration 2: merged origin/main ce482c996c; re-sealed.
-export const BOOTSTRAP_SHA256 = "463d9f372efc510ce148d5ed2835d956f1ae4171c2e94364d69f60152385ddee";
+export const BOOTSTRAP_SHA256 = "12ebf053d2a188bf10038a66dcc06e5d4ee7fbd8054e2b1f644eba5df38d4bfa";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
