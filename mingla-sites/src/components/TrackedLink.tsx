@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import { analyticsAllowed, isPreviewPublication, sendSiteEvent, type SiteEventContext } from "../lib/clientAnalytics";
+import { analyticsAllowed, isPreviewPublication, sendSiteEvent, siteHandoffHref, type SiteEventContext } from "../lib/clientAnalytics";
 
 export function TrackedLink({
   href,
@@ -31,7 +31,9 @@ export function TrackedLink({
       isPreviewPublication(context.publicationId)
     ) return;
     event.preventDefault();
-    const target = new URL(href);
+    // #4238 W3-6: a host.usemingla.com link carries the Site's click id (consent
+    // granted only, which this handler already requires).
+    const target = new URL(siteHandoffHref(href));
     // #2829 W10 — a Book / offering link is a "book click" (its own count on
     // the owner's Website overview); other calls to action stay cta_click.
     await sendSiteEvent(context, ctaKind === "offering" ? "book_click" : "cta_click", {

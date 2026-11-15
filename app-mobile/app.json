@@ -28,10 +28,15 @@
         "NSMicrophoneUsageDescription": "Mingla uses the microphone to include sound when you record videos to share in direct and group chats.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAdvertisingAttributionReportEndpoint": "https://appsflyer-skadnetwork.com/",
+        "AttributionCopyEndpoint": "https://appsflyer-skadnetwork.com/",
         "SKAdNetworkItems": [
           { "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork" },
           { "SKAdNetworkIdentifier": "n38lu8286q.skadnetwork" },
-          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" }
+          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" },
+          { "SKAdNetworkIdentifier": "mj797d8u6f.skadnetwork" },
+          { "SKAdNetworkIdentifier": "22mmun2rn5.skadnetwork" },
+          { "SKAdNetworkIdentifier": "424m5254lk.skadnetwork" },
+          { "SKAdNetworkIdentifier": "2tdux39lx8.skadnetwork" }
         ]
       },
       "associatedDomains": [

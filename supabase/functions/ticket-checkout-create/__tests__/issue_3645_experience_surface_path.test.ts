@@ -13,7 +13,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { buyerWebSurfacePath } from "../buyerWebSurfacePath.ts";
+import { buyerWebSurfacePath } from "../../_shared/buyerWebSurfacePath.ts";
 
 const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
 
@@ -84,7 +84,8 @@ Deno.test("#3645 — Stripe web success/cancel URLs derive their surface from th
 Deno.test("#3645 — index.ts imports the helper and the helper names checkout-experience", () => {
   assertStringIncludes(
     activeSource,
-    'import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";',
+    // #4238 W1-5: the helper moved to _shared (one owner for checkout paths).
+    'import { buyerWebSurfacePath } from "../_shared/buyerWebSurfacePath.ts";',
   );
   // Resolved URLs for an experience row, both providers.
   const id = "exp-1";

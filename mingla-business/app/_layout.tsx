@@ -85,6 +85,7 @@ import {
 } from "../src/analytics/webAnalytics";
 import { ConsentBanner } from "../src/analytics/ConsentBanner";
 import {
+  deliverBusinessOneLinkTarget,
   initializeAppsFlyer,
   subscribeOneLinkDeepLink,
 } from "../src/services/appsFlyerService";
@@ -287,7 +288,7 @@ function RootLayoutInner(): React.ReactElement {
   const pathname = usePathname();
   useEffect(() => {
     if (Platform.OS !== "web") return;
-    void initWebAnalytics().then(() => {
+    void initWebAnalytics(pathname).then(() => {
       captureHostPublicSearchPageView(pathname);
     });
   }, [pathname]);
@@ -581,18 +582,35 @@ function RootLayoutInner(): React.ReactElement {
           // B1 business handles ONLY universal-download (no-op landing) +
           // referral (persist code, attribution-only). Per-entity business
           // content routing is B2 (out of scope) — no navigation here.
+          // #4238 W4-3: a referral code only ever comes from a `ref:` af_sub1
+          // or a referral link (campaign tags in af_sub1 are not codes).
+          // #4238 W6-8: content links open their screen; signed out, the
+          // target is stashed for the post-sign-in replay below.
           subscribeOneLinkDeepLink((dest) => {
             if (!dest) return;
-            if (dest.kind === "referral") {
-              void AsyncStorage.setItem(
-                REFERRAL_CODE_KEY,
-                dest.referralCode,
-              ).catch((e) => {
-                console.warn("[AppsFlyer] referral code persist failed:", e);
+            const referralCode =
+              dest.kind === "referral" || dest.kind === "content"
+                ? dest.referralCode
+                : null;
+            if (referralCode) {
+              void AsyncStorage.setItem(REFERRAL_CODE_KEY, referralCode).catch(
+                (e) => {
+                  console.warn("[AppsFlyer] referral code persist failed:", e);
+                },
+              );
+            }
+            if (dest.kind === "content") {
+              void deliverBusinessOneLinkTarget(dest.target, {
+                navigate: (target) => router.push(target as never),
+                stashForAfterSignIn: (target) =>
+                  AsyncStorage.setItem(
+                    DEFERRED_PUSH_TARGET_KEY,
+                    JSON.stringify({ target, ts: Date.now() }),
+                  ),
               });
             }
             // dest.kind === "download": universal-download link has no in-app
-            // landing target in B1 — intentional no-op.
+            // landing target — intentional no-op.
           });
         })();
         void mixpanelService.initialize();
@@ -616,7 +634,7 @@ function RootLayoutInner(): React.ReactElement {
         // guarded here so native never even invokes it. Never throws (graceful
         // no-op when keys are absent), so a missing env can't break boot.
         if (Platform.OS === "web") {
-          void initWebAnalytics();
+          void initWebAnalytics(pathname);
         }
       }, 0);
     });

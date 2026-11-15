@@ -64,16 +64,21 @@ Deno.test("#3697 retry edge re-evaluates consent through the shared fire helpers
   const fireSource = await Deno.readTextFile(
     new URL("../adConversionFire.ts", import.meta.url),
   );
+  // #4238 W4-1: the retry now also injects the AppsFlyer poster (third arg)
+  // for native purchases; the shared fire helper still owns the consent read.
   assertEquals(
-    source.includes("fireAdConversion(db, conversionRetryInput(row))"),
+    source.includes("fireAdConversion(db, conversionRetryInput(row), {"),
     true,
   );
   assertEquals(source.includes("fireAdCheckoutStart(db, id)"), true);
   assertEquals(source.includes('.gte("created_at", windowStart)'), true);
   assertEquals(source.includes('.lte("updated_at", graceCutoff)'), true);
   assertEquals(source.includes("SUPABASE_SERVICE_ROLE_KEY"), true);
+  // #4238 W1-3: the claim is cleared while any channel is still open (the
+  // per-channel merge replaced the any-failure flag); behaviour pinned in
+  // issue_4238_checkout_start_per_channel.test.ts.
   assertEquals(
-    /ad_checkout_start_sent_at:\s*retryableFailure\s*\?\s*null\s*:\s*new Date/
+    /ad_checkout_start_sent_at:\s*stillOpen\s*\?\s*null\s*:\s*attemptedAt/
       .test(
         fireSource,
       ),

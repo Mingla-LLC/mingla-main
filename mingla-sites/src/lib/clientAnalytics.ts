@@ -39,6 +39,32 @@ function storedSiteClickId(): string | null {
   }
 }
 
+/** #4238 W3-6: the Mingla host whose pages adopt a Site's click id. */
+export const HOST_WEB_HOSTNAME = "host.usemingla.com";
+
+/**
+ * #4238 W3-6 (I-4238-SITES-HANDOFF-CONSENTED): a link to host.usemingla.com
+ * carries the Site's first-party click id as `mc_click`, so checkout on host
+ * web is attributed to the Site's ad touch (host web adopts it, W3-2). Only
+ * when the visitor granted Sites consent; pending / necessary-only, any other
+ * host, a preview, or no stored click id leave the link unchanged.
+ */
+export function siteHandoffHref(href: string): string {
+  if (siteConsentChoice() !== "granted") return href;
+  const clickId = storedSiteClickId();
+  if (!clickId) return href;
+  try {
+    const target = new URL(href);
+    if (target.protocol !== "https:" || target.hostname !== HOST_WEB_HOSTNAME) {
+      return href;
+    }
+    target.searchParams.set("mc_click", clickId);
+    return target.toString();
+  } catch {
+    return href;
+  }
+}
+
 /**
  * toward #3697 Wave 0a: first-party ad click before/after Sites consent banner.
  * "necessary" / Reject → stamp rejected when a click exists; no new vendor work.
@@ -80,6 +106,9 @@ export function captureSiteAdClickIds(brandSlug?: string | null): void {
     const ttclid = params.get("ttclid");
     const sccid = params.get("sccid") ?? params.get("ScCid");
     const gclid = params.get("gclid");
+    // #4238 W2-6 / W3-6: Google's iOS / privacy-limited click ids.
+    const gbraid = params.get("gbraid");
+    const wbraid = params.get("wbraid");
     const rdtCid = params.get("rdt_cid");
     const mcId = params.get("mc_id");
     const afCId = params.get("af_c_id") ?? params.get("c_id");
@@ -94,24 +123,28 @@ export function captureSiteAdClickIds(brandSlug?: string | null): void {
       const v = params.get(k);
       if (v) utm[k] = v;
     }
-    const external = fbclid ?? ttclid ?? sccid ?? gclid ?? rdtCid ?? null;
+    // #4238 W2-6 (I-4238-CLICK-ID-TYPED): one typed list, the same precedence
+    // as host web (fbclid, ttclid, sccid, rdt_cid, gclid, gbraid, wbraid); the
+    // id, its network and its URL parameter always come from one entry.
+    const candidates: Array<[string | null, string, string]> = [
+      [fbclid, "meta", "fbclid"],
+      [ttclid, "tiktok", "ttclid"],
+      [sccid, "snapchat", "sccid"],
+      [rdtCid, "reddit", "rdt_cid"],
+      [gclid, "google", "gclid"],
+      [gbraid, "google", "gbraid"],
+      [wbraid, "google", "wbraid"],
+    ];
+    const click = candidates.find(([value]) => value !== null && value !== "");
+    const external = click?.[0] ?? null;
     if (
       external === null && mcId === null && afCId === null &&
       Object.keys(utm).length === 0
     ) {
       return;
     }
-    const network = fbclid
-      ? "meta"
-      : ttclid
-      ? "tiktok"
-      : sccid
-      ? "snapchat"
-      : rdtCid
-      ? "reddit"
-      : gclid
-      ? "google"
-      : "other";
+    const network = click ? click[1] : "other";
+    const externalClickIdType = click?.[2] ?? null;
     const consentState = choice === "granted" ? "granted" : "pending";
     void fetch("/api/ad-touch", {
       method: "POST",
@@ -120,6 +153,7 @@ export function captureSiteAdClickIds(brandSlug?: string | null): void {
         kind: "touch",
         network,
         external_click_id: external,
+        external_click_id_type: externalClickIdType,
         mc_id: mcId,
         af_c_id: afCId,
         utm,

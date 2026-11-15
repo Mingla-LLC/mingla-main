@@ -37,6 +37,7 @@ import { captureMarketing, captureSearchMeasurement } from '@/components/marketi
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { landingIcp } from '@/lib/page-measurement'
 import { bookCall, fetchBookingSlots, type BookingSlot } from '@/lib/booking-call'
+import { fireBrowserHostLead, marketingAdContext } from '@/lib/marketing-ad-context'
 import {
   BOOKING_ICPS,
   CREATOR_MAKES,
@@ -220,6 +221,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
     setError(null)
     setServerField(null)
     captureMarketing('schedule_details_submitted', isHost ? { audience, icp, source } : { audience, source })
+    const adContext = isHost ? marketingAdContext() : null
     const res = await bookCall({
       start: selectedSlot,
       name: name.trim(),
@@ -236,6 +238,8 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
             venue: venue.trim() || undefined,
             website: website.trim() || undefined,
             report_url: reportUrl || undefined,
+            // #4238 W3-3: the host lead's ad context (ads-gated inside).
+            ...(adContext ? { ad: adContext } : {}),
           }
         : {
             audience,
@@ -264,6 +268,8 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
       if (leadIcp) {
         captureSearchMeasurement('generate_lead', { audience: 'host', page_family: 'host_pillar', icp: leadIcp, action_state: 'succeeded' })
       }
+      // #4238 W3-3: the browser Lead twin of the server's host lead (ads on only).
+      if (isHost) void fireBrowserHostLead(res.lead_event_id)
       setConfirmed({ start: res.start, email: email.trim(), meet_url: res.meet_url })
       setPhase('done')
       return

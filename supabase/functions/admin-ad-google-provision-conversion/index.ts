@@ -6,7 +6,14 @@
  * with the create-path bidding flip (targetSpend → maximizeConversions) — that is
  * a gated follow-on and is deliberately untouched here.
  *
- * Body: { lane?='consumer', action?, name?, attribution_window_days?, sample_gclid? }
+ * Body: { lane?='consumer', action?, kind?='purchase', name?, attribution_window_days?, sample_gclid? }
+ *   kind (#4238 W5-1) = purchase | free_signup | host_lead | host_signup — one
+ *                             conversion action per kind, stored in
+ *                             extra.conversion_actions.<kind>. purchase also keeps
+ *                             extra.conversion_action_resource (the alias the
+ *                             health check and older readers use). A secondary
+ *                             kind is created, then updated to
+ *                             primary_for_goal=false (Step 0 Z8).
  *   action = 'provision'      (default) — create a PURCHASE / UPLOAD_CLICKS /
  *                             ONE_PER_CLICK conversion action via
  *                             customers/{id}/conversionActions:mutate and STORE the
@@ -41,6 +48,7 @@ import {
 } from "../_shared/adChannel.ts";
 import { GOOGLE_ADS_DEFAULT_API_VERSION } from "../_shared/google.ts";
 import {
+  isGoogleConversionKind,
   provisionGoogleConversionAction,
   sendGoogleConversion,
 } from "../_shared/googleConversionUpload.ts";
@@ -103,6 +111,10 @@ serve(async (req: Request): Promise<Response> => {
   if (!isLane(lane)) {
     return json({ error: "validation_error", detail: "lane_invalid" }, 400);
   }
+  const kind = body.kind ?? "purchase";
+  if (!isGoogleConversionKind(kind)) {
+    return json({ error: "validation_error", detail: "kind_invalid" }, 400);
+  }
   if (
     action !== "provision" && action !== "validate" &&
     action !== "validate_upload"
@@ -130,11 +142,20 @@ serve(async (req: Request): Promise<Response> => {
   try {
     if (action === "validate_upload") {
       const priorExtra = (connection.extra ?? {}) as Record<string, unknown>;
-      const conversionActionResource =
-        (typeof priorExtra.conversion_action_resource === "string" &&
+      const priorActions = (priorExtra.conversion_actions &&
+          typeof priorExtra.conversion_actions === "object")
+        ? priorExtra.conversion_actions as Record<string, unknown>
+        : {};
+      const kindResource = typeof priorActions[kind] === "string" &&
+          priorActions[kind]
+        ? priorActions[kind] as string
+        : null;
+      const conversionActionResource = kindResource ??
+        ((kind === "purchase" &&
+            typeof priorExtra.conversion_action_resource === "string" &&
             priorExtra.conversion_action_resource)
           ? priorExtra.conversion_action_resource
-          : null;
+          : null);
       if (!conversionActionResource) {
         return json({
           error: "conversion_action_missing",
@@ -187,6 +208,7 @@ serve(async (req: Request): Promise<Response> => {
       validateOnly,
       name,
       attributionWindowDays,
+      kind,
     });
 
     if (!validateOnly) {
@@ -199,13 +221,24 @@ serve(async (req: Request): Promise<Response> => {
         }, 502);
       }
       const priorExtra = (connection.extra ?? {}) as Record<string, unknown>;
+      const priorActions = (priorExtra.conversion_actions &&
+          typeof priorExtra.conversion_actions === "object")
+        ? priorExtra.conversion_actions as Record<string, unknown>
+        : {};
       const { data: updated, error: updateError } = await supabase
         .from("ad_connections")
         .update({
           extra: {
             ...priorExtra,
-            // CONFIG, not a secret — the conversion-action resource name.
-            conversion_action_resource: result.resourceName,
+            // CONFIG, not a secret — one conversion-action resource per kind.
+            conversion_actions: {
+              ...priorActions,
+              [kind]: result.resourceName,
+            },
+            // The purchase alias older readers (and the health check) use.
+            ...(kind === "purchase"
+              ? { conversion_action_resource: result.resourceName }
+              : {}),
           },
         })
         .eq("id", connection.id)
@@ -221,7 +254,9 @@ serve(async (req: Request): Promise<Response> => {
       return json({
         lane,
         action,
+        kind,
         conversion_action_resource: result.resourceName,
+        secondary_update: result.secondaryUpdate ?? "not_needed",
         request_id: result.requestId,
         connection: updated,
       });

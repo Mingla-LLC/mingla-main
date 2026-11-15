@@ -50,18 +50,19 @@ export async function sendTikTokConversion(
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const pixelCode = conn.pixelId?.trim();
-  if (!pixelCode) return { channel: "tiktok", status: "skipped", reason: "no_pixel" };
+  if (!pixelCode) return { channel: "tiktok", status: "failed", reason: "no_pixel" };
 
   const tokenName = conn.tokenEnvVar?.trim();
-  if (!tokenName) return { channel: "tiktok", status: "skipped", reason: "no_token_name" };
+  if (!tokenName) return { channel: "tiktok", status: "failed", reason: "no_token_name" };
   const token = getToken(tokenName);
   if (!token || !token.trim()) {
-    return { channel: "tiktok", status: "skipped", reason: "no_token" };
+    return { channel: "tiktok", status: "failed", reason: "no_token" };
   }
 
   const user = definedOnly({
     email: input.hashedEmail ?? undefined, // SHA-256 hex (hashed by caller)
-    phone: input.hashedPhone ?? undefined, // SHA-256 hex
+    // #4238 P2-1 (Step 0 Z6): TikTok wants SHA-256 of E.164 WITH the `+`.
+    phone: input.hashedPhoneE164 ?? undefined,
     ttclid: input.externalClickId ?? undefined, // raw TikTok click id
     external_id: input.externalId ?? undefined,
     ttp: input.ttp ?? undefined,

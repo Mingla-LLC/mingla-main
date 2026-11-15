@@ -5,6 +5,7 @@
 // lib/growth-tools-submit.ts re-exports it unchanged.
 
 import { postGrowthTools, type GrowthToolsError } from './growth-tools-transport'
+import { leadEventIdFrom, type MarketingAdContext } from './marketing-ad-context'
 
 export interface BookingSlot {
   start: string
@@ -52,6 +53,12 @@ export type BookCallInput = {
       venue?: string
       website?: string
       report_url?: string
+      /**
+       * #4238 W3-3 — the page's ad context (lib/marketing-ad-context.ts). A
+       * Host call only: the server records the host lead and answers its
+       * `lead_event_id` for the browser Lead twin.
+       */
+      ad?: MarketingAdContext
     }
   | {
       audience: 'creator' | 'local'
@@ -65,7 +72,14 @@ export type BookCallInput = {
 )
 
 export async function bookCall(input: BookCallInput): Promise<
-  | { ok: true; event_url: string | null; meet_url: string | null; start: string }
+  | {
+      ok: true
+      event_url: string | null
+      meet_url: string | null
+      start: string
+      /** #4238 W3-3 — `lead:<id>` when the server recorded a host lead, else null. */
+      lead_event_id: string | null
+    }
   | { ok: false; error: GrowthToolsError; field?: string }
 > {
   const result = await postGrowthTools('growth-tools-book', {
@@ -85,6 +99,12 @@ export async function bookCall(input: BookCallInput): Promise<
   if (!b || b.ok !== true || typeof b.start !== 'string') {
     return { ok: false, error: 'server' }
   }
-  return { ok: true, event_url: b.event_url ?? null, meet_url: b.meet_url ?? null, start: b.start }
+  return {
+    ok: true,
+    event_url: b.event_url ?? null,
+    meet_url: b.meet_url ?? null,
+    start: b.start,
+    lead_event_id: leadEventIdFrom(b),
+  }
 }
 

@@ -43,6 +43,8 @@ import { MINGLA_WORDMARK } from "@mingla/brand-assets";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 // @ts-ignore -- Expo resolves the required .native/.web implementation per platform.
 import { WelcomeVideoBackground } from "./WelcomeVideoBackground";
+// #4238 W3-4: host web sign-up started (browser only; a no-op on native).
+import { fireHostSignUpStarted } from "../../analytics/webAnalytics";
 
 const googleIcon = require("../../../assets/google_icon.png");
 const logo = MINGLA_WORDMARK;
@@ -323,6 +325,7 @@ export default function BusinessWelcomeScreen({
 
     HapticFeedback.buttonPress();
     setIsGoogleSignInInProgress(true);
+    fireHostSignUpStarted();
     try {
       await onGoogleSignIn();
     } catch (error: unknown) {
@@ -349,6 +352,7 @@ export default function BusinessWelcomeScreen({
 
     HapticFeedback.buttonPress();
     setIsAppleSignInInProgress(true);
+    fireHostSignUpStarted();
     try {
       await onAppleSignIn();
     } catch (error: unknown) {
@@ -382,6 +386,7 @@ export default function BusinessWelcomeScreen({
     if (submittingEmail || !emailInput.trim()) return;
     HapticFeedback.buttonPress();
     setSubmittingEmail(true);
+    fireHostSignUpStarted();
     try {
       const { error } = await onEmailSignIn(emailInput);
       if (error) {

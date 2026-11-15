@@ -23,9 +23,19 @@
 // `import type { BusinessOneLinkDestination }` must resolve on both sides.
 // `import type`/`export type` emit NO runtime require, so this cannot become a
 // circular import of the native module into the web bundle.
-import type { BusinessOneLinkDestination } from "./appsFlyerService";
+import type {
+  BusinessOneLinkDestination,
+  HostAttachResult,
+  HostInstallAttribution,
+  UninstallTokenVerdict,
+} from "./appsFlyerService";
 
-export type { BusinessOneLinkDestination };
+export type {
+  BusinessOneLinkDestination,
+  HostAttachResult,
+  HostInstallAttribution,
+  UninstallTokenVerdict,
+};
 
 export function initializeAppsFlyer(): void {}
 
@@ -68,4 +78,80 @@ export function resolveBusinessOneLinkDestination(
   _data: Record<string, unknown> | null | undefined,
 ): BusinessOneLinkDestination {
   return null;
+}
+
+// ─── #4238 W4-3 / W6-1 / W6-5 / W6-7 / W6-8 / W6-11: parity no-ops ──────────
+// No AppsFlyer SDK on web: nothing is queued, hashed, routed or logged.
+
+export const PRE_INIT_EVENT_QUEUE_MAX = 50;
+export const APPSFLYER_EMAIL_CRYPT_SHA256 = 3;
+export const APPSFLYER_CLEARED_EMAILS: string[] = [""];
+export const UNINSTALL_TOKEN_SENT_KEY = "@mingla_business_af_uninstall_token_sent";
+export const HOST_INSTALL_ATTRIBUTION_KEY = "@mingla_host_install_attribution";
+export const AF_SUB1_REFERRAL_PREFIX = "ref:";
+
+export function classifyUninstallToken(
+  _token: string | null | undefined,
+  _platform: string,
+): UninstallTokenVerdict {
+  return { ok: false, reason: "empty" };
+}
+
+export function updateAppsFlyerUninstallToken(
+  _token: string | null | undefined,
+): void {}
+
+export function installAttributionFromConversionData(
+  _data: Record<string, unknown> | null | undefined,
+  _platform: string,
+  _nowIso: string,
+): HostInstallAttribution | null {
+  return null;
+}
+
+export function referralCodeFromAfSub1(_value: unknown): string | null {
+  return null;
+}
+
+export async function deliverBusinessOneLinkTarget(
+  _target: string,
+  _deps: {
+    navigate: (target: string) => void;
+    stashForAfterSignIn: (target: string) => Promise<void>;
+  },
+): Promise<"navigated" | "stashed" | "failed"> {
+  return "failed";
+}
+
+export function appsFlyerAuthMethod(provider: unknown): string {
+  const p = typeof provider === "string" ? provider.trim().toLowerCase() : "";
+  if (p === "apple" || p === "google" || p === "phone" || p === "email") return p;
+  return p.length > 0 ? "other" : "email";
+}
+
+export async function logAppsFlyerRegistrationOnce(
+  _userId: string,
+  _eventValues: Record<string, string | number | boolean>,
+): Promise<boolean> {
+  return false;
+}
+
+// ─── #4238 W3-3: host web sign-up attribution ──────────────────────────────
+
+export { parseHostAttachResponse } from "./hostAttachResponse";
+
+/**
+ * Called once per sign-in (AuthContext). The work (click id, match cookies,
+ * host-attribution-attach, the browser HostSignUp twin) lives in its own
+ * chunk, loaded at sign-in rather than with every buyer page (#3493). Never
+ * throws.
+ */
+export async function attachHostAttribution(): Promise<HostAttachResult | null> {
+  try {
+    const { attachHostAttributionNow } = await import("./hostAttributionAttach.web");
+    return await attachHostAttributionNow();
+  } catch (e) {
+    console.warn("[webAnalytics] host-attribution-attach unavailable:", e);
+    return null;
+  }
 }

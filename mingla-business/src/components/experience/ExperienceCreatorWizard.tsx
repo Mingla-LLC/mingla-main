@@ -1429,6 +1429,20 @@ export const ExperienceCreatorWizard: React.FC<
             brand_id: brandId,
             surface: "business_app",
           });
+          // #4238 W6-12 — supply funnel event, the experience twin of
+          // mingla_event_published, at the same publish-succeeded point.
+          // Lazy, never throws (a render test without the native SDK).
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const { logAppsFlyerEvent } = require("../../services/appsFlyerService") as
+              typeof import("../../services/appsFlyerService");
+            logAppsFlyerEvent("mingla_experience_published", {
+              event_id: savedId,
+              brand_id: brandId,
+            });
+          } catch (e) {
+            console.warn("[ExperienceCreatorWizard] mingla_experience_published not logged:", e);
+          }
           captureHostSearchOutcome("listing_published", {
             audience: "host",
             page_family: "host_pillar",

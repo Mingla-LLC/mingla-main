@@ -102,7 +102,8 @@ const ORDER_TABLES = {
   // NAME (meta→META_CAPI_ACCESS_TOKEN, tiktok→TIKTOK_EVENTS_ACCESS_TOKEN,
   // snap→SNAPCHAT_CAPI_TOKEN, reddit→REDDIT_ADS_CAPI_TOKEN) — so getToken can
   // hand tokens to the first three and leave reddit pending-config.
-  ad_connections: { extra: { dataset_id: "px-meta", pixel_id: "px" } },
+  // #4238 W1-4: TikTok sends to extra.pixel_code (never the numeric pixel_id).
+  ad_connections: { extra: { dataset_id: "px-meta", pixel_id: "px", pixel_code: "px" } },
 };
 
 // ═══ A1 — REAL AbortController timeout is absorbed as 'timeout' (RT-1) ════════
@@ -141,7 +142,9 @@ Deno.test("A2 fireAdConversion: plaintext buyer email/phone NEVER reach any send
   assert(calls.length >= 3, `meta+tiktok+snap should each POST (reddit pending); got ${calls.length}`);
 
   const expectedEmailHash = await sha256Hex("buyer.secret@example.com"); // trim+lowercase
-  const expectedPhoneHash = await sha256Hex("447700900123"); // digits-only
+  const expectedPhoneHash = await sha256Hex("447700900123"); // digits-only (Meta, Snap)
+  // #4238 P2-1 (Step 0 Z5/Z6): TikTok and Reddit take E.164 WITH the `+`.
+  const expectedPhoneHashE164 = await sha256Hex("+447700900123");
 
   for (const c of calls) {
     // The plaintext MUST NOT appear anywhere in the serialized request body.
@@ -150,7 +153,8 @@ Deno.test("A2 fireAdConversion: plaintext buyer email/phone NEVER reach any send
     assert(!c.body.includes("+44"), `raw phone prefix leaked to ${c.url}`);
     // The hash MUST be present (advanced matching still works).
     assertStringIncludes(c.body, expectedEmailHash);
-    assertStringIncludes(c.body, expectedPhoneHash);
+    const e164Platform = c.url.includes("business-api.tiktok.com") || c.url.includes("ads-api.reddit.com");
+    assertStringIncludes(c.body, e164Platform ? expectedPhoneHashE164 : expectedPhoneHash);
   }
 });
 
@@ -192,7 +196,7 @@ Deno.test("A4 fireAdConversion: venue reservation keys on reservationId with the
       guest_email: PLAINTEXT_EMAIL, guest_phone_e164: PLAINTEXT_PHONE, payment_status: "paid",
     },
     ad_conversions: null,
-    ad_connections: { extra: { dataset_id: "px", pixel_id: "px" } },
+    ad_connections: { extra: { dataset_id: "px", pixel_id: "px", pixel_code: "px" } },
   });
   const { fn, calls } = capturingFetch();
   await fireAdConversion(client, { reservationId: RESV_ID, surface: "web", eventType: "reservation" }, {
@@ -245,7 +249,8 @@ Deno.test("A5 fireAdConversion: a hanging sender never blocks past the bound and
 });
 
 // ═══ A6 — Reddit pending-config does NOT block the other three ════════════════
-Deno.test("A6 fireAdConversion: reddit pending-config → skipped, meta/tiktok/snap still send (isolation)", async () => {
+// #4238 W1-2: pending-config is now `failed` (retried + alerted); isolation holds.
+Deno.test("A6 fireAdConversion: reddit pending-config → failed, meta/tiktok/snap still send (isolation)", async () => {
   const { client } = fakeSupabase(ORDER_TABLES);
   const { fn, calls } = capturingFetch();
   const res = await fireAdConversion(client, { orderId: ORDER_ID }, {
@@ -253,7 +258,7 @@ Deno.test("A6 fireAdConversion: reddit pending-config → skipped, meta/tiktok/s
     getToken: tokenFor,
   });
   const reddit = res.results?.find((r) => r.channel === "reddit");
-  assertEquals(reddit?.status, "skipped");
+  assertEquals(reddit?.status, "failed");
   assertEquals(reddit?.reason, "pending_config");
   // Reddit made NO network call; the other three DID.
   assert(!calls.some((c) => c.url.includes("ads-api.reddit.com")), "reddit must not POST while pending");

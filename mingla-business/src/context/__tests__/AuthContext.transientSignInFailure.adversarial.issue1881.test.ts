@@ -18,8 +18,18 @@ const BASELINE_COMMIT = "09212b365";
 const BASELINE_SHA256 =
   "6eacc5eac7893c98fcfc05387a580d3e9a346147ecd6d34acee81b50266c59ca";
 // [TEST-MOD-APPROVED #3655] signOut gains local|global scope + error throw.
+// [TEST-MOD-APPROVED #4238] W6-7 (spec allowlist: AuthContext first-time branch
+// only): af_complete_registration once per user + the real sign-in method.
+// Three hunks (import, method, registration call); nothing in the #1881 paths.
+// [TEST-MOD-APPROVED #4238] W3-3 / W4-3 / W6-7 (same first-time branch): the
+// attach import and the server sign-up flag replacing the 30 s window as the
+// first-time decision; nothing in the #1881 paths.
+// [TEST-MOD-APPROVED #4238] the patch is read with --full-index: the short
+// blob ids git prints otherwise grow with the clone's object count (10 hex
+// locally, 9 in CI), so the same patch hashed differently per checkout.
 const APPROVED_PATCH_SHA256 =
-  "ce90054ce4e7dc597f212e5a371d76e491c256b5f0aeaa8287c534b750344779";
+  "70c22cd70b5b367a1217351feaf4d484d0b0cb9394440462f5612acb7a8279f2";
+const APPROVED_PATCH_HUNKS = 16;
 
 const SOURCE = fs.readFileSync(
   path.join(REPO_ROOT, AUTH_CONTEXT_PATH),
@@ -65,11 +75,11 @@ const compileSelection = (
 describe("#1881 tester adversarial: byte-level scope differential", () => {
   it("pins the exact pre-port baseline and the complete approved AuthContext patch", () => {
     const baseline = git("show", `${BASELINE_COMMIT}:${AUTH_CONTEXT_PATH}`);
-    const patch = git("diff", BASELINE_COMMIT, "--", AUTH_CONTEXT_PATH);
+    const patch = git("diff", "--full-index", BASELINE_COMMIT, "--", AUTH_CONTEXT_PATH);
 
     expect(sha256(baseline)).toBe(BASELINE_SHA256);
     expect(sha256(patch)).toBe(APPROVED_PATCH_SHA256);
-    expect(patch.match(/^@@/gm)).toHaveLength(13);
+    expect(patch.match(/^@@/gm)).toHaveLength(APPROVED_PATCH_HUNKS);
   });
 
   it("keeps web redirect and existing-user reconciliation inside the byte guard", () => {

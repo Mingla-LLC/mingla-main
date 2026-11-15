@@ -45,6 +45,7 @@ export function ensureIdPrefix(appleId: string): string {
   return appleId.startsWith("id") ? appleId : `id${appleId}`;
 }
 
+
 export interface AppsFlyerS2SEventValues {
   // Reserved AppsFlyer revenue fields — string or number both accepted by AF.
   af_revenue?: number;
@@ -53,96 +54,55 @@ export interface AppsFlyerS2SEventValues {
   [k: string]: string | number | boolean | undefined;
 }
 
-interface AppsFlyerDeviceRow {
-  appsflyer_uid: string;
-  platform: "ios" | "android";
-}
+// #4238 W4-1: the env-free parts (device lookup, app ids, event time) live in
+// appsFlyerDevice.ts so adConversionFire can use them without pulling this
+// file's secret reads into every conversion caller's function graph.
+// #4238 W3-5: the brand milestone claim, the owner lookup and the host money
+// values moved there too (env-free), so hostFirstSale.ts can run them from
+// functions that hold no AppsFlyer secret.
+import {
+  type AppsFlyerApp,
+  appsFlyerDeviceOptedOut,
+  type AppsFlyerDeviceRow,
+  claimBrandMilestone,
+  EXPLORER_APPSFLYER_APP_IDS,
+  fetchAppsFlyerDevice,
+  formatEventTime,
+  hostMoneyEventValues,
+  resolveBrandOwnerUserId,
+} from "./appsFlyerDevice.ts";
+export {
+  type AppsFlyerApp,
+  appsFlyerDeviceOptedOut,
+  type AppsFlyerDeviceRow,
+  claimBrandMilestone,
+  EXPLORER_APPSFLYER_APP_IDS,
+  fetchAppsFlyerDevice,
+  formatEventTime,
+  hostMoneyEventValues,
+  resolveBrandOwnerUserId,
+};
 
-/**
- * Look up the most-recent `business` AppsFlyer device row for a Supabase user.
- * Returns null if the user has never signed into the Mingla Host app on a
- * device, or if the row was not registered (env missing during install).
- */
-async function fetchBusinessDevice(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<AppsFlyerDeviceRow | null> {
-  const { data, error } = await supabase
-    .from("appsflyer_devices")
-    .select("appsflyer_uid, platform")
-    .eq("user_id", userId)
-    .eq("app", "business")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) {
-    console.warn(
-      "[AppsFlyerS2S] device lookup failed:",
-      error.message ?? String(error),
-    );
-    return null;
-  }
-  return data as AppsFlyerDeviceRow | null;
-}
 
-/**
- * Resolve the Mingla Host owner user_id for a brand via creator_accounts.
- * `brands.account_id` references `creator_accounts.id` which is the auth user
- * UUID. Returns null if the brand has no owner (data anomaly) or is missing.
- */
-export async function resolveBrandOwnerUserId(
-  supabase: SupabaseClient,
-  brandId: string,
-): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("brands")
-    .select("account_id")
-    .eq("id", brandId)
-    .maybeSingle();
-  if (error) {
-    console.warn(
-      "[AppsFlyerS2S] brand owner lookup failed:",
-      error.message ?? String(error),
-    );
-    return null;
-  }
-  return (data?.account_id as string | null) ?? null;
-}
-
-interface PostS2SInput {
+export interface PostS2SInput {
   supabase: SupabaseClient;
   userId: string;
   eventName: string;
   eventValues?: AppsFlyerS2SEventValues;
   /** Override eventTime; defaults to now. Format: "YYYY-MM-DD HH:MM:SS.SSS". */
   eventTime?: string;
-}
-
-function formatEventTime(d: Date): string {
-  // AppsFlyer S2S accepts "YYYY-MM-DD HH:MM:SS.SSS" (UTC).
-  const pad = (n: number, w = 2): string => n.toString().padStart(w, "0");
-  return [
-    d.getUTCFullYear(),
-    "-",
-    pad(d.getUTCMonth() + 1),
-    "-",
-    pad(d.getUTCDate()),
-    " ",
-    pad(d.getUTCHours()),
-    ":",
-    pad(d.getUTCMinutes()),
-    ":",
-    pad(d.getUTCSeconds()),
-    ".",
-    pad(d.getUTCMilliseconds(), 3),
-  ].join("");
+  /** #4238 W4-1: which app's install to post to. Defaults to `business`. */
+  app?: AppsFlyerApp;
+  /** #4238 W4-1: a device the caller already resolved (skips the lookup). */
+  device?: AppsFlyerDeviceRow | null;
 }
 
 /**
  * Post an AppsFlyer S2S in-app event for a given Supabase user.
  *
- * Resolves the user's business install (appsflyer_devices.app='business'),
- * picks the matching iOS/Android app id from env, and POSTs to the AF endpoint.
+ * Resolves the user's install of `input.app` (default 'business'), picks the
+ * matching iOS/Android app id (env for the Host app, constants for Explorer),
+ * and POSTs to the AF endpoint.
  *
  * Returns true on 2xx, false on any error (env missing, no device row, HTTP
  * failure). Never throws.
@@ -154,8 +114,13 @@ export async function postAppsFlyerS2SEvent(
   // dev key. Fail-closed when APPSFLYER_S2S_TOKEN is unset: log a clear reason and
   // return false — do NOT fall back to the dev key (the silent auth-fail was the bug).
   const s2sToken = Deno.env.get("APPSFLYER_S2S_TOKEN");
-  const iosAppId = Deno.env.get("APPSFLYER_BUSINESS_IOS_APP_ID");
-  const androidAppId = Deno.env.get("APPSFLYER_BUSINESS_ANDROID_APP_ID");
+  const app: AppsFlyerApp = input.app ?? "business";
+  const iosAppId = app === "consumer"
+    ? EXPLORER_APPSFLYER_APP_IDS.ios
+    : Deno.env.get("APPSFLYER_BUSINESS_IOS_APP_ID");
+  const androidAppId = app === "consumer"
+    ? EXPLORER_APPSFLYER_APP_IDS.android
+    : Deno.env.get("APPSFLYER_BUSINESS_ANDROID_APP_ID");
   if (!s2sToken || !iosAppId || !androidAppId) {
     console.warn(
       "[AppsFlyerS2S] env missing — skip (fail-closed). Set APPSFLYER_S2S_TOKEN (api3 V2 S2S token) + APPSFLYER_BUSINESS_IOS_APP_ID + APPSFLYER_BUSINESS_ANDROID_APP_ID.",
@@ -163,13 +128,23 @@ export async function postAppsFlyerS2SEvent(
     return false;
   }
 
-  const device = await fetchBusinessDevice(input.supabase, input.userId);
+  const device = input.device !== undefined
+    ? input.device
+    : await fetchAppsFlyerDevice(input.supabase, input.userId, app);
   if (!device) {
     if (Deno.env.get("DENO_ENV") === "development") {
       console.log(
-        `[AppsFlyerS2S] no business device for user ${input.userId} — skip ${input.eventName}`,
+        `[AppsFlyerS2S] no ${app} device for user ${input.userId} — skip ${input.eventName}`,
       );
     }
+    return false;
+  }
+  // #4238 P1-4 / P2-4 (I-4238-AF-SERVER-RESPECTS-OPT-OUT): the person switched
+  // analytics off in this app; no server post for this install, ever.
+  if (appsFlyerDeviceOptedOut(device)) {
+    console.log(
+      `[AppsFlyerS2S] ${app} install opted out of analytics — skip ${input.eventName}`,
+    );
     return false;
   }
 
@@ -226,56 +201,3 @@ export async function postAppsFlyerS2SEvent(
   }
 }
 
-/**
- * Set a brand milestone column atomically. Returns true if the column was
- * NULL prior to this call (i.e. this is the "first" occurrence and the caller
- * should fire the S2S event). Returns false if the column was already set
- * (idempotent — the event already fired in a prior webhook).
- *
- * Uses a single UPDATE with WHERE clause on the NULL column to avoid a
- * lock-prone two-step read/write race. The row is upserted first if missing.
- */
-export async function claimBrandMilestone(
-  supabase: SupabaseClient,
-  brandId: string,
-  column:
-    | "first_ticket_sold_at"
-    | "first_payout_at"
-    // `first_activated_at` = Stripe charges_enabled (CHARGE-ready).
-    | "first_activated_at"
-    // #3645 PR10 — Paystack payout bank attached (PAYOUT-ready).
-    | "first_bank_added_at",
-): Promise<boolean> {
-  // Ensure the milestone row exists. No-op if already present.
-  const { error: upsertError } = await supabase
-    .from("brand_appsflyer_milestones")
-    .upsert({ brand_id: brandId }, { onConflict: "brand_id" });
-  if (upsertError) {
-    console.warn(
-      "[AppsFlyerS2S] milestone upsert failed:",
-      upsertError.message ?? String(upsertError),
-    );
-    return false;
-  }
-
-  // Atomic claim: UPDATE ... WHERE column IS NULL. Postgres returns the
-  // affected row only if the WHERE matched, so we know whether we won the
-  // race. RETURNING is necessary because supabase-js returns affected-row
-  // data only via .select() chained after .update().
-  const nowIso = new Date().toISOString();
-  const { data, error: updateError } = await supabase
-    .from("brand_appsflyer_milestones")
-    .update({ [column]: nowIso, updated_at: nowIso })
-    .eq("brand_id", brandId)
-    .is(column, null)
-    .select("brand_id")
-    .maybeSingle();
-  if (updateError) {
-    console.warn(
-      `[AppsFlyerS2S] milestone claim ${column} failed:`,
-      updateError.message ?? String(updateError),
-    );
-    return false;
-  }
-  return data !== null;
-}

@@ -329,7 +329,9 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
           gender: data.userGender || '',
           country: data.userCountry || '',
         })
-        logAppsFlyerEvent('af_start_trial', {
+        // #4238 W6-3: an in-app trial, not a store trial (af_start_trial is
+        // reserved for store trials RevenueCat reports).
+        logAppsFlyerEvent('mingla_app_trial_started', {
           af_trial_type: 'elite_7day',
           af_duration: 7,
         })

@@ -26,6 +26,9 @@ import {
   registerAppsFlyerDevice,
   resetAppsFlyerDeviceCache,
   logAppsFlyerEvent,
+  appsFlyerAuthMethod,
+  logAppsFlyerRegistrationOnce,
+  attachHostAttribution,
 } from "../services/appsFlyerService";
 // ORCH-0808-FOLLOWUP — Mixpanel identity binding.
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
@@ -864,10 +867,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                           | { provider?: string }
                           | undefined
                       )?.provider ?? "email";
-                    const method =
-                      provider === "google" || provider === "apple"
-                        ? provider
-                        : "email";
+                    // #4238 W6-7: the real provider (apple / google / email /
+                    // phone), not "email" for everything that isn't social.
+                    const method = appsFlyerAuthMethod(provider);
                     const { data: account } = await supabase
                       .from("creator_accounts")
                       .select("created_at, email, display_name")
@@ -876,10 +878,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     const createdAt = account?.created_at
                       ? new Date(account.created_at).getTime()
                       : null;
+                    // #4238 W3-3 / W4-3 / W6-7: host-attribution-attach stores
+                    // this host's ad match context (web: click id + cookies;
+                    // Host app: the saved install attribution) and answers
+                    // new_host from the server's own sign-up record. The
+                    // 30-second created_at window is only the fallback when
+                    // the server cannot answer.
+                    const attach = await attachHostAttribution();
                     const isFirstTime =
-                      createdAt !== null && Date.now() - createdAt < 30_000;
+                      attach !== null && attach.newHost !== null
+                        ? attach.newHost
+                        : createdAt !== null && Date.now() - createdAt < 30_000;
                     if (isFirstTime) {
-                      logAppsFlyerEvent("af_complete_registration", {
+                      // #4238 W6-7: once per account on this device, even when
+                      // a second sign-in lands inside the first-time window.
+                      void logAppsFlyerRegistrationOnce(userForDeferred.id, {
                         af_registration_method: method,
                       });
                     } else {

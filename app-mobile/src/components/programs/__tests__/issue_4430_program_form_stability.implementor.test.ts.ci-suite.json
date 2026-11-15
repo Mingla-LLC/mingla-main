@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/programs/__tests__/issue_4430_program_form_stability.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4430-program-form-stability-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}
