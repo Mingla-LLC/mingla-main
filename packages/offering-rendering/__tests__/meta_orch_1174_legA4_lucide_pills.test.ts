@@ -28,6 +28,9 @@ const event = await read("../EventOfferingBody.tsx");
 const rsvp = await read("../RsvpOfferingBody.tsx");
 const rsvpMomentum = await read("../RsvpMomentumDecision.tsx");
 const dateRange = await read("../formatTripDateRange.ts");
+// issue #4420 — the when / where / who's-going icons moved into the shared
+// fact rows; the bodies render them through OfferingFactRows.
+const factRows = await read("../OfferingFactRows.tsx");
 
 const ICONS = [
   "Calendar",
@@ -75,10 +78,12 @@ Deno.test("§1 LucideIcons draws react-native-svg paths — NO lucide dependency
 // ── §2 — the three bodies use the lucide components + dropped the glyphs ──
 Deno.test("§2 TripOfferingBody swaps its pill/verified glyphs to lucide", () => {
   assertStringIncludes(trip, 'from "./LucideIcons"');
-  assertStringIncludes(trip, "<Calendar"); // §3 date pill
-  assertStringIncludes(trip, "<Plane"); // §3 route pill
-  assertStringIncludes(trip, "<Moon"); // §4 days·nights
-  assertStringIncludes(trip, "<Users"); // §4 seats-left
+  // issue #4420 — dates / route / seats are fact rows drawn with lucide icons.
+  assertStringIncludes(trip, "<OfferingFactRows");
+  assertStringIncludes(factRows, 'from "./LucideIcons"');
+  assertStringIncludes(factRows, "<Calendar"); // when
+  assertStringIncludes(factRows, "<MapPin"); // where
+  assertStringIncludes(factRows, "<Users"); // who's going / seats
   assertStringIncludes(trip, "<BadgeCheck"); // brand verified tick
   for (const glyph of ["📅", "✈", "⏱", "👥"]) {
     assert(!trip.includes(glyph), `TripOfferingBody must not keep the "${glyph}" glyph`);
@@ -92,9 +97,11 @@ Deno.test("§2 TripOfferingBody swaps its pill/verified glyphs to lucide", () =>
 
 Deno.test("§2 EventOfferingBody swaps date/where/stepper glyphs to lucide", () => {
   assertStringIncludes(event, 'from "./LucideIcons"');
-  assertStringIncludes(event, "<Calendar"); // date row
+  // issue #4420 — the date + location rows are fact rows (lucide icons).
+  assertStringIncludes(event, "<OfferingFactRows");
+  assertStringIncludes(factRows, "<Calendar"); // date row
+  assertStringIncludes(factRows, "<MapPin"); // location pin
   assertStringIncludes(event, "<Globe"); // online
-  assertStringIncludes(event, "<MapPin"); // location pin
   assertStringIncludes(event, "<Minus"); // stepper −
   assertStringIncludes(event, "<Plus"); // stepper +
   for (const glyph of ["◷", "◯", "⌖", "−"]) {
@@ -104,8 +111,10 @@ Deno.test("§2 EventOfferingBody swaps date/where/stepper glyphs to lucide", () 
 
 Deno.test("§2 RsvpOfferingBody swaps date/where/stepper glyphs to lucide", () => {
   assertStringIncludes(rsvp, 'from "./LucideIcons"');
-  assertStringIncludes(rsvp, "<Calendar"); // date row
-  assertStringIncludes(rsvp, "<Globe"); // online
+  // issue #4420 — the date + location rows are fact rows (lucide icons).
+  assertStringIncludes(rsvp, "<OfferingFactRows");
+  assertStringIncludes(factRows, "<Calendar"); // date row
+  assertStringIncludes(factRows, "<Globe"); // online
   assertStringIncludes(rsvp, "<MapPin"); // location pin
   assertStringIncludes(rsvp, "<Minus"); // +1 stepper –
   assertStringIncludes(rsvp, "<Plus"); // +1 stepper +

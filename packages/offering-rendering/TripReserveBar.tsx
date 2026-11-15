@@ -405,47 +405,6 @@ const styles = StyleSheet.create({
     zIndex: 6,
     paddingHorizontal: 16,
   },
-  floatButton: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    paddingHorizontal: 26,
-    paddingVertical: 15,
-    minHeight: 52,
-    ...Platform.select({
-      android: { elevation: 0, shadowOpacity: 0 },
-      default: {
-        shadowColor: "#000000",
-        shadowOpacity: 0.28,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 8 },
-      },
-    }),
-  },
-  // ORCH-1175 — the live price segment inside the floating pill. Yields space
-  // first (flexShrink:1) so the label + arrow stay intact on a long price.
-  floatPrice: {
-    fontSize: 16,
-    fontWeight: "900",
-    fontVariant: ["tabular-nums"],
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  floatCta: { fontSize: 16, fontWeight: "900", flexShrink: 0 },
-  floatButtonDisabled: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    minHeight: 48,
-  },
-  floatDisabledTitle: { fontSize: 14, fontWeight: "900", textAlign: "center" },
   reserve: {
     flexDirection: "row",
     alignItems: "center",
