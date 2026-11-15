@@ -236,6 +236,7 @@
         "app-mobile/src/components/creator/handleCheckState.ts",
         "app-mobile/src/components/expandedCard/LocalReviewsSection.tsx",
         "app-mobile/src/components/local/localKeys.ts",
+        "app-mobile/src/components/local/localPick.ts",
         "app-mobile/src/components/local/localRefresh.ts",
         "app-mobile/src/components/local/localReviewDraft.ts",
         "app-mobile/src/components/local/localWords.ts",

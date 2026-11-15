@@ -7,7 +7,7 @@ import { localKeys, localProgramService } from '../../src/services/localProgramS
 import { chooseAndUploadCreatorMedia, creatorMediaStatus, isPickerCancel } from '../../src/services/creatorMediaService';
 import { programErrorMessage, programErrorText, toProgramError } from '../../src/services/programResult';
 import { isAllowedSocialPostUrl } from '../../src/components/local/localReviewRules';
-import { formatShortDate, parseDay, persistedDayString } from '../../src/utils/programFormat';
+import { formatInZone, formatShortDate, parseDay, persistedDayString } from '../../src/utils/programFormat';
 import { SPEND_BANDS } from '../../src/components/local/localWords';
 import { draftToFormState, reviewReadEnabled } from '../../src/components/local/localReviewDraft';
 import { placeNamesQueryEnabled } from '../../src/components/local/localRefresh';
@@ -116,7 +116,7 @@ export default function LocalReviewScreen(): React.ReactElement {
   return <ProgramScreen title={`Your review · ${place}`} footer={<ProgramButton label={resubmit ? 'Send update' : 'Send for review'} busy={busy} disabled={!valid} onPress={() => void submit()} />}>
     {resubmit ? <ProgramCard tone="warning">
       <Text style={s.accentText}>Mingla asked for changes</Text>
-      <Text style={s.title}>{month.changes_due_at ? `Send your update by ${formatShortDate(month.changes_due_at)}` : 'Send your update'}</Text>
+      <Text style={s.title}>{month.changes_due_at ? `Send your update by ${formatInZone(month.changes_due_at, null) || formatShortDate(month.changes_due_at)}` : 'Send your update'}</Text>
       {requests.map((r, i) => <Text key={`${i}-${r}`} style={s.copy}>{`\u2022 ${r}`}</Text>)}
       <Text style={s.small}>Everything you sent is filled in below. Change what Mingla asked for, then send it again. You can update it once.</Text>
     </ProgramCard> : null}

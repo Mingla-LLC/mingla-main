@@ -21,7 +21,7 @@ export function localMonthWords(status: string | null | undefined): string {
     case 'picked': case 'confirmed': return 'Place picked · visit next';
     case 'visited': return 'Visited · write your review';
     case 'changes_requested': return 'Changes requested';
-    case 'submitted': return 'Review in review';
+    case 'submitted': return 'Mingla is checking your review';
     case 'approved': return 'Approved · pay on the way';
     case 'published': return 'Published · pay on the way';
     case 'paid': return 'Paid';
