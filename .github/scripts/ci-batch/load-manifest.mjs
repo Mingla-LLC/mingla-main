@@ -289,7 +289,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4339 strip time zones: register 20280708004339 in the #1857, #1931 and #2117 lanes (skipped by exact filename in the #1931 filtered replay, which never creates links_strips) and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #4339 tester: register issue_4339_links_strip_time_zone.tester.pg17.test.sql (and its .ci-suite.json) beside the implementor proof in #1931 and #2117; re-sealed.
 // #4238 integration 2: merged origin/main ad97118a28 (#4339 20280708004339 and its implementor/tester proofs kept after the three #4238 rows); re-sealed.
-export const BOOTSTRAP_SHA256 = "4c0baa6c00d7b117e73b1a25df55128e825aecad6f6ad3d70d093c13cdcfc40d";
+// #4238 order after production: renamed the three #4238 migrations (M-1, M-3, M-2) from 20280707*4238 to 20280708014238/20280708024238/20280708034238 (after 20280708004339, already applied in production), same relative order, in the #1857, #1931 and #2117 lanes; re-sealed.
+export const BOOTSTRAP_SHA256 = "8f4d2275e10e88a260059368c0c19e3db5f255aa144cbe29dab61596a067babc";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

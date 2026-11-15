@@ -499,7 +499,8 @@ export function phase3dContractDigest(manifest) {
 // #4238 Wave 3: registered M-2 (host funnel: ad_match_contexts, host event types, sign-up and first-publish triggers) and its pg17 proof in the 1857/1931/2117 suites; re-sealed.
 // #4238 integration: merged origin/main 10ffda1eb5 (#4430 20280707424430 kept before the three #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 integration 2: merged origin/main ad97118a28 (#4339 20280708004339 and its implementor/tester proofs kept after the three #4238 rows); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c7faa4c3e5884b191c66b77421a7bdc31eb92f1d2285720c76c6cec924ac8918";
+// #4238 order after production: renamed the three #4238 migrations (M-1, M-3, M-2) from 20280707*4238 to 20280708014238/20280708024238/20280708034238 (after 20280708004339, already applied in production), same relative order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7dd0311f4e61034f58c5023bba506a3e0da6a4c7e381fdf0efdf4b0854e01ec9";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
