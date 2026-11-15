@@ -838,10 +838,9 @@ export async function initWebAnalytics(pathname?: string): Promise<void> {
   } else if (isAdsOn() && !pixelRouteAllowed(route)) {
     if (route !== null && isSignInRoute(route)) await loadAdPixelRuntime();
   } else if (isAdsOn()) await bootstrapAdPixels();
-  if (isAnalyticsOn()) {
-    await ensureAnalyticsBoot();
-    refreshGaPageFields();
-  }
+  if (isAnalyticsOn()) await ensureAnalyticsBoot();
+  // #4238 P1-5: the sanitized address for this route (no-op without GA4).
+  refreshGaPageFields();
 }
 
 /** Fire a custom PostHog event + (optionally) a GA4 event. No-op if gated. */
