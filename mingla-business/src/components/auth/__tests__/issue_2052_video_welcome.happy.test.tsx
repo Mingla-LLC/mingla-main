@@ -232,8 +232,11 @@ describe("issue #2052 video welcome happy path", () => {
         for (let cur = node.parent; cur; cur = cur.parent) if (cur === ancestor) return true;
         return false;
       };
+      // The media pane is the first host View above the video.
+      let pane: any = video.parent;
+      while (pane && pane.type !== "View") pane = pane.parent;
       // Tagline shares the video's pane, never the panel.
-      expect(within(tagline, video.parent)).toBe(true);
+      expect(within(tagline, pane)).toBe(true);
       expect(within(tagline, panel)).toBe(false);
       // The actions live in the panel.
       expect(within(tree!.root.findByProps({ accessibilityLabel: "Continue with Apple" }), panel)).toBe(true);

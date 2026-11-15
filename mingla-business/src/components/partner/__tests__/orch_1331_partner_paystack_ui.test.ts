@@ -194,7 +194,8 @@ describe("ORCH-1331 · PartnerPaystackOnboardForm — design §3 contract", () =
     // keyboardVerticalOffset) is gone per ORCH-0892; the keyed 42dp Done-bar
     // clearance on the list remains the hardening contract.
     expect(form).toContain("paddingBottom: 42");
-    expect(form).toContain('"#14110f"');
+    // [TEST-MOD-APPROVED #4420] — the opaque sheet fill is the canvas token now.
+    expect(form).toContain("backgroundColor: color.canvas");
     expect(form).toMatch(/seen\.has\(b\.code\)/); // dedupe-by-code
     expect(form).toContain("useKeyboardIsVisible");
   });
