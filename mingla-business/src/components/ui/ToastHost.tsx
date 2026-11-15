@@ -18,7 +18,10 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { space } from "../../constants/designSystem";
 
-import { ToastItem, useToastStacked, useToastTopOffset } from "./Toast";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import * as ToastModule from "./Toast";
 import { reserveToastLayerOrder, topHostOrder, useToastStore, visibleToasts } from "./toastStore";
 
 export interface ToastHostProps {
@@ -30,6 +33,15 @@ export interface ToastHostProps {
 }
 
 export const ROOT_TOAST_LAYER_ORDER = 0;
+
+/** Phone placement: the toast's distance from the top edge. */
+export const useToastTopOffset = (): number => {
+  const insets = useSafeAreaInsets();
+  return (insets.top > 0 ? insets.top : space[4]) + space[2];
+};
+
+/** True when toasts stack bottom-right (web desktop, via the one desktop gate). */
+export const useToastStacked = (): boolean => useResponsiveLayout().isWideDesktop;
 
 /**
  * Register a toast host layer while `open`. The order is reserved during
@@ -67,7 +79,11 @@ export const ToastHost: React.FC<ToastHostProps> = ({ layer = "overlay", open = 
   const stacked = useToastStacked();
   const topOffset = useToastTopOffset();
 
-  if (!isTop || toasts.length === 0) return null;
+  // Read at render, not destructured at import: a suite that replaces
+  // `./Toast` with a stub (no store writes, so no toasts) must still be able
+  // to mount every Sheet / Modal / ConfirmDialog that carries a host.
+  const ToastItem = ToastModule.ToastItem;
+  if (!isTop || toasts.length === 0 || typeof ToastItem !== "function") return null;
   const shown = visibleToasts(toasts, stacked);
 
   return (
