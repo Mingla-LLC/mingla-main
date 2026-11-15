@@ -162,18 +162,15 @@ export function useAddGroupMembers(conversationId: string) {
 }
 
 /**
- * Share the group link with MY share token on it (joiners connect to me).
- * Waits for whichever link is not loaded yet; on failure toasts and shares
- * nothing (never a half-formed link).
+ * Resolve the group link with MY share token on it (joiners connect to me).
+ * Waits for whichever link is not loaded yet. Returns null when the group link
+ * cannot load (never a half-formed link); the caller says so.
  */
-export function useShareGroupLink(conversationId: string | null | undefined, groupName: string) {
+export function useResolveGroupInviteLink(conversationId: string | null | undefined) {
   const queryClient = useQueryClient();
   const userId = useAppStore((s) => s.user?.id);
-  const [busy, setBusy] = useState(false);
-  const share = useCallback(async (): Promise<void> => {
-    if (!conversationId || busy) return;
-    setBusy(true);
-    let link: string | null = null;
+  return useCallback(async (): Promise<string | null> => {
+    if (!conversationId) return null;
     try {
       const group = await queryClient.fetchQuery({
         queryKey: groupLinkKeys.link(conversationId),
@@ -190,18 +187,33 @@ export function useShareGroupLink(conversationId: string | null | undefined, gro
               staleTime: 10 * 60 * 1000,
             })
             .catch((err: unknown) => {
-              console.warn("[useShareGroupLink] personal link failed:", err);
+              console.warn("[useResolveGroupInviteLink] personal link failed:", err);
               return null;
             })
         : null;
-      link = buildGroupInviteOneLink({
+      return buildGroupInviteOneLink({
         groupToken: group.token,
         shareToken: mine?.token ?? null,
         referralCode: mine?.referralCode ?? null,
       });
     } catch (error) {
-      console.warn("[useShareGroupLink] group link failed:", error);
+      console.warn("[useResolveGroupInviteLink] group link failed:", error);
+      return null;
     }
+  }, [conversationId, queryClient, userId]);
+}
+
+/**
+ * Share the group link with MY share token on it (joiners connect to me).
+ * On failure toasts and shares nothing (never a half-formed link).
+ */
+export function useShareGroupLink(conversationId: string | null | undefined, groupName: string) {
+  const resolveLink = useResolveGroupInviteLink(conversationId);
+  const [busy, setBusy] = useState(false);
+  const share = useCallback(async (): Promise<void> => {
+    if (!conversationId || busy) return;
+    setBusy(true);
+    const link = await resolveLink();
     setBusy(false);
     if (!link) {
       toastManager.error(i18n.t("chat:plan_action_failed"));
@@ -213,6 +225,6 @@ export function useShareGroupLink(conversationId: string | null | undefined, gro
     } catch (error) {
       console.warn("[useShareGroupLink] share sheet failed:", error);
     }
-  }, [busy, conversationId, groupName, queryClient, userId]);
+  }, [busy, conversationId, groupName, resolveLink]);
   return { share, busy };
 }

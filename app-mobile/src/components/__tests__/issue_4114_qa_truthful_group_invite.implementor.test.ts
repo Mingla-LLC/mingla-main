@@ -33,10 +33,13 @@ Deno.test("QA run 2: group settings says 'Text message sent' only when it was", 
   assert(/if \(outcome\.texted\) \{[\s\S]*?invitedTextSent[\s\S]*?\} else \{\s*showInviteNotTextedAlert\(t, outcome\.phoneE164, outcome\.inviteLink\);/.test(cold), "texted gate");
 });
 
-Deno.test("QA run 2: the pending collab sheet does not claim a text went out", async () => {
-  const sheet = strip(await read("components/connections/PendingCollabChatSheet.tsx"));
+// #4435: the pending collab sheet was deleted; its phone invite moved to Add
+// people (GroupPhoneInvite) with the same not-texted rule.
+Deno.test("QA run 2: Add people's phone invite does not claim a text went out", async () => {
+  const sheet = strip(await read("components/chat/GroupPhoneInvite.tsx"));
   const cold = sheet.indexOf('if (outcome.kind === "cold" && !outcome.texted) {');
-  assert(cold >= 0 && cold < sheet.indexOf('"Invite sent"'), "not-texted branch comes before the success alert");
+  assert(cold >= 0 && cold < sheet.indexOf("Alert.alert("), "not-texted branch comes before the success alert");
+  assert(/showInviteNotTextedAlert\(t, outcome\.phoneE164, outcome\.inviteLink\)/.test(sheet), "offers Share instead");
 });
 
 Deno.test("QA run 2: the not-texted alert says so and offers Share", async () => {

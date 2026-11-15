@@ -226,9 +226,15 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //   (`brand_appsflyer_milestones (brand_id)` moved from appsFlyerS2S.ts to
   //   appsFlyerDevice.ts: same site, count unchanged.)
   //
+  // #4435 group lifecycle, census -1 (115, after #4238):
+  //   -1  `collaboration_invites (session_id,invited_user_id)` — the client
+  //       upsert in app-mobile/src/services/boardInviteService.ts is removed;
+  //       adding people to a group now goes through the server RPC, so the
+  //       client no longer writes invites directly. No new site is added.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 116);
+  assert.equal(sites.length, 115);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

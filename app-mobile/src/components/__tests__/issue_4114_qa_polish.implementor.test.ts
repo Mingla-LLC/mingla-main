@@ -102,7 +102,10 @@ Deno.test("P3d BlockUserModal and the chat's group settings are dark, on tokens"
   const hexes = [...block.matchAll(/"#[0-9a-fA-F]{3,8}"/g)].map((m) => m[0]);
   assert(hexes.length === 1 && hexes[0].toLowerCase() === '"#ef4444"', `only the Block button keeps a literal: ${hexes}`);
   const chat = strip(await read("components/MessageInterface.tsx"));
-  assert(/<BoardSettingsDropdown\s+visible=\{Boolean\(isGroupChat && showMoreOptionsMenu && friend\.sessionId\)\}\s+theme="dark"/.test(chat), "chat opens it dark");
+  // #4435: the chat's session-group settings are GroupInfoSheet now (dark);
+  // BoardSettingsDropdown keeps its dark theme for any dark caller.
+  assert(!/<BoardSettingsDropdown/.test(chat) && /<GroupInfoSheet[\s\S]{0,1600}session=\{sessionGroupInfo\}/.test(chat), "chat opens group info");
+  assert(/theme="dark"/.test(strip(await read("components/chat/GroupInfoSheet.tsx"))), "group info is dark");
   const settings = strip(await read("components/board/BoardSettingsDropdown.tsx"));
   assert(/const st = dark \? darkStyles : styles;/.test(settings) && /theme=\{dark \? "dark" : "light"\}/.test(settings), "sheet follows the theme");
   assert(/theme=\{dark \? DARK_PHONE_THEME : undefined\}/.test(settings) && /theme=\{theme\}/.test(settings), "phone field and friend list follow");

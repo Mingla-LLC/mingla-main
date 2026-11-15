@@ -141,7 +141,12 @@
     "invitesSent": "Пригласитьs Sent",
     "invitesSentMsg": "Successfully invited {{count}} friend{{plural}} to \"{{name}}\".",
     "errorSendInvites": "Failed to send invites. Please try again.",
-    "error": "Ошибка"
+    "error": "Ошибка",
+    "addPeople": "Добавить ({{count}})",
+    "peopleAdded": "Добавлены",
+    "peopleAddedMsg": "Добавлено в «{{name}}»: {{count}}. Они сразу в группе.",
+    "noneAdded": "Никто не добавлен. Возможно, они уже в группе.",
+    "groupFull": "В группе может быть до 15 человек. Выберите меньше друзей."
   },
   "manageBoardModal": {
     "manageBoard": "Мужчинаage Board",

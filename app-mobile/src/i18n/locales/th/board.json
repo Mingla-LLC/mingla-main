@@ -63,7 +63,12 @@
     "tryDifferentName": "ลองชื่อหรือชื่อผู้ใช้อื่น", "addMoreFriends": "เพิ่มเพื่อนอีกเพื่อเชิญ",
     "sendInvites": "ส่งคำเชิญ ({{count}})", "invitesSent": "ส่งคำเชิญแล้ว",
     "invitesSentMsg": "เชิญเพื่อน {{count}} คน{{plural}}ไปยัง \"{{name}}\" สำเร็จ",
-    "errorSendInvites": "ส่งคำเชิญไม่สำเร็จ กรุณาลองใหม่", "error": "ข้อผิดพลาด"
+    "errorSendInvites": "ส่งคำเชิญไม่สำเร็จ กรุณาลองใหม่", "error": "ข้อผิดพลาด",
+    "addPeople": "เพิ่ม ({{count}})",
+    "peopleAdded": "เพิ่มแล้ว",
+    "peopleAddedMsg": "เพิ่ม {{count}} คนใน \"{{name}}\" แล้ว เข้ากลุ่มทันที",
+    "noneAdded": "ไม่ได้เพิ่มใคร อาจอยู่ในกลุ่มแล้ว",
+    "groupFull": "กลุ่มรับได้สูงสุด 15 คน เลือกเพื่อนให้น้อยลง"
   },
   "manageBoardModal": {
     "manageBoard": "จัดการบอร์ด", "members": "สมาชิก", "admin": "ผู้ดูแล", "creator": "ผู้สร้าง", "you": "(คุณ)",

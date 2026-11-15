@@ -141,7 +141,12 @@
     "invitesSent": "Inviti Inviati",
     "invitesSentMsg": "Successofully invited {{count}} friend{{plural}} to \"{{name}}\".",
     "errorSendInvites": "Fallito to send invites. Please try again.",
-    "error": "Errore"
+    "error": "Errore",
+    "addPeople": "Aggiungi ({{count}})",
+    "peopleAdded": "Aggiunti",
+    "peopleAddedMsg": "{{count}} aggiunti a \"{{name}}\". Sono già dentro.",
+    "noneAdded": "Nessuno è stato aggiunto. Forse sono già nel gruppo.",
+    "groupFull": "Un gruppo contiene fino a 15 persone. Scegli meno amici."
   },
   "manageBoardModal": {
     "manageBoard": "Gestisci Bacheca",

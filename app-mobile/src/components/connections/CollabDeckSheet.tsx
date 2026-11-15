@@ -31,6 +31,9 @@ interface CollabDeckSheetProps {
   onAddToCalendar?: (data: any) => void;
   onPurchaseComplete?: (data: any, opt: any) => void;
   onOpenPreferences?: () => void;
+  /** Issue #4435: the waiting (group of one) state's invite buttons. */
+  onShareGroupLink?: () => void;
+  onAddGroupPeople?: () => void;
 }
 
 export function CollabDeckSheet({
@@ -46,6 +49,8 @@ export function CollabDeckSheet({
   onAddToCalendar,
   onPurchaseComplete,
   onOpenPreferences,
+  onShareGroupLink,
+  onAddGroupPeople,
 }: CollabDeckSheetProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation(["social", "common"]);
@@ -175,6 +180,8 @@ export function CollabDeckSheet({
               onResetCards={noop}
               onOpenPreferences={onOpenPreferences}
               onOpenCollabPreferences={handleOpenPreferences}
+              onShareGroupLink={onShareGroupLink}
+              onAddGroupPeople={onAddGroupPeople}
               onAfterNotify={handleAfterNotify}
               onExternalRoute={handleExternalRoute}
               generateNewMockCard={noop}

@@ -141,7 +141,12 @@
     "invitesSent": "Zaprośs Sent",
     "invitesSentMsg": "Sukcesfully invited {{count}} friend{{plural}} to \"{{name}}\".",
     "errorSendInvites": "Failed to send invites. Please try again.",
-    "error": "Błąd"
+    "error": "Błąd",
+    "addPeople": "Dodaj ({{count}})",
+    "peopleAdded": "Dodano",
+    "peopleAddedMsg": "Dodano do „{{name}}”: {{count}}. Są w grupie od razu.",
+    "noneAdded": "Nikogo nie dodano. Może są już w grupie.",
+    "groupFull": "Grupa mieści do 15 osób. Wybierz mniej znajomych."
   },
   "manageBoardModal": {
     "manageBoard": "Mężczyznaage Board",

@@ -141,7 +141,12 @@
     "invitesSent": "Invităs Sent",
     "invitesSentMsg": "Successfully invited {{count}} friend{{plural}} to \"{{name}}\".",
     "errorSendInvites": "Failed to send invites. Please try again.",
-    "error": "Eroare"
+    "error": "Eroare",
+    "addPeople": "Adaugă ({{count}})",
+    "peopleAdded": "Adăugați",
+    "peopleAddedMsg": "{{count}} adăugați în „{{name}}”. Sunt deja în grup.",
+    "noneAdded": "Nimeni nu a fost adăugat. Poate sunt deja în grup.",
+    "groupFull": "Un grup are cel mult 15 persoane. Alege mai puțini prieteni."
   },
   "manageBoardModal": {
     "manageBoard": "Manage Board",

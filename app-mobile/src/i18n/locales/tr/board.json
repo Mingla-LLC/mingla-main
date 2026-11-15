@@ -141,7 +141,12 @@
     "invitesSent": "Davet Ets Sent",
     "invitesSentMsg": "Successfully invited {{count}} friend{{plural}} to \"{{name}}\".",
     "errorSendInvites": "Failed to send invites. Please try again.",
-    "error": "Hata"
+    "error": "Hata",
+    "addPeople": "Ekle ({{count}})",
+    "peopleAdded": "Eklendi",
+    "peopleAddedMsg": "\"{{name}}\" grubuna {{count}} kişi eklendi. Hemen gruptalar.",
+    "noneAdded": "Kimse eklenmedi. Zaten grupta olabilirler.",
+    "groupFull": "Bir grup en fazla 15 kişi alır. Daha az arkadaş seç."
   },
   "manageBoardModal": {
     "manageBoard": "Erkekage Board",
