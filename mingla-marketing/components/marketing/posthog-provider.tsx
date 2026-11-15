@@ -408,9 +408,35 @@ function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; read
   )
 }
 
+// #4238 W3-1 (I-4238-MARKETING-PIXEL-CONSENT-GATED): the four ad pixels run
+// only while ads are on. lib/marketing-pixels.ts is loaded on demand (never in a
+// page's first load) and re-checks the choice itself; a turn-off, in this tab
+// or another, stops them at once. One PageView per route.
+let marketingPixelsLive = false
+function syncMarketingPixels(): void {
+  if (isMarketingAdsOn()) {
+    marketingPixelsLive = true
+    const { pathname, search } = window.location
+    import('@/lib/marketing-pixels')
+      .then((pixels) => pixels.bootMarketingPixels(pathname, search))
+      .catch((error: unknown) => console.warn('[marketing pixels] not started (non-fatal):', error))
+  } else if (marketingPixelsLive) {
+    marketingPixelsLive = false
+    import('@/lib/marketing-pixels')
+      .then((pixels) => pixels.stopMarketingPixels())
+      .catch((error: unknown) => console.warn('[marketing pixels] not stopped (non-fatal):', error))
+  }
+}
+
 export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
   const pathname = usePathname()
   const [enabled, setEnabled] = useState(false)
+
+  useEffect(() => {
+    syncMarketingPixels()
+    window.addEventListener(MARKETING_PRIVACY_EVENT, syncMarketingPixels)
+    return () => window.removeEventListener(MARKETING_PRIVACY_EVENT, syncMarketingPixels)
+  }, [pathname])
 
   useEffect(() => {
     // On unless this visitor turned analytics off: boot on arrival, stop on a
