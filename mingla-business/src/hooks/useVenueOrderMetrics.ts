@@ -4,10 +4,19 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import {
-  fetchVenueOrderMetrics,
-  type VenueOrderMetrics,
-} from "../services/venueOrderMetricsService";
+import type { VenueOrderMetrics } from "../services/venueOrderMetricsService";
+
+/**
+ * #4238 (#3493 boot payload): the venue order metrics service is host-only, so
+ * it loads with the first venue metrics query instead of with every web page.
+ */
+const fetchVenueOrderMetrics = async (
+  brandId: string,
+  venueId: string,
+): Promise<VenueOrderMetrics> => {
+  const service = await import("../services/venueOrderMetricsService");
+  return service.fetchVenueOrderMetrics(brandId, venueId);
+};
 
 const STALE_TIME_MS = 60_000;
 
