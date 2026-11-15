@@ -8,14 +8,7 @@ import {
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-  accent,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import type {
   BrandDiscount,
@@ -23,6 +16,7 @@ import type {
   DiscountFilter,
 } from "../../services/discountService";
 import { Button } from "../ui/Button";
+import { Chip, Segmented } from "../ui/Pill";
 import { PricesWorkspace } from "./PricesWorkspace";
 
 const loadDiscountService = () => import("../../services/discountService");
@@ -132,28 +126,17 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
   return (
     <View style={styles.page}>
       <View style={styles.top}>
-        <View style={styles.tabs}>
-          <Pressable
-            onPress={() => setTab("discounts")}
-            style={[styles.tab, tab === "discounts" && styles.tabOn]}
-          >
-            <Text
-              style={[styles.tabText, tab === "discounts" && styles.tabTextOn]}
-            >
-              Discounts
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setTab("prices")}
-            style={[styles.tab, tab === "prices" && styles.tabOn]}
-          >
-            <Text
-              style={[styles.tabText, tab === "prices" && styles.tabTextOn]}
-            >
-              Prices
-            </Text>
-          </Pressable>
-        </View>
+        {/* #4420 — neutral one-line switcher (orange is not a control fill). */}
+        <Segmented<"discounts" | "prices">
+          options={[
+            { key: "discounts", label: "Discounts" },
+            { key: "prices", label: "Prices" },
+          ]}
+          value={tab}
+          onChange={setTab}
+          accessibilityLabel="Discounts or prices"
+          style={styles.tabs}
+        />
         <Button
           label="Results"
           variant="secondary"
@@ -187,31 +170,19 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
                 }}
               />
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filters}
-            >
+            {/* #4420 round-3 item 23 — the filter chips wrap inside the page
+                instead of running off the edge. */}
+            <View style={styles.filters} accessibilityRole="radiogroup">
               {FILTERS.map(([value, label]) => (
-                <Pressable
+                <Chip
                   key={value}
+                  label={label}
+                  selected={filter === value}
                   onPress={() => setFilter(value)}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${label} discounts`}
-                  accessibilityState={{ checked: filter === value }}
-                  style={[styles.filter, filter === value && styles.filterOn]}
-                >
-                  <Text
-                    style={[
-                      styles.filterText,
-                      filter === value && styles.filterTextOn,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
+                  testID={`discount-filter-${value}`}
+                />
               ))}
-            </ScrollView>
+            </View>
             {filter === "needs_attention" && rows.length > 0 ? (
               <View style={styles.warning}>
                 <Text style={styles.warningTitle}>Some discounts need you</Text>
@@ -383,7 +354,7 @@ const DiscountRow: React.FC<{
                 styles.progressFill,
                 {
                   width: `${ratio * 100}%`,
-                  backgroundColor: ratio >= 0.8 ? "#f59e0b" : accent.warm,
+                  backgroundColor: ratio >= 0.8 ? color.warning : color.accent,
                 },
               ]}
             />
@@ -437,103 +408,89 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[3],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
-  tabs: {
-    flexDirection: "row",
-    padding: 3,
-    borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
-  },
-  tab: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 9,
-    borderRadius: radius.sm,
-  },
-  tabOn: { backgroundColor: accent.warm },
-  tabText: { color: textTokens.secondary, fontWeight: "700" },
-  tabTextOn: { color: "#fff" },
-  scroll: { padding: spacing.md, gap: spacing.sm, paddingBottom: 80 },
+  tabs: { flex: 1, minWidth: 0, maxWidth: 360 },
+  scroll: { padding: space[4], gap: space[3], paddingBottom: space[10] + space[4] },
   saved: {
     alignSelf: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1] + 2,
     borderRadius: radius.full,
-    backgroundColor: semantic.successTint,
+    backgroundColor: color.successTint,
   },
-  savedText: { color: textTokens.primary, fontWeight: "700" },
+  savedText: { ...type.small, color: color.text1, fontWeight: "600" },
   hero: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: space[4],
+    padding: space[4],
     borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
   },
-  heroCopy: { flex: 1, gap: 5 },
-  heroTitle: { fontSize: 20, fontWeight: "800", color: textTokens.primary },
-  heroSub: { fontSize: 12, lineHeight: 18, color: textTokens.secondary },
-  filters: { gap: spacing.xs, paddingVertical: 2 },
-  filter: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 9,
-    borderRadius: radius.full,
-    backgroundColor: glass.tint.profileBase,
-  },
-  filterOn: { backgroundColor: accent.warm },
-  filterText: { fontSize: 12, fontWeight: "700", color: textTokens.secondary },
-  filterTextOn: { color: "#fff" },
+  heroCopy: { flex: 1, minWidth: 220, gap: space[1] },
+  heroTitle: { ...type.h2, color: color.text1 },
+  heroSub: { ...type.small, color: color.text2 },
+  filters: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   warning: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: semantic.warningTint,
-    gap: 4,
+    backgroundColor: color.warningTint,
+    gap: space[1],
   },
-  warningTitle: { color: textTokens.primary, fontWeight: "800" },
+  warningTitle: { ...type.row, color: color.text1, fontWeight: "600" },
   state: {
-    padding: spacing.xl,
-    color: textTokens.secondary,
+    padding: space[7],
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
-  stateBox: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
-  empty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
-  emptyTitle: { fontSize: 18, fontWeight: "800", color: textTokens.primary },
+  stateBox: { padding: space[7], alignItems: "center", gap: space[2] },
+  empty: { padding: space[7], alignItems: "center", gap: space[2] },
+  emptyTitle: { ...type.h2, color: color.text1 },
   card: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    gap: spacing.sm,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    gap: space[2],
   },
   rowHead: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: space[2],
   },
   type: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
     borderRadius: radius.full,
-    backgroundColor: "rgba(235,120,37,.18)",
+    backgroundColor: color.fill.tile,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
   },
-  typeText: { fontSize: 9, fontWeight: "900", color: accent.warm },
-  status: { fontSize: 9, fontWeight: "800", color: textTokens.tertiary },
-  name: { fontSize: 17, fontWeight: "800", color: textTokens.primary },
+  typeText: { ...type.label, fontSize: 10, color: color.text2 },
+  status: { ...type.label, fontSize: 10, color: color.text3 },
+  name: { ...type.row, fontWeight: "600", color: color.text1 },
   value: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: textTokens.primary,
-    marginTop: 4,
+    ...type.small,
+    fontWeight: "600",
+    color: color.text1,
+    marginTop: space[1],
   },
   progress: {
     height: 6,
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   progressFill: { height: 6 },
-  usage: { fontSize: 11, color: textTokens.secondary, marginTop: 4 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  usage: { ...type.caption, color: color.text2, marginTop: space[1] },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
 });

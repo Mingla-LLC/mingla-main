@@ -41,6 +41,7 @@ import Animated, {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
+  color,
   accent,
   durations,
   glass,
@@ -1049,10 +1050,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    // BrandDeleteSheet `warnCardDanger` literals reused verbatim (candidate
-    // future tokens per DESIGN §10.5 — NOT created here).
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
-    borderColor: "rgba(239, 68, 68, 0.32)",
+    // #4420 — the Graphite danger tint and line.
+    backgroundColor: color.errorTint,
+    borderColor: color.errorLine,
     borderWidth: 1,
   },
   dangerTextCol: {

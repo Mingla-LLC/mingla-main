@@ -14,7 +14,7 @@ import DateTimePicker, {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  accent,
+  color,
   glass,
   radius,
   semantic,
@@ -827,9 +827,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: glass.tint.profileBase,
   },
+  // #4420 — selection is the selected material, not orange.
   kindCardSelected: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(249,115,22,0.10)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.card3,
   },
   kindRadio: {
     width: 19,
@@ -841,12 +842,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  kindRadioOn: { borderColor: accent.warm },
+  kindRadioOn: { borderColor: color.paper },
   kindRadioCenter: {
     width: 9,
     height: 9,
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   kindCopy: { flex: 1, gap: 3 },
   kindTitle: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
@@ -869,14 +870,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     paddingHorizontal: 4,
   },
-  segmentSelected: { backgroundColor: accent.warm },
+  segmentSelected: { backgroundColor: color.fill.tabOn },
   segmentText: {
     fontSize: 12,
     fontWeight: "700",
     color: textTokens.secondary,
     textAlign: "center",
   },
-  segmentTextSelected: { color: "#fff" },
+  segmentTextSelected: { color: color.textStrong },
   disabled: { opacity: 0.4 },
   radioRow: {
     minHeight: 42,
@@ -884,7 +885,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  radioMark: { fontSize: 18, color: accent.warm },
+  radioMark: { fontSize: 18, color: color.text1 },
   radioText: { fontSize: 14, color: textTokens.primary },
   dateRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   dateColumn: { flex: 1, minWidth: 220 },
@@ -914,7 +915,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.xs,
   },
-  clearDateText: { color: accent.warm, fontSize: 13, fontWeight: "700" },
+  clearDateText: { color: color.text1, fontSize: 13, fontWeight: "700" },
   switchRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   switchCopy: { flex: 1, gap: 3 },
   two: { flexDirection: "row", gap: spacing.sm },
@@ -934,7 +935,7 @@ const styles = StyleSheet.create({
     borderTopColor: glass.border.profileBase,
   },
   previewItem: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
-  previewPrice: { color: accent.warm, fontSize: 17, fontWeight: "800" },
+  previewPrice: { color: color.text1, fontSize: 17, fontWeight: "800" },
   previewMeta: { color: textTokens.secondary, fontSize: 12, lineHeight: 17 },
   error: {
     padding: spacing.sm,
@@ -943,5 +944,5 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   errorText: { fontSize: 13, lineHeight: 18, color: textTokens.primary },
-  link: { fontSize: 13, fontWeight: "700", color: accent.warm },
+  link: { fontSize: 13, fontWeight: "700", color: color.text1 },
 });

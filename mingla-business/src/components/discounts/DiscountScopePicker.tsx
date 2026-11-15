@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
+  color,
   glass,
   radius,
   spacing,
@@ -237,9 +237,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: glass.tint.profileBase,
   },
+  // #4420 — selection is the selected material, not orange.
   scopeCardSelected: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(249,115,22,0.10)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.card3,
   },
   radio: {
     width: 19,
@@ -251,12 +252,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  radioSelected: { borderColor: accent.warm },
+  radioSelected: { borderColor: color.paper },
   radioCenter: {
     width: 9,
     height: 9,
     borderRadius: 5,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   scopeCopy: { flex: 1, gap: 3 },
   scopeTitle: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
@@ -276,8 +277,8 @@ const styles = StyleSheet.create({
     backgroundColor: glass.tint.profileBase,
   },
   chipSelected: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(249,115,22,0.14)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.card3,
   },
   chipText: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
   chipTextSelected: { color: textTokens.primary },
@@ -304,7 +305,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: glass.tint.profileBase,
   },
-  itemCardSelected: { borderColor: accent.warm },
+  itemCardSelected: { borderColor: color.lineStrong, backgroundColor: color.card3 },
   itemCardDisabled: { opacity: 0.5 },
   checkbox: {
     width: 20,
@@ -315,15 +316,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxSelected: { borderColor: accent.warm, backgroundColor: accent.warm },
-  checkmark: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  checkboxSelected: { borderColor: color.paper, backgroundColor: color.paper },
+  checkmark: { color: color.ink, fontSize: 13, fontWeight: "800" },
   itemCopy: { flex: 1, gap: 3 },
   itemName: { color: textTokens.primary, fontSize: 14, fontWeight: "600" },
   itemMeta: { color: textTokens.secondary, fontSize: 12 },
   warning: {
     padding: spacing.sm,
     borderRadius: radius.sm,
-    backgroundColor: "rgba(245,158,11,0.14)",
+    backgroundColor: color.warningTint,
   },
   warningText: { color: textTokens.primary, fontSize: 13 },
 });
