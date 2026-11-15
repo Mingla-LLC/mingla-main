@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_4238_free_order_ad_work_scheduled.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-free-order-ad-work-scheduled",
+  "profile": "deno-2-unit",
+  "permissions": ["env", "read"]
+}

@@ -651,16 +651,41 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
   }
 }
 
+/**
+ * #4238 P1-1: where post-response ad work runs. On the edge runtime it is
+ * handed to `EdgeRuntime.waitUntil`, so the buyer's response is never delayed.
+ * With no runtime to hold the work (Deno tests, a local `deno serve`), the
+ * returned promise is awaited by the handler, so the work is neither cut off
+ * nor left running after the request has been answered.
+ */
+export type ScheduleAdWork = (work: Promise<unknown>) => Promise<void> | void;
+
+export function scheduleAdWorkDefault(
+  work: Promise<unknown>,
+): Promise<void> | void {
+  const runtime = (globalThis as unknown as {
+    EdgeRuntime?: { waitUntil: (work: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(work);
+    return;
+  }
+  return work.then(() => undefined, () => undefined);
+}
+
 export interface TicketCheckoutCreateDeps {
   userIdFromAuthHeader: typeof userIdFromAuthHeader;
   serviceClient: typeof serviceClient;
   paystackInitializeTransaction: typeof paystackInitializeTransaction;
+  /** #4238 P1-1: optional; defaults to `scheduleAdWorkDefault`. */
+  scheduleAdWork?: ScheduleAdWork;
 }
 
 const defaultDeps: TicketCheckoutCreateDeps = {
   userIdFromAuthHeader,
   serviceClient,
   paystackInitializeTransaction,
+  scheduleAdWork: scheduleAdWorkDefault,
 };
 
 /**
@@ -3627,7 +3652,9 @@ export const createTicketCheckoutCreateHandler = (
       // = orderId.
       if (finalizedRecord.replayed !== true) {
         // #4238 W1-5: the free order finalized now; that is the action time.
-        void fireAdConversion(supabase as never, {
+        // #4238 P1-1: scheduled through the injectable seam (waitUntil on the
+        // edge runtime), never a bare `void` that outlives the request.
+        const freeAdWork = fireAdConversion(supabase as never, {
           orderId,
           surface: "web",
           eventTimeMs: Date.now(),
@@ -3642,6 +3669,9 @@ export const createTicketCheckoutCreateHandler = (
               );
             },
           );
+        const freeAdPending =
+          (deps.scheduleAdWork ?? scheduleAdWorkDefault)(freeAdWork);
+        if (freeAdPending) await freeAdPending;
         // #3682 — free RSVP auto-follow from the persisted session buyer, not
         // the request auth uid (idempotency can reuse another session).
         void (async () => {
