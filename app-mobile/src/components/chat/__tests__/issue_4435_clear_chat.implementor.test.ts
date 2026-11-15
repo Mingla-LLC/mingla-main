@@ -15,9 +15,10 @@ const chatCtx = {
   canViewProfile: true, hasConversation: true, isMuted: false,
 };
 
-Deno.test("#4435 Clear chat sits before Remove friend / Report / Block in the 1:1 menu, only with a conversation", () => {
+Deno.test("#4435 Clear chat is the last item of the 1:1 menu, only with a conversation", () => {
   const ids = buildFriendMenu(chatCtx).map((item) => item.id);
-  assert(ids.indexOf("clearChat") === ids.indexOf("removeFriend") - 1, "right before Remove friend (design v4 flow 7)");
+  // Spec part 3 §4 and the Phase 0 KEEP menu prefix: Clear chat is appended after Block.
+  assert(ids[ids.length - 1] === "clearChat", "last item");
   assert(!buildFriendMenu({ ...chatCtx, hasConversation: false }).some((item) => item.id === "clearChat"), "no conversation, no clear");
   assert(!buildFriendMenu({ ...chatCtx, surface: "friendSheet" }).some((item) => item.id === "clearChat"), "not on the friends sheet");
 });

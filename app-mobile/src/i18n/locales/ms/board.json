@@ -63,7 +63,12 @@
     "tryDifferentName": "Cuba nama atau nama pengguna lain", "addMoreFriends": "Tambah lagi rakan untuk dijemput",
     "sendInvites": "Hantar Jemputan ({{count}})", "invitesSent": "Jemputan Dihantar",
     "invitesSentMsg": "Berjaya menjemput {{count}} rakan{{plural}} ke \"{{name}}\".",
-    "errorSendInvites": "Gagal menghantar jemputan. Sila cuba lagi.", "error": "Ralat"
+    "errorSendInvites": "Gagal menghantar jemputan. Sila cuba lagi.", "error": "Ralat",
+    "addPeople": "Tambah ({{count}})",
+    "peopleAdded": "Ditambah",
+    "peopleAddedMsg": "{{count}} ditambah ke \"{{name}}\". Mereka terus masuk.",
+    "noneAdded": "Tiada sesiapa ditambah. Mungkin mereka sudah dalam kumpulan.",
+    "groupFull": "Kumpulan memuatkan sehingga 15 orang. Pilih kurang rakan."
   },
   "manageBoardModal": {
     "manageBoard": "Urus Papan", "members": "Ahli", "admin": "Admin", "creator": "Pencipta", "you": "(Anda)",

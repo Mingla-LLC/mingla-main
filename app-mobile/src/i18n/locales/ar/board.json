@@ -141,7 +141,12 @@
     "invitesSent": "تم إرسال الدعوات",
     "invitesSentMsg": "تمت دعوة {{count}} صديق{{plural}} بنجاح إلى \"{{name}}\".",
     "errorSendInvites": "فشل إرسال الدعوات. يرجى المحاولة مرة أخرى.",
-    "error": "خطأ"
+    "error": "خطأ",
+    "addPeople": "إضافة ({{count}})",
+    "peopleAdded": "تمت الإضافة",
+    "peopleAddedMsg": "تمت إضافة {{count}} إلى \"{{name}}\". أصبحوا في المجموعة فورًا.",
+    "noneAdded": "لم تتم إضافة أحد. ربما هم في المجموعة بالفعل.",
+    "groupFull": "تتسع المجموعة لـ 15 شخصًا. اختر أصدقاء أقل."
   },
   "manageBoardModal": {
     "manageBoard": "إدارة اللوحة",

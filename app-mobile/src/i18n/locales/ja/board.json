@@ -63,7 +63,12 @@
     "tryDifferentName": "別の名前やユーザー名で試してください", "addMoreFriends": "招待する友達をもっと追加",
     "sendInvites": "招待を送信 ({{count}})", "invitesSent": "招待を送信しました",
     "invitesSentMsg": "\"{{name}}\"に{{count}}人の友達{{plural}}を招待しました。",
-    "errorSendInvites": "招待の送信に失敗しました。もう一度お試しください。", "error": "エラー"
+    "errorSendInvites": "招待の送信に失敗しました。もう一度お試しください。", "error": "エラー",
+    "addPeople": "追加（{{count}}）",
+    "peopleAdded": "追加しました",
+    "peopleAddedMsg": "「{{name}}」に{{count}}人を追加しました。すぐに参加しています。",
+    "noneAdded": "誰も追加されませんでした。すでにグループにいるかもしれません。",
+    "groupFull": "グループは最大15人です。選ぶ友だちを減らしてください。"
   },
   "manageBoardModal": {
     "manageBoard": "ボード管理", "members": "メンバー", "admin": "管理者", "creator": "作成者", "you": "（あなた）",

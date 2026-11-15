@@ -63,7 +63,12 @@
     "tryDifferentName": "कोई अलग नाम या यूजरनेम आज़माएं", "addMoreFriends": "आमंत्रित करने के लिए और दोस्त जोड़ें",
     "sendInvites": "आमंत्रण भेजें ({{count}})", "invitesSent": "आमंत्रण भेजे गए",
     "invitesSentMsg": "\"{{name}}\" में {{count}} दोस्त{{plural}} को सफलतापूर्वक आमंत्रित किया गया।",
-    "errorSendInvites": "आमंत्रण भेजना विफल। कृपया फिर से प्रयास करें।", "error": "त्रुटि"
+    "errorSendInvites": "आमंत्रण भेजना विफल। कृपया फिर से प्रयास करें।", "error": "त्रुटि",
+    "addPeople": "जोड़ें ({{count}})",
+    "peopleAdded": "जोड़ दिए गए",
+    "peopleAddedMsg": "\"{{name}}\" में {{count}} जोड़े गए। वे तुरंत शामिल हैं।",
+    "noneAdded": "किसी को नहीं जोड़ा गया। शायद वे पहले से ग्रुप में हैं।",
+    "groupFull": "ग्रुप में 15 लोग तक हो सकते हैं। कम दोस्त चुनें।"
   },
   "manageBoardModal": {
     "manageBoard": "बोर्ड प्रबंधित करें", "members": "सदस्य", "admin": "एडमिन", "creator": "बनाने वाला", "you": "(आप)",
