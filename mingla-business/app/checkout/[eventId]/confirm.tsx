@@ -69,6 +69,7 @@ import {
   gaEvent,
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
+import { readPageSearch } from "../../../src/utils/privateUrlTokens";
 
 export default function CheckoutConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -203,7 +204,9 @@ function CheckoutConfirmScreenInner({
       sessionStorage?: Storage;
       location?: { search?: string };
     };
-    const search = win.location?.search ?? "";
+    // #4238 P1-5: the original query (tokens kept in memory; the visible
+    // address is scrubbed before any pixel boots).
+    const search = readPageSearch(win.location);
     if (!/[?&]cs=/.test(search)) return;
     let payload = readCheckoutResumePayload(win.sessionStorage, eventId);
     // ORCH-0928 v2 (2026-05-23) — query-string recovery (v1 used URL
@@ -451,7 +454,9 @@ function CheckoutConfirmScreenInner({
         location?: { search?: string };
         sessionStorage?: Storage;
       };
-      const search = win.location?.search ?? "";
+      // #4238 P1-5: the original query (tokens kept in memory; the visible
+      // address is scrubbed before any pixel boots).
+      const search = readPageSearch(win.location);
       // ORCH-0928 v2 (2026-05-23) — see parallel patch in
       // checkout-trip/[tripEventId]/confirm.tsx. Query-string recovery
       // (v1 used URL fragment which Expo Router silently reformatted).
@@ -536,7 +541,7 @@ function CheckoutConfirmScreenInner({
     }
     if (Platform.OS === "web") {
       const win = globalThis as unknown as { location?: { search?: string } };
-      const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
+      const hasCs = isClient && /[?&]cs=/.test(readPageSearch(win.location));
       if (hasCs) {
         // ORCH-0911: render from first paint on ?cs= arrival, independent
         // of event/realtimePending state. ORCH-0852 auto-resolution remains.
