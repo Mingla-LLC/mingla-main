@@ -503,7 +503,8 @@
         "app-mobile/src/hooks/useOpenChatRecovery.ts",
         "app-mobile/src/utils/chatChannelRecovery.ts",
         "app-mobile/src/utils/mergeMessages.ts",
-        "supabase/migrations/20280708044436_issue_4436_group_permission_guards.sql"
+        "supabase/migrations/20280708044436_issue_4436_group_permission_guards.sql",
+        "supabase/migrations/20280708046436_issue_4436_invited_self_join_and_own_prefs.sql"
       ]
     },
     {

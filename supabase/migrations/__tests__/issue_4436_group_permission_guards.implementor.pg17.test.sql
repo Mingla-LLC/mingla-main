@@ -161,9 +161,17 @@ SELECT pg_temp.t4436_allowed('M', 'accepted member renames group and touches act
 SELECT pg_temp.t4436_allowed('A', 'creator changes invite_code and max_participants',
   $$UPDATE public.collaboration_sessions SET invite_code = 'I4436NEW', max_participants = 12 WHERE id = t4436_k('S')$$,
   $$SELECT invite_code = 'I4436NEW' AND max_participants = 12 FROM public.collaboration_sessions WHERE id = t4436_k('S')$$);
-SELECT pg_temp.t4436_allowed('X', 'invite-code join adds own pending row',
+-- 20280708046436: a pending self-join needs the joiner's own pending invitation.
+SELECT pg_temp.t4436_refused('X', 'uninvited self-join adds own pending row',
+  $$INSERT INTO public.session_participants(session_id, user_id) VALUES (t4436_k('S'), t4436_k('X'))$$);
+RESET ROLE;
+INSERT INTO public.collaboration_invites(session_id, inviter_id, invited_user_id, status)
+  VALUES (t4436_k('S'), t4436_k('A'), t4436_k('X'), 'pending');
+SELECT pg_temp.t4436_allowed('X', 'invited self-join adds own pending row',
   $$INSERT INTO public.session_participants(session_id, user_id) VALUES (t4436_k('S'), t4436_k('X'))$$,
   $$SELECT has_accepted IS NOT TRUE AND is_admin IS NOT TRUE FROM public.session_participants WHERE session_id = t4436_k('S') AND user_id = t4436_k('X')$$);
+RESET ROLE;
+DELETE FROM public.collaboration_invites WHERE session_id = t4436_k('S') AND invited_user_id = t4436_k('X');
 SELECT pg_temp.t4436_allowed('M', 'accepted member invites someone as pending',
   $$INSERT INTO public.session_participants(session_id, user_id, has_accepted) VALUES (t4436_k('S'), t4436_k('X'), false)$$,
   $$SELECT has_accepted IS NOT TRUE FROM public.session_participants WHERE session_id = t4436_k('S') AND user_id = t4436_k('X')$$);

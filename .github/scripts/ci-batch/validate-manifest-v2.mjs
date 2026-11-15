@@ -503,7 +503,8 @@ export function phase3dContractDigest(manifest) {
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 integration 3: merged origin/main f512401461 (#4438 #4430 local review owner-read pg17 suite kept beside the #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4435 Phase 0 characterization: listed the four new pg17 suites and their sidecars in the #1931 and #2117 replay inventories beside the #4436 rows; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "2453f13c1671d104191413aa5df0109c95e62e1cbe858240eef05bf8e3ef004b";
+// #4436 follow-up 20280708046436 (invited self-join, own prefs): listed the migration after the #4436 guard migration in the #1857, #1931 and #2117 lanes and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "6dc6bc8e0693a3761ff0e2126a928e9dc02381f919134bb40759e76e40ee80dc";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

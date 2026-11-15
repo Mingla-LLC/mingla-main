@@ -231,12 +231,21 @@ SELECT pg_temp.t4436g_refused('M', 'G-REJOIN leave then re-add own row as accept
 SELECT pg_temp.t4436g_refused('P', 'G-REJOIN leave then re-add own row as admin',
   $$DELETE FROM public.session_participants WHERE session_id = t4436g_k('S') AND user_id = t4436g_k('P');
     INSERT INTO public.session_participants(session_id, user_id, is_admin) VALUES (t4436g_k('S'), t4436g_k('P'), true)$$);
-SELECT pg_temp.t4436g_allowed('M', 'G-REJOIN leave then re-add own row comes back pending',
+-- 20280708046436: re-adding your own row needs your own pending invitation.
+SELECT pg_temp.t4436g_refused('M', 'G-REJOIN leave then re-add own row without an invitation',
+  $$DELETE FROM public.session_participants WHERE session_id = t4436g_k('S') AND user_id = t4436g_k('M');
+    INSERT INTO public.session_participants(session_id, user_id) VALUES (t4436g_k('S'), t4436g_k('M'))$$);
+RESET ROLE;
+INSERT INTO public.collaboration_invites(session_id, inviter_id, invited_user_id, status)
+  VALUES (t4436g_k('S'), t4436g_k('A'), t4436g_k('M'), 'pending');
+SELECT pg_temp.t4436g_allowed('M', 'G-REJOIN leave then re-add own row with an invitation comes back pending',
   $$DELETE FROM public.session_participants WHERE session_id = t4436g_k('S') AND user_id = t4436g_k('M');
     INSERT INTO public.session_participants(session_id, user_id) VALUES (t4436g_k('S'), t4436g_k('M'))$$,
   $$SELECT has_accepted IS NOT TRUE AND is_admin IS NOT TRUE
            AND NOT public.chat_group_is_admin(t4436g_k('S'), t4436g_k('M'))
       FROM public.session_participants WHERE session_id = t4436g_k('S') AND user_id = t4436g_k('M')$$);
+RESET ROLE;
+DELETE FROM public.collaboration_invites WHERE session_id = t4436g_k('S') AND invited_user_id = t4436g_k('M');
 
 -- G-CREATOR ---------------------------------------------------------------
 SELECT pg_temp.t4436g_refused('A', 'G-CREATOR adds someone as accepted',

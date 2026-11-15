@@ -293,7 +293,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): listed the new pg17 suite and its sidecar in the #1931 and #2117 replay inventories; re-sealed.
 // #4238 integration 3: merged origin/main f512401461 (#4438: the #4430 local review owner-read pg17 suite and sidecar kept in the #1931 and #2117 inventories beside the #4238 rows); re-sealed.
 // #4435 Phase 0 characterization: listed the four new pg17 suites and their sidecars in the #1931 and #2117 replay inventories beside the #4436 rows; re-sealed.
-export const BOOTSTRAP_SHA256 = "de24b86c1bdff27e01a3d7c4220205a5455d33ec1b7f45fc689e721df885e49b";
+// #4436 follow-up 20280708046436 (invited self-join, own prefs): listed the migration after the #4436 guard migration in the #1857, #1931 and #2117 lanes and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "7fa7eb8e8ed882f58f18981a6092e33164b750909a306da1dc3128ccdcf7c478";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

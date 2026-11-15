@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { userActivityService } from './userActivityService';
 
 export interface BoardInvite {
   id: string;
@@ -73,102 +72,9 @@ export class BoardInviteService {
     }
   }
 
-  /**
-   * Join session by invite code
-   */
-  static async joinByInviteCode(inviteCode: string, userId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-    try {
-      // Find session by invite code
-      const { data: session, error: sessionError } = await supabase
-        .from('collaboration_sessions')
-        .select('id, name, max_participants')
-        .eq('invite_code', inviteCode)
-        .eq('is_active', true)
-        .single();
-
-      if (sessionError || !session) {
-        return { success: false, error: 'Invalid invite code' };
-      }
-
-      // Check if user is already a participant
-      const { data: existingParticipant } = await supabase
-        .from('session_participants')
-        .select('id')
-        .eq('session_id', session.id)
-        .eq('user_id', userId)
-        .single();
-
-      if (existingParticipant) {
-        return { success: true, sessionId: session.id };
-      }
-
-      // Check participant limit
-      const { count: participantCount } = await supabase
-        .from('session_participants')
-        .select('*', { count: 'exact', head: true })
-        .eq('session_id', session.id);
-
-      if (session.max_participants && participantCount && participantCount >= session.max_participants) {
-        return { success: false, error: 'Session is full' };
-      }
-
-      // Add user as participant
-      const { error: participantError } = await supabase
-        .from('session_participants')
-        .insert({
-          session_id: session.id,
-          user_id: userId,
-        });
-
-      if (participantError) throw participantError;
-
-      // Create or update invite record
-      await supabase
-        .from('collaboration_invites')
-        .upsert({
-          session_id: session.id,
-          inviter_id: session.id, // System invite
-          invited_user_id: userId,
-          invite_method: 'invite_code',
-          status: 'accepted',
-          accepted_at: new Date().toISOString(),
-        }, {
-          onConflict: 'session_id,invited_user_id'
-        });
-
-      await userActivityService.recordActivity(userId, {
-        activity_type: 'joined_board',
-        title: session.name || 'Board',
-        tag: 'Board',
-        reference_id: session.id,
-        reference_type: 'board',
-      });
-
-      return { success: true, sessionId: session.id };
-    } catch (error: any) {
-      console.error('Error joining by invite code:', error);
-      return { success: false, error: error.message || 'Failed to join session' };
-    }
-  }
-
-  /**
-   * Join session by invite link
-   */
-  static async joinByInviteLink(inviteLink: string, userId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-    try {
-      // Extract invite code from link (mingla://board/CODE or https://...)
-      const codeMatch = inviteLink.match(/(?:mingla:\/\/board\/|invite\/)([A-Z0-9-]+)/i);
-      if (!codeMatch || !codeMatch[1]) {
-        return { success: false, error: 'Invalid invite link format' };
-      }
-
-      const inviteCode = codeMatch[1].replace('MINGLA-', '');
-      return this.joinByInviteCode(`MINGLA-${inviteCode}`, userId);
-    } catch (error: any) {
-      console.error('Error joining by invite link:', error);
-      return { success: false, error: error.message || 'Failed to join session' };
-    }
-  }
+  // #4436: joinByInviteCode / joinByInviteLink deleted. They had no caller and
+  // inserted an uninvited pending member row; the group link
+  // (join_group_by_link) is the one join path.
 
   // ORCH-0666: sendFriendInvites zombie DELETED (CF-1).
   // The canonical flow is now `sessionMembershipService.addFriendsToSessions`,
