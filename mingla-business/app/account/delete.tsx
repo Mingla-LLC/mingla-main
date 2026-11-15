@@ -51,6 +51,7 @@ import {
   accent,
   color,
   radius,
+  size,
   space,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
@@ -368,7 +369,7 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
 }) => (
   <View style={styles.warnHost}>
     <View style={styles.warnIconWrap}>
-      <Icon name="trash" size={48} color={color.text1} />
+      <Icon name="trash" size={28} color={color.errorText} />
     </View>
     <Text style={styles.warnTitle}>Delete your Mingla Host account?</Text>
     <Text style={styles.warnBody}>
@@ -383,23 +384,26 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
         </Text>
       </View>
     ) : null}
-    <View style={styles.ctaRow}>
-      <Button
-        label="Cancel"
-        variant="ghost"
-        size="md"
-        fullWidth
-        onPress={onCancel}
-      />
-    </View>
-    <View style={styles.ctaRow}>
-      <Button
-        label="Continue"
-        variant="secondary"
-        size="md"
-        fullWidth
-        onPress={onContinue}
-      />
+    {/* #4420 — one row: the way back left, the way forward right. */}
+    <View style={styles.ctaPair}>
+      <View style={styles.ctaPairItem}>
+        <Button
+          label="Cancel"
+          variant="ghost"
+          size="md"
+          fullWidth
+          onPress={onCancel}
+        />
+      </View>
+      <View style={styles.ctaPairItem}>
+        <Button
+          label="Continue"
+          variant="secondary"
+          size="md"
+          fullWidth
+          onPress={onContinue}
+        />
+      </View>
     </View>
   </View>
 );
@@ -579,25 +583,28 @@ const BlockedPanel: React.FC<BlockedPanelProps> = ({
         ))
       )}
     </View>
-    <View style={styles.ctaRow}>
-      <Button
-        label="Go to Home"
-        variant="secondary"
-        size="md"
-        fullWidth
-        onPress={onGoHome}
-        accessibilityLabel="Go to Home"
-      />
-    </View>
-    <View style={styles.ctaRow}>
-      <Button
-        label="Close"
-        variant="ghost"
-        size="md"
-        fullWidth
-        onPress={onClose}
-        accessibilityLabel="Close"
-      />
+    {/* #4420 — one row: the way back left, the way forward right. */}
+    <View style={styles.ctaPair}>
+      <View style={styles.ctaPairItem}>
+        <Button
+          label="Go to Home"
+          variant="secondary"
+          size="md"
+          fullWidth
+          onPress={onGoHome}
+          accessibilityLabel="Go to Home"
+        />
+      </View>
+      <View style={styles.ctaPairItem}>
+        <Button
+          label="Close"
+          variant="ghost"
+          size="md"
+          fullWidth
+          onPress={onClose}
+          accessibilityLabel="Close"
+        />
+      </View>
     </View>
   </View>
 );
@@ -668,26 +675,29 @@ const Step3Confirm: React.FC<Step3ConfirmProps> = ({
             : "Type DELETE to confirm"
         }
       />
-      <View style={styles.ctaRow}>
-        <Button
-          label="Back"
-          variant="ghost"
-          size="md"
-          fullWidth
-          onPress={onBack}
-          disabled={deleting}
-        />
-      </View>
-      <View style={styles.ctaRow}>
-        <Button
-          label={deleting ? "Deleting..." : "Delete my account"}
-          variant="secondary"
-          size="md"
-          fullWidth
-          disabled={!confirmMatches || deleting}
-          onPress={onConfirm}
-          accessibilityLabel="Delete my account"
-        />
+      {/* #4420 — one row: the way back left, the way forward right. */}
+      <View style={styles.ctaPair}>
+        <View style={styles.ctaPairItem}>
+          <Button
+            label="Back"
+            variant="ghost"
+            size="md"
+            fullWidth
+            onPress={onBack}
+            disabled={deleting}
+          />
+        </View>
+        <View style={styles.ctaPairItem}>
+          <Button
+            label={deleting ? "Deleting..." : "Delete my account"}
+            variant="secondary"
+            size="md"
+            fullWidth
+            disabled={!confirmMatches || deleting}
+            onPress={onConfirm}
+            accessibilityLabel="Delete my account"
+          />
+        </View>
       </View>
     </View>
   );
@@ -805,6 +815,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     paddingTop: space[6],
     gap: space[4],
+    // #4420 — a readable 560 task column on desktop; no-op on phones.
+    width: "100%",
+    maxWidth: size.modal + space[4] * 2,
+    alignSelf: "center",
   },
 
   // Step 1 Warn ------------------------------------------------------
@@ -812,11 +826,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space[4],
   },
+  // #4420 — a neutral rounded tile (the mockup), not a tinted circle.
   warnIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: color.warningTint,
+    width: 64,
+    height: 64,
+    borderRadius: radius.lg,
+    backgroundColor: color.fill.tile,
     alignItems: "center",
     justifyContent: "center",
     marginTop: space[6],
@@ -1028,6 +1043,16 @@ const styles = StyleSheet.create({
   // CTAs -------------------------------------------------------------
   ctaRow: {
     marginTop: space[2],
+  },
+  ctaPair: {
+    flexDirection: "row",
+    gap: space[3],
+    marginTop: space[2],
+    alignSelf: "stretch",
+  },
+  ctaPairItem: {
+    flex: 1,
+    minWidth: 0,
   },
 
   // Toast ------------------------------------------------------------

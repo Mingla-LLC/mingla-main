@@ -37,8 +37,11 @@ import {
   color,
   radius,
   scrim,
+  size,
   space,
+  type,
 } from "../../src/constants/designSystem";
+import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useAuth } from "../../src/context/AuthContext";
 import {
   useCreatorAccount,
@@ -71,6 +74,7 @@ const NAME_MAX_LENGTH = 80;
 
 export default function EditProfileRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const { user } = useAuth();
   const { data: account, isLoading, isError, refetch } = useCreatorAccount();
@@ -345,6 +349,8 @@ export default function EditProfileRoute(): React.ReactElement {
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
+        {/* #4420 — desktop: the form sits in one 560 pane (mockup). */}
+        <View style={isWideDesktop ? styles.formPaneDesktop : styles.formCol}>
         {/* Avatar section */}
         <View style={styles.avatarSection}>
           <Pressable
@@ -424,29 +430,25 @@ export default function EditProfileRoute(): React.ReactElement {
           </Text>
         </View>
 
-        {/* Save CTA — only when the name has unsaved edits (avatar auto-saves on pick) */}
-        {nameDirty ? (
-          <View style={styles.saveRow}>
-            <Button
-              label={updating ? "Saving..." : "Save"}
-              onPress={handleSave}
-              variant="primary"
-              size="md"
-              fullWidth
-              disabled={updating || uploadingPhoto}
-            />
-          </View>
-        ) : null}
-
-        <View style={styles.deleteAccountRow}>
+        {/* #4420 — one action row: Delete account left, Save right. Save is
+            always shown and enabled only with unsaved name edits (the avatar
+            still auto-saves on pick). */}
+        <View style={styles.actionRow}>
           <Button
             label="Delete account"
             onPress={handleDeleteAccount}
             variant="destructive"
             size="md"
-            fullWidth
             leadingIcon="trash"
           />
+          <Button
+            label={updating ? "Saving..." : "Save"}
+            onPress={handleSave}
+            variant="primary"
+            size="md"
+            disabled={!nameDirty || updating || uploadingPhoto}
+          />
+        </View>
         </View>
       </ScrollView>
 
@@ -547,9 +549,9 @@ const styles = StyleSheet.create({
     marginBottom: space[4],
   },
   avatarWrap: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     borderWidth: 2,
     borderColor: color.lineStrong,
     backgroundColor: color.fill.inset,
@@ -610,11 +612,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   fieldLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    color: color.text3,
-    textTransform: "uppercase",
+    ...type.caption,
+    fontWeight: "600",
+    color: color.text2,
   },
   textInput: {
     fontSize: 15,
@@ -622,10 +622,10 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.inset,
     borderWidth: 1,
     borderColor: color.line,
-    borderRadius: radius.sm,
-    paddingHorizontal: space[4] - 2,
-    paddingVertical: space[2] + 2,
-    minHeight: 44,
+    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    minHeight: size.input,
   },
   fieldHint: {
     fontSize: 11,
@@ -639,10 +639,10 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.inset,
     borderWidth: 1,
     borderColor: color.line,
-    borderRadius: radius.sm,
-    paddingHorizontal: space[4] - 2,
-    paddingVertical: space[2] + 2,
-    minHeight: 44,
+    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    minHeight: size.input,
   },
   emailValue: {
     flex: 1,
@@ -650,15 +650,28 @@ const styles = StyleSheet.create({
     color: color.text2,
   },
 
-  // Save -------------------------------------------------------------
-  saveRow: {
-    marginTop: space[6],
+  // Actions ----------------------------------------------------------
+  actionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: space[3],
+    marginTop: space[2],
   },
-  deleteAccountRow: {
-    marginTop: space[6],
-    paddingTop: space[6],
-    borderTopWidth: 1,
-    borderTopColor: color.line,
+  formCol: {
+    gap: space[6],
+  },
+  formPaneDesktop: {
+    gap: space[6],
+    width: "100%",
+    maxWidth: size.modal,
+    alignSelf: "center",
+    padding: space[6],
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
   },
 
   // Toast ------------------------------------------------------------
