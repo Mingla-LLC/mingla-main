@@ -49,7 +49,7 @@ interface Run {
 
 function run(search: string, hash = ""): Run {
   const scriptSources: string[] = [];
-  const listeners = new Map<string, Array<(event: unknown) => void>>();
+  const listeners = new Map<string, ((event: unknown) => void)[]>();
   const element = (): Record<string, unknown> => {
     const node: Record<string, unknown> = {
       setAttribute: () => undefined,

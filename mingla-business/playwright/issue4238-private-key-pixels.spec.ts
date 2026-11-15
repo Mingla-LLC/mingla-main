@@ -19,7 +19,7 @@ const publicSearch = require('../server/publicSearchDocument') as {
 const BUSINESS = 'http://127.0.0.1:43172'
 const PATH = '/e/issue4238-host/issue4238-night'
 const TOKEN = 'issue4238privatetoken'
-const PIXEL_HOSTS: Array<[string, RegExp]> = [
+const PIXEL_HOSTS: [string, RegExp][] = [
   ['meta', /(?:^|\.)facebook\.(?:net|com)$/],
   ['tiktok', /(?:^|\.)tiktok(?:w)?\.(?:com|us)$/],
   ['snap', /(?:^|\.)(?:sc-static\.net|snapchat\.com)$/],
