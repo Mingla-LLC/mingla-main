@@ -26,16 +26,7 @@ import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { scrollPaddingClearOfFloatingAction } from "../../utils/floatingActionClearance";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon, type IconName } from "../ui/Icon";
-import {
-  accent,
-  canvas,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color as colorTokens, radius, space, type } from "../../constants/designSystem";
 import { ProgramBackBar } from "./ProgramBackBar";
 import {
   PROGRAM_BLOCK_GAP,
@@ -110,7 +101,7 @@ export function ProgramScreen({
           <RefreshControl
             refreshing={refreshing === true}
             onRefresh={onRefresh}
-            tintColor={accent.warm}
+            tintColor={colorTokens.text2}
           />
         ) : undefined
       }
@@ -147,7 +138,7 @@ export function ProgramScreen({
       />
       {scroll}
       {chrome.showFooter ? (
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space[2]) }]}>
           {footer}
         </View>
       ) : null}
@@ -213,7 +204,7 @@ export function ProgramLoading({
 }): React.ReactElement {
   return (
     <View style={styles.loading} accessibilityLabel={label}>
-      <ActivityIndicator color={accent.warm} />
+      <ActivityIndicator color={colorTokens.text2} />
     </View>
   );
 }
@@ -415,7 +406,7 @@ export function ListRow({
   const label =
     accessibilityLabel ?? (subtitle ? `${title}, ${subtitle}` : title);
   const chevronIcon = chevron ? (
-    <Icon name="chevR" size={16} color={textTokens.tertiary} />
+    <Icon name="chevR" size={16} color={colorTokens.text3} />
   ) : null;
   const rightNode =
     typeof right === "string" ? (
@@ -428,7 +419,7 @@ export function ListRow({
       {leading ??
         (icon ? (
           <View style={[styles.rowIcon, roomy && styles.rowIconRoomy]}>
-            <Icon name={icon} size={roomy ? 20 : 18} color={accent.warm} />
+            <Icon name={icon} size={roomy ? 20 : 18} color={colorTokens.text1} />
           </View>
         ) : null)}
       <View style={styles.rowText}>
@@ -566,8 +557,8 @@ export function ProgramButton({
       {(state: WebPressableState) => {
         const color =
           state.hovered && !disabled && Platform.OS === "web"
-            ? canvas.depth
-            : textTokens.primary;
+            ? colorTokens.canvas
+            : colorTokens.text1;
         return (
           <View
             style={[
@@ -625,7 +616,7 @@ export function ProgramEmpty({
   return (
     <View style={[styles.empty, isWideDesktop && styles.emptyWide]}>
       <View style={styles.emptyIcon}>
-        <Icon name={icon} size={26} color={accent.warm} />
+        <Icon name={icon} size={26} color={colorTokens.text1} />
       </View>
       <View style={styles.emptyCopy}>
         <Text style={styles.emptyTitle} accessibilityRole="header">
@@ -646,13 +637,13 @@ const TONE: Record<
   HostStatusTone | "live" | "paused",
   { bg: string; fg: string }
 > = {
-  action: { bg: accent.tint, fg: accent.warm },
-  waiting: { bg: glass.tint.profileElevated, fg: textTokens.secondary },
-  done: { bg: semantic.successTint, fg: semantic.success },
-  problem: { bg: semantic.errorTint, fg: semantic.errorText },
-  ended: { bg: glass.tint.profileElevated, fg: textTokens.tertiary },
-  live: { bg: semantic.successTint, fg: semantic.success },
-  paused: { bg: semantic.warningTint, fg: semantic.warning },
+  action: { bg: colorTokens.warningTint, fg: colorTokens.warningText },
+  waiting: { bg: colorTokens.fill.tile, fg: colorTokens.text2 },
+  done: { bg: colorTokens.successTint, fg: colorTokens.success },
+  problem: { bg: colorTokens.errorTint, fg: colorTokens.errorText },
+  ended: { bg: colorTokens.fill.tile, fg: colorTokens.text3 },
+  live: { bg: colorTokens.successTint, fg: colorTokens.success },
+  paused: { bg: colorTokens.warningTint, fg: colorTokens.warning },
 };
 
 export type StatusTagTone = keyof typeof TONE;
@@ -781,7 +772,7 @@ export function Checkbox({
     >
       <View style={[styles.checkBox, checked && styles.checkBoxOn]}>
         {checked ? (
-          <Icon name="check" size={14} color={textTokens.inverse} />
+          <Icon name="check" size={14} color={colorTokens.textStrong} />
         ) : null}
       </View>
       <Text style={styles.checkLabel}>{label}</Text>
@@ -811,33 +802,33 @@ export function SummaryLine({
 }
 
 export const programStyles = StyleSheet.create({
-  title: { color: textTokens.primary, fontSize: 18, fontWeight: "700" },
-  body: { color: textTokens.primary, fontSize: 15, lineHeight: 22 },
-  muted: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
-  small: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
-  actions: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  title: { color: colorTokens.text1, fontSize: 18, fontWeight: "700" },
+  body: { color: colorTokens.text1, fontSize: 15, lineHeight: 22 },
+  muted: { color: colorTokens.text2, fontSize: 14, lineHeight: 20 },
+  small: { color: colorTokens.text3, fontSize: 12, lineHeight: 16 },
+  actions: { flexDirection: "row", gap: space[2], flexWrap: "wrap" },
   grow: { flex: 1 },
-  stack: { gap: spacing.sm },
-  footerRow: { flexDirection: "row", gap: spacing.sm },
+  stack: { gap: space[2] },
+  footerRow: { flexDirection: "row", gap: space[2] },
 });
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: canvas.profile },
+  safe: { flex: 1, backgroundColor: colorTokens.canvas },
   embedded: { flex: 1 },
   content: {
     width: "100%",
     maxWidth: 720,
     alignSelf: "center",
     paddingHorizontal: PROGRAM_GUTTER,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xxl,
+    paddingTop: space[2],
+    paddingBottom: space[9],
     gap: PROGRAM_BLOCK_GAP,
   },
   contentEmbedded: {
     maxWidth: "100%",
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
-  programColumns: { width: "100%", gap: spacing.lg },
+  programColumns: { width: "100%", gap: space[6] },
   programColumnsWide: { flexDirection: "row", alignItems: "flex-start" },
   programColumnsWideReversed: { flexDirection: "row-reverse" },
   programColumnsCompact: { flexDirection: "column" },
@@ -854,57 +845,57 @@ const styles = StyleSheet.create({
     gap: PROGRAM_BLOCK_GAP,
   },
   columnCompact: { width: "100%", minWidth: 0, gap: PROGRAM_BLOCK_GAP },
-  inlineFooter: { gap: spacing.sm, marginTop: spacing.xs },
+  inlineFooter: { gap: space[2], marginTop: space[1] },
   done: { minWidth: 40, height: 40, alignItems: "flex-end", justifyContent: "center" },
-  doneText: { color: accent.warm, fontSize: 16, fontWeight: "700" },
+  doneText: { color: colorTokens.accent, fontSize: 16, fontWeight: "700" },
   footer: {
     width: "100%",
     maxWidth: 720,
     alignSelf: "center",
     paddingHorizontal: PROGRAM_GUTTER,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingTop: space[2],
+    gap: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
-    backgroundColor: canvas.profile,
+    borderTopColor: colorTokens.line,
+    backgroundColor: colorTokens.canvas,
   },
   sheetBody: {
     padding: PROGRAM_GUTTER,
-    paddingBottom: spacing.xl,
+    paddingBottom: space[7],
     gap: PROGRAM_BLOCK_GAP,
   },
-  sheetTitle: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
-  loading: { paddingVertical: spacing.xl, alignItems: "center" },
+  sheetTitle: { color: colorTokens.text1, fontSize: 20, fontWeight: "800" },
+  loading: { paddingVertical: space[7], alignItems: "center" },
   // #3872 — the app's one section-label type (`typography.labelCap`), so a
   // kit label matches the page labels beside it.
   section: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: colorTokens.text3,
     textTransform: "uppercase",
-    marginTop: spacing.sm,
+    marginTop: space[2],
     // Blocks are PROGRAM_BLOCK_GAP apart; a label sits PROGRAM_LABEL_GAP above
     // its own card.
     marginBottom: PROGRAM_LABEL_GAP - PROGRAM_BLOCK_GAP,
   },
   sectionWide: { marginTop: 12 },
-  muted: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  muted: { color: colorTokens.text2, fontSize: 14, lineHeight: 20 },
   fieldError: {
-    color: semantic.errorText,
+    color: colorTokens.errorText,
     fontSize: 13,
     fontWeight: "600",
     lineHeight: 18,
   },
-  cardContent: { gap: spacing.sm },
+  cardContent: { gap: space[2] },
   pressed: { opacity: 0.85 },
   group: { paddingHorizontal: PROGRAM_CARD_PADDING },
   groupDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileElevated,
+    borderTopColor: colorTokens.lineStrong,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
     paddingVertical: 10,
     minHeight: PROGRAM_ROW_MIN_HEIGHT,
   },
@@ -914,7 +905,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: colorTokens.fill.tile,
   },
   rowRoomy: { gap: 12, paddingVertical: 12, minHeight: 64 },
   rowWithAction: { paddingVertical: 0 },
@@ -923,7 +914,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
     paddingVertical: 10,
     minHeight: PROGRAM_ROW_MIN_HEIGHT,
   },
@@ -935,9 +926,9 @@ const styles = StyleSheet.create({
   },
   rowIconRoomy: { width: 40, height: 40, borderRadius: radius.md },
   rowText: { flex: 1, minWidth: 0, gap: 2 },
-  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: space[2] },
   rowTitle: {
-    color: textTokens.primary,
+    color: colorTokens.text1,
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "600",
@@ -945,10 +936,10 @@ const styles = StyleSheet.create({
   rowTitleShrink: { flexShrink: 1 },
   rowTitleHover: {
     textDecorationLine: "underline",
-    textDecorationColor: glass.border.profileElevated,
+    textDecorationColor: colorTokens.lineStrong,
   },
   focusRing: {
-    outlineColor: accent.warm,
+    outlineColor: colorTokens.focus,
     outlineWidth: 2,
     outlineStyle: "solid",
     outlineOffset: 2,
@@ -964,28 +955,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: colorTokens.lineStrong,
+    backgroundColor: colorTokens.fill.tile,
   },
   buttonHitWeb: {
     minHeight: PROGRAM_TAP_TARGET,
     marginVertical: -(PROGRAM_TAP_TARGET - 36) / 2,
     justifyContent: "center",
   },
-  buttonHover: { backgroundColor: accent.warm, borderColor: accent.warm },
+  buttonHover: { backgroundColor: colorTokens.paper, borderColor: colorTokens.lineStrong },
   buttonPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
-  rowSubtitle: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
-  rowRight: { color: textTokens.primary, fontSize: 15, fontWeight: "700" },
+  rowSubtitle: { color: colorTokens.text2, fontSize: 13, lineHeight: 18 },
+  rowRight: { color: colorTokens.text1, fontSize: 15, fontWeight: "700" },
   empty: {
     alignItems: "flex-start",
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: colorTokens.line,
+    backgroundColor: colorTokens.fill.inset,
   },
   emptyWide: {
     minHeight: 112,
@@ -998,19 +989,19 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: colorTokens.fill.tile,
   },
   emptyCopy: { flex: 1, minWidth: 0, gap: 4 },
   emptyAction: { alignSelf: "stretch" },
   emptyActionWide: { alignSelf: "center" },
   emptyTitle: {
-    color: textTokens.primary,
+    color: colorTokens.text1,
     fontSize: 17,
     fontWeight: "800",
     textAlign: "left",
   },
   emptyBody: {
-    color: textTokens.secondary,
+    color: colorTokens.text2,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "left",
@@ -1024,23 +1015,23 @@ const styles = StyleSheet.create({
   },
   tagText: { fontSize: 12, fontWeight: "700" },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: colorTokens.lineStrong,
+    backgroundColor: colorTokens.fill.inset,
   },
-  chipOn: { borderColor: accent.border, backgroundColor: accent.tint },
-  chipText: { color: textTokens.secondary, fontWeight: "600", fontSize: 14 },
-  chipTextOn: { color: textTokens.primary },
+  chipOn: { borderColor: colorTokens.lineStrong, backgroundColor: colorTokens.fill.tabOn },
+  chipText: { color: colorTokens.text2, fontWeight: "600", fontSize: 14 },
+  chipTextOn: { color: colorTokens.text1 },
   segmented: {
     flexDirection: "row",
     padding: 4,
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: colorTokens.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: colorTokens.line,
   },
   segment: {
     flex: 1,
@@ -1048,19 +1039,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: radius.full,
   },
-  segmentOn: { backgroundColor: "rgba(255,255,255,0.12)" },
-  segmentText: { color: textTokens.secondary, fontWeight: "600", fontSize: 14 },
-  segmentTextOn: { color: textTokens.primary },
+  segmentOn: { backgroundColor: colorTokens.fill.tabOn },
+  segmentText: { color: colorTokens.text2, fontWeight: "600", fontSize: 14 },
+  segmentTextOn: { color: colorTokens.text1 },
   initials: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.warm,
+    backgroundColor: colorTokens.fill.tile,
   },
-  initialsText: { color: textTokens.inverse, fontWeight: "800" },
+  initialsText: { color: colorTokens.textStrong, fontWeight: "800" },
   checkRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 6,
   },
   checkBox: {
@@ -1068,27 +1059,27 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: glass.border.pending,
+    borderColor: colorTokens.fill.pager,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 1,
   },
-  checkBoxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
+  checkBoxOn: { backgroundColor: colorTokens.paper, borderColor: colorTokens.paper },
   checkLabel: {
     flex: 1,
-    color: textTokens.primary,
+    color: colorTokens.text1,
     fontSize: 14,
     lineHeight: 20,
   },
   summaryLine: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
     paddingVertical: 4,
   },
-  summaryLabel: { color: textTokens.secondary, fontSize: 15, flexShrink: 1 },
-  summaryValue: { color: textTokens.primary, fontSize: 15, fontWeight: "600" },
-  summaryStrong: { color: textTokens.primary, fontWeight: "800", fontSize: 17 },
+  summaryLabel: { color: colorTokens.text2, fontSize: 15, flexShrink: 1 },
+  summaryValue: { color: colorTokens.text1, fontSize: 15, fontWeight: "600" },
+  summaryStrong: { color: colorTokens.text1, fontWeight: "800", fontSize: 17 },
 });
 
 /** Six-segment progress bar with a caption ("Step 3 of 6 · Script"). */
@@ -1127,15 +1118,15 @@ export function StepBar({
 }
 
 const stepStyles = StyleSheet.create({
-  wrap: { gap: spacing.xs },
+  wrap: { gap: space[1] },
   bar: { flexDirection: "row", gap: 4 },
   segment: {
     flex: 1,
     height: 4,
     borderRadius: 2,
-    backgroundColor: glass.border.profileElevated,
+    backgroundColor: colorTokens.lineStrong,
   },
-  done: { backgroundColor: accent.border },
-  current: { backgroundColor: accent.warm },
-  caption: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
+  done: { backgroundColor: colorTokens.accentLine },
+  current: { backgroundColor: colorTokens.accent },
+  caption: { color: colorTokens.text2, fontSize: 13, fontWeight: "600" },
 });

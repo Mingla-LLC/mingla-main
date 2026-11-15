@@ -16,14 +16,7 @@ import { Button } from "../ui/Button";
 import { ProgramSheet } from "./ProgramSheet";
 import { SheetBody } from "./ProgramKit";
 
-import {
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
 /** "6:00 PM" from "18:00"; "" for unset. */
@@ -151,20 +144,20 @@ export function TimeField({
 }
 
 const styles = StyleSheet.create({
-  host: { gap: spacing.xxs, flex: 1 },
-  label: { ...typography.bodySm, color: textTokens.secondary },
+  host: { gap: space[1], flex: 1 },
+  label: { ...type.small, color: color.text2 },
   row: {
     minHeight: 48,
     justifyContent: "center",
     paddingHorizontal: 14,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  rowError: { borderColor: semantic.error },
-  value: { fontSize: 16, color: textTokens.primary },
-  placeholder: { fontSize: 16, color: textTokens.quaternary },
+  rowError: { borderColor: color.danger },
+  value: { fontSize: 16, color: color.text1 },
+  placeholder: { fontSize: 16, color: color.text4 },
   // Full width of the sheet body (inside its 16pt gutter), never wider.
   spinner: { alignSelf: "stretch", width: "100%" },
 });

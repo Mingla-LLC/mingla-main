@@ -13,14 +13,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { programFormChrome } from "../programs/programLayout";
 
-import {
-  accent,
-  canvas,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, edge, radius, scrim, space } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import type {
   ReferralAudience,
@@ -376,7 +369,7 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
                 onChangeText={setName}
                 style={styles.input}
                 placeholder="e.g. Launch week promoters"
-                placeholderTextColor={textTokens.tertiary}
+                placeholderTextColor={color.text3}
                 maxLength={60}
               />
             </Field>
@@ -515,7 +508,7 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
                     onChangeText={setPerkText}
                     style={styles.input}
                     placeholder="Free drink"
-                    placeholderTextColor={textTokens.tertiary}
+                    placeholderTextColor={color.text3}
                     maxLength={80}
                   />
                 </Field>
@@ -541,7 +534,7 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
                   keyboardType="decimal-pad"
                   style={styles.input}
                   placeholder="No cap"
-                  placeholderTextColor={textTokens.tertiary}
+                  placeholderTextColor={color.text3}
                 />
               </View>
             </Field>
@@ -687,71 +680,71 @@ const ChoiceGroup: React.FC<{
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
     alignItems: "flex-end",
     justifyContent: "center",
   },
-  overlayMobile: { backgroundColor: canvas.profile },
+  overlayMobile: { backgroundColor: color.canvas },
   sheet: {
     width: 760,
     maxWidth: "100%",
     maxHeight: "100%",
-    backgroundColor: canvas.profile,
+    backgroundColor: color.canvas,
     borderLeftWidth: 1,
-    borderColor: glass.border.control,
+    borderColor: edge.ringInputFocus.borderColor,
   },
   sheetMobile: { width: "100%", flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
-    padding: spacing.lg,
+    padding: space[6],
     borderBottomWidth: 1,
-    borderColor: glass.border.control,
-    gap: spacing.md,
+    borderColor: edge.ringInputFocus.borderColor,
+    gap: space[4],
   },
-  title: { color: textTokens.primary, fontSize: 22, fontWeight: "800" },
-  close: { color: accent.warm, fontWeight: "700", padding: spacing.xs },
-  content: { padding: spacing.lg, gap: spacing.lg },
+  title: { color: color.text1, fontSize: 22, fontWeight: "800" },
+  close: { color: color.text1, fontWeight: "700", padding: space[1] },
+  content: { padding: space[6], gap: space[6] },
   footer: {
-    padding: spacing.md,
+    padding: space[4],
     borderTopWidth: 1,
-    borderColor: glass.border.control,
+    borderColor: edge.ringInputFocus.borderColor,
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  field: { gap: spacing.xs },
-  section: { gap: spacing.sm },
-  label: { color: textTokens.primary, fontWeight: "700", fontSize: 14 },
-  help: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
+  field: { gap: space[1] },
+  section: { gap: space[2] },
+  label: { color: color.text1, fontWeight: "700", fontSize: 14 },
+  help: { color: color.text2, fontSize: 13, lineHeight: 18 },
   input: {
     minHeight: 44,
     flex: 1,
-    color: textTokens.primary,
-    backgroundColor: glass.tint.profileBase,
+    color: color.text1,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.control,
+    borderColor: edge.ringInputFocus.borderColor,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   smallInput: { flex: 0, width: 100 },
-  inline: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  suffix: { color: textTokens.secondary, fontWeight: "600" },
-  cards: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  inline: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  suffix: { color: color.text2, fontWeight: "600" },
+  cards: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   card: {
     minWidth: 190,
     flex: 1,
     flexDirection: "row",
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.control,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: edge.ringInputFocus.borderColor,
+    backgroundColor: color.fill.inset,
   },
   selected: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(249,115,22,0.10)",
+    borderColor: color.paper,
+    backgroundColor: color.fill.tabOn,
   },
   disabled: { opacity: 0.45 },
   radio: {
@@ -759,13 +752,13 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
-  radioOn: { borderColor: accent.warm },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: accent.warm },
-  cardTitle: { color: textTokens.primary, fontWeight: "700" },
+  radioOn: { borderColor: color.paper },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: color.paper },
+  cardTitle: { color: color.text1, fontWeight: "700" },
   grow: { flex: 1 },
   rowBetween: {
     flexDirection: "row",
@@ -776,38 +769,38 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   tierInput: { flex: 0, width: 76 },
-  remove: { color: "#ef4444", fontWeight: "700", padding: spacing.xs },
-  twoCols: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  listings: { gap: spacing.xs },
+  remove: { color: color.errorText, fontWeight: "700", padding: space[1] },
+  twoCols: { flexDirection: "row", flexWrap: "wrap", gap: space[4] },
+  listings: { gap: space[1] },
   listing: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.control,
+    borderColor: edge.ringInputFocus.borderColor,
   },
-  check: { width: 20, color: accent.warm, fontWeight: "800" },
+  check: { width: 20, color: color.text1, fontWeight: "800" },
   preview: {
-    padding: spacing.md,
-    gap: spacing.xs,
+    padding: space[4],
+    gap: space[1],
     borderRadius: radius.md,
-    backgroundColor: "rgba(249,115,22,0.12)",
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: accent.warm,
+    borderColor: color.lineStrong,
   },
   previewLabel: {
-    color: accent.warm,
+    color: color.text1,
     fontSize: 12,
     fontWeight: "800",
     textTransform: "uppercase",
   },
   previewText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 16,
     fontWeight: "700",
     lineHeight: 22,

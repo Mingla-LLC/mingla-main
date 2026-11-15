@@ -75,14 +75,7 @@ import {
 } from "../../../utils/creatorProgramFormat";
 import { formatCurrencyRound } from "../../../utils/currency";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
-import {
-  accent,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../../constants/designSystem";
+import { color, radius, space } from "../../../constants/designSystem";
 
 const SHARE_OPTIONS = [5, 10, 15, 20] as const;
 /** A tall brief box with its label and a character count under it. */
@@ -112,7 +105,7 @@ function BriefBox({
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         multiline
         textAlignVertical="top"
         maxLength={max}
@@ -630,7 +623,7 @@ export default function GigBriefEditor(): React.ReactElement {
               }
               keyboardType="number-pad"
               placeholder="300"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               accessibilityLabel={`Pay each creator up to, in ${currency}`}
               style={styles.moneyInput}
             />
@@ -691,33 +684,33 @@ export default function GigBriefEditor(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  footer: { gap: spacing.xs },
+  footer: { gap: space[1] },
   spendRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
-  spendLabel: { color: textTokens.secondary, fontSize: 13 },
+  spendLabel: { color: color.text2, fontSize: 13 },
   spendValue: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "800",
     flexShrink: 1,
     textAlign: "right",
   },
-  stepCount: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  cityGroup: { gap: spacing.xs },
-  fieldLabel: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
-  optional: { color: textTokens.tertiary, fontSize: 12 },
+  stepCount: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  cityGroup: { gap: space[1] },
+  fieldLabel: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  tiny: { color: color.text3, fontSize: 12, lineHeight: 16 },
+  optional: { color: color.text3, fontSize: 12 },
   labelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
   },
-  check: { color: semantic.success, fontWeight: "700", fontSize: 13 },
+  check: { color: color.success, fontWeight: "700", fontSize: 13 },
   listingChip: {
     alignSelf: "flex-start",
     maxWidth: "100%",
@@ -726,30 +719,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
   },
-  listingChipText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
+  listingChipText: { color: color.text1, fontSize: 13, fontWeight: "700" },
   boxWrap: { gap: 6 },
   box: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     lineHeight: 21,
     padding: 14,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  boxFocused: { borderColor: accent.warm },
-  boxError: { borderColor: semantic.error },
+  boxFocused: { borderColor: color.lineStrong },
+  boxError: { borderColor: color.danger },
   counterRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  counter: { color: textTokens.tertiary, fontSize: 12, flexShrink: 1 },
-  pair: { flexDirection: "row", gap: spacing.sm },
+  counter: { color: color.text3, fontSize: 12, flexShrink: 1 },
+  pair: { flexDirection: "row", gap: space[2] },
   pairDate: { flex: 1.4 },
   money: {
     flexDirection: "row",
@@ -759,15 +752,15 @@ const styles = StyleSheet.create({
     gap: 6,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  moneyGlyph: { color: textTokens.secondary, fontSize: 17, fontWeight: "700" },
+  moneyGlyph: { color: color.text2, fontSize: 17, fontWeight: "700" },
   moneyInput: {
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 17,
     fontWeight: "700",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
 });
