@@ -79,7 +79,22 @@ import {
 import { DmCollabStartFailure, endDmCollab, startDmCollab } from "../services/dmCollabService";
 import { acceptCollaborationInvite, declineCollaborationInvite } from "../services/collaborationInviteService";
 import { ChatActionList } from "./chat/ChatActionList";
-import { GroupInfoSheet } from "./chat/GroupInfoSheet";
+import { GroupInfoSheet, type SessionGroupInfo } from "./chat/GroupInfoSheet";
+
+/** #4435: the session_participants row shape useBoardSession loads (with profiles). */
+interface SessionParticipantRow {
+  user_id: string;
+  has_accepted?: boolean | null;
+  is_admin?: boolean | null;
+  joined_at?: string | null;
+  profiles?: {
+    username?: string | null;
+    display_name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    avatar_url?: string | null;
+  } | null;
+}
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import { ChatAttachSheet } from "./chat/ChatAttachSheet";
 import { InAppBrowserProvider, useOpenInMingla } from "./InAppBrowserProvider";
@@ -104,7 +119,6 @@ import {
   getCollabChatHeaderActions,
   type CollabChatHeaderActionId,
 } from "./connections/collabChatHeaderUtils";
-import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
 import type { Participant } from "./board/ParticipantAvatars";
@@ -754,6 +768,8 @@ function MessageInterfaceInner({
   const openingViewOnceRef = useRef<string | null>(null);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  // #4435: the deck's "Add people" opens group info straight on Add people.
+  const [groupInfoStartsOnAdd, setGroupInfoStartsOnAdd] = useState(false);
   const [showMediaSheet, setShowMediaSheet] = useState(false);
   // Issue #4114 Wave 7: an album opens the lightbox on all its photos at the tapped one.
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
@@ -810,38 +826,54 @@ function MessageInterfaceInner({
   // Stable for the thread's renderItem and bubble handlers.
   const openCollabPlanCardRef = useRef(openCollabPlanCard);
   openCollabPlanCardRef.current = openCollabPlanCard;
-  const { session: collabSession } = useBoardSession(
-    collabSessionId ?? undefined,
-  );
-  const groupSettingsParticipants = useMemo(() => {
-    const collabParticipants = (collabSession?.participants as any[] | undefined) ?? [];
-    if (isCollabSessionGroupChat && collabParticipants.length > 0) {
-      return collabParticipants;
-    }
-
-    return headerParticipants.map((participant) => ({
-      user_id: participant.id,
-      session_id: friend.sessionId ?? "",
-      has_accepted: true,
-      is_admin: participant.id === friend.sessionCreatorId,
-      notifications_muted: participant.id === currentUserId
-        ? friend.notificationsMuted ?? false
-        : false,
-      profiles: {
-        id: participant.id,
-        username: participant.username,
-        display_name: participant.name,
-        avatar_url: participant.avatar_url,
+  const {
+    session: collabSession,
+    loading: collabSessionLoading,
+    error: collabSessionError,
+    loadSession: loadCollabSession,
+  } = useBoardSession(collabSessionId ?? undefined);
+  // Issue #4435: session groups open GroupInfoSheet with roles. Members are
+  // the session's accepted rows (useBoardSession keeps them live).
+  const sessionGroupInfo: SessionGroupInfo | null = useMemo(() => {
+    if (!isCollabSessionGroupChat || !friend.sessionId) return null;
+    const creatorId = (collabSession?.created_by as string | undefined) ?? friend.sessionCreatorId ?? null;
+    const rows = ((collabSession?.participants as SessionParticipantRow[] | undefined) ?? []).filter(
+      (row) => row.has_accepted === true && typeof row.user_id === "string",
+    );
+    return {
+      sessionId: friend.sessionId,
+      creatorId,
+      members: rows.map((row) => ({
+        userId: row.user_id,
+        isCreator: row.user_id === creatorId,
+        isAdmin: row.is_admin === true || row.user_id === creatorId,
+        joinedAt: row.joined_at ?? null,
+        name: getDisplayName(row.profiles ?? undefined, row.profiles?.username || "?"),
+        username: row.profiles?.username ?? null,
+        avatarUrl: row.profiles?.avatar_url ?? null,
+      })),
+      loading: collabSessionLoading,
+      error: Boolean(collabSessionError),
+      onRetry: () => void loadCollabSession(friend.sessionId as string),
+      onChanged: () => {
+        void loadCollabSession(friend.sessionId as string);
+        onGroupParticipantsChange?.();
       },
-    }));
+      onRenamed: (newName: string) => onSessionNameUpdated?.(friend.sessionId as string, newName),
+      onDeleted: () => onGroupSessionDeleted?.(friend.sessionId as string),
+    };
   }, [
+    collabSession?.created_by,
     collabSession?.participants,
-    currentUserId,
-    friend.notificationsMuted,
+    collabSessionError,
+    collabSessionLoading,
     friend.sessionCreatorId,
     friend.sessionId,
-    headerParticipants,
     isCollabSessionGroupChat,
+    loadCollabSession,
+    onGroupParticipantsChange,
+    onGroupSessionDeleted,
+    onSessionNameUpdated,
   ]);
   const queryClient = useQueryClient();
   // Amendment 1 (B-4): a "joined" / "added" group row arriving refetches who is in the chat.
@@ -2158,35 +2190,6 @@ function MessageInterfaceInner({
     }
   };
 
-  const handleExitGroupSession = useCallback(() => {
-    if (!friend.sessionId || !currentUserId) return;
-
-    Alert.alert(
-      t("social:leaveSessionConfirmTitle"),
-      t("social:leaveSessionConfirmBody"),
-      [
-        { text: t("common:cancel"), style: "cancel" },
-        {
-          text: t("social:leaveSessionMenuItem"),
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from("session_participants")
-                .delete()
-                .eq("session_id", friend.sessionId)
-                .eq("user_id", currentUserId);
-              if (error) throw error;
-              onGroupSessionExited?.(friend.sessionId!);
-            } catch (error: any) {
-              console.error("[MessageInterface] Failed to leave group session:", error);
-              Alert.alert("Could not leave session", error?.message || "Please try again.");
-            }
-          },
-        },
-      ],
-    );
-  }, [currentUserId, friend.sessionId, onGroupSessionExited, t]);
 
   // ORCH-0620 / #4187 composer position:
   //   - Closed: clear the actual rendered floating-nav capsule by 8pt. The old
@@ -2268,9 +2271,9 @@ function MessageInterfaceInner({
       : t('chat:eventChannelLine', { brand: channelBrand });
 
   // Issue #4114 Wave 3: every chat's ⋯ opens something. Event and trip chats
-  // open their audience; session groups their settings (BoardSettingsDropdown);
-  // a group with no session (it used to be a dead tap) its group info; a 1:1
-  // chat the one shared action menu.
+  // open their audience; every other group its group info (#4435: session
+  // groups too, with roles; the chat no longer uses BoardSettingsDropdown);
+  // a 1:1 chat the one shared action menu.
   const handleHeaderMorePress = () => {
     if (isTripEventGroupChat) {
       setShowMoreOptionsMenu(false);
@@ -2279,8 +2282,9 @@ function MessageInterfaceInner({
       setShowEventAudienceSheet(true);
       return;
     }
-    if (isGroupChat && !friend.sessionId) {
+    if (isGroupChat) {
       setShowMoreOptionsMenu(false);
+      setGroupInfoStartsOnAdd(false);
       setShowGroupInfo(true);
       return;
     }
@@ -4079,7 +4083,7 @@ function MessageInterfaceInner({
           onPurchaseComplete={onPurchaseComplete}
           onOpenPreferences={onOpenPreferences}
           onShareGroupLink={conversationId ? () => { void shareGroupLinkFromDeck(); } : undefined}
-          onAddGroupPeople={friend.sessionId ? () => { setShowCollabDeckSheet(false); setTimeout(() => setShowMoreOptionsMenu(true), MENU_PRESENT_AFTER_DISMISS_MS); } : undefined}
+          onAddGroupPeople={friend.sessionId ? () => { setShowCollabDeckSheet(false); setTimeout(() => { setGroupInfoStartsOnAdd(true); setShowGroupInfo(true); }, MENU_PRESENT_AFTER_DISMISS_MS); } : undefined}
         />
       ) : null}
 
@@ -4137,29 +4141,6 @@ function MessageInterfaceInner({
         </>
       ) : null}
 
-      <BoardSettingsDropdown
-        visible={Boolean(isGroupChat && showMoreOptionsMenu && friend.sessionId)}
-        theme="dark"
-        onClose={() => setShowMoreOptionsMenu(false)}
-        sessionId={friend.sessionId ?? ""}
-        sessionName={headerTitle}
-        // Issue #4261: the group link section (Wave B1) reads the chat id.
-        conversationId={conversationId ?? undefined}
-        sessionCreatorId={friend.sessionCreatorId ?? undefined}
-        currentUserId={currentUserId ?? undefined}
-        isAdmin={friend.isSessionAdmin ?? (!!currentUserId && friend.sessionCreatorId === currentUserId)}
-        notificationsMuted={friend.notificationsMuted ?? false}
-        participants={groupSettingsParticipants}
-        onExitBoard={handleExitGroupSession}
-        onSessionDeleted={() => {
-          setShowMoreOptionsMenu(false);
-          if (friend.sessionId) onGroupSessionDeleted?.(friend.sessionId);
-        }}
-        onSessionNameUpdated={(newName) => {
-          if (friend.sessionId) onSessionNameUpdated?.(friend.sessionId, newName);
-        }}
-        onParticipantsChange={onGroupParticipantsChange}
-      />
 
       {/* More options bottom sheet — ORCH-0435. META-ORCH-0991 Wave B Batch 5:
           BaseBottomSheet, fixed ['45%'] snap, wrapInRNModal. Issue #4114 Wave 3:
@@ -4188,8 +4169,11 @@ function MessageInterfaceInner({
       </BaseBottomSheet>
 
       <GroupInfoSheet
-        visible={Boolean(isGroupChat && !friend.sessionId && !isTripEventGroupChat && showGroupInfo)}
-        onClose={() => setShowGroupInfo(false)}
+        visible={Boolean(isGroupChat && !isTripEventGroupChat && showGroupInfo)}
+        onClose={() => {
+          setShowGroupInfo(false);
+          setGroupInfoStartsOnAdd(false);
+        }}
         conversationId={conversationId}
         currentUserId={currentUserId}
         name={headerTitle}
@@ -4197,10 +4181,15 @@ function MessageInterfaceInner({
         initiallyMuted={friend.notificationsMuted ?? false}
         onOpenProfile={onViewProfile}
         onOpenMedia={() => setShowMediaSheet(true)}
-        onLeft={() => onGroupConversationLeft?.()}
+        onLeft={() => {
+          if (isCollabSessionGroupChat && friend.sessionId) onGroupSessionExited?.(friend.sessionId);
+          else onGroupConversationLeft?.();
+        }}
         onError={(message) => showNotification(message, "", "error")}
         managed={isProgramChat}
         onClearChat={onClearChat && conversationId ? () => { setShowGroupInfo(false); setTimeout(handleClearChat, MENU_PRESENT_AFTER_DISMISS_MS); } : undefined}
+        session={sessionGroupInfo}
+        startWithAddPeople={groupInfoStartsOnAdd}
       />
 
       <ChatMediaSheet

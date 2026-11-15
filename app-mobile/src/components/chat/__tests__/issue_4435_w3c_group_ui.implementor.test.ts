@@ -103,3 +103,26 @@ Deno.test("#4435 Add people: link on top, phone invite, In group / Group full, o
   const cold = phone.indexOf('if (outcome.kind === "cold" && !outcome.texted) {');
   assert(cold > 0 && cold < phone.indexOf("Alert.alert("), "a cold invite not texted never claims it went out");
 });
+
+Deno.test("#4435 group info for session groups: roles, held remove with Undo, leave variants, delete", () => {
+  const info = strip(read("src/components/chat/GroupInfoSheet.tsx"));
+  const confirm = info.slice(info.indexOf("const confirmRemove ="), info.indexOf("const setAdmin ="));
+  assert(/deferredRef\.current\.schedule\(member\.userId,/.test(confirm), "Remove is held for the Undo window");
+  assert(!/removeGroupMember\(/.test(confirm), "no server call at confirm time");
+  assert(/createDeferredAction\(REMOVE_UNDO_MS/.test(info), "6-second window");
+  assert(/deferredRef\.current\.cancel\(undo\.userId\)/.test(info), "Undo cancels the held call");
+  assert(/if \(!visible\) deferredRef\.current\.flush\(\);/.test(info), "sheet closed: sent at once");
+  assert(/AppState\.addEventListener\("change"[\s\S]*?deferredRef\.current\.flush\(\)/.test(info), "app backgrounded: sent at once");
+  assert(/await setGroupAdmin\(conversationId, member\.userId, makeAdmin\)/.test(info), "roles through set_group_admin");
+  assert(/memberActions\(viewerRole, member\)/.test(info), "who can manage whom comes from the model");
+  assert(/onLongPress=/.test(info), "long-press opens the same actions");
+  assert(/leaveCopyVariant\(acceptedCount\)/.test(info) && /group_leave_last_body/.test(info) && /group_leave_second_body/.test(info), "leave copy variants");
+  assert(/leaveHeir\(sessionMembers, currentUserId\)/.test(info), "last admin hands over in the copy");
+  assert(/leaveGroupConversation\(conversationId, currentUserId\)/.test(info), "leave through leave_group_conversation");
+  assert(/await deleteGroup\(session\.sessionId, currentUserId\)/.test(info), "creator deletes through the service");
+  assert(/pendingRequests\.map[\s\S]*?<GroupJoinRequestCard/.test(info), "join requests at the top");
+  const chat = strip(read("src/components/MessageInterface.tsx"));
+  assert(!/<BoardSettingsDropdown/.test(chat), "the chat no longer uses the board settings sheet");
+  assert(!/from\("session_participants"\)\s*\.delete\(\)/.test(chat), "no client-side leave delete in the chat");
+  assert(/session=\{sessionGroupInfo\}/.test(chat), "session groups pass their roles");
+});
