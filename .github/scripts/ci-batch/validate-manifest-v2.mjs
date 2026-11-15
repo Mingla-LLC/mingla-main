@@ -494,7 +494,7 @@ export function phase3dContractDigest(manifest) {
 // #4423 Wave 4a CI fix: re-sealed after adding the Wave 4a migration to the #1931 and #2117 skip lists; MANIFEST.json phase3eContractSha256 matches.
 // #4423 integration: merged origin/main a5a5c59094 (#4419 20280706004419 rows kept beside the #4423 rows) and renamed the thirteen #4423 migrations 20280705*4423 to 20280707*4423 (after 20280706004419), in order; re-sealed.
 // #4423 integration 2: merged origin/main ce482c996c; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9f257d6310eea03df1dd4ab8776c9aaa57a14dfa5b3b22b1fabc5c32ccb6e166";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "6637063f802ce9f8b78de7bc7383d6bb27c3bcd04d3c16c64d89b15e30d896a9";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

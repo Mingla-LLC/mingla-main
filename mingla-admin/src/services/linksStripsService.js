@@ -20,8 +20,10 @@ export class LinksStripsError extends Error {
 const SERVER_REFUSALS = Object.freeze({
   links_title_invalid: { field: "title", message: "Add a title of up to 60 characters." },
   links_url_invalid: { field: "url", message: "Enter a web link like usemingla.com/host." },
-  links_shows_on_invalid: { field: "showsOn", message: "Pick today or a later day." },
-  links_shows_until_invalid: { field: "showsUntil", message: "“Show until” can't be before “Shows on”." },
+  // #4339: the window is read in the strip's time zone (20280708004339).
+  links_shows_on_invalid: { field: "showsOn", message: "That day is already over in this strip's time zone. Pick today or a later day." },
+  links_shows_until_invalid: { field: "showsUntil", message: "“Show until” can't be before “Shows on”, or already over in this strip's time zone." },
+  links_time_zone_invalid: { field: "timeZone", message: "Pick a time zone from the list." },
   links_blog_post_invalid: { field: "blog", message: "Choose a published blog post." },
   links_label_invalid: { field: "label", message: "Pick an option from the list." },
   links_opens_invalid: { field: "opens", message: "Pick an option from the list." },
