@@ -270,6 +270,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 
   const banner = ticket ? supportStatusBanner(ticket) : null;
   const composerMode = supportComposerMode(ticket?.status);
+  const canSend = composer.trim().length > 0 || images.length > 0;
   const header = ticket
     ? [formatTicketNumber(ticket.ticket_number), ticket.topic ? supportCopy(`topic.${ticket.topic}`) : null]
         .filter(Boolean)
@@ -285,7 +286,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
           onPress={handleBack}
           style={styles.iconButton}
         >
-          <Icon name="arrowL" size={18} color={color.text1} />
+          <Icon name="chevL" size={20} color={color.text1} />
         </Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.title} numberOfLines={1}>
@@ -469,7 +470,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                     disabled={sending}
                   />
                 ) : null}
-                <View style={styles.composer}>
+                <View style={[styles.composer, sendingNote && styles.composerNote]}>
                   <Pressable
                     onPress={() => void handleAddImages()}
                     disabled={sending || images.length >= MAX_SUPPORT_IMAGES}
@@ -489,13 +490,22 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                     editable={!sending}
                     accessibilityLabel={sendingNote ? supportCopy("thread.mode_note") : supportCopy("thread.composer_placeholder")}
                   />
-                  <Button
-                    label={supportCopy("thread.send")}
-                    leadingIcon="send"
-                    onPress={handleSend}
-                    loading={sending}
-                    disabled={(composer.trim().length === 0 && images.length === 0) || sending}
-                  />
+                  {/* #4420 round-3 item 6 — icon-only send inside the floating
+                      field; dimmed until there is something to send. */}
+                  <Pressable
+                    onPress={() => void handleSend()}
+                    disabled={!canSend || sending}
+                    accessibilityRole="button"
+                    accessibilityLabel={supportCopy("thread.send")}
+                    accessibilityState={{ disabled: !canSend || sending, busy: sending }}
+                    style={[styles.sendButton, !canSend && styles.sendButtonOff]}
+                  >
+                    {sending ? (
+                      <ActivityIndicator size="small" color={color.ink} />
+                    ) : (
+                      <Icon name="send" size={18} color={canSend ? color.ink : color.text4} />
+                    )}
+                  </Pressable>
                 </View>
               </View>
             </KeyboardWrap>
@@ -714,37 +724,51 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: color.text1,
   },
+  // #4420 round-3 item 6 — a floating pill field: no bar behind it, attach
+  // and send sit INSIDE the field.
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: space[2],
+    gap: space[1],
+    padding: space[1],
+    borderRadius: radius.xxl,
+    backgroundColor: color.card2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
   },
   attachButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: color.fill.inset,
-    borderWidth: 1,
-    borderColor: color.line,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.paper,
+  },
+  sendButtonOff: {
+    backgroundColor: color.card3,
   },
   input: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 40,
     maxHeight: 120,
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
-    borderRadius: radius.sm,
-    overflow: "hidden",
+    paddingHorizontal: space[2],
+    paddingVertical: space[2] + 2,
     color: color.text1,
-    backgroundColor: color.fill.inset,
-    borderWidth: 1,
-    borderColor: color.line,
+    backgroundColor: color.transparent,
   },
-  inputNote: {
+  inputNote: {},
+  // Staff internal note: the pill itself carries the dashed amber edge.
+  composerNote: {
     borderColor: color.warning,
     borderStyle: "dashed",
+    borderWidth: 1,
   },
 });
 

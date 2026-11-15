@@ -398,7 +398,7 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
       <View style={styles.ctaPairItem}>
         <Button
           label="Continue"
-          variant="secondary"
+          variant="primary"
           size="md"
           fullWidth
           onPress={onContinue}
@@ -538,7 +538,7 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
       <View style={styles.ctaRow}>
         <Button
           label={blockersLoading ? "Checking…" : "Continue"}
-          variant="secondary"
+          variant="primary"
           size="md"
           fullWidth
           disabled={blockersLoading}
@@ -690,7 +690,7 @@ const Step3Confirm: React.FC<Step3ConfirmProps> = ({
         <View style={styles.ctaPairItem}>
           <Button
             label={deleting ? "Deleting..." : "Delete my account"}
-            variant="secondary"
+            variant="destructive"
             size="md"
             fullWidth
             disabled={!confirmMatches || deleting}
