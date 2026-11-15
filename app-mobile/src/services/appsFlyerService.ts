@@ -105,6 +105,38 @@ function isAnalyticsOptedOut(): boolean {
   }
 }
 
+/**
+ * #4238 P2-2 (W6-6, I-4238-AF-DMA-CONSENT): DMA consent for EU / EEA / UK
+ * devices from the same switch. Called before startSdk (init callback) and on
+ * every change. Lazy, like the store: a harness without it sends nothing.
+ */
+function deviceRegionCode(consent: typeof import('./appsFlyerConsent')): string | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const localization = require('expo-localization') as {
+      getLocales?: () => Array<{ regionCode?: string | null }>
+    }
+    const region = localization.getLocales?.()[0]?.regionCode
+    if (typeof region === 'string' && region.length > 0) return region
+  } catch {
+    // fall through to the Intl locale
+  }
+  return consent.intlDeviceRegion()
+}
+
+function applyConsentData(): void {
+  if (typeof appsFlyer.setConsentData !== 'function') return
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const consent = require('./appsFlyerConsent') as typeof import('./appsFlyerConsent')
+    appsFlyer.setConsentData(
+      consent.appsFlyerConsentFor(isAnalyticsOptedOut(), deviceRegionCode(consent)),
+    )
+  } catch (e) {
+    console.warn('[AppsFlyer] setConsentData failed:', e)
+  }
+}
+
 /** #4238 W6-6: anonymize AppsFlyer while analytics is off; restore on re-enable. */
 function applyPrivacyChoice(): void {
   if (!_initialized) return
@@ -163,6 +195,7 @@ function subscribePrivacyChoice(): void {
     store.subscribe((state, prev) => {
       if (state.analyticsOptOut !== prev.analyticsOptOut) {
         applyPrivacyChoice()
+        applyConsentData()
         syncDeviceOptOut()
       }
     })
@@ -360,7 +393,8 @@ export function initializeAppsFlyer(): void {
         _initialized = true
         // #4238 W6-1 / W6-6 — apply what arrived before init, exactly once:
         // the privacy choice first, then identity, then a held start (which
-        // replays the queued events).
+        // replays the queued events). #4238 P2-2: DMA consent before startSdk.
+        applyConsentData()
         applyPrivacyChoice()
         const pendingUserId = _pendingUserId
         _pendingUserId = null

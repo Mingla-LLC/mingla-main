@@ -19,6 +19,7 @@
 
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
+import type { AppsFlyerConsentData } from "./appsFlyerConsent";
 // #1050 — the branded OneLink host is imported from the storeLinks SSOT, never
 // hardcoded here (the orch-1342 gate bans a bare `biz.usemingla.com` literal
 // outside storeLinks.ts). Its value is `biz.usemingla.com` — the Business app's
@@ -90,6 +91,8 @@ type AppsFlyerSdk = {
     ok: (r: unknown) => void,
     fail: (e: unknown) => void,
   ) => void;
+  // #4238 P2-2 — DMA consent (react-native-appsflyer 6.16.2+).
+  setConsentData?: (consent: AppsFlyerConsentData) => void;
 };
 
 let appsFlyer: AppsFlyerSdk | null = null;
@@ -178,6 +181,24 @@ function isAnalyticsOptedOut(): boolean {
   }
 }
 
+/**
+ * #4238 P2-2 (W6-6, I-4238-AF-DMA-CONSENT): DMA consent for EU / EEA / UK
+ * devices from the same Analytics switch. Called before initSdk (this app
+ * starts transmitting at init) and on every change. Never throws.
+ */
+function applyConsentData(sdk: AppsFlyerSdk | null = appsFlyer): void {
+  if (!sdk || typeof sdk.setConsentData !== "function") return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const consent = require("./appsFlyerConsent") as typeof import("./appsFlyerConsent");
+    sdk.setConsentData(
+      consent.appsFlyerConsentFor(isAnalyticsOptedOut(), consent.intlDeviceRegion()),
+    );
+  } catch (e) {
+    console.warn("[AppsFlyer] setConsentData failed:", e);
+  }
+}
+
 /** Apply the current privacy choice to the SDK: anonymize when opted out. */
 function applyPrivacyChoice(): void {
   if (!_initialized || !appsFlyer) return;
@@ -215,6 +236,7 @@ function syncDeviceOptOut(): void {
     void Promise.resolve(
       supabase
         .from("appsflyer_devices")
+        // I-MUTATION-ROWCOUNT-WAIVER: #4238 zero rows is valid (no install registered yet; registration carries the value)
         .update({ tracking_opt_out: isAnalyticsOptedOut() })
         .eq("user_id", userId)
         .eq("app", "business"),
@@ -240,6 +262,7 @@ function subscribePrivacyChoice(): void {
     useAnalyticsPrefsStore.subscribe((state, prev) => {
       if (state.analyticsOptOut !== prev.analyticsOptOut) {
         applyPrivacyChoice();
+        applyConsentData();
         syncDeviceOptOut();
       }
     });
@@ -818,6 +841,9 @@ export function initializeAppsFlyer(): void {
     } catch (e) {
       console.warn("[AppsFlyer] setOneLinkCustomDomains threw:", e);
     }
+
+    // #4238 P2-2: DMA consent is set before initSdk starts transmission.
+    applyConsentData(sdk);
 
     sdk.initSdk(
       {
