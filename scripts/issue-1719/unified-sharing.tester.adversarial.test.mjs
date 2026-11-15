@@ -299,7 +299,8 @@ test('TA7 accessibility, theme, contrast, touch targets, and small-screen reacha
   assert.match(business, /aria-modal=\{Platform\.OS === 'web' \? true/);
   assert.match(business, /event\.key === 'Escape' && !busyRef\.current/);
   assert.match(business, /invokingControl\?\.focus\?\.\(\)/);
-  assert.match(business, /const panelBackground = dark \? '#0C0E12' : '#FFFFFF'/);
+  // [TEST-MOD-APPROVED #4420] the panel theme comes from tokens (sheet material / Paper).
+  assert.match(business, /const panelBackground = dark \? materials\.sheet\.solidFill : color\.paper;/);
 
   for (const [foreground,background,floor] of [
     ['#111827','#F9FAFB',4.5], ['#6B7280','#F9FAFB',4.5],
