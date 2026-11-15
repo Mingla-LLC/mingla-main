@@ -11,6 +11,7 @@
  */
 import { supabase } from './supabase';
 import { withTimeout } from '../utils/withTimeout';
+import { addedToGroupPush, addedToGroupRecipients } from '../utils/groupChatModel';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -292,4 +293,41 @@ export function notifyMatch(payload: {
   ).catch((err) =>
     console.warn('[boardNotificationService] notifyMatch error:', err)
   );
+}
+
+/**
+ * Issue #4435 (decision Q3): friends added straight into a group get ONE push,
+ * "Ada added you to Saturday crew", and no email. Rides the existing
+ * session_member_joined type (collaboration_invites preference, session mute
+ * check, in-app row) through notify-dispatch: no new type, edge function,
+ * secret or provider. Called once per add call with the server's `added` ids
+ * only (never the skipped ones). Fire-and-forget.
+ */
+export function notifyAddedToGroup(payload: {
+  sessionId: string;
+  sessionName: string;
+  actorId: string;
+  actorFirstName: string;
+  addedUserIds: readonly string[];
+}): void {
+  const { sessionId, sessionName, actorId, actorFirstName, addedUserIds } = payload;
+  const recipients = addedToGroupRecipients(addedUserIds, actorId);
+  if (!sessionId || !actorId || recipients.length === 0) return;
+  const push = addedToGroupPush(actorFirstName, sessionName);
+  notifyUsers(recipients, {
+    type: 'session_member_joined',
+    title: push.title,
+    body: push.body,
+    data: {
+      deepLink: `mingla://session/${sessionId}`,
+      sessionId,
+      senderName: actorFirstName,
+      addedBy: actorId,
+    },
+    actorId,
+    relatedId: sessionId,
+    relatedType: 'session',
+    idempotencyPrefix: `session_member_added:${sessionId}:${actorId}`,
+    sessionId,
+  });
 }

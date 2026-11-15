@@ -28,7 +28,6 @@ import { BoardMessageService } from "../services/boardMessageService";
 import { BoardErrorHandler } from "../services/boardErrorHandler";
 import { withTimeout } from "../utils/withTimeout";
 import { showMutationError } from "../utils/showMutationError";
-import { notifySessionDeleted } from "../services/boardNotificationService";
 import { useTranslation } from 'react-i18next';
 import { useToast } from "./ToastManager";
 import { Participant } from "./board/ParticipantAvatars";
@@ -314,24 +313,9 @@ export default function SessionViewModal({
             const currentUserId = user.id;
             const currentSessionId = sessionId;
 
-            // ORCH-0448: Check participant count BEFORE leaving.
-            // Must notify while still a participant (RLS blocks query after removal).
-            const { count: participantCount } = await supabase
-              .from('session_participants')
-              .select('id', { count: 'exact', head: true })
-              .eq('session_id', currentSessionId);
-
-            const willAutoDelete = participantCount !== null && participantCount <= 2;
-
-            if (willAutoDelete) {
-              // Notify remaining user BEFORE we remove ourselves (RLS requires membership)
-              notifySessionDeleted({
-                sessionId: currentSessionId,
-                sessionName: sessionName || 'Session',
-                userId: currentUserId,
-                userName: profile?.display_name || profile?.first_name || 'Someone',
-              });
-            }
+            // Issue #4435: leaving deletes only my own row. The server deletes
+            // the group when its last member leaves, and the second-to-last
+            // leaving keeps it open for the other person.
 
             // Op 1 (critical): delete participant
             withTimeout(
@@ -348,25 +332,6 @@ export default function SessionViewModal({
             )
               .then(async () => {
                 onSessionExited?.();
-
-                // ORCH-0448: Auto-delete session if < 2 participants remain (R6.1).
-                if (willAutoDelete) {
-                  try {
-                    // Delete remaining participants first (ORCH-0448 pattern)
-                    await supabase
-                      .from('session_participants')
-                      .delete()
-                      .eq('session_id', currentSessionId)
-                      .neq('user_id', currentUserId);
-                    // Delete the session
-                    await supabase
-                      .from('collaboration_sessions')
-                      .delete()
-                      .eq('id', currentSessionId);
-                  } catch (err) {
-                    console.warn('[SessionViewModal] Auto-delete after leave failed:', err);
-                  }
-                }
 
                 // Ops 2+3 (cleanup, sequential) and Op 4 (cleanup, parallel)
                 const cleanupBoardCollaborator = withTimeout(

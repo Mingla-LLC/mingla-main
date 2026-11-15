@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4436_invited_self_join_and_own_prefs.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4436-invited-self-join-and-own-prefs-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "postgres", "reset": "suite-owned" }
+}

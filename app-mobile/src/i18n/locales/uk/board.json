@@ -141,7 +141,12 @@
     "invitesSent": "Запроситиs Sent",
     "invitesSentMsg": "Successfully invited {{count}} friend{{plural}} to \"{{name}}\".",
     "errorSendInvites": "Failed to send invites. Please try again.",
-    "error": "Помилка"
+    "error": "Помилка",
+    "addPeople": "Додати ({{count}})",
+    "peopleAdded": "Додано",
+    "peopleAddedMsg": "Додано до «{{name}}»: {{count}}. Вони одразу в групі.",
+    "noneAdded": "Нікого не додано. Можливо, вони вже в групі.",
+    "groupFull": "У групі може бути до 15 осіб. Виберіть менше друзів."
   },
   "manageBoardModal": {
     "manageBoard": "Чоловікage Board",

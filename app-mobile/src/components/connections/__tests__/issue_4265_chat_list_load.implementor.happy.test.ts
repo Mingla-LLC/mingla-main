@@ -238,8 +238,8 @@ Deno.test("#4265 one profiles read covers participants, senders and inviters; a 
   eq(group.last_message.sender_name, "Benny", "a snapshot always wins");
   eq(direct.participants.map((p) => p.id), [ME, AMY], "participants keep their order");
   eq(group.name, "Brunch", "session name fallback");
-  eq(group.__pendingCollabChat.people.map((p) => [p.id, p.status]), [[ME, "creator"], [BEN, "pending"], [DEE, "pending"]],
-    "pending collab people include the invitee from the follow-up read");
+  // #4435 (R10): groups are live at once; the pending-creator payload is gone.
+  eq(group.__pendingCollabChat, undefined, "no pending collab payload on group rows");
   eq(direct.unread_count, 2, "unread passes through");
   eq([...archivedConversationIds(data.conversations)], ["c2"], "archived ids are read from the rows");
   eq(data.teamBrandIds, [], "no event chats: the team set is empty");

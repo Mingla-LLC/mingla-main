@@ -141,7 +141,12 @@
     "invitesSent": "Invitations envoyées",
     "invitesSentMsg": "{{count}} ami{{plural}} invité(s) avec succès à « {{name}} ».",
     "errorSendInvites": "Échec de l'envoi des invitations. Veuillez réessayer.",
-    "error": "Erreur"
+    "error": "Erreur",
+    "addPeople": "Ajouter ({{count}})",
+    "peopleAdded": "Ajoutés",
+    "peopleAddedMsg": "{{count}} ajoutés à « {{name}} ». Ils sont dedans tout de suite.",
+    "noneAdded": "Personne n'a été ajouté. Ils sont peut-être déjà dans le groupe.",
+    "groupFull": "Un groupe compte jusqu'à 15 personnes. Choisis moins d'amis."
   },
   "manageBoardModal": {
     "manageBoard": "Gérer le tableau",

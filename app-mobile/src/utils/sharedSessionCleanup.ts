@@ -1,7 +1,9 @@
 // ORCH-0987: extracted from ConnectionsPage so both the Connections screen and the
 // shared friend-actions hook run the SAME pre-remove/pre-block cleanup (Constitution #2).
-// When you remove or block a friend, any collaboration session that would be left with
-// <= 2 participants (i.e. just the two of you) is deleted along with its invites.
+// When you remove or block a friend, a 1:1 collab you share (a session started inside
+// your 1:1 chat, collaboration_sessions.conversation_id set) is deleted along with its
+// invites. Issue #4435: group chats are never deleted here; a group only ends when its
+// last member leaves.
 import { supabase } from "../services/supabase";
 
 export async function cleanupSharedSessions(
@@ -25,7 +27,13 @@ export async function cleanupSharedSessions(
     if (myError || !mySharedSessions?.length) return;
 
     const sharedSessionIds = mySharedSessions.map((s: { session_id: string }) => s.session_id);
-    for (const sessionId of sharedSessionIds) {
+    const { data: oneToOneSessions, error: kindError } = await supabase
+      .from("collaboration_sessions")
+      .select("id")
+      .in("id", sharedSessionIds)
+      .not("conversation_id", "is", null);
+    if (kindError || !oneToOneSessions?.length) return;
+    for (const { id: sessionId } of oneToOneSessions as { id: string }[]) {
       const { count, error: countError } = await supabase
         .from("session_participants")
         .select("id", { count: "exact", head: true })

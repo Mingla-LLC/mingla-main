@@ -21,6 +21,14 @@ const pixelConfig = () => ({
   reddit: process.env.EXPO_PUBLIC_REDDIT_PIXEL_ID || null,
 });
 
+// #4238 P1-5 (I-4238-NO-PRIVATE-TOKEN-TO-PIXELS): the same keys as
+// src/utils/privateUrlTokens.ts PRIVATE_URL_QUERY_KEYS (a parity test pins
+// the two lists). A buyer return page's address carries them; in such a
+// document the server-rendered boot below never starts a third-party pixel.
+const PRIVATE_URL_QUERY_KEYS = ["bst", "csi", "cs", "rcs", "trxref", "reference", "token"];
+const PRIVATE_URL_PARAM_SOURCE =
+  `(?:[?&#]|%3F|%26|%23)(?:${PRIVATE_URL_QUERY_KEYS.join("|")})(?:=|%3D)`;
+
 // #2331 — the same slim privacy bar the app renders, server-side, so the
 // choice is offered before the app takes over (the app removes this copy).
 const publicAdPrivacyMarkup = () => privacyBarMarkup();
@@ -43,13 +51,15 @@ const publicAdRuntimeScript = ({ facts }) => {
     contentId: facts.id,
     supabaseUrl: SUPABASE_URL,
     supabaseAnonKey: SUPABASE_ANON_KEY,
+    privateParam: PRIVATE_URL_PARAM_SOURCE,
   };
   return `(function(){
 var c=${safeJson(config)};
 ${privacyReaderSource()}
+var priv=(function(){try{var r=new RegExp(c.privateParam,"i"),l=window.location||{};return r.test(String(l.search||""))||r.test(String(l.hash||""));}catch(_){return true;}})();
 function id(){return globalThis.crypto&&typeof globalThis.crypto.randomUUID==="function"?globalThis.crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,function(v){var r=Math.floor(Math.random()*16);return(v==="x"?r:(r&3)|8).toString(16);});}
 function script(key,src){if(document.querySelector('script[data-mingla-pixel="'+key+'"]'))return;var s=document.createElement("script");s.async=true;s.src=src;s.setAttribute("data-mingla-pixel",key);document.head.appendChild(s);}
-function boot(){if(!__minglaPrivacyOn("ads")||window.__minglaAdPixelsBootstrapped)return;window.__minglaAdPixelsBootstrapped=true;var eid=id(),pageKey=location.href.split("#",1)[0];window.__minglaAdPageViewKeys=window.__minglaAdPageViewKeys||{};window.__minglaAdPageViewKeys[pageKey]=true;window.__minglaAdViewContentKeys=window.__minglaAdViewContentKeys||{};window.__minglaAdViewContentKeys[c.contentId]=true;
+function boot(){if(priv||!__minglaPrivacyOn("ads")||window.__minglaAdPixelsBootstrapped)return;window.__minglaAdPixelsBootstrapped=true;var eid=id(),pageKey=location.href.split("#",1)[0];window.__minglaAdPageViewKeys=window.__minglaAdPageViewKeys||{};window.__minglaAdPageViewKeys[pageKey]=true;window.__minglaAdViewContentKeys=window.__minglaAdViewContentKeys||{};window.__minglaAdViewContentKeys[c.contentId]=true;
 if(c.pixels.meta){!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=true;n.version="2.0";n.queue=[];t=b.createElement(e);t.async=true;t.src=v;t.setAttribute("data-mingla-pixel","meta");s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,"script","https://connect.facebook.net/en_US/fbevents.js");fbq.disablePushState=true;fbq("init",c.pixels.meta);fbq("track","PageView",{brand_id:c.brandId},{eventID:eid});fbq("track","ViewContent",{content_type:"product",content_ids:[c.contentId],brand_id:c.brandId},{eventID:eid});}
 if(c.pixels.tiktok){!function(w,d,t){w.TiktokAnalyticsObject=t;var q=w[t]=w[t]||[];q.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"];q.setAndDefer=function(o,m){o[m]=function(){o.push([m].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<q.methods.length;i++)q.setAndDefer(q,q.methods[i]);q.load=function(code){var s=d.createElement("script");s.async=true;s.src="https://analytics.tiktok.com/i18n/pixel/events.js?sdkid="+encodeURIComponent(code)+"&lib="+t;s.setAttribute("data-mingla-pixel","tiktok");d.head.appendChild(s)};q.load(c.pixels.tiktok);q.page();q.track("ViewContent",{content_type:"product",content_id:c.contentId,brand_id:c.brandId},{event_id:eid});}(window,document,"ttq");}
 if(c.pixels.snap){!function(e,t,n){if(e.snaptr)return;var a=e.snaptr=function(){a.handleRequest?a.handleRequest.apply(a,arguments):a.queue.push(arguments)};a.queue=[];var s=t.createElement("script");s.async=true;s.src="https://sc-static.net/scevent.min.js";s.setAttribute("data-mingla-pixel","snap");var r=t.getElementsByTagName("script")[0];r.parentNode.insertBefore(s,r)}(window,document);snaptr("init",c.pixels.snap);snaptr("track","PAGE_VIEW",{brand_id:c.brandId,client_dedup_id:eid});snaptr("track","VIEW_CONTENT",{item_ids:[c.contentId],brand_id:c.brandId,client_dedup_id:eid,transaction_id:eid});}
@@ -63,6 +73,7 @@ capture();boot();if(document.readyState==="loading")document.addEventListener("D
 };
 
 module.exports = {
+  PRIVATE_URL_QUERY_KEYS,
   publicAdPrivacyMarkup,
   publicAdPrivacyStyle,
   publicAdRuntimeScript,

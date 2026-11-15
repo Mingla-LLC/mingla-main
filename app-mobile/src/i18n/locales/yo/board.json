@@ -141,7 +141,12 @@
     "invitesSent": "A Ti Fi Ìpè Ránṣẹ́",
     "invitesSentMsg": "A ti pe ọ̀rẹ́ {{count}}{{plural}} sí \"{{name}}\" dáadáa.",
     "errorSendInvites": "Kò le fi ìpè ránṣẹ́. Jọ̀wọ́ gbìyànjú lẹ́ẹ̀kan sí i.",
-    "error": "Àṣìṣe"
+    "error": "Àṣìṣe",
+    "addPeople": "Fi kún ({{count}})",
+    "peopleAdded": "A ti fi kún",
+    "peopleAddedMsg": "A ti fi {{count}} kún \"{{name}}\". Wọ́n ti wọlé lẹ́sẹ̀kẹsẹ̀.",
+    "noneAdded": "A kò fi ẹnikẹ́ni kún. Bóyá wọ́n ti wà nínú ẹgbẹ́ tẹ́lẹ̀.",
+    "groupFull": "Ẹgbẹ́ lè ní ènìyàn tó tó 15. Yan àwọn ọ̀rẹ́ díẹ̀."
   },
   "manageBoardModal": {
     "manageBoard": "Ṣàkóso Bọ́ọ̀dù",

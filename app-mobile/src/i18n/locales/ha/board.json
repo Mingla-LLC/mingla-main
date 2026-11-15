@@ -141,7 +141,12 @@
     "invitesSent": "An Aika Gayyata",
     "invitesSentMsg": "An gayyaci abokai {{count}}{{plural}} zuwa \"{{name}}\" da nasara.",
     "errorSendInvites": "Ba a iya aika gayyata ba. Da fatan za a sake gwadawa.",
-    "error": "Kuskure"
+    "error": "Kuskure",
+    "addPeople": "Ƙara ({{count}})",
+    "peopleAdded": "An ƙara",
+    "peopleAddedMsg": "An ƙara {{count}} zuwa \"{{name}}\". Sun shiga nan take.",
+    "noneAdded": "Ba a ƙara kowa ba. Wataƙila suna cikin ƙungiya tuni.",
+    "groupFull": "Ƙungiya na ɗaukar mutane har 15. Zaɓi abokai kaɗan."
   },
   "manageBoardModal": {
     "manageBoard": "Sarrafa Allo",
