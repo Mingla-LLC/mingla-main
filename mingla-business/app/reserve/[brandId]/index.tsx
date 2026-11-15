@@ -1,5 +1,5 @@
 import React from "react";
-import { Linking, Platform, ScrollView, StyleSheet, Text } from "react-native";
+import { Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -9,14 +9,32 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { Button } from "../../../src/components/ui/Button";
+import { useSignedInHostViewer } from "../../../src/components/venue/guestViewHostSession";
+
+// #4420 (round-3 item 18) — "Guest view · Back to Mingla Host" for a signed-in
+// host (chrome only; a guest sees the page unchanged). The bar loads lazily,
+// only when a host session is found.
+const LazyGuestViewHostBar = React.lazy(() =>
+  import("../../../src/components/venue/GuestViewHostBar").then((m) => ({
+    default: m.GuestViewHostBar,
+  })),
+);
 
 export default function VenueReservationCancelledRoute(): React.ReactElement {
   const router = useRouter();
+  const hostViewer = useSignedInHostViewer();
   return (
     <SafeAreaView
       style={styles.host}
       edges={["top", "bottom", "left", "right"]}
     >
+      {hostViewer ? (
+        <View style={styles.hostBarWrap}>
+          <React.Suspense fallback={null}>
+            <LazyGuestViewHostBar />
+          </React.Suspense>
+        </View>
+      ) : null}
       {/*
         #2211 — this region SCROLLS. `host` was `flex: 1` +
         `justifyContent: "center"` with no scroll container around an h2, two
@@ -51,6 +69,7 @@ const styles = StyleSheet.create({
   // #2211 — `host` keeps only the frame; centring moved to `scrollContent`.
   host: { flex: 1, backgroundColor: "#0c0e12" },
   scroll: { flex: 1, overflow: "hidden" },
+  hostBarWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   scrollContent: {
     // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
     flexGrow: 1,
