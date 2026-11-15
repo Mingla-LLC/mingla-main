@@ -21208,6 +21208,8 @@
         "supabase/migrations/__tests__/issue_4339_book_a_call_leads.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_links_strip_time_zone.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4339_links_strip_time_zone.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4339_links_strip_time_zone.tester.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4339_links_strip_time_zone.tester.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_site_prompt_drafts.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4339_site_prompt_drafts.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4382_support_desk.implementor.pg17.test.sql",
@@ -26587,6 +26589,8 @@
         "supabase/migrations/__tests__/issue_4339_book_a_call_leads.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_links_strip_time_zone.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4339_links_strip_time_zone.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4339_links_strip_time_zone.tester.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4339_links_strip_time_zone.tester.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_site_prompt_drafts.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4339_site_prompt_drafts.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4382_support_desk.implementor.pg17.test.sql",
@@ -53971,5 +53975,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "725cc4991dfa6bcdeb2edf04cce0a604a535614b6b33461d0a20d354e543fae0"
+  "phase3eContractSha256": "3a5eff4a698252c4d99acf8f6a50b23bf2afa52aa2d4b3b3e6083ac69dfc5e5b"
 }
