@@ -1830,8 +1830,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             location: publicEvent.hideAddressUntilTicket
               ? publicEvent.venueName
               : publicEvent.address ?? publicEvent.venueName,
+            // Web only, and only when the page really has a location (test
+            // windows and some embeds have none): no link rather than a crash.
             url:
-              Platform.OS === "web" && typeof window !== "undefined"
+              Platform.OS === "web" &&
+              typeof window !== "undefined" &&
+              window.location != null &&
+              typeof window.location.href === "string"
                 ? window.location.href.split("?")[0]
                 : null,
           }),

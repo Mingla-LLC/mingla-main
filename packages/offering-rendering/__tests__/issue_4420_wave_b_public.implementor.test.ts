@@ -63,6 +63,8 @@ Deno.test("C-3 the event and RSVP pages offer the action only from the real-data
   assertStringIncludes(page, "endIso: event.masterEndAtUtc ?? null");
   assertStringIncludes(page, "calendarEntry === null\n      ? undefined");
   assertStringIncludes(page, "{handleAddToCalendar !== undefined ? (");
+  // a window with no location (test renderers, embeds) never crashes the page
+  assertStringIncludes(page, "window.location != null &&\n              typeof window.location.href === \"string\"");
   const rsvp = read("../RsvpOfferingBody.tsx");
   assertStringIncludes(rsvp, "onAddToCalendar !== undefined\n                ? { label: \"Add to calendar\", onPress: onAddToCalendar }\n                : null");
 });
