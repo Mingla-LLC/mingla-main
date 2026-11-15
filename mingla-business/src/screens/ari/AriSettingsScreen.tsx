@@ -505,7 +505,7 @@ export const AriSettingsScreen: React.FC = () => {
         </Section>
   );
   const previewSection = (
-        __DEV__ ? (
+        <>{__DEV__ ? (
           <Section title="Local preview">
             <Text style={styles.about}>
               Inspect every Ari response, research, recovery, and memory state
@@ -523,7 +523,7 @@ export const AriSettingsScreen: React.FC = () => {
               <Text style={styles.previewBtnText}>Open 65-state gallery</Text>
             </Pressable>
           </Section>
-        ) : null
+        ) : null}</>
   );
 
   return (

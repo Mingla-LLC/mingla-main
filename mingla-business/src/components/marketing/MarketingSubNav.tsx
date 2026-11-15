@@ -69,7 +69,7 @@ export const MarketingSubNav: React.FC = () => {
   if (isWideDesktop) {
     return (
       <View style={styles.deskHeader} testID="marketing-desk-header">
-        <Text style={styles.deskTitle} accessibilityRole="header" numberOfLines={1}>
+        <Text style={styles.deskTitle} accessibilityRole="header">
           {MARKETING_SECTION_TITLES[active]}
         </Text>
         <MarketingActionButton action={action} />
