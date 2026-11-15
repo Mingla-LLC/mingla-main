@@ -8,8 +8,10 @@ export default defineConfig({
   // independent tester adversarial suite, which additionally SCANS that same
   // export for network destinations the policy has never been asked about.
   // #4318 rides it too: the privacy sheet's first tap on that same server
-  // document, before and across the app's takeover.
-  testMatch: /(?:issue2771-preconsent-analytics(?:\.tester\.adversarial)?|issue2795-posthog-alias-consent|issue3214-public-boot-order(?:\.tester\.adversarial)?|issue4318-privacy-sheet-first-tap)\.spec\.ts$/,
+  // document, before and across the app's takeover. #4238 rides it as well:
+  // no ad pixel on a public page whose address carries a private key, on the
+  // real server document and on the export's own boot.
+  testMatch: /(?:issue2771-preconsent-analytics(?:\.tester\.adversarial)?|issue2795-posthog-alias-consent|issue3214-public-boot-order(?:\.tester\.adversarial)?|issue4318-privacy-sheet-first-tap|issue4238-private-key-pixels)\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

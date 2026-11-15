@@ -125,17 +125,30 @@ END$$;
 
 RESET ROLE;
 
--- System, deleted, and self-authored messages cannot reopen the caller's hidden chat.
+-- System and deleted messages cannot reopen the caller's hidden chat.
 INSERT INTO public.messages(conversation_id,sender_id,content,message_type,created_at)
 VALUES ('10000000-0000-0000-0000-000000000201','00000000-0000-0000-0000-000000000202','system reopen attack','system','2026-08-08T14:00:00Z');
 INSERT INTO public.messages(conversation_id,sender_id,content,message_type,created_at,deleted_at)
 VALUES ('10000000-0000-0000-0000-000000000201','00000000-0000-0000-0000-000000000202','deleted reopen attack','text','2026-08-08T14:01:00Z','2026-08-08T14:01:01Z');
-INSERT INTO public.messages(conversation_id,sender_id,content,message_type,created_at)
-VALUES ('10000000-0000-0000-0000-000000000201','00000000-0000-0000-0000-000000000201','self reopen attack','text','2026-08-08T14:02:00Z');
 DO $$BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.conversation_participant_lifecycle WHERE conversation_id='10000000-0000-0000-0000-000000000201' AND user_id='00000000-0000-0000-0000-000000000201' AND hidden_at IS NOT NULL)
-    THEN RAISE EXCEPTION 'system/deleted/self message reopened hidden chat'; END IF;
+    THEN RAISE EXCEPTION 'system/deleted message reopened hidden chat'; END IF;
 END$$;
+
+-- #4435 (approved change to the locked reopen law): the sender's own new human
+-- message now also un-hides their hidden, non-archived chat.
+INSERT INTO public.messages(conversation_id,sender_id,content,message_type,created_at)
+VALUES ('10000000-0000-0000-0000-000000000201','00000000-0000-0000-0000-000000000201','self reopen','text','2026-08-08T14:02:00Z');
+DO $$BEGIN
+  IF EXISTS (SELECT 1 FROM public.conversation_participant_lifecycle WHERE conversation_id='10000000-0000-0000-0000-000000000201' AND user_id='00000000-0000-0000-0000-000000000201' AND hidden_at IS NOT NULL)
+    THEN RAISE EXCEPTION 'own human message failed to reopen hidden chat (#4435)'; END IF;
+END$$;
+
+-- Hide again so the other-participant reopen below starts from a hidden chat.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000201',false);
+SELECT public.set_conversation_lifecycle('10000000-0000-0000-0000-000000000201','hide');
+RESET ROLE;
 
 -- Another participant's real human message reopens hidden, but never archive.
 INSERT INTO public.messages(conversation_id,sender_id,content,message_type,created_at)
@@ -152,9 +165,11 @@ SELECT public.set_conversation_lifecycle('10000000-0000-0000-0000-000000000201',
 RESET ROLE;
 INSERT INTO public.messages(conversation_id,sender_id,content,message_type,created_at)
 VALUES ('10000000-0000-0000-0000-000000000201','00000000-0000-0000-0000-000000000202','archive reopen attack','text','2026-08-08T14:04:00Z');
+-- #4435 (REOPEN-archived): a removed and archived chat comes back to the
+-- Archived list; the message never clears the archive.
 DO $$BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.conversation_participant_lifecycle WHERE conversation_id='10000000-0000-0000-0000-000000000201' AND user_id='00000000-0000-0000-0000-000000000201' AND hidden_at IS NOT NULL AND archived_at IS NOT NULL)
-    THEN RAISE EXCEPTION 'archived chat was reopened or archive was cleared'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.conversation_participant_lifecycle WHERE conversation_id='10000000-0000-0000-0000-000000000201' AND user_id='00000000-0000-0000-0000-000000000201' AND hidden_at IS NULL AND archived_at IS NOT NULL)
+    THEN RAISE EXCEPTION 'archived chat stayed removed or archive was cleared'; END IF;
 END$$;
 
 SET ROLE authenticated;

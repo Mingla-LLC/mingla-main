@@ -63,7 +63,12 @@
     "tryDifferentName": "尝试不同的名字或用户名", "addMoreFriends": "添加更多好友以邀请",
     "sendInvites": "发送邀请 ({{count}})", "invitesSent": "邀请已发送",
     "invitesSentMsg": "已成功邀请{{count}}位好友{{plural}}加入\"{{name}}\"。",
-    "errorSendInvites": "发送邀请失败。请重试。", "error": "错误"
+    "errorSendInvites": "发送邀请失败。请重试。", "error": "错误",
+    "addPeople": "添加（{{count}}）",
+    "peopleAdded": "已添加",
+    "peopleAddedMsg": "已将 {{count}} 人添加到“{{name}}”。他们已立即入群。",
+    "noneAdded": "没有添加任何人。他们可能已经在群里。",
+    "groupFull": "群最多 15 人。请少选几位好友。"
   },
   "manageBoardModal": {
     "manageBoard": "管理面板", "members": "成员", "admin": "管理员", "creator": "创建者", "you": "（你）",

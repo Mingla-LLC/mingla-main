@@ -63,7 +63,12 @@
     "tryDifferentName": "다른 이름이나 사용자명을 시도해 보세요", "addMoreFriends": "초대할 친구를 더 추가하세요",
     "sendInvites": "초대 보내기 ({{count}})", "invitesSent": "초대가 전송되었습니다",
     "invitesSentMsg": "\"{{name}}\"에 {{count}}명의 친구{{plural}}를 성공적으로 초대했습니다.",
-    "errorSendInvites": "초대 전송에 실패했습니다. 다시 시도해 주세요.", "error": "오류"
+    "errorSendInvites": "초대 전송에 실패했습니다. 다시 시도해 주세요.", "error": "오류",
+    "addPeople": "추가 ({{count}})",
+    "peopleAdded": "추가됨",
+    "peopleAddedMsg": "\"{{name}}\"에 {{count}}명을 추가했어요. 바로 참여해요.",
+    "noneAdded": "아무도 추가되지 않았어요. 이미 그룹에 있을 수 있어요.",
+    "groupFull": "그룹은 최대 15명이에요. 친구를 더 적게 고르세요."
   },
   "manageBoardModal": {
     "manageBoard": "보드 관리", "members": "멤버", "admin": "관리자", "creator": "생성자", "you": "(나)",

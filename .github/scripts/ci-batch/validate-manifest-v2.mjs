@@ -502,7 +502,12 @@ export function phase3dContractDigest(manifest) {
 // #4238 order after production: renamed the three #4238 migrations (M-1, M-3, M-2) from 20280707*4238 to 20280708014238/20280708024238/20280708034238 (after 20280708004339, already applied in production), same relative order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 integration 3: merged origin/main f512401461 (#4438 #4430 local review owner-read pg17 suite kept beside the #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "77a3064bccb83a7c628d4b752200073497b6f942f3d4f9b4e5aa3cbf4a162181";
+// #4435 Phase 0 characterization: listed the four new pg17 suites and their sidecars in the #1931 and #2117 replay inventories beside the #4436 rows; re-sealed.
+// #4436 follow-up 20280708046436 (invited self-join, own prefs): listed the migration after the #4436 guard migration in the #1857, #1931 and #2117 lanes and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4435 W2: listed migrations 20280708054435 (group lifecycle) and 20280708064435 (chat reopen and clear) after 20280708046436 in the #1857, #1931 and #2117 lanes, and their four pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4435 W3c: registered the concurrent-add cap race suite (issue_4435_group_cap_race) and its sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4435 CI fix: re-sealed after skipping 20280708054435 by exact filename in the #1931 filtered replay; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e905eac516db2f1e227a4ab645ba0b6b83d9f3b687a7802ee85dece48a15c917";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

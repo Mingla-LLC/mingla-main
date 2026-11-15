@@ -206,16 +206,6 @@ export type ChatListPendingInvite = {
   createdAt: string;
 };
 
-export type ChatListPendingPerson = {
-  id: string;
-  name: string;
-  avatarUrl: string | null;
-  status: "creator" | "pending" | "accepted";
-  inviteKind: "warm" | "cold" | null;
-  inviteId: string | null;
-  phoneE164?: string | null;
-};
-
 /** One list row, in the shape ChatListItem reads (cast to Conversation by the caller). */
 export type ChatListConversation = {
   id: string;
@@ -453,76 +443,6 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
       || conv.name?.trim()
       || sessionMeta?.name?.trim()
       || null;
-    const sessionParticipants = sessionMeta?.participants ?? [];
-    const acceptedParticipantIds = new Set(
-      sessionParticipants
-        .filter((participant) => participant.has_accepted === true)
-        .map((participant) => participant.user_id),
-    );
-    const hasAcceptedCollaborator = sessionParticipants.some(
-      (participant) => participant.user_id !== userId && participant.has_accepted === true,
-    );
-    const pendingInvitedIds = new Set(
-      (sessionMeta?.invites ?? [])
-        .filter((invite) => invite.status === "pending")
-        .map((invite) => invite.invited_user_id),
-    );
-    const pendingInviteByUserId = new Map(
-      (sessionMeta?.invites ?? [])
-        .filter((invite) => invite.status === "pending")
-        .map((invite) => [invite.invited_user_id, invite]),
-    );
-    const isPendingCreatorCollab =
-      conv.type === "group" &&
-      linkedEntityType === "session" &&
-      !!sessionId &&
-      sessionMeta?.created_by === userId &&
-      !hasAcceptedCollaborator;
-    const pendingPeople: ChatListPendingPerson[] = sessionParticipants
-      .filter((participant) => participant.user_id)
-      .map((participant) => {
-        const profile = profilesMap.get(participant.user_id);
-        const isCreator = participant.user_id === sessionMeta?.created_by;
-        return {
-          id: participant.user_id,
-          name: isCreator && participant.user_id === userId
-            ? "You"
-            : deps.displayName(profile, "Mingla friend"),
-          avatarUrl: profile?.avatar_url ?? null,
-          status: isCreator
-            ? "creator"
-            : participant.has_accepted === true
-              ? "accepted"
-              : "pending",
-          inviteKind:
-            !isCreator && participant.has_accepted !== true ? "warm" : null,
-          inviteId: pendingInviteByUserId.get(participant.user_id)?.id ?? null,
-        };
-      });
-    for (const inviteeId of pendingInvitedIds) {
-      if (pendingPeople.some((person) => person.id === inviteeId)) continue;
-      const profile = profilesMap.get(inviteeId);
-      pendingPeople.push({
-        id: inviteeId,
-        name: deps.displayName(profile, "Mingla friend"),
-        avatarUrl: profile?.avatar_url ?? null,
-        status: acceptedParticipantIds.has(inviteeId) ? "accepted" : "pending",
-        inviteKind: acceptedParticipantIds.has(inviteeId) ? null : "warm",
-        inviteId: pendingInviteByUserId.get(inviteeId)?.id ?? null,
-      });
-    }
-    for (const invite of sessionMeta?.phoneInvites ?? []) {
-      pendingPeople.push({
-        id: `phone:${invite.id}`,
-        name: invite.phone_e164 || "Phone invite",
-        avatarUrl: null,
-        status: "pending",
-        inviteKind: "cold",
-        inviteId: invite.id,
-        phoneE164: invite.phone_e164 ?? null,
-      });
-    }
-
     return {
       id: conv.id,
       created_by: conv.created_by ?? "",
@@ -540,21 +460,6 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
       program_kind: programKind,
       sessionCreatorId: sessionMeta?.created_by ?? null,
       sessionStatus: sessionMeta?.status ?? null,
-      isPendingCreatorCollab,
-      __pendingCollabChat: isPendingCreatorCollab && sessionId
-        ? {
-            conversationId: conv.id,
-            sessionId,
-            sessionName: conversationName || "Collaboration chat",
-            people: pendingPeople,
-            existingUserIds: Array.from(
-              new Set([
-                ...pendingPeople.map((person) => person.id),
-                userId,
-              ]),
-            ),
-          }
-        : undefined,
       is_broadcast_only: Boolean(conv.is_broadcast_only),
       eventBrandName: eventMeta?.brandName ?? null,
       eventBrandAccountId: eventMeta?.brandAccountId ?? null,

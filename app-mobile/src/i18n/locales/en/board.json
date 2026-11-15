@@ -158,7 +158,12 @@
     "invitesSent": "Invites Sent",
     "invitesSentMsg": "Successfully invited {{count}} friend{{plural}} to \"{{name}}\".",
     "errorSendInvites": "Failed to send invites. Please try again.",
-    "error": "Error"
+    "error": "Error",
+    "addPeople": "Add ({{count}})",
+    "peopleAdded": "Added",
+    "peopleAddedMsg": "{{count}} added to \"{{name}}\". They're in straight away.",
+    "noneAdded": "Nobody was added. They may already be in the group.",
+    "groupFull": "A group holds up to 15 people. Pick fewer friends."
   },
   "manageBoardModal": {
     "manageBoard": "Manage Board",
