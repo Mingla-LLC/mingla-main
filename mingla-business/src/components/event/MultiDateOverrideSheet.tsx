@@ -41,12 +41,10 @@ import DateTimePicker, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type {
   DraftEvent,
@@ -262,7 +260,7 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
         style={styles.scroll}
         contentContainerStyle={[
           styles.sheetContent,
-          { paddingBottom: insets.bottom + spacing.md },
+          { paddingBottom: insets.bottom + space[4] },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -445,7 +443,7 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
           <GlassCard
             variant="elevated"
             radius="xl"
-            padding={spacing.md}
+            padding={space[4]}
             style={styles.pickerDockCard}
           >
             <View style={styles.pickerDoneRow}>
@@ -466,7 +464,7 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
                 display="spinner"
                 onChange={handleTimePickerChange}
                 is24Hour
-                textColor="#FFFFFF"
+                textColor={color.textStrong}
                 themeVariant="dark"
                 style={styles.timePicker}
               />
@@ -556,7 +554,7 @@ const OverrideField: React.FC<OverrideFieldProps> = ({
             </Text>
           </View>
           <View style={styles.inheritChipDismiss}>
-            <Icon name="close" size={14} color={textTokens.tertiary} />
+            <Icon name="close" size={14} color={color.text3} />
           </View>
         </Pressable>
       ) : (
@@ -567,7 +565,7 @@ const OverrideField: React.FC<OverrideFieldProps> = ({
               value={value}
               onChangeText={onChangeText}
               placeholder={placeholder}
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               multiline={multiline}
               numberOfLines={multiline ? 3 : undefined}
               textAlignVertical={multiline ? "top" : "auto"}
@@ -586,7 +584,7 @@ const OverrideField: React.FC<OverrideFieldProps> = ({
             hitSlop={6}
             style={styles.revertLink}
           >
-            <Icon name="swap" size={12} color={accent.warm} />
+            <Icon name="swap" size={12} color={color.text1} />
             <Text style={styles.revertLinkLabel}>Use main event</Text>
           </Pressable>
         </>
@@ -605,39 +603,39 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   sheetTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
     marginBottom: 4,
   },
   sheetSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: spacing.md,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginBottom: space[4],
   },
   field: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
 
   // Time row -----------------------------------------------------------
   timeRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+    gap: space[2],
+    marginBottom: space[4],
   },
   timeCell: {
     flex: 1,
@@ -646,32 +644,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   pickerValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
 
   // Inherit chip -------------------------------------------------------
   inheritChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   inheritChipTextCol: {
     flex: 1,
@@ -682,12 +680,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
+    color: color.text1,
     marginBottom: 2,
   },
   inheritChipValue: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
   },
   inheritChipDismiss: {
     width: 28,
@@ -696,9 +694,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
 
   // Input + revert link ------------------------------------------------
@@ -706,15 +704,15 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   textInput: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     padding: 0,
   },
   textareaWrap: {
@@ -727,19 +725,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: spacing.xs,
+    marginTop: space[1],
     alignSelf: "flex-start",
     paddingVertical: 2,
   },
   revertLinkLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 
   // Action dock --------------------------------------------------------
   sheetActionDock: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     paddingVertical: 6,
     paddingHorizontal: 8,
   },
@@ -757,9 +755,9 @@ const styles = StyleSheet.create({
   // provides the L1-L4 glass surface treatment so the picker reads as
   // a glass dock matching the Mingla aesthetic (not a flat rectangle).
   pickerDockWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[4],
+    paddingTop: space[2],
   },
   pickerDockCard: {
     // GlassCard handles backgroundColor/border/blur via variant + radius.
@@ -769,12 +767,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   pickerDockTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   timePicker: {
     width: "100%",

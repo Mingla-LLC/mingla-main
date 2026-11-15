@@ -27,12 +27,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../../src/constants/designSystem";
 import { useGuestStore } from "../../../../src/store/guestStore";
 import type { OrderRecord } from "../../../../src/store/orderStore";
@@ -138,14 +135,6 @@ const formatRelativeTime = (iso: string): string => {
     return `${Math.floor(delta / RELATIVE_TIME_MS.hour)}h ago`;
   }
   return `${Math.floor(delta / RELATIVE_TIME_MS.day)}d ago`;
-};
-
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
 };
 
 const getInitials = (name: string): string => {
@@ -639,7 +628,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -668,7 +657,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -696,7 +685,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
   if (guestRosterAccess.isError || (isAuthReady && user === null)) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <View style={styles.chromeRow}>
           <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
           <Text style={styles.chromeTitle}>Guests</Text>
@@ -711,7 +700,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
   if (guestRosterAccess.isPending || guestRosterAccess.data === undefined) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <View style={styles.chromeRow}>
           <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
           <Text style={styles.chromeTitle}>Guests</Text>
@@ -756,7 +745,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
     allOrderEntriesRead.status === "disabled"
   ) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <View style={styles.chromeRow}>
           <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
           <Text style={styles.chromeTitle}>{headcountPluralCap}</Text>
@@ -771,7 +760,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
   if (allOrderEntriesRead.status === "error") {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <View style={styles.chromeRow}>
           <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
           <Text style={styles.chromeTitle}>{headcountPluralCap}</Text>
@@ -793,7 +782,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -1059,8 +1048,6 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     ticketSummary = summarizeDoorTickets(row.sale.lines);
     relativeTime = formatRelativeTime(row.sale.recordedAt);
   }
-
-  const hue = hashStringToHue(row.id);
   const initials = getInitials(name);
   const sublineLeft = email.length > 0
     ? `${email} · `
@@ -1127,10 +1114,7 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <View
-        style={[
-          styles.avatar,
-          { backgroundColor: `hsl(${hue}, 60%, 45%)` },
-        ]}
+        style={styles.avatar}
       >
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
@@ -1159,84 +1143,85 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
   chromeRight: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chromeRightSlot: {
     width: 36,
   },
   searchWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   listScroll: {
     flex: 1,
   },
   listContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   // issue #2160 — the per-day chip row. Only mounted on a multi-day event, so
   // a single-date roster renders exactly today's screen.
-  dayChipScroll: { flexGrow: 0, marginBottom: spacing.sm },
-  dayChipRow: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: 16 },
+  dayChipScroll: { flexGrow: 0, marginBottom: space[2] },
+  dayChipRow: { flexDirection: "row", gap: space[1], paddingHorizontal: 16 },
   dayChip: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.16)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   dayChipActive: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   dayChipLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "rgba(255, 255, 255, 0.72)",
+    color: color.textSelectedMeta,
   },
-  dayChipLabelActive: { color: "rgba(255, 255, 255, 0.98)" },
+  dayChipLabelActive: { color: color.textStrong },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 2,
-    padding: spacing.md - 2,
+    gap: space[2] + 2,
+    padding: space[4] - 2,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   rowPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   avatar: {
+    backgroundColor: color.fill.step,
     width: 40,
     height: 40,
     borderRadius: 999,
@@ -1247,7 +1232,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowBody: {
     flex: 1,
@@ -1256,11 +1241,11 @@ const styles = StyleSheet.create({
   rowName: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSubline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   rowPills: {
@@ -1273,29 +1258,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radiusTokens.sm,
-    backgroundColor: "rgba(120, 120, 120, 0.18)",
+    backgroundColor: color.fill.step,
     borderWidth: 1,
-    borderColor: "rgba(120, 120, 120, 0.32)",
+    borderColor: color.lineStrong,
   },
   checkInPillText: {
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.0,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   legacyBanner: {
-    gap: spacing.sm,
-    padding: spacing.md - 2,
-    marginBottom: spacing.sm,
+    gap: space[2],
+    padding: space[4] - 2,
+    marginBottom: space[2],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   legacyBannerText: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.primary,
+    color: color.text1,
   },
   toastWrap: {
     position: "absolute",

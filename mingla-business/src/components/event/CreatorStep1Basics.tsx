@@ -35,13 +35,10 @@ import {
 import type { LayoutChangeEvent } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { DraftEventFormat } from "../../store/draftEventStore";
 import {
@@ -367,7 +364,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
             // I-PROPOSED-1027-WIZARD-MULTILINE-REVEALED-ON-FOCUS.
             onFocus={() => scrollToBottom?.()}
             placeholder="What's the vibe? Doors, dress code, sound system, who it's for…"
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             multiline
             numberOfLines={5}
             textAlignVertical="top"
@@ -392,68 +389,68 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
 
 const styles = StyleSheet.create({
   field: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
   helperError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
   },
   inputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderWidth: 1,
   },
-  intelHighlight: { borderColor: accent.warm, borderWidth: 2 },
+  intelHighlight: { borderColor: color.lineStrong, borderWidth: 2 },
   formatRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   formatPill: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[2],
+    paddingHorizontal: space[2],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
   },
   formatPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   formatPillLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   formatPillLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   textareaWrap: {
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     minHeight: 110,
   },
   textarea: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     minHeight: 90,
     padding: 0,
   },
@@ -462,35 +459,35 @@ const styles = StyleSheet.create({
   taxonomyGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   taxonomyPill: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   taxonomyPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   taxonomyPillEmoji: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     marginRight: 6,
   },
   taxonomyPillLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   taxonomyPillLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
 });

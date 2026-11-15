@@ -21,6 +21,7 @@
 
 import React, { Suspense } from "react";
 
+import { color } from "../../constants/designSystem";
 const QRCode = React.lazy(() => import("react-qr-code"));
 
 export interface GateQrProps {
@@ -43,8 +44,8 @@ export const GateQr: React.FC<GateQrProps> = ({ value, size = 180 }) => (
       <QRCode
         value={value}
         size={size}
-        fgColor="#0E0E10"
-        bgColor="#FFFFFF"
+        fgColor={color.ink}
+        bgColor={color.paper}
         level="M"
         style={{ height: "100%", width: "100%", display: "block" }}
       />

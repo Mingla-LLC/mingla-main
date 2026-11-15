@@ -10,12 +10,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { MultiDateEntry } from "../../store/draftEventStore";
 import { formatMultiDateList } from "../../utils/eventDateDisplay";
@@ -141,7 +139,7 @@ export const ValidDaysSheet: React.FC<ValidDaysSheetProps> = ({
               >
                 <View style={[styles.box, checked && styles.boxChecked]}>
                   {checked ? (
-                    <Icon name="check" size={14} color={textTokens.primary} />
+                    <Icon name="check" size={14} color={color.text1} />
                   ) : null}
                 </View>
                 <View style={styles.textCol}>
@@ -165,49 +163,47 @@ export const ValidDaysSheet: React.FC<ValidDaysSheetProps> = ({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginBottom: space[2],
   },
   count: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   hint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
   },
   alert: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
-    marginTop: spacing.xs,
+    color: color.text1,
+    marginTop: space[1],
   },
   list: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
     paddingBottom: 72,
-    gap: spacing.sm,
+    gap: space[2],
   },
   section: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginTop: spacing.md,
+    color: color.text1,
+    marginTop: space[4],
   },
   row: {
     minHeight: 48,
@@ -218,30 +214,30 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   rowSelected: {
-    backgroundColor: accent.tint,
-    borderColor: accent.warm,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   box: {
     width: 20,
     height: 20,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
-  boxChecked: { borderColor: accent.warm },
+  boxChecked: { borderColor: color.lineStrong },
   radio: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -249,22 +245,21 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   textCol: { flex: 1, gap: 2 },
   rowLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   dock: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
 });

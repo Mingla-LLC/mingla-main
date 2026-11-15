@@ -28,12 +28,10 @@ import {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import type { FieldDiff, TicketDiff } from "../../utils/liveEventAdapter";
@@ -269,7 +267,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
                             <Icon
                               name="chevR"
                               size={14}
-                              color={textTokens.tertiary}
+                              color={color.text3}
                             />
                           </View>
                           <Text style={styles.newValue} numberOfLines={2}>
@@ -303,7 +301,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
                 value={reason}
                 onChangeText={setReason}
                 placeholder="e.g. Venue change due to weather; updating ticket prices for next phase; correcting typo"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 multiline
                 numberOfLines={4}
                 maxLength={REASON_MAX}
@@ -346,7 +344,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
               <Icon
                 name={footerIsMaterial ? "flag" : "bell"}
                 size={14}
-                color={footerIsMaterial ? accent.warm : textTokens.tertiary}
+                color={footerIsMaterial ? color.warningText : color.text3}
               />
               <Text style={styles.footerCopy}>{footerCopy}</Text>
             </View>
@@ -613,40 +611,40 @@ const TripPricingTierDiffSubRenderer: React.FC<
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    // #4420: the Sheet owns the 20 side padding.
+    paddingTop: space[4],
+    paddingBottom: space[7],
     flex: 1,
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   subhead: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   scroll: {
     flex: 1,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   scrollContent: {
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   emptyCopy: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
   },
   diffsList: {
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
+    gap: space[2],
+    marginBottom: space[6],
   },
   diffRow: {
     flexDirection: "row",
@@ -655,56 +653,56 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   diffRowSafe: {
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   diffRowMaterial: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   stripe: {
     width: 4,
   },
   stripeSafe: {
-    backgroundColor: textTokens.tertiary,
+    backgroundColor: color.text3,
   },
   stripeMaterial: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.warning,
   },
   diffContent: {
     flex: 1,
-    padding: spacing.md,
-    gap: spacing.xs,
+    padding: space[4],
+    gap: space[1],
   },
   diffHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   fieldLabel: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.primary,
+    color: color.text1,
     textTransform: "uppercase",
   },
   severityTag: {
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: accent.warm,
+    color: color.text1,
     textTransform: "uppercase",
   },
   diffValuesRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   oldValue: {
     flex: 1,
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     textDecorationLine: "line-through",
   },
   arrowSlot: {
@@ -715,7 +713,7 @@ const styles = StyleSheet.create({
   newValue: {
     flex: 1,
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   // Tickets sub-renderer
@@ -724,55 +722,55 @@ const styles = StyleSheet.create({
   },
   ticketSubLine: {
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     lineHeight: 18,
   },
   ticketSubKindAdded: {
     fontWeight: "700",
-    color: "#34c759",
+    color: color.successText,
   },
   ticketSubKindRemoved: {
     fontWeight: "700",
-    color: "#ff3b30",
+    color: color.errorText,
   },
   ticketSubKindUpdated: {
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
   },
   ticketSubFields: {
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
   },
   // Reason input
   reasonSection: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   reasonLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   required: {
-    color: accent.warm,
+    color: color.text1,
   },
   reasonInputWrap: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     minHeight: 100,
   },
   reasonInputError: {
-    borderColor: accent.warm,
+    borderColor: color.lineStrong,
   },
   reasonInput: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     minHeight: 80,
     textAlignVertical: "top",
     ...(Platform.OS === "web"
@@ -787,45 +785,45 @@ const styles = StyleSheet.create({
   },
   reasonHelper: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   reasonHelperOk: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   reasonCount: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   // Footer notification note
   footerNote: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.sm + 2,
+    gap: space[2],
+    padding: space[2] + 2,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
   },
   footerNoteSafe: {
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   footerNoteMaterial: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   footerCopy: {
     flex: 1,
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   // Bottom CTAs
   actions: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   actionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
 });
 

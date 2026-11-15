@@ -44,13 +44,10 @@ import DateTimePicker, {
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   type DraftEvent,
@@ -89,7 +86,6 @@ import {
 // preview-line wrap visualization.
 import { computeEndsAtUtcWithSmartInfer } from "../../utils/eventDateMath";
 import {
-  formatTimezoneLabel,
   formatTimezoneOffset,
   getAllTimezones,
   whenStepTimezoneReference,
@@ -200,6 +196,15 @@ const blankOverrides: MultiDateOverrides = {
 
 // ---- Main component -------------------------------------------------
 
+/**
+ * #4420 (round-3 item 12) — time zones never show as slugs. "America/New_York"
+ * reads "New York"; the zone id stays the stored value and stays searchable.
+ */
+export const timezoneDisplayName = (tz: string): string => {
+  const last = tz.split("/").pop() ?? tz;
+  return last.replace(/_/g, " ");
+};
+
 export const CreatorStep2When: React.FC<StepBodyProps> = ({
   showMultiDatePricingMode = false,
   multiDatePricingModeLocked = false,
@@ -308,7 +313,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const filteredTimezones = useMemo<string[]>(() => {
     const q = tzSearchQuery.trim().toLowerCase();
     if (q.length === 0) return allTimezones;
-    return allTimezones.filter((tz) => tz.toLowerCase().includes(q));
+    return allTimezones.filter(
+      (tz) => tz.toLowerCase().includes(q) || timezoneDisplayName(tz).toLowerCase().includes(q),
+    );
   }, [allTimezones, tzSearchQuery]);
   // Offsets are seasonal: a 6 Nov New York event is GMT-5 even while it is set
   // up in September (GMT-4), so label at the event's own first start, not
@@ -318,13 +325,16 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const tzRefDate = tzReference?.localDate ?? null;
   const tzRefTime = tzReference?.localTime ?? null;
   const tzLabel = useMemo<string>(
-    () =>
-      formatTimezoneLabel(
+    () => {
+      const offset = formatTimezoneOffset(
         draft.timezone,
         tzRefDate === null
           ? new Date()
           : { localDate: tzRefDate, localTime: tzRefTime },
-      ),
+      );
+      const name = timezoneDisplayName(draft.timezone);
+      return offset.length > 0 ? `${name} (${offset})` : name;
+    },
     [draft.timezone, tzRefDate, tzRefTime],
   );
   const tzOffsets = useMemo<ReadonlyMap<string, string>>(() => {
@@ -941,10 +951,10 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       style={
         intelDateHighlight
           ? {
-              borderColor: accent.warm,
+              borderColor: color.lineStrong,
               borderWidth: 2,
               borderRadius: radiusTokens.md,
-              padding: spacing.xs,
+              padding: space[1],
             }
           : undefined
       }
@@ -1020,7 +1030,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                 >
                   {formatDateRowLabel(draft.date)}
                 </Text>
-                <Icon name="calendar" size={16} color={textTokens.tertiary} />
+                <Icon name="calendar" size={16} color={color.text3} />
               </Pressable>
             )}
             {dateError !== undefined ? (
@@ -1130,7 +1140,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
 
           {durationLabel !== null ? (
             <View style={styles.durationRow}>
-              <Icon name="clock" size={14} color={accent.warm} />
+              <Icon name="clock" size={14} color={color.text1} />
               <Text style={styles.durationLabel}>{durationLabel}</Text>
             </View>
           ) : null}
@@ -1166,7 +1176,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                   ? formatRecurrenceLabel(draft.recurrenceRule, draft.date)
                   : "Pick a pattern"}
               </Text>
-              <Icon name="chevD" size={16} color={textTokens.tertiary} />
+              <Icon name="chevD" size={16} color={color.text3} />
             </Pressable>
             {recurrenceError !== undefined ? (
               <Text style={styles.helperError}>{recurrenceError}</Text>
@@ -1202,7 +1212,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                   ? formatTermination(draft.recurrenceRule)
                   : "4 occurrences"}
               </Text>
-              <Icon name="chevD" size={16} color={textTokens.tertiary} />
+              <Icon name="chevD" size={16} color={color.text3} />
             </Pressable>
             {recurrenceCountError !== undefined ? (
               <Text style={styles.helperError}>{recurrenceCountError}</Text>
@@ -1252,7 +1262,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                       hitSlop={8}
                       style={styles.multiDateActionBtn}
                     >
-                      <Icon name="edit" size={16} color={textTokens.tertiary} />
+                      <Icon name="edit" size={16} color={color.text3} />
                     </Pressable>
                     <Pressable
                       onPress={() => setPendingDeleteEntryId(entry.id)}
@@ -1261,7 +1271,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                       hitSlop={8}
                       style={styles.multiDateActionBtn}
                     >
-                      <Icon name="trash" size={16} color={semantic.error} />
+                      <Icon name="trash" size={16} color={color.danger} />
                     </Pressable>
                   </View>
                 </View>
@@ -1274,7 +1284,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             accessibilityLabel="Add date"
             style={styles.addDateBtn}
           >
-            <Icon name="plus" size={16} color={accent.warm} />
+            <Icon name="plus" size={16} color={color.text1} />
             <Text style={styles.addDateLabel}>Add date</Text>
           </Pressable>
           <Text style={styles.helperHint}>
@@ -1397,7 +1407,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           style={styles.pickerRow}
         >
           <Text style={styles.pickerValue}>{tzLabel}</Text>
-          <Icon name="chevD" size={16} color={textTokens.tertiary} />
+          <Icon name="chevD" size={16} color={color.text3} />
         </Pressable>
         {/* Guest surfaces (public page, consumer app, confirmation emails,
             tickets, RSVP passes) all print times in THIS zone — nothing
@@ -1439,7 +1449,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                   onChange={handlePickerChange}
                   minimumDate={pickerMinimumDate}
                   is24Hour
-                  textColor="#FFFFFF"
+                  textColor={color.textStrong}
                   themeVariant="dark"
                   style={styles.iosPicker}
                 />
@@ -1600,7 +1610,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                     }
                   }}
                   keyboardType="number-pad"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   style={styles.countInput}
                   accessibilityLabel="Number of occurrences"
                 />
@@ -1649,7 +1659,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                   <Text style={styles.pickerValue}>
                     {formatDateRowLabel(draft.recurrenceRule.termination.until)}
                   </Text>
-                  <Icon name="calendar" size={16} color={textTokens.tertiary} />
+                  <Icon name="calendar" size={16} color={color.text3} />
                 </Pressable>
               )}
               <Text style={styles.helperHint}>Up to 1 year out.</Text>
@@ -1711,7 +1721,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                 >
                   {formatDateRowLabel(addDateValue)}
                 </Text>
-                <Icon name="calendar" size={16} color={textTokens.tertiary} />
+                <Icon name="calendar" size={16} color={color.text3} />
               </Pressable>
             )}
           </View>
@@ -1816,7 +1826,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                   addDatePickerMode === "date" ? new Date() : undefined
                 }
                 is24Hour
-                textColor="#FFFFFF"
+                textColor={color.textStrong}
                 themeVariant="dark"
                 style={styles.iosPicker}
               />
@@ -1881,7 +1891,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                     }}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
-                    accessibilityLabel={`${tz}${offset.length > 0 ? ` ${offset}` : ""}${active ? " (selected)" : ""}`}
+                    accessibilityLabel={`${timezoneDisplayName(tz)}${offset.length > 0 ? ` ${offset}` : ""}${active ? " (selected)" : ""}`}
                     style={[styles.tzRow, active && styles.tzRowActive]}
                   >
                     <View style={styles.tzRowTextCol}>
@@ -1892,14 +1902,14 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                         ]}
                         numberOfLines={1}
                       >
-                        {tz}
+                        {timezoneDisplayName(tz)}
                       </Text>
                       {offset.length > 0 ? (
                         <Text style={styles.tzRowOffset}>{offset}</Text>
                       ) : null}
                     </View>
                     {active ? (
-                      <Icon name="check" size={18} color={accent.warm} />
+                      <Icon name="check" size={18} color={color.text1} />
                     ) : null}
                   </Pressable>
                 );
@@ -2004,65 +2014,65 @@ const SegmentPill: React.FC<SegmentPillProps> = ({
 
 const styles = StyleSheet.create({
   field: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
   helperError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
   },
   helperHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
   },
   inputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderWidth: 1,
   },
 
   // Segmented control --------------------------------------------------
   segmentRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   segmentRowWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   segment: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[2],
+    paddingHorizontal: space[2],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
   },
   segmentActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   segmentLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   segmentLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
 
@@ -2071,30 +2081,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   pickerValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   pickerPlaceholder: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text3,
   },
 
   // Time row -----------------------------------------------------------
   timeRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    gap: space[2],
+    marginBottom: space[2],
   },
   timeCell: {
     flex: 1,
@@ -2102,14 +2112,14 @@ const styles = StyleSheet.create({
   durationRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.xs,
-    marginBottom: spacing.md,
+    gap: space[1],
+    paddingHorizontal: space[1],
+    marginBottom: space[4],
   },
   durationLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: accent.warm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text1,
     fontWeight: "500",
   },
   // ORCH-0877 — wizard preview line (above duration row). Per ui-ux-pro-max
@@ -2118,65 +2128,65 @@ const styles = StyleSheet.create({
   // weekday-prefix in the string itself, not by color flicker), tight
   // vertical rhythm.
   eventTimeRangeLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     fontWeight: "500",
-    paddingHorizontal: spacing.xs,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    paddingHorizontal: space[1],
+    marginTop: space[2],
+    marginBottom: space[1],
   },
 
   // Multi-date list ----------------------------------------------------
   multiDateEmpty: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    marginBottom: space[2],
   },
   multiDateEmptyText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
     textAlign: "center",
   },
   multiDateList: {
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
+    gap: space[1],
+    marginBottom: space[2],
   },
   multiDateRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   multiDateTextCol: {
     flex: 1,
     minWidth: 0,
   },
   multiDateRowTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   multiDateRowSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     marginTop: 2,
   },
   multiDateActionsRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
     alignItems: "center",
   },
   multiDateActionBtn: {
@@ -2184,9 +2194,9 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2194,33 +2204,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
-    marginBottom: spacing.xs,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
+    marginBottom: space[1],
   },
   addDateLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 
   // Picker iOS sheet ---------------------------------------------------
   iosPickerSheet: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
+    // #4420: the Sheet owns the 20 side padding.
+    paddingTop: space[2],
+    paddingBottom: space[6],
   },
   iosPickerDoneRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   iosPickerWrap: {
     flex: 1,
@@ -2233,27 +2243,27 @@ const styles = StyleSheet.create({
 
   // Sheet content -----------------------------------------------------
   sheetContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   sheetTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.md,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[4],
   },
   sheetDoneBtn: {
-    paddingVertical: spacing.md,
+    paddingVertical: space[4],
     alignItems: "center",
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   sheetDoneLabel: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 
   // Count input -------------------------------------------------------
@@ -2261,43 +2271,43 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   countInput: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     padding: 0,
   },
 
   // Termination toggle ------------------------------------------------
   terminationToggleRow: {
     flexDirection: "row",
-    gap: spacing.xs,
-    marginBottom: spacing.md,
+    gap: space[1],
+    marginBottom: space[4],
   },
   terminationSegment: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[2],
+    paddingHorizontal: space[2],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
   },
   terminationSegmentActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   terminationSegmentLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   terminationSegmentLabelActive: {
     fontWeight: "700",
@@ -2306,64 +2316,64 @@ const styles = StyleSheet.create({
   // AddDateSheet ------------------------------------------------------
   addDateActionRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   actionCell: {
     flex: 1,
   },
   addDateInlinePicker: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: space[4],
+    paddingBottom: space[6],
   },
 
   // Timezone full-list sheet ------------------------------------------
   tzSheetWrap: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[6],
   },
   tzSearchWrap: {
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
+    marginTop: space[4],
+    marginBottom: space[2],
   },
   tzListContent: {
-    paddingBottom: spacing.xl,
+    paddingBottom: space[7],
   },
   tzRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     marginBottom: 2,
   },
   tzRowActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
   },
   tzRowTextCol: {
     flex: 1,
     minWidth: 0,
   },
   tzRowLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text1,
   },
   tzRowLabelActive: {
     fontWeight: "600",
   },
   tzRowOffset: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   tzEmptyHint: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     textAlign: "center",
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
   },
 });

@@ -26,10 +26,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { Spinner } from "../../../src/components/ui/Spinner";
 import { Toast } from "../../../src/components/ui/Toast";
@@ -916,7 +915,7 @@ export default function EventEditRoute(): React.ReactElement {
         <View
           style={[
             styles.host,
-            { paddingTop: insets.top, backgroundColor: canvas.discover },
+            { paddingTop: insets.top, backgroundColor: color.canvas },
           ]}
         >
           <View style={styles.center}>
@@ -945,7 +944,7 @@ export default function EventEditRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <ScrollView
@@ -987,7 +986,7 @@ export default function EventEditRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.center}>
@@ -1009,7 +1008,7 @@ export default function EventEditRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.center}>
@@ -1035,7 +1034,7 @@ export default function EventEditRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.center}>
@@ -1105,11 +1104,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   label: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   // #2211 — the missing-draft RECOVERY branch — centred, and the only branch of this route that offers a way out.
   recoveryCard: {
@@ -1121,18 +1120,18 @@ const styles = StyleSheet.create({
     // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
+    paddingHorizontal: space[7],
+    gap: space[4],
   },
   recoveryTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   recoveryBody: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
 });
