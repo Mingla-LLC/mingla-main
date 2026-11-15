@@ -26,7 +26,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { color } from "../../constants/designSystem";
+import { ariPalette } from "../../constants/designSystem";
 
 export type AriOrbSize = "xs" | "sm" | "md" | "lg" | "xl";
 
@@ -218,20 +218,20 @@ const styles = StyleSheet.create({
   outerRing: {
     position: "absolute",
     borderWidth: 1.5,
-    borderColor: color.accent,
+    borderColor: ariPalette.orb,
     backgroundColor: "transparent",
   },
   middleRing: {
     position: "absolute",
     borderWidth: 2,
-    borderColor: color.accent,
+    borderColor: ariPalette.orb,
     backgroundColor: "transparent",
   },
   core: {
     position: "absolute",
     borderWidth: 1,
-    borderColor: color.accentText,
-    backgroundColor: color.accent,
+    borderColor: ariPalette.orbCore,
+    backgroundColor: ariPalette.orb,
   },
 });
 

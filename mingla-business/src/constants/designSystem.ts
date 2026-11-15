@@ -131,6 +131,11 @@ const palette = {
     a14: "rgba(235, 120, 37, 0.14)",
     a40: "rgba(235, 120, 37, 0.40)",
   },
+  ink: {
+    // Hairline on a paper (white) surface: light embedded pages (Stripe,
+    // email previews) and paper cards. Black at 10% on #fff ≈ #e6e6e6.
+    line: "rgba(10, 10, 10, 0.10)",
+  },
   red: {
     500: "#ff3b30", // badges, dots
     450: "#ff453a", // live now dot
@@ -183,6 +188,8 @@ export const color = {
   paperEnd: palette.graphite[100],
   paperPressed: palette.graphite[150],
   ink: palette.graphite[975],
+  /** Hairline on a paper (light) surface, e.g. the light Stripe embedded pages. */
+  lineOnPaper: palette.ink.line,
   /** Used ONLY for Create, the active nav icon, progress and steppers, and the "upcoming" dot. */
   accent: palette.orange[500],
   accentText: palette.orange[300],
@@ -266,6 +273,8 @@ export const edge = {
   inset: { borderWidth: hairline, borderColor: palette.w["06"] },
   photo: { borderWidth: hairline, borderColor: palette.w["08"] },
   line: { borderWidth: hairline, borderColor: palette.w["075"] },
+  /** Hairline frame on a paper (light) surface. */
+  lineOnPaper: { borderWidth: hairline, borderColor: palette.ink.line },
   lineStrong: { borderWidth: hairline, borderColor: palette.w["13"] },
   rimSelected: { borderTopWidth: 1, borderTopColor: palette.w["10"] },
   rimRailOn: { borderTopWidth: 1, borderTopColor: palette.w["08"] },
@@ -876,6 +885,10 @@ export const ariPalette = {
   proposalBorder: "hsla(20, 72%, 64%, 0.45)",
   proposalShadow: "hsla(20, 72%, 64%, 0.28)",
   glow: "hsla(22, 75%, 68%, 0.4)",
+  // #4420 — the three-ring orb mark (ari/AriOrb, home/HomeAriOrb): Ari's
+  // identity art, not the action orange.
+  orb: "#f07a3d",
+  orbCore: "#ffb07c",
   // ORCH-1101 — the Ari user bubble uses the brand action colour.
   userBubble: color.accent,
 } as const;

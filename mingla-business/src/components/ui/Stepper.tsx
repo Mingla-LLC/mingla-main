@@ -71,6 +71,12 @@ export interface StepperStep {
   /** #4420: the first validation error on an `error` step. */
   firstError?: string;
   /**
+   * #4420: one line under the label in the desktop step list (and the phone
+   * Steps sheet), e.g. what the step asks for. An error or a lock reason
+   * takes its place while one applies.
+   */
+  description?: string;
+  /**
    * #4420: the host already got past this step (e.g. a saved step that is now
    * locked). Its progress segment fills even when its state is `locked`.
    * Omitted → a locked step before the current one counts as passed.
@@ -298,7 +304,7 @@ const StepList: React.FC<StepListProps> = ({ steps, currentIndex, onStepPress, f
     {steps.map((step, index) => {
       const state = resolveStepState(step, index, currentIndex);
       const reachable = onStepPress !== undefined && isStepReachable(step, index, currentIndex, furthestValidIndex);
-      const sub = state === "error" ? step.firstError : state === "locked" ? step.lockedReason : undefined;
+      const sub = state === "error" ? step.firstError : state === "locked" ? step.lockedReason : step.description;
       return (
         <Pressable
           key={step.id}
@@ -450,11 +456,24 @@ export interface StepperFooterProps {
   /** The previous step's label; omit on the first step (no Back). */
   previousLabel?: string;
   onBack?: () => void;
+  /**
+   * #4420: Back stays visible but cannot be pressed (e.g. #1780: while Publish
+   * re-reads the invite plan, or while a step is still saving).
+   */
+  backDisabled?: boolean;
   continueLabel: string;
   onContinue: () => void;
   continueDisabled?: boolean;
   continueLoading?: boolean;
-  /** Add the bottom safe area (phone, pinned to the screen bottom). Default true off web. */
+  /** #4420: testID for the primary button. Default `${testID}-continue`. */
+  continueTestID?: string;
+  /**
+   * #4420: the desktop (T4 wizard) bar: Back at the start and the primary
+   * action at the end at their natural widths, on the card surface, with the
+   * desktop gutter. Default false (phone: two full-width cells).
+   */
+  wide?: boolean;
+  /** Add the bottom safe area (phone, pinned to the screen bottom). Default true off web and off `wide`. */
   safeArea?: boolean;
   testID?: string;
   style?: StyleProp<ViewStyle>;
@@ -468,34 +487,43 @@ export interface StepperFooterProps {
 export const StepperFooter: React.FC<StepperFooterProps> = ({
   previousLabel,
   onBack,
+  backDisabled = false,
   continueLabel,
   onContinue,
   continueDisabled = false,
   continueLoading = false,
-  safeArea = Platform.OS !== "web",
+  continueTestID,
+  wide = false,
+  safeArea = Platform.OS !== "web" && !wide,
   testID,
   style,
 }) => {
   const insets = useSafeAreaInsets();
   return (
     <View
-      style={[styles.footer, { paddingBottom: space[3] + (safeArea ? insets.bottom : 0) }, style]}
+      style={[
+        styles.footer,
+        wide ? styles.footerWide : null,
+        { paddingBottom: space[3] + (safeArea ? insets.bottom : 0) },
+        style,
+      ]}
       testID={testID}
     >
       {previousLabel !== undefined && onBack !== undefined ? (
-        <View style={styles.footerBack}>
+        <View style={wide ? null : styles.footerBack}>
           <Button
             label={previousLabel}
             leadingIcon="chevL"
             onPress={onBack}
             variant="secondary"
             size="lg"
-            fullWidth
+            disabled={backDisabled}
+            fullWidth={!wide}
             testID={testID !== undefined ? `${testID}-back` : undefined}
           />
         </View>
       ) : null}
-      <View style={styles.footerContinue}>
+      <View style={wide ? styles.footerContinueWide : styles.footerContinue}>
         <Button
           label={continueLabel}
           onPress={onContinue}
@@ -503,8 +531,8 @@ export const StepperFooter: React.FC<StepperFooterProps> = ({
           size="lg"
           disabled={continueDisabled}
           loading={continueLoading}
-          fullWidth
-          testID={testID !== undefined ? `${testID}-continue` : undefined}
+          fullWidth={!wide}
+          testID={continueTestID ?? (testID !== undefined ? `${testID}-continue` : undefined)}
         />
       </View>
     </View>
@@ -633,13 +661,22 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: space[2],
     paddingTop: space[3],
-    paddingHorizontal: space[5],
+    paddingHorizontal: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: color.line,
     backgroundColor: color.canvas,
   },
+  footerWide: {
+    flexWrap: "nowrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[3],
+    paddingHorizontal: space[6],
+    backgroundColor: color.card,
+  },
   footerBack: { flexGrow: 1, flexBasis: 120 },
   footerContinue: { flexGrow: 2, flexBasis: 160 },
+  footerContinueWide: { marginLeft: "auto" },
 });
 
 export default Stepper;

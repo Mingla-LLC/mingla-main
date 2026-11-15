@@ -18,6 +18,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, View } from "react-native";
 
+import { ariPalette } from "../../constants/designSystem";
+
 const ORB_GEOMETRY = { sm: { orb: 24, halo: 3 }, md: { orb: 32, halo: 4 } } as const;
 export type HomeAriOrbSize = keyof typeof ORB_GEOMETRY;
 
@@ -115,10 +117,9 @@ export function HomeAriOrb({ size = "sm" }: { size?: HomeAriOrbSize }): React.Re
 }
 
 // #4420 content colours: the Ari orb mark is Ari's identity art (the same
-// values as components/ari/AriOrb.tsx), not chrome. Token requested as
-// `ariPalette.orb` / `ariPalette.orbCore`; until then they stay here.
-const ARI_ORB = "#f07a3d";
-const ARI_ORB_CORE = "#ffb07c";
+// tokens as components/ari/AriOrb.tsx), not chrome.
+const ARI_ORB = ariPalette.orb;
+const ARI_ORB_CORE = ariPalette.orbCore;
 
 const mark = StyleSheet.create({
   host: { alignItems: "center", justifyContent: "center" },

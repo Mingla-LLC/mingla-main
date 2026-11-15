@@ -38,9 +38,18 @@ describe("#4420 B7 — Event wizard clickable stepper", () => {
   });
 
   it("names Back after the previous step on phone and says Saved, never Draft saved", () => {
-    expect(wizard).toContain('label={isWideDesktop ? "Back" : previousStepLabel ?? "Back"}');
+    // [TEST-MOD-APPROVED #4420] — wave 6: the footer is the shared StepperFooter.
+    expect(wizard).toContain('previousLabel={isFirstStep ? undefined : isWideDesktop ? "Back" : previousStepLabel ?? "Back"}');
     expect(wizard).not.toContain("Draft saved");
     expect(wizard).toContain('return state.lastSavedAt !== null ? "Saved" : "Not saved yet";');
+  });
+
+  it("uses the shared StepperFooter, with Back disabled during the #1780 publish re-read", () => {
+    // [TEST-MOD-APPROVED #4420] — wave 6 drops the wizard's own footer.
+    expect(wizard).toMatch(/<StepperFooter\s+wide=\{isWideDesktop\}/);
+    expect(wizard).toMatch(/backDisabled=\{\s*isLastStep\s*\?\s*checkingInvitePublish\s*:\s*currentStep === 6 && inviteNavigation\?\.phase !== "ready"\s*\}/);
+    expect(wizard).toContain('continueTestID={isLastStep ? "event-wizard-publish" : "event-wizard-continue"}');
+    expect(wizard).not.toMatch(/styles\.footer\b/);
   });
 
   it("drops Blast from the wizard's collapsed rail", () => {

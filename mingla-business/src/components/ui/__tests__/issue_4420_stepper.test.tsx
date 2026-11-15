@@ -26,10 +26,13 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }),
 }));
 jest.mock("../Icon", () => ({ Icon: () => null }));
-jest.mock("../Button", () => ({ Button: () => null }));
+// [TEST-MOD-APPROVED #4420] — wave 6: the Button probe keeps its props so the footer tests can read them.
+jest.mock("../Button", () => ({
+  Button: (props: Record<string, unknown>) => require("react").createElement("ButtonProbe", props),
+}));
 jest.mock("../Sheet", () => ({ Sheet: ({ children }: { children: React.ReactNode }) => children }));
 
-import { Stepper, chipScrollOffset, isStepReachable, isStepSegmentFilled, resolveStepState } from "../Stepper";
+import { Stepper, StepperFooter, chipScrollOffset, isStepReachable, isStepSegmentFilled, resolveStepState } from "../Stepper";
 import type { StepperStep } from "../Stepper";
 
 type Node = { type: unknown; props: Record<string, unknown> };
@@ -168,3 +171,71 @@ describe("#4420 Stepper — phone progress and chip scroll", () => {
   });
 });
 
+
+describe("#4420 wave 6 — StepperFooter and step descriptions", () => {
+  // [TEST-MOD-APPROVED #4420] — new cases for the wave 6 token requests.
+  const probes = (renderer: ReturnType<typeof TestRenderer.create>): Node[] =>
+    renderer.root.findAll((n) => n.type === "ButtonProbe");
+
+  test("backDisabled keeps Back visible but not pressable; continueTestID names the primary", async () => {
+    let renderer!: ReturnType<typeof TestRenderer.create>;
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(
+        <StepperFooter
+          previousLabel="Tickets"
+          onBack={() => undefined}
+          backDisabled
+          continueLabel="Publish event"
+          onContinue={() => undefined}
+          continueTestID="wiz-publish"
+          testID="wiz"
+        />,
+      );
+    });
+    const [back, primary] = probes(renderer);
+    expect(back.props.testID).toBe("wiz-back");
+    expect(back.props.disabled).toBe(true);
+    expect(primary.props.testID).toBe("wiz-publish");
+    renderer.unmount();
+  });
+
+  test("Back is enabled by default and absent without a previous label; wide drops full width and the safe area", async () => {
+    let renderer!: ReturnType<typeof TestRenderer.create>;
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(
+        <StepperFooter previousLabel="Back" onBack={() => undefined} continueLabel="Continue" onContinue={() => undefined} wide testID="wiz" />,
+      );
+    });
+    const [back, primary] = probes(renderer);
+    expect(back.props.disabled).toBe(false);
+    expect(back.props.fullWidth).toBe(false);
+    expect(primary.props.testID).toBe("wiz-continue");
+    const { StyleSheet } = require("react-native") as { StyleSheet: { flatten: (s: unknown) => Record<string, unknown> } };
+    const [bar] = renderer.root.findAll((n) => n.props.testID === "wiz" && Array.isArray(n.props.style));
+    expect(StyleSheet.flatten(bar.props.style).paddingBottom).toBe(12);
+    await TestRenderer.act(async () => {
+      renderer.update(<StepperFooter continueLabel="Continue" onContinue={() => undefined} testID="wiz" />);
+    });
+    expect(probes(renderer)).toHaveLength(1);
+    renderer.unmount();
+  });
+
+  test("the desktop list shows a step's description, and an error replaces it", async () => {
+    const steps: StepperStep[] = [
+      { id: "basics", label: "Basics", description: "Name and category" },
+      { id: "when", label: "When", description: "Dates", state: "error", firstError: "Add a start time" },
+    ];
+    let renderer!: ReturnType<typeof TestRenderer.create>;
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(<Stepper steps={steps} currentIndex={0} layout="list" testID="wiz" />);
+    });
+    const texts = renderer.root
+      .findAll((n) => n.type === "Text" || (typeof n.type === "object" && n.props.children !== undefined && typeof n.props.children === "string"))
+      .map((n) => n.props.children)
+      .filter((c) => typeof c === "string");
+    expect(texts).toContain("Name and category");
+    expect(texts).toContain("Add a start time");
+    expect(texts).not.toContain("Dates");
+    renderer.unmount();
+  });
+});

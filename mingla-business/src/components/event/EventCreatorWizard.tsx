@@ -105,12 +105,11 @@ import { useOrganiserTermsPublishGate } from "../../hooks/useOrganiserTermsPubli
 import { OfferingRefundTermsError } from "../../utils/refundPolicyTerms";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
-import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
-import { Stepper } from "../ui/Stepper";
+import { Stepper, StepperFooter } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
@@ -1473,59 +1472,38 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
           the keyboard is open so the focused field sits flush above it.
           Step 1 has no Back (the close chrome exits the wizard). */}
       {keyboardVisible ? null : (
-        <View
-          style={[
-            styles.footer,
-            isWideDesktop ? styles.footerDesktop : null,
-            { paddingBottom: space[3] + (isWideDesktop ? 0 : insets.bottom) },
-          ]}
-        >
-          {isFirstStep ? null : (
-            <View style={isWideDesktop ? null : styles.footerCell}>
-              <Button
-                label={isWideDesktop ? "Back" : previousStepLabel ?? "Back"}
-                variant="secondary"
-                size="lg"
-                leadingIcon="chevL"
-                onPress={handleStepBack}
-                // #1780 — no stepping back to Invite while Publish re-reads the
-                // plan, and no leaving Invite people before its save settles.
-                disabled={
-                  isLastStep
-                    ? checkingInvitePublish
-                    : currentStep === 6 && inviteNavigation?.phase !== "ready"
-                }
-                fullWidth={!isWideDesktop}
-                testID="event-wizard-back"
-              />
-            </View>
-          )}
-          <View style={isWideDesktop ? styles.footerContinueDesktop : styles.footerCell}>
-            {isLastStep ? (
-              <Button
-                label="Publish event"
-                variant="primary"
-                size="lg"
-                onPress={() => void handlePublishTap()}
-                loading={isPublishing || checkingInvitePublish}
-                disabled={publishDisabled || isPublishing}
-                fullWidth={!isWideDesktop}
-                testID="event-wizard-publish"
-              />
-            ) : (
-              <Button
-                label={currentStep === 6 ? inviteNavigation?.primaryLabel ?? "Checking…" : "Continue"}
-                variant="primary"
-                size="lg"
-                onPress={handleContinue}
-                loading={currentStep === 6 && inviteNavigation?.phase === "saving"}
-                disabled={currentStep === 6 && inviteNavigation?.blocked === true}
-                fullWidth={!isWideDesktop}
-                testID="event-wizard-continue"
-              />
-            )}
-          </View>
-        </View>
+        <StepperFooter
+          wide={isWideDesktop}
+          previousLabel={isFirstStep ? undefined : isWideDesktop ? "Back" : previousStepLabel ?? "Back"}
+          onBack={handleStepBack}
+          // #1780 — no stepping back to Invite while Publish re-reads the
+          // plan, and no leaving Invite people before its save settles.
+          backDisabled={
+            isLastStep
+              ? checkingInvitePublish
+              : currentStep === 6 && inviteNavigation?.phase !== "ready"
+          }
+          continueLabel={
+            isLastStep
+              ? "Publish event"
+              : currentStep === 6
+                ? inviteNavigation?.primaryLabel ?? "Checking…"
+                : "Continue"
+          }
+          onContinue={isLastStep ? () => void handlePublishTap() : handleContinue}
+          continueLoading={
+            isLastStep
+              ? isPublishing || checkingInvitePublish
+              : currentStep === 6 && inviteNavigation?.phase === "saving"
+          }
+          continueDisabled={
+            isLastStep
+              ? publishDisabled || isPublishing
+              : currentStep === 6 && inviteNavigation?.blocked === true
+          }
+          continueTestID={isLastStep ? "event-wizard-publish" : "event-wizard-continue"}
+          testID="event-wizard"
+        />
       )}
         </View>
       </View>
@@ -1739,27 +1717,6 @@ const styles = StyleSheet.create({
   },
   stepBodyWrap: {
     // step body content
-  },
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space[3],
-    paddingHorizontal: space[4],
-    paddingTop: space[3],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: color.line,
-    backgroundColor: color.canvas,
-  },
-  footerDesktop: {
-    justifyContent: "space-between",
-    paddingHorizontal: space[6],
-    backgroundColor: color.card,
-  },
-  footerCell: {
-    flex: 1,
-  },
-  footerContinueDesktop: {
-    marginLeft: "auto",
   },
   toastWrap: {
     position: "absolute",

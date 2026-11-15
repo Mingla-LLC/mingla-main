@@ -232,7 +232,37 @@ jest.mock("../ui/Input", () => ({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("react").createElement("InputProbe", props),
 }));
-jest.mock("../ui/Stepper", () => ({ Stepper: (): null => null }));
+// [TEST-MOD-APPROVED #4420] — the Event wizard's footer is the shared
+// StepperFooter now; its probe renders the two buttons with the props the real
+// footer passes (Back's `disabled` is `backDisabled`), so the Back assertion
+// still reads the control the host presses.
+jest.mock("../ui/Stepper", () => ({
+  Stepper: (): null => null,
+  StepperFooter: (props: Record<string, unknown>) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createElement, Fragment } = require("react");
+    const id = props.testID as string | undefined;
+    return createElement(
+      Fragment,
+      null,
+      props.previousLabel !== undefined && props.onBack !== undefined
+        ? createElement("ButtonProbe", {
+            label: props.previousLabel,
+            onPress: props.onBack,
+            disabled: props.backDisabled === true,
+            testID: id !== undefined ? `${id}-back` : undefined,
+          })
+        : null,
+      createElement("ButtonProbe", {
+        label: props.continueLabel,
+        onPress: props.onContinue,
+        disabled: props.continueDisabled === true,
+        loading: props.continueLoading === true,
+        testID: props.continueTestID ?? (id !== undefined ? `${id}-continue` : undefined),
+      }),
+    );
+  },
+}));
 jest.mock("../ui/GlassCard", () => ({
   GlassCard: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports
