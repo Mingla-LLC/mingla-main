@@ -4,8 +4,8 @@
 -- writes; Clear chat hides earlier messages for the person who cleared only.
 -- Runs on the fully replayed PG17 schema; everything rolls back.
 --
--- MINGLA-INVARIANT: I-4435-REOPEN-EITHER-SENDER | issue #4435 | a new human message from any participant, the sender included, clears hidden state; messages never clear archive state | issue_4435_chat_reopen_and_clear.implementor.pg17
--- MINGLA-INVARIANT: I-4435-CLEAR-IS-PRIVATE | issue #4435 | Clear chat hides messages created at or before the cutoff from that person only | issue_4435_chat_reopen_and_clear.implementor.pg17
+-- MINGLA-INVARIANT: I-4435-REOPEN-EITHER-SENDER | issue #4435 | a new human message from any participant, the sender included, clears hidden state; messages never clear archive state
+-- MINGLA-INVARIANT: I-4435-CLEAR-IS-PRIVATE | issue #4435 | Clear chat hides messages created at or before the cutoff from that person only
 --
 -- Messages in this one transaction carry explicit past timestamps: a clear's
 -- cutoff is now(), the transaction start.

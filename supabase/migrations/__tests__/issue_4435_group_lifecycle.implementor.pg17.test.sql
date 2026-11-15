@@ -4,11 +4,11 @@
 -- remove/promote, delete at zero, admin handover, current-member counting.
 -- Runs on the fully replayed PG17 schema; everything rolls back.
 --
--- MINGLA-INVARIANT: I-4435-GROUP-DELETE-AT-ZERO | issue #4435 | a group session is deleted only when no accepted member remains; a 1:1 collab session keeps the under-two rule | issue_4435_group_lifecycle.implementor.pg17
--- MINGLA-INVARIANT: I-4435-SERVER-CHECKED-MEMBERSHIP | issue #4435 | members are added, removed and promoted only by server functions that check the caller; every add path enforces max_participants | issue_4435_group_lifecycle.implementor.pg17
--- MINGLA-INVARIANT: I-4435-ADMIN-HANDOVER | issue #4435 | a group with accepted members always has an admin; the longest-standing member inherits when the last admin goes | issue_4435_group_lifecycle.implementor.pg17
--- MINGLA-INVARIANT: I-4435-MATCH-CURRENT-MEMBERS | issue #4435 | a new collab match needs right swipes from two current accepted members; existing saved cards never disappear when someone leaves | issue_4435_group_lifecycle.implementor.pg17
--- MINGLA-INVARIANT: I-4435-OPEN-VOTES-CURRENT-MEMBERS | issue #4435 | open plan votes and RSVPs count current members only; locked plans keep every vote; auto-lock needs two or more members | issue_4435_group_lifecycle.implementor.pg17
+-- MINGLA-INVARIANT: I-4435-GROUP-DELETE-AT-ZERO | issue #4435 | a group session is deleted only when no accepted member remains; a 1:1 collab session keeps the under-two rule
+-- MINGLA-INVARIANT: I-4435-SERVER-CHECKED-MEMBERSHIP | issue #4435 | members are added, removed and promoted only by server functions that check the caller; every add path enforces max_participants
+-- MINGLA-INVARIANT: I-4435-ADMIN-HANDOVER | issue #4435 | a group with accepted members always has an admin; the longest-standing member inherits when the last admin goes
+-- MINGLA-INVARIANT: I-4435-MATCH-CURRENT-MEMBERS | issue #4435 | a new collab match needs right swipes from two current accepted members; existing saved cards never disappear when someone leaves
+-- MINGLA-INVARIANT: I-4435-OPEN-VOTES-CURRENT-MEMBERS | issue #4435 | open plan votes and RSVPs count current members only; locked plans keep every vote; auto-lock needs two or more members
 --
 -- Cases: C-CREATE, C-ADD, C-LEGACY-INVITE, C-LINK, C-REMOVE, C-ADMIN,
 -- C-HANDOVER, C-LEAVE, C-DECLINE, C-MATCH, C-VOTES, C-LOCK, C-GUARD,
