@@ -60,7 +60,6 @@ import {
   gaEvent,
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
-import { readPageSearch } from "../../../src/utils/privateUrlTokens";
 export default function CheckoutExperienceConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
   useEffect(() => {
@@ -175,9 +174,7 @@ function CheckoutExperienceConfirmScreenInner({
       sessionStorage?: Storage;
       location?: { search?: string };
     };
-    // #4238 P1-5: the original query (tokens kept in memory; the visible
-    // address is scrubbed before any pixel boots).
-    const search = readPageSearch(win.location);
+    const search = win.location?.search ?? "";
     if (!/[?&]cs=/.test(search)) return;
     let payload = readCheckoutResumePayload(
       win.sessionStorage,
@@ -421,9 +418,7 @@ function CheckoutExperienceConfirmScreenInner({
         location?: { search?: string };
         sessionStorage?: Storage;
       };
-      // #4238 P1-5: the original query (tokens kept in memory; the visible
-      // address is scrubbed before any pixel boots).
-      const search = readPageSearch(win.location);
+      const search = win.location?.search ?? "";
       const hasQueryRecovery =
         /[?&]csi=[^&]+/.test(search) && /[?&]bst=[^&]+/.test(search);
       if (
@@ -501,7 +496,7 @@ function CheckoutExperienceConfirmScreenInner({
     }
     if (Platform.OS === "web") {
       const win = globalThis as unknown as { location?: { search?: string } };
-      const hasCs = isClient && /[?&]cs=/.test(readPageSearch(win.location));
+      const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
       if (hasCs) {
         return (
           <View style={styles.host}>

@@ -72,7 +72,6 @@ import {
   gaEvent,
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
-import { readPageSearch } from "../../../src/utils/privateUrlTokens";
 
 export default function CheckoutTripConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -182,9 +181,7 @@ function CheckoutTripConfirmScreenInner({
       sessionStorage?: Storage;
       location?: { search?: string };
     };
-    // #4238 P1-5: the original query (tokens kept in memory; the visible
-    // address is scrubbed before any pixel boots).
-    const search = readPageSearch(win.location);
+    const search = win.location?.search ?? "";
     if (!/[?&]cs=/.test(search)) return;
     let payload = readCheckoutResumePayload(win.sessionStorage, tripEventId);
     // ORCH-0928 v2 (2026-05-23) — when sessionStorage payload is missing
@@ -419,9 +416,7 @@ function CheckoutTripConfirmScreenInner({
         location?: { search?: string };
         sessionStorage?: Storage;
       };
-      // #4238 P1-5: the original query (tokens kept in memory; the visible
-      // address is scrubbed before any pixel boots).
-      const search = readPageSearch(win.location);
+      const search = win.location?.search ?? "";
       // ORCH-0928 v2 (2026-05-23) — recognise the query-string recovery
       // path (`?cs=…&csi=…&bst=…`) so the bounce doesn't race ahead of the
       // async confirmTicketCheckout call. v1 read csi+bst from URL fragment
@@ -509,7 +504,7 @@ function CheckoutTripConfirmScreenInner({
     }
     if (Platform.OS === "web") {
       const win = globalThis as unknown as { location?: { search?: string } };
-      const hasCs = isClient && /[?&]cs=/.test(readPageSearch(win.location));
+      const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
       if (hasCs) {
         // ORCH-0911: render from first paint on ?cs= arrival, independent
         // of trip/realtimePending state. ORCH-0852 auto-resolution remains.

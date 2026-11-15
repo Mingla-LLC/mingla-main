@@ -49,20 +49,6 @@ import {
   type SearchMeasurementProperties,
 } from "@mingla/search-measurement";
 import { isAdPixelRoute, isSignInRoute } from "../utils/coldLoadAuthGates";
-import { scrubPrivateUrlTokens } from "../utils/privateUrlTokens";
-
-/**
- * #4238 P1-5 (I-4238-NO-PRIVATE-TOKEN-TO-PIXELS): the buyer status token and
- * checkout ids leave the visible address before any vendor script boots or
- * fires (the page reads them from memory via readPageSearch). Called at every
- * vendor entry point, because a router state sync can write them back.
- */
-function scrubPrivateUrlBeforeVendors(): void {
-  if (!hasWindow()) return;
-  scrubPrivateUrlTokens(
-    window as unknown as Parameters<typeof scrubPrivateUrlTokens>[0],
-  );
-}
 
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
 // literal here so the strict-grep gate sees it at the init site.
@@ -721,7 +707,6 @@ function ensureAnalyticsBoot(): Promise<void> {
 
 export async function initWebAnalytics(pathname?: string): Promise<void> {
   if (!hasWindow()) return;
-  scrubPrivateUrlBeforeVendors();
   resolveAdPixelIds();
   // #4238 W2-1: a server-rendered page may already have booted the pixels.
   // bootstrapAdPixels still loads the runtime and adopts them; it never
@@ -745,7 +730,6 @@ export function captureWeb(
   props?: Record<string, unknown>,
 ): void {
   if (!isAnalyticsOn() || posthogClient === null) return;
-  scrubPrivateUrlBeforeVendors();
   try {
     // `rsvp_acknowledgement_viewed` is emitted only after the public RSVP RPC
     // succeeds. Mirror its going/waitlisted states into the privacy-safe search
@@ -771,7 +755,6 @@ export function captureWeb(
 /** Fire a GA4 event (e.g. purchase / begin_checkout) for the Ads conversion link. */
 export function gaEvent(name: string, params?: Record<string, unknown>): void {
   if (isAnalyticsOn() && hasWindow() && window.gtag) {
-    scrubPrivateUrlBeforeVendors();
     try {
       window.gtag("event", name, params ?? {});
     } catch (err) {
@@ -916,7 +899,6 @@ async function bootstrapAdPixels(
   // A visitor can turn ads off, or an SSR/test browser shim can disappear,
   // while the small runtime chunk is loading.
   if (!hasWindow() || !isAdsOn() || adPixelsBootstrapped) return;
-  scrubPrivateUrlBeforeVendors();
   if (window.__minglaAdPixelsBootstrapped === true) {
     runtime.adoptBootedPixels(adPixelIds);
   } else {
@@ -964,7 +946,6 @@ export function fireAdPageView(): void {
   // #4238 W2-4: a tab that booted on /e/... and moved into the dashboard
   // sends no buyer PageView there.
   if (!pixelRouteAllowed(currentPathname())) return;
-  scrubPrivateUrlBeforeVendors();
   adPixelRuntime?.fireAdPageView();
 }
 
@@ -983,7 +964,6 @@ export function fireAdViewContent(
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
   if (!pixelRouteAllowed(currentPathname())) return;
-  scrubPrivateUrlBeforeVendors();
   adPixelRuntime?.fireAdViewContent(props);
 }
 
@@ -998,7 +978,6 @@ export function fireAdPurchase(
   props: AdCommerceEventProps,
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
-  scrubPrivateUrlBeforeVendors();
   adPixelRuntime?.fireAdPurchase(eventId, props);
 }
 
@@ -1014,7 +993,6 @@ export function fireAdReservation(
   props: AdCommerceEventProps = {},
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
-  scrubPrivateUrlBeforeVendors();
   adPixelRuntime?.fireAdReservation(eventId, props);
 }
 
@@ -1024,7 +1002,6 @@ export function fireAdInitiateCheckout(
   props: AdCommerceEventProps = {},
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
-  scrubPrivateUrlBeforeVendors();
   adPixelRuntime?.fireAdInitiateCheckout(eventId, props);
 }
 
@@ -1034,7 +1011,6 @@ export async function identifyAdBuyer(input: {
   phone?: string | null;
 }): Promise<void> {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
-  scrubPrivateUrlBeforeVendors();
   await adPixelRuntime?.identifyAdBuyer(input);
 }
 
@@ -1342,7 +1318,6 @@ export async function fireHostFunnelBrowserEvent(
     resolveAdPixelIds();
     const runtime = await loadAdPixelRuntime();
     if (!isAdsOn()) return;
-    scrubPrivateUrlBeforeVendors();
     runtime.fireHostFunnelPixel(kind, eventId, adPixelIds);
   } catch (err) {
     console.warn("[webAnalytics] host-funnel pixel failed (non-fatal):", err);
