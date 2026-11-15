@@ -4,8 +4,7 @@
  * Loaded on intent (a sign-in) by appsFlyerService.web.ts attachHostAttribution,
  * so this host-only code stays out of the eager buyer web chunk (#3493).
  */
-import type { HostAttachResult } from "./appsFlyerService";
-import { parseHostAttachResponse } from "./appsFlyerService.web";
+import { parseHostAttachResponse, type HostAttachResult } from "./hostAttachResponse";
 import { supabase } from "./supabase";
 import {
   fireHostFunnelBrowserEvent,

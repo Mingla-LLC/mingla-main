@@ -90,6 +90,13 @@ export function evaluateSources(input) {
   if (!requiresOn(bootBody, BUSINESS_ANALYTICS_ON) || !/await import\(['"]posthog-js['"]\)/.test(bootBody)) {
     errors.push('Business boot must check analytics is on and dynamically import PostHog')
   }
+  // #4238: the boot now awaits the privacy-guards chunk and re-checks after it,
+  // so "an on-check somewhere near the top" no longer proves the first act of
+  // the boot is the on-check. Its first statement must be the check itself:
+  // nothing (not even a chunk fetch) happens while analytics is off.
+  if (!/^\s*if \(!isAnalyticsOn\(\)\) return;/.test(bootBody)) {
+    errors.push('Business boot must start with the analytics on-check (nothing loads while it is off)')
+  }
   if (!/await import\(['"]posthog-js['"]\);\s*if \(!isAnalyticsOn\(\)\) return;/.test(bootBody)) {
     errors.push('Business boot must re-check the choice after the dynamic import (a mid-boot turn-off wins)')
   }

@@ -138,16 +138,7 @@ export async function logAppsFlyerRegistrationOnce(
 
 // ─── #4238 W3-3: host web sign-up attribution ──────────────────────────────
 
-export function parseHostAttachResponse(data: unknown): HostAttachResult | null {
-  if (!data || typeof data !== "object") return null;
-  const body = data as { ok?: unknown; new_host?: unknown; host_signup_event_id?: unknown };
-  if (body.ok !== true) return null;
-  return {
-    newHost: typeof body.new_host === "boolean" ? body.new_host : null,
-    hostSignupEventId:
-      typeof body.host_signup_event_id === "string" ? body.host_signup_event_id : null,
-  };
-}
+export { parseHostAttachResponse } from "./hostAttachResponse";
 
 /**
  * Called once per sign-in (AuthContext). The work (click id, match cookies,

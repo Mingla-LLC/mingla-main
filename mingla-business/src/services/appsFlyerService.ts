@@ -18,6 +18,7 @@
  */
 
 import { Platform } from "react-native";
+import { parseHostAttachResponse, type HostAttachResult } from "./hostAttachResponse";
 import { supabase } from "./supabase";
 import type { AppsFlyerConsentData } from "./appsFlyerConsent";
 // #1050 — the branded OneLink host is imported from the storeLinks SSOT, never
@@ -579,23 +580,9 @@ function saveInstallAttribution(attribution: HostInstallAttribution): void {
 // the server answers whether this is the host's first sign-in
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** What host-attribution-attach answered. newHost null = unknown. */
-export interface HostAttachResult {
-  newHost: boolean | null;
-  hostSignupEventId: string | null;
-}
-
-/** Pure: the server answer, or null when it is not a success. */
-export function parseHostAttachResponse(data: unknown): HostAttachResult | null {
-  if (!data || typeof data !== "object") return null;
-  const body = data as { ok?: unknown; new_host?: unknown; host_signup_event_id?: unknown };
-  if (body.ok !== true) return null;
-  return {
-    newHost: typeof body.new_host === "boolean" ? body.new_host : null,
-    hostSignupEventId:
-      typeof body.host_signup_event_id === "string" ? body.host_signup_event_id : null,
-  };
-}
+// The answer's shape and parser have one owner (hostAttachResponse.ts).
+export { parseHostAttachResponse } from "./hostAttachResponse";
+export type { HostAttachResult } from "./hostAttachResponse";
 
 async function readSavedInstallAttribution(): Promise<Record<string, string> | null> {
   try {
