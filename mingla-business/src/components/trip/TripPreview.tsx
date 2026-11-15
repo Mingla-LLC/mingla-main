@@ -45,7 +45,6 @@ type ParallaxScrollHandler = (
 type ParallaxLayoutHandler = (event: LayoutChangeEvent) => void;
 
 import {
-  accent,
   radius as radiusTokens,
   color,
   space,

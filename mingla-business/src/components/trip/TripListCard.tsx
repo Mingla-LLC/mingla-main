@@ -24,7 +24,6 @@ import {
 } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
   color,
   space,

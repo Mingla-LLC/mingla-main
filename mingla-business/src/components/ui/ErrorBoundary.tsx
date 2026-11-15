@@ -20,11 +20,7 @@ import {
 } from "react-error-boundary";
 import type { FallbackProps, ErrorBoundaryProps as ReactErrorBoundaryProps } from "react-error-boundary";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 
 import { Button } from "./Button";
 import { Icon } from "./Icon";
@@ -58,7 +54,7 @@ const handleGetHelp = (): void => {
 
 export const DefaultFallback: React.FC<FallbackProps> = ({ resetErrorBoundary }) => (
   <View style={styles.container}>
-    <Icon name="flag" size={48} color={textTokens.tertiary} />
+    <Icon name="flag" size={48} color={color.text3} />
     <Text style={styles.title}>Something broke.</Text>
     <Text style={styles.body}>We&apos;re on it.</Text>
     <View style={styles.actions}>
@@ -105,27 +101,27 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingVertical: space[6],
+    gap: space[2],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    marginTop: spacing.md,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginTop: space[4],
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    fontWeight: type.small.fontWeight,
+    color: color.text2,
   },
   actions: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
+    marginTop: space[4],
+    gap: space[2],
     alignItems: "center",
   },
 });

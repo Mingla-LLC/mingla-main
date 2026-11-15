@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 
-import { color, radius, scrim, space } from "../../constants/designSystem";
+import { color, scrim, space } from "../../constants/designSystem";
 import type { BrandGroupMember } from "../../services/brandGroupRosterService";
 import { Icon } from "../ui/Icon";
 

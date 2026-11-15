@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "@jest/globals";
 
-import { androidOpaque, semantic } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import {
   MENU_TEXT_LIMITS,
   MENU_TEXT_SAVE_COPY,
@@ -350,6 +350,6 @@ describe("#3567 tester — authoring recovery and accessibility wiring", () => {
     const counter = read("src/components/venue/MenuTextCounter.tsx");
     expect(counter).not.toContain("accessibilityLiveRegion");
     expect(counter).not.toContain("aria-live");
-    expect(androidOpaque.errorFill).not.toBe(semantic.errorTint);
+    expect(color.solidTint.error).not.toBe(color.errorTint);
   });
 });

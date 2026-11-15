@@ -10,11 +10,7 @@ import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { captureWeb } from "../../../src/analytics/webAnalytics";
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../src/constants/designSystem";
+import { space, type, color } from "../../../src/constants/designSystem";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import {
   confirmGuestVenueReservation,
@@ -175,13 +171,13 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    padding: spacing.xl,
+    gap: space[4],
+    padding: space[7],
   },
-  title: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
+  title: { ...type.h1, color: color.text1, textAlign: "center" },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
 });

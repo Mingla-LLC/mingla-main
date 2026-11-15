@@ -27,10 +27,7 @@ import {
 } from "../../../src/analytics/publicParityWebAdapter";
 import { buildAdViewContentPayload } from "../../../src/analytics/adViewContentPayload";
 
-import {
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { space, color } from "../../../src/constants/designSystem";
 import { usePublicEventBySlug } from "../../../src/hooks/usePublicEvents";
 import { PublicEventPage } from "../../../src/components/event/PublicEventPage";
 import { PublicEventNotFound } from "../../../src/components/event/PublicEventNotFound";
@@ -210,17 +207,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.lg,
+    padding: space[6],
     backgroundColor: "#0c0e12",
   },
   stateTitle: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   stateText: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     textAlign: "center",
   },

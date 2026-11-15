@@ -27,7 +27,6 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
   radius,
   color,
   space,
@@ -215,8 +214,5 @@ const styles = StyleSheet.create({
     color: color.text3,
   },
 });
-
-// Suppress unused-glass-import on platforms where lint flags unused imports.
-void glass;
 
 export default IntakeTypePickerSheet;

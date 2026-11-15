@@ -1,13 +1,10 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { postHogService } from "../../services/postHogService";
 import { formatRelativeTime } from "../../utils/relativeTime";
@@ -132,7 +129,7 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
               onChangeText={setCustom}
               keyboardType="number-pad"
               placeholder="Custom headcount"
-              placeholderTextColor={text.quaternary}
+              placeholderTextColor={color.text4}
               accessibilityLabel="Custom estimated headcount"
               style={styles.input}
             />
@@ -333,24 +330,24 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
 };
 const styles = StyleSheet.create({
   root: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
-    gap: spacing.md,
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
+    gap: space[4],
   },
-  eyebrow: { ...typography.labelCap, color: text.tertiary },
-  title: { ...typography.h2, color: text.primary },
-  body: { ...typography.body, color: text.primary },
-  note: { ...typography.caption, color: text.tertiary },
-  band: { ...typography.h2, color: text.primary },
-  stack: { gap: spacing.sm },
-  reco: { gap: spacing.xs },
-  truthRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  bandRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  modePill: { ...typography.micro, color: text.secondary },
-  severity: { ...typography.caption, fontWeight: "700" },
-  warning: { color: semantic.warning },
-  info: { color: semantic.info },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  eyebrow: { ...type.label, color: color.text3 },
+  title: { ...type.h1, color: color.text1 },
+  body: { ...type.body, color: color.text1 },
+  note: { ...type.caption, color: color.text3 },
+  band: { ...type.h1, color: color.text1 },
+  stack: { gap: space[2] },
+  reco: { gap: space[1] },
+  truthRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  bandRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  modePill: { ...type.label, color: color.text2 },
+  severity: { ...type.caption, fontWeight: "700" },
+  warning: { color: color.warning },
+  info: { color: color.info },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   chip: {
     minWidth: 52,
     minHeight: 44,
@@ -358,19 +355,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
-  chipActive: { borderColor: accent.warm, backgroundColor: accent.tint },
-  chipText: { ...typography.bodySm, color: text.primary },
+  chipActive: { borderColor: color.accent, backgroundColor: color.accentLine },
+  chipText: { ...type.small, color: color.text1 },
   input: {
     minHeight: 48,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    color: text.primary,
-    paddingHorizontal: spacing.md,
+    borderColor: color.lineStrong,
+    color: color.text1,
+    paddingHorizontal: space[4],
   },
-  actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
+  actions: { flexDirection: "row", gap: space[2], marginTop: space[4] },
   action: { flex: 1 },
 });
 export default PrePublishGateSheet;

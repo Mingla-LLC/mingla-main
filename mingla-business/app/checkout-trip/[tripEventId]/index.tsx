@@ -23,12 +23,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import {
-  radius as radiusTokens,
-  spacing,
-  color,
-  space,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, color, space } from "../../../src/constants/designSystem";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";

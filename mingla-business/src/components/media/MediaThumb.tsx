@@ -7,7 +7,7 @@ import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { formatMediaDuration } from "../../utils/formatMediaDuration";
 import { Icon } from "../ui/Icon";
-import { glass, text as textTokens } from "../../constants/designSystem";
+import { color } from "../../constants/designSystem";
 import { useBrandGroupLocalPreview } from "../messages/brandGroupLocalPreviews";
 import { BrandGroupCachedImage } from "./BrandGroupCachedImage";
 import { requestThumbnailForState, thumbnailResolutionPlan } from "./thumbnailResolution";
@@ -135,7 +135,7 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
       {localSource ? <BrandGroupCachedImage source={localSource} fit="cover" style={StyleSheet.absoluteFill} testID="media-thumb-local-preview" /> : null}
       {source ? <BrandGroupCachedImage fileId={item.fileId} variant="thumb" source={source} fit="cover" onError={() => setSource(null)} style={StyleSheet.absoluteFill} /> : localSource ? null : (
         <View style={styles.placeholder}>
-          <Icon name={item.kind === "video" ? "play" : item.kind === "image" ? "eye" : "notebook"} size={24} color={textTokens.tertiary} />
+          <Icon name={item.kind === "video" ? "play" : item.kind === "image" ? "eye" : "notebook"} size={24} color={color.text3} />
           {item.thumbState === "pending" ? <Text style={styles.preparing} numberOfLines={2}>{t("media.preparing")}</Text> : null}
         </View>
       )}
@@ -146,9 +146,9 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
 }
 
 const styles = StyleSheet.create({
-  root: { overflow: "hidden", backgroundColor: glass.tint.profileElevated },
+  root: { overflow: "hidden", backgroundColor: color.fill.tile },
   placeholder: { flex: 1, minHeight: 60, alignItems: "center", justifyContent: "center", gap: 4 },
-  preparing: { color: textTokens.tertiary, fontSize: 10, textAlign: "center", paddingHorizontal: 4 },
+  preparing: { color: color.text3, fontSize: 10, textAlign: "center", paddingHorizontal: 4 },
   play: { position: "absolute", left: 8, top: 8, width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.55)" },
   playBubble: { left: "50%", top: "50%", width: 40, height: 40, marginLeft: -20, marginTop: -20, borderRadius: 20 },
   duration: { position: "absolute", right: 6, bottom: 5, color: "#fff", fontSize: 10, fontWeight: "700", textShadowColor: "#000", textShadowRadius: 3 },

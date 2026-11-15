@@ -29,12 +29,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, space, color } from "../../constants/designSystem";
 import {
   TICKETS_EXPIRED_MESSAGE,
   TICKETS_EXPIRED_TITLE,
@@ -117,21 +112,21 @@ export function TicketConfirmVerdictHero({
   const isError = spec.tone === "error";
   return (
     <View style={styles.host} testID={`ticket-confirm-ending-${ending}`}>
-      <View style={[styles.hero, { paddingTop: topInset + spacing.xl }]}>
+      <View style={[styles.hero, { paddingTop: topInset + space[7] }]}>
         <View
           style={[
             styles.badge,
             {
               backgroundColor: isError
-                ? semantic.errorTint
-                : semantic.warningTint,
+                ? color.errorTint
+                : color.warningTint,
             },
           ]}
         >
           <Icon
             name={spec.icon}
             size={36}
-            color={isError ? semantic.errorText : semantic.warning}
+            color={isError ? color.errorText : color.warning}
           />
         </View>
         <Text style={styles.title} accessibilityRole="header">
@@ -172,11 +167,11 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: "#0c0e12",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   hero: {
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   badge: {
     width: 72,
@@ -184,18 +179,18 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.full,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   title: {
     fontSize: 28,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.6,
     textAlign: "center",
   },
   body: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
     lineHeight: 20,
     maxWidth: 360,
@@ -204,7 +199,7 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     maxWidth: 360,
     width: "100%",
-    marginTop: spacing.lg,
+    marginTop: space[6],
     marginHorizontal: "auto",
   },
 });

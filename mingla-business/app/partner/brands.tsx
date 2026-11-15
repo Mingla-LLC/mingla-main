@@ -42,15 +42,7 @@ import {
   type PartnerBrandLinkWithStatus,
 } from "../../src/services/partnerBrandLinksService";
 import { useAuth } from "../../src/context/AuthContext";
-import {
-  accent,
-  canvas,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../src/constants/designSystem";
+import { color as dsColor, space, type } from "../../src/constants/designSystem";
 import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { IconChrome } from "../../src/components/ui/IconChrome";
@@ -304,13 +296,13 @@ export default function PartnerBrandsScreen(): React.ReactElement {
       <ScrollView contentContainerStyle={styles.scroll}>
         {linksQuery.isLoading ? (
           <View style={styles.center}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={dsColor.accent} />
           </View>
         ) : linksQuery.error ? (
-          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={space[6]}>
             <Text style={styles.cardTitle}>Couldn't load your brands</Text>
             <Text style={styles.cardBody}>{linksQuery.error.message}</Text>
-            <View style={{ marginTop: spacing.md }}>
+            <View style={{ marginTop: space[4] }}>
               <Button
                 variant="secondary"
                 size="md"
@@ -322,13 +314,13 @@ export default function PartnerBrandsScreen(): React.ReactElement {
             </View>
           </GlassCard>
         ) : sortedRows.length === 0 ? (
-          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={space[6]}>
             <Text style={styles.cardTitle}>No partner brands yet</Text>
             <Text style={styles.cardBody}>
               Brands you set up for clients show up here. You'll see them go
               from invite-sent to live to earning.
             </Text>
-            <View style={{ marginTop: spacing.md }}>
+            <View style={{ marginTop: space[4] }}>
               <Button
                 variant="primary"
                 size="md"
@@ -409,7 +401,7 @@ function BrandLinkRow(props: {
       <GlassCard
         variant={cancelled ? "base" : "elevated"}
         radius="md"
-        padding={spacing.md}
+        padding={space[4]}
       >
         <View style={styles.rowOuter}>
           <View style={styles.thumbWrap}>
@@ -477,12 +469,12 @@ function StatusDot({
   // §4.2 dot matrix — expired = semantic.error (the token is dead; the label
   // carries the words, color is never the sole signal).
   const color = status === "active"
-    ? semantic.success
+    ? dsColor.success
     : status === "awaiting_stripe"
-    ? semantic.warning
+    ? dsColor.warning
     : status === "awaiting_owner"
-    ? (expired ? semantic.error : accent.warm)
-    : textTokens.tertiary;
+    ? (expired ? dsColor.danger : dsColor.accent)
+    : dsColor.text3;
   return <View style={[styles.dot, { backgroundColor: color }]} />;
 }
 
@@ -505,44 +497,44 @@ function timeAgo(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: canvas.discover },
+  safe: { flex: 1, backgroundColor: dsColor.canvas },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[9],
+    gap: space[2],
   },
-  center: { paddingVertical: spacing.xxl, alignItems: "center" },
+  center: { paddingVertical: space[9], alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[2],
   },
   headerMid: {
     flex: 1,
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: dsColor.text1,
   },
   headerSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: dsColor.text3,
     marginTop: 2,
   },
   cardTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginTop: spacing.xs,
+    ...type.h1,
+    color: dsColor.text1,
+    marginTop: space[1],
   },
   cardBody: {
-    ...typography.body,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    ...type.body,
+    color: dsColor.text2,
+    marginTop: space[1],
   },
   rowPressed: {
     opacity: 0.7,
@@ -550,7 +542,7 @@ const styles = StyleSheet.create({
   rowOuter: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   thumbWrap: {
     width: 60,
@@ -568,41 +560,41 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   thumbFallback: {
-    backgroundColor: accent.tint,
+    backgroundColor: dsColor.accentLine,
     alignItems: "center",
     justifyContent: "center",
   },
   thumbFallbackCancelled: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: dsColor.fill.tile,
     alignItems: "center",
     justifyContent: "center",
   },
   thumbFallbackText: {
     fontSize: 22,
     fontWeight: "800",
-    color: accent.warm,
+    color: dsColor.accent,
   },
   thumbFallbackTextCancelled: {
     fontSize: 22,
     fontWeight: "800",
     // Decorative — the name beside it carries identity (DESIGN §2.3).
-    color: textTokens.tertiary,
+    color: dsColor.text3,
   },
   rowBody: {
     flex: 1,
     gap: 2,
   },
   brandName: {
-    ...typography.bodyLg,
+    ...type.row,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: dsColor.text1,
   },
   brandNameCancelled: {
-    ...typography.bodyLg,
+    ...type.row,
     fontWeight: "600",
     // text.secondary (9.6:1) — recessed but fully AA. NEVER text.quaternary
     // (2.91:1 measured fail — BANNED for meaningful text, DESIGN §4.3).
-    color: textTokens.secondary,
+    color: dsColor.text2,
   },
   statusRow: {
     flexDirection: "row",
@@ -616,20 +608,20 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusLabel: {
-    ...typography.micro,
+    ...type.label,
     fontWeight: "700",
-    color: textTokens.secondary,
+    color: dsColor.text2,
     letterSpacing: 0.5,
   },
   statusLabelCancelled: {
-    ...typography.micro,
+    ...type.label,
     fontWeight: "700",
     // text.tertiary — 5.58:1 on the base card, AA (DESIGN §2.3/§4.3).
-    color: textTokens.tertiary,
+    color: dsColor.text3,
     letterSpacing: 0.5,
   },
   subText: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: dsColor.text3,
   },
 });

@@ -38,12 +38,7 @@ import {
 import React, { useCallback, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  color,
-  radius,
-  spacing,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, type } from "../../constants/designSystem";
 import { WebDateTimeInput } from "./WebDateTimeInput";
 
 export interface DateFieldProps {
@@ -152,10 +147,10 @@ export function DateField({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xxs,
+    gap: 2,
   },
   label: {
-    ...typography.bodySm,
+    ...type.small,
     color: color.text2,
   },
   // Mirrors WebDateTimeInput's BASE_STYLE so the two halves of the pair look

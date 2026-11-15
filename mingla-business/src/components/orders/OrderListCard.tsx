@@ -12,12 +12,7 @@
 import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, color, space } from "../../constants/designSystem";
 import type { OrderRecord } from "../../store/orderStore";
 import { formatCurrencyRound } from "../../utils/currency";
 
@@ -78,28 +73,28 @@ const statusPillSpec = (status: OrderRecord["status"]): StatusPillSpec => {
         variant: "info",
         label: "PAID",
         strikethrough: false,
-        amountColor: textTokens.primary,
+        amountColor: color.text1,
       };
     case "refunded_full":
       return {
         variant: "warn",
         label: "REFUNDED",
         strikethrough: true,
-        amountColor: textTokens.tertiary,
+        amountColor: color.text3,
       };
     case "refunded_partial":
       return {
         variant: "accent",
         label: "PARTIAL",
         strikethrough: false,
-        amountColor: textTokens.primary,
+        amountColor: color.text1,
       };
     case "cancelled":
       return {
         variant: "draft",
         label: "CANCELLED",
         strikethrough: true,
-        amountColor: textTokens.tertiary,
+        amountColor: color.text3,
       };
     default: {
       const _exhaust: never = status;
@@ -181,13 +176,13 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 2,
-    padding: spacing.md - 2,
+    gap: space[2] + 2,
+    padding: space[4] - 2,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   hostPressed: {
     backgroundColor: "rgba(255, 255, 255, 0.04)",
@@ -203,7 +198,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   body: {
     flex: 1,
@@ -212,11 +207,11 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   subline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   right: {

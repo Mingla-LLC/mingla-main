@@ -10,15 +10,11 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import {
-  accent,
-  canvas,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
   trafficAnalytics,
-  typography,
+  space,
+  color,
+  type,
 } from "../../constants/designSystem";
 import {
   TRAFFIC_RANGES,
@@ -214,7 +210,7 @@ const TrendCard: React.FC<{
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
       contentStyle={styles.cardContent}
       fillHeight={fillHeight}
@@ -240,8 +236,8 @@ const TrendCard: React.FC<{
           <Svg width="100%" height={132} viewBox="0 0 340 132">
             <Defs>
               <SvgLinearGradient id="trafficArea" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={accent.warm} stopOpacity="0.34" />
-                <Stop offset="1" stopColor={accent.warm} stopOpacity="0.02" />
+                <Stop offset="0" stopColor={color.accent} stopOpacity="0.34" />
+                <Stop offset="1" stopColor={color.accent} stopOpacity="0.02" />
               </SvgLinearGradient>
             </Defs>
             {[36, 76].map((y, index) => (
@@ -251,13 +247,13 @@ const TrendCard: React.FC<{
                   x2="300"
                   y1={y}
                   y2={y}
-                  stroke={glass.border.profileElevated}
+                  stroke={color.lineStrong}
                   strokeDasharray="4 5"
                 />
                 <SvgText
                   x="308"
                   y={y + 4}
-                  fill={textTokens.tertiary}
+                  fill={color.text3}
                   fontSize="10"
                 >
                   {Math.round(path.max * (index === 0 ? 0.67 : 0.33))}
@@ -268,7 +264,7 @@ const TrendCard: React.FC<{
             <Path
               d={path.line}
               fill="none"
-              stroke={accent.warm}
+              stroke={color.accent}
               strokeWidth="3"
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -277,8 +273,8 @@ const TrendCard: React.FC<{
               cx={path.lastX}
               cy={path.lastY}
               r="5"
-              fill={accent.warm}
-              stroke={textTokens.primary}
+              fill={color.accent}
+              stroke={color.text1}
               strokeWidth="2"
             />
           </Svg>
@@ -323,7 +319,7 @@ const ActivityCard: React.FC<{
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
       contentStyle={styles.cardContent}
       fillHeight={fillHeight}
@@ -383,7 +379,7 @@ const SourceCard: React.FC<{
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
       contentStyle={styles.cardContent}
       fillHeight={fillHeight}
@@ -470,7 +466,7 @@ const CompletedCard: React.FC<{
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
       contentStyle={styles.cardContent}
       fillHeight={fillHeight}
@@ -509,7 +505,7 @@ const PageListCard: React.FC<{
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
       contentStyle={styles.cardContent}
       fillHeight={fillHeight}
@@ -623,7 +619,7 @@ const PageDetailCard: React.FC<{
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
       contentStyle={styles.cardContent}
       fillHeight={fillHeight}
@@ -682,7 +678,7 @@ const ButtonTapsCard: React.FC<{
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
       contentStyle={styles.cardContent}
       fillHeight={fillHeight}
@@ -966,40 +962,40 @@ export const TrafficAnalyticsDashboard: React.FC<
 };
 
 const styles = StyleSheet.create({
-  dashboard: { gap: spacing.lg },
-  loadingGrid: { gap: spacing.md },
-  loadingGridWide: { flexDirection: "row", flexWrap: "wrap", gap: spacing.lg },
+  dashboard: { gap: space[6] },
+  loadingGrid: { gap: space[4] },
+  loadingGridWide: { flexDirection: "row", flexWrap: "wrap", gap: space[6] },
   loadingCell: { flexGrow: 1, flexBasis: "46%", minWidth: 0 },
   loadingCellFull: { flexBasis: "100%" },
   errorBanner: {
     minHeight: 48,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   errorBannerText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     flex: 1,
   },
   errorRetry: { minHeight: 44, justifyContent: "center" },
   errorRetryText: {
-    ...typography.buttonMd,
-    color: accent.warm,
+    ...type.btnSm,
+    color: color.accent,
   },
   rangeControl: {
     flexDirection: "row",
-    padding: spacing.xs,
+    padding: space[1],
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   rangeButton: {
     flex: 1,
@@ -1007,117 +1003,117 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
-  rangeButtonSelected: { backgroundColor: accent.tint },
+  rangeButtonSelected: { backgroundColor: color.accentLine },
   rangeLabel: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
   },
-  rangeLabelSelected: { color: textTokens.primary, fontWeight: "700" },
+  rangeLabelSelected: { color: color.text1, fontWeight: "700" },
   coverageNote: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    marginTop: -spacing.sm,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    marginTop: -space[2],
   },
   pressed: { opacity: 0.68 },
   card: { minWidth: 0, flex: 1 },
   cardContent: { flex: 1 },
   eyebrow: {
-    color: textTokens.tertiary,
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    color: color.text3,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
   },
   miniRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.md,
-    marginTop: spacing.lg,
+    gap: space[4],
+    marginTop: space[6],
   },
   miniStat: { flexGrow: 1, flexBasis: 112, minWidth: 0 },
   miniValue: {
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    color: color.text1,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   miniLabel: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    marginTop: space[1],
   },
   titleRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   cardTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
   },
   cardNote: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[1],
   },
   completedValue: {
-    color: textTokens.primary,
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    marginTop: spacing.sm,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    marginTop: space[2],
     fontVariant: ["tabular-nums"],
   },
   totalAtRight: {
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    color: color.text1,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   collecting: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.md,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[4],
   },
   axisRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   chartFill: { flex: 1, justifyContent: "center" },
   axisText: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
-  funnel: { gap: spacing.xs, marginTop: spacing.md },
+  funnel: { gap: space[1], marginTop: space[4] },
   funnelLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   funnelLabel: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   funnelCount: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text1,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
@@ -1125,160 +1121,160 @@ const styles = StyleSheet.create({
     height: 5,
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: glass.border.profileElevated,
-    marginTop: spacing.xs,
+    backgroundColor: color.lineStrong,
+    marginTop: space[1],
   },
   funnelFill: {
     height: "100%",
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   sourceBar: {
     height: 14,
     borderRadius: radius.full,
     overflow: "hidden",
     flexDirection: "row",
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   bracketLine: {
     height: 8,
     borderLeftWidth: 1,
     borderBottomWidth: 1,
     borderRightWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     alignSelf: "flex-start",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   broughtLine: {
-    color: accent.warm,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.accent,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
-  sourceRows: { marginTop: spacing.md },
+  sourceRows: { marginTop: space[4] },
   sourceRow: {
     minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   swatch: { width: 10, height: 10, borderRadius: radius.full },
   sourceName: {
     flex: 1,
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
-  sourceNameMingla: { color: textTokens.primary, fontWeight: "600" },
+  sourceNameMingla: { color: color.text1, fontWeight: "600" },
   sourceNumber: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontVariant: ["tabular-nums"],
   },
-  pageRows: { marginTop: spacing.sm },
+  pageRows: { marginTop: space[2] },
   pageRow: {
     minHeight: 64,
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   pageRowSelected: { backgroundColor: trafficAnalytics.selectedPageTint },
-  pageCopy: { flex: 1, minWidth: 0, paddingBottom: spacing.sm },
+  pageCopy: { flex: 1, minWidth: 0, paddingBottom: space[2] },
   pageTitle: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
   },
   pageMeta: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
-  pageRight: { alignItems: "flex-end", paddingBottom: spacing.sm },
+  pageRight: { alignItems: "flex-end", paddingBottom: space[2] },
   pageVisits: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   pageSold: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
   pageMeterTrack: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: spacing.xs,
+    bottom: space[1],
     height: 2,
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.line,
     overflow: "hidden",
   },
-  pageMeterFill: { height: "100%", backgroundColor: accent.warm },
+  pageMeterFill: { height: "100%", backgroundColor: color.accent },
   detailTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    marginTop: spacing.xs,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    marginTop: space[1],
   },
   detailValue: {
-    color: textTokens.primary,
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
-    fontWeight: typography.statValue.fontWeight,
+    color: color.text1,
+    fontSize: type.stat.fontSize,
+    lineHeight: type.stat.lineHeight,
+    fontWeight: type.stat.fontWeight,
     fontVariant: ["tabular-nums"],
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   detailLink: {
     minHeight: 44,
     justifyContent: "center",
     alignSelf: "flex-start",
     marginTop: "auto",
-    paddingTop: spacing.md,
+    paddingTop: space[4],
   },
   detailLinkText: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
+    color: color.accent,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
   tapGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   tapTile: {
     flexGrow: 1,
     flexBasis: 138,
     minWidth: 0,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   tapCount: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
     fontVariant: ["tabular-nums"],
   },
   tapLabel: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   tapFill: {
     height: "100%",
@@ -1286,38 +1282,38 @@ const styles = StyleSheet.create({
     backgroundColor: trafficAnalytics.tapMeter,
   },
   collectingLine: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: -spacing.sm,
+    ...type.small,
+    color: color.text2,
+    marginTop: -space[2],
   },
   gridRow: {
     flexDirection: "row",
     alignItems: "stretch",
-    gap: spacing.lg,
+    gap: space[6],
   },
   gridCell: { minWidth: 0 },
   sheetBackdrop: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: canvas.depth,
+    backgroundColor: color.canvas,
   },
   sheet: {
     maxHeight: "88%",
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
+    padding: space[4],
+    paddingBottom: space[7],
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: canvas.profile,
+    borderColor: color.lineStrong,
+    backgroundColor: color.canvas,
   },
   sheetHandle: {
     width: 40,
     height: 4,
     borderRadius: radius.full,
-    backgroundColor: textTokens.quaternary,
+    backgroundColor: color.text4,
     alignSelf: "center",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
 });
 

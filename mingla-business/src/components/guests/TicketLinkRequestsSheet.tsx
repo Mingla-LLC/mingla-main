@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
-import { glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { radius, space, color } from "../../constants/designSystem";
 import type { TicketLinkRequest } from "../../services/ticketLinksService";
 import { Button } from "../ui/Button";
 import { IconChrome } from "../ui/IconChrome";
@@ -98,17 +98,17 @@ export const TicketLinkRequestsSheet: React.FC<{
 };
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  header: { flexDirection: "row", gap: space[2], paddingHorizontal: space[4], paddingBottom: space[4] },
   heading: { flex: 1, gap: 4 },
-  title: { color: textTokens.primary, fontSize: 22, fontWeight: "800" },
-  muted: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
-  list: { padding: spacing.md, gap: spacing.md, paddingBottom: 120 },
-  card: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase, gap: spacing.sm },
-  cardTitle: { color: textTokens.primary, fontSize: 16, fontWeight: "700" },
+  title: { color: color.text1, fontSize: 22, fontWeight: "800" },
+  muted: { color: color.text2, fontSize: 13, lineHeight: 18 },
+  list: { padding: space[4], gap: space[4], paddingBottom: 120 },
+  card: { padding: space[4], borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset, gap: space[2] },
+  cardTitle: { color: color.text1, fontSize: 16, fontWeight: "700" },
   person: { gap: 2 },
-  personName: { color: textTokens.primary, fontSize: 14, fontWeight: "600" },
-  actions: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
-  message: { color: textTokens.primary, textAlign: "center", margin: spacing.md },
+  personName: { color: color.text1, fontSize: 14, fontWeight: "600" },
+  actions: { flexDirection: "row", gap: space[2], flexWrap: "wrap" },
+  message: { color: color.text1, textAlign: "center", margin: space[4] },
 });
 
 export default TicketLinkRequestsSheet;

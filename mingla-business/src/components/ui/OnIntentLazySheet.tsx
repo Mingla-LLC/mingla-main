@@ -10,7 +10,7 @@
 import React, { Suspense, useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
-import { spacing } from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
 import { Sheet } from "./Sheet";
 
 export interface OnIntentSheetProps {
@@ -61,5 +61,5 @@ export function createOnIntentLazySheet<Props extends OnIntentSheetProps>(
 }
 
 const styles = StyleSheet.create({
-  loading: { minHeight: 180, alignItems: "center", justifyContent: "center", padding: spacing.md },
+  loading: { minHeight: 180, alignItems: "center", justifyContent: "center", padding: space[4] },
 });

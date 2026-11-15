@@ -55,15 +55,11 @@ import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSw
 
 import { Icon } from "../ui/Icon";
 import {
-  accent,
   color,
   durations,
-  glass,
   radius,
   materials,
-  semantic,
   space,
-  spacing,
   type,
 } from "../../constants/designSystem";
 import { useShimmer } from "../../hooks/useShimmer";

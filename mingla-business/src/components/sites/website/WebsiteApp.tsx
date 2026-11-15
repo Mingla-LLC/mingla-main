@@ -18,7 +18,6 @@ import {
   space,
   websitePaneMaxWidth,
   websitePreviewWidth,
-  websiteRailActive,
   websiteRailWidth,
 } from "../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
@@ -782,7 +781,7 @@ const styles = StyleSheet.create({
   railHeading: { marginTop: 16, marginBottom: 4, marginHorizontal: 8, fontSize: 12, lineHeight: 16, fontWeight: "600", color: ui.t3 },
   railHeadingFirst: { marginTop: 4 },
   railRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, borderRadius: radius.sm, marginBottom: 2 },
-  railRowActive: { backgroundColor: websiteRailActive },
+  railRowActive: { backgroundColor: color.fill.railOn },
   railRowHover: { backgroundColor: ui.card },
   railBar: { position: "absolute", left: -8, top: 10, bottom: 10, width: 3, borderRadius: 2, backgroundColor: ui.accent },
   railLabel: { flex: 1, fontSize: 15, color: ui.t2 },

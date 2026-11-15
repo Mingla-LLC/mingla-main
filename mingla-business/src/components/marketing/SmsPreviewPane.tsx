@@ -17,7 +17,7 @@
 import React from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { color, radius, space, type } from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import { smsBlastBodyWithFollow } from "../../utils/marketing/blastFollow";
 import { bodyWithFooter, estimateSmsCost } from "../../utils/smsCost";
 

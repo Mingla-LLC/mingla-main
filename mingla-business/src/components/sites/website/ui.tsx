@@ -14,7 +14,6 @@ import {
   type ViewStyle,
 } from "react-native";
 import {
-  accent,
   color,
   radius,
   space,

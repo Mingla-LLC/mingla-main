@@ -29,7 +29,6 @@ import { Icon } from "../ui/Icon";
 import {
   color,
   edge,
-  colors,
   fontWeights,
   materials,
   radius,
@@ -1061,7 +1060,7 @@ const styles = StyleSheet.create({
     ...shadow.paper,
   },
   appleButtonText: {
-    color: colors.text.primary,
+    color: color.ink,
     ...type.btn,
   },
   // #4420 — Google and Email are the dark control material (the mockup);

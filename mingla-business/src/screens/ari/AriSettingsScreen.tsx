@@ -21,7 +21,13 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ariPalette, ariThread, color, radius, space, type } from "../../constants/designSystem";
+import {
+  ariPalette,
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useAriKnowledge } from "../../hooks/useAriKnowledge";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";

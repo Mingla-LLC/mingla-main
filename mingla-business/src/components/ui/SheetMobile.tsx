@@ -66,7 +66,6 @@ import {
   shadow as shadowTokens,
   size,
   space,
-  spacing,
 } from "../../constants/designSystem";
 
 import { Material } from "./Material";
@@ -183,8 +182,8 @@ const COMPETITION_SCRIM = scrim.modal;
 /** #4420: the kit sheet radius (3xl 34) and the 36×5 handle. */
 export const SHEET_RADIUS = radiusTokens.xxxl;
 const HANDLE_HEIGHT = size.handle.height;
-const HANDLE_PAD_TOP = spacing.sm + 2;
-const HANDLE_PAD_BOTTOM = spacing.sm + 1;
+const HANDLE_PAD_TOP = space[2] + 2;
+const HANDLE_PAD_BOTTOM = space[2] + 1;
 /**
  * The handle chrome's exact height: `handleWrap` paddingTop 10 + the 5pt
  * handle bar + paddingBottom 9 = 24pt (#4420 grew the bar from 4 to 5 and

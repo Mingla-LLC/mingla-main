@@ -1,10 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import {
-  color,
-  radius,
-  websiteRailActive,
-} from "../../../constants/designSystem";
+import { color, radius } from "../../../constants/designSystem";
 import { setupStepChip, setupStepMark, type SetupStep } from "../../../sites/setupStatus";
 import { CheckCircle, ui } from "../website/ui";
 import type { PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
@@ -62,7 +58,7 @@ const markStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   row: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 8, borderRadius: radius.sm, marginBottom: 2 },
-  rowOn: { backgroundColor: websiteRailActive },
+  rowOn: { backgroundColor: color.fill.railOn },
   label: { flex: 1, fontSize: 13, lineHeight: 18, color: ui.t2 },
   labelOn: { color: ui.t1, fontWeight: "600" },
   meta: { fontSize: 12, color: color.warningText },

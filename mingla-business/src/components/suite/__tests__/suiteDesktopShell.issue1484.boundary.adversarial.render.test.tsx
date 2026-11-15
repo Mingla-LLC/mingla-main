@@ -378,11 +378,11 @@ jest.mock("../../../hooks/useMyVenueAccess", () => ({
 import { StyleSheet, Text as RNText } from "react-native";
 
 import {
-  spacing,
   stayInventoryMaxWidth,
   stayPageMaxWidth,
   suiteFormMaxWidth,
   venueRailWidth,
+  space,
 } from "../../../constants/designSystem";
 import { WIDE_DESKTOP_MIN_WIDTH } from "../../../hooks/useResponsiveLayout";
 import { StaySuiteShell } from "../../stay/StaySuiteShell";
@@ -711,7 +711,7 @@ describe("#1484 A — the real 1024 boundary, unmeasured viewports and native", 
     expect(flat.alignSelf).toBe("flex-start");
     expect(flat.width).toBe("100%");
     expect(flat.flexDirection).toBe("row");
-    expect(flat.paddingHorizontal).toBe(spacing.md);
+    expect(flat.paddingHorizontal).toBe(space[4]);
 
     // The rail does NOT scale with the monitor; the workspace absorbs it.
     const host = hostWithTestId(r, "stay-suite-shell-desktop");

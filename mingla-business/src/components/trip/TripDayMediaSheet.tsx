@@ -35,7 +35,6 @@ import * as Haptics from "expo-haptics";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  coverUpload,
   radius,
   color,
   space,
@@ -1393,7 +1392,7 @@ const styles = StyleSheet.create({
   },
   dayTileScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: coverUpload.scrim,
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
     gap: space[1],

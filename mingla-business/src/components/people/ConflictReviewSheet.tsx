@@ -33,15 +33,13 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  androidOpaque,
   durations,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  color,
+  materials,
+  space,
+  type,
+  edge,
 } from "../../constants/designSystem";
 import { PeopleServiceError } from "../../services/peopleService";
 import type {
@@ -134,7 +132,7 @@ function OutcomeControl(
       ]}
     >
       <View style={s.controlContent}>
-        {props.loading ? <Spinner size={24} color={text.primary} /> : null}
+        {props.loading ? <Spinner size={24} color={color.text1} /> : null}
         <Text style={[s.controlLabel, props.loading ? s.controlLabelDim : null]} numberOfLines={1}>
           {props.label}
         </Text>
@@ -230,24 +228,24 @@ function matchedLabel(matchedOn: readonly string[]): string {
 // all (nesting one inside the Sheet's BlurView double-blurs and muddies text).
 
 const cardSurface = Platform.select({
-  android: { backgroundColor: androidOpaque.rowFill, borderColor: androidOpaque.rowBorder },
-  default: { backgroundColor: glass.tint.profileBase, borderColor: glass.border.profileBase },
+  android: { backgroundColor: materials.pane.solidFill, borderColor: color.card2 },
+  default: { backgroundColor: color.fill.inset, borderColor: color.line },
 });
 const warningFill = Platform.select({
-  android: { backgroundColor: androidOpaque.warningFill },
-  default: { backgroundColor: semantic.warningTint },
+  android: { backgroundColor: color.solidTint.warning },
+  default: { backgroundColor: color.warningTint },
 });
 const successFill = Platform.select({
-  android: { backgroundColor: androidOpaque.successFill },
-  default: { backgroundColor: semantic.successTint },
+  android: { backgroundColor: color.solidTint.success },
+  default: { backgroundColor: color.successTint },
 });
 const neutralFill = Platform.select({
-  android: { backgroundColor: androidOpaque.rowBorder },
-  default: { backgroundColor: glass.tint.profileElevated },
+  android: { backgroundColor: color.card2 },
+  default: { backgroundColor: color.fill.tile },
 });
 const selectedFill = Platform.select({
-  android: { backgroundColor: androidOpaque.accentFill },
-  default: { backgroundColor: accent.tint },
+  android: { backgroundColor: materials.selected.solidFill },
+  default: { backgroundColor: color.accentLine },
 });
 
 /* --------------------------------------------------------------- pieces --- */
@@ -264,7 +262,7 @@ function ContactLine({ value, matched }: { value: string; matched: boolean }): R
       <Text style={[s.contactValue, matched ? s.contactMatched : s.contactOther]}>{value}</Text>
       {matched ? (
         <View style={s.matchedMarker}>
-          <Icon name="link" size={12} color={semantic.warning} />
+          <Icon name="link" size={12} color={color.warning} />
           <Text style={s.matchedMarkerText}>matched</Text>
         </View>
       ) : null}
@@ -310,7 +308,7 @@ function RecordBlock({
     <View accessible accessibilityRole="text" accessibilityLabel={accessibilityLabel} style={s.record}>
       <View style={s.eyebrowRow}>
         <View style={s.eyebrowLeft}>
-          <Icon name={glyph} size={16} color={text.tertiary} />
+          <Icon name={glyph} size={16} color={color.text3} />
           <Text style={s.eyebrow}>{eyebrow}</Text>
         </View>
         {age !== null ? <Text style={s.age}>{age}</Text> : null}
@@ -364,7 +362,7 @@ function CandidateRow({
             OptionCard's already-audited rule, reused verbatim. */}
         {selected ? (
           <View style={s.checkSlot}>
-            <Icon name="check" size={14} color={accent.warm} />
+            <Icon name="check" size={14} color={color.accent} />
           </View>
         ) : null}
       </View>
@@ -455,7 +453,7 @@ function ConflictCard({
       return (
         <View accessible accessibilityRole="text" accessibilityLiveRegion="polite" style={[s.band, successFill]}>
           <View style={s.bandRow}>
-            <Icon name="check" size={16} color={semantic.success} />
+            <Icon name="check" size={16} color={color.success} />
             <Text style={s.receiptText}>{receipt}</Text>
           </View>
         </View>
@@ -467,7 +465,7 @@ function ConflictCard({
       return (
         <View accessible accessibilityRole="text" style={[s.band, neutralFill]}>
           <View style={s.bandRow}>
-            <Icon name="inbox" size={16} color={text.secondary} />
+            <Icon name="inbox" size={16} color={color.text2} />
             <Text style={s.bandLabelNeutral}>NOTHING MATCHED</Text>
           </View>
           <Text style={s.bandSub}>No existing record shares this email or phone.</Text>
@@ -480,7 +478,7 @@ function ConflictCard({
       return (
         <View accessible accessibilityRole="text" style={[s.band, neutralFill]}>
           <View style={s.bandRow}>
-            <Icon name="link" size={16} color={text.tertiary} />
+            <Icon name="link" size={16} color={color.text3} />
             <Text style={s.bandLabelNeutral}>THE SHARED DETAIL IS GONE</Text>
           </View>
           <Text style={s.bandSub}>The email or phone that matched has since been removed.</Text>
@@ -495,7 +493,7 @@ function ConflictCard({
         style={[s.band, s.bandWarn, warningFill]}
       >
         <View style={s.bandRow}>
-          <Icon name="link" size={16} color={semantic.warning} />
+          <Icon name="link" size={16} color={color.warning} />
           <Text style={s.bandLabel}>{bandLabel}</Text>
         </View>
         {/* Both channels matched => both values stack. Materially stronger
@@ -561,7 +559,7 @@ function ConflictCard({
               <Icon
                 name={conflict.dismissibleReason === "source_row_absent" ? "receipt" : "user"}
                 size={16}
-                color={text.tertiary}
+                color={color.text3}
               />
               <Text style={s.eyebrow}>
                 {conflict.dismissibleReason === "source_row_absent" ? "NO LONGER HERE" : "ADDED BY HAND"}
@@ -632,7 +630,7 @@ function ConflictCard({
           without saying so obtains uninformed consent. */}
       {nWay && showOutcomes ? (
         <View style={s.consequence}>
-          <Icon name="shield" size={16} color={semantic.warning} />
+          <Icon name="shield" size={16} color={color.warning} />
           <Text style={s.consequenceText}>
             {`Choosing one merges all ${candidateCount} records into it. This can't be undone here.`}
           </Text>
@@ -645,7 +643,7 @@ function ConflictCard({
           you most need to be able to read. */}
       {state.phase === "error" ? (
         <View accessibilityLiveRegion="assertive" style={s.cardError}>
-          <Icon name="x" size={16} color={semantic.error} />
+          <Icon name="x" size={16} color={color.danger} />
           <Text style={s.cardErrorText}>{errorCopy(state.error)}</Text>
         </View>
       ) : null}
@@ -897,7 +895,7 @@ export function ConflictReviewSheet({
       // is the kind of small dishonesty that makes a product feel fake.
       return resolvedThisSession > 0 ? (
         <View style={s.earned}>
-          <Icon name="check" size={48} color={semantic.success} />
+          <Icon name="check" size={48} color={color.success} />
           <EmptyState title="Everyone’s in the book." description="Nothing left to review." />
         </View>
       ) : (
@@ -1010,122 +1008,122 @@ export function ConflictReviewSheet({
 }
 
 const s = StyleSheet.create({
-  body: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.xs },
-  title: { ...typography.h3, color: text.primary },
-  subtitle: { ...typography.bodySm, color: text.secondary },
-  count: { ...typography.caption, color: text.tertiary },
-  list: { gap: spacing.lg, paddingTop: spacing.md },
-  status: { ...typography.bodySm, color: text.tertiary },
+  body: { flexGrow: 1, paddingHorizontal: space[4], paddingBottom: space[6], gap: space[1] },
+  title: { ...type.h1, color: color.text1 },
+  subtitle: { ...type.small, color: color.text2 },
+  count: { ...type.caption, color: color.text3 },
+  list: { gap: space[6], paddingTop: space[4] },
+  status: { ...type.small, color: color.text3 },
   staleBand: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderRadius: radius.md,
-    padding: spacing.sm,
+    padding: space[2],
   },
-  staleText: { ...typography.bodySm, color: text.secondary },
-  earned: { alignItems: "center", gap: spacing.sm, paddingTop: spacing.xl },
+  staleText: { ...type.small, color: color.text2 },
+  earned: { alignItems: "center", gap: space[2], paddingTop: space[7] },
 
   card: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
   },
-  skeletonCard: { padding: spacing.md, gap: spacing.sm },
+  skeletonCard: { padding: space[4], gap: space[2] },
 
   band: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + spacing.xs,
-    gap: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2] + space[1],
+    gap: space[1],
   },
   bandWarn: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(245, 158, 11, 0.45)",
   },
-  bandRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs + 2 },
-  bandLabel: { ...typography.labelCap, color: semantic.warning, flexShrink: 1 },
-  bandLabelNeutral: { ...typography.labelCap, color: text.secondary, flexShrink: 1 },
-  bandValue: { ...typography.monoMd, color: text.primary },
-  bandSub: { ...typography.bodySm, color: text.secondary },
-  receiptText: { ...typography.bodySm, color: text.primary, flexShrink: 1 },
+  bandRow: { flexDirection: "row", alignItems: "center", gap: space[1] + 2 },
+  bandLabel: { ...type.label, color: color.warning, flexShrink: 1 },
+  bandLabelNeutral: { ...type.label, color: color.text2, flexShrink: 1 },
+  bandValue: { ...type.mono, color: color.text1 },
+  bandSub: { ...type.small, color: color.text2 },
+  receiptText: { ...type.small, color: color.text1, flexShrink: 1 },
 
   record: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[2],
+    gap: space[1],
   },
-  eyebrowRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
-  eyebrowLeft: { flexDirection: "row", alignItems: "center", gap: spacing.xs, flexShrink: 1 },
-  eyebrow: { ...typography.labelCap, color: text.tertiary, flexShrink: 1 },
-  age: { ...typography.caption, color: text.tertiary },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  name: { ...typography.bodyLg, fontWeight: "700", color: text.primary, flexShrink: 1, minWidth: 0 },
+  eyebrowRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space[2] },
+  eyebrowLeft: { flexDirection: "row", alignItems: "center", gap: space[1], flexShrink: 1 },
+  eyebrow: { ...type.label, color: color.text3, flexShrink: 1 },
+  age: { ...type.caption, color: color.text3 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  name: { ...type.row, fontWeight: "700", color: color.text1, flexShrink: 1, minWidth: 0 },
   checkSlot: { marginLeft: "auto" },
 
-  contactRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, minHeight: 24 },
-  contactValue: { ...typography.monoMd, flexShrink: 1, minWidth: 0 },
-  contactMatched: { color: text.primary },
-  contactOther: { color: text.secondary },
-  matchedMarker: { flexDirection: "row", alignItems: "center", gap: spacing.xxs },
-  matchedMarkerText: { ...typography.micro, color: semantic.warning },
-  absence: { ...typography.bodySm, fontStyle: "italic", color: text.tertiary },
+  contactRow: { flexDirection: "row", alignItems: "flex-start", gap: space[2], minHeight: 24 },
+  contactValue: { ...type.mono, flexShrink: 1, minWidth: 0 },
+  contactMatched: { color: color.text1 },
+  contactOther: { color: color.text2 },
+  matchedMarker: { flexDirection: "row", alignItems: "center", gap: 2 },
+  matchedMarkerText: { ...type.label, color: color.warning },
+  absence: { ...type.small, fontStyle: "italic", color: color.text3 },
 
   seam: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  seamRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: glass.border.profileElevated },
-  seamLabel: { ...typography.labelCap, color: text.secondary },
+  seamRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: color.lineStrong },
+  seamLabel: { ...type.label, color: color.text2 },
 
-  candidateList: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, gap: spacing.sm },
+  candidateList: { paddingHorizontal: space[4], paddingBottom: space[2], gap: space[2] },
   candidateBase: {
     minHeight: 64,
     borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[1],
   },
   candidateIdle: {
     minHeight: 64,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[1],
   },
-  candidateIdleBorder: { borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileElevated },
-  candidateSelected: { borderWidth: 1.5, borderColor: accent.warm },
+  candidateIdleBorder: { borderWidth: StyleSheet.hairlineWidth, borderColor: color.lineStrong },
+  candidateSelected: { borderWidth: 1.5, borderColor: color.accent },
 
   consequence: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
-  consequenceText: { ...typography.bodySm, color: text.primary, flexShrink: 1 },
+  consequenceText: { ...type.small, color: color.text1, flexShrink: 1 },
 
   cardError: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
-  cardErrorText: { ...typography.bodySm, color: text.primary, flexShrink: 1 },
+  cardErrorText: { ...type.small, color: color.text1, flexShrink: 1 },
 
   outcomes: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
-    gap: spacing.sm,
+    borderTopColor: color.line,
+    gap: space[2],
   },
-  outcomeHint: { ...typography.bodySm, color: text.secondary },
+  outcomeHint: { ...type.small, color: color.text2 },
 
   control: {
     minHeight: 44,
@@ -1135,32 +1133,32 @@ const s = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     // 3.09:1 on the card — the LOWEST white alpha that clears SC 1.4.11.
-    borderColor: glass.border.control,
-    paddingHorizontal: spacing.md,
+    borderColor: edge.ringInputFocus.borderColor,
+    paddingHorizontal: space[4],
   },
   controlDisabled: { opacity: 0.45 },
-  controlContent: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  controlLabel: { ...typography.buttonMd, color: text.primary },
+  controlContent: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  controlLabel: { ...type.btnSm, color: color.text1 },
   controlLabelDim: { opacity: 0.7 },
   pressed: { opacity: 0.78 },
-  focusRing: { outlineWidth: 2, outlineColor: accent.warm, outlineOffset: 2 },
+  focusRing: { outlineWidth: 2, outlineColor: color.accent, outlineOffset: 2 },
 
   strip: {
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + spacing.xs,
-    marginBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2] + space[1],
+    marginBottom: space[2],
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(245, 158, 11, 0.45)",
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  stripCopy: { flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 0, gap: spacing.xxs },
+  stripCopy: { flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 0, gap: 2 },
   stripCopyStacked: { flexBasis: "100%" },
-  stripLine1: { ...typography.bodySm, fontWeight: "600", color: text.primary },
-  stripLine2: { ...typography.caption, color: text.secondary },
+  stripLine1: { ...type.small, fontWeight: "600", color: color.text1 },
+  stripLine2: { ...type.caption, color: color.text2 },
   stripAction: { flexShrink: 0 },
   stripActionStacked: { flexBasis: "100%", alignSelf: "stretch" },
 });
@@ -1221,7 +1219,7 @@ export function ConflictReviewStrip({
       testID="people-conflict-strip"
       style={[s.strip, warningFill]}
     >
-      <Icon name="inbox" size={20} color={semantic.warning} />
+      <Icon name="inbox" size={20} color={color.warning} />
       <View style={[s.stripCopy, stacked ? s.stripCopyStacked : null]}>
         <Text numberOfLines={2} style={s.stripLine1}>
           {openCount === 1

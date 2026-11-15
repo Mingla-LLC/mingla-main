@@ -29,7 +29,6 @@ import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-nati
 
 import {
   radius as radiusTokens,
-  semantic,
   color,
   space,
   type,
@@ -816,9 +815,5 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
-
-// Reference the imported semantic token to keep tree-shaking honest in case
-// of future styling additions.
-void semantic;
 
 export default TripCreatorStep4Pricing;

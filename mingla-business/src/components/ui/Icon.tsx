@@ -12,7 +12,7 @@ import React from "react";
 import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { text as textTokens } from "../../constants/designSystem";
+import { color as dsColor } from "../../constants/designSystem";
 
 export type IconName =
   | "home"
@@ -473,7 +473,7 @@ export const Icon: React.FC<IconProps> = ({
   testID,
   style,
 }) => {
-  const resolvedColor = color ?? textTokens.primary;
+  const resolvedColor = color ?? dsColor.text1;
   const renderer = RENDERERS[name];
 
   if (!renderer && __DEV__) {

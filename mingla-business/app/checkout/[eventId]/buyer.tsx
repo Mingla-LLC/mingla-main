@@ -64,14 +64,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, color } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import {
@@ -915,7 +908,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             pressed && styles.summaryPressed,
           ]}
         >
-          <GlassCard variant="base" radius="lg" padding={spacing.md}>
+          <GlassCard variant="base" radius="lg" padding={space[4]}>
             <View style={styles.summaryHeader}>
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
@@ -1060,7 +1053,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             ]}
           >
             {termsAccepted ? (
-              <Icon name="check" size={14} color={textTokens.primary} />
+              <Icon name="check" size={14} color={color.text1} />
             ) : null}
           </View>
           <Text style={styles.checkboxLabel}>
@@ -1136,7 +1129,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
       <View
         style={[
           styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
+          { paddingBottom: insets.bottom + space[4] },
           keyboardVisible ? styles.bottomBarHidden : null,
         ]}
       >
@@ -1193,12 +1186,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
   },
   // Order summary recap
   summaryWrap: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   summaryPressed: {
     opacity: 0.7,
@@ -1207,44 +1200,44 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   summaryHeaderText: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.4,
   },
   summaryEditText: {
     fontSize: 12,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   summaryLine: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 4,
-    gap: spacing.sm,
+    gap: space[2],
   },
   summaryLineQty: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
     minWidth: 28,
   },
   summaryLineName: {
     flex: 1,
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   summaryLineTotal: {
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   summaryDivider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
@@ -1255,12 +1248,12 @@ const styles = StyleSheet.create({
   },
   summaryTotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   summaryTotalValue: {
     fontSize: 17,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
@@ -1268,26 +1261,26 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.4,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   // Field wrappers
   fieldWrap: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   buyerContext: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   promise: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    marginTop: space[1],
+    marginBottom: space[2],
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   // ORCH-0847 Phase B — labeled field header with required asterisk.
   fieldLabelRow: {
@@ -1299,26 +1292,26 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 13,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   required: {
     fontSize: 13,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.danger,
   },
   errorText: {
     marginTop: 6,
     fontSize: 12,
-    color: semantic.error,
+    color: color.danger,
     fontWeight: "500",
   },
   // Checkbox row
   checkboxRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    paddingVertical: space[2],
+    gap: space[2],
+    marginTop: space[1],
   },
   checkboxRowPressed: {
     opacity: 0.7,
@@ -1328,25 +1321,25 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: radiusTokens.sm,
     borderWidth: 1.5,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxBoxChecked: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
   checkboxLabel: {
     flex: 1,
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
   // META-ORCH-1161 Sub-A.2 — underlined "terms and conditions" link on the dark
   // checkout canvas (warm-orange + underline = two non-color affordances).
   checkboxLinkUnderlined: {
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "600",
     textDecorationLine: "underline",
   },
@@ -1354,17 +1347,17 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     lineHeight: 18,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   // Red flash on the box when the buyer taps a disabled Pay with the box
   // unchecked (DESIGN §S3.4 — never a silent dead tap).
   checkboxBoxFlash: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   consentRequiredHint: {
     marginTop: 6,
     fontSize: 12,
-    color: semantic.error,
+    color: color.danger,
     fontWeight: "500",
   },
   // Sticky bottom bar
@@ -1373,8 +1366,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
     backgroundColor: "rgba(12, 14, 18, 0.94)",
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.06)",
@@ -1390,16 +1383,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   totalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   totalValue: {
     fontSize: 20,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },

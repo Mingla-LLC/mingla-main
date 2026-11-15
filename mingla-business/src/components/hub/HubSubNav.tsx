@@ -22,14 +22,7 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { space, color, type } from "../../constants/designSystem";
 
 export type HubSubTabId = "events" | "experiences" | "trips" | "venue";
 export type HubDataDrivenTabId = HubSubTabId;
@@ -194,46 +187,46 @@ export const HubSubNav: React.FC<HubSubNavProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   content: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   pill: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingVertical: space[2],
     borderRadius: 999, // pill radius
     borderWidth: StyleSheet.hairlineWidth,
   },
   pillActive: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
   pillInactive: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   pillLabel: {
-    fontSize: typography.bodySm?.fontSize ?? typography.body.fontSize,
-    lineHeight: typography.bodySm?.lineHeight ?? typography.body.lineHeight,
+    fontSize: type.small?.fontSize ?? type.body.fontSize,
+    lineHeight: type.small?.lineHeight ?? type.body.lineHeight,
     fontWeight: "600",
   },
   pillLabelActive: {
     color: "#0c0e12",
   },
   pillLabelInactive: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   shimmerPill: {
     width: 116,
     height: 38,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
 });
 

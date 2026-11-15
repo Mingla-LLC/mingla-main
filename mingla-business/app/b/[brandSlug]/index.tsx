@@ -12,10 +12,7 @@ import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import {
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { space, color } from "../../../src/constants/designSystem";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
 // ISSUE-865 WP-C — ad click-id capture + PageView/ViewContent pixels (web-only).
 import {
@@ -182,17 +179,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.lg,
+    padding: space[6],
     backgroundColor: "#0c0e12",
   },
   stateTitle: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   stateText: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     textAlign: "center",
   },

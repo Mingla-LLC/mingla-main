@@ -13,12 +13,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, color, space } from "../../constants/designSystem";
 import type { EventEditEntry } from "../../store/eventEditLogStore";
 
 import { Icon } from "../ui/Icon";
@@ -48,7 +43,7 @@ export const MaterialChangeBanner: React.FC<MaterialChangeBannerProps> = ({
   return (
     <View style={styles.host}>
       <View style={styles.iconBadge}>
-        <Icon name="flag" size={18} color={accent.warm} />
+        <Icon name="flag" size={18} color={color.accent} />
       </View>
       <View style={styles.body}>
         <Text style={styles.heading}>{heading}</Text>
@@ -76,14 +71,14 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm + 4,
-    padding: spacing.md,
+    gap: space[2] + 4,
+    padding: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
-    marginBottom: spacing.md,
+    borderColor: color.accentLine,
+    marginBottom: space[4],
   },
   iconBadge: {
     width: 32,
@@ -103,31 +98,31 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   copy: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   reasonLine: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
     fontStyle: "italic",
   },
   reasonText: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   btn: {
     alignSelf: "flex-start",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 8,
     borderRadius: radiusTokens.full,
     backgroundColor: "rgba(235, 120, 37, 0.22)",
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     marginTop: 6,
   },
   btnPressed: {
@@ -136,7 +131,7 @@ const styles = StyleSheet.create({
   btnLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
 });
 

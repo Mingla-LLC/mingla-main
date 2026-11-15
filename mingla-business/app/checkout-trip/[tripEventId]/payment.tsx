@@ -49,12 +49,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import {
-  accent,
-  color,
-  space,
-  materials,
-} from "../../../src/constants/designSystem";
+import { color, space, materials } from "../../../src/constants/designSystem";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";

@@ -59,7 +59,6 @@ import {
   shadow as shadowTokens,
   size,
   space,
-  spacing,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useEscapeLayer } from "./escapeLayerStack";
@@ -446,7 +445,7 @@ const styles = StyleSheet.create({
     paddingTop: SHEET_TOP_INSET,
   },
   cardBodyBreathing: {
-    paddingBottom: spacing.lg,
+    paddingBottom: space[6],
   },
 });
 

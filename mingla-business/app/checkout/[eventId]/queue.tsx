@@ -17,12 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../src/constants/designSystem";
+import { space, color, type } from "../../../src/constants/designSystem";
 import {
   useCart,
   useCartQuoteTotals,
@@ -255,7 +250,7 @@ export default function CheckoutQueueScreen(): React.ReactElement {
     <View
       style={[
         styles.root,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom },
+        { paddingTop: insets.top + space[6], paddingBottom: insets.bottom },
       ]}
     >
       <Text style={styles.eyebrow}>Waiting room</Text>
@@ -285,7 +280,7 @@ export default function CheckoutQueueScreen(): React.ReactElement {
             </Text>
           ) : null}
           <View style={styles.spinnerRow}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.accent} />
             <Text style={styles.spinnerLabel}>Checking your place…</Text>
           </View>
         </>
@@ -298,39 +293,39 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "#0c0e12",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: space[6],
+    gap: space[4],
   },
   eyebrow: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
     textTransform: "uppercase",
   },
   title: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
   },
   promise: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   warn: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
   },
   spinnerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: space[2],
+    marginTop: space[6],
   },
   spinnerLabel: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
 });

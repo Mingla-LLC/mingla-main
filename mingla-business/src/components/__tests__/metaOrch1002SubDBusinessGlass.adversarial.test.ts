@@ -161,7 +161,7 @@ describe("Sub-D adversarial — diff harness sanity", () => {
 // KNOWN_SHADOW_CLIP_OFFENDERS allowlist pattern for Part D.)
 const KNOWN_REDESIGNED_FILLS: ReadonlySet<string> = new Set<string>([
   // The ari chat thread redesign gave the composer a cohesive OPAQUE dark
-  // surface (glass.tint.profileBase → ariThread.composerSurface "#191c21");
+  // surface (glass.tint.profileBase → the opaque Graphite solid);
   // Sub-D only added the clip, a later ari restyle changed the fill.
   "mingla-business/src/components/ari/InputBar.tsx:host",
 ]);
@@ -201,9 +201,11 @@ describe("Sub-D adversarial A — no clipped surface was flattened to opaque", (
       // one token file (spec §2, §4): a block whose fill now reads a Graphite
       // token (`color.*`, `materials.*`, `scrim.*`) is a deliberate #4420
       // re-pick, not a Sub-D flatten. Android opacity is owned by Material and
-      // the materials' solid fills (issue_4420_material.test.tsx). Blocks still
+      // the materials' solid fills (issue_4420_material.test.tsx). Wave 6:
+      // `dsColor` is `color` imported under another name where a file has its
+      // own `color` binding (theme editor). Blocks still
       // on the pre-Graphite names keep the exact no-flatten check.
-      const graphiteRepick = bgH !== undefined && /^(?:Platform\.OS[^?]*\?\s*)?(?:color|colorTokens|materials|scrim)\b/.test(bgH.trim());
+      const graphiteRepick = bgH !== undefined && /^(?:Platform\.OS[^?]*\?\s*)?(?:color|colorTokens|dsColor|materials|scrim)\b/.test(bgH.trim());
       if (bgH && bgB && !graphiteRepick && bgH.trim() !== bgB.trim()) {
         flattened.push({
           file,

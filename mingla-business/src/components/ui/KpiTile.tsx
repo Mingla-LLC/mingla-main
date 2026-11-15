@@ -16,8 +16,8 @@ import type { StyleProp, ViewStyle } from "react-native";
 import {
   color,
   radius,
-  spacing,
-  typography,
+  type,
+  space,
 } from "../../constants/designSystem";
 
 import { GlassCard } from "./GlassCard";
@@ -88,43 +88,43 @@ export const KpiTile: React.FC<KpiTileProps> = ({
 
 const styles = StyleSheet.create({
   stack: {
-    gap: spacing.xxs,
+    gap: 2,
   },
   label: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
     color: color.text3,
   },
   value: {
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
-    fontWeight: typography.statValue.fontWeight,
-    letterSpacing: typography.statValue.letterSpacing,
+    fontSize: type.stat.fontSize,
+    lineHeight: type.stat.lineHeight,
+    fontWeight: type.stat.fontWeight,
+    letterSpacing: type.stat.letterSpacing,
     color: color.text1,
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   valueSkeleton: {
     width: 72,
     height: 24,
     borderRadius: radius.md,
     backgroundColor: color.fill.tile,
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   delta: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    marginTop: space[1],
   },
   sub: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    fontWeight: type.small.fontWeight,
     color: color.text2,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
 });
 

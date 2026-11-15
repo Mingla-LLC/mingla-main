@@ -75,7 +75,7 @@ import {
   scrim,
   shadow as shadowTokens,
   size,
-  spacing,
+  space,
 } from "../../constants/designSystem";
 
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
@@ -145,7 +145,7 @@ const SCRIM_COLOR = scrim.modal;
 const UNMOUNT_DELAY_MS = 280;
 const PANEL_HEIGHT_RATIO = 0.7;
 const TOPBAR_OFFSET = 76; // insets.top + this = anchor (topbar bottom + small gap)
-const PANEL_HORIZONTAL_INSET = spacing.md; // matches topbar's barWrap padding
+const PANEL_HORIZONTAL_INSET = space[4]; // matches topbar's barWrap padding
 const CLOSE_THRESHOLD_PX = 80;
 const CLOSE_VELOCITY = 600;
 
@@ -198,7 +198,7 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
   // bottom with zero scrim. Clamp the panel to the viewport minus a spacing.xl
   // breathing floor, and (below) scroll the content ONLY when clamped.
   // `fixed-70` behavior untouched.
-  const compactMaxHeight = Math.max(0, screenHeight - panelTop - spacing.xl);
+  const compactMaxHeight = Math.max(0, screenHeight - panelTop - space[7]);
   const compactClamped =
     heightMode === "compact" &&
     measuredCompactHeight !== null &&
@@ -618,7 +618,7 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
   const panelTop = insets.top + TOPBAR_OFFSET;
   // META-ORCH-1255 (DESIGN §2.2) — compact viewport clamp, mirroring the
   // native variant (short phone-web visual viewports were the worst case).
-  const compactMaxHeight = Math.max(0, screenHeight - panelTop - spacing.xl);
+  const compactMaxHeight = Math.max(0, screenHeight - panelTop - space[7]);
   const compactClamped =
     heightMode === "compact" &&
     measuredCompactHeight !== null &&

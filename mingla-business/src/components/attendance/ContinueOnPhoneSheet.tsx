@@ -27,12 +27,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "../ui/Button";
 import { GateQr } from "../event/GateQr";
-import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import {
   mintAttendanceClaimHandoff,
 } from "../../services/attendanceClaimHandoffService";
@@ -272,14 +267,14 @@ export const ContinueOnPhoneSheet: React.FC<ContinueOnPhoneSheetProps> = ({
 const styles = StyleSheet.create({
   sheet: { width: "100%", alignItems: "center", gap: 12 },
   title: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 20,
     lineHeight: 26,
     fontWeight: "700",
     textAlign: "center",
   },
   body: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
@@ -288,7 +283,7 @@ const styles = StyleSheet.create({
   // requirement, not a style choice.
   qrCard: {
     backgroundColor: "#FFFFFF",
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -306,18 +301,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 10,
     borderWidth: 2,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     borderRadius: 8,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   badgeText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "700",
   },
   footnote: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 13,
     lineHeight: 19,
     textAlign: "center",

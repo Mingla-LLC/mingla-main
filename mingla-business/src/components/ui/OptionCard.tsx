@@ -48,8 +48,8 @@ import {
   optionCardMinHeight,
   optionCardMinWidth,
   radius,
-  spacing,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 import { Icon } from "./Icon";
@@ -165,11 +165,11 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     minWidth: optionCardMinWidth,
     minHeight: optionCardMinHeight,
-    gap: spacing.xxs,
+    gap: 2,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
   },
   cardIdle: IDLE_SURFACE,
   cardSelected: {
@@ -182,18 +182,18 @@ const styles = StyleSheet.create({
   headRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   // NOT accent-coloured when selected: contrast beats decoration.
   label: {
-    ...typography.bodySm,
+    ...type.small,
     color: color.text1,
     fontWeight: "700",
     flexShrink: 1,
   },
   checkWrap: { marginLeft: "auto" },
-  helper: { ...typography.caption, color: color.text2 },
-  example: { ...typography.caption, color: color.text3 },
+  helper: { ...type.caption, color: color.text2 },
+  example: { ...type.caption, color: color.text3 },
 });
 
 export default OptionCard;

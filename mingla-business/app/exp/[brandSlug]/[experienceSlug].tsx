@@ -41,11 +41,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../src/constants/designSystem";
+import { space, type, color } from "../../../src/constants/designSystem";
 import {
   boldFontFamily,
   createThemePalette,
@@ -383,7 +379,7 @@ function PublicExperienceRouteBody(): React.ReactElement {
       shareModalVisible={shareModalVisible}
       onCloseShareModal={() => setShareModalVisible(false)}
       safeAreaTop={insets.top}
-      contentBottomInset={spacing.md}
+      contentBottomInset={space[4]}
       router={router}
     />
   );
@@ -1155,21 +1151,21 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
+    padding: space[7],
+    gap: space[4],
     backgroundColor: "#0c0e12",
   },
   stateTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
   stateText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   banner: {

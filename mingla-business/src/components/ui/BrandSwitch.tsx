@@ -35,10 +35,7 @@ import React from "react";
 import { Switch } from "react-native";
 import type { SwitchProps } from "react-native";
 
-import {
-  accent,
-  color,
-} from "../../constants/designSystem";
+import { color } from "../../constants/designSystem";
 
 /** Neutral OFF-state track (translucent on dark glass). */
 const OFF_TRACK = color.fill.step;
@@ -57,11 +54,11 @@ export type BrandSwitchProps = SwitchProps;
 export function BrandSwitch(props: BrandSwitchProps): React.ReactElement {
   const webExtras: WebSwitchExtras = {
     activeThumbColor: THUMB,
-    activeTrackColor: accent.warm,
+    activeTrackColor: color.accent,
   };
   return (
     <Switch
-      trackColor={{ false: OFF_TRACK, true: accent.warm }}
+      trackColor={{ false: OFF_TRACK, true: color.accent }}
       thumbColor={THUMB}
       ios_backgroundColor={OFF_TRACK}
       {...webExtras}

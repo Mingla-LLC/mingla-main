@@ -22,7 +22,7 @@ import {
   type KeyboardToolbarProps,
 } from "react-native-keyboard-controller";
 
-import { accent, colors } from "../constants/designSystem";
+import { color } from "../constants/designSystem";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { useKeyboardIsVisible } from "./useKeyboardIsVisible";
 
@@ -39,13 +39,13 @@ type KeyboardToolbarTheme = NonNullable<KeyboardToolbarProps["theme"]>;
 // both guards against an appearance flip.
 export const MINGLA_KEYBOARD_TOOLBAR_THEME: KeyboardToolbarTheme = {
   light: {
-    primary: colors.primary[700], // AA on the light toolbar background
+    primary: color.accent, // AA on the light toolbar background
     disabled: "#B0BEC5",
     background: "#f3f3f4",
     ripple: "#bcbcbcbc",
   },
   dark: {
-    primary: accent.warm, // #eb7825 — Done text, brand action color
+    primary: color.accent, // #eb7825 — Done text, brand action color
     disabled: "#707070",
     background: "#2C2C2E",
     ripple: "#F8F8F888",

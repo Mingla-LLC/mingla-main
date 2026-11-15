@@ -23,12 +23,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import {
-  accent,
-  spacing,
-  text as textTokens,
-  radius as radiusTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, space, color } from "../../constants/designSystem";
 import { buildQrPayload } from "../../utils/stubOrderId";
 
 export interface CarouselTicket {
@@ -222,8 +217,8 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     width: "100%",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingVertical: space[2],
+    gap: space[2],
     minHeight: HOST_MIN_HEIGHT,
   },
   scrollWeb: {
@@ -233,29 +228,29 @@ const styles = StyleSheet.create({
   },
   singleWrap: {
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingVertical: space[2],
+    gap: space[2],
   },
   page: {
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
     minHeight: PAGE_MIN_HEIGHT,
   },
   qrInner: {
-    padding: spacing.sm,
+    padding: space[2],
     backgroundColor: "#ffffff",
     borderRadius: radiusTokens.md,
   },
   caption: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "500",
   },
   label: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "500",
     textAlign: "center",
     maxWidth: 280,
@@ -272,11 +267,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.18)",
   },
   dotActive: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   swipeHint: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
   },
 });

@@ -16,7 +16,6 @@ import {
   radius,
   optionCardMinHeight,
   optionCardMinWidth,
-  spacing,
   stayEditorFormMaxWidth,
   stayEditorSummaryMinWidth,
   stayEditorSummaryWidth,

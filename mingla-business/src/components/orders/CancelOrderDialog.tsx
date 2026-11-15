@@ -25,13 +25,10 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 // ORCH-0787: replaced useOrderStore.cancelOrder (Zustand stub) with the real
 // cancel-order edge function via useCancelOrder mutation. Event-edit-log + parent
@@ -129,7 +126,7 @@ export const CancelOrderDialog: React.FC<CancelOrderDialogProps> = ({
               value={reason}
               onChangeText={setReason}
               placeholder="e.g. Buyer no longer attending; admin cleanup"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               multiline
               numberOfLines={3}
               maxLength={REASON_MAX}
@@ -191,47 +188,47 @@ export const CancelOrderDialog: React.FC<CancelOrderDialogProps> = ({
 
 const styles = StyleSheet.create({
   body: {
-    gap: spacing.md,
+    gap: space[4],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   description: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   reasonSection: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   reasonLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   required: {
-    color: accent.warm,
+    color: color.accent,
   },
   reasonInputWrap: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     minHeight: 80,
   },
   reasonInputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   reasonInput: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text1,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     minHeight: 60,
     textAlignVertical: "top",
     ...(Platform.OS === "web"
@@ -246,31 +243,31 @@ const styles = StyleSheet.create({
   },
   reasonHelper: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   reasonHelperOk: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   reasonCount: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   actionFlex: {
     flex: 1,
   },
   errorCaption: {
     fontSize: 13,
-    color: semantic.error,
+    color: color.danger,
     textAlign: "center",
     lineHeight: 18,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
 });
 

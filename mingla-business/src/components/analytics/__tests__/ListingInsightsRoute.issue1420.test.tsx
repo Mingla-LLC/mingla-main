@@ -4,7 +4,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { canvas } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import { SafeScreen } from "../../ui/SafeScreen";
 import { ListingInsightsScreen } from "../ListingInsightsScreen";
 import ListingInsightsRoute from "../../../../app/insights/[id]";
@@ -114,7 +114,7 @@ describe("issue #1420 listing Insights route canvas", () => {
       StyleSheet.flatten(route.props.style),
     ).toEqual({
       flex: 1,
-      backgroundColor: canvas.discover,
+      backgroundColor: color.canvas,
     });
     expect(route.type).toBe(SafeScreen);
     expect(child.type).toBe(ListingInsightsScreen);

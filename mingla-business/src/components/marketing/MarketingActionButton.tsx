@@ -1,7 +1,13 @@
 import React from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 
-import { color, radius, shadow, space, spacing, type } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  shadow,
+  space,
+  type,
+} from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import type { MarketingAction } from "./MarketingActionContext";
 
@@ -56,9 +62,9 @@ const styles = StyleSheet.create({
   },
   floating: {
     position: "absolute",
-    // `spacing.md` (TRANSITIONAL #4420, = space[4]) is pinned by the
-    // issue-2024 people-page gate as the shell-owned FAB geometry.
-    right: spacing.md,
+    // `space[4]` is pinned by the issue-2024 people-page gate as the
+    // shell-owned FAB geometry.
+    right: space[4],
     minHeight: 48,
     zIndex: 30,
     ...shadow.menu,

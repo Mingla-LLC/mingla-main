@@ -19,7 +19,7 @@
  * skipped by a paths filter.
  */
 
-import { spacing, typography } from "../../../constants/designSystem";
+import { space, type } from "../../../constants/designSystem";
 import {
   STAY_ACTION_BAR_HEIGHT,
   STAY_CHIP_ROW_MAX_HEIGHT,
@@ -54,7 +54,7 @@ describe("#1532 D2 — field proximity is no longer inverted", () => {
    * The result was REVERSED Gestalt proximity: an input was closer to the NEXT
    * field's label than to its own helper, so the eye grouped the wrong things.
    */
-  const OLD_FIELD_GAP = spacing.xs; // 4 — one gap for label->helper AND helper->input
+  const OLD_FIELD_GAP = space[1]; // 4 — one gap for label->helper AND helper->input
   const OLD_STACK_GAP = 0; // the 16pt that never reached the children
 
   it("D2-1 — POSITIVE CONTROL: the pre-#1532 scale really was inverted", () => {
@@ -76,9 +76,9 @@ describe("#1532 D2 — field proximity is no longer inverted", () => {
     // Cohesion  = caption half-leading (2.5) + the field wrapper's gap (8) = 10.5
     // Separation = the card CONTENT gap (24) + bodySm half-leading (3)  = 27
     const captionHalfLeading =
-      (typography.caption.lineHeight - typography.caption.fontSize) / 2;
+      (type.caption.lineHeight - type.caption.fontSize) / 2;
     const bodySmHalfLeading =
-      (typography.bodySm.lineHeight - typography.bodySm.fontSize) / 2;
+      (type.small.lineHeight - type.small.fontSize) / 2;
 
     expect(STAY_FIELD_PROXIMITY.cohesionPt).toBe(
       captionHalfLeading + STAY_SPACING.helperToInput,
@@ -112,7 +112,10 @@ describe("#1532 D2 — field proximity is no longer inverted", () => {
     });
     // Every value is an EXISTING token, not a magic number: the scale has to be
     // width-independent so it reads the same at 320, 390 and 440pt.
-    const tokens = new Set(Object.values(spacing));
+    // [TEST-MOD-APPROVED #4420] — the retired `spacing` alias is gone; the
+    // Graphite `space` scale is the token set, plus the 2pt label-to-helper
+    // hairline step (the retired `spacing.xxs`, kept by value).
+    const tokens = new Set<number>([2, ...Object.values(space)]);
     for (const [name, value] of Object.entries(STAY_SPACING)) {
       expect({ name, isToken: tokens.has(value) }).toEqual({
         name,
@@ -122,10 +125,10 @@ describe("#1532 D2 — field proximity is no longer inverted", () => {
   });
 
   it("D2-4 — the 144pt of dead page padding is gone, and the bar is real", () => {
-    const DEAD_BOTTOM_NAV_PAD = spacing.xxl * 3; // 144 — sized for a nav this route never renders
+    const DEAD_BOTTOM_NAV_PAD = space[9] * 3; // 144 — sized for a nav this route never renders
     expect(DEAD_BOTTOM_NAV_PAD).toBe(144);
-    expect(STAY_ACTION_BAR_HEIGHT).toBe(spacing.md + 52 + spacing.md);
-    expect(STAY_PAGE_BOTTOM_PAD).toBe(STAY_ACTION_BAR_HEIGHT + spacing.md);
+    expect(STAY_ACTION_BAR_HEIGHT).toBe(space[4] + 52 + space[4]);
+    expect(STAY_PAGE_BOTTOM_PAD).toBe(STAY_ACTION_BAR_HEIGHT + space[4]);
     // Strictly less: the two extra rows of wrapped module pills are PAID FOR.
     expect(STAY_PAGE_BOTTOM_PAD).toBeLessThan(DEAD_BOTTOM_NAV_PAD);
   });
@@ -149,7 +152,7 @@ describe("#1532 D4 — a chip row cannot inflate to keyboard height", () => {
 
   it("D4-2 — a one-line chip row is a function of the chip only", () => {
     // A `Choice` chip: paddingVertical 8 x2 + bodySm line box 20 + hairline.
-    const chipHeight = spacing.sm * 2 + typography.bodySm.lineHeight + 1;
+    const chipHeight = space[2] * 2 + type.small.lineHeight + 1;
     const height = stayChipRowHeight({
       chipHeight,
       contentPaddingVertical: 0,
@@ -161,7 +164,7 @@ describe("#1532 D4 — a chip row cannot inflate to keyboard height", () => {
     // touch target — still under the ceiling.
     const tabbed = stayChipRowHeight({
       chipHeight: 44,
-      contentPaddingVertical: spacing.xxs,
+      contentPaddingVertical: 2,
     });
     expect(tabbed).toBe(48);
     expect(tabbed).toBeLessThanOrEqual(STAY_CHIP_ROW_MAX_HEIGHT);

@@ -73,11 +73,7 @@ import {
 } from "../../../../src/services/offeringEngagementCapture";
 import { copyAddressText } from "../../../../src/utils/copyAddressText";
 
-import {
-  colors,
-  spacing,
-  text as textTokens,
-} from "../../../../src/constants/designSystem";
+import { color, space } from "../../../../src/constants/designSystem";
 import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
 import {
@@ -607,9 +603,9 @@ function PublicVenueRouteBody(): React.ReactElement {
           <PublicVenueRetryAction
             busy={coldRetryBusy}
             accessibleLabel="Try loading the venue again"
-            backgroundColor={colors.primary[700]}
-            textColor={colors.text.inverse}
-            focusColor={colors.text.inverse}
+            backgroundColor={color.accent}
+            textColor={color.paper}
+            focusColor={color.paper}
             focusOffset={3}
             fontWeight="700"
             onPress={handleRetryVenue}
@@ -810,23 +806,23 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.lg,
+    padding: space[6],
     backgroundColor: "#0c0e12",
   },
   stateTitle: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   stateText: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
   },
   stateBody: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",

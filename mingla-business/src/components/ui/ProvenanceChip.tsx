@@ -36,10 +36,8 @@ import {
   durations,
   radius as radiusTokens,
   scrim,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 export type ProvenanceChipState = "adopted" | "edited" | "new";
@@ -61,15 +59,15 @@ const STATE_TOKENS: Record<
 > = {
   adopted: {
     label: "On Mingla",
-    color: semantic.success,
-    bg: semantic.successTint,
+    color: color.success,
+    bg: color.successTint,
   },
   edited: {
     label: "Edited",
-    color: textTokens.secondary,
+    color: color.text2,
     bg: color.fill.tabOn,
   },
-  new: { label: "New", color: semantic.info, bg: semantic.infoTint },
+  new: { label: "New", color: color.info, bg: color.infoTint },
 };
 
 export const ProvenanceChip: React.FC<ProvenanceChipProps> = ({
@@ -163,14 +161,14 @@ const styles = StyleSheet.create({
   },
   pill: {
     borderRadius: radiusTokens.full,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 3,
   },
   label: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
   },
 });
 

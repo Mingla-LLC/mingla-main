@@ -84,7 +84,7 @@ jest.mock("../VenueBlackoutSheet", () => ({ VenueBlackoutSheet: () => null }));
 jest.mock("../../ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
 jest.mock("../../ui/Toast", () => ({ Toast: () => null }));
 
-import { accent, restaurantHubLayout } from "../../../constants/designSystem";
+import { restaurantHubLayout, color } from "../../../constants/designSystem";
 import { VenueAvailabilityModule } from "../VenueAvailabilityModule";
 import { emptyIconBorderColor, VenueHubEmptyState } from "../VenueHubEmptyState";
 
@@ -100,9 +100,9 @@ function callProp(node: RenderNode, prop: string, argument?: unknown): void {
 
 describe("#2726 native happy path", () => {
   it("uses the opaque warm Android icon border without changing iOS/web glass", () => {
-    expect(emptyIconBorderColor("android")).toBe(accent.warm);
-    expect(emptyIconBorderColor("ios")).toBe(accent.border);
-    expect(emptyIconBorderColor("web")).toBe(accent.border);
+    expect(emptyIconBorderColor("android")).toBe(color.accent);
+    expect(emptyIconBorderColor("ios")).toBe(color.accentLine);
+    expect(emptyIconBorderColor("web")).toBe(color.accentLine);
   });
 
   it.each([
@@ -126,7 +126,7 @@ describe("#2726 native happy path", () => {
     });
     const action = byTestId(tree.root, `empty-${icon}-action`);
     expect(action.props).toMatchObject({
-      variant: "primary", size: "md", shape: "pill", accentColor: accent.warm,
+      variant: "primary", size: "md", shape: "pill", accentColor: color.accent,
       fullWidth: false,
     });
     expect(action.props.style).toEqual(expect.objectContaining({ maxWidth: restaurantHubLayout.compactCtaMaxWidth }));

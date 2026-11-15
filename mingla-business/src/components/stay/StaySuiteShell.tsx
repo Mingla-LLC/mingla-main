@@ -43,7 +43,6 @@ import { useRouter } from "expo-router";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
   radius,
-  spacing,
   stayOverviewGridBasis,
   stayOverviewRowMinWidth,
   stayPageMaxWidth,

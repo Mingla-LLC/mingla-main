@@ -4,13 +4,13 @@
  * group chats read as one product. Sent bubbles are the brand orange with dark
  * text; received bubbles are the dark #1D2026 surface with white text.
  */
-import { accent, canvas } from "./designSystem";
+import { color } from "./designSystem";
 
 export const brandGroupChat = {
-  screenBg: canvas.discover,
+  screenBg: color.canvas,
   surface: "#111418",
   surfaceRaised: "#1A1E24",
-  accent: accent.warm,
+  accent: color.accent,
   accentSoft: "rgba(235, 120, 37, 0.16)",
   hairline: "rgba(255, 255, 255, 0.10)",
   strip: "rgba(255, 255, 255, 0.06)",
@@ -19,7 +19,7 @@ export const brandGroupChat = {
   textSoft: "rgba(255, 255, 255, 0.56)",
   textMuted: "rgba(255, 255, 255, 0.40)",
   scrim: "rgba(0, 0, 0, 0.55)",
-  mineBubble: accent.warm,
+  mineBubble: color.accent,
   mineText: "#101216",
   mineTextSecondary: "rgba(16, 18, 22, 0.66)",
   otherBubble: "#1D2026",
@@ -30,7 +30,7 @@ export const brandGroupChat = {
   mentionMineBg: "rgba(16, 18, 22, 0.16)",
   quoteBg: "rgba(255, 255, 255, 0.08)",
   quoteMineBg: "rgba(16, 18, 22, 0.12)",
-  quoteBar: accent.warm,
+  quoteBar: color.accent,
   quoteBarMine: "#101216",
   selected: "#b995ff",
   bubbleRadius: 20,

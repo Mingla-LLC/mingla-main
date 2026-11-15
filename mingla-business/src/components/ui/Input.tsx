@@ -49,9 +49,8 @@ import {
   durations,
   edge,
   radius as radiusTokens,
-  spacing,
   type,
-  typography,
+  space,
 } from "../../constants/designSystem";
 
 import { Icon } from "./Icon";
@@ -492,8 +491,8 @@ const PickerSearchInput: React.FC<PickerSearchInputProps> = ({
           styles.input,
           {
             color: color.text1,
-            fontSize: typography.body.fontSize,
-            fontWeight: typography.body.fontWeight,
+            fontSize: type.body.fontSize,
+            fontWeight: type.body.fontWeight,
             paddingLeft: 0,
             paddingRight: PADDING_X,
           },
@@ -710,8 +709,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             styles.input,
             {
               color: color.text1,
-              fontSize: typography.body.fontSize,
-              fontWeight: typography.body.fontWeight,
+              fontSize: type.body.fontSize,
+              fontWeight: type.body.fontWeight,
               // No `lineHeight` — TextInput on iOS treats lineHeight as
               // line-box height, drifting the text baseline toward the
               // bottom (visible bottom-skew on the text variant). Container
@@ -881,10 +880,10 @@ const styles = StyleSheet.create({
     textAlignVertical: "center",
   },
   errorText: {
-    ...typography.bodySm,
+    ...type.small,
     color: color.errorText,
     fontWeight: "600",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   trailingButton: {
     paddingLeft: 8,
@@ -906,7 +905,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   countryPlaceholder: {
-    ...typography.bodySm,
+    ...type.small,
     color: color.text2,
   },
   pickerColumn: {
@@ -918,30 +917,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pickerSearchWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   pickerEmpty: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     color: color.text3,
     textAlign: "center",
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
   },
   pickerScroll: {
     flex: 1,
   },
   pickerScrollContent: {
-    paddingBottom: spacing.lg,
+    paddingBottom: space[6],
   },
   pickerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: color.line,
-    gap: spacing.md,
+    gap: space[4],
   },
   pickerRowPressed: {
     backgroundColor: color.fill.inset,
@@ -956,14 +955,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   pickerName: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     color: color.text1,
     flex: 1,
   },
   pickerDialCode: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     color: color.text3,
-    marginLeft: spacing.sm,
+    marginLeft: space[2],
   },
 });
 

@@ -5,13 +5,7 @@ import { Gesture } from "react-native-gesture-handler";
 
 import type { ThemeInput } from "@mingla/offering-rendering";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, color as dsColor, space } from "../../constants/designSystem";
 import { readableTextFor } from "../../utils/buttonAccentContrast";
 import { Icon } from "../ui/Icon";
 import { WebSafeGestureDetector } from "../ui/WebSafeGestureDetector";
@@ -118,7 +112,7 @@ export const ThemeColourTab: React.FC<ThemeColourTabProps> = ({
         >
           <SwatchFill hex={brandTheme.color} hex2={gradientsAllowed ? brandTheme.color2 ?? null : null} size={28} />
           <Text style={styles.brandChipLabel}>Brand colours</Text>
-          {colourInherited ? <Icon name="check" size={16} color={accent.warm} /> : null}
+          {colourInherited ? <Icon name="check" size={16} color={dsColor.accent} /> : null}
         </Pressable>
       ) : null}
 
@@ -172,7 +166,7 @@ export const ThemeColourTab: React.FC<ThemeColourTabProps> = ({
         testID="theme-colour-custom-toggle"
       >
         <Text style={styles.customToggleLabel}>Custom colour</Text>
-        {isCustom ? <Icon name="check" size={14} color={accent.warm} /> : null}
+        {isCustom ? <Icon name="check" size={14} color={dsColor.accent} /> : null}
       </Pressable>
 
       {customOpen ? (
@@ -387,7 +381,7 @@ const HexField: React.FC<{
       autoComplete="off"
       maxLength={7}
       placeholder="#eb7825"
-      placeholderTextColor={textTokens.quaternary}
+      placeholderTextColor={dsColor.text4}
       accessibilityLabel={label === "Hex" ? "Hex colour code" : "Second hex colour code"}
       style={styles.hexInput}
     />
@@ -395,9 +389,9 @@ const HexField: React.FC<{
 );
 
 const styles = StyleSheet.create({
-  body: { gap: spacing.sm },
-  rowLabel: { fontSize: 12, fontWeight: "700", color: textTokens.tertiary },
-  swatchRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  body: { gap: space[2] },
+  rowLabel: { fontSize: 12, fontWeight: "700", color: dsColor.text3 },
+  swatchRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   swatch: {
     width: SWATCH,
     height: SWATCH,
@@ -411,41 +405,41 @@ const styles = StyleSheet.create({
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[2],
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: dsColor.fill.inset,
     alignSelf: "flex-start",
   },
-  brandChipSelected: { backgroundColor: accent.tint },
-  brandChipLabel: { fontSize: 14, fontWeight: "600", color: textTokens.primary },
+  brandChipSelected: { backgroundColor: dsColor.accentLine },
+  brandChipLabel: { fontSize: 14, fontWeight: "600", color: dsColor.text1 },
   customToggle: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: dsColor.line,
     alignSelf: "flex-start",
   },
-  customToggleLabel: { fontSize: 14, fontWeight: "600", color: textTokens.primary },
-  customBox: { gap: spacing.sm },
+  customToggleLabel: { fontSize: 14, fontWeight: "600", color: dsColor.text1 },
+  customBox: { gap: space[2] },
   segment: {
     height: 40,
     flexDirection: "row",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: dsColor.fill.inset,
     borderRadius: radius.full,
     padding: 3,
     alignSelf: "flex-start",
   },
   segmentBtn: { minWidth: 96, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
-  segmentBtnActive: { backgroundColor: glass.tint.profileElevated },
-  segmentLabel: { fontSize: 13, fontWeight: "600", color: textTokens.tertiary },
-  segmentLabelActive: { color: textTokens.primary },
+  segmentBtnActive: { backgroundColor: dsColor.fill.tile },
+  segmentLabel: { fontSize: 13, fontWeight: "600", color: dsColor.text3 },
+  segmentLabelActive: { color: dsColor.text1 },
   sliderBlock: { gap: 6 },
-  sliderLabel: { fontSize: 12, color: textTokens.tertiary },
+  sliderLabel: { fontSize: 12, color: dsColor.text3 },
   rail: { width: "100%", height: RAIL_HEIGHT, borderRadius: radius.full, justifyContent: "center" },
   railThumb: {
     position: "absolute",
@@ -456,18 +450,18 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff",
     top: (RAIL_HEIGHT - RAIL_THUMB) / 2,
   },
-  hexRow: { flexDirection: "row", gap: spacing.sm },
+  hexRow: { flexDirection: "row", gap: space[2] },
   hexField: { gap: 6 },
   hexInput: {
     width: 132,
     height: 44,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    paddingHorizontal: spacing.sm,
+    borderColor: dsColor.line,
+    backgroundColor: dsColor.fill.inset,
+    color: dsColor.text1,
+    paddingHorizontal: space[2],
     fontSize: 14,
   },
-  contrast: { fontSize: 12, lineHeight: 17, color: textTokens.tertiary },
+  contrast: { fontSize: 12, lineHeight: 17, color: dsColor.text3 },
 });

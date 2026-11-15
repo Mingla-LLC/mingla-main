@@ -16,7 +16,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import type { StatusBarStyle } from "expo-status-bar";
 
-import { spacing, text as textTokens, typography } from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 
 import { Icon } from "./Icon";
 
@@ -48,7 +48,7 @@ export interface WebStatusBarProps {
 
 export const WebStatusBar: React.FC<WebStatusBarProps> = ({
   time,
-  textColor = textTokens.primary,
+  textColor = color.text1,
   testID,
   style,
 }) => {
@@ -90,13 +90,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[1],
   },
   time: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: typography.bodySm.fontWeight,
+    fontSize: type.small.fontSize,
+    fontWeight: type.small.fontWeight,
     letterSpacing: 0.2,
   },
   iconCluster: {

@@ -10,13 +10,7 @@ import {
 import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 
-import {
-  accent,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, color, space } from "../../constants/designSystem";
 import { useCart, type TicketQuoteStatus } from "./CartContext";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 
@@ -222,7 +216,7 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
               value={draft}
               onChangeText={(next) => setDraft(next.toUpperCase())}
               placeholder="Enter code"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={32}
@@ -247,7 +241,7 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
               ]}
             >
               {applying ? (
-                <ActivityIndicator color={textTokens.inverse} size="small" />
+                <ActivityIndicator color={color.textStrong} size="small" />
               ) : (
                 <Text style={styles.applyText}>Apply</Text>
               )}
@@ -338,69 +332,69 @@ const HAIRLINE = "rgba(255, 255, 255, 0.10)";
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.sm,
-    paddingBottom: spacing.sm + spacing.xs,
+    gap: space[2],
+    paddingBottom: space[2] + space[1],
   },
   collapsedRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     minHeight: 44,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
-  collapsedLabel: { fontSize: 13, color: textTokens.tertiary },
+  collapsedLabel: { fontSize: 13, color: color.text3 },
   addCodeButton: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
-  addCodeText: { fontSize: 14, fontWeight: "700", color: accent.warm },
-  label: { fontSize: 12, fontWeight: "600", color: textTokens.secondary },
-  inputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  addCodeText: { fontSize: 14, fontWeight: "700", color: color.accent },
+  label: { fontSize: 12, fontWeight: "600", color: color.text2 },
+  inputRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   input: {
     flex: 1,
     minHeight: 44,
     borderWidth: 1,
     borderColor: HAIRLINE,
     borderRadius: radius.sm + 2,
-    paddingHorizontal: spacing.sm + spacing.xs,
-    color: textTokens.primary,
+    paddingHorizontal: space[2] + space[1],
+    color: color.text1,
     backgroundColor: SURFACE,
     fontSize: 15,
     fontWeight: "600",
     letterSpacing: 1,
   },
-  inputFocused: { borderColor: accent.warm },
+  inputFocused: { borderColor: color.accent },
   applyButton: {
     minWidth: 76,
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm + 2,
-    backgroundColor: accent.warm,
-    paddingHorizontal: spacing.sm + spacing.xs + 2,
+    backgroundColor: color.accent,
+    paddingHorizontal: space[2] + space[1] + 2,
   },
   buttonDisabled: { opacity: 0.4 },
   buttonPressed: { opacity: 0.82 },
-  applyText: { color: textTokens.inverse, fontWeight: "700" },
-  status: { color: textTokens.tertiary, fontSize: 13 },
+  applyText: { color: color.textStrong, fontWeight: "700" },
+  status: { color: color.text3, fontSize: 13 },
   appliedChip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm + spacing.xs,
+    gap: space[2] + space[1],
     borderRadius: radius.sm + 2,
     borderWidth: 1,
     borderColor: "rgba(34, 197, 94, 0.35)",
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.sm + spacing.xs,
-    backgroundColor: semantic.successTint,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[2] + space[1],
+    backgroundColor: color.successTint,
   },
   appliedCopy: { flex: 1, gap: 2 },
   appliedTitle: { color: "#86efac", fontWeight: "700" },
   appliedSaving: { color: "#bbf7d0", fontSize: 13 },
   replacedText: { color: "#bbf7d0", fontSize: 13 },
-  removeText: { color: textTokens.secondary, fontWeight: "700" },
-  errorText: { color: semantic.errorText, fontSize: 13 },
-  noticeText: { color: semantic.warning, fontSize: 13 },
+  removeText: { color: color.text2, fontWeight: "700" },
+  errorText: { color: color.errorText, fontSize: 13 },
+  noticeText: { color: color.warning, fontSize: 13 },
 });

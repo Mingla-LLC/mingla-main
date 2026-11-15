@@ -6,11 +6,10 @@ import {
   buyerBusinessSentCopy,
 } from "../../constants/buyerClaimCopy";
 import {
-  accent,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { postHogService } from "../../services/postHogService";
 import { Icon } from "../ui/Icon";
@@ -51,7 +50,7 @@ export function BusinessCheckoutSent({
   return (
     <View style={styles.host} testID="business-checkout-ticket-sent">
       <View style={styles.badge}>
-        <Icon name="check" size={36} color={textTokens.primary} />
+        <Icon name="check" size={36} color={color.text1} />
       </View>
       <Text style={styles.title}>{copy.title}</Text>
       <Text style={styles.body}>{copy.body}</Text>
@@ -73,7 +72,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0c0e12",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: space[7],
   },
   badge: {
     width: 72,
@@ -82,32 +81,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.08)",
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   title: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
     maxWidth: 440,
   },
   button: {
     minHeight: 52,
     minWidth: 220,
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacing.xl,
-    paddingHorizontal: spacing.xl,
+    marginTop: space[7],
+    paddingHorizontal: space[7],
   },
   buttonLabel: {
-    ...typography.buttonLg,
+    ...type.btn,
     color: "#0c0e12",
   },
 });

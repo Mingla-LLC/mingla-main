@@ -74,14 +74,10 @@ import type {
   PartnerSplitStatus,
 } from "../../src/services/partnerSplitsService";
 import {
-  canvas,
   color,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
@@ -299,13 +295,13 @@ export default function PartnerEarningsScreen(): React.ReactElement {
       >
         {statusQuery.isLoading ? (
           <View style={styles.center}>
-            <ActivityIndicator color={textTokens.primary} />
+            <ActivityIndicator color={color.text1} />
           </View>
         ) : statusQuery.error ? (
-          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={space[6]}>
             <Text style={styles.cardTitle}>Couldn't load partner status</Text>
             <Text style={styles.cardBody}>{statusQuery.error.message}</Text>
-            <View style={{ marginTop: spacing.md }}>
+            <View style={{ marginTop: space[4] }}>
               <Button
                 variant="secondary"
                 size="md"
@@ -317,7 +313,7 @@ export default function PartnerEarningsScreen(): React.ReactElement {
             </View>
           </GlassCard>
         ) : statusQuery.data?.partner_enabled === false ? (
-          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={space[6]}>
             <Text style={styles.cardTitle}>Not a Mingla partner yet</Text>
             <Text style={styles.cardBody}>
               Mingla partners earn a share of every paid event they help bring
@@ -335,14 +331,14 @@ export default function PartnerEarningsScreen(): React.ReactElement {
           // ORCH-1331 — the paystack status joins the screen-level loading
           // gate AFTER the partner gate (non-partners never reach it).
           <View style={styles.center}>
-            <ActivityIndicator color={textTokens.primary} />
+            <ActivityIndicator color={color.text1} />
           </View>
         ) : paystackQuery.error ? (
           // ORCH-1331 — joins the same screen-level error branch (design §4.1).
-          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={space[6]}>
             <Text style={styles.cardTitle}>Couldn't load partner status</Text>
             <Text style={styles.cardBody}>{paystackQuery.error.message}</Text>
-            <View style={{ marginTop: spacing.md }}>
+            <View style={{ marginTop: space[4] }}>
               <Button
                 variant="secondary"
                 size="md"
@@ -405,7 +401,7 @@ function ReadyToEarnNudge(): React.ReactElement | null {
   const links = linksQuery.data ?? [];
   if (links.length > 0) return null;
   return (
-    <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+    <GlassCard variant="elevated" radius="md" padding={space[6]}>
       <Text style={styles.nudgeEyebrow}>✨ READY TO START EARNING?</Text>
       <Text style={styles.cardTitle}>Set up your first partner brand</Text>
       <Text style={styles.cardBody}>
@@ -414,7 +410,7 @@ function ReadyToEarnNudge(): React.ReactElement | null {
       <Text style={styles.nudgeStep}>① Create a brand for a venue you know</Text>
       <Text style={styles.nudgeStep}>② Build it out (events, cover, etc.)</Text>
       <Text style={styles.nudgeStep}>③ Invite the real owner</Text>
-      <View style={{ marginTop: spacing.md }}>
+      <View style={{ marginTop: space[4] }}>
         <Button
           variant="primary"
           size="md"
@@ -546,16 +542,16 @@ function PartnerSplitsSection(): React.ReactElement {
 
   if (summaryQuery.isLoading) {
     return (
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={space[6]}>
         <Text style={styles.cardTitle}>Splits</Text>
-        <ActivityIndicator color={textTokens.primary} />
+        <ActivityIndicator color={color.text1} />
       </GlassCard>
     );
   }
 
   if (summaryQuery.error) {
     return (
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={space[6]}>
         <View style={styles.statusIndicatorRow}>
           <View style={styles.statusDotMuted} />
           <Text style={styles.statusLabelMuted}>SPLITS UNAVAILABLE</Text>
@@ -580,7 +576,7 @@ function PartnerSplitsSection(): React.ReactElement {
       ? `Almost there. You've set up ${firstBrandName}. You'll see your first split as soon as their payouts are connected and tickets sell.`
       : "You'll see your first split as soon as a brand you set up makes a sale.";
     return (
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={space[6]}>
         <Text style={styles.cardTitle}>Splits</Text>
         <Text style={styles.cardBody}>{copy}</Text>
       </GlassCard>
@@ -589,7 +585,7 @@ function PartnerSplitsSection(): React.ReactElement {
 
   return (
     <>
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={space[6]}>
         <Text style={styles.cardTitle}>Earnings by currency</Text>
         {totals.map((bucket) => (
           <View key={bucket.currency} style={styles.currencyRow}>
@@ -659,7 +655,7 @@ function PartnerSplitsSection(): React.ReactElement {
         </View>
       ) : null}
 
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={space[6]}>
         <Text style={styles.cardTitle}>Recent splits</Text>
         {splits.length === 0 ? (
           <Text style={styles.cardBody}>
@@ -692,15 +688,15 @@ function SplitRow({ row }: { row: PartnerSplitRow }): React.ReactElement {
 function StatusBadge({ status }: { status: PartnerSplitStatus }): React.ReactElement {
   // ORCH-1052 hotfix — semantic-token alignment so badges read on dark canvas.
   const map: Record<PartnerSplitStatus, { label: string; color: string; bg: string }> = {
-    transferred: { label: "Transferred", color: semantic.success, bg: semantic.successTint },
-    pending: { label: "Pending", color: semantic.warning, bg: semantic.warningTint },
-    blocked_currency_mismatch: { label: "Blocked — currency", color: semantic.error, bg: semantic.errorTint },
-    blocked_no_stripe: { label: "Blocked — no payout account", color: semantic.error, bg: semantic.errorTint },
+    transferred: { label: "Transferred", color: color.success, bg: color.successTint },
+    pending: { label: "Pending", color: color.warning, bg: color.warningTint },
+    blocked_currency_mismatch: { label: "Blocked — currency", color: color.danger, bg: color.errorTint },
+    blocked_no_stripe: { label: "Blocked — no payout account", color: color.danger, bg: color.errorTint },
     // ORCH-1331 — Paystack rail: no active Transfer Recipient at sale time.
-    blocked_no_paystack: { label: "Blocked — no Nigerian bank", color: semantic.error, bg: semantic.errorTint },
-    failed: { label: "Failed", color: semantic.error, bg: semantic.errorTint },
-    reversed: { label: "Reversed", color: textTokens.tertiary, bg: glass.tint.profileElevated },
-    reversed_pending: { label: "Reversed (pending)", color: textTokens.tertiary, bg: glass.tint.profileElevated },
+    blocked_no_paystack: { label: "Blocked — no Nigerian bank", color: color.danger, bg: color.errorTint },
+    failed: { label: "Failed", color: color.danger, bg: color.errorTint },
+    reversed: { label: "Reversed", color: color.text3, bg: color.fill.tile },
+    reversed_pending: { label: "Reversed (pending)", color: color.text3, bg: color.fill.tile },
   };
   const cfg = map[status];
   return (
@@ -783,7 +779,7 @@ function StatusBlock(props: {
 
   if (status === "active") {
     return (
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={space[6]}>
         <View style={styles.statusIndicatorRow}>
           <View style={styles.statusDotSuccess} />
           <Text style={styles.statusLabelSuccess}>PAYOUTS READY</Text>
@@ -796,7 +792,7 @@ function StatusBlock(props: {
             ? ` We can settle in ${externalCurrencies.join(", ").toUpperCase()}.`
             : ""}
         </Text>
-        <View style={{ marginTop: spacing.md }}>
+        <View style={{ marginTop: space[4] }}>
           <Button
             variant="primary"
             size="md"
@@ -808,13 +804,13 @@ function StatusBlock(props: {
             accessibilityLabel="Manage payout account"
           />
         </View>
-        <View style={{ marginTop: spacing.md }}>
+        <View style={{ marginTop: space[4] }}>
           <Button
             variant="secondary"
             size="md"
             fullWidth
             label={disconnecting ? "Disconnecting…" : "Disconnect payout account"}
-            labelStyle={{ color: semantic.error }}
+            labelStyle={{ color: color.danger }}
             loading={disconnecting}
             disabled={disconnecting || managing}
             onPress={onDisconnect}
@@ -834,7 +830,7 @@ function StatusBlock(props: {
       <GlassCard
         variant="elevated"
         radius="md"
-        padding={spacing.lg}
+        padding={space[6]}
         testID="partner-paystack-ready-card"
       >
         <View style={styles.statusIndicatorRow}>
@@ -849,13 +845,13 @@ function StatusBlock(props: {
         <Text style={styles.paystackHolderRow}>
           Account holder: {paystackAccountName ?? "—"}
         </Text>
-        <View style={{ marginTop: spacing.md }}>
+        <View style={{ marginTop: space[4] }}>
           <Button
             variant="secondary"
             size="md"
             fullWidth
             label={disconnectingPaystack ? "Disconnecting…" : "Disconnect bank"}
-            labelStyle={{ color: semantic.error }}
+            labelStyle={{ color: color.danger }}
             loading={disconnectingPaystack}
             disabled={disconnectingPaystack}
             onPress={onDisconnectPaystack}
@@ -869,7 +865,7 @@ function StatusBlock(props: {
 
   if (status === "restricted") {
     return (
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={space[6]}>
         <View style={styles.statusIndicatorRow}>
           <View style={styles.statusDotWarning} />
           <Text style={styles.statusLabelWarning}>ACTION NEEDED</Text>
@@ -879,7 +875,7 @@ function StatusBlock(props: {
           Resume setup to finish the details our payment partner is
           waiting on.
         </Text>
-        <View style={{ marginTop: spacing.md }}>
+        <View style={{ marginTop: space[4] }}>
           <Button
             variant="primary"
             size="md"
@@ -902,7 +898,7 @@ function StatusBlock(props: {
 
   if (status === "onboarding") {
     return (
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={space[6]}>
         <View style={styles.statusIndicatorRow}>
           <View style={styles.statusDotInfo} />
           <Text style={styles.statusLabelInfo}>IN PROGRESS</Text>
@@ -911,7 +907,7 @@ function StatusBlock(props: {
         <Text style={styles.cardBody}>
           You started bank setup. Pick up where you left off.
         </Text>
-        <View style={{ marginTop: spacing.md }}>
+        <View style={{ marginTop: space[4] }}>
           <Button
             variant="primary"
             size="md"
@@ -948,7 +944,7 @@ function StatusBlock(props: {
   // not_connected
   const connectDisabled = starting || selectedCountry === null;
   return (
-    <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+    <GlassCard variant="elevated" radius="md" padding={space[6]}>
       <View style={styles.statusIndicatorRow}>
         <View style={styles.statusDotMuted} />
         <Text style={styles.statusLabelMuted}>NOT CONNECTED</Text>
@@ -974,7 +970,7 @@ function StatusBlock(props: {
           defaultOpen={reopenPicker}
         />
       </View>
-      <View style={{ marginTop: spacing.md }}>
+      <View style={{ marginTop: space[4] }}>
         <Button
           variant="primary"
           size="md"
@@ -1005,31 +1001,31 @@ const styles = StyleSheet.create({
   // ORCH-1052 hotfix — Mingla brand alignment. Dark canvas + white-alpha text
   // + accent.warm for primary actions + GlassCard for sections (used in JSX
   // instead of bespoke white cards). Mirrors account.tsx / brand screens.
-  safe: { flex: 1, backgroundColor: canvas.discover },
+  safe: { flex: 1, backgroundColor: color.canvas },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[9],
+    gap: space[4],
   },
-  center: { paddingVertical: spacing.xxl, alignItems: "center" },
+  center: { paddingVertical: space[9], alignItems: "center" },
 
   // Canonical ChromeRow header — close (LEFT) + centered title + right spacer.
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[2],
   },
   headerMid: {
     flex: 1,
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   headerRightSlot: {
     width: 36,
@@ -1037,18 +1033,18 @@ const styles = StyleSheet.create({
 
   // Card body content
   cardTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginTop: spacing.xs,
+    ...type.h1,
+    color: color.text1,
+    marginTop: space[1],
   },
   cardBody: {
-    ...typography.body,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    ...type.body,
+    color: color.text2,
+    marginTop: space[1],
   },
   // #4420 — links are text, not orange (orange is Create / nav / progress only).
   link: {
-    color: textTokens.primary,
+    color: color.text1,
     textDecorationLine: "underline",
   },
 
@@ -1056,61 +1052,61 @@ const styles = StyleSheet.create({
   statusIndicatorRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   statusDotSuccess: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
   },
   statusDotWarning: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: semantic.warning,
+    backgroundColor: color.warning,
   },
   statusDotInfo: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: semantic.info,
+    backgroundColor: color.info,
   },
   statusDotMuted: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: textTokens.tertiary,
+    backgroundColor: color.text3,
   },
-  statusLabelSuccess: { ...typography.labelCap, color: semantic.success },
+  statusLabelSuccess: { ...type.label, color: color.success },
   // ORCH-1331 — PAYOUTS READY (Paystack) holder caption.
   paystackHolderRow: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[1],
   },
-  statusLabelWarning: { ...typography.labelCap, color: semantic.warning },
-  statusLabelInfo: { ...typography.labelCap, color: semantic.info },
-  statusLabelMuted: { ...typography.labelCap, color: textTokens.tertiary },
+  statusLabelWarning: { ...type.label, color: color.warning },
+  statusLabelInfo: { ...type.label, color: color.info },
+  statusLabelMuted: { ...type.label, color: color.text3 },
 
   countryPickerWrap: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
+    marginTop: space[4],
+    marginBottom: space[4],
   },
 
   // Inline error pill — shows under primary button when Stripe call fails
   inlineError: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    marginTop: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   inlineErrorText: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
   },
 
   // ORCH-1054 partner_splits ledger
@@ -1118,40 +1114,40 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   currencyLabel: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   currencyValues: { alignItems: "flex-end" },
   currencyTransferred: {
-    ...typography.bodyLg,
-    color: semantic.success,
+    ...type.row,
+    color: color.success,
   },
   currencyPending: {
-    ...typography.bodySm,
-    color: semantic.warning,
+    ...type.small,
+    color: color.warning,
   },
   currencyReversed: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   filterChip: {
-    paddingVertical: spacing.xs + 2,
-    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: space[1] + 2,
+    paddingHorizontal: space[2] + 4,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   // #4420 — the selected chip is the selected material, not an orange fill.
   filterChipActive: {
@@ -1159,69 +1155,69 @@ const styles = StyleSheet.create({
     borderColor: color.lineStrong,
   },
   filterChipText: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   filterChipTextActive: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
   },
   splitRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: space[2] + 2,
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
-  splitRowLeft: { flex: 1, paddingRight: spacing.sm },
+  splitRowLeft: { flex: 1, paddingRight: space[2] },
   splitAmount: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   splitMeta: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     marginTop: 2,
   },
   badge: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: space[1],
+    paddingHorizontal: space[2] + 2,
     borderRadius: radius.full,
   },
   badgeText: {
-    ...typography.micro,
+    ...type.label,
   },
   // ORCH-1081 — Ready-to-earn nudge typography.
   nudgeEyebrow: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginBottom: spacing.xs,
+    ...type.label,
+    color: color.text3,
+    marginBottom: space[1],
   },
   nudgeStep: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     marginTop: 4,
   },
   welcomeToastWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   welcomeToast: {
     backgroundColor: color.successTint,
     borderRadius: radius.md,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[4],
     borderWidth: 1,
     borderColor: color.line,
   },
   welcomeToastText: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   welcomeToastClose: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     marginTop: 4,
   },
 });

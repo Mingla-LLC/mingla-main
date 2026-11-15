@@ -42,11 +42,7 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  accent,
-  color,
-  space,
-} from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useSupportStaff } from "../../hooks/useSupportStaff";
 import { useSupportQueue } from "../../hooks/useSupportQueue";

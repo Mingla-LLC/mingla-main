@@ -73,7 +73,7 @@ import { clearBusinessRecentCachedUser } from "../src/services/businessRecentSto
 import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
 // ORCH-1165: Done-only keyboard accessory bar (native-only; web variant is null).
 import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
-import { canvas } from "../src/constants/designSystem";
+import { color } from "../src/constants/designSystem";
 // META-ORCH-1187 [Growth Analytics Hub] LEG 2 — buyer-web analytics. Both are
 // the WEB resolution of a `.web.ts(x)` split: Metro loads the real web modules
 // on web and pure no-op stubs on native (mirrors mixpanelService.web.ts), so
@@ -875,7 +875,7 @@ const authRoutingStyles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
 });
 

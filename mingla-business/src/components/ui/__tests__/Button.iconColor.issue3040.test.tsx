@@ -10,7 +10,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 import { Button } from "../Button";
-import { accent, canvas } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 
 jest.mock("react-native-reanimated", () => ({
   __esModule: true,
@@ -63,35 +63,36 @@ describe("#3040 Button iconColor", () => {
         <Button
           label="Replace video"
           onPress={jest.fn()}
-          accentColor={accent.warm}
-          iconColor={canvas.depth}
+          accentColor={color.accent}
+          iconColor={color.canvas}
           leadingIcon="play"
           trailingIcon="chevR"
         />,
       ),
-    ).toEqual([canvas.depth, canvas.depth]);
+    ).toEqual([color.canvas, color.canvas]);
   });
 
   it("keeps the label-following default when no iconColor is given", () => {
     const colors = iconColors(
-      <Button label="Save" onPress={jest.fn()} accentColor={accent.warm} leadingIcon="play" />,
+      <Button label="Save" onPress={jest.fn()} accentColor={color.accent} leadingIcon="play" />,
     );
     expect(colors).toHaveLength(1);
-    expect(colors[0]).not.toBe(canvas.depth);
+    expect(colors[0]).not.toBe(color.canvas);
   });
 
   it("stays one muted colour while disabled", () => {
     const colors = iconColors(
-      <Button label="Save" onPress={jest.fn()} disabled iconColor={canvas.depth} leadingIcon="play" />,
+      <Button label="Save" onPress={jest.fn()} disabled iconColor={color.canvas} leadingIcon="play" />,
     );
     expect(colors).toHaveLength(1);
-    expect(colors[0]).not.toBe(canvas.depth);
+    expect(colors[0]).not.toBe(color.canvas);
   });
 
   it("every cover-sheet primary passes canvas.depth for its icon", () => {
     const source = readFileSync(join(__dirname, "..", "CoverPicker.tsx"), "utf8");
-    const primaries = source.match(/accentColor: accent\.warm, labelStyle: styles\.darkInkLabel[^}]*\}/g) ?? [];
+    // [TEST-MOD-APPROVED #4420] wave 6: accent.warm / canvas.depth are color.accent / color.canvas.
+    const primaries = source.match(/accentColor: color\.accent, labelStyle: styles\.darkInkLabel[^}]*\}/g) ?? [];
     expect(primaries.length).toBeGreaterThanOrEqual(3);
-    for (const primary of primaries) expect(primary).toContain("iconColor: canvas.depth");
+    for (const primary of primaries) expect(primary).toContain("iconColor: color.canvas");
   });
 });

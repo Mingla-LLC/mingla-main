@@ -16,12 +16,7 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, color, space } from "../../constants/designSystem";
 import { CONSENT_TERMS_BODY } from "../../constants/consentDisclosure";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -67,7 +62,7 @@ export const ConsentTermsSheet: React.FC<ConsentTermsSheetProps> = ({
             label="I agree"
             onPress={onAgree}
             variant="primary"
-            accentColor={accent.warm}
+            accentColor={color.accent}
             size="lg"
             fullWidth
           />
@@ -92,24 +87,24 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginBottom: space[2],
   },
   scroll: {
     maxHeight: 420,
     borderRadius: radiusTokens.md,
   },
   scrollContent: {
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
   body: {
     fontSize: 14,
     lineHeight: 22,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   footer: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
+    marginTop: space[4],
+    gap: space[2],
   },
 });
 

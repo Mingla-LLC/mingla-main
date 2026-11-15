@@ -29,13 +29,10 @@ import { createThrottledReporter } from "@mingla/location-input/src/placesServic
 import { SharedAddressInput } from "./sharedAddressField";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color as dsColor,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon, type IconName } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
@@ -118,57 +115,57 @@ const BUSINESS_TOKENS: LocationInputTokens = {
   // #4334 (D5) — the Host field is dark glass: the on-dark attribution.
   attribution: { variant: "dark" },
   field: {
-    bg: glass.tint.profileBase,
-    bgFocused: glass.tint.profileBase, // business field had no focus bg lift
-    border: glass.border.profileBase,
-    borderFocused: glass.border.profileBase, // business had a static border
-    borderError: semantic.error,
+    bg: dsColor.fill.inset,
+    bgFocused: dsColor.fill.inset, // business field had no focus bg lift
+    border: dsColor.line,
+    borderFocused: dsColor.line, // business had a static border
+    borderError: dsColor.danger,
     radius: radiusTokens.md,
     hasBorder: true,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     focusBorderWidth: 1, // business used borderWidth:1 in all states
   },
   text: {
-    input: textTokens.primary,
-    placeholder: textTokens.quaternary,
+    input: dsColor.text1,
+    placeholder: dsColor.text4,
   },
   icon: {
-    leading: textTokens.tertiary,
-    clear: textTokens.tertiary,
+    leading: dsColor.text3,
+    clear: dsColor.text3,
   },
-  spinner: accent.warm,
+  spinner: dsColor.accent,
   dropdown: {
     mode: "card",
-    bg: glass.tint.profileBase,
-    border: glass.border.profileBase,
+    bg: dsColor.fill.inset,
+    border: dsColor.line,
     radius: radiusTokens.md,
     maxHeight: HOST_ADDRESS_DROPDOWN_MAX_HEIGHT,
     hasShadow: false,
   },
   row: {
-    pressBg: accent.tint,
-    textPrimary: textTokens.primary,
-    textSecondary: textTokens.tertiary,
+    pressBg: dsColor.accentLine,
+    textPrimary: dsColor.text1,
+    textSecondary: dsColor.text3,
     divider: "transparent", // business rows had no divider
     style: "flat",
-    primaryFontSize: typography.body.fontSize,
-    primaryLineHeight: typography.body.lineHeight,
+    primaryFontSize: type.body.fontSize,
+    primaryLineHeight: type.body.lineHeight,
     primaryWeight: "400",
-    secondaryFontSize: typography.caption.fontSize,
-    secondaryLineHeight: typography.caption.lineHeight,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    secondaryFontSize: type.caption.fontSize,
+    secondaryLineHeight: type.caption.lineHeight,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
   },
   status: {
-    text: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    text: dsColor.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
   error: {
-    text: semantic.error,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    text: dsColor.danger,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
   // Issue #1363 (device-UX F2) — brand-accent treatment for the Tier-2 free-text
   // ACTION row so it reads as a tappable button (orange text + icon + a subtle
@@ -176,9 +173,9 @@ const BUSINESS_TOKENS: LocationInputTokens = {
   // rows. Consumer bundles omit `action` → the shared field falls back to the
   // muted styling → byte-identical consumer render.
   action: {
-    text: accent.warm, // #eb7825 brand action
-    bg: accent.tint, // subtle warm pill fill
-    border: accent.border, // warm pill border
+    text: dsColor.accent, // #eb7825 brand action
+    bg: dsColor.accentLine, // subtle warm pill fill
+    border: dsColor.accentLine, // warm pill border
   },
 };
 

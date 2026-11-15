@@ -251,7 +251,7 @@ function unmount(mounted: TestRenderer): void {
 import * as fs from "fs";
 import * as path from "path";
 import { StyleSheet } from "react-native";
-import { spacing } from "../../../constants/designSystem";
+import { space } from "../../../constants/designSystem";
 
 const SAFE_TOP = 47; // the safe-area mock above
 
@@ -272,7 +272,7 @@ describe("#4389 — the bank picker stays under the top safe area with the keybo
       (node) => node.props.keyboardVerticalOffset !== undefined && flatStyle(node).paddingTop !== undefined,
     );
     expect(roots.length).toBeGreaterThan(0);
-    expect(flatStyle(roots[0]).paddingTop).toBe(SAFE_TOP + spacing.sm);
+    expect(flatStyle(roots[0]).paddingTop).toBe(SAFE_TOP + space[2]);
     const sheets = mounted.root.findAll(
       (node) => node.props.role === "dialog" && node.props.accessibilityLabel === "Choose your bank",
     );

@@ -26,7 +26,6 @@ import {
 
 import {
   radius,
-  spacing,
   color,
   space,
   type,

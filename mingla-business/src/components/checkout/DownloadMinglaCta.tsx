@@ -60,13 +60,7 @@ import {
   buyerSignInCopy,
   type BuyerClaimNoun,
 } from "../../constants/buyerClaimCopy";
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, color, space } from "../../constants/designSystem";
 import {
   detectClientPlatform,
   openAppScheme,
@@ -462,7 +456,7 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
               accessibilityLiveRegion="polite"
               role="status"
             >
-              <ActivityIndicator color={accent.warm} />
+              <ActivityIndicator color={color.accent} />
               <Text style={styles.claimScanStatus}>
                 {BUYER_CLAIM_COPY.scanPreparing}
               </Text>
@@ -657,7 +651,7 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
   return (
     <View style={styles.card} testID="confirm-app-cta">
       <View style={styles.iconWrap}>
-        <Icon name="chat" size={20} color={accent.warm} />
+        <Icon name="chat" size={20} color={color.accent} />
       </View>
       <Text style={styles.title} numberOfLines={2}>
         Join your {noun} chat in the Mingla app
@@ -688,7 +682,7 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
           testID="confirm-app-cta-primary"
           onPress={open}
         >
-          <Icon name="externalLink" size={18} color={textTokens.inverse} />
+          <Icon name="externalLink" size={18} color={color.textStrong} />
           <Text style={styles.primaryBadgeText}>Open in Mingla</Text>
         </Pressable>
       </View>
@@ -741,56 +735,56 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
 
 const styles = StyleSheet.create({
   claimCard: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   claimWaiting: {
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   claimSignIn: {
     fontSize: 14,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   claimEmphasis: {
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   claimUnderButton: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   claimDesktop: {
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
   },
   claimTextFallback: {
     alignSelf: "stretch",
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   claimScanState: {
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
   },
   claimScanStatus: {
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   claimQrGroup: {
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
   },
   claimQrPlate: {
@@ -804,22 +798,22 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   claimScanDisclaimer: {
     fontSize: 13,
     lineHeight: 18,
     textAlign: "center",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   card: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   iconWrap: {
     width: 36,
@@ -827,17 +821,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
   },
   title: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   body: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   badgeRow: {
     alignSelf: "stretch",
@@ -848,10 +842,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   primaryBadgeHovered: {
     opacity: 0.94,
@@ -862,32 +856,32 @@ const styles = StyleSheet.create({
   primaryBadgeFocused: {
     outlineWidth: 2,
     outlineStyle: "solid",
-    outlineColor: accent.warm,
+    outlineColor: color.accent,
     outlineOffset: 2,
   },
   primaryBadgeText: {
-    color: textTokens.inverse,
+    color: color.textStrong,
     fontWeight: "700",
   },
   claimNoteRow: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   claimNote: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   secondaryBadge: {
     minHeight: 44,
     alignSelf: "flex-start",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   secondaryBadgeText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
   },
 });

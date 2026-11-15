@@ -276,10 +276,10 @@ jest.mock("../../../hooks/useMyVenueAccess", () => ({
 }));
 
 import {
-  spacing,
   stayPageMaxWidth,
   suiteFormMaxWidth,
   venueRailWidth,
+  space,
 } from "../../../constants/designSystem";
 import { StaySuiteShell } from "../StaySuiteShell";
 import { VenueSuiteShell } from "../../venue/VenueSuiteShell";
@@ -507,7 +507,7 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     expect(flat.alignSelf).toBe("flex-start");
     expect(typeof flat.paddingHorizontal).toBe("number");
     expect(flat.paddingHorizontal as number).toBeGreaterThan(0);
-    expect(flat.paddingHorizontal).toBe(spacing.md);
+    expect(flat.paddingHorizontal).toBe(space[4]);
 
     // Two-column row at full width, with the fixed-width rail.
     expect(flat.flexDirection).toBe("row");
@@ -646,7 +646,7 @@ describe("#1484 — Venue suite is NOT regressed by the extraction", () => {
     expect(typeof flat.maxWidth).not.toBe("number");
     expect(flat.maxWidth).toBeUndefined();
     expect(flat.alignSelf).toBe("flex-start");
-    expect(flat.paddingHorizontal).toBe(spacing.md);
+    expect(flat.paddingHorizontal).toBe(space[4]);
     expect(flat.flexDirection).toBe("row");
     expect(flat.width).toBe("100%");
   });

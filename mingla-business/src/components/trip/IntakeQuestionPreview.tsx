@@ -23,7 +23,6 @@ import { StyleSheet, Text, View } from "react-native";
 
 import {
   radius,
-  semantic,
   color,
   space,
   type,
@@ -444,10 +443,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
-
-// Suppress potentially-unused imports on some lint configs. semantic is
-// reserved for future error-state rendering on the preview pane when the
-// schema fails buyer-side validation rules.
-void semantic;
 
 export default IntakeQuestionPreview;

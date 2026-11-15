@@ -20,16 +20,12 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import {
-  blurIntensity as blurIntensityTokens,
-  color,
-  radius as radiusTokens,
-  shadow as shadowTokens,
-} from "../../constants/designSystem";
+import { color, radius as radiusTokens, shadow as shadowTokens } from "../../constants/designSystem";
 import { Material } from "./Material";
 import type { MaterialKind } from "./Material";
 
-export type GlassChromeIntensity = keyof typeof blurIntensityTokens;
+/** #4420: each intensity names the Material it draws (see MATERIAL_FOR_INTENSITY). */
+export type GlassChromeIntensity = "badge" | "chrome" | "backdrop" | "cardBase" | "cardElevated" | "modal";
 export type GlassChromeRadius = keyof typeof radiusTokens;
 export type GlassChromeTint = "idle" | "pressed" | "backdrop";
 

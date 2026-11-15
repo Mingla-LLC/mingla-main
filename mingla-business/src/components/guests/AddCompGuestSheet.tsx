@@ -24,14 +24,7 @@ import { useQueryClient } from "@tanstack/react-query";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, color, space } from "../../constants/designSystem";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
 import type { OrderRecord } from "../../store/orderStore";
@@ -365,7 +358,7 @@ const PersonFields: React.FC<PersonFieldsProps> = ({
             value={person.name}
             onChangeText={(name) => onChange({ name, failCopy: null })}
             placeholder={isPlusOne ? "Name (optional)" : "Full name"}
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             maxLength={NAME_MAX}
             style={styles.input}
             editable={!disabled}
@@ -388,7 +381,7 @@ const PersonFields: React.FC<PersonFieldsProps> = ({
             value={person.contact}
             onChangeText={(contact) => onChange({ contact, failCopy: null })}
             placeholder={isPlusOne ? "Mobile or email (optional, sends their own ticket)" : "Mobile or email"}
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -826,7 +819,7 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
                   value={pasteText}
                   onChangeText={setPasteText}
                   placeholder="One guest per line: Name, email or mobile, party size"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   multiline
                   numberOfLines={6}
                   autoCapitalize="none"
@@ -914,7 +907,7 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
                 value={note}
                 onChangeText={setNote}
                 placeholder="Why are they on the list? Only your team sees this."
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 multiline
                 numberOfLines={2}
                 maxLength={NOTE_MAX}
@@ -970,43 +963,43 @@ const successToast = (guests: GuestDraft[], response: GuestListIssueResponse): s
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
     flex: 1,
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   subhead: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   scroll: {
     flex: 1,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   scrollContent: {
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   label: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     marginBottom: 6,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   tierChip: {
     minHeight: 44,
@@ -1014,13 +1007,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     justifyContent: "center",
   },
   tierChipActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.accentLine,
+    borderColor: color.accentLine,
   },
   tierChipDisabled: {
     opacity: 0.45,
@@ -1033,42 +1026,42 @@ const styles = StyleSheet.create({
   tierChipLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   tierChipLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   tierChipSub: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   guestCard: {
-    marginTop: spacing.sm,
-    padding: spacing.md,
+    marginTop: space[2],
+    padding: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   plusOneCard: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     marginLeft: 16,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   cardHead: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   cardTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   removeHit: {
     minHeight: 44,
@@ -1077,36 +1070,36 @@ const styles = StyleSheet.create({
   removeText: {
     fontSize: 13,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   addedLine: {
     fontSize: 13,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   addedName: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 2,
   },
   fieldGroup: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   inputWrap: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: space[2] + 2,
     paddingVertical: 4,
   },
   inputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   input: {
     fontSize: 15,
-    color: textTokens.primary,
+    color: color.text1,
     minHeight: 40,
     paddingVertical: 6,
   },
@@ -1116,33 +1109,33 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 12,
-    color: semantic.error,
+    color: color.danger,
     marginTop: 4,
   },
   caption: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 4,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   checkboxRow: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxChecked: {
-    borderColor: accent.warm,
-    backgroundColor: accent.warm,
+    borderColor: color.accent,
+    backgroundColor: color.accent,
   },
   checkboxMark: {
     color: "#FFFFFF",
@@ -1151,51 +1144,51 @@ const styles = StyleSheet.create({
   },
   checkboxLabel: {
     flex: 1,
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 13,
   },
   textButton: {
     minHeight: 44,
     justifyContent: "center",
-    paddingRight: spacing.md,
+    paddingRight: space[4],
   },
   textButtonLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   inlineButtons: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   banner: {
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    padding: spacing.sm + 2,
-    marginBottom: spacing.sm,
+    padding: space[2] + 2,
+    marginBottom: space[2],
   },
   bannerError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
     backgroundColor: "rgba(239, 68, 68, 0.12)",
   },
   bannerWarn: {
-    borderColor: accent.warm,
+    borderColor: color.accent,
     backgroundColor: "rgba(235, 120, 37, 0.12)",
   },
   bannerText: {
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     lineHeight: 18,
   },
   actions: {
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
   gateCaption: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 6,
     textAlign: "center",
   },

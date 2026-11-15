@@ -23,10 +23,7 @@
 import React, { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
-import {
-  spacing,
-  space,
-} from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 
 type DialogModule = typeof import("./PendingVenueIdentityCorrectionDialog.web");

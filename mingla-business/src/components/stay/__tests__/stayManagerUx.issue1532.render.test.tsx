@@ -270,7 +270,7 @@ jest.mock("../../../hooks/useMyVenueAccess", () => ({
   }),
 }));
 
-import { spacing } from "../../../constants/designSystem";
+import { space } from "../../../constants/designSystem";
 import { GlassCard } from "../../ui/GlassCard";
 import { PublicVenueReservationSheet } from "../../venue/PublicVenueReservationSheet";
 import {
@@ -401,7 +401,7 @@ describe("#1532 D2 — GlassCard's gap lands on the node that parents children",
     );
     const content = flatten(contentNodeOf(tree).props.style);
     // Vacuity guard: we are looking at the real content node (it has padding).
-    expect(content.padding).toBe(spacing.md);
+    expect(content.padding).toBe(space[4]);
     // …and it carries NO gap, so the two children render flush. That is the bug.
     expect(content.gap).toBeUndefined();
     tree.unmount();
@@ -419,7 +419,7 @@ describe("#1532 D2 — GlassCard's gap lands on the node that parents children",
       </GlassCard>,
     );
     const content = flatten(contentNodeOf(tree).props.style);
-    expect(content.padding).toBe(spacing.md);
+    expect(content.padding).toBe(space[4]);
     expect(content.gap).toBe(STAY_SPACING.fieldToFieldStacked);
     tree.unmount();
   });
@@ -440,7 +440,7 @@ describe("#1532 D2 — GlassCard's gap lands on the node that parents children",
     const contentNodes = nodes(tree).filter((node) => {
       const style = flatten(node.props?.style);
       return (
-        style.padding === spacing.md &&
+        style.padding === space[4] &&
         style.gap === STAY_SPACING.fieldToFieldStacked
       );
     });

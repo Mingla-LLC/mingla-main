@@ -25,11 +25,7 @@
  * required `mingla-business jest suite` check actually lives.
  */
 
-import {
-  spacing,
-  space,
-  type,
-} from "../../constants/designSystem";
+import { space, type } from "../../constants/designSystem";
 
 // ---------------------------------------------------------------------------
 // §4 — the spacing scale that never rendered.

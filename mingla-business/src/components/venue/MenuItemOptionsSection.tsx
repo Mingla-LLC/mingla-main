@@ -71,7 +71,6 @@ import {
 
 import {
   radius,
-  semantic,
   color,
   space,
   type,

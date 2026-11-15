@@ -14,12 +14,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandPricingDefaultsView } from "../../../src/components/brand/BrandPricingDefaultsView";
-import {
-  canvas,
-  color,
-  space,
-  type,
-} from "../../../src/constants/designSystem";
+import { color, space, type } from "../../../src/constants/designSystem";
 import { TopBar } from "../../../src/components/ui/TopBar";
 
 export default function BrandPricingDefaultsRoute(): React.ReactElement {

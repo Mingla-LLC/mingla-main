@@ -361,7 +361,8 @@ describe("#4238 J6 (rework) a greyed-out row's reason is readable (>= 4.5:1)", (
     }
     expect(opacity).toBe(1);
     const color = (StyleSheet.flatten(reason.props.style as never) as { color: string }).color;
-    const row = over(parse(ds.glass.tint.chrome.idle), parse(ds.canvas.discover));
+    // [TEST-MOD-APPROVED #4420] — the retired glass/canvas aliases are gone; same values.
+    const row = over(parse(ds.materials.chrome.glassFill), parse(ds.color.canvas));
     const ink = over(parse(color), row, opacity);
     expect(contrast(ink, row)).toBeGreaterThanOrEqual(4.5);
     renderer.unmount();

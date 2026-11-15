@@ -24,7 +24,7 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { color, space, spacing } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
@@ -37,7 +37,7 @@ import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
  */
 export function sheetKeyboardLift(keyboardHeight: number, bottomInset: number): number {
   if (keyboardHeight <= 0) return 0;
-  return Math.max(0, keyboardHeight + DONE_BAR_OCCUPIED - (spacing.lg + bottomInset));
+  return Math.max(0, keyboardHeight + DONE_BAR_OCCUPIED - (space[6] + bottomInset));
 }
 
 export interface SheetScrollLayoutProps {

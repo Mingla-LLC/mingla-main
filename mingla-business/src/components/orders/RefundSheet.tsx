@@ -43,13 +43,10 @@ import {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { OrderRecord } from "../../store/orderStore";
 // ORCH-0787: replaced useOrderStore.recordRefund (Zustand-only client-side stub) with the
@@ -539,7 +536,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                 value={reason}
                 onChangeText={setReason}
                 placeholder="e.g. Buyer requested refund; tier oversold; venue change"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 multiline
                 numberOfLines={4}
                 maxLength={REASON_MAX}
@@ -569,7 +566,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
           {/* Notification footer note (destructive — banner + email + SMS always) */}
           <View style={styles.footerNote}>
-            <Icon name="flag" size={14} color={accent.warm} />
+            <Icon name="flag" size={14} color={color.accent} />
             <Text style={styles.footerCopy}>
               Refunds notify the buyer by email and SMS. Your reason will be
               included in the message.
@@ -636,52 +633,52 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
     flex: 1,
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   subhead: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   subheadWithoutPayoutImpact: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   payoutImpact: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.lg,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[6],
   },
   previewError: {
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
+    gap: space[1],
+    marginBottom: space[2],
   },
   scroll: {
     flex: 1,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   scrollContent: {
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   summaryCard: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    marginBottom: spacing.md,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    marginBottom: space[4],
   },
   summaryRow: {
     flexDirection: "row",
@@ -691,40 +688,40 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   summaryValueBold: {
     fontSize: 18,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   summaryDivider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
   // issue #3284 — the refund-terms caption (design §4.9: caption / tertiary). The
   // card above keeps its own bottom margin, so the caption pulls up under it.
   refundPolicyCaption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: -spacing.sm,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: -space[2],
+    marginBottom: space[4],
+    paddingHorizontal: space[1],
   },
   partialHelper: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 18,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   lineRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingVertical: space[2],
+    gap: space[2],
   },
   lineCol: {
     flex: 1,
@@ -733,17 +730,17 @@ const styles = StyleSheet.create({
   lineName: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   lineSubline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   stepper: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   stepperBtn: {
     width: 32,
@@ -752,9 +749,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   stepperBtnDisabled: {
     opacity: 0.4,
@@ -762,45 +759,45 @@ const styles = StyleSheet.create({
   stepperBtnText: {
     fontSize: 18,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   stepperValue: {
     fontSize: 16,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     minWidth: 24,
     textAlign: "center",
     fontVariant: ["tabular-nums"],
   },
   reasonSection: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   reasonLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   required: {
-    color: accent.warm,
+    color: color.accent,
   },
   reasonInputWrap: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     minHeight: 100,
   },
   reasonInputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   reasonInput: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     minHeight: 80,
     textAlignVertical: "top",
     ...(Platform.OS === "web"
@@ -811,7 +808,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
     marginTop: 6,
   },
   reasonHelper: {
@@ -819,49 +816,49 @@ const styles = StyleSheet.create({
     minHeight: 16,
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   reasonHelperError: {
-    color: semantic.errorText,
+    color: color.errorText,
   },
   reasonCount: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   footerNote: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.sm + 2,
+    gap: space[2],
+    padding: space[2] + 2,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   footerCopy: {
     flex: 1,
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   actions: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   actionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
   gateCaption: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 6,
     textAlign: "center",
   },
   errorCaption: {
     fontSize: 13,
-    color: semantic.error,
-    marginBottom: spacing.sm,
+    color: color.danger,
+    marginBottom: space[2],
     textAlign: "center",
     lineHeight: 18,
   },

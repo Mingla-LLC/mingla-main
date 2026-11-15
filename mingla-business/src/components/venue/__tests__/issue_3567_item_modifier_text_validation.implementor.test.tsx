@@ -24,7 +24,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { semantic } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import type { MenuItem } from "../../../services/menusService";
 import type { MenuModifierGroup } from "../../../hooks/useMenuModifiers";
 import type { MenuTextSaveFailure } from "../menuTextValidation";
@@ -457,7 +457,7 @@ describe("#3567 item text validation", () => {
       ) as ViewStyle;
       expect(style).toMatchObject({
         borderWidth: 1,
-        borderColor: semantic.error,
+        borderColor: color.danger,
         overflow: "hidden",
       });
       expect(style.shadowColor).toBeUndefined();
@@ -688,7 +688,7 @@ describe("#3567 modifier text validation", () => {
       });
       expect(style).toMatchObject({
         borderWidth: 1,
-        borderColor: semantic.error,
+        borderColor: color.danger,
         overflow: "hidden",
       });
       expect(style.shadowColor).toBeUndefined();

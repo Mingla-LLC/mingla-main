@@ -6,7 +6,7 @@ import type { RefundBank } from "../../../src/components/refunds/SourceRefundAtt
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { supabase } from "../../../src/services/supabase";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
-import { text as textTokens } from "../../../src/constants/designSystem";
+import { color } from "../../../src/constants/designSystem";
 
 function fragmentAttentionToken(): string {
   if (typeof window === "undefined") return "";
@@ -130,5 +130,5 @@ const styles = StyleSheet.create({
   // defaults to `flexGrow: 0`; omitting it is the silent footgun recorded in
   // feedback_rn_scrollview_flex_grow_default_one_silent_footgun.
   scrollContent: { flexGrow: 1, padding: 24, justifyContent: "center", gap: 16 },
-  title: { fontSize: 24, fontWeight: "700", color: textTokens.primary },
+  title: { fontSize: 24, fontWeight: "700", color: color.text1 },
 });

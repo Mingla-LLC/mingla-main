@@ -44,9 +44,7 @@ import {
   radius,
   size,
   space,
-  spacing,
   type,
-  typography,
 } from "../../constants/designSystem";
 
 import { Button } from "./Button";
@@ -540,18 +538,18 @@ export const StepperFooter: React.FC<StepperFooterProps> = ({
 };
 
 const styles = StyleSheet.create({
-  mobileWrap: { alignItems: "center", gap: spacing.sm },
-  dotRow: { flexDirection: "row", gap: spacing.sm },
+  mobileWrap: { alignItems: "center", gap: space[2] },
+  dotRow: { flexDirection: "row", gap: space[2] },
   dot: { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2 },
   caption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
     color: color.text3,
   },
-  webWrap: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs },
-  stepCol: { alignItems: "center", gap: spacing.xs },
+  webWrap: { flexDirection: "row", alignItems: "flex-start", gap: space[1] },
+  stepCol: { alignItems: "center", gap: space[1] },
   circle: {
     width: CIRCLE_SIZE,
     height: CIRCLE_SIZE,
@@ -560,12 +558,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  circleNumber: { fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, fontWeight: "600" },
+  circleNumber: { fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, fontWeight: "600" },
   stepLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
     maxWidth: 120,
     textAlign: "center",
   },

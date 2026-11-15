@@ -8,11 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { occurrenceLocalDay } from "@mingla/offering-rendering/eventDateSchedule";
 
-import {
-  accent,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
 
 export interface GuestDaySelectorProps {
@@ -106,7 +102,7 @@ export const GuestDaySelector: React.FC<GuestDaySelectorProps> = ({
           >
             <Text
               style={{
-                color: safeIndex <= 0 ? "rgba(255,255,255,0.35)" : accent.warm,
+                color: safeIndex <= 0 ? "rgba(255,255,255,0.35)" : color.accent,
               }}
             >
               ‹
@@ -127,7 +123,7 @@ export const GuestDaySelector: React.FC<GuestDaySelectorProps> = ({
                 color:
                   safeIndex >= months.length - 1
                     ? "rgba(255,255,255,0.35)"
-                    : accent.warm,
+                    : color.accent,
               }}
             >
               ›
@@ -172,33 +168,33 @@ export const GuestDaySelector: React.FC<GuestDaySelectorProps> = ({
 const styles = StyleSheet.create({
   host: {
     flexGrow: 0,
-    marginBottom: spacing.sm,
-    gap: spacing.xs,
+    marginBottom: space[2],
+    gap: space[1],
   },
   label: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     marginBottom: 4,
   },
   monthRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   monthHit: { paddingHorizontal: 8, paddingVertical: 4 },
   monthKey: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "700",
   },
   monthKeySolo: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginBottom: 2,
   },
-  list: { gap: spacing.xs },
+  list: { gap: space[1] },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -209,7 +205,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   chipActive: {
-    borderColor: accent.warm,
+    borderColor: color.accent,
     backgroundColor: "rgba(235, 120, 37, 0.16)",
   },
   chipLabel: {

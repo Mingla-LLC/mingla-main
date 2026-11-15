@@ -37,12 +37,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 
-import {
-  glass,
-  color,
-  space,
-  type,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import {
   DESKTOP_BEZEL_MARGIN,
   DESKTOP_RAIL_WIDTH,

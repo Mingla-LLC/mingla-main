@@ -67,7 +67,7 @@ import {
   type AcceptScannerInvitationResult,
 } from "../src/services/scannerInvitationsService";
 
-import { color, space, radius } from "../src/constants/designSystem";
+import { color, space } from "../src/constants/designSystem";
 type Phase =
   | { kind: "loading" }
   | { kind: "success"; result: AcceptScannerInvitationResult }

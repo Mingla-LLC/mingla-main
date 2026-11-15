@@ -17,7 +17,6 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
-  competition,
   competitorSheet,
   color,
   space,
@@ -293,7 +292,7 @@ export function CompetitorAddSheet({
       snapPoint="full"
       verticalAlign="top"
       presentation="competition"
-      panelBackground={competition.surface}
+      panelBackground={materials.pane.solidFill}
       style={styles.sheet}
       testID={testID}
     >
@@ -623,7 +622,7 @@ function SourceField({
     </View>
   );
 }
-const competitionCardSurface = Platform.OS === "android" ? materials.pane.solidFill : competition.surfaceRaised;
+const competitionCardSurface = Platform.OS === "android" ? materials.pane.solidFill : color.card;
 const competitionBorder = Platform.OS === "android" ? color.card2 : color.lineStrong;
 const competitionSubtleBorder = Platform.OS === "android" ? color.card2 : color.line;
 const styles = StyleSheet.create({
@@ -677,7 +676,7 @@ const styles = StyleSheet.create({
     paddingTop: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: competitionBorder,
-    backgroundColor: competition.surface,
+    backgroundColor: materials.pane.solidFill,
   },
   title: { ...type.h1, color: color.text1 },
   cap: {

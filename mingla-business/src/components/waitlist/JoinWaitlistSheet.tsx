@@ -9,13 +9,11 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  color,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { useJoinWaitlistMutation } from "../../hooks/useJoinWaitlistMutation";
 import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
@@ -166,7 +164,7 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
             // open, so the Done bar never covers the last field. This sheet is
             // inside a Modal host → also gets the §4.3 in-Modal toolbar.
             paddingBottom:
-              keyboardPadding + spacing.lg + (keyboardPadding > 0 ? 42 : 0),
+              keyboardPadding + space[6] + (keyboardPadding > 0 ? 42 : 0),
           },
         ]}
       >
@@ -179,7 +177,7 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
             value={email}
             onChangeText={setEmail}
             placeholder="you@example.com"
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -207,7 +205,7 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
             value={name}
             onChangeText={setName}
             placeholder="Optional"
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             style={styles.input}
             accessibilityLabel="Waitlist name"
           />
@@ -281,27 +279,27 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    gap: space[2],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   subtitle: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    color: color.text2,
+    marginBottom: space[4],
   },
   field: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   label: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     fontWeight: "600",
   },
   input: {
@@ -309,29 +307,29 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    paddingHorizontal: spacing.md,
-    fontSize: typography.body.fontSize,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    paddingHorizontal: space[4],
+    fontSize: type.body.fontSize,
   },
   inputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   errorText: {
-    color: semantic.error,
-    fontSize: typography.caption.fontSize,
+    color: color.danger,
+    fontSize: type.caption.fontSize,
   },
   qtyRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   stepper: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   stepperBtn: {
     width: 42,
@@ -340,27 +338,27 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: materials.chrome.glassFill,
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   stepperText: {
-    color: accent.warm,
+    color: color.accent,
     fontSize: 20,
     fontWeight: "700",
   },
   qtyText: {
     minWidth: 28,
     textAlign: "center",
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 17,
     fontWeight: "700",
   },
   consentRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    marginVertical: spacing.sm,
+    gap: space[2],
+    marginVertical: space[2],
   },
   checkbox: {
     width: 22,
@@ -368,15 +366,15 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: materials.chrome.glassFill,
     marginTop: 1,
   },
   checkboxOn: {
-    borderColor: accent.warm,
-    backgroundColor: accent.warm,
+    borderColor: color.accent,
+    backgroundColor: color.accent,
   },
   checkmark: {
     color: "#0c0e12",
@@ -385,17 +383,17 @@ const styles = StyleSheet.create({
   },
   consentText: {
     flex: 1,
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: space[4],
+    paddingBottom: space[6],
     zIndex: 10,
   },
 });

@@ -19,11 +19,9 @@
  * the #4420 guard: `trafficAnalytics` (#4037) and `ariPalette` (ORCH-0821).
  *
  * The retired pre-Graphite exports (`colors`, `glass`, `text`, `semantic`,
- * `accent`, `canvas`, `shadows`, `typography`, `blurIntensity`, ...) are kept
- * at the bottom as `// TRANSITIONAL #4420` re-exports mapped to the closest
- * new value, so nothing breaks before the screen waves migrate their
- * importers. Exit condition: wave 6 of #4420 deletes every one of them and
- * turns `ISSUE_4420_ENFORCE=1` on for the guard.
+ * `accent`, `canvas`, `shadows`, `typography`, `blurIntensity`, ...) were
+ * deleted by #4420 wave 6 once every importer read the names above; the
+ * #4420 guard (I-HOST-CHROME-TOKENS-ONLY) now fails by default.
  *
  * Android: shadows never draw (`androidSafeElevation`, ORCH-BIZ-0a-E4/E8),
  * because Android `elevation` draws a hard rectangle under rounded or
@@ -521,8 +519,6 @@ export const radius = {
   /** Sheet (the kit's 3xl). */
   xxxl: 34,
   full: 999,
-  // TRANSITIONAL #4420: `display 40` is retired; mapped to the closest new step (3xl 34). Exit: wave 6.
-  display: 34,
 } as const;
 
 /** 4/8 spacing scale, keyed like the kit's `--s-1` … `--s-10`. */
@@ -940,16 +936,6 @@ export const ariThread = {
   // Success / cancelled ribbon padding (matches new bubble density).
   ribbonPadH: 10,
   ribbonPadV: 5,
-  // TRANSITIONAL #4420: colour fields kept as aliases of `color.*` until the
-  // Ari screens read `color` directly. Exit: wave 6.
-  onUserBubble: color.ink,
-  actionText: color.accent,
-  secondaryText: color.text2,
-  tertiaryText: color.text3,
-  /** Opaque Android bubble fill (solid pane). */
-  ariBubbleAndroid: materials.pane.solidFill,
-  /** ORCH-1101 REWORK Bug #4 — OPAQUE composer surface on every platform. */
-  composerSurface: color.card,
 } as const;
 
 /**
@@ -966,14 +952,6 @@ export const coverUpload = {
   tileRing: 36,
   statusIcon: 28,
   pillHeight: 28,
-  // TRANSITIONAL #4420: colour aliases. Exit: wave 6.
-  frozenFill: color.status.muted,
-  warnBorder: color.warning,
-  errorBorder: color.errorLine,
-  scrim: scrim.modal,
-  stepDone: color.accentLine,
-  stepTodo: color.lineStrong,
-  track: color.fill.pager,
 } as const;
 
 /** #2796 feature-owned competition-sheet geometry. */
@@ -987,203 +965,4 @@ export const competitorSheet = {
   sectionGap: 32,
   cardGap: 16,
   stickyFooterMinHeight: 76,
-} as const;
-
-// ===========================================================================
-// TRANSITIONAL #4420 — retired pre-Graphite exports.
-//
-// Every export below is retired by the #4420 spec §2. Each is kept ONLY so the
-// app compiles while the screen waves migrate their importers, and each value
-// is mapped to the closest Graphite Glass token (no new literal). Do not add an
-// importer. Exit condition: #4420 wave 6 deletes this whole block and turns the
-// guard's ISSUE_4420_ENFORCE=1 on.
-// ===========================================================================
-
-/** TRANSITIONAL #4420 → `space` (identical values; `xxs 2` is retired). */
-export const spacing = {
-  xxs: 2,
-  xs: space[1],
-  sm: space[2],
-  md: space[4],
-  lg: space[6],
-  xl: space[7],
-  xxl: space[9],
-} as const;
-
-/** TRANSITIONAL #4420 → `color.text1..4`. */
-export const text = {
-  primary: color.text1,
-  secondary: color.text2,
-  tertiary: color.text3,
-  tertiaryOnCard: color.text3,
-  quaternary: color.text4,
-  inverse: color.textStrong,
-} as const;
-
-/** TRANSITIONAL #4420 → `color.*`. `error` as a fill is `color.danger`. */
-export const semantic = {
-  live: color.live,
-  liveGlow: color.errorLine,
-  success: color.success,
-  successTint: color.successTint,
-  warning: color.warning,
-  warningTint: color.warningTint,
-  error: color.danger,
-  errorText: color.errorText,
-  errorTint: color.errorTint,
-  errorRing: color.errorTint,
-  info: color.info,
-  infoTint: color.infoTint,
-} as const;
-
-/** TRANSITIONAL #4420 → `color.accent*`. */
-export const accent = {
-  warm: color.accent,
-  glow: color.accentLine,
-  tint: color.accentLine,
-  border: color.accentLine,
-  faint: color.accentTint,
-} as const;
-
-/** TRANSITIONAL #4420 → `color.canvas` (all three canvases merge). */
-export const canvas = {
-  discover: color.canvas,
-  profile: color.canvas,
-  depth: color.canvas,
-} as const;
-
-/**
- * TRANSITIONAL #4420 → the light-theme leftovers, mapped onto the paper/ink
- * set (the only light values Graphite keeps).
- */
-export const colors = {
-  primary: {
-    500: color.accent,
-    700: color.accent,
-  },
-  gray: {
-    200: color.paperPressed,
-  },
-  background: {
-    primary: color.paper,
-    secondary: color.paperEnd,
-  },
-  text: {
-    primary: color.ink,
-    secondary: color.text4,
-    tertiary: color.text4,
-    inverse: color.paper,
-  },
-  accent: color.accent,
-} as const;
-
-/** TRANSITIONAL #4420 → `color.paper`. */
-export const backgroundWarmGlow = color.paper;
-
-/** TRANSITIONAL #4420 → `color.fill.railOn`. */
-export const websiteRailActive = color.fill.railOn;
-
-/**
- * TRANSITIONAL #4420 → glass tints, borders and highlights. Washes map to
- * `color.fill.*`, borders to `color.line*` / edges, dark tints to the
- * material fills. `border.control` keeps a >= 3:1 boundary (#2262) through the
- * input-focus ring colour.
- */
-export const glass = {
-  tint: {
-    badge: {
-      idle: materials.onPhoto.solidFill,
-      pressed: materials.onPhoto.solidFill,
-    },
-    chrome: {
-      idle: materials.chrome.glassFill,
-      pressed: materials.selected.glassFill,
-    },
-    backdrop: scrim.ambient.colors[0],
-    profileBase: color.fill.inset,
-    profileElevated: color.fill.tile,
-  },
-  border: {
-    badge: color.lineStrong,
-    chrome: color.lineStrong,
-    profileBase: color.line,
-    profileElevated: color.lineStrong,
-    pending: color.fill.pager,
-    control: edge.ringInputFocus.borderColor,
-  },
-  highlight: {
-    badge: edge.liquidGlint,
-    profileBase: edge.rimSelected.borderTopColor,
-    profileElevated: edge.rimLiquidOn.borderTopColor,
-  },
-} as const;
-
-/** TRANSITIONAL #4420 → `materials.*.solidFill` and `color.*`. */
-export const androidOpaque = {
-  rowFill: materials.pane.solidFill,
-  rowBorder: color.card2,
-  accentFill: materials.selected.solidFill,
-  controlBorder: edge.ringInputFocus.borderColor,
-  successFill: color.solidTint.success,
-  warningFill: color.solidTint.warning,
-  errorFill: color.solidTint.error,
-  infoFill: color.solidTint.info,
-} as const;
-
-/** TRANSITIONAL #4420 → `materials.pane.solidFill` / `color.card`. */
-export const competition = {
-  surface: materials.pane.solidFill,
-  surfaceRaised: color.card,
-} as const;
-
-/** TRANSITIONAL #4420 → `materials.*.blur.intensity` (iOS). */
-export const blurIntensity = {
-  badge: materials.onPhoto.blur.intensity,
-  chrome: materials.chrome.blur.intensity,
-  backdrop: materials.chrome.blur.intensity,
-  cardBase: materials.pane.blur.intensity,
-  cardElevated: materials.pane.blur.intensity,
-  modal: materials.sheet.blur.intensity,
-} as const;
-
-/** TRANSITIONAL #4420 → `shadow.*` (`sm–xl` and the orange `glassChromeActive` glow are retired). */
-export const shadows = {
-  sm: shadow.paper,
-  md: shadow.pane,
-  lg: shadow.menu,
-  xl: shadow.dialog,
-  glassBadge: shadow.ember,
-  glassChrome: shadow.liquid,
-  glassChromeActive: shadow.liquid,
-  glassCardBase: shadow.pane,
-  glassCardElevated: shadow.menu,
-  glassModal: shadow.dialog,
-};
-
-const pickType = (style: TypeStyle): TypeStyle => ({
-  fontSize: style.fontSize,
-  lineHeight: style.lineHeight,
-  fontWeight: style.fontWeight,
-  letterSpacing: style.letterSpacing,
-});
-
-/**
- * TRANSITIONAL #4420 → `type.*`, by nearest step: h2 and h3 both land on
- * `h1`, `bodyLg` on `row`, `micro` (retired) on `label`.
- */
-export const typography = {
-  display: pickType(type.display),
-  h1: pickType(type.title),
-  h2: pickType(type.h1),
-  h3: pickType(type.h1),
-  bodyLg: pickType(type.row),
-  body: pickType(type.body),
-  bodySm: pickType(type.small),
-  caption: pickType(type.caption),
-  micro: pickType(type.label),
-  labelCap: pickType(type.label),
-  buttonLg: pickType(type.btn),
-  buttonMd: pickType(type.btnSm),
-  statValue: pickType(type.stat),
-  monoMd: pickType(type.mono),
 } as const;

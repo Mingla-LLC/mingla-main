@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  spacing,
-  text,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 
 const STAGES = [
@@ -39,7 +34,7 @@ export const IntelProgress: React.FC = () => {
           {index < stage ? (
             <Icon name="check" size={16} color="#22c55e" />
           ) : index === stage ? (
-            <ActivityIndicator size="small" color={accent.warm} />
+            <ActivityIndicator size="small" color={color.accent} />
           ) : (
             <View style={styles.pendingDot} />
           )}
@@ -64,8 +59,8 @@ export const IntelProgress: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  body: { minHeight: INTEL_RESULT_MIN_HEIGHT, gap: spacing.sm },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  body: { minHeight: INTEL_RESULT_MIN_HEIGHT, gap: space[2] },
+  row: { flexDirection: "row", alignItems: "center", gap: space[2] },
   pendingDot: {
     width: 10,
     height: 10,
@@ -73,12 +68,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     marginHorizontal: 3,
   },
-  line: { ...typography.bodySm, color: text.secondary },
-  current: { color: text.primary },
-  pending: { color: text.quaternary },
+  line: { ...type.small, color: color.text2 },
+  current: { color: color.text1 },
+  pending: { color: color.text4 },
   honesty: {
-    ...typography.caption,
-    color: text.tertiary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[1],
   },
 });

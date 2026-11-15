@@ -11,14 +11,11 @@ import {
   View,
 } from "react-native";
 import {
-  accent,
-  androidOpaque,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { PeopleServiceError } from "../../services/peopleService";
 import type {
@@ -229,7 +226,7 @@ function CandidateRow({
           </Text>
         ) : null}
       </View>
-      <Icon name="chevR" size={20} color={text.secondary} />
+      <Icon name="chevR" size={20} color={color.text2} />
     </Pressable>
   );
 }
@@ -270,7 +267,7 @@ function mergeBlock(preview: BrandPersonMergePreview): React.ReactElement | null
   if (preview.state === "open_conflict") {
     return (
       <View accessibilityRole="alert" style={styles.warning}>
-        <Icon name="shield" size={20} color={semantic.warning} />
+        <Icon name="shield" size={20} color={color.warning} />
         <View style={styles.blockCopy}>
           <Text style={styles.warningTitle}>Review needed first</Text>
           <Text style={styles.blockText}>Resolve the open contact review before merging these people.</Text>
@@ -281,7 +278,7 @@ function mergeBlock(preview: BrandPersonMergePreview): React.ReactElement | null
   if (preview.state === "distinct_linked_users") {
     return (
       <View accessibilityRole="alert" style={styles.errorBlock}>
-        <Icon name="link" size={20} color={semantic.error} />
+        <Icon name="link" size={20} color={color.danger} />
         <Text style={styles.blockText}>
           These records are linked to different Mingla accounts and can’t be merged.
         </Text>
@@ -648,7 +645,7 @@ export function PersonMaintenanceFlow(
                 </View>
                 {props.preview.hadPriorSeparation ? (
                   <View style={styles.warning}>
-                    <Icon name="shield" size={20} color={semantic.warning} />
+                    <Icon name="shield" size={20} color={color.warning} />
                     <View style={styles.blockCopy}>
                       <Text style={styles.warningTitle}>These people were separated before</Text>
                       <Text style={styles.blockText}>
@@ -917,107 +914,107 @@ export function PersonMaintenanceFlow(
 }
 
 const styles = StyleSheet.create({
-  sheetBody: { flex: 1, padding: spacing.md, gap: spacing.md, maxWidth: 640, width: "100%", alignSelf: "center" },
-  header: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  headerCopy: { flex: 1, gap: spacing.xs },
-  title: { ...typography.h2, color: text.primary },
-  subtitle: { ...typography.bodySm, color: text.secondary },
+  sheetBody: { flex: 1, padding: space[4], gap: space[4], maxWidth: 640, width: "100%", alignSelf: "center" },
+  header: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
+  headerCopy: { flex: 1, gap: space[1] },
+  title: { ...type.h1, color: color.text1 },
+  subtitle: { ...type.small, color: color.text2 },
   currentCard: {
     minHeight: 72,
     borderRadius: radius.md,
     padding: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileBase,
+    gap: space[2],
+    backgroundColor: Platform.OS === "android" ? materials.pane.solidFill : color.fill.inset,
     borderWidth: 1,
-    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase,
+    borderColor: Platform.OS === "android" ? color.card2 : color.line,
   },
   currentCopy: { flex: 1 },
-  currentLabel: { ...typography.caption, color: text.secondary },
-  currentName: { ...typography.bodySm, fontWeight: "600", color: text.primary },
-  currentContact: { ...typography.monoMd, color: text.secondary },
+  currentLabel: { ...type.caption, color: color.text2 },
+  currentName: { ...type.small, fontWeight: "600", color: color.text1 },
+  currentContact: { ...type.mono, color: color.text2 },
   candidateRow: {
     minHeight: 72,
     borderRadius: radius.md,
     padding: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileElevated,
+    gap: space[2],
+    backgroundColor: Platform.OS === "android" ? materials.pane.solidFill : color.fill.tile,
     borderWidth: 1,
-    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileElevated,
+    borderColor: Platform.OS === "android" ? color.card2 : color.lineStrong,
   },
   candidatePressed: { opacity: 0.72 },
   candidateCopy: { flex: 1, gap: 2 },
-  candidateName: { ...typography.bodySm, fontWeight: "600", color: text.primary },
-  candidateContact: { ...typography.bodySm, color: text.secondary },
-  matchedContact: { ...typography.bodySm, fontWeight: "600", color: accent.warm },
-  skeletons: { gap: spacing.sm },
-  results: { gap: spacing.sm, paddingBottom: spacing.lg },
-  paginationError: { alignItems: "center", gap: spacing.xs, padding: spacing.sm },
-  blockStack: { gap: spacing.md },
-  inlineActions: { flexDirection: "row", gap: spacing.sm },
-  empty: { alignItems: "center", gap: spacing.sm, padding: spacing.lg },
-  emptyTitle: { ...typography.body, fontWeight: "600", color: text.primary, textAlign: "center" },
-  comparisonRow: { flexDirection: "row", alignItems: "stretch", gap: spacing.md },
-  stacked: { flexDirection: "column", gap: spacing.sm },
-  reviewContent: { gap: spacing.md, paddingBottom: spacing.lg },
+  candidateName: { ...type.small, fontWeight: "600", color: color.text1 },
+  candidateContact: { ...type.small, color: color.text2 },
+  matchedContact: { ...type.small, fontWeight: "600", color: color.accent },
+  skeletons: { gap: space[2] },
+  results: { gap: space[2], paddingBottom: space[6] },
+  paginationError: { alignItems: "center", gap: space[1], padding: space[2] },
+  blockStack: { gap: space[4] },
+  inlineActions: { flexDirection: "row", gap: space[2] },
+  empty: { alignItems: "center", gap: space[2], padding: space[6] },
+  emptyTitle: { ...type.body, fontWeight: "600", color: color.text1, textAlign: "center" },
+  comparisonRow: { flexDirection: "row", alignItems: "stretch", gap: space[4] },
+  stacked: { flexDirection: "column", gap: space[2] },
+  reviewContent: { gap: space[4], paddingBottom: space[6] },
   reviewScroll: { flex: 1 },
   warning: {
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: semantic.warning,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.warningFill : semantic.warningTint,
-    padding: spacing.md,
+    borderColor: color.warning,
+    backgroundColor: Platform.OS === "android" ? color.solidTint.warning : color.warningTint,
+    padding: space[4],
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  warningTitle: { ...typography.bodySm, fontWeight: "600", color: semantic.warning },
+  warningTitle: { ...type.small, fontWeight: "600", color: color.warning },
   errorBlock: {
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
-    padding: spacing.md,
+    borderColor: color.danger,
+    backgroundColor: Platform.OS === "android" ? color.solidTint.error : color.errorTint,
+    padding: space[4],
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  blockCopy: { flex: 1, gap: spacing.xs },
-  blockText: { ...typography.bodySm, color: text.primary, flex: 1 },
-  mergedResult: { gap: spacing.sm },
-  resultTitle: { ...typography.h3, color: text.primary },
-  resultName: { ...typography.body, fontWeight: "600", color: text.primary },
-  resultField: { gap: 2, paddingTop: spacing.xs },
-  fieldLabel: { ...typography.caption, color: text.secondary },
-  fieldValue: { ...typography.monoMd, color: text.primary },
-  inlineError: { ...typography.bodySm, color: semantic.error },
+  blockCopy: { flex: 1, gap: space[1] },
+  blockText: { ...type.small, color: color.text1, flex: 1 },
+  mergedResult: { gap: space[2] },
+  resultTitle: { ...type.h1, color: color.text1 },
+  resultName: { ...type.body, fontWeight: "600", color: color.text1 },
+  resultField: { gap: 2, paddingTop: space[1] },
+  fieldLabel: { ...type.caption, color: color.text2 },
+  fieldValue: { ...type.mono, color: color.text1 },
+  inlineError: { ...type.small, color: color.danger },
   receiptError: {
-    margin: spacing.md,
-    padding: spacing.lg,
-    gap: spacing.lg,
+    margin: space[4],
+    padding: space[6],
+    gap: space[6],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
+    borderColor: Platform.OS === "android" ? color.card2 : color.line,
+    backgroundColor: Platform.OS === "android" ? color.solidTint.error : color.errorTint,
   },
   inlineConfirm: {
-    padding: spacing.lg,
-    gap: spacing.lg,
+    padding: space[6],
+    gap: space[6],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileElevated,
+    borderColor: Platform.OS === "android" ? color.card2 : color.line,
+    backgroundColor: Platform.OS === "android" ? materials.pane.solidFill : color.fill.tile,
   },
-  footer: { borderTopWidth: 1, borderTopColor: glass.border.profileBase, paddingTop: 12 },
-  sectionLabel: { ...typography.labelCap, color: text.secondary },
+  footer: { borderTopWidth: 1, borderTopColor: color.line, paddingTop: 12 },
+  sectionLabel: { ...type.label, color: color.text2 },
   neutralCallout: {
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileBase,
-    padding: spacing.md,
+    borderColor: color.line,
+    backgroundColor: Platform.OS === "android" ? materials.pane.solidFill : color.fill.inset,
+    padding: space[4],
   },
   largeTextRow: { flexDirection: "column", alignItems: "stretch" },
 });

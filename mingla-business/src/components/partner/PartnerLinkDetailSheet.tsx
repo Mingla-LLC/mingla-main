@@ -42,14 +42,10 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   color,
-  accent,
   durations,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   isInviteExpired,
@@ -454,7 +450,7 @@ export const PartnerLinkDetailSheet: React.FC<PartnerLinkDetailSheetProps> = ({
                       editable={submittingVerb !== "correctSend"}
                       style={
                         emailFormatError
-                          ? { borderColor: semantic.error }
+                          ? { borderColor: color.danger }
                           : undefined
                       }
                     />
@@ -630,7 +626,7 @@ export const PartnerLinkDetailSheet: React.FC<PartnerLinkDetailSheetProps> = ({
             <Text style={styles.stepTitle}>Cancel this invite?</Text>
             <Text style={styles.stepBrandLine}>{brandName}</Text>
             <View style={styles.dangerCard}>
-              <Icon name="trash" size={18} color={semantic.error} />
+              <Icon name="trash" size={18} color={color.danger} />
               <View style={styles.dangerTextCol}>
                 {/* Title in text.primary, NOT semantic.error — 3.86:1 fails AA
                     on this surface; the icon + border carry the danger hue
@@ -682,7 +678,7 @@ export const PartnerLinkDetailSheet: React.FC<PartnerLinkDetailSheetProps> = ({
               Disconnect from {brandName}?
             </Text>
             <View style={styles.dangerCard}>
-              <Icon name="link" size={18} color={semantic.error} />
+              <Icon name="link" size={18} color={color.danger} />
               <View style={styles.dangerTextCol}>
                 <Text style={styles.dangerTitle}>
                   Future sales stop paying you
@@ -729,7 +725,7 @@ export const PartnerLinkDetailSheet: React.FC<PartnerLinkDetailSheetProps> = ({
           <Animated.View key="rejected" entering={stepEntering}>
             <Text style={styles.stepTitle}>Can't cancel yet</Text>
             <View style={styles.dangerCard} accessibilityRole="alert">
-              <Icon name="calendar" size={18} color={semantic.error} />
+              <Icon name="calendar" size={18} color={color.danger} />
               <View style={styles.dangerTextCol}>
                 <Text style={styles.dangerTitle}>
                   {rejectCount} upcoming event{rejectCount === 1 ? "" : "s"}
@@ -798,14 +794,14 @@ function dotColorFor(
 ): string {
   switch (link.status) {
     case "awaiting_owner":
-      return expired ? semantic.error : accent.warm;
+      return expired ? color.danger : color.accent;
     case "awaiting_stripe":
-      return semantic.warning;
+      return color.warning;
     case "active":
-      return semantic.success;
+      return color.success;
     case "cancelled":
     default:
-      return textTokens.tertiary;
+      return color.text3;
   }
 }
 
@@ -880,7 +876,7 @@ const ErrorCard: React.FC<{ message: string }> = ({ message }) => (
     style={[styles.dangerCard, styles.errorCardGap]}
     accessibilityRole="alert"
   >
-    <Icon name="flag" size={18} color={semantic.error} />
+    <Icon name="flag" size={18} color={color.danger} />
     <View style={styles.dangerTextCol}>
       <Text style={styles.dangerBody}>{message}</Text>
     </View>
@@ -889,14 +885,14 @@ const ErrorCard: React.FC<{ message: string }> = ({ message }) => (
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   identityRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   identityCol: {
     flex: 1,
@@ -908,20 +904,20 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   thumbFallback: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
   },
   thumbFallbackText: {
     fontSize: 18,
     fontWeight: "800",
-    color: accent.warm,
+    color: color.accent,
   },
   brandName: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   statusRow: {
     flexDirection: "row",
@@ -935,41 +931,41 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusLabel: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
     letterSpacing: 0.5,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   factsCard: {
-    marginTop: spacing.md,
-    padding: spacing.md,
+    marginTop: space[4],
+    padding: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   factsGroupGap: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   factsLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     textTransform: "uppercase",
     letterSpacing: 0.4,
     marginBottom: 6,
   },
   factsValuePrimary: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.primary,
+    color: color.text1,
   },
   factsValueSecondary: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   timelineCol: {
     gap: 6,
@@ -980,74 +976,74 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   timelineLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text2,
   },
   timelineDate: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   verbStack: {
-    marginTop: spacing.lg,
-    gap: spacing.sm,
+    marginTop: space[6],
+    gap: space[2],
   },
   destructiveZone: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   closeGap: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   inputHelper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text3,
+    marginTop: space[1],
   },
   inputError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.danger,
+    marginTop: space[1],
   },
   actionRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   actionRowLg: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: space[2],
+    marginTop: space[6],
   },
   actionCell: {
     flex: 1,
   },
   stepTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
+    marginBottom: space[2],
   },
   stepBrandLine: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: spacing.lg,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
+    marginBottom: space[6],
   },
   dangerCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     // #4420 — the Graphite danger tint and line.
@@ -1060,21 +1056,21 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   dangerTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   dangerBody: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   errorCardGap: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   rejectActions: {
-    marginTop: spacing.lg,
-    gap: spacing.sm,
+    marginTop: space[6],
+    gap: space[2],
   },
 });
 

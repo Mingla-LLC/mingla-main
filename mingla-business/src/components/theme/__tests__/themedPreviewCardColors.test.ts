@@ -19,7 +19,7 @@ import {
   resolveOfferingSurface,
 } from "../../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
-import { text as chromeText } from "../../../constants/designSystem";
+import { color as dsColor } from "../../../constants/designSystem";
 import {
   AA_TEXT_CONTRAST,
   compositeOverOpaque,
@@ -79,7 +79,7 @@ describe("themedPreviewCardColors — AA on the themed surface", () => {
     // [TEST-MOD-APPROVED #4420] Graphite text2 is an opaque grey (#a8a8ad), not a
     // white wash, so it no longer collapses to ~1:1; it still fails AA (4.5) on a
     // light page, which is the regression this pin keeps visible.
-    expect(textContrastOn(chromeText.secondary, palette.page)).toBeLessThan(4.5);
+    expect(textContrastOn(dsColor.text2, palette.page)).toBeLessThan(4.5);
     const card = themedPreviewCardColors(palette);
     expect(textContrastOn(card.venueText, card.surface)).toBeGreaterThanOrEqual(
       AA_TEXT_CONTRAST,

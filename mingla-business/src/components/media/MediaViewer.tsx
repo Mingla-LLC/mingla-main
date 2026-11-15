@@ -22,7 +22,7 @@ import { Gesture } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { WebView } from "react-native-webview";
 
-import { accent, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import { useBusinessMediaTranslation } from "../../i18n";
 import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { formatFileSize } from "../../utils/formatMediaDuration";
@@ -61,7 +61,7 @@ function ViewerPage({ item, request, progress, stage, active, renderThumbnail }:
   const boxStyle = { width: box.width, height: box.height };
   if (!active) return <>{renderThumbnail(item, boxStyle)}</>;
   const localizedSize = (size: number): string => formatFileSize(size, (key, variables) => t(key, variables));
-  if (!request) return <View style={[stage.style, styles.state]}><ActivityIndicator color={accent.warm} /><Text style={styles.stateText}>{progress && progress.total > 0 ? t("viewer.loading_progress", { loaded: localizedSize(progress.loaded), total: localizedSize(progress.total) }) : t("viewer.loading")}</Text></View>;
+  if (!request) return <View style={[stage.style, styles.state]}><ActivityIndicator color={color.accent} /><Text style={styles.stateText}>{progress && progress.total > 0 ? t("viewer.loading_progress", { loaded: localizedSize(progress.loaded), total: localizedSize(progress.total) }) : t("viewer.loading")}</Text></View>;
   if (item.kind === "image") return <BrandGroupCachedImage fileId={item.fileId} variant="full" source={request} fit="contain" accessibilityLabel={item.name} style={boxStyle} />;
   if (item.kind === "video") return <ActiveVideo source={request} label={item.name} style={boxStyle} />;
   if (item.mime === "application/pdf") {
@@ -70,7 +70,7 @@ function ViewerPage({ item, request, progress, stage, active, renderThumbnail }:
     }
     return <WebView source={request} style={[boxStyle, styles.pdf]} javaScriptEnabled={false} sharedCookiesEnabled={false} />;
   }
-  return <View style={[stage.style, styles.state]}><Icon name="notebook" size={36} color={accent.warm} /><Text style={styles.itemTitle}>{item.name}</Text><Text style={styles.stateText}>{t("viewer.not_previewable")}</Text></View>;
+  return <View style={[stage.style, styles.state]}><Icon name="notebook" size={36} color={color.accent} /><Text style={styles.itemTitle}>{item.name}</Text><Text style={styles.stateText}>{t("viewer.not_previewable")}</Text></View>;
 }
 
 export function MediaViewer({ visible, items, initialIndex, requestFor, onActiveIndexChange, onShowInChat, renderThumbnail, onClose }: MediaViewerProps): React.ReactElement {
@@ -271,7 +271,7 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
 const styles = StyleSheet.create({
   stageLine: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 },
   page: { alignItems: "center", justifyContent: "center" },
-  topRow: { minHeight: 56, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 6 },
+  topRow: { minHeight: 56, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingVertical: 6 },
   topRowLargeText: { minHeight: 84, paddingVertical: 10 },
   circle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.14)" },
   topCopy: { flex: 1, minWidth: 0 },
@@ -282,13 +282,13 @@ const styles = StyleSheet.create({
   arrow: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.12)" },
   arrowRight: { transform: [{ rotate: "180deg" }] },
   bottom: { minHeight: 72, alignItems: "center", gap: 4, paddingBottom: 4 },
-  strip: { gap: 6, paddingHorizontal: spacing.md },
+  strip: { gap: 6, paddingHorizontal: space[4] },
   stripItem: { width: 44, minHeight: 44, borderRadius: 8, padding: 4, opacity: 0.55 },
-  stripItemActive: { borderWidth: 2, borderColor: accent.warm, opacity: 1 },
+  stripItemActive: { borderWidth: 2, borderColor: color.accent, opacity: 1 },
   stripThumb: { width: 36, height: 36, borderRadius: 5 },
   hint: { color: "rgba(255,255,255,0.45)", fontSize: 11 },
   feedbackError: { color: "#ff9b9b" },
-  state: { alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl },
-  stateText: { color: textTokens.secondary, textAlign: "center", lineHeight: 20, maxWidth: 480 },
+  state: { alignItems: "center", justifyContent: "center", gap: space[4], padding: space[7] },
+  stateText: { color: color.text2, textAlign: "center", lineHeight: 20, maxWidth: 480 },
   pdf: { backgroundColor: "#fff" },
 });

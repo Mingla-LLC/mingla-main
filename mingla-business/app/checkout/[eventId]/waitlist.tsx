@@ -10,11 +10,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../src/constants/designSystem";
+import { space, type, color } from "../../../src/constants/designSystem";
 import { Button } from "../../../src/components/ui/Button";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
@@ -39,7 +35,7 @@ export default function CheckoutWaitlistScreen(): React.ReactElement {
     <View
       style={[
         styles.root,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom },
+        { paddingTop: insets.top + space[6], paddingBottom: insets.bottom },
       ]}
     >
       <Text style={styles.eyebrow}>Sold out</Text>
@@ -72,21 +68,21 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "#0c0e12",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: space[6],
+    gap: space[4],
   },
   eyebrow: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
     textTransform: "uppercase",
   },
   title: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
-    marginBottom: spacing.lg,
+    ...type.body,
+    color: color.text2,
+    marginBottom: space[6],
   },
 });

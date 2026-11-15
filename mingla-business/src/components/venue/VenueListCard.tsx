@@ -21,7 +21,6 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { ViewStyle } from "react-native";
 
 import {
-  glass,
   radius as radiusTokens,
   color,
   space,
