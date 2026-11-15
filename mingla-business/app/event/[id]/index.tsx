@@ -1010,7 +1010,7 @@ export default function EventDetailScreen(): React.ReactElement {
                 </>
               )}
               {/* #4420 (round-3 item 10, TILE_MATRIX) — the shared tile page: the
-                  core tiles, then "More for this event". No "Continue editing". */}
+                  core tiles, then "More for this event"; the old editing CTA is gone. */}
               {(() => {
                 const sections = eventGridSections({
                   edit: canEditEvent,

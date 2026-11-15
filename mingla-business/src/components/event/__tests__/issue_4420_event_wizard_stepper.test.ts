@@ -5,11 +5,11 @@
  * (desktop list or phone chips), the reach limit stops coming from the
  * EXISTING `validateStep` (a new rule, or none), a jump can leave Invite people
  * mid-save or run during the #1780 publish re-read, or "Draft saved" returns.
+ * The Stepper's own reach rule is pinned by ui/__tests__/issue_4420_stepper.
  */
 import fs from "node:fs";
 import path from "node:path";
 
-import { isStepReachable } from "../../ui/Stepper";
 
 const wizard = fs.readFileSync(path.join(__dirname, "../EventCreatorWizard.tsx"), "utf8");
 
@@ -46,12 +46,5 @@ describe("#4420 B7 — Event wizard clickable stepper", () => {
   it("drops Blast from the wizard's collapsed rail", () => {
     const nav = wizard.slice(wizard.indexOf("const DESKTOP_WIZARD_NAV_ITEMS"), wizard.indexOf("] as const;"));
     expect(nav).not.toContain('label: "Blast"');
-  });
-
-  it("the Stepper refuses a step past the furthest valid one and a locked step", () => {
-    const step = { id: "s", label: "S" };
-    expect(isStepReachable(step, 2, 0, 2)).toBe(true);
-    expect(isStepReachable(step, 3, 0, 2)).toBe(false);
-    expect(isStepReachable({ ...step, state: "locked" }, 1, 0, 2)).toBe(false);
   });
 });

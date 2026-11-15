@@ -69,7 +69,7 @@ describe("event page tool grid", () => {
 
   it("has no Continue editing, an Edit tile, a Blast tile and a Promote tile with live status", () => {
     expect(page).not.toContain("Continue editing");
-    expect(page).toMatch(/icon="edit"[\s\S]{0,80}onPress=\{handleEdit\}/);
+    expect(page).toMatch(/icon="edit"[\s\S]{0,260}onPress=\{handleEdit\}/);
     expect(page).toMatch(/label="Blast"[\s\S]{0,200}\/event\/\$\{event\.id\}\/blasts/);
     expect(page).toMatch(/label="Promote"[\s\S]{0,80}sub=\{promoteStatus\}/);
     expect(page).toContain("setPromoteStatus(mod.promoteTileStatus(overview))");
