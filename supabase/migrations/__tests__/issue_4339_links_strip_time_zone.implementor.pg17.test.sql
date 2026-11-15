@@ -20,6 +20,8 @@
 --    is stored and updated.
 -- G  one save overload (the old 8-argument signature is gone), the column is
 --    NOT NULL with no default, grants and security modes as intended.
+-- C  the table's CHECK refuses a zone Postgres cannot read on a direct INSERT
+--    or UPDATE, and the readers keep answering (tester P2-2).
 -- FAILS-ON-REVERT: without the migration W fails (no links_strip_window) and
 -- A fails (a scheduled strip is public).
 -- Runs after the full migration replay; every fixture rolls back.
@@ -299,5 +301,61 @@ BEGIN
 END
 $test$;
 
-SELECT 'issue_4339_links_strip_time_zone: W A S L G passed' AS result;
+-- ═══ C: the table refuses a zone Postgres cannot read (tester P2-2) ═══════
+-- Before the CHECK, one such row made every reader error (22023) and blanked
+-- /links and the Admin list. Direct writes (service role, SQL) are refused now.
+DO $test$
+DECLARE
+  v_state text;
+  v_zone text;
+BEGIN
+  FOREACH v_zone IN ARRAY ARRAY['Mars/Olympus', 'Not/A_Zone', '', '   '] LOOP
+    v_state := NULL;
+    BEGIN
+      INSERT INTO public.links_strips (shows_on, time_zone, title, label, opens, position, is_published)
+      VALUES ((now() AT TIME ZONE 'utc')::date, v_zone, 'Bad zone', 'New', 'host', 99, true);
+    EXCEPTION WHEN check_violation THEN
+      GET STACKED DIAGNOSTICS v_state = CONSTRAINT_NAME;
+    END;
+    IF v_state IS DISTINCT FROM 'links_strips_time_zone_valid' THEN
+      RAISE EXCEPTION 'C: INSERT with zone % was not refused by the CHECK (%)', quote_literal(v_zone), v_state;
+    END IF;
+  END LOOP;
+  v_state := NULL;
+  BEGIN
+    UPDATE public.links_strips SET time_zone = 'Mars/Olympus' WHERE id = '4339d000-0000-4000-9000-000000000001';
+  EXCEPTION WHEN check_violation THEN
+    GET STACKED DIAGNOSTICS v_state = CONSTRAINT_NAME;
+  END;
+  IF v_state IS DISTINCT FROM 'links_strips_time_zone_valid' THEN
+    RAISE EXCEPTION 'C: UPDATE to Mars/Olympus was not refused (%)', v_state;
+  END IF;
+  IF NOT public.links_strip_time_zone_valid('Africa/Lagos') OR public.links_strip_time_zone_valid('Mars/Olympus')
+     OR public.links_strip_time_zone_valid(NULL) THEN
+    RAISE EXCEPTION 'C: links_strip_time_zone_valid answers wrong';
+  END IF;
+END
+$test$;
+-- The readers still answer after the refused writes.
+SET LOCAL ROLE anon;
+DO $test$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.links_page_strips() strip WHERE strip.id = '4339d000-0000-4000-9000-000000000001') THEN
+    RAISE EXCEPTION 'C: the reader lost the Lagos strip after the refused writes';
+  END IF;
+END
+$test$;
+RESET ROLE;
+SELECT pg_temp.tz_act('4339d000-0000-4000-a000-000000000001');
+SET LOCAL ROLE authenticated;
+DO $test$
+BEGIN
+  IF (SELECT count(*) FROM public.admin_links_strips_list() strip WHERE strip.id::text LIKE '4339d000-%') < 9 THEN
+    RAISE EXCEPTION 'C: the admin list does not answer after the refused writes';
+  END IF;
+END
+$test$;
+RESET ROLE;
+
+SELECT 'issue_4339_links_strip_time_zone: W A S L G C passed' AS result;
 ROLLBACK;

@@ -74,6 +74,28 @@ export function zoneCity(zone) {
   return String(zone || "").split("/").pop().replace(/_/g, " ");
 }
 
+// Today's city names for zones whose IANA (and browser) id still uses the old
+// one, so "Kolkata" or "Kyiv" finds them (tester P3-2).
+const ZONE_ALIASES = Object.freeze({
+  "Asia/Calcutta": "Kolkata",
+  "Asia/Kolkata": "Kolkata",
+  "Europe/Kiev": "Kyiv",
+  "Europe/Kyiv": "Kyiv",
+  "Asia/Saigon": "Ho Chi Minh City",
+  "Asia/Ho_Chi_Minh": "Ho Chi Minh City",
+  "Asia/Rangoon": "Yangon",
+  "Asia/Yangon": "Yangon",
+  "America/Godthab": "Nuuk",
+  "America/Nuuk": "Nuuk",
+  "Asia/Katmandu": "Kathmandu",
+  "Asia/Kathmandu": "Kathmandu",
+});
+
+/** The current city name for a zone whose id uses an old one, or "". */
+export function zoneAlias(zone) {
+  return Object.hasOwn(ZONE_ALIASES, zone) ? ZONE_ALIASES[zone] : "";
+}
+
 /** The country a zone is searched by, or "" when none is listed. */
 export function zoneCountry(zone) {
   return Object.hasOwn(ZONE_COUNTRY, zone) ? ZONE_COUNTRY[zone] : "";
@@ -101,10 +123,11 @@ export function zoneClock(zone, at = new Date()) {
 /** What the closed picker shows for the chosen zone: "Lagos — Africa/Lagos (GMT+1)". */
 export function zoneLabel(zone, at = new Date()) {
   if (!zone) return "";
-  return `${zoneCity(zone)} — ${zone} (${zoneOffset(zone, at)})`;
+  const offset = zoneOffset(zone, at);
+  return `${zoneAlias(zone) || zoneCity(zone)} — ${zone}${offset ? ` (${offset})` : ""}`;
 }
 
-const OFFSET_QUERY = /^(?:gmt|utc)?\s*([+-−])\s*(\d{1,2})(?::?(\d{2}))?$/i;
+const OFFSET_QUERY = /^(?:gmt|utc)?\s*([+\-−])\s*(\d{1,2})(?::?(\d{2}))?$/i;
 
 // "utc+1", "GMT +1", "+1", "-05:00" -> "GMT+1" / "GMT-5" / "GMT+5:30" (null when not an offset).
 function offsetFromQuery(query) {
@@ -123,9 +146,15 @@ export function zoneMatches(zone, query, at = new Date()) {
   const offset = offsetFromQuery(q);
   if (offset) return zoneOffset(zone, at) === offset;
   if (q === "gmt" || q === "utc") return zoneOffset(zone, at) === "GMT";
-  return zone.toLowerCase().includes(q)
-    || zone.toLowerCase().replace(/_/g, " ").includes(q)
-    || zoneCity(zone).toLowerCase().includes(q)
+  return zoneNameMatches(zone, q)
+    || zone.toLowerCase().includes(q)
+    || zone.toLowerCase().replace(/_/g, " ").includes(q);
+}
+
+// The strong match: the city, its current name or its country (ranked first).
+function zoneNameMatches(zone, q) {
+  return zoneCity(zone).toLowerCase().includes(q)
+    || zoneAlias(zone).toLowerCase().includes(q)
     || zoneCountry(zone).toLowerCase().includes(q);
 }
 
@@ -137,12 +166,21 @@ export function zoneMatches(zone, query, at = new Date()) {
 export function searchTimeZones(query, { zones = timeZoneOptions(), at = new Date(), limit = TIME_ZONE_REST_LIMIT } = {}) {
   const common = COMMON_ZONES.filter((zone) => isValidTimeZone(zone) && zoneMatches(zone, query, at));
   const commonSet = new Set(COMMON_ZONES);
-  const rest = [];
-  for (const zone of zones) {
-    if (rest.length >= limit) break;
-    if (!commonSet.has(zone) && zoneMatches(zone, query, at)) rest.push(zone);
-  }
-  return { common, rest };
+  const q = String(query || "").trim().toLowerCase();
+  const matched = zones.filter((zone) => !commonSet.has(zone) && zoneMatches(zone, query, at));
+  // Country and current-name matches first, then city, then zone id only
+  // ("India" lists Kolkata before the Indiana zones, tester P3-2).
+  const tier = (zone) => {
+    if (!q) return 0;
+    if (zoneCountry(zone).toLowerCase().includes(q) || zoneAlias(zone).toLowerCase().includes(q)) return 0;
+    return zoneCity(zone).toLowerCase().includes(q) ? 1 : 2;
+  };
+  // Stable sort: the zones keep their order inside each tier.
+  const rest = matched.map((zone, index) => ({ zone, index, rank: tier(zone) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((item) => item.zone)
+    .slice(0, limit);
+  return { common, rest, more: Math.max(0, matched.length - rest.length) };
 }
 
 /**

@@ -33,6 +33,35 @@ ALTER TABLE public.links_strips ADD COLUMN IF NOT EXISTS time_zone text NULL;
 UPDATE public.links_strips SET time_zone = 'America/New_York' WHERE time_zone IS NULL;
 ALTER TABLE public.links_strips ALTER COLUMN time_zone DROP DEFAULT;
 ALTER TABLE public.links_strips ALTER COLUMN time_zone SET NOT NULL;
+
+-- A stored zone Postgres cannot read would make every reader of the table
+-- error (22023) and blank /links and the Admin list, so the table itself
+-- refuses one, whoever writes (tester P2-2). A CHECK cannot query
+-- pg_timezone_names, so the helper asks Postgres to use the zone and says
+-- whether it could. The save RPC still requires an exact pg_timezone_names name.
+CREATE OR REPLACE FUNCTION public.links_strip_time_zone_valid(p_time_zone text)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $function$
+BEGIN
+  IF p_time_zone IS NULL OR btrim(p_time_zone) = '' THEN
+    RETURN false;
+  END IF;
+  PERFORM ('2000-01-01 00:00'::timestamp AT TIME ZONE p_time_zone);
+  RETURN true;
+EXCEPTION WHEN invalid_parameter_value THEN
+  RETURN false;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.links_strip_time_zone_valid(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.links_strip_time_zone_valid(text) TO authenticated, service_role;
+COMMENT ON FUNCTION public.links_strip_time_zone_valid(text) IS
+  '#4339: true when Postgres can read the zone (the links_strips_time_zone_valid CHECK); the save also requires an exact pg_timezone_names name.';
+ALTER TABLE public.links_strips DROP CONSTRAINT IF EXISTS links_strips_time_zone_valid;
+ALTER TABLE public.links_strips ADD CONSTRAINT links_strips_time_zone_valid
+  CHECK (public.links_strip_time_zone_valid(time_zone));
 COMMENT ON COLUMN public.links_strips.time_zone IS
   '#4339: IANA zone (a pg_timezone_names name) the strip''s days are read in. Its window is links_strip_window(shows_on, shows_until, time_zone).';
 

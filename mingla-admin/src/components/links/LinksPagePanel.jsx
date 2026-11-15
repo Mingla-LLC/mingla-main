@@ -65,8 +65,10 @@ function draftFromStrip(strip) {
     id: strip.id,
     showsOn: strip.shows_on,
     showsUntil: strip.shows_until || "",
-    // Editing shows the saved zone.
-    timeZone: isValidTimeZone(strip.time_zone) ? strip.time_zone : browserTimeZone(),
+    // Editing shows the saved zone. One this picker does not offer is kept as
+    // it is (never silently swapped for this computer's zone, tester P3-4);
+    // the form then asks for a zone from the list before it saves.
+    timeZone: strip.time_zone || browserTimeZone(),
     title: strip.title || "",
     label: strip.label,
     opens: strip.opens,

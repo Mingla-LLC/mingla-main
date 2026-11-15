@@ -264,7 +264,9 @@ export function stripWindowLine({ showsOn, showsUntil, timeZone }, viewerZone = 
 /** The strip's zone for the list: "Lagos GMT+1" (the offset at its first day), or "" without one. */
 export function stripZoneLine(strip) {
   const zone = strip?.time_zone;
-  if (!isValidTimeZone(zone)) return "";
+  if (!zone) return "";
+  // A zone this browser cannot format still names itself (tester P3-4).
+  if (!isValidTimeZone(zone)) return String(zone);
   const at = Date.parse(strip?.starts_at || "");
   return `${zoneCity(zone)} ${zoneOffset(zone, Number.isFinite(at) ? new Date(at) : new Date())}`;
 }

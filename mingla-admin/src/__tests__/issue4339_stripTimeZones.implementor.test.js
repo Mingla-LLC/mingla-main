@@ -74,6 +74,50 @@ describe("Z-1 zone search", () => {
   });
 });
 
+describe("Z-1b tester rework (P3-1, P3-2, P3-3, P3-4)", () => {
+  it("P3-1: only + and minus signs make an offset query; digits and letters do not", () => {
+    assert.deepEqual(all("utc12"), [], "utc12 is not GMT-2");
+    assert.deepEqual(all("10"), []);
+    assert.ok(all("-5").includes("America/New_York"));
+    assert.ok(all("−5").includes("America/New_York"), "a typographic minus works too");
+  });
+
+  it("P3-2: today's city names find zones whose id still has the old one, and a country ranks first", () => {
+    for (const [query, zone] of [["kolkata", "Asia/Calcutta"], ["kyiv", "Europe/Kiev"], ["ho chi minh", "Asia/Saigon"], ["yangon", "Asia/Rangoon"], ["nuuk", "America/Godthab"]]) {
+      const found = all(query);
+      assert.ok(found.includes(zone) || found.includes(zone.replace("Calcutta", "Kolkata").replace("Kiev", "Kyiv")), `${query} finds ${zone}`);
+    }
+    const india = all("india");
+    assert.match(india[0], /^Asia\/(Calcutta|Kolkata)$/, "India lists Kolkata before the Indiana zones");
+    assert.equal(zoneLabel("Asia/Calcutta", AT), "Kolkata — Asia/Calcutta (GMT+5:30)");
+  });
+
+  it("P3-3: the capped list says how many more there are", () => {
+    const empty = searchTimeZones("", { at: AT });
+    assert.ok(empty.more > 0);
+    assert.equal(empty.rest.length + empty.more + empty.common.length >= TIME_ZONE_REST_LIMIT + empty.more, true);
+    assert.equal(searchTimeZones("lagos", { at: AT }).more, 0);
+    const source = read("components/ui/TimeZoneCombobox.jsx");
+    assert.match(source, /"More zones"/);
+    assert.doesNotMatch(source, /"All zones"/);
+    assert.match(source, /more\. Type a city, country or zone to find them\./);
+  });
+
+  it("P3-4: a saved zone the picker does not offer is kept on edit and still named in the list", () => {
+    const panel = read("components/links/LinksPagePanel.jsx");
+    assert.match(panel, /timeZone: strip\.time_zone \|\| browserTimeZone\(\)/);
+    assert.equal(stripZoneLine({ time_zone: "posix/Mars" }), "posix/Mars");
+    assert.equal(validateStripDraft({
+      id: "s1", showsOn: "2026-11-16", timeZone: "posix/Mars", title: "x", label: "New", opens: "host", url: "", blogPostId: "",
+    }).field, "timeZone", "it must be re-picked from the list before saving");
+  });
+
+  it("P3-5: leaving the field after typing one exact match picks it", () => {
+    const source = read("components/ui/TimeZoneCombobox.jsx");
+    assert.match(source, /if \(query !== null && query\.trim\(\) && options\.length === 1\) choose\(options\[0\]\);/);
+  });
+});
+
 describe("Z-2 combobox keyboard", () => {
   it("arrows open the list and move with wrap", () => {
     assert.deepEqual(comboboxKeyStep({ open: false, active: -1, count: 3 }, "ArrowDown"), { open: true, active: 0, pick: null, handled: true });
@@ -135,7 +179,7 @@ describe("Z-3 the zone is required and saved", () => {
   it("new strips start in this computer's zone; editing shows the saved one", () => {
     const panel = read("components/links/LinksPagePanel.jsx");
     assert.match(panel, /timeZone: browserTimeZone\(\)/);
-    assert.match(panel, /timeZone: isValidTimeZone\(strip\.time_zone\) \? strip\.time_zone : browserTimeZone\(\)/);
+    assert.match(panel, /timeZone: strip\.time_zone \|\| browserTimeZone\(\)/);
     assert.match(panel, /<TimeZoneCombobox/);
   });
 });

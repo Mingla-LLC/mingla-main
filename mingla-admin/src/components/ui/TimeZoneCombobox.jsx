@@ -8,7 +8,7 @@
 // Reusable: <TimeZoneCombobox id value onChange labelId ... />.
 import { forwardRef, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { comboboxKeyStep, highlightParts, searchTimeZones, zoneCity, zoneClock, zoneCountry, zoneLabel, zoneOffset } from "../../lib/timeZoneSearch";
+import { comboboxKeyStep, highlightParts, searchTimeZones, zoneAlias, zoneCity, zoneClock, zoneCountry, zoneLabel, zoneOffset } from "../../lib/timeZoneSearch";
 
 function Highlight({ text, query }) {
   return highlightParts(text, query).map((part, index) => (part.match
@@ -36,7 +36,7 @@ export const TimeZoneCombobox = forwardRef(function TimeZoneCombobox({
   const listRef = useRef(null);
 
   const typed = query ?? "";
-  const { common, rest } = useMemo(() => searchTimeZones(typed, { at }), [typed, at]);
+  const { common, rest, more } = useMemo(() => searchTimeZones(typed, { at }), [typed, at]);
   const options = useMemo(() => [...common, ...rest], [common, rest]);
 
   // Keep the highlighted option in view while arrowing through a long list.
@@ -96,7 +96,7 @@ export const TimeZoneCombobox = forwardRef(function TimeZoneCombobox({
           className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-sm ${position === active || selected ? "bg-[var(--color-brand-50)]" : ""}`}
         >
           <span className="min-w-0">
-            <span className="font-semibold text-[var(--color-text-primary)]"><Highlight text={zoneCity(zone)} query={typed} /></span>
+            <span className="font-semibold text-[var(--color-text-primary)]"><Highlight text={zoneAlias(zone) || zoneCity(zone)} query={typed} /></span>
             {country ? <span className="text-[var(--color-text-secondary)]"> · <Highlight text={country} query={typed} /></span> : null}
             <span className="block truncate font-mono text-xs text-[var(--color-text-tertiary)]">
               <Highlight text={zone} query={typed} /> · now {zoneClock(zone, at)}
@@ -129,7 +129,11 @@ export const TimeZoneCombobox = forwardRef(function TimeZoneCombobox({
         onFocus={(event) => { event.target.select?.(); show(); }}
         onChange={(event) => { setQuery(event.target.value); setOpen(true); setActive(-1); }}
         onKeyDown={onKeyDown}
-        onBlur={close}
+        onBlur={() => {
+          // Typed a city and left without picking: take the one exact match (tester P3-5).
+          if (query !== null && query.trim() && options.length === 1) choose(options[0]);
+          else close();
+        }}
         className={[
           "h-10 w-full rounded-lg border bg-[var(--color-background-primary)] pl-3 pr-9 text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150",
           "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
@@ -147,7 +151,9 @@ export const TimeZoneCombobox = forwardRef(function TimeZoneCombobox({
       >
         {!open ? null : options.length ? [
           ...group(typed.trim() ? "Best matches" : "Mingla cities and common", common, 0),
-          ...group(typed.trim() ? "All other zones" : "All zones", rest, common.length),
+          ...group(typed.trim() ? "All other zones" : "More zones", rest, common.length),
+          // The list is capped; say how to reach the rest (tester P3-3).
+          ...(more ? [<li key="more" role="presentation" className="px-2.5 py-2 text-xs text-[var(--color-text-tertiary)]">{more} more. Type a city, country or zone to find them.</li>] : []),
         ] : (
           <li role="presentation" className="px-2.5 py-2.5 text-sm text-[var(--color-text-secondary)]">
             No time zone matches “{typed.trim()}”. Try a city, like Lagos or Chicago.
