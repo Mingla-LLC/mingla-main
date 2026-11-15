@@ -59,22 +59,23 @@ const styleBlock = (code: string, name: string): string | null => {
 // suite. See `Mingla_Artifacts/INVARIANT_REGISTRY.md` (ANDROID glass opaque
 // fallback) — generalized, not retired.
 
-describe("Sub-D Symptom-B — ui/Toast.tsx blur guard (via shared shouldUseRealBlur)", () => {
+// [TEST-MOD-APPROVED #4420] Toast no longer owns glass: it draws its card with
+// `<Material kind="sheet">` (iOS blur, Android / phone-web / reduce-transparency
+// SOLID alpha 1). The Sub-D guarantee (no inverted web guard, opaque where blur
+// is unavailable) now lives in Material and is pinned there.
+describe("Sub-D Symptom-B — ui/Toast.tsx glass comes from Material", () => {
   const code = stripComments(read("ui/Toast.tsx"));
+  const material = stripComments(read("ui/Material.tsx"));
 
-  test("blurOk no longer uses the inverted `Platform.OS !== 'web'` guard", () => {
+  test("Toast has no blur decision of its own (no inverted guard, no BlurView)", () => {
     expect(code).not.toMatch(/blurOk\s*=\s*Platform\.OS\s*!==\s*["']web["']/);
+    expect(code).not.toMatch(/from\s*["']expo-blur["']/);
+    expect(code).toMatch(/<Material kind="sheet"/);
   });
 
-  test("blurOk is computed from the shared shouldUseRealBlur(windowWidth) helper", () => {
-    expect(code).toMatch(/import\s*\{[^}]*shouldUseRealBlur[^}]*\}\s*from\s*["'][^"']*glassBlur["']/);
-    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
-  });
-
-  test("opaque FALLBACK_BACKGROUND is the kit fallback rgba(20, 22, 26, 0.92)", () => {
-    expect(code).toMatch(
-      /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
-    );
+  test("Material computes the web decision from shouldUseRealBlur and falls back to the solid fill", () => {
+    expect(material).toMatch(/shouldUseRealBlur\(width\)/);
+    expect(material).toMatch(/fill:\s*recipe\.solidFill/);
   });
 });
 

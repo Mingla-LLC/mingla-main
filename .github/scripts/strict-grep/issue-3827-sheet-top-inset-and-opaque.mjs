@@ -80,6 +80,17 @@ export function stripComments(src) {
  * @param {{ mobile: string | null, web: string | null }} input raw sources
  * @returns {string[]} violations
  */
+/**
+ * #4420: true when designSystem.ts draws `materials.sheet.solidFill` from a
+ * graphite primitive that is an opaque 6-digit hex.
+ */
+export function sheetSolidIsOpaqueHex(tokens) {
+  if (typeof tokens !== "string") return false;
+  const ref = /\bsheet:\s*\{[^}]*?solidFill:\s*palette\.graphite\[(\d+)\]/.exec(tokens);
+  if (ref === null) return false;
+  return new RegExp(`\\b${ref[1]}:\\s*"#[0-9a-fA-F]{6}"`).test(tokens);
+}
+
 export function check(input) {
   const violations = [];
   if (input.mobile === null) return [`S1 ${MOBILE} is missing`];
@@ -112,11 +123,15 @@ export function check(input) {
   }
 
   // S3
-  const hex = /export\s+const\s+WEB_OPAQUE_BACKGROUND\s*=\s*["']([^"']*)["']/.exec(mobile);
+  // #4420: the literal moved into designSystem.ts; WEB_OPAQUE_BACKGROUND is the
+  // sheet material's SOLID fill, which designSystem pins to an opaque hex.
+  const hex = /export\s+const\s+WEB_OPAQUE_BACKGROUND\s*=\s*(?:["']([^"']*)["']|(materials\.sheet\.solidFill))/.exec(mobile);
   if (hex === null) {
     violations.push("S3 SheetMobile.tsx does not export WEB_OPAQUE_BACKGROUND");
-  } else if (!/^#[0-9a-fA-F]{6}$/.test(hex[1])) {
+  } else if (hex[1] !== undefined && !/^#[0-9a-fA-F]{6}$/.test(hex[1])) {
     violations.push(`S3 WEB_OPAQUE_BACKGROUND is "${hex[1]}", not an opaque 6-digit hex`);
+  } else if (hex[2] !== undefined && !sheetSolidIsOpaqueHex(input.tokens)) {
+    violations.push("S3 materials.sheet.solidFill is not an opaque 6-digit hex in designSystem.ts");
   }
   if (!/\bWEB_OPAQUE_BACKGROUND\b/.test(imported)) {
     violations.push('S3 Sheet.web.tsx does not import WEB_OPAQUE_BACKGROUND from "./SheetMobile"');
@@ -162,6 +177,24 @@ if (process.argv.includes("--self-test")) {
     ["S3 the opaque base is not painted (the see-through picker)", { mobile, web: web.replace("[StyleSheet.absoluteFill, styles.opaqueBase]", "[styles.opaqueBase]") }, 1],
     ["S3 the opaque import is gone", { mobile, web: web.replace("  WEB_OPAQUE_BACKGROUND,\n", "") }, 1],
     ["a missing file fails", { mobile: null, web }, 1],
+    [
+      "#4420 the token-sourced opaque fill passes",
+      {
+        mobile: mobile.replace('"#16181b"', "materials.sheet.solidFill"),
+        web,
+        tokens: 'graphite: { 900: "#1e1e22" },\n  sheet: {\n    glassFill: x,\n    solidFill: palette.graphite[900],',
+      },
+      0,
+    ],
+    [
+      "#4420 a token-sourced fill whose primitive gains alpha fails",
+      {
+        mobile: mobile.replace('"#16181b"', "materials.sheet.solidFill"),
+        web,
+        tokens: 'graphite: { 900: "rgba(30,30,34,.9)" },\n  sheet: {\n    solidFill: palette.graphite[900],',
+      },
+      1,
+    ],
   ];
   const failures = [];
   for (const [label, input, expected] of cases) {
@@ -187,7 +220,11 @@ const read = (rel) => {
   const abs = path.join(ROOT, rel);
   return fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : null;
 };
-const violations = check({ mobile: read(MOBILE), web: read(WEB) });
+const violations = check({
+  mobile: read(MOBILE),
+  web: read(WEB),
+  tokens: read("mingla-business/src/constants/designSystem.ts"),
+});
 if (violations.length > 0) {
   console.error("#3827 sheet-top-inset-and-opaque FAIL:");
   for (const violation of violations) console.error("  - " + violation);

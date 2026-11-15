@@ -1,57 +1,37 @@
 /**
- * Toast — top-of-screen notification banner.
+ * Toast — non-modal notification (#4420 Graphite Glass, spec §3.3 / B4).
  *
- * 4 kinds (success / info / warn / error). Auto-dismiss timing per kind:
- * success/info 2600ms, warn 6000ms, error 12000ms (bounded fallback).
+ * # Source-compatible
+ * `<Toast visible kind message onDismiss />` keeps every prop it had, so none
+ * of the call sites change. New and additive: `action` (one quiet action
+ * button, e.g. "Retry").
  *
- * Slide-down + opacity entrance 220ms `easings.out`; exit 160ms
- * `easings.in`. Reduce-motion fallback: opacity-only.
+ * # Non-modal (the B4 fix)
+ * Toast no longer renders a native `<Modal>`. A Modal window on iOS captures
+ * every touch until it closes, which froze the screen under every toast. Now
+ * Toast registers its props in `toastStore` while it is visible and renders
+ * nothing; `ToastHost` draws it in an absolutely positioned
+ * `pointerEvents="box-none"` layer: no scrim, no focus capture.
+ * Layering: a host lives at the app root AND inside the SheetMobile, Modal and
+ * ConfirmDialog windows; a toast shows only in the top-most one (see
+ * `toastStore.ts`). If no host is mounted at all (an isolated render), Toast
+ * draws its card inline so a message is never silently lost.
  *
- * # Dismissal affordances (canonical for the entire app — ORCH-0821 rework)
+ * # Dismissal (ORCH-0789, canonical for the whole app)
+ *   1. Tap anywhere on the card.
+ *   2. Tap the close (×) button (32×32 + hitSlop 12 → 56×56).
+ *   3. Swipe UP (native): past 40pt or a fling faster than 500pt/s.
+ *   4. The timer (`toastTimings.ts`): success/info 4s, warn 6s, error with an
+ *      action 8s; an error with no action stays until dismissed. The timer
+ *      pauses while the card is pressed or hovered.
  *
- * Every Toast in mingla-business is dismissible four ways:
- *   1. Tap anywhere on the card (Pressable onPress)
- *   2. Tap the explicit close (×) button (32×32 with hitSlop=12 → 56×56 hit)
- *   3. Swipe UP — drag the toast upward past 40pt OR fling it with
- *      velocityY < -500. Pan follows the finger with light resistance,
- *      rubber-bands on pull-down. Pan only activates after 8pt of vertical
- *      movement, so a static tap is never misread as a swipe. Horizontal
- *      swipes past 24pt cancel the pan gesture entirely.
- *   4. Auto-dismiss timer (per-kind default; nullable per-instance)
- *
- * This is THE canonical toast for the app — any new notification UX uses
- * this primitive. Do not build custom error banners. (ErrorBanner in the
- * Ari surface was migrated to this Toast on 2026-05-12.)
- *
- * # Self-positioning portal (revised 2026-05-02)
- *
- * Toast self-positions at the TOP of the screen via a native `<Modal>`
- * portal (mirrors Sheet primitive's DEC-085 portal pattern). Anchored
- * `top: insets.top + spacing.sm` below the safe-area inset. ALL toasts
- * across the app behave uniformly — top-anchored, full-width with
- * max-width 480, slides down from above into view.
- *
- * Callers no longer need a `toastWrap` View. Just render `<Toast
- * visible kind message onDismiss />` anywhere in the tree — it portals
- * to the OS-level root window and positions itself.
- *
- * Old `toastWrap` Views in call sites are NO-OPS (Toast escapes the
- * parent's coordinate space via Modal). Cleaning them up is housekeeping
- * — leaving them in place doesn't break anything.
- *
- * # Visual contract (revised 2026-05-02)
- *
- * Orange glass-liquid for success / info / warn (Mingla brand-prominent
- * surface — high contrast against dark app chrome). Red glass-liquid for
- * error (preserves emergency semantic). 5-layer glass stack composed
- * inline (BlurView + tint floor + top-edge highlight + warm border +
- * drop shadow). Taller body (paddingVertical = spacing.md + 2) for
- * legibility. Icon in a 32px filled circle on the left, message in
- * primary white text at body fontSize.
+ * # Placement
+ * Phone: top, under the status bar. Web >= 1024: bottom-right stack of at
+ * most 3, 380 wide.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -64,28 +44,21 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import {
-  Gesture,
-  GestureHandlerRootView,
-} from "react-native-gesture-handler";
-import { BlurView } from "expo-blur";
+import { Gesture } from "react-native-gesture-handler";
 
-import {
-  blurIntensity as blurIntensityTokens,
-  radius as radiusTokens,
-  shadows,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, shadow, size, space, type } from "../../constants/designSystem";
 
-import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
-import { shouldUseRealBlur } from "../../utils/glassBlur";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
-import { AUTO_DISMISS, type ToastKind } from "./toastTimings";
+import { Material } from "./Material";
+import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
+import { AUTO_DISMISS, resolveAutoDismissMs, type ToastKind } from "./toastTimings";
+import { nextToastEntryId, useToastStore } from "./toastStore";
+import type { ToastAction, ToastEntry } from "./toastStore";
 
 export type { ToastKind };
+export type { ToastAction };
+export { AUTO_DISMISS };
 
 export interface ToastProps {
   visible: boolean;
@@ -93,254 +66,200 @@ export interface ToastProps {
   message: string;
   onDismiss: () => void;
   testID?: string;
-  /** Optional override on the Animated.View wrap. Rarely needed — Toast self-positions. */
+  /** Kept for source compatibility; the host positions every toast. */
   style?: StyleProp<ViewStyle>;
   /**
-   * ORCH-0789: optional per-instance override for auto-dismiss timing (ms).
-   * Default per kind: success/info = 2600, warn = 6000, error = 12000.
-   * Pass `null` to disable auto-dismiss for this instance — only valid for
-   * callers that guarantee an external dismiss path. Error toasts MUST stay
-   * user-dismissible (close icon + tap-to-dismiss are always rendered).
+   * ORCH-0789: per-instance auto-dismiss override (ms). `null` disables the
+   * timer for this instance. Error toasts always stay user-dismissible.
    */
   autoDismissMs?: number | null;
-  /** Called once after the visible Toast surface has mounted. */
+  /** #4420: one optional action ("Retry"). Pressing it also dismisses. */
+  action?: ToastAction;
+  /** Called once after the visible toast surface has mounted. */
   onPresented?: () => void;
   /**
-   * Web-only recovery mode: present as a viewport-fixed alert without RN Web's
-   * modal focus trap, so a caller may intentionally move focus back to the
-   * invalid control. Default false preserves the canonical modal Toast.
+   * Web recovery mode: announce the toast as an assertive alert. Toasts never
+   * trap focus any more, so a caller may always move focus to the invalid control.
    */
   preservePageFocusOnWeb?: boolean;
 }
 
-const ENTRY_DURATION = 220;
-const EXIT_DURATION = 160;
+export const ENTRY_DURATION = 220;
+export const EXIT_DURATION = 160;
 const TRANSLATE_FROM = -40;
-const UNMOUNT_DELAY_MS = EXIT_DURATION + 40; // exit anim + safety
-// Swipe-to-dismiss thresholds — match the Sheet primitive's UX feel.
-const SWIPE_DISMISS_DISTANCE = 40;      // pt past the resting position
-const SWIPE_DISMISS_VELOCITY = 500;     // pt/s upward velocity
-const SWIPE_FOLLOW_RESISTANCE = 0.6;    // 1.0 = follow finger 1:1 upward
-const SWIPE_DOWNWARD_RESISTANCE = 0.25; // rubber-band on pull-down
-
-// Glass tokens — composed inline. Warm = Mingla brand prominence; Red =
-// emergency reserved for errors.
-const WARM_TINT = "rgba(235, 120, 37, 0.32)";
-const WARM_BORDER = "rgba(235, 120, 37, 0.55)";
-const WARM_HIGHLIGHT = "rgba(255, 178, 110, 0.45)";
-const WARM_ICON_BG = "rgba(235, 120, 37, 0.85)";
-
-const ERROR_TINT = "rgba(239, 68, 68, 0.30)";
-const ERROR_BORDER = "rgba(239, 68, 68, 0.55)";
-const ERROR_HIGHLIGHT = "rgba(255, 138, 138, 0.45)";
-const ERROR_ICON_BG = "rgba(239, 68, 68, 0.85)";
+const SWIPE_DISMISS_DISTANCE = 40;
+const SWIPE_DISMISS_VELOCITY = 500;
+const SWIPE_FOLLOW_RESISTANCE = 0.6;
+const SWIPE_DOWNWARD_RESISTANCE = 0.25;
 
 interface KindTokens {
   icon: IconName;
-  tint: string;
-  border: string;
-  highlight: string;
   iconBg: string;
+  iconFg: string;
 }
 
 const KIND_TOKENS: Record<ToastKind, KindTokens> = {
-  success: {
-    icon: "check",
-    tint: WARM_TINT,
-    border: WARM_BORDER,
-    highlight: WARM_HIGHLIGHT,
-    iconBg: WARM_ICON_BG,
-  },
-  info: {
-    icon: "bell",
-    tint: WARM_TINT,
-    border: WARM_BORDER,
-    highlight: WARM_HIGHLIGHT,
-    iconBg: WARM_ICON_BG,
-  },
-  warn: {
-    icon: "flag",
-    tint: WARM_TINT,
-    border: WARM_BORDER,
-    highlight: WARM_HIGHLIGHT,
-    iconBg: WARM_ICON_BG,
-  },
-  error: {
-    icon: "close",
-    tint: ERROR_TINT,
-    border: ERROR_BORDER,
-    highlight: ERROR_HIGHLIGHT,
-    iconBg: ERROR_ICON_BG,
-  },
+  success: { icon: "check", iconBg: color.success, iconFg: color.ink },
+  info: { icon: "bell", iconBg: color.fill.step, iconFg: color.text1 },
+  warn: { icon: "flag", iconBg: color.warning, iconFg: color.ink },
+  error: { icon: "close", iconBg: color.danger, iconFg: color.onDanger },
 };
 
-// ORCH-0789: AUTO_DISMISS lives in toastTimings.ts so the
-// I-PROPOSED-ERROR-TOAST-DISMISSIBLE invariant can be unit-tested
-// without mounting the full RN render tree. error: 12000 — bounded
-// fallback paired with the close icon + tap-anywhere affordances below
-// so an error toast can never strand a buyer.
-
-// META-ORCH-1002 Sub-D / ORCH-1100: glass blur fallback decision is now
-// centralized in `utils/glassBlur.shouldUseRealBlur(windowWidth)`. iOS uses real
-// UIVisualEffectView blur; Android's expo-blur backdrop renders near-transparent
-// against busy content → solid `FALLBACK_BACKGROUND`; web uses real blur only
-// when backdrop-filter is supported AND the viewport is wide enough to be above
-// the mobile-web (< 768px) blur-kill media rule. Computed per-render (not at
-// module scope) so the width is live.
-const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
-
-// ORCH-1136 R3: dispatcher. Web renders the compositor-CSS-transition variant
-// (ToastWeb — zero reanimated hooks, no pan gesture since it's a no-op on web);
-// native renders the byte-identical reanimated variant (ToastNative, incl.
-// swipeOffset + the Android pan-freeze fix). Each variant calls ONLY its own
-// hooks.
-export const Toast: React.FC<ToastProps> = (props) => {
-  if (Platform.OS === "web") {
-    return <ToastWeb {...props} />;
-  }
-  return <ToastNative {...props} />;
-};
-
-const ToastNative: React.FC<ToastProps> = ({
+/**
+ * Toast registers itself in the store while visible and renders nothing (or
+ * its card inline when no host is mounted anywhere).
+ */
+export const Toast: React.FC<ToastProps> = ({
   visible,
   kind,
   message,
   onDismiss,
   testID,
-  style,
   autoDismissMs,
+  action,
   onPresented,
+  preservePageFocusOnWeb = false,
 }) => {
-  const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
-  // ORCH-1100: width-aware so the mobile-web (< 768px) blur-kill paints the
-  // opaque fallback instead of a see-through toast card.
-  const blurOk = shouldUseRealBlur(windowWidth);
+  const idRef = useRef<number | null>(null);
+  if (idRef.current === null) idRef.current = nextToastEntryId();
+  const id = idRef.current;
+  const hostCount = useToastStore((s) => s.hosts.length);
+  const upsert = useToastStore((s) => s.upsert);
+  const remove = useToastStore((s) => s.remove);
+
+  const entry: ToastEntry | null = visible
+    ? { id, kind, message, onDismiss, testID, autoDismissMs, action, onPresented, announce: preservePageFocusOnWeb }
+    : null;
+
+  useEffect(() => {
+    if (entry === null) {
+      remove(id);
+      return;
+    }
+    upsert(entry);
+    // entry is rebuilt each render; its fields are the real dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, kind, message, onDismiss, testID, autoDismissMs, action, onPresented, preservePageFocusOnWeb]);
+
+  useEffect(() => () => remove(id), [id, remove]);
+
+  if (hostCount > 0 || entry === null) return null;
+  return (
+    <View pointerEvents="box-none" style={styles.inlineRoot}>
+      <ToastItem entry={entry} placement="top" />
+    </View>
+  );
+};
+
+/** Pause-able countdown that calls `onElapsed` once. */
+const useToastTimer = (
+  ms: number | null,
+  onElapsed: () => void,
+): { pause: () => void; resume: () => void } => {
+  const remainingRef = useRef<number | null>(ms);
+  const startedRef = useRef<number>(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const elapsedRef = useRef(onElapsed);
+  elapsedRef.current = onElapsed;
+
+  const clear = (): void => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+  const start = (): void => {
+    clear();
+    const remaining = remainingRef.current;
+    if (remaining === null) return;
+    startedRef.current = Date.now();
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      elapsedRef.current();
+    }, Math.max(0, remaining));
+  };
+
+  useEffect(() => {
+    remainingRef.current = ms;
+    start();
+    return clear;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ms]);
+
+  return useMemo(
+    () => ({
+      pause: (): void => {
+        if (timerRef.current === null || remainingRef.current === null) return;
+        clear();
+        remainingRef.current -= Date.now() - startedRef.current;
+      },
+      resume: (): void => {
+        if (timerRef.current !== null) return;
+        start();
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+};
+
+export type ToastPlacement = "top" | "stack";
+
+export interface ToastItemProps {
+  entry: ToastEntry;
+  placement: ToastPlacement;
+}
+
+/** One drawn toast. Web never runs reanimated hooks (ORCH-1136 R3). */
+export const ToastItem: React.FC<ToastItemProps> = (props) =>
+  Platform.OS === "web" ? <ToastWeb {...props} /> : <ToastNative {...props} />;
+
+const usePresented = (entry: ToastEntry): void => {
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current) return;
+    done.current = true;
+    entry.onPresented?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+};
+
+const ToastNative: React.FC<ToastItemProps> = ({ entry, placement }) => {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(TRANSLATE_FROM);
-  // Independent shared value for swipe drag offset — added to translateY at render.
   const swipeOffset = useSharedValue(0);
   const reduceMotion = useReducedMotion();
-
-  // Lazy mount/unmount via Modal — keep Toast in the tree long enough for
-  // exit animation to finish, then unmount. Mirrors Sheet primitive
-  // (DEC-085 portal pattern).
-  const [mounted, setMounted] = useState<boolean>(visible);
-  const unmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ms = resolveAutoDismissMs(entry.kind, entry.action !== undefined, entry.autoDismissMs);
+  const timer = useToastTimer(ms, entry.onDismiss);
+  usePresented(entry);
 
   useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      if (unmountTimerRef.current !== null) {
-        clearTimeout(unmountTimerRef.current);
-        unmountTimerRef.current = null;
-      }
-    } else if (mounted) {
-      unmountTimerRef.current = setTimeout(() => {
-        setMounted(false);
-        unmountTimerRef.current = null;
-      }, UNMOUNT_DELAY_MS);
-    }
-    return (): void => {
-      if (unmountTimerRef.current !== null) {
-        clearTimeout(unmountTimerRef.current);
-        unmountTimerRef.current = null;
-      }
-    };
-  }, [mounted, visible]);
-
-  useEffect(() => {
-    if (visible) {
-      opacity.value = withTiming(1, {
-        duration: ENTRY_DURATION,
-        easing: Easing.out(Easing.cubic),
-      });
-      if (!reduceMotion) {
-        translateY.value = withTiming(0, {
-          duration: ENTRY_DURATION,
-          easing: Easing.out(Easing.cubic),
-        });
-      } else {
-        translateY.value = 0;
-      }
-    } else {
-      opacity.value = withTiming(0, {
-        duration: EXIT_DURATION,
-        easing: Easing.in(Easing.cubic),
-      });
-      if (!reduceMotion) {
-        translateY.value = withTiming(TRANSLATE_FROM, {
-          duration: EXIT_DURATION,
-          easing: Easing.in(Easing.cubic),
-        });
-      }
-    }
-  }, [opacity, reduceMotion, translateY, visible]);
-
-  useEffect(() => {
-    if (!visible) return;
-    // ORCH-0789: per-instance autoDismissMs overrides per-kind default;
-    // null explicitly disables auto-dismiss for that one instance.
-    const ms = autoDismissMs === undefined ? AUTO_DISMISS[kind] : autoDismissMs;
-    if (ms === null) return;
-    const timer = setTimeout(onDismiss, ms);
-    return (): void => clearTimeout(timer);
-  }, [autoDismissMs, kind, onDismiss, visible]);
-
-  useEffect(() => {
+    opacity.value = withTiming(1, { duration: ENTRY_DURATION, easing: Easing.out(Easing.cubic) });
+    translateY.value = reduceMotion ? 0 : withTiming(0, { duration: ENTRY_DURATION, easing: Easing.out(Easing.cubic) });
     return (): void => {
       cancelAnimation(opacity);
       cancelAnimation(translateY);
       cancelAnimation(swipeOffset);
     };
-  }, [opacity, swipeOffset, translateY]);
+  }, [opacity, reduceMotion, swipeOffset, translateY]);
 
-  // Reset swipe offset whenever a new toast becomes visible.
-  useEffect(() => {
-    if (visible) {
-      swipeOffset.value = 0;
-    }
-  }, [swipeOffset, visible]);
-
-  // Pan gesture — swipe up (or hard fling upward) to dismiss. Pull-down
-  // is rubber-banded. Memoized so we don't rebuild the gesture object on
-  // every render — Android's GestureHandler is sensitive to that.
-  //
-  // Dismiss behaviour: fire onDismiss() IMMEDIATELY on threshold met. The
-  // parent flips visible→false; the standard exit useEffect runs the
-  // opacity-out + slide-up; the swipeOffset stays at its release value so
-  // the dismiss feels continuous from where the user let go. Doing this
-  // synchronously (instead of running a 140ms timing animation before the
-  // dismiss callback) is what stops the toast freezing half-way on
-  // Android — the Modal unmounts on the standard schedule and pointer
-  // events release cleanly.
+  const onDismiss = entry.onDismiss;
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
         .onUpdate((event) => {
           "worklet";
-          if (event.translationY < 0) {
-            // Upward — follow with light resistance
-            swipeOffset.value = event.translationY * SWIPE_FOLLOW_RESISTANCE;
-          } else {
-            // Downward — rubber band (heavy resistance)
-            swipeOffset.value = event.translationY * SWIPE_DOWNWARD_RESISTANCE;
-          }
+          swipeOffset.value =
+            event.translationY < 0
+              ? event.translationY * SWIPE_FOLLOW_RESISTANCE
+              : event.translationY * SWIPE_DOWNWARD_RESISTANCE;
         })
         .onEnd((event) => {
           "worklet";
-          const shouldDismiss =
-            event.translationY < -SWIPE_DISMISS_DISTANCE ||
-            event.velocityY < -SWIPE_DISMISS_VELOCITY;
-          if (shouldDismiss) {
+          if (event.translationY < -SWIPE_DISMISS_DISTANCE || event.velocityY < -SWIPE_DISMISS_VELOCITY) {
             runOnJS(onDismiss)();
           } else {
-            // Snap back to resting position with a soft spring.
-            swipeOffset.value = withSpring(0, {
-              damping: 18,
-              stiffness: 220,
-              mass: 0.8,
-            });
+            swipeOffset.value = withSpring(0, { damping: 18, stiffness: 220, mass: 0.8 });
           }
         })
         .activeOffsetY([-8, 8])
@@ -353,402 +272,206 @@ const ToastNative: React.FC<ToastProps> = ({
     transform: [{ translateY: translateY.value + swipeOffset.value }],
   }));
 
-  if (!mounted) return null;
-
-  const topInset = insets.top > 0 ? insets.top : spacing.md;
-
   return (
-    <Modal
-      transparent
-      visible
-      animationType="none"
-      onRequestClose={onDismiss}
-      statusBarTranslucent
-      onShow={onPresented}
-    >
-      {/* Portal root — full screen but pointerEvents box-none so taps
-          pass through to underlying UI when Toast doesn't intercept.
-          GestureHandlerRootView is REQUIRED here on Android: the app-root
-          GestureHandlerRootView (mounted by expo-router) does NOT extend
-          into Modal's window, so without this inner root the pan gesture
-          on Android either no-ops OR freezes the entire screen because
-          the gesture system thinks a pan is still in flight. */}
-      <GestureHandlerRootView style={styles.portalRoot} pointerEvents="box-none">
-        <WebSafeGestureDetector gesture={panGesture}>
-          <Animated.View
-            pointerEvents={visible ? "auto" : "none"}
-            style={[
-              styles.wrap,
-              { top: topInset + spacing.sm },
-              animatedStyle,
-              style,
-            ]}
-            testID={testID}
-            accessibilityHint="Swipe up or tap to dismiss"
-          >
-          <ToastCard
-            kind={kind}
-            message={message}
-            onDismiss={onDismiss}
-            blurOk={blurOk}
-          />
-          </Animated.View>
-        </WebSafeGestureDetector>
-      </GestureHandlerRootView>
-    </Modal>
+    <WebSafeGestureDetector gesture={panGesture}>
+      <Animated.View
+        style={[placement === "stack" ? styles.stackItem : styles.topItem, animatedStyle]}
+        testID={entry.testID}
+        accessibilityHint="Swipe up or tap to dismiss"
+      >
+        <ToastCard entry={entry} onPressIn={timer.pause} onPressOut={timer.resume} />
+      </Animated.View>
+    </WebSafeGestureDetector>
   );
 };
 
-/**
- * ORCH-1136 R3: shared toast card body (glass stack + content row). Identical
- * between web and native variants — only the animated wrapper differs (the
- * parent Animated.View vs the web CSS-transition View).
- */
+const TOAST_OPEN_EASE_CSS = "cubic-bezier(0.33, 1, 0.68, 1)";
+
+const ToastWeb: React.FC<ToastItemProps> = ({ entry, placement }) => {
+  const [open, setOpen] = useState(false);
+  const ms = resolveAutoDismissMs(entry.kind, entry.action !== undefined, entry.autoDismissMs);
+  const timer = useToastTimer(ms, entry.onDismiss);
+  usePresented(entry);
+
+  useEffect(() => {
+    const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
+      .requestAnimationFrame;
+    if (raf === undefined) {
+      setOpen(true);
+      return undefined;
+    }
+    const handle = raf(() => setOpen(true));
+    return (): void => {
+      (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void }).cancelAnimationFrame?.(handle);
+    };
+  }, []);
+
+  const from = placement === "stack" ? -TRANSLATE_FROM / 2 : TRANSLATE_FROM;
+  const webStyle = {
+    transition: `transform ${ENTRY_DURATION}ms ${TOAST_OPEN_EASE_CSS}, opacity ${ENTRY_DURATION}ms ${TOAST_OPEN_EASE_CSS}`,
+    transform: open ? "translateY(0px)" : `translateY(${from}px)`,
+    opacity: open ? 1 : 0,
+  } as unknown as ViewStyle;
+
+  return (
+    <View
+      style={[placement === "stack" ? styles.stackItem : styles.topItem, webStyle]}
+      testID={entry.testID}
+      accessibilityRole={entry.announce ? "alert" : undefined}
+      accessibilityLiveRegion={entry.announce ? "assertive" : "polite"}
+      accessibilityHint="Tap to dismiss"
+    >
+      <ToastCard
+        entry={entry}
+        onPressIn={timer.pause}
+        onPressOut={timer.resume}
+        onHoverIn={timer.pause}
+        onHoverOut={timer.resume}
+      />
+    </View>
+  );
+};
+
 interface ToastCardProps {
-  kind: ToastKind;
-  message: string;
-  onDismiss: () => void;
-  blurOk: boolean;
+  entry: ToastEntry;
+  onPressIn: () => void;
+  onPressOut: () => void;
+  onHoverIn?: () => void;
+  onHoverOut?: () => void;
 }
 
-const ToastCard: React.FC<ToastCardProps> = ({ kind, message, onDismiss, blurOk }) => {
-  const tokens = KIND_TOKENS[kind];
+const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onHoverIn, onHoverOut }) => {
+  const tokens = KIND_TOKENS[entry.kind];
+  const { action, onDismiss } = entry;
   return (
-    // ORCH-0789: tap-anywhere-on-card dismisses. The inner close Pressable
-    // below also calls onDismiss directly; onDismiss is idempotent.
+    // ORCH-0789: tap-anywhere-on-card dismisses; onDismiss is idempotent.
     <Pressable
       onPress={onDismiss}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      onHoverIn={onHoverIn}
+      onHoverOut={onHoverOut}
       accessibilityRole="button"
       accessibilityLabel="Dismiss notification"
-      style={[styles.card, shadows.glassCardElevated]}
+      style={[styles.cardShadow, shadow.toast]}
     >
-      {/* L1 — Blur base (or solid fallback on web w/o backdrop-filter) */}
-      {blurOk ? (
-        <BlurView
-          intensity={blurIntensityTokens.cardElevated}
-          tint="dark"
-          style={StyleSheet.absoluteFill}
-        />
-      ) : (
-        <View
-          style={[StyleSheet.absoluteFill, { backgroundColor: FALLBACK_BACKGROUND }]}
-        />
-      )}
-
-      {/* L2 — Warm/error tint floor */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: tokens.tint }]} />
-
-      {/* L3 — Top-edge highlight (1px liquid sparkle) */}
-      <View
-        style={[styles.topHighlight, { backgroundColor: tokens.highlight }]}
-        pointerEvents="none"
-      />
-
-      {/* L4 — Hairline border */}
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            borderRadius: radiusTokens.lg,
-            borderColor: tokens.border,
-            borderWidth: 1,
-          },
-        ]}
-        pointerEvents="none"
-      />
-
-      {/* Content row — icon badge + message + close button */}
-      <View style={styles.body}>
-        <View style={[styles.iconBadge, { backgroundColor: tokens.iconBg }]}>
-          <Icon name={tokens.icon} size={18} color="#ffffff" />
+      <Material kind="sheet" radius={radius.lg} style={styles.card}>
+        <View style={styles.body}>
+          <View style={[styles.iconBadge, { backgroundColor: tokens.iconBg }]}>
+            <Icon name={tokens.icon} size={16} color={tokens.iconFg} />
+          </View>
+          <Text style={styles.message} numberOfLines={3}>
+            {entry.message}
+          </Text>
+          {action !== undefined ? (
+            <Pressable
+              onPress={() => {
+                action.onPress();
+                onDismiss();
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={action.label}
+              style={styles.actionButton}
+            >
+              <Text style={styles.actionLabel}>{action.label}</Text>
+            </Pressable>
+          ) : null}
+          {/* ORCH-0789: explicit close. 32×32 + hitSlop 12 → 56×56 (I-38). */}
+          <Pressable
+            onPress={onDismiss}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss notification"
+            style={styles.closeButton}
+          >
+            <Icon name="close" size={14} color={color.text2} />
+          </Pressable>
         </View>
-        <Text style={styles.message} numberOfLines={3}>
-          {message}
-        </Text>
-        {/* ORCH-0789: explicit close affordance. 32×32 visible target
-            with hitSlop 12 → 56×56 effective hit area (I-38). */}
-        <Pressable
-          onPress={onDismiss}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss notification"
-          style={styles.closeButton}
-        >
-          <Icon name="close" size={16} color={textTokens.primary} />
-        </Pressable>
-      </View>
+      </Material>
     </Pressable>
   );
 };
 
-// ORCH-1136 R3: web reduced-motion read (no reanimated hook on the web path).
-const useWebReducedMotion = (): boolean => {
-  const [reduced, setReduced] = useState<boolean>(false);
-  useEffect(() => {
-    const mql = (
-      globalThis as unknown as {
-        matchMedia?: (q: string) => {
-          matches: boolean;
-          addEventListener?: (t: string, l: () => void) => void;
-          removeEventListener?: (t: string, l: () => void) => void;
-        };
-      }
-    ).matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (mql === undefined) return;
-    setReduced(mql.matches);
-    const onChange = (): void => setReduced(mql.matches);
-    mql.addEventListener?.("change", onChange);
-    return (): void => mql.removeEventListener?.("change", onChange);
-  }, []);
-  return reduced;
+/** Phone placement: the toast's distance from the top edge. */
+export const useToastTopOffset = (): number => {
+  const insets = useSafeAreaInsets();
+  return (insets.top > 0 ? insets.top : space[4]) + space[2];
 };
 
-/**
- * ORCH-1136 R3 — WEB variant of Toast.
- *
- * Drives entry/exit with a COMPOSITOR CSS transition on `transform:
- * translateY(...)` + `opacity` instead of the JS-main-thread reanimated rAF
- * (withTiming on translateY/opacity), which freezes mid-slide under a
- * heavy-page long task on web (F-1 — a success toast right after a save that
- * re-renders a heavy list). Entry: 220ms ease-out-cubic; exit: 160ms
- * ease-in-cubic (matching native ENTRY_DURATION/EXIT_DURATION). Reduce-motion:
- * opacity-only.
- *
- * The pan/swipe gesture is a no-op on web (WebSafeGestureDetector renders
- * children directly), so swipeOffset is always 0 on web and is dropped here —
- * the web variant animates translateY (entry/exit) only. Calls ZERO reanimated
- * hooks. Animates transform/opacity ONLY.
- */
-const TOAST_OPEN_EASE_CSS = "cubic-bezier(0.33, 1, 0.68, 1)"; // Easing.out(cubic)
-const TOAST_CLOSE_EASE_CSS = "cubic-bezier(0.33, 0, 0.67, 1)"; // Easing.in(cubic)
-
-const ToastWeb: React.FC<ToastProps> = ({
-  visible,
-  kind,
-  message,
-  onDismiss,
-  testID,
-  style,
-  autoDismissMs,
-  onPresented,
-  preservePageFocusOnWeb = false,
-}) => {
-  const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
-  const blurOk = shouldUseRealBlur(windowWidth);
-  const reduceMotion = useWebReducedMotion();
-
-  const [mounted, setMounted] = useState<boolean>(visible);
-  const unmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [animateOpen, setAnimateOpen] = useState<boolean>(false);
-  const rafRef = useRef<number | null>(null);
-  const presentedRef = useRef(false);
-
-  useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      if (unmountTimerRef.current !== null) {
-        clearTimeout(unmountTimerRef.current);
-        unmountTimerRef.current = null;
-      }
-    } else if (mounted) {
-      unmountTimerRef.current = setTimeout(() => {
-        setMounted(false);
-        unmountTimerRef.current = null;
-      }, UNMOUNT_DELAY_MS);
-    }
-    return (): void => {
-      if (unmountTimerRef.current !== null) {
-        clearTimeout(unmountTimerRef.current);
-        unmountTimerRef.current = null;
-      }
-    };
-  }, [mounted, visible]);
-
-  useEffect(() => {
-    const cancelRaf = (): void => {
-      if (rafRef.current !== null) {
-        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
-          .cancelAnimationFrame;
-        caf?.(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-    if (visible && mounted) {
-      setAnimateOpen(false);
-      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
-        .requestAnimationFrame;
-      if (raf !== undefined) {
-        rafRef.current = raf(() => {
-          rafRef.current = raf(() => setAnimateOpen(true));
-        });
-      } else {
-        const t = setTimeout(() => setAnimateOpen(true), 0);
-        return (): void => clearTimeout(t);
-      }
-    } else if (!visible) {
-      cancelRaf();
-      setAnimateOpen(false);
-    }
-    return cancelRaf;
-  }, [visible, mounted]);
-
-  useEffect(() => {
-    if (!visible) return;
-    const ms = autoDismissMs === undefined ? AUTO_DISMISS[kind] : autoDismissMs;
-    if (ms === null) return;
-    const timer = setTimeout(onDismiss, ms);
-    return (): void => clearTimeout(timer);
-  }, [autoDismissMs, kind, onDismiss, visible]);
-
-  useEffect(() => {
-    if (!visible) {
-      presentedRef.current = false;
-      return;
-    }
-    if (
-      preservePageFocusOnWeb &&
-      mounted &&
-      !presentedRef.current
-    ) {
-      presentedRef.current = true;
-      onPresented?.();
-    }
-  }, [mounted, onPresented, preservePageFocusOnWeb, visible]);
-
-  if (!mounted) return null;
-
-  const topInset = insets.top > 0 ? insets.top : spacing.md;
-  const dur = animateOpen ? ENTRY_DURATION : EXIT_DURATION;
-  const ease = animateOpen ? TOAST_OPEN_EASE_CSS : TOAST_CLOSE_EASE_CSS;
-  const wrapWebStyle = {
-    transition: reduceMotion
-      ? `opacity ${dur}ms ${ease}`
-      : `transform ${dur}ms ${ease}, opacity ${dur}ms ${ease}`,
-    transform: reduceMotion
-      ? "translateY(0px)"
-      : animateOpen
-        ? "translateY(0px)"
-        : `translateY(${TRANSLATE_FROM}px)`,
-    opacity: animateOpen ? 1 : 0,
-    willChange: "transform",
-  } as unknown as ViewStyle;
-
-  const surface = (
-    <View
-      style={[
-        styles.portalRoot,
-        preservePageFocusOnWeb ? styles.webStatusRoot : null,
-      ]}
-      pointerEvents="box-none"
-      accessibilityRole={preservePageFocusOnWeb ? "alert" : undefined}
-      accessibilityLiveRegion={
-        preservePageFocusOnWeb ? "assertive" : undefined
-      }
-    >
-      <View
-        pointerEvents={visible ? "auto" : "none"}
-        style={[styles.wrap, { top: topInset + spacing.sm }, wrapWebStyle, style]}
-        testID={testID}
-        accessibilityHint="Tap to dismiss"
-      >
-        <ToastCard
-          kind={kind}
-          message={message}
-          onDismiss={onDismiss}
-          blurOk={blurOk}
-        />
-      </View>
-    </View>
-  );
-
-  if (preservePageFocusOnWeb) return surface;
-
-  return (
-    <Modal
-      transparent
-      visible
-      animationType="none"
-      onRequestClose={onDismiss}
-      statusBarTranslucent
-      onShow={() => {
-        if (presentedRef.current) return;
-        presentedRef.current = true;
-        onPresented?.();
-      }}
-    >
-      {surface}
-    </Modal>
-  );
+/** True when toasts stack bottom-right (web desktop). */
+export const useToastStacked = (): boolean => {
+  const { width } = useWindowDimensions();
+  return Platform.OS === "web" && width >= 1024;
 };
 
 const styles = StyleSheet.create({
-  portalRoot: {
-    flex: 1,
-  },
-  webStatusRoot: {
-    position: "fixed" as unknown as "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 2147483647,
-  },
-  wrap: {
+  inlineRoot: {
     position: "absolute",
+    top: space[10],
     left: 0,
     right: 0,
-    alignSelf: "center",
+    alignItems: "center",
+    paddingHorizontal: space[4],
+    zIndex: 1000,
+  },
+  topItem: {
     width: "100%",
     maxWidth: 480,
-    paddingHorizontal: spacing.md,
-    // Centers within parent — left:0/right:0 + maxWidth + alignSelf
-    // align horizontally to viewport.
-    alignItems: "stretch",
+    alignSelf: "center",
+  },
+  stackItem: {
+    width: size.toast,
+  },
+  cardShadow: {
+    borderRadius: radius.lg,
   },
   card: {
-    position: "relative",
-    overflow: "hidden",
-    borderRadius: radiusTokens.lg,
-    minHeight: 64,
-  },
-  topHighlight: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
+    minHeight: 56,
   },
   body: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 4,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md + 2,
+    gap: space[3],
+    paddingLeft: space[3],
+    paddingRight: space[2],
+    paddingVertical: space[3],
   },
   iconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   message: {
     flex: 1,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
+  },
+  actionButton: {
+    minHeight: 32,
+    paddingHorizontal: space[2],
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  actionLabel: {
+    color: color.text1,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
   closeButton: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.tile,
   },
 });
 

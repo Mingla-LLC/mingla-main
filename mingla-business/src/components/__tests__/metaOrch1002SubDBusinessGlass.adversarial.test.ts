@@ -226,16 +226,13 @@ describe("Sub-D adversarial A — no clipped surface was flattened to opaque", (
 // untouched. The shared helper's own iOS=blur / Android=opaque / web<768=opaque
 // behavior is independently pinned in `utils/__tests__/glassBlur.test.ts`.
 describe("Sub-D adversarial B/C — stragglers opaque via shared helper, iOS frozen", () => {
-  test("Toast: blurOk via shared shouldUseRealBlur, inverted guard gone, kit fallback ≥0.92", () => {
+  // [TEST-MOD-APPROVED #4420] Toast moved onto <Material kind="sheet">; its
+  // opaque-where-no-blur guarantee is Material's (issue_4420_material.test.tsx).
+  test("Toast: no own blur guard; glass comes from Material (solid off iOS)", () => {
     const code = stripComments(readComp("ui/Toast.tsx"));
-    // Inverted guard removed.
     expect(code).not.toMatch(/blurOk\s*=\s*Platform\.OS\s*!==\s*["']web["']/);
-    // Decision delegated to the shared helper (which keeps iOS=blur, Android=opaque).
-    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
-    // The opaque fallback is >=0.92.
-    expect(code).toMatch(
-      /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
-    );
+    expect(code).not.toMatch(/from\s*["']expo-blur["']/);
+    expect(code).toMatch(/<Material kind="sheet"/);
   });
 
   test("AiDisclosureModal: opaque sheet gated behind !shouldUseRealBlur, iOS keeps real BlurView", () => {

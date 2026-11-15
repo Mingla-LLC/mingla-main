@@ -5,6 +5,13 @@
  * (react-native-reanimated) is not shared into the eager `__common` chunk
  * when both PublicBrandPage and PublicEventPage need a confirm surface
  * (#3682 / ORCH-1083).
+ *
+ * #4420 Graphite Glass: the light-theme card is retired. This is now the
+ * reanimated-free twin of `ConfirmDialog variant="simple"`: the same sheet
+ * material, 400 width, 28 radius, title / one-line consequence, Cancel
+ * (secondary) and Confirm (paper primary, or red when `destructive`). It does
+ * NOT import ConfirmDialog, because that would pull reanimated back into the
+ * buyer chunk (#3682). Prop signature unchanged.
  */
 
 import React from "react";
@@ -17,12 +24,10 @@ import {
   View,
 } from "react-native";
 
-import { accent, radius, spacing, typography } from "../../constants/designSystem";
+import { color, radius, scrim, shadow, size, space, type } from "../../constants/designSystem";
 
-// Local ink on cream card — designSystem `text.*` tokens are on-dark rgba and
-// would wash out on this light confirm surface.
-const INK = "#16110D";
-const INK_MUTED = "#6B635A";
+import { Material } from "./Material";
+import { ToastHost } from "./ToastHost";
 
 export type SimpleConfirmDialogProps = {
   visible: boolean;
@@ -64,12 +69,13 @@ export function SimpleConfirmDialog({
         accessibilityLabel="Dismiss"
       >
         <Pressable
-          style={styles.card}
+          style={[styles.card, shadow.dialog]}
           onPress={(event) => event.stopPropagation()}
           testID={testID}
           accessibilityRole="summary"
           accessibilityLabel={title}
         >
+          <Material kind="sheet" radius={radius.xxl} style={styles.surface}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.description}>{description}</Text>
           <View style={styles.row}>
@@ -90,14 +96,18 @@ export function SimpleConfirmDialog({
               accessibilityState={{ disabled: confirmLoading, busy: confirmLoading }}
             >
               {confirmLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={destructive ? color.onDanger : color.ink} />
               ) : (
-                <Text style={styles.confirmLabel}>{confirmLabel}</Text>
+                <Text style={[styles.confirmLabel, destructive ? styles.confirmDangerLabel : null]}>
+                  {confirmLabel}
+                </Text>
               )}
             </Pressable>
           </View>
+          </Material>
         </Pressable>
       </Pressable>
+      <ToastHost layer="overlay" open={visible} />
     </Modal>
   );
 }
@@ -105,52 +115,68 @@ export function SimpleConfirmDialog({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(22, 17, 13, 0.45)",
+    backgroundColor: scrim.modal,
     justifyContent: "center",
-    padding: spacing.lg,
+    alignItems: "center",
+    padding: space[5],
   },
   card: {
-    backgroundColor: "#FFF9F3",
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
+    width: "100%",
+    maxWidth: size.dialog,
+    borderRadius: radius.xxl,
+  },
+  surface: {
+    padding: space[6],
+    gap: space[3],
   },
   title: {
-    ...typography.h3,
-    color: INK,
+    ...type.h1,
+    color: color.text1,
   },
   description: {
-    ...typography.body,
-    color: INK_MUTED,
+    ...type.body,
+    color: color.text2,
   },
   row: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    flexWrap: "wrap",
+    gap: space[2],
+    marginTop: space[3],
   },
   cancel: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    flexGrow: 1,
+    flexBasis: 140,
+    minHeight: size.btn.md,
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
+    backgroundColor: color.card2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
+    alignItems: "center",
+    justifyContent: "center",
   },
   cancelLabel: {
-    ...typography.buttonMd,
-    color: INK_MUTED,
+    ...type.btnSm,
+    color: color.text1,
   },
   confirm: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: accent.warm,
-    minWidth: 96,
+    flexGrow: 1,
+    flexBasis: 140,
+    minHeight: size.btn.md,
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
+    backgroundColor: color.paper,
     alignItems: "center",
+    justifyContent: "center",
   },
   confirmDanger: {
-    backgroundColor: "#B42318",
+    backgroundColor: color.danger,
   },
   confirmLabel: {
-    ...typography.buttonMd,
-    color: "#FFFFFF",
+    ...type.btnSm,
+    color: color.ink,
+  },
+  confirmDangerLabel: {
+    color: color.onDanger,
   },
 });

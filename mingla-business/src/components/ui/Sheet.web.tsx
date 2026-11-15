@@ -53,9 +53,12 @@ import {
 } from "react-native";
 
 import {
-  glass,
+  materials,
   radius as radiusTokens,
-  shadows,
+  scrim,
+  shadow as shadowTokens,
+  size,
+  space,
   spacing,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -72,6 +75,7 @@ import {
   Sheet as MobileSheet,
   SHEET_TOP_INSET,
   WEB_OPAQUE_BACKGROUND,
+  type SheetPresentation,
   type SheetProps,
   type SheetSnapPoint,
   type SheetSnapValue,
@@ -80,13 +84,18 @@ import {
 // Re-export the type aliases so existing imports
 // `import { Sheet, SheetProps, SheetSnapValue } from '.../Sheet'`
 // resolve identically on web.
-export type { SheetProps, SheetSnapPoint, SheetSnapValue };
+export type { SheetPresentation, SheetProps, SheetSnapPoint, SheetSnapValue };
 
-const SCRIM_COLOR = "rgba(0, 0, 0, 0.55)";
+const SCRIM_COLOR = scrim.modal;
 const CARD_MAX_WIDTH = 640;
+/** #4420 `presentation="modal"`: the kit's centred modal. */
+const MODAL_WIDTH = size.modal;
+/** #4420 `presentation="panel"`: the kit's right-side inspector. */
+const PANEL_WIDTH = size.sidePanel;
+const CARD_RADIUS = radiusTokens.xxl;
 const CARD_VIEWPORT_GUTTER = 64; // 32px breathing room on each side at narrow desktops.
 const CARD_MAX_HEIGHT_RATIO = 0.8;
-const CARD_BACKGROUND = "rgba(20, 22, 26, 0.92)";
+const CARD_BACKGROUND = materials.sheet.solidFill;
 
 const OPEN_DURATION_MS = 200;
 const CLOSE_DURATION_MS = 180;
@@ -149,7 +158,8 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   // (onRequestClose). Registering it as an Escape layer is what stops the
   // sheet or dialog UNDERNEATH from closing on the same key press.
   useEscapeLayer(visible);
-  const competition = presentation !== undefined;
+  const competition = presentation === "competition";
+  const sidePanel = presentation === "panel";
   const reduceMotion = useWebReducedMotion();
 
   // Lazy-mount + delayed unmount so close animation completes.
@@ -250,7 +260,15 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   const { width: viewportWidth, height: viewportHeight } =
     Dimensions.get("window");
   const cardWidth = Math.min(
-    competition ? (viewportWidth < 1280 ? 640 : 720) : CARD_MAX_WIDTH,
+    competition
+      ? viewportWidth < 1280
+        ? 640
+        : 720
+      : presentation === "modal"
+        ? MODAL_WIDTH
+        : sidePanel
+          ? PANEL_WIDTH
+          : CARD_MAX_WIDTH,
     Math.max(viewportWidth - CARD_VIEWPORT_GUTTER, 280),
   );
   const cardMaxHeight = competition
@@ -286,9 +304,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
           style={[
             StyleSheet.absoluteFill,
             {
-              backgroundColor: competition
-                ? "rgba(0, 0, 0, 0.68)"
-                : SCRIM_COLOR,
+              backgroundColor: SCRIM_COLOR,
             },
             scrimWebStyle,
           ]}
@@ -308,7 +324,8 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
         <View
           style={[
             styles.cardWrap,
-            verticalAlign === "top"
+            sidePanel ? styles.panelWrap : null,
+            verticalAlign === "top" && !sidePanel
               ? {
                   justifyContent: "flex-start",
                   // Anchor near the top (~12vh) so the card grows/shrinks with
@@ -324,12 +341,14 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
               styles.card,
               {
                 width: cardWidth,
-                maxHeight: cardMaxHeight,
+                maxHeight: sidePanel ? undefined : cardMaxHeight,
                 // ORCH-1186 Fix 3 — brand fill override (solid, edge-to-edge).
                 backgroundColor: panelBackground ?? CARD_BACKGROUND,
-                borderColor: glass.border.profileElevated,
+                borderColor: materials.sheet.rim.edge,
+                borderTopColor: materials.sheet.rim.top ?? materials.sheet.rim.edge,
               },
-              shadows.glassModal,
+              sidePanel ? styles.sidePanel : null,
+              shadowTokens.dialog,
               cardWebStyle,
               style,
             ]}
@@ -394,10 +413,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 32,
   },
+  // #4420 `panel`: pinned to the right edge, full height, a 12 bezel.
+  panelWrap: {
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
+    padding: size.bezel,
+  },
   card: {
-    borderRadius: radiusTokens.lg,
+    borderRadius: CARD_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     overflow: "hidden",
+  },
+  sidePanel: {
+    flex: 1,
+    borderRadius: radiusTokens.xl,
   },
   cardBody: {
     flexShrink: 1,

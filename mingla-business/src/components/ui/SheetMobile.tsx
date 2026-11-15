@@ -46,7 +46,6 @@ import {
 } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurView } from "expo-blur";
 import { Gesture, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
   Easing,
@@ -60,15 +59,21 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  blurIntensity as blurIntensityTokens,
-  glass,
+  color,
+  materials,
   radius as radiusTokens,
-  shadows,
+  scrim,
+  shadow as shadowTokens,
+  size,
+  space,
   spacing,
 } from "../../constants/designSystem";
 
+import { Material } from "./Material";
+import { ToastHost } from "./ToastHost";
+import { clampOverlayHeight, keyboardSheetHeight } from "./overlayKeyboard";
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
-import { shouldUseRealBlur } from "../../utils/glassBlur";
+import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
 // ORCH-1165: sheet inputs live in the sheet's own native Modal window, so the
 // root app-level toolbar can't reach them — mount a toolbar inside this Modal.
 import { KeyboardToolbarRoot } from "../../wrappers/KeyboardToolbarRoot";
@@ -90,26 +95,14 @@ import { computeSheetHeight } from "./sheetSnapHeight";
 import { useSheetGone } from "./useSheetGone";
 import type { SheetSnapPoint, SheetSnapValue } from "./sheetSnapHeight";
 
-// Inline glass-stack background — mirrors GlassChrome's L1-L4 visual layers
-// but with each layer absolute-filled at the body level so the body can be
-// `flex: 1` with internal `flex: 1` children that fill correctly. Going via
-// GlassCard/GlassChrome was causing flex-collapse for consumers like the
-// country picker (D-IMPL-44 family — GlassChrome's content View has
-// `position: relative` with no flex, so `flex: 1` children inside collapse).
-// Same pattern that TopSheet uses for the same reason.
-const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
-
-// ORCH-1207 Bug 1 — on WEB the sheet panel must be effectively OPAQUE (Android
-// glass opaque-fallback policy): page content must NOT ghost through the open
-// sheet. The native glass stack here (BlurView when blurOk, else the 0.92-alpha
-// FALLBACK_BACKGROUND, PLUS a translucent `glass.tint.profileElevated` layer on
-// top) is intentionally see-through. On web we replace that whole base with a
-// SINGLE fully-opaque elevated-surface fill (no rgba/blur → nothing bleeds
-// through). This is the solid composite of the dark-glass canvas at full alpha —
-// same family as `chrome.composerSurface` (#191c21) / `chrome.ariBubbleAndroid`
-// (#16181b), tuned to read like the sheet's existing dark-glass tone. The brand
-// `panelBackground` override path is unaffected (it was already a solid fill).
-export const WEB_OPAQUE_BACKGROUND = "#16181b";
+// #4420 Graphite Glass: the panel is `<Material kind="sheet">` (iOS blur,
+// Android solid, Reduce Transparency solid), drawn absolutely behind the body
+// so the body can stay `flex: 1` (D-IMPL-44: going via GlassCard collapsed
+// flex children like the country picker).
+//
+// ORCH-1207 Bug 1 — on WEB the bottom sheet stays effectively OPAQUE so page
+// content never ghosts through it: the sheet material's SOLID fill (alpha 1).
+export const WEB_OPAQUE_BACKGROUND = materials.sheet.solidFill;
 
 /**
  * `SheetSnapPoint` / `SheetSnapValue` are owned by `./sheetSnapHeight`
@@ -127,6 +120,8 @@ export const WEB_OPAQUE_BACKGROUND = "#16181b";
  * carve-out of DEC-079).
  */
 export type { SheetSnapPoint, SheetSnapValue };
+
+export type SheetPresentation = "competition" | "panel" | "modal";
 
 export interface SheetProps {
   visible: boolean;
@@ -164,7 +159,12 @@ export interface SheetProps {
    */
   panelBackground?: string;
   /** Issue #2781: opaque task focus for the Competition workflow only. */
-  presentation?: "competition";
+  /**
+   * `competition`: the #2796 edge-to-edge panel. #4420 web >= 1024 (Sheet.web):
+   * `panel` = a 400 right-side inspector, `modal` = a centred 560 card. Phones
+   * and narrow web always render the bottom sheet for `panel` / `modal`.
+   */
+  presentation?: SheetPresentation;
   /**
    * #4270: called once the sheet has fully gone. On iOS that is the native
    * Modal's own dismissal, not a timer: iOS shows one modal at a time and drops
@@ -177,13 +177,21 @@ export interface SheetProps {
 // SNAP_RATIOS / MIN_SNAP_PX / MAX_SNAP_RATIO now live in ./sheetSnapHeight
 // (single owner of the panel-height math) and are imported above.
 
-const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
+const SCRIM_COLOR = scrim.modal;
+/** Competition presentation's deeper scrim (kit `scrim.modal` on Android). */
+const COMPETITION_SCRIM = scrim.modal;
+/** #4420: the kit sheet radius (3xl 34) and the 36×5 handle. */
+export const SHEET_RADIUS = radiusTokens.xxxl;
+const HANDLE_HEIGHT = size.handle.height;
+const HANDLE_PAD_TOP = spacing.sm + 2;
+const HANDLE_PAD_BOTTOM = spacing.sm + 1;
 /**
- * The handle chrome's exact height: `handleWrap` paddingVertical
- * (spacing.sm + 2 = 10) x2, plus the 4pt handle bar = 24pt. The drag band is
- * derived from this so the two can never drift apart.
+ * The handle chrome's exact height: `handleWrap` paddingTop 10 + the 5pt
+ * handle bar + paddingBottom 9 = 24pt (#4420 grew the bar from 4 to 5 and
+ * took the point back from the bottom padding, so the band is unchanged).
+ * The drag band is derived from this so the two can never drift apart.
  */
-const HANDLE_REGION_HEIGHT = 2 * (spacing.sm + 2) + 4;
+const HANDLE_REGION_HEIGHT = HANDLE_PAD_TOP + HANDLE_HEIGHT + HANDLE_PAD_BOTTOM;
 /**
  * #3827 — the band above consumer content that every sheet reserves at its
  * top edge. The bottom sheet reserves it with the drag handle; the wide-desktop
@@ -290,7 +298,7 @@ const SheetNative: React.FC<SheetProps> = ({
   presentation,
   onDismissed,
 }) => {
-  const competition = presentation !== undefined;
+  const competition = presentation === "competition";
   const screenHeight = Dimensions.get("window").height;
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -309,7 +317,9 @@ const SheetNative: React.FC<SheetProps> = ({
   // Per SPEC_ORCH-0892-B_v2 §7.E + operator clarification 2026-05-20:
   // "Sheet drops keyboard logic entirely; consumers migrate their own
   // ScrollView." Supersedes ORCH-0884 follow-up #3.
-  const sheetHeight = computeSheetHeight(snapPoint, screenHeight);
+  // #4420: clamp every snap height to the top safe area, so no sheet ever
+  // runs under the status bar / Dynamic Island on any phone.
+  const sheetHeight = clampOverlayHeight(computeSheetHeight(snapPoint, screenHeight), screenHeight, insets.top);
 
   const closedY = sheetHeight; // pushed fully off-screen
   // ORCH-0892-B v2: panel rests at its docked position (translateY = 0
@@ -427,8 +437,7 @@ const SheetNative: React.FC<SheetProps> = ({
   // through it. The shared `shouldUseRealBlur(windowWidth)` helper encapsulates
   // that width-aware blur-kill awareness (plus the iOS/Android/desktop-web
   // cases) so it can't drift per-component.
-  const blurOk = shouldUseRealBlur(windowWidth);
-  const blurIntensity = blurIntensityTokens.cardElevated;
+  void windowWidth;
 
   return (
     <Modal
@@ -464,9 +473,7 @@ const SheetNative: React.FC<SheetProps> = ({
               style={[
                 StyleSheet.absoluteFill,
                 {
-                  backgroundColor: competition
-                    ? "rgba(0, 0, 0, 0.68)"
-                    : SCRIM_COLOR,
+                  backgroundColor: competition ? COMPETITION_SCRIM : SCRIM_COLOR,
                 },
                 scrimStyle,
               ]}
@@ -479,11 +486,13 @@ const SheetNative: React.FC<SheetProps> = ({
               />
             </Animated.View>
             <View style={styles.bottomDock} pointerEvents="box-none">
+              <SheetKeyboardHeight restingHeight={sheetHeight} screenHeight={screenHeight} topInset={insets.top}>
+              {(panelHeight) => (
               <Animated.View
                 style={[
                   styles.panel,
-                  { height: sheetHeight },
-                  shadows.glassCardElevated,
+                  { height: panelHeight },
+                  shadowTokens.sheet,
                   panelStyle,
                   style,
                 ]}
@@ -495,8 +504,6 @@ const SheetNative: React.FC<SheetProps> = ({
                 accessibilityViewIsModal={competition || undefined}
               >
                 <SheetMobilePanelInner
-                  blurOk={blurOk}
-                  blurIntensity={blurIntensity}
                   bottomInset={insets.bottom}
                   panelBackground={panelBackground}
                 >
@@ -520,7 +527,11 @@ const SheetNative: React.FC<SheetProps> = ({
                   />
                 </WebSafeGestureDetector>
               </Animated.View>
+              )}
+              </SheetKeyboardHeight>
             </View>
+            {/* #4420 B4: toasts fired while this sheet is open draw above it. */}
+            <ToastHost layer="overlay" open={visible} />
             {/* ORCH-1165: Done bar for sheet-hosted inputs — last child of the
               Modal's root absoluteFill so it overlays the sheet and floats on
               the keyboard. KeyboardStickyView keeps it off-screen until focus.
@@ -539,24 +550,19 @@ const SheetNative: React.FC<SheetProps> = ({
  * differs (the parent Animated.View vs the web CSS-transition View).
  */
 interface SheetMobilePanelInnerProps {
-  blurOk: boolean;
-  blurIntensity: number;
   bottomInset: number;
   children: React.ReactNode;
-  /** ORCH-1186 Fix 3 — solid brand fill replacing the glass stack when set. */
+  /** ORCH-1186 Fix 3 — solid brand fill replacing the material when set. */
   panelBackground?: string;
   /**
-   * ORCH-1207 Bug 1 — WEB only: render an effectively-OPAQUE panel fill instead
-   * of the translucent native glass stack so page content does not ghost through
-   * the open sheet (Android glass opaque-fallback policy). The native variant
-   * passes `false` and keeps its real BlurView / translucent-tint stack.
+   * ORCH-1207 Bug 1 — WEB only: the sheet material's SOLID fill instead of
+   * glass, so page content never ghosts through the open sheet. The native
+   * variant passes `false` and keeps `<Material kind="sheet">`.
    */
   webOpaque?: boolean;
 }
 
 const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
-  blurOk,
-  blurIntensity,
   bottomInset,
   children,
   panelBackground,
@@ -572,69 +578,44 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
           { backgroundColor: panelBackground },
         ]}
       />
+    ) : webOpaque ? (
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.bodyClip,
+          styles.webRim,
+          { backgroundColor: WEB_OPAQUE_BACKGROUND },
+        ]}
+      />
     ) : (
-      <>
-        {webOpaque ? (
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.bodyClip,
-              { backgroundColor: WEB_OPAQUE_BACKGROUND },
-            ]}
-          />
-        ) : (
-          <>
-            {blurOk ? (
-              <BlurView
-                intensity={blurIntensity}
-                tint="dark"
-                style={[StyleSheet.absoluteFill, styles.bodyClip]}
-              />
-            ) : (
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  styles.bodyClip,
-                  { backgroundColor: FALLBACK_BACKGROUND },
-                ]}
-              />
-            )}
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                styles.bodyClip,
-                { backgroundColor: glass.tint.profileElevated },
-              ]}
-            />
-          </>
-        )}
-        <View
-          style={[
-            styles.topHighlight,
-            { backgroundColor: glass.highlight.profileElevated },
-          ]}
-        />
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            styles.bodyClip,
-            {
-              borderColor: glass.border.profileElevated,
-              borderWidth: StyleSheet.hairlineWidth,
-            },
-          ]}
-          pointerEvents="none"
-        />
-      </>
+      <Material kind="sheet" style={[StyleSheet.absoluteFill, styles.bodyClip]} pointerEvents="none" />
     )}
     <View style={styles.handleWrap}>
       <View style={styles.handle} />
     </View>
-    <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
+    <View style={[styles.body, { paddingBottom: space[6] + bottomInset }]}>
       {children}
     </View>
   </>
 );
+
+/**
+ * #4420 — keyboard rule for the docked sheet (see `overlayKeyboard.ts`). Lives
+ * INSIDE the sheet window's KeyboardProvider so it receives that window's
+ * keyboard frames. The sheet keeps its snap height when enough of it shows
+ * above the keyboard (the body's SmartScrollView then places the focused field
+ * flush above the Done bar); a short sheet rises just enough, clamped to the
+ * safe area. Off-native this is a no-op (the hook returns 0).
+ */
+const SheetKeyboardHeight: React.FC<{
+  restingHeight: number;
+  screenHeight: number;
+  topInset: number;
+  children: (height: number) => React.ReactNode;
+}> = ({ restingHeight, screenHeight, topInset, children }) => {
+  const keyboardHeight = useKeyboardHeight();
+  return <>{children(keyboardSheetHeight(restingHeight, keyboardHeight, screenHeight, topInset))}</>;
+};
 
 // ORCH-1197 / ORCH-1199: web-only VISIBLE-viewport metrics for a bottom-anchored
 // sheet. The Modal's absoluteFill fills the LAYOUT viewport (`window.innerHeight`),
@@ -819,7 +800,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   // (onRequestClose). Registering it as an Escape layer is what stops the
   // sheet or dialog UNDERNEATH from closing on the same key press.
   useEscapeLayer(visible);
-  const competition = presentation !== undefined;
+  const competition = presentation === "competition";
   // ORCH-1197 / ORCH-1199: size + anchor the panel against the VISIBLE (visual)
   // viewport, not the LAYOUT viewport. The Modal's absoluteFill fills
   // `window.innerHeight` (the layout height); the visible band can be both shorter
@@ -838,7 +819,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   // ORCH-1206: single owner of the panel-height math (see ./sheetSnapHeight).
   // Numeric snapPoint in (0, 1] = RATIO of screen height; > 1 = ABSOLUTE
   // PIXELS (clamped); string = SNAP_RATIOS preset; capped at 95% screen.
-  const sheetHeight = computeSheetHeight(snapPoint, screenHeight);
+  const sheetHeight = clampOverlayHeight(computeSheetHeight(snapPoint, screenHeight), screenHeight, insets.top);
   const closedY = sheetHeight; // pushed fully off-screen (slides up from bottom)
 
   const reduceMotion = useWebReducedMotion();
@@ -1030,8 +1011,7 @@ const SheetWeb: React.FC<SheetProps> = ({
 
   if (!mounted) return null;
 
-  const blurOk = shouldUseRealBlur(windowWidth);
-  const blurIntensity = blurIntensityTokens.cardElevated;
+  void windowWidth;
 
   // ORCH-1197 / ORCH-1199: the dock is `position:absolute; bottom:0` inside an
   // absoluteFill sized to the LAYOUT viewport (`window.innerHeight`). The visible
@@ -1100,9 +1080,7 @@ const SheetWeb: React.FC<SheetProps> = ({
           style={[
             StyleSheet.absoluteFill,
             {
-              backgroundColor: competition
-                ? "rgba(0, 0, 0, 0.68)"
-                : SCRIM_COLOR,
+              backgroundColor: competition ? COMPETITION_SCRIM : SCRIM_COLOR,
             },
             scrimWebStyle,
           ]}
@@ -1119,7 +1097,7 @@ const SheetWeb: React.FC<SheetProps> = ({
             style={[
               styles.panel,
               { height: sheetHeight },
-              shadows.glassCardElevated,
+              shadowTokens.sheet,
               panelWebStyle,
               style,
             ]}
@@ -1131,8 +1109,6 @@ const SheetWeb: React.FC<SheetProps> = ({
             accessibilityViewIsModal={competition || undefined}
           >
             <SheetMobilePanelInner
-              blurOk={blurOk}
-              blurIntensity={blurIntensity}
               bottomInset={insets.bottom}
               panelBackground={panelBackground}
               webOpaque
@@ -1164,6 +1140,7 @@ const SheetWeb: React.FC<SheetProps> = ({
             />
           </View>
         </View>
+        <ToastHost layer="overlay" open={visible} />
       </View>
     </Modal>
   );
@@ -1181,26 +1158,29 @@ const styles = StyleSheet.create({
   },
   panel: {
     width: "100%",
-    borderTopLeftRadius: radiusTokens.xl,
-    borderTopRightRadius: radiusTokens.xl,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
     // Clip child visual layers to the rounded panel shape (top corners
     // rounded; bottom edges flush with viewport bottom).
     overflow: "hidden",
   },
   bodyClip: {
-    borderTopLeftRadius: radiusTokens.xl,
-    borderTopRightRadius: radiusTokens.xl,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
   },
-  topHighlight: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
+  // Web solid panel keeps the sheet material's rim and hairline edge.
+  webRim: {
+    borderTopWidth: 1,
+    borderTopColor: materials.sheet.rim.top ?? color.line,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: materials.sheet.rim.edge,
+    borderRightColor: materials.sheet.rim.edge,
   },
   handleWrap: {
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
+    paddingTop: HANDLE_PAD_TOP,
+    paddingBottom: HANDLE_PAD_BOTTOM,
   },
   // ORCH-1207 Bug 2 (WEB) — transparent drag-catch band pinned to the top of the
   // panel, over the handle + header. Tall enough to be an easy drag target, short
@@ -1241,15 +1221,17 @@ const styles = StyleSheet.create({
     height: SHEET_DRAG_BAND_HEIGHT,
   },
   handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: glass.border.pending,
+    width: size.handle.width,
+    height: HANDLE_HEIGHT,
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.fill.handle,
   },
+  // #4420: sheet content padding 20 on each side (breathing room), safe-area
+  // bottom added at render.
   body: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: space[5],
+    paddingBottom: space[6],
   },
 });
 

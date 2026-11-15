@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "@jest/globals";
 
-import { AUTO_DISMISS } from "../toastTimings";
+import { AUTO_DISMISS, resolveAutoDismissMs } from "../toastTimings";
 
 describe("Toast — auto-dismiss schedule", () => {
   test("error toasts have a bounded auto-dismiss timer (not null)", () => {
@@ -28,10 +28,23 @@ describe("Toast — auto-dismiss schedule", () => {
     expect(AUTO_DISMISS.error).toBeLessThanOrEqual(20000);
   });
 
-  test("success / info / warn timers unchanged from prior behaviour", () => {
-    expect(AUTO_DISMISS.success).toBe(2600);
-    expect(AUTO_DISMISS.info).toBe(2600);
+  // [TEST-MOD-APPROVED #4420] the Graphite Glass schedule (spec §3.3):
+  // success/info 4s, warn 6s, error-with-action 8s; an error with no action
+  // stays until dismissed now that toasts are non-modal (they block nothing).
+  test("success / info / warn timers follow the #4420 schedule", () => {
+    expect(AUTO_DISMISS.success).toBe(4000);
+    expect(AUTO_DISMISS.info).toBe(4000);
     expect(AUTO_DISMISS.warn).toBe(6000);
+    expect(AUTO_DISMISS.error).toBe(8000);
+  });
+
+  test("#4420: an error with an action times out; one with no action stays until dismissed", () => {
+    expect(resolveAutoDismissMs("error", true)).toBe(8000);
+    expect(resolveAutoDismissMs("error", false)).toBeNull();
+    expect(resolveAutoDismissMs("success", false)).toBe(4000);
+    // A per-instance override always wins (ORCH-0789 autoDismissMs).
+    expect(resolveAutoDismissMs("error", false, 5000)).toBe(5000);
+    expect(resolveAutoDismissMs("success", false, null)).toBeNull();
   });
 
   test("every kind has a defined finite timer (no nulls)", () => {

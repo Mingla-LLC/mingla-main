@@ -16,8 +16,12 @@
  *   2. each glass surface fixed by ORCH-1100 imports `shouldUseRealBlur` from
  *      the shared `glassBlur` module AND calls it (so the blur decision is
  *      width-aware, with an opaque fallback below the threshold). The gated
- *      surfaces are: Material (#4420), TopSheet, GlassChrome, Toast,
- *      BlastCustomersCta, AiDisclosureModal, SheetMobile.
+ *      surfaces are: Material (#4420) and the two feature surfaces that still
+ *      own a BlurView (BlastCustomersCta, AiDisclosureModal; #4420 wave 5).
+ *   3. (#4420 wave 2) the ui/ surfaces that moved onto `<Material>` — TopSheet,
+ *      GlassChrome, Toast, SheetMobile — must render `<Material` and must NOT
+ *      import expo-blur again: their glass decision is Material's, which rule 2
+ *      pins to the helper.
  *
  * A surface that renders `BlurView` glass WITHOUT routing through
  * `shouldUseRealBlur` would paint a see-through panel on phone web — exactly the
@@ -40,19 +44,40 @@ const root = process.cwd().endsWith("mingla-business")
 const GLASS_HELPER_REL = "mingla-business/src/utils/glassBlur.ts";
 
 // Glass surfaces fixed in ORCH-1100 (relative to mingla-business/src).
-// #4420: `components/ui/Material.tsx` is the one glass owner going forward and
-// must route its web decision through the helper. The ORCH-1100 surfaces stay
-// listed until #4420 wave 2 moves each of them onto <Material>; at that point
-// each one leaves this list as it stops importing expo-blur.
+// #4420: `components/ui/Material.tsx` is the one glass owner and must route its
+// web decision through the helper. Wave 2 moved TopSheet, GlassChrome, Toast
+// and SheetMobile onto <Material> (MATERIAL_SURFACES below). The two feature
+// surfaces leave this list when wave 5 moves them.
 const GATED_SURFACES = [
   "components/ui/Material.tsx",
+  "components/marketing/BlastCustomersCta.tsx",
+  "components/ari/AiDisclosureModal.tsx",
+];
+
+// #4420 wave 2: glass drawn by <Material>, never by their own BlurView.
+const MATERIAL_SURFACES = [
   "components/ui/TopSheet.tsx",
   "components/ui/GlassChrome.tsx",
   "components/ui/Toast.tsx",
-  "components/marketing/BlastCustomersCta.tsx",
-  "components/ari/AiDisclosureModal.tsx",
   "components/ui/SheetMobile.tsx",
 ];
+const RENDERS_MATERIAL = /<Material\b/;
+const IMPORTS_EXPO_BLUR = /from\s*["']expo-blur["']|require\(\s*["']expo-blur["']\s*\)/;
+
+function checkMaterialSurface(relFromSrc, failures) {
+  const abs = path.join(root, "mingla-business/src", relFromSrc);
+  if (!fs.existsSync(abs)) {
+    failures.push(`material surface "${relFromSrc}" not found — gate surface list out of sync with source.`);
+    return;
+  }
+  const src = fs.readFileSync(abs, "utf8");
+  if (IMPORTS_EXPO_BLUR.test(src)) {
+    failures.push(`${relFromSrc}: imports expo-blur again — its glass must come from <Material> (#4420, I-HOST-CHROME-TOKENS-ONLY).`);
+  }
+  if (!RENDERS_MATERIAL.test(src)) {
+    failures.push(`${relFromSrc}: no longer renders <Material> — its surface lost the width-aware opaque fallback.`);
+  }
+}
 
 // Imports shouldUseRealBlur from a glassBlur module (relative path tolerant).
 const IMPORTS_FROM_GLASSBLUR =
@@ -124,6 +149,12 @@ if (process.argv.includes("--self-test")) {
     `import { shouldUseRealBlur } from "../../utils/glassBlur";\n<BlurView />`,
     false,
   );
+  const materialOk = (src) => RENDERS_MATERIAL.test(src) && !IMPORTS_EXPO_BLUR.test(src);
+  if (!materialOk(`<Material kind="sheet" />`)) selfFailures.push('SELF-TEST "material surface (good)": rejected');
+  if (materialOk(`import { BlurView } from "expo-blur";\n<Material kind="sheet" />`)) {
+    selfFailures.push('SELF-TEST "material surface re-imports expo-blur (bug)": accepted');
+  }
+  if (materialOk(`<View />`)) selfFailures.push('SELF-TEST "material surface without <Material> (bug)": accepted');
   // Helper-export detection
   const exportOk = /export\s+const\s+shouldUseRealBlur\b/.test(
     "export const shouldUseRealBlur = (w) => true;",
@@ -137,7 +168,7 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "ORCH-1105 I-WEB-GLASS-OPAQUE-FALLBACK self-test PASS (4/4 cases).",
+    "ORCH-1105 I-WEB-GLASS-OPAQUE-FALLBACK self-test PASS (7/7 cases).",
   );
   process.exit(0);
 }
@@ -146,6 +177,7 @@ if (process.argv.includes("--self-test")) {
 const failures = [];
 checkHelperExport(failures);
 GATED_SURFACES.forEach((s) => checkSurface(s, failures));
+MATERIAL_SURFACES.forEach((s) => checkMaterialSurface(s, failures));
 
 if (failures.length > 0) {
   console.error(
@@ -157,5 +189,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `ORCH-1105 I-WEB-GLASS-OPAQUE-FALLBACK PASS — shared helper exported; all ${GATED_SURFACES.length} glass surfaces route through it.`,
+  `ORCH-1105 I-WEB-GLASS-OPAQUE-FALLBACK PASS — shared helper exported; all ${GATED_SURFACES.length} glass surfaces route through it; ${MATERIAL_SURFACES.length} ui surfaces draw through <Material>.`,
 );

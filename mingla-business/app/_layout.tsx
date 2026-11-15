@@ -46,6 +46,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import { ToastHost } from "../src/components/ui/ToastHost";
 import { TapToPayAwarenessModal } from "../src/components/door/tap/TapToPayAwarenessModal";
 import { TapToPayTerminalHost } from "../src/components/door/tap/TapToPayTerminalHost";
 // #2107 (U1): the launch guard installs when this file is imported, before
@@ -979,6 +980,10 @@ export default function RootLayout(): React.ReactElement {
           </QueryClientProvider>
           </UpdateLaunchBoundary>
         </ErrorBoundary>
+        {/* #4420 B4: the root non-modal toast layer. Inside SafeAreaProvider
+            (it reads insets), outside AuthProvider (auth-free). Sheets and
+            dialogs mount their own host inside their Modal window. */}
+        <ToastHost layer="root" />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

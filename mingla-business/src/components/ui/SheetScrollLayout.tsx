@@ -24,7 +24,7 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { spacing } from "../../constants/designSystem";
+import { color, space, spacing } from "../../constants/designSystem";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
@@ -86,11 +86,19 @@ const Layout: React.FC<SheetScrollLayoutProps & { lift: number }> = ({
   </View>
 );
 
+// #4420: the sheet body already pads 20 on each side (kit `.sheet-body`), so
+// the layout adds no horizontal padding of its own. The footer is the kit's
+// sticky foot: a hairline top, 12 above the buttons, 8 between them.
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.md, gap: spacing.sm },
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm },
+  content: { paddingTop: space[1], paddingBottom: space[4], gap: space[3] },
+  footer: {
+    paddingTop: space[3],
+    gap: space[2],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+  },
 });
 
 export default SheetScrollLayout;

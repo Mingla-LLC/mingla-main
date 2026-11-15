@@ -39,16 +39,39 @@ const stripComments = (src: string): string =>
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
-// The 5 gapped components + the canonical SheetMobile (now refactored onto the
-// shared helper). All must use the WIDTH-AWARE shared decision.
+// [TEST-MOD-APPROVED #4420] Wave 2 moved SheetMobile, TopSheet, GlassChrome and
+// Toast onto `<Material>`, the one glass owner, which routes the SAME
+// width-aware decision through `shouldUseRealBlur(width)` and paints the solid
+// material fill below the threshold. Those four are now pinned by the
+// MATERIAL_SURFACES block below (they render <Material>, never their own
+// BlurView); Material itself is pinned here and in issue_4420_material.test.tsx.
+// The intent (no see-through glass on phone web / Android) is unchanged.
 const WIDTH_AWARE_SURFACES: readonly string[] = [
+  "components/marketing/BlastCustomersCta.tsx",
+  "components/ari/AiDisclosureModal.tsx",
+];
+
+const MATERIAL_SURFACES: readonly string[] = [
   "components/ui/SheetMobile.tsx",
   "components/ui/TopSheet.tsx",
   "components/ui/GlassChrome.tsx",
   "components/ui/Toast.tsx",
-  "components/marketing/BlastCustomersCta.tsx",
-  "components/ari/AiDisclosureModal.tsx",
 ];
+
+describe("#4420 — Material is the width-aware glass owner", () => {
+  const material = stripComments(read("components/ui/Material.tsx"));
+  test("Material routes web through shouldUseRealBlur(width) with a live window width", () => {
+    expect(material).toMatch(/import\s*\{[^}]*shouldUseRealBlur[^}]*\}\s*from\s*["'][^"']*glassBlur["']/);
+    expect(material).toMatch(/shouldUseRealBlur\(width\)/);
+    expect(material).toMatch(/useWindowDimensions\(\)/);
+  });
+  test.each(MATERIAL_SURFACES.map((f) => [f]))("%s draws its glass through <Material>, not a BlurView", (rel) => {
+    const code = stripComments(read(rel));
+    expect(code).toMatch(/<Material\b/);
+    expect(code).not.toMatch(/from\s*["']expo-blur["']/);
+    expect(code).not.toMatch(/const\s+supportsBackdropFilter\b/);
+  });
+});
 
 describe("ORCH-1100 RC-2 — shared helper exists + breakpoint", () => {
   const helper = read("utils/glassBlur.ts");

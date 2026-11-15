@@ -18,27 +18,25 @@ const add = read("../../venue/insights/CompetitorAddSheet.tsx");
 const brief = read("../../venue/insights/CompetitorBriefSheet.tsx");
 
 describe("issue 2725 opt-in Competition task Sheet", () => {
+  // [TEST-MOD-APPROVED #4420] colours moved to tokens (scrim.modal, the sheet
+  // material's solid fill) and `presentation` gained the web `panel` / `modal`
+  // values; `competition` is still the one opt-in for the edge-to-edge panel.
   it("keeps the default presentation contract and adds only the named opt-in", () => {
-    expect(mobile).toContain('presentation?: "competition"');
-    expect(mobileFlat).toContain(
-      'competition ? "rgba(0, 0, 0, 0.68)" : SCRIM_COLOR',
-    );
+    expect(mobile).toContain('presentation?: SheetPresentation');
+    expect(mobile).toContain('export type SheetPresentation = "competition" | "panel" | "modal"');
+    expect(mobile).toContain('const competition = presentation === "competition"');
+    expect(mobileFlat).toContain("competition ? COMPETITION_SCRIM : SCRIM_COLOR");
     expect(mobile).toContain("panelBackground={panelBackground}");
-    expect(mobile).toContain('const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)"');
-    expect(mobile).toContain(
-      'const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)"',
-    );
+    expect(mobile).toContain("const SCRIM_COLOR = scrim.modal");
     expect(mobile).toContain("accessibilityViewIsModal");
   });
 
   it("owns the matching opaque responsive web branch without changing the default card", () => {
-    expect(webFlat).toContain(
-      'competition ? "rgba(0, 0, 0, 0.68)" : SCRIM_COLOR',
-    );
+    expect(web).toContain('const competition = presentation === "competition"');
     expect(web).toContain("panelBackground ?? CARD_BACKGROUND");
-    expect(webFlat).toContain("viewportWidth < 1280 ? 640 : 720");
+    expect(webFlat).toContain("? viewportWidth < 1280 ? 640 : 720");
     expect(web).toContain("viewportHeight - CARD_VIEWPORT_GUTTER");
-    expect(web).toContain('const CARD_BACKGROUND = "rgba(20, 22, 26, 0.92)"');
+    expect(web).toContain("const CARD_BACKGROUND = materials.sheet.solidFill");
     expect(web).toContain("accessibilityViewIsModal");
   });
 
