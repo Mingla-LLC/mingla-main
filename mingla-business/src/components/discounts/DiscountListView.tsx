@@ -17,6 +17,7 @@ import type {
 } from "../../services/discountService";
 import { Button } from "../ui/Button";
 import { Chip, Segmented } from "../ui/Pill";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { PricesWorkspace } from "./PricesWorkspace";
 
 const loadDiscountService = () => import("../../services/discountService");
@@ -70,6 +71,7 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
   onShareBlast,
 }) => {
   const client = useQueryClient();
+  const { isWideDesktop } = useResponsiveLayout();
   const [tab, setTab] = useState<"discounts" | "prices">("discounts");
   const [filter, setFilter] = useState<DiscountFilter>("live");
   const [editing, setEditing] = useState<BrandDiscount | null | undefined>(
@@ -162,13 +164,17 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
                   choose where it works and what it can combine with.
                 </Text>
               </View>
-              <Button
-                label="Create discount"
-                onPress={() => {
-                  setPreset(null);
-                  setEditing(null);
-                }}
-              />
+              {/* #4420 — phone: a full-width action under the copy (mockup). */}
+              <View style={isWideDesktop ? null : styles.heroActionPhone}>
+                <Button
+                  label="Create discount"
+                  fullWidth={!isWideDesktop}
+                  onPress={() => {
+                    setPreset(null);
+                    setEditing(null);
+                  }}
+                />
+              </View>
             </View>
             {/* #4420 round-3 item 23 — the filter chips wrap inside the page
                 instead of running off the edge. */}
@@ -434,6 +440,7 @@ const styles = StyleSheet.create({
     borderColor: color.line,
   },
   heroCopy: { flex: 1, minWidth: 220, gap: space[1] },
+  heroActionPhone: { width: "100%" },
   heroTitle: { ...type.h2, color: color.text1 },
   heroSub: { ...type.small, color: color.text2 },
   filters: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },

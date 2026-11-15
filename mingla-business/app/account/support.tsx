@@ -49,7 +49,8 @@ const APP_TABS: { id: string; icon: IconName; label: string }[] = [
   { id: "home", icon: "home", label: "Home" },
   { id: "hub", icon: "calendar", label: "Hub" },
   { id: "ari", icon: "sparkle", label: "Ari" },
-  { id: "marketing", icon: "send", label: "Blast" },
+  // #4420 — the collapsed rail has no Blast item; Blast maps to Campaigns.
+  { id: "marketing/campaigns", icon: "send", label: "Campaigns" },
 ];
 
 function SupportDesktopRail({ onChange, locked }: { onChange: (id: string) => void; locked: boolean }) {
@@ -197,13 +198,12 @@ export default function SupportRoute(): React.ReactElement {
   return (
     <DesktopCanvas>
       <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
-        {!isWideDesktop ? (
-          <View style={styles.chromeRow}>
-            <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
-            <Text style={styles.chromeTitle}>Help &amp; Support</Text>
-            <View style={styles.chromeRightSlot} />
-          </View>
-        ) : null}
+        {/* #4420 — desktop keeps the page header too (close + title). */}
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Help &amp; Support</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
 
         <HelpSupportHubTabs active={tab} onChange={handleTabChange} communityBadge={unreadCount} />
 
