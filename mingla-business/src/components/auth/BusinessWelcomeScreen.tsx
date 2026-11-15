@@ -31,6 +31,7 @@ import {
   edge,
   colors,
   fontWeights,
+  materials,
   radius,
   shadow,
   size,
@@ -622,7 +623,7 @@ export default function BusinessWelcomeScreen({
           accessibilityLabel="Continue with Email"
           accessibilityRole="button"
         >
-          <Icon name="mail" size={22} color={colors.text.primary} />
+          <Icon name="mail" size={22} color={color.text1} />
           <Text style={styles.emailButtonText}
                 numberOfLines={1}
                 maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
@@ -656,7 +657,7 @@ export default function BusinessWelcomeScreen({
       >
         <WelcomeVideoBackground />
         <View pointerEvents="none" style={styles.videoVeil} />
-        {desktop && mode === "idle" ? (
+        {desktop ? (
           <View style={styles.mediaTaglineDesktop}>{renderTagline()}</View>
         ) : null}
       </View>
@@ -699,7 +700,7 @@ export default function BusinessWelcomeScreen({
         ) : (
           <>
         <View style={[styles.centerZone, desktop && styles.centerZoneDesktop]}>
-          {renderLogo()}
+          {desktop ? null : renderLogo()}
 
           {mode === "email-input" && (
             <Text style={styles.modeHeading} accessibilityRole="header">
@@ -765,8 +766,8 @@ export default function BusinessWelcomeScreen({
                 onPress={() => void handleSendCode()}
                 style={[
                   styles.primaryActionButton,
-                  (submittingEmail || !emailInput.trim()) &&
-                    styles.buttonDisabled,
+                  !submittingEmail && !emailInput.trim() && styles.primaryActionButtonEmpty,
+                  submittingEmail && styles.buttonDisabled,
                 ]}
                 disabled={submittingEmail || !emailInput.trim()}
                 activeOpacity={0.9}
@@ -780,7 +781,14 @@ export default function BusinessWelcomeScreen({
                 {submittingEmail ? (
                   <ActivityIndicator size="small" color={color.ink} />
                 ) : (
-                  <Text style={styles.primaryActionButtonText}>Send code</Text>
+                  <Text
+                    style={[
+                      styles.primaryActionButtonText,
+                      !emailInput.trim() && styles.primaryActionButtonTextEmpty,
+                    ]}
+                  >
+                    Send code
+                  </Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity
@@ -798,6 +806,24 @@ export default function BusinessWelcomeScreen({
           {/* Cycle 15 — OTP input mode (DEC-097 D-15-2 + SPEC §3.5.4). */}
           {mode === "otp-input" && (
             <View style={styles.modeWrapper}>
+              {/* #4420 — six code cells drawn over ONE input, so paste,
+                  one-time-code autofill and the number pad still work. */}
+              <View style={styles.codeCells}>
+                {Array.from({ length: 6 }, (_, i) => {
+                  const digit = otpInput[i] ?? "";
+                  const active = i === Math.min(otpInput.length, 5);
+                  return (
+                    <View
+                      key={i}
+                      style={[styles.codeCell, active && styles.codeCellActive]}
+                      importantForAccessibility="no"
+                    >
+                      <Text style={[styles.codeCellText, digit === "" && styles.codeCellDot]}>
+                        {digit === "" ? "•" : digit}
+                      </Text>
+                    </View>
+                  );
+                })}
               <TextInput
                 style={styles.codeField}
                 value={otpInput}
@@ -810,11 +836,14 @@ export default function BusinessWelcomeScreen({
                 maxLength={6}
                 editable={!submittingOtp}
                 autoFocus
+                caretHidden
                 accessibilityLabel="6-digit code"
               />
+              </View>
+              <View style={styles.codeLinksRow}>
               <TouchableOpacity
                 onPress={() => void handleResendCode()}
-                style={styles.linkButton}
+                style={styles.linkButtonInline}
                 disabled={submittingEmail || resendSecondsLeft > 0}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityLabel={
@@ -841,7 +870,7 @@ export default function BusinessWelcomeScreen({
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleEditEmail}
-                style={styles.linkButton}
+                style={styles.linkButtonInline}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityLabel="Wrong email? Edit"
                 accessibilityRole="button"
@@ -850,6 +879,7 @@ export default function BusinessWelcomeScreen({
                   Wrong email? Edit
                 </Text>
               </TouchableOpacity>
+              </View>
               {/* ORCH-1102 — never leave the user hanging mid-OTP. A direct
                   "Back to sign-in options" resets the state machine to idle so
                   the Apple/Google/Email buttons are immediately usable again,
@@ -1029,21 +1059,24 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     ...type.btn,
   },
+  // #4420 — Google and Email are the dark control material (the mockup);
+  // Apple keeps its required white button and black mark.
   googleButton: {
     width: "100%",
     maxWidth: s(400),
     // #2211 — `minHeight`, NOT `height` (see appleButton).
     minHeight: size.btn.phoneLg,
-    backgroundColor: colors.background.primary,
+    backgroundColor: materials.control.glassFill,
+    borderWidth: edge.control.borderWidth,
+    borderColor: edge.control.borderColor,
     borderRadius: radius.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: space[3],
-    ...shadow.paper,
   },
   googleButtonText: {
-    color: color.ink,
+    color: color.text1,
     ...type.btn,
   },
   googleIcon: {
@@ -1082,16 +1115,17 @@ const styles = StyleSheet.create({
     maxWidth: s(400),
     // #2211 — `minHeight`, NOT `height` (see appleButton).
     minHeight: size.btn.phoneLg,
-    backgroundColor: colors.background.primary,
+    backgroundColor: materials.control.glassFill,
+    borderWidth: edge.control.borderWidth,
+    borderColor: edge.control.borderColor,
     borderRadius: radius.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: space[3],
-    ...shadow.paper,
   },
   emailButtonText: {
-    color: color.ink,
+    color: color.text1,
     ...type.btn,
   },
   modeHeading: {
@@ -1137,19 +1171,51 @@ const styles = StyleSheet.create({
     lineHeight: undefined,
     color: color.text1,
   },
-  codeField: {
+  codeCells: {
+    flexDirection: "row",
+    gap: space[2],
     width: "100%",
-    minHeight: 64,
+  },
+  codeCell: {
+    flex: 1,
+    minWidth: 0,
+    height: size.btn.phoneLg,
     backgroundColor: color.card,
+    borderWidth: edge.lineStrong.borderWidth,
+    borderColor: edge.lineStrong.borderColor,
+    borderRadius: radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  codeCellActive: {
     borderWidth: edge.ringInputFocus.borderWidth,
     borderColor: edge.ringInputFocus.borderColor,
-    borderRadius: radius.md,
-    paddingHorizontal: space[4],
+  },
+  codeCellText: {
     ...type.title,
-    lineHeight: undefined,
     color: color.text1,
-    textAlign: "center",
-    letterSpacing: space[2],
+  },
+  codeCellDot: {
+    ...type.body,
+    color: color.text3,
+  },
+  // The real input sits over the cells, invisible, so a tap anywhere on them
+  // focuses it and paste / one-time-code autofill land in one field.
+  codeField: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.011,
+    color: color.transparent,
+    fontSize: 1,
+  },
+  codeLinksRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: space[2],
+  },
+  linkButtonInline: {
+    paddingVertical: space[2],
   },
   primaryActionButton: {
     width: "100%",
@@ -1166,10 +1232,17 @@ const styles = StyleSheet.create({
     color: color.ink,
     ...type.btn,
   },
+  primaryActionButtonEmpty: {
+    backgroundColor: color.card2,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  primaryActionButtonTextEmpty: {
+    color: color.text4,
+  },
   linkButton: {
     paddingVertical: space[2],
-    paddingHorizontal: space[4],
-    alignItems: "center",
+    alignSelf: "flex-start",
   },
   linkButtonText: {
     ...type.btn,

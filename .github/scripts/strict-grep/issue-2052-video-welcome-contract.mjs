@@ -130,8 +130,14 @@ export function checkContract(fixture) {
   requireStyleNeedles(s.hostOwner, "tagline", ['color: "#ffffff"', 'textShadowColor: "rgba(0, 0, 0, 0.45)"'], "host owner");
   requireStyleNeedles(s.hostOwner, "appleButton", ['backgroundColor: "#ffffff"'], "host owner");
   requireStyleNeedles(s.hostOwner, "appleButtonText", ["color: colors.text.primary"], "host owner");
-  requireStyleNeedles(s.hostOwner, "googleButton", ["backgroundColor: colors.background.primary"], "host owner");
-  requireStyleNeedles(s.hostOwner, "emailButton", ["backgroundColor: colors.background.primary"], "host owner");
+  // #4420 Graphite Glass: Google and Email are the dark control material with
+  // light text (the approved mockup). Only their colours changed; Apple keeps
+  // its required white button and #111827 mark above, and the video, veil,
+  // logo pill and on-video text legibility stay pinned as before.
+  requireStyleNeedles(s.hostOwner, "googleButton", ["backgroundColor: materials.control.glassFill", "borderColor: edge.control.borderColor"], "host owner");
+  requireStyleNeedles(s.hostOwner, "googleButtonText", ["color: color.text1"], "host owner");
+  requireStyleNeedles(s.hostOwner, "emailButton", ["backgroundColor: materials.control.glassFill", "borderColor: edge.control.borderColor"], "host owner");
+  requireStyleNeedles(s.hostOwner, "emailButtonText", ["color: color.text1"], "host owner");
   requireStyleNeedles(s.hostOwner, "termsText", ['color: "#ffffff"', 'textShadowColor: "rgba(0, 0, 0, 0.45)"'], "host owner");
 
   const backgroundCommon = [
@@ -209,6 +215,7 @@ function selfTest() {
   expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace(/MINGLA_WORDMARK/g, "MINGLA_BUSINESS_LOGO"); }, "logo family");
   expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace(/(appleButton:\s*\{[\s\S]*?)backgroundColor: "#ffffff"/, '$1backgroundColor: "#000000"'); }, "capsule/button contrast family");
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace(/portrait/g, "landscape"); }, "orientation family");
+  expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace(/(googleButtonText:\s*\{[\s\S]*?)color: color\.text1/, "$1color: color.ink"); }, "dark button text legibility family");
   expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace("rgba(0, 0, 0, 0.74)", "rgba(255, 255, 255, 0.64)"); }, "overlay family");
   expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace("status === \"error\"", "status === \"never\""); }, "error fallback family");
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace("eligibleRef.current = reduceMotion === false", "eligibleRef.current = true || reduceMotion === false"); }, "reduced motion family");
@@ -216,7 +223,7 @@ function selfTest() {
   expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace("if (!eligibleRef.current) return;", "if (failed || reduceMotion || saveData || !isActive) return;").replace("}, [opacity]);", "}, [failed, isActive, opacity, reduceMotion, saveData]);"); }, "host web retained reveal callback family");
   expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace('width: "100%"', 'width: "auto"'); }, "host web responsive media fill family");
   expectMutationToFail(good, (x) => { x.assetBytes.hostLandscapeVideo = Buffer.from(x.assetBytes.hostLandscapeVideo); x.assetBytes.hostLandscapeVideo[100] ^= 1; }, "asset family");
-  process.stdout.write("issue-2052 self-test: 1 GOOD + 11 BAD fixtures passed\n");
+  process.stdout.write("issue-2052 self-test: 1 GOOD + 12 BAD fixtures passed\n");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
