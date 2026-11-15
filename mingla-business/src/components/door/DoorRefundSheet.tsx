@@ -40,13 +40,10 @@ import {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { DoorSaleRecord } from "../../types/doorSales";
 import { formatCurrency } from "../../utils/currency";
@@ -378,7 +375,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
                     value={reason}
                     onChangeText={setReason}
                     placeholder="e.g. Charged twice at the door"
-                    placeholderTextColor={textTokens.quaternary}
+                    placeholderTextColor={color.text4}
                     multiline
                     numberOfLines={4}
                     maxLength={REASON_MAX}
@@ -441,56 +438,56 @@ const STEPPER_BUTTON = 44;
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    // #4420: the Sheet owns the 20 side padding.
+    paddingTop: space[4],
+    paddingBottom: space[7],
     flex: 1,
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+    gap: space[2],
+    marginBottom: space[4],
   },
   headerText: {
     flex: 1,
     minWidth: 0,
   },
   title: {
-    ...typography.h3,
+    ...type.h1,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   subhead: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   scroll: {
     flex: 1,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   scrollContent: {
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   linesList: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   // Same row as the sale sheet.
   lineRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    gap: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    gap: space[2],
   },
   lineRowPicked: {
-    borderColor: accent.border,
-    backgroundColor: accent.faint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   lineCol: {
     flex: 1,
@@ -500,19 +497,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   lineSubline: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   stepper: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    width: STEPPER_BUTTON * 2 + 22 + spacing.sm * 2,
+    gap: space[2],
+    width: STEPPER_BUTTON * 2 + 22 + space[2] * 2,
   },
   stepperBtn: {
     width: STEPPER_BUTTON,
@@ -521,9 +518,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
   stepperBtnDisabled: {
     opacity: 0.4,
@@ -531,12 +528,12 @@ const styles = StyleSheet.create({
   stepperBtnText: {
     fontSize: 20,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   stepperValue: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     width: 22,
     textAlign: "center",
     fontVariant: ["tabular-nums"],
@@ -545,47 +542,47 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    marginBottom: spacing.sm,
+    paddingVertical: space[2],
+    paddingHorizontal: space[1],
+    marginBottom: space[2],
   },
   summaryLabel: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   summaryValueBold: {
     fontSize: 17,
     lineHeight: 22,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   reasonSection: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   reasonLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   reasonInputWrap: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     minHeight: 100,
   },
   reasonInputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   reasonInput: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     minHeight: 80,
     textAlignVertical: "top",
     ...(Platform.OS === "web"
@@ -597,7 +594,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
     marginTop: 6,
   },
   reasonHelper: {
@@ -605,31 +602,31 @@ const styles = StyleSheet.create({
     minHeight: 16,
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   reasonHelperError: {
-    color: semantic.errorText,
+    color: color.errorText,
   },
   reasonCount: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   actions: {
-    marginTop: spacing.sm,
-    gap: spacing.xs,
+    marginTop: space[2],
+    gap: space[1],
   },
   gateCaption: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 6,
     textAlign: "center",
   },
   submitError: {
     fontSize: 12,
     lineHeight: 16,
-    color: semantic.errorText,
+    color: color.errorText,
     textAlign: "center",
   },
 });

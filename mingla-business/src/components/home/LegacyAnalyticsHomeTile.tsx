@@ -35,11 +35,10 @@ import {
   View,
 } from "react-native";
 import {
-  accent,
   durations,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import type { BrandMinglaDroveRollup } from "../../services/brandAnalyticsService";
@@ -142,7 +141,7 @@ export const LegacyAnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
         >
           <View style={styles.header}>
             <View style={styles.iconWrap} accessible={false}>
-              <Icon name="chart" size={20} color={accent.warm} />
+              <Icon name="chart" size={20} color={color.text1} />
             </View>
             <Text style={styles.eyebrow}>ANALYTICS</Text>
           </View>
@@ -177,7 +176,7 @@ export const LegacyAnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
               <View style={styles.action}>
                 <Text style={styles.actionText}>Open</Text>
                 <View accessible={false}>
-                  <Icon name="chevR" size={16} color={accent.warm} />
+                  <Icon name="chevR" size={16} color={color.text1} />
                 </View>
               </View>
             </>
@@ -193,7 +192,7 @@ export const LegacyAnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
             accessible={false}
             pointerEvents="none"
           >
-            <Icon name="chevD" size={18} color={textTokens.secondary} />
+            <Icon name="chevD" size={18} color={color.text2} />
           </View>
         )}
       </Pressable>
@@ -211,7 +210,7 @@ export const LegacyAnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
           style={styles.chevronSlot}
           testID="analytics-home-tile-chevron"
         >
-          <Icon name="chevU" size={18} color={textTokens.secondary} />
+          <Icon name="chevU" size={18} color={color.text2} />
         </Pressable>
       ) : null}
     </View>
@@ -239,15 +238,15 @@ const styles = StyleSheet.create({
   // the headline wraps to two lines).
   chevronSlot: {
     position: "absolute",
-    top: spacing.md,
-    right: spacing.md,
+    top: space[4],
+    right: space[4],
     width: 24,
     height: 24,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1,
   },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  header: { flexDirection: "row", alignItems: "center", gap: space[2] },
   iconWrap: {
     width: 24,
     height: 24,
@@ -255,54 +254,54 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   eyebrow: {
-    color: textTokens.tertiary,
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    color: color.text3,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
   },
   title: {
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    color: color.text1,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "700",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   window: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
-  skeletons: { gap: spacing.sm, marginTop: spacing.md },
-  values: { gap: spacing.xs, marginTop: spacing.md },
+  skeletons: { gap: space[2], marginTop: space[4] },
+  values: { gap: space[1], marginTop: space[4] },
   customer: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
   },
   value: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   error: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.md,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[4],
   },
   action: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.md,
+    gap: space[1],
+    marginTop: space[4],
   },
   actionText: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
+    color: color.text1,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
 });
 

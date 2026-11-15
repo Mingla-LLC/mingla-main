@@ -6,7 +6,11 @@
 import React, { useCallback, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
-import { semantic, spacing, typography } from "../../../constants/designSystem";
+import {
+  color,
+  space,
+  type,
+} from "../../../constants/designSystem";
 import { TAP_HOW_TO_TAP_BUTTON, TAP_HOW_TO_TAP_FAILED, tapEducationRows } from "../../../constants/tapToPayCopy";
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { Button } from "../../ui/Button";
@@ -59,6 +63,6 @@ export const TapToPayEducation = ({ pinRow }: TapToPayEducationProps): React.Rea
 };
 
 const styles = StyleSheet.create({
-  host: { gap: spacing.sm },
-  error: { ...typography.bodySm, color: semantic.errorText, textAlign: "center" },
+  host: { gap: space[2] },
+  error: { ...type.small, color: color.errorText, textAlign: "center" },
 });

@@ -41,7 +41,10 @@ import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
-import { canvas, spacing } from "../../../src/constants/designSystem";
+import {
+  color,
+  space,
+} from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import {
   useCurrentBrandStore,
@@ -238,7 +241,7 @@ export default function HubTabLayout(): React.ReactElement {
       style={[
         styles.host,
         {
-          paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+          paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
         },
       ]}
     >
@@ -338,14 +341,14 @@ export default function HubTabLayout(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   todoWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
 });
