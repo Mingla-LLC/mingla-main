@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-AF-SERVER-RESPECTS-OPT-OUT | issue #4238 | the Host app writes its Analytics choice to appsflyer_devices.tracking_opt_out on registration and on every change, so the server's first-sale, payout and dispute AppsFlyer posts skip an opted-out host.
+// MINGLA-INVARIANT: I-4238-AF-SERVER-RESPECTS-OPT-OUT-HOST | issue #4238 | the Host app writes its Analytics choice to appsflyer_devices.tracking_opt_out on registration and on every change, so the server's first-sale, payout and dispute AppsFlyer posts skip an opted-out host.
 /**
  * #4238 P2-4. The Host app Analytics switch only anonymized the SDK; the
  * server kept posting mingla_host_first_sale and the payout events with the

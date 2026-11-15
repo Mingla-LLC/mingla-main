@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-SKAN-IDS | issue #4238 | both iOS apps declare the same SKAdNetwork roster, including TikTok global (mj797d8u6f, 22mmun2rn5), Snap (424m5254lk) and Reddit (2tdux39lx8) and never ByteDance China's 238da6jt44, and both set the top-level AttributionCopyEndpoint to AppsFlyer.
+// MINGLA-INVARIANT: I-4238-SKAN-IDS-HOST | issue #4238 | both iOS apps declare the same SKAdNetwork roster, including TikTok global (mj797d8u6f, 22mmun2rn5), Snap (424m5254lk) and Reddit (2tdux39lx8) and never ByteDance China's 238da6jt44, and both set the top-level AttributionCopyEndpoint to AppsFlyer.
 /**
  * #4238 W4-2 (D23). Ids from AppsFlyer's SKAN partner CSV (Step 0 Z11);
  * AttributionCopyEndpoint from Apple's AdAttributionKit docs (Z11b). Takes

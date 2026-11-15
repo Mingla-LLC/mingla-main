@@ -28,7 +28,7 @@
 //   host's context row (true exactly once per host); null when the context
 //   could not be written (the app falls back to its own check).
 //
-// MINGLA-INVARIANT reference: I-4238-HOST-FUNNEL-ONCE (issue_4238_attach.test.ts).
+// Invariant reference: I-4238-HOST-FUNNEL-ONCE-ATTACH (declared in issue_4238_attach.test.ts).
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";

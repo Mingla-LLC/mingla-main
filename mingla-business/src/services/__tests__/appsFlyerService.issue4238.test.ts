@@ -1,6 +1,6 @@
-// MINGLA-INVARIANT: I-4238-AF-RESPECTS-OPT-OUT | issue #4238 | with the Host analytics opt-out on, AppsFlyer is anonymized and no AppsFlyer event, hashed email or uninstall token is sent.
-// MINGLA-INVARIANT: I-4238-AF-START-NEVER-LOST | issue #4238 | a Host AppsFlyer event or customer id set before init completes is applied exactly once after init, in order (at most 50 events, dropped on sign-out).
-// MINGLA-INVARIANT: I-4238-AF-UNINSTALL-AFTER-START | issue #4238 | the Host uninstall (push) token reaches AppsFlyer only after initSdk (which runs post-ATT and starts the SDK), and the same token is not re-applied on a later launch unless the user opted out and back in.
+// MINGLA-INVARIANT: I-4238-AF-RESPECTS-OPT-OUT-HOST | issue #4238 | with the Host analytics opt-out on, AppsFlyer is anonymized and no AppsFlyer event, hashed email or uninstall token is sent.
+// MINGLA-INVARIANT: I-4238-AF-START-NEVER-LOST-HOST | issue #4238 | a Host AppsFlyer event or customer id set before init completes is applied exactly once after init, in order (at most 50 events, dropped on sign-out).
+// MINGLA-INVARIANT: I-4238-AF-UNINSTALL-AFTER-START-HOST | issue #4238 | the Host uninstall (push) token reaches AppsFlyer only after initSdk (which runs post-ATT and starts the SDK), and the same token is not re-applied on a later launch unless the user opted out and back in.
 /**
  * #4238 Wave 6, Host app (mingla-business): W6-1 pre-init queue, W6-5
  * uninstall token, W6-6 opt-out, W6-7 registration once + method, W6-8 OneLink

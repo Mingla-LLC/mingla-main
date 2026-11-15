@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE | issue #4238 | a Host book-a-call booking with the page's ad context fires one host Lead (event_id lead:<book_call_leads.id>); a replayed booking fires nothing again; Creator and Local calls are not host leads.
+// MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE-BOOK-LEAD | issue #4238 | a Host book-a-call booking with the page's ad context fires one host Lead (event_id lead:<book_call_leads.id>); a replayed booking fires nothing again; Creator and Local calls are not host leads.
 /**
  * #4238 W3-3 (D7). Hermetic: the real recordBookingAdLead over an in-memory
  * table client with captured senders, plus a source pin on the handler wiring.

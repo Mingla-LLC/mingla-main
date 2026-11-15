@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-AF-DMA-CONSENT | issue #4238 | on an EU / EEA / UK device the Host app gives AppsFlyer DMA consent data (setConsentData) from its Analytics switch before initSdk (this app transmits at init) and on every change; elsewhere it says GDPR does not apply.
+// MINGLA-INVARIANT: I-4238-AF-DMA-CONSENT-HOST | issue #4238 | on an EU / EEA / UK device the Host app gives AppsFlyer DMA consent data (setConsentData) from its Analytics switch before initSdk (this app transmits at init) and on every change; elsewhere it says GDPR does not apply.
 /**
  * #4238 P2-2 (W6-6). setConsentData was never called, so AppsFlyer had no DMA
  * consent signal for European Host app installs.

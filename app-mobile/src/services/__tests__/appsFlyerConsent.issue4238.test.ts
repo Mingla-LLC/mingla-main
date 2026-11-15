@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-AF-DMA-CONSENT | issue #4238 | on an EU / EEA / UK device the Explorer gives AppsFlyer DMA consent data (setConsentData) from the "share usage data" switch before startSdk and on every change; elsewhere it says GDPR does not apply.
+// MINGLA-INVARIANT: I-4238-AF-DMA-CONSENT-EXPLORER | issue #4238 | on an EU / EEA / UK device the Explorer gives AppsFlyer DMA consent data (setConsentData) from the "share usage data" switch before startSdk and on every change; elsewhere it says GDPR does not apply.
 // @ts-nocheck — Deno runtime test of the REAL appsFlyerConsent.ts and appsFlyerService.ts (fakes for native imports).
 /**
  * #4238 P2-2 (W6-6). setConsentData was never called, so AppsFlyer had no DMA

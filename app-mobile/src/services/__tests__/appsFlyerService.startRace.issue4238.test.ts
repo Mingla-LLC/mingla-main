@@ -1,6 +1,6 @@
-// MINGLA-INVARIANT: I-4238-AF-START-NEVER-LOST | issue #4238 | an Explorer AppsFlyer start, customer id or device registration requested before initSdk's callback is applied exactly once after init, and events logged before transmission are sent after it, in order (at most 50, dropped on sign-out).
-// MINGLA-INVARIANT: I-4238-AF-RESPECTS-OPT-OUT | issue #4238 | with the Explorer "share usage data" switch off, AppsFlyer is anonymized and no AppsFlyer event, hashed email or uninstall token is sent.
-// MINGLA-INVARIANT: I-4238-AF-UNINSTALL-AFTER-START | issue #4238 | the Explorer uninstall (push) token reaches AppsFlyer only after startSdk (never from the init callback, so never before the iOS ATT answer), and the same token is not re-applied on a later launch unless the user opted out and back in.
+// MINGLA-INVARIANT: I-4238-AF-START-NEVER-LOST-EXPLORER | issue #4238 | an Explorer AppsFlyer start, customer id or device registration requested before initSdk's callback is applied exactly once after init, and events logged before transmission are sent after it, in order (at most 50, dropped on sign-out).
+// MINGLA-INVARIANT: I-4238-AF-RESPECTS-OPT-OUT-EXPLORER | issue #4238 | with the Explorer "share usage data" switch off, AppsFlyer is anonymized and no AppsFlyer event, hashed email or uninstall token is sent.
+// MINGLA-INVARIANT: I-4238-AF-UNINSTALL-AFTER-START-EXPLORER | issue #4238 | the Explorer uninstall (push) token reaches AppsFlyer only after startSdk (never from the init callback, so never before the iOS ATT answer), and the same token is not re-applied on a later launch unless the user opted out and back in.
 // @ts-nocheck — Deno runtime test of the REAL appsFlyerService.ts (fakes for its native imports).
 /**
  * #4238 Wave 6, Explorer (app-mobile): W6-1 start race + queue, W6-5 uninstall

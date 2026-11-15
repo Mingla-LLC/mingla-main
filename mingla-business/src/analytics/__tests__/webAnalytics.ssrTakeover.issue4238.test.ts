@@ -1,6 +1,6 @@
 // MINGLA-INVARIANT: I-4238-SPA-PIXEL-RUNTIME-ALWAYS-LOADS | issue #4238 | when ads are on, a server-rendered landing page never leaves the app's pixel runtime unset; browser conversions fire with the server's event id.
 // MINGLA-INVARIANT: I-4238-REDDIT-CONVERSIONID | issue #4238 | the Reddit browser dedup key is the platform's documented `conversionId`, and its value equals the server's conversion_id (the Mingla order or reservation id).
-// MINGLA-INVARIANT: I-4238-CLICK-ID-KEEPS-NETWORK | issue #4238 | host web (receiving half) adopts the hand-off first-party click id (mc_click) only when no click id is stored and ads are on; a network click id is never stored under another network's name.
+// MINGLA-INVARIANT: I-4238-CLICK-ID-KEEPS-NETWORK-HOST-WEB | issue #4238 | host web (receiving half) adopts the hand-off first-party click id (mc_click) only when no click id is stored and ads are on; a network click id is never stored under another network's name.
 /**
  * #4238 Wave 2 browser parity on buyer web (jest, node env, hand-rolled DOM).
  *

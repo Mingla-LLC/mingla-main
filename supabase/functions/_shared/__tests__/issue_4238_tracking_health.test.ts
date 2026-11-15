@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-MISSING-KEY-LOUD | issue #4238 | the hourly tracking-health run records key presence per channel and sends one alert per (channel, reason) per 6 h; consent skips never alert; a config/auth failure is retried for 72 h while any other failure keeps the 24 h window.
+// MINGLA-INVARIANT: I-4238-MISSING-KEY-LOUD-HEALTH-RUN | issue #4238 | the hourly tracking-health run records key presence per channel and sends one alert per (channel, reason) per 6 h; consent skips never alert; a config/auth failure is retried for 72 h while any other failure keeps the 24 h window.
 /**
  * #4238 W1-2 (D15, D2 detection). The health pass that would have caught the
  * 30 Oct to 12 Nov outage with no traffic at all. Hermetic: fake DB, fake

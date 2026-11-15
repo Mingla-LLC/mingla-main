@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
--- MINGLA-INVARIANT: I-4238-MISSING-KEY-LOUD | issue #4238 | ad_tracking_health is readable only by admins (RLS), writable only by the service role, and admin_set_ad_connection_test_code refuses non-admins and writes only extra.test_event_code; ad_attribution_touches.external_click_id_type refuses an unknown click-id type.
+-- MINGLA-INVARIANT: I-4238-MISSING-KEY-LOUD-HEALTH-TABLE | issue #4238 | ad_tracking_health is readable only by admins (RLS), writable only by the service role, and admin_set_ad_connection_test_code refuses non-admins and writes only extra.test_event_code; ad_attribution_touches.external_click_id_type refuses an unknown click-id type.
 
 -- Issue #4238 Wave 1 (M-1) — run after the full migration chain on PostgreSQL 17
 -- as supabase_admin over 127.0.0.1.

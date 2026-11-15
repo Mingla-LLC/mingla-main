@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE | issue #4238 | the Host app asks host-attribution-attach once per sign-in and treats a sign-in as a new account only when the server says so (the 30-second created_at window is only the fallback); host web fires the browser HostSignUp twin with the server's event id only for a new host while ads are on.
+// MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE-HOST-APP | issue #4238 | the Host app asks host-attribution-attach once per sign-in and treats a sign-in as a new account only when the server says so (the 30-second created_at window is only the fallback); host web fires the browser HostSignUp twin with the server's event id only for a new host while ads are on.
 /**
  * #4238 W3-3 (host web half) + W4-3 (Host app sends its saved install
  * attribution) + W6-7 (the server sign-up flag). Exercises the real web and

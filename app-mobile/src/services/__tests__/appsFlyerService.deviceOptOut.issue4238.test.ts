@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-AF-SERVER-RESPECTS-OPT-OUT | issue #4238 | the Explorer writes its "share usage data" choice to appsflyer_devices.tracking_opt_out on registration and on every change, and sends ad_tracking_opt_out on the native checkout create when opted out, so the server never posts af_purchase for an opted-out buyer.
+// MINGLA-INVARIANT: I-4238-AF-SERVER-RESPECTS-OPT-OUT-EXPLORER | issue #4238 | the Explorer writes its "share usage data" choice to appsflyer_devices.tracking_opt_out on registration and on every change, and sends ad_tracking_opt_out on the native checkout create when opted out, so the server never posts af_purchase for an opted-out buyer.
 // @ts-nocheck — Deno runtime test of the REAL appsFlyerService.ts and checkoutAdTracking.ts (fakes for their native imports).
 /**
  * #4238 P1-4. The Explorer switch only anonymized the SDK; the server kept

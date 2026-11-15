@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE | issue #4238 | host-attribution-attach resolves the host only from the JWT, links the click touch to that host once, answers new_host exactly once per host from the server's sign-up row, and fires host_signup only while it is pending.
+// MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE-ATTACH | issue #4238 | host-attribution-attach resolves the host only from the JWT, links the click touch to that host once, answers new_host exactly once per host from the server's sign-up row, and fires host_signup only while it is pending.
 /**
  * #4238 W3-3 + W4-3. Hermetic: the real handler, an in-memory table client and
  * captured senders (no network).

@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE | issue #4238 | a host-funnel conversion (host lead, sign-up, first publish, first sale) is sent at most once per subject with its deterministic event_id, never while the subject's ads choice is off, and never as a website event when the subject has no web context.
+// MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE-FIRE | issue #4238 | a host-funnel conversion (host lead, sign-up, first publish, first sale) is sent at most once per subject with its deterministic event_id, never while the subject's ads choice is off, and never as a website event when the subject has no web context.
 /**
  * #4238 W3-3 (D7). Hermetic: an in-memory table client, captured senders.
  *   (a) host_signup with a web context + a granted Meta touch → Meta HostSignUp,

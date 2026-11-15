@@ -186,9 +186,9 @@ function isMissingOptOutColumn(error: { code?: string; message?: string } | null
 }
 
 /** #4238 P3-R2: this install's AppsFlyer id (cached after the first read). */
-function withInstallUid(use: (uid: string) => void): void {
+function withInstallUid(withUid: (uid: string) => void): void {
   if (_installUid) {
-    use(_installUid)
+    withUid(_installUid)
     return
   }
   if (!_initialized) return
@@ -196,7 +196,7 @@ function withInstallUid(use: (uid: string) => void): void {
     appsFlyer.getAppsFlyerUID((err: unknown, uid: string) => {
       if (err || !uid) return
       _installUid = uid
-      use(uid)
+      withUid(uid)
     })
   } catch (e) {
     console.warn('[AppsFlyer] getAppsFlyerUID failed:', e)

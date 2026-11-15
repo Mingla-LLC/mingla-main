@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
--- MINGLA-INVARIANT: I-4238-NATIVE-PURCHASE-VIA-APPSFLYER | issue #4238 | ticket_checkout_sessions.checkout_surface accepts only web, mobile-web, native or NULL, so the finalize-time conversion can tell a native app purchase from a website one.
+-- MINGLA-INVARIANT: I-4238-NATIVE-PURCHASE-SURFACE-COLUMN | issue #4238 | ticket_checkout_sessions.checkout_surface accepts only web, mobile-web, native or NULL, so the finalize-time conversion can tell a native app purchase from a website one.
 
 -- Issue #4238 Wave 4 (M-3) — run after the full migration chain on PostgreSQL 17
 -- as supabase_admin over 127.0.0.1.
