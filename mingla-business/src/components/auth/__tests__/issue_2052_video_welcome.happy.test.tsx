@@ -10,6 +10,12 @@ const pause = jest.fn();
 let statusListener: ((event: { status: string }) => void) | undefined;
 let firstFrame: (() => void) | undefined;
 let reducedMotion = false;
+// [TEST-MOD-APPROVED #4420] — the screen now reads Graphite tokens, so the
+// design-system mock is the real token file; the platform, width and keyboard
+// events are switchable for the desktop split layout and the keyboard fix.
+let platformOS = "ios";
+let windowWidth = 390;
+const keyboardEvents: string[] = [];
 
 jest.mock("react-native", () => {
   const ReactLocal = require("react");
@@ -35,17 +41,26 @@ jest.mock("react-native", () => {
       delay: animation,
     },
     Easing: { out: (value: unknown) => value, cubic: "cubic" },
-    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {}, absoluteFillObject: {} },
-    Platform: { OS: "ios", select: (options: any) => options.ios ?? options.default },
+    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {}, absoluteFillObject: {}, hairlineWidth: 0.5 },
+    Platform: {
+      get OS() { return platformOS; },
+      select: (options: any) => options[platformOS] ?? options.default,
+    },
     Alert: { alert: jest.fn() },
     BackHandler: { addEventListener: () => ({ remove: jest.fn() }) },
     AccessibilityInfo: {
       isReduceMotionEnabled: jest.fn(() => Promise.resolve(reducedMotion)),
       addEventListener: () => ({ remove: jest.fn() }),
     },
-    Keyboard: { addListener: () => ({ remove: jest.fn() }), dismiss: jest.fn() },
+    Keyboard: {
+      addListener: (event: string) => {
+        keyboardEvents.push(event);
+        return { remove: jest.fn() };
+      },
+      dismiss: jest.fn(),
+    },
     AppState: { currentState: "active", addEventListener: () => ({ remove: jest.fn() }) },
-    useWindowDimensions: () => ({ width: 390, height: 844 }),
+    useWindowDimensions: () => ({ width: windowWidth, height: 844 }),
   };
 });
 
@@ -56,15 +71,7 @@ jest.mock("react-native-safe-area-context", () => {
     useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }),
   };
 });
-jest.mock("../../../constants/designSystem", () => ({
-  spacing: { md: 16, lg: 24, xl: 32 },
-  radius: { lg: 16 }, shadows: { sm: {}, md: {} },
-  colors: {
-    background: { primary: "#fff" }, text: { primary: "#111827", inverse: "#fff", secondary: "#374151", tertiary: "#6b7280" },
-    gray: { 200: "#e5e7eb" }, primary: { 500: "#f97316", 700: "#c2410c" },
-  },
-  fontWeights: { regular: "400", medium: "500", semibold: "600", bold: "700" },
-}));
+jest.mock("../../../constants/designSystem", () => jest.requireActual("../../../constants/designSystem"));
 jest.mock("../../../utils/responsive", () => ({ s: (value: number) => value, vs: (value: number) => value }));
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: jest.fn() }));
 jest.mock("../../../utils/hapticFeedback", () => ({ HapticFeedback: { buttonPress: jest.fn() } }));
@@ -196,5 +203,61 @@ describe("issue #2052 video welcome happy path", () => {
     expect(tree!.root.findByProps({ accessibilityLabel: "Email address" })).toBeTruthy();
     act(() => tree!.root.findByProps({ accessibilityLabel: "Back to sign-in options" }).props.onPress());
     expect(tree!.root.findByProps({ accessibilityLabel: "Continue with Email" })).toBeTruthy();
+  });
+
+  // #4420 round-3 item 1 — desktop: the video pane carries the centred
+  // tagline; the sign-in panel on the right carries the logo and actions.
+  test("desktop web splits video + tagline (left) from the sign-in panel (right)", async () => {
+    platformOS = "web";
+    windowWidth = 1440;
+    let tree: TestRenderer.ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = TestRenderer.create(
+          <BusinessWelcomeScreen
+            onAppleSignIn={jest.fn(() => Promise.resolve())}
+            onGoogleSignIn={jest.fn(() => Promise.resolve())}
+            onEmailSignIn={jest.fn(() => Promise.resolve({ error: null }))}
+            onVerifyEmailOtp={jest.fn(() => Promise.resolve({ error: null }))}
+          />,
+        );
+      });
+      await flush();
+      const video = tree!.root.findByType("WelcomeVideoBackground" as any);
+      const tagline = tree!.root.findByProps({
+        accessibilityLabel: "Great places and experiences deserve to be discovered.",
+      });
+      const panel = tree!.root.findByType("SafeAreaView" as any);
+      const within = (node: any, ancestor: any): boolean => {
+        for (let cur = node.parent; cur; cur = cur.parent) if (cur === ancestor) return true;
+        return false;
+      };
+      // Tagline shares the video's pane, never the panel.
+      expect(within(tagline, video.parent)).toBe(true);
+      expect(within(tagline, panel)).toBe(false);
+      // The actions live in the panel.
+      expect(within(tree!.root.findByProps({ accessibilityLabel: "Continue with Apple" }), panel)).toBe(true);
+      expect(flattenStyle(panel.props.style)).toMatchObject({ width: 560 });
+    } finally {
+      platformOS = "ios";
+      windowWidth = 390;
+    }
+  });
+
+  // #4420 round-3 item 3 — iOS moves the email/code field WITH the keyboard.
+  test("iOS listens to keyboardWillShow / keyboardWillHide", async () => {
+    keyboardEvents.length = 0;
+    await act(async () => {
+      TestRenderer.create(
+        <BusinessWelcomeScreen
+          onAppleSignIn={jest.fn(() => Promise.resolve())}
+          onGoogleSignIn={jest.fn(() => Promise.resolve())}
+          onEmailSignIn={jest.fn(() => Promise.resolve({ error: null }))}
+          onVerifyEmailOtp={jest.fn(() => Promise.resolve({ error: null }))}
+        />,
+      );
+    });
+    expect(keyboardEvents).toEqual(expect.arrayContaining(["keyboardWillShow", "keyboardWillHide"]));
+    expect(keyboardEvents).not.toContain("keyboardDidShow");
   });
 });
