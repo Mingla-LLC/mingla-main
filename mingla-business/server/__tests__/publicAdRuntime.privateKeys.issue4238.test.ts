@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-NO-PRIVATE-TOKEN-TO-PIXELS | issue #4238 | the server-rendered public page runtime (server/publicAdRuntime.js) never starts a third-party ad pixel (Meta, TikTok, Snap, Reddit) in a document whose address carries a buyer return page's private key (bst, csi, cs, rcs, trxref, reference, token) in the query or the hash, on arrival or after a later privacy-bar "ads on" save; its key list equals src/utils/privateUrlTokens.ts PRIVATE_URL_QUERY_KEYS.
+// MINGLA-INVARIANT: I-4238-SERVER-RUNTIME-NO-PRIVATE-TOKEN-TO-PIXELS | issue #4238 | the server-rendered public page runtime (server/publicAdRuntime.js) never starts a third-party ad pixel (Meta, TikTok, Snap, Reddit) in a document whose address carries a buyer return page's private key (bst, csi, cs, rcs, trxref, reference, token) in the query or the hash, on arrival or after a later privacy-bar "ads on" save; its key list equals src/utils/privateUrlTokens.ts PRIVATE_URL_QUERY_KEYS.
 /**
  * Runs the real server-rendered runtime in a VM. Before this guard the inline
  * boot started all four pixels on /e/...?bst=..., before the app (and its own
