@@ -629,9 +629,10 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   ];
   const tagLine: string[] = [
     formatLabel,
-    ...vibeTags.map(taxonomyLabel),
-    ...partyTypes.map(taxonomyLabel),
-    ...musicGenres.map(taxonomyLabel),
+    // ORCH-1292 — every tag resolves through the canonical label map.
+    ...vibeTags.map((tag: string) => taxonomyLabel(tag)),
+    ...partyTypes.map((tag: string) => taxonomyLabel(tag)),
+    ...musicGenres.map((tag: string) => taxonomyLabel(tag)),
     ...(!acquisitionClosed && ticketsLeftLabel !== null ? [ticketsLeftLabel] : []),
   ];
 
@@ -654,7 +655,8 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
         </View>
       )}
 
-      {/* (3)+(4) the fact rows + the quiet tag line (#4420). */}
+      {/* (3) Date & time — the "when" fact row; (4) Pills row — the quiet tag
+          line under the fact rows (#4420: the chips became rows + a tag line). */}
       <OfferingFactRows
         facts={facts}
         palette={palette}

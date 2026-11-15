@@ -2496,9 +2496,9 @@ export const RsvpOfferingBody: React.FC<
         ]}
         tags={[
           formatLabel,
-          ...vibeTags.map(taxonomyLabel),
-          ...partyTypes.map(taxonomyLabel),
-          ...musicGenres.map(taxonomyLabel),
+          ...vibeTags.map((tag: string) => taxonomyLabel(tag)),
+          ...partyTypes.map((tag: string) => taxonomyLabel(tag)),
+          ...musicGenres.map((tag: string) => taxonomyLabel(tag)),
         ]}
       />
       {doorsLine !== null ? <View testID="orch-1157-rsvp-doors" /> : null}
