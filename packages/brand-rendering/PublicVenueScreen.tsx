@@ -98,7 +98,7 @@ import {
 } from "@mingla/offering-rendering";
 // issue #4420 — the shared glass bottom bar (no expo-blur).
 import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
-import { OFFERING_PREMIUM_HEADER_ROW } from "@mingla/offering-rendering/ParallaxCoverShell";
+import { OFFERING_PREMIUM_HEADER_ROW } from "@mingla/offering-rendering/offeringFrameMetrics";
 
 import { PublicMenuSections } from "./PublicMenuSections";
 // The package-local React bridge (see PublicVenueTabs.tsx). Files under
@@ -148,7 +148,9 @@ import {
 } from "./venueOpenState";
 import {
   resolveVenueStayRate,
+  venueStayRateQualifier,
   venueStayRateRangeLine,
+  venueStayRateValue,
   type VenueStayQuoteView,
   type VenueStayRate,
 } from "./venueStayRate";
@@ -2027,16 +2029,20 @@ export const PublicVenueScreen = ({
   const venueKindLine = [categoryChip, placeChip]
     .filter((p): p is string => typeof p === "string" && p.length > 0)
     .join(" · ");
+  const stayBarRate =
+    profile.bookingBody === "stay" && stayRate !== null ? stayRate : null;
   const reserveBarTitle =
-    profile.bookingBody === "stay" && stayRate !== null
-      ? venueStayRateRangeLine(stayRate)
+    stayBarRate !== null
+      ? `From ${venueStayRateValue(stayBarRate)}`
       : todayLine ?? (venueKindLine.length > 0 ? venueKindLine : venue.name);
   const reserveBarSubtitle =
-    reserveBarTitle === venueKindLine || reserveBarTitle === venue.name
-      ? null
-      : venueKindLine.length > 0
-        ? venueKindLine
-        : null;
+    stayBarRate !== null
+      ? venueStayRateQualifier(stayBarRate)
+      : reserveBarTitle === venueKindLine || reserveBarTitle === venue.name
+        ? null
+        : venueKindLine.length > 0
+          ? venueKindLine
+          : null;
   const reserveBar =
     showPersistentReserveCta && !isDesktop ? (
       <View
