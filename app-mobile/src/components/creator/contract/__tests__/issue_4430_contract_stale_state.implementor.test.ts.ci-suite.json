@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/creator/contract/__tests__/issue_4430_contract_stale_state.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4430-contract-stale-state-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -133,3 +133,11 @@ Deno.test("#4430 L-1: the review screen uses the shared rule and puts a refusal 
     "a refused call logs its name and codes only",
   );
 });
+
+Deno.test("#4430 D-9: stale_contract_state has words, keeps the state it carries, and is not the generic error", () => {
+  const e = toProgramError({ message: "stale_contract_state:script_drafting" });
+  assertEquals(e.code, "stale_contract_state");
+  assertEquals(e.detail, "script_drafting");
+  assert(e.message !== FALLBACK, "not the generic text");
+  assertEquals(e.message, "This gig moved on while you were looking. Here’s where it is now.");
+});

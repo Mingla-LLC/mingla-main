@@ -3,10 +3,12 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { localCityRate, localProgramService, type LocalHome, type LocalLanding, type LocalMonth } from '../../src/services/localProgramService';
+import { localCityRate, localKeys, localProgramService, type LocalHome, type LocalLanding, type LocalMonth } from '../../src/services/localProgramService';
 import { payoutService } from '../../src/services/payoutService';
 import { programErrorText } from '../../src/services/programResult';
 import { formatMoney, formatMonth, formatShortDate, pickWindowWords, toDayString, visitedOnBounds, visitedOnError } from '../../src/utils/programFormat';
+import { changesCardWords, reviewReadEnabled } from '../../src/components/local/localReviewDraft';
+import { placeNamesQueryEnabled, refreshLocal } from '../../src/components/local/localRefresh';
 import { APPLICATION_COPY, LOCAL_STEPS, localMoneyWord, localMonthWords, localStepIndex } from '../../src/components/local/localWords';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { CheckRow, ChoiceField, Chip, DateField, ToggleRow } from '../../src/components/programs/ProgramPickers';
@@ -18,13 +20,14 @@ import { useOpenInMingla } from '../../src/components/InAppBrowserProvider';
 
 export default function LocalScreen(): React.ReactElement {
   const queryClient = useQueryClient();
-  const landing = useQuery({ queryKey: ['local', 'landing'], queryFn: () => localProgramService.landing() });
+  const landing = useQuery({ queryKey: localKeys.landing, queryFn: () => localProgramService.landing() });
   const signedLocal = Boolean(landing.data?.local?.agreement_signed_at);
-  const home = useQuery({ queryKey: ['local', 'home'], queryFn: () => localProgramService.home(), enabled: signedLocal });
+  const home = useQuery({ queryKey: localKeys.home, queryFn: () => localProgramService.home(), enabled: signedLocal });
   // Reads the seat, the month and the pick window again. Returns the read so a caller can wait for it.
-  const refresh = (): Promise<void> => queryClient.refetchQueries({ queryKey: ['local'] }, { cancelRefetch: true });
+  // #4430 L-2: only what is on screen is read again; the rest is marked stale.
+  const refresh = (): Promise<void> => refreshLocal(queryClient);
   // #4402: reopened or back from the background: read the seat, the month and the pick window again.
-  useRefreshOnFocus(() => { void queryClient.invalidateQueries({ queryKey: ['local'] }, JOIN_IN_FLIGHT); });
+  useRefreshOnFocus(() => { void queryClient.invalidateQueries({ queryKey: localKeys.all }, JOIN_IN_FLIGHT); });
 
   if (landing.isLoading || (signedLocal && home.isLoading)) return <ProgramScreen title="Mingla Local"><ProgramLoading /></ProgramScreen>;
   if (landing.isError || !landing.data) return <ProgramScreen title="Mingla Local"><ProgramLoadError text={programErrorText(landing.error)} onRetry={refresh} /></ProgramScreen>;
@@ -196,7 +199,10 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
   const [selected, setSelected] = useState(thisMonth);
   const month = months.find((m) => m.month === selected) ?? null;
   const current = selected === thisMonth ? home.current_month : month;
-  const names = useQuery({ queryKey: ['local', 'place-names', home.months.map((m) => m.place_id).join(',')], queryFn: () => localProgramService.placeNames(home.months.map((m) => m.place_id ?? '')) });
+  const placeIds = home.months.map((m) => m.place_id);
+  const names = useQuery({ queryKey: localKeys.placeNames(placeIds), queryFn: () => localProgramService.placeNames(placeIds.filter((id): id is string => Boolean(id))), enabled: placeNamesQueryEnabled(placeIds) });
+  // #4430 L-3: Admin's request shows on the card (the same read the review form uses).
+  const changesRead = useQuery({ queryKey: localKeys.review(current?.id ?? ''), queryFn: () => localProgramService.myReview(current!.id), enabled: Boolean(current?.id) && reviewReadEnabled(current?.status) && current?.status === 'changes_requested' });
   const payout = useQuery({ queryKey: ['creator', 'payout'], queryFn: () => payoutService.status(), retry: 0 });
   const program = landing.programs.find((p) => p.city_id === home.local.city_id);
   const rate = localCityRate(program);
@@ -225,11 +231,12 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
 
       {!status && pickWords.open ? <PickPlace city={home.local.city} onPicked={onRefresh} /> : null}
       {(status === 'picked' || status === 'confirmed') && current ? <MarkVisited month={current} onDone={onRefresh} /> : null}
-      {(status === 'visited' || status === 'changes_requested') && current ? <ProgramCard>
-        <Text style={s.title}>{status === 'changes_requested' ? 'Mingla asked for changes' : 'Write your review'}</Text>
-        <Text style={s.copy}>{status === 'changes_requested' ? 'Update your review and send it again.' : 'Rate the place, write what you’d tell a friend, add a short video and your public post.'}</Text>
-        <ProgramButton label={status === 'changes_requested' ? 'Update review' : 'Write review'} onPress={() => router.push(`/local/review?month=${current.id}` as never)} />
+      {status === 'visited' && current ? <ProgramCard>
+        <Text style={s.title}>Write your review</Text>
+        <Text style={s.copy}>Rate the place, write what you’d tell a friend, add a short video and your public post.</Text>
+        <ProgramButton label="Write review" onPress={() => router.push(`/local/review?month=${current.id}` as never)} />
       </ProgramCard> : null}
+      {status === 'changes_requested' && current ? <ChangesCard month={current} requests={changesRead.data?.changes_requested} now={now} onUpdate={() => router.push(`/local/review?month=${current.id}` as never)} /> : null}
       {status === 'submitted' ? <ProgramNotice text="Your review is with Mingla. We check it within a few days and tell you here." /> : null}
     </> : month ? <ProgramCard>
       <ProgramRow title={month.place_id ? placeName(month) : 'No place picked'} subtitle={localMonthWords(month.status)} value={localMoneyWord(month.status) && month.payout_amount_minor && month.payout_currency ? formatMoney(month.payout_amount_minor, month.payout_currency) : null} chevron={false} isLast />
@@ -252,6 +259,18 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
   </ProgramScreen>;
 }
 
+/** #4430 L-3: what Mingla asked for, by when, and the way back into the review. */
+function ChangesCard({ month, requests, now, onUpdate }: { month: LocalMonth; requests: string[] | undefined; now: Date; onUpdate: () => void }): React.ReactElement {
+  const words = changesCardWords(month, requests, now);
+  return <ProgramCard tone="warning">
+    <Text style={s.title}>Mingla asked for changes</Text>
+    <Text style={s.copy}>{words.line}</Text>
+    {words.first ? <Text style={s.copy}>{`“${words.first}”`}</Text> : null}
+    {words.more ? <Text style={s.small}>{words.more}</Text> : null}
+    {words.ended ? null : <ProgramButton label="Update review" onPress={onUpdate} />}
+  </ProgramCard>;
+}
+
 function PickPlace({ city, onPicked }: { city: string; onPicked: () => void | Promise<void> }): React.ReactElement {
   const [query, setQuery] = useState('');
   const [term, setTerm] = useState('');
@@ -259,7 +278,7 @@ function PickPlace({ city, onPicked }: { city: string; onPicked: () => void | Pr
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { const t = setTimeout(() => setTerm(query), 350); return () => clearTimeout(t); }, [query]);
-  const places = useQuery({ queryKey: ['local', 'places', term], queryFn: () => localProgramService.places(term) });
+  const places = useQuery({ queryKey: localKeys.places(term), queryFn: () => localProgramService.places(term) });
   const pick = (id: string, name: string): void => {
     if (tie) { setError('You can’t review a place where you know the owners or staff. Pick another place.'); return; }
     Alert.alert(`Pick ${name}?`, 'This is your place for the month. Visit as a normal customer.', [

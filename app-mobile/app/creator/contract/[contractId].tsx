@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ import { useRefreshOnFocus, useScreenFocused } from '../../../src/components/pro
 import {
   BrandCard, DeliveriesCard, DisputeCard, DisputeOpenCard, PostLinksCard, PostsStatus, ProposalCard, RatingCard, ScriptEditor, ShootCard, ShootSheet, TermsCard, TermsHistory, Timeline, Tracker, UploadCard,
 } from '../../../src/components/creator/contract/ContractSections';
-import { contractRefetchInterval, creatorWaitsOnHost, failedPostReason, nextActionFor } from '../../../src/components/creator/contract/contractWords';
+import { contractRefetchInterval, creatorWaitsOnHost, failedPostReason, nextActionFor, staleOutcome } from '../../../src/components/creator/contract/contractWords';
 
 type Busy = 'accept' | 'decline' | 'counter' | 'shoot' | 'script' | 'transition' | 'posts' | 'dispute' | 'rate' | 'change' | 'cancel' | 'respond' | null;
 
@@ -41,6 +41,8 @@ export default function CreatorContractScreen(): React.ReactElement {
   });
   const [busy, setBusy] = useState<Busy>(null);
   const [errors, setErrors] = useState<Partial<Record<Exclude<Busy, null>, string>>>({});
+  // #4430 D-9: a neutral "moved on" notice, tied to the state it was shown for so a state change clears it.
+  const [stale, setStale] = useState<{ text: string; state: string } | null>(null);
   const [sheet, setSheet] = useState<'counter' | 'shoot' | 'change' | null>(null);
   const [counterPrice, setCounterPrice] = useState('');
   const [counterNote, setCounterNote] = useState('');
@@ -51,19 +53,33 @@ export default function CreatorContractScreen(): React.ReactElement {
   const refresh = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ['creator'] });
   };
+  // A red message never outlives the step it was about: clear it when the contract changes state.
+  const liveState = query.data?.contract.state ?? null;
+  useEffect(() => { setErrors({}); }, [liveState]);
+  const pull = (): void => { setErrors({}); setStale(null); void refresh(); };
   // Reopened (from a notification or link) or back from the background: read it again,
   // so neither the old state nor a cached "isn't available" sticks.
   useRefreshOnFocus(() => { if (contractId) void queryClient.invalidateQueries({ queryKey: ['creator', 'contract', contractId] }, JOIN_IN_FLIGHT); });
 
   /** Runs one action; failures (including `{ok:false}`) stay next to the control that caused them. */
-  const act = async (key: Exclude<Busy, null>, action: () => Promise<unknown>, after?: () => void, describe?: (e: unknown) => string | null): Promise<boolean> => {
-    setBusy(key); setErrors((e) => ({ ...e, [key]: undefined }));
+  const act = async (key: Exclude<Busy, null>, action: () => Promise<unknown>, after?: () => void, describe?: (e: unknown) => string | null, step?: string): Promise<boolean> => {
+    setBusy(key); setErrors((e) => ({ ...e, [key]: undefined })); setStale(null);
     try {
       await action();
       await refresh();
       after?.();
       return true;
     } catch (e) {
+      const refused = toProgramError(e);
+      const outcome = staleOutcome(refused.code, refused.detail, step);
+      if (outcome !== 'error') {
+        // Someone (the host) moved the contract first: read where it is now, and count a step already taken as done.
+        await refresh();
+        if (outcome === 'success') { after?.(); return true; }
+        const now = queryClient.getQueryData<GigWorkspace>(['creator', 'contract', contractId])?.contract.state ?? refused.detail;
+        if (now) setStale({ text: refused.message, state: now });
+        return false;
+      }
       setErrors((x) => ({ ...x, [key]: describe?.(e) ?? programErrorText(e) }));
       return false;
     } finally { setBusy(null); }
@@ -96,7 +112,7 @@ export default function CreatorContractScreen(): React.ReactElement {
       await act('counter', () => creatorGigsService.counter(contractId, minor, counterNote), () => setSheet(null),
         (e) => (toProgramError(e).code === 'fee_below_minimum' ? minFeeError(currency) || null : null));
     };
-    return <ProgramScreen title="Offer" refreshing={query.isFetching} onRefresh={() => void refresh()}
+    return <ProgramScreen title="Offer" refreshing={query.isFetching} onRefresh={pull}
       footer={<View style={{ gap: 8 }}>
         <View style={styles.two}>
           <ProgramButton label="Decline" variant="secondary" style={s.flex} busy={busy === 'decline'} disabled={busy !== null} onPress={decline} />
@@ -176,8 +192,8 @@ export default function CreatorContractScreen(): React.ReactElement {
 
   const onNextCta = (): void => {
     if (state === 'accepted') setSheet('shoot');
-    else if (state === 'shoot_planned') void act('transition', () => creatorGigsService.transition(contractId, 'shoot_planned', 'start_script'));
-    else if (state === 'approved') void act('transition', () => creatorGigsService.transition(contractId, 'approved', 'start_posting'));
+    else if (state === 'shoot_planned') void act('transition', () => creatorGigsService.transition(contractId, 'shoot_planned', 'start_script'), undefined, undefined, 'start_script');
+    else if (state === 'approved') void act('transition', () => creatorGigsService.transition(contractId, 'approved', 'start_posting'), undefined, undefined, 'start_posting');
   };
   const ctaHandled = ['accepted', 'shoot_planned', 'approved'].includes(state);
 
@@ -186,7 +202,7 @@ export default function CreatorContractScreen(): React.ReactElement {
     { text: 'Cancel gig', style: 'destructive', onPress: () => void act('cancel', () => creatorGigsService.refund(contractId, 'creator_after_accept')) },
   ]);
 
-  return <ProgramScreen title={title} refreshing={query.isFetching} onRefresh={() => void refresh()}>
+  return <ProgramScreen title={title} refreshing={query.isFetching} onRefresh={pull}>
     <BrandCard workspace={w} />
 
     <ProgramCard tone="highlight">
@@ -200,6 +216,7 @@ export default function CreatorContractScreen(): React.ReactElement {
           onPress={() => void act('shoot', () => creatorGigsService.planShoot(contractId, String(plan.shoot_at), String(plan.arrival_note ?? ''), true))} />
       </View> : next.cta && ctaHandled ? <ProgramButton label={next.cta} busy={busy === 'transition'} onPress={onNextCta} /> : null}
       {errors.transition ? <ProgramNotice tone="error" text={errors.transition} /> : null}
+      {stale && stale.state === state ? <ProgramNotice text={stale.text} /> : null}
       {errors.shoot && sheet !== 'shoot' ? <ProgramNotice tone="error" text={errors.shoot} /> : null}
     </ProgramCard>
 

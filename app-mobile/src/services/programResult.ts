@@ -16,12 +16,15 @@ export class ProgramActionError extends Error {
   readonly code: string;
   readonly field: string | null;
   readonly reasons: string[];
-  constructor(code: string, options: { field?: string | null; reasons?: unknown; message?: string } = {}) {
+  /** #4430 D-9: for `stale_contract_state`, the state the server says the contract is in now. */
+  readonly detail: string | null;
+  constructor(code: string, options: { field?: string | null; reasons?: unknown; message?: string; detail?: string | null } = {}) {
     super(options.message ?? programErrorMessage(code, { reasons: toReasons(options.reasons) }));
     this.name = 'ProgramActionError';
     this.code = code;
     this.field = options.field ?? null;
     this.reasons = toReasons(options.reasons);
+    this.detail = options.detail ?? null;
   }
 }
 
@@ -100,6 +103,8 @@ const MESSAGES: Record<string, string> = {
   invalid_script_shape: 'Fill in at least one section of the script.',
   stale_state: 'This contract changed while you were looking. Pull down to refresh.',
   state_mismatch: 'This contract changed while you were looking. Pull down to refresh.',
+  // #4430 D-9: the server sends `stale_contract_state:<state>` when someone else moved the contract first.
+  stale_contract_state: 'This gig moved on while you were looking. Here’s where it is now.',
   shoot_outside_window: 'Pick a time inside the shoot window.',
   invalid_post_url: 'Paste the full link to your live post, starting with https://.',
   shoot_proposal_limit: 'You’ve suggested three times already. Confirm the host’s time or message support.',
@@ -181,7 +186,10 @@ export function toProgramError(error: unknown, body?: unknown): ProgramActionErr
     ? (error as { message: string }).message.trim()
     : typeof error === 'string' ? error.trim() : '';
   const raised = message.split(':')[0];
-  if (RAISED_CODE.test(raised) && (raised === message || MESSAGES[raised])) return new ProgramActionError(raised);
+  if (RAISED_CODE.test(raised) && (raised === message || MESSAGES[raised])) {
+    const tail = message.slice(raised.length + 1).trim();
+    return new ProgramActionError(raised, raised === 'stale_contract_state' && RAISED_CODE.test(tail) ? { detail: tail } : {});
+  }
   if (/network request failed|failed to fetch|network error/i.test(message)) return new ProgramActionError('network');
   return new ProgramActionError('unknown_error');
 }
