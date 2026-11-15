@@ -1,12 +1,17 @@
 'use client'
-// #4318 — usemingla.com/links: the city week calendar (replaces the ORCH-1317
-// two-tab Explorer / For Hosts page).
+// #4339 — usemingla.com/links: Mingla's bio page. Top to bottom: the Mingla
+// bar, the "Explore your city" and "Host something in your city" banners, the
+// Admin Links strips ("pins") in Admin order, "See N more from Mingla" only
+// when some do not fit, the socials, and the #2331 privacy bar below.
 //
 // ONE SCREEN, NEVER SCROLLS: the page is exactly one viewport tall less the
-// #2331 privacy bar (I-PRIVACY-BAR-NEVER-OCCLUDES), and the strips fit by
-// MEASURING (lib/links-fit.ts): admin strips come first, listings keep a floor
-// of 3 (1 on short screens), whatever does not fit whole is hidden and counted
-// in the "more" links. Anything extra opens as a sheet inside the page.
+// privacy bar (I-PRIVACY-BAR-NEVER-OCCLUDES), and the strips fit by MEASURING
+// (lib/links-fit.ts): only whole rows show (one column on a phone, two equal
+// aligned columns on tablet and desktop), whatever does not fit folds into the
+// "more" link, which opens the full list as a sheet inside the page.
+//
+// There is no city section: no city name or picker, no filter chips, no plan
+// or place listing, no full-week sheet (#4339 subtracted them).
 //
 // EVERY TAP goes through the #4137 device seam (lib/links-handoff.ts →
 // lib/cta-destination.ts): each banner and strip is a real <a> whose server
@@ -15,16 +20,11 @@
 // computer the tap opens a sheet with a QR code instead. No store or host URL
 // lives in this file.
 //
-// Layout, tokens and behaviour follow the approved design contract (#4318,
-// version 11) through links-experience.module.css. Light theme only.
-//
-// ANALYTICS: consent-gated captureMarketing, spec §11.
+// Light theme only. ANALYTICS: consent-gated captureMarketing.
 
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -36,23 +36,8 @@ import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { cn } from '@/lib/cn'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
 import { resolveStoreListingHrefs } from '@/lib/cta-destination'
-import {
-  LINKS_CITY_COOKIE,
-  LINKS_CITY_COOKIE_MAX_AGE_SECONDS,
-  LINKS_SOCIALS,
-  type LinksSocialId,
-} from '@/lib/links-config'
-import {
-  chipFitLevel,
-  computeLinksFit,
-  moreLabel,
-  pinsMoreLabel,
-  SHORT_SCREEN_PX,
-  spreadLeftover,
-  stripsThatFit,
-  type ChipFitLevel,
-  type LinksFit,
-} from '@/lib/links-fit'
+import { LINKS_SOCIALS, type LinksSocialId } from '@/lib/links-config'
+import { pinsMoreLabel, pinsThatFit } from '@/lib/links-fit'
 import {
   isPhone,
   linksTargetHrefs,
@@ -60,33 +45,7 @@ import {
   targetApp,
   type LinksTarget,
 } from '@/lib/links-handoff'
-import {
-  cityWeek,
-  distanceLabel,
-  emptyListText,
-  groupListings,
-  planWhen,
-  quietWeek,
-  listingDayKey,
-  listingWhen,
-  cityCounts,
-  liveCities,
-  longDayLabel,
-  pickerCountLabel,
-  pickerOrder,
-  pinWebHref,
-  pinDaysLabel,
-  pinWhen,
-  timeLabel,
-  type LinksCity,
-  type LinksListing,
-  type LinksListingKind,
-  type LinksPlan,
-  type LinksPlace,
-  type LinksPin,
-  type LinksPoint,
-  type LinksWeek,
-} from '@/lib/links-week'
+import { localDateKey, pinDaysLabel, pinWebHref, pinWhen, type LinksPin } from '@/lib/links-week'
 import styles from './links-experience.module.css'
 
 // ---------------------------------------------------------------- icons
@@ -100,7 +59,7 @@ const svgProps = {
   'aria-hidden': true,
 }
 
-type IconName = 'arrow' | 'right' | 'chev' | 'x' | 'pin' | 'check' | 'cal' | 'clock' | 'globe' | 'phone'
+type IconName = 'arrow' | 'right' | 'x' | 'pin' | 'cal' | 'globe' | 'phone'
 
 function Icon({ name }: { name: IconName }): ReactNode {
   switch (name) {
@@ -108,8 +67,6 @@ function Icon({ name }: { name: IconName }): ReactNode {
       return <svg {...svgProps} strokeWidth={2.2}><path d="M7 17L17 7M9 7h8v8" /></svg>
     case 'right':
       return <svg {...svgProps} strokeWidth={2.2}><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-    case 'chev':
-      return <svg {...svgProps} strokeWidth={2.2}><path d="M6 9l6 6 6-6" /></svg>
     case 'x':
       return <svg {...svgProps} strokeWidth={2.2}><path d="M6 6l12 12M18 6L6 18" /></svg>
     case 'pin':
@@ -119,20 +76,11 @@ function Icon({ name }: { name: IconName }): ReactNode {
           <circle cx="12" cy="10.5" r="2.2" />
         </svg>
       )
-    case 'check':
-      return <svg {...svgProps} strokeWidth={2.6}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
     case 'cal':
       return (
         <svg {...svgProps} strokeWidth={2}>
           <rect x="3.5" y="5" width="17" height="15" rx="3" />
           <path d="M3.5 10h17M8 3v4M16 3v4" />
-        </svg>
-      )
-    case 'clock':
-      return (
-        <svg {...svgProps} strokeWidth={2}>
-          <circle cx="12" cy="12" r="8.5" />
-          <path d="M12 7.5V12l3 2" />
         </svg>
       )
     case 'globe':
@@ -217,64 +165,8 @@ function SocialIcon({ id }: { id: LinksSocialId }): ReactNode {
 
 // ---------------------------------------------------------------- helpers
 
-type Filter = 'all' | LinksListingKind
-type StripTarget = Exclude<LinksTarget, { type: 'banner' }>
-type SheetState =
-  | { kind: 'city' }
-  | { kind: 'all' }
-  | { kind: 'pins' }
-  | { kind: 'explore' }
-  | { kind: 'host' }
-  | { kind: 'item'; target: StripTarget }
-
-const FILTERS: ReadonlyArray<{ id: Filter; label: string; plural: string; singular: string }> = [
-  { id: 'all', label: 'All', plural: 'plans', singular: 'plan' },
-  { id: 'event', label: 'Events', plural: 'events', singular: 'event' },
-  { id: 'trip', label: 'Trips', plural: 'trips', singular: 'trip' },
-  { id: 'experience', label: 'Experiences', plural: 'experiences', singular: 'experience' },
-]
-
-const KIND_LABEL: Readonly<Record<LinksListingKind, string>> = {
-  event: 'Event',
-  trip: 'Trip',
-  experience: 'Experience',
-}
-
-/** "New York <em>City</em>": the last word in italic. */
-function CityName({ name }: { name: string }): ReactNode {
-  const words = name.split(' ')
-  if (words.length < 2) return <em>{name}</em>
-  return (
-    <>
-      {words.slice(0, -1).join(' ')} <em>{words[words.length - 1]}</em>
-    </>
-  )
-}
-
-function cssUrl(url: string): string {
-  return `url(${JSON.stringify(url)})`
-}
-
-function dayNumber(key: string): number {
-  return Number(key.slice(8, 10))
-}
-
-/** "Saturday 7 to Friday 13 November" */
-function weekRange(keys: readonly string[]): string {
-  const first = longDayLabel(keys[0] ?? '')
-  const last = longDayLabel(keys[keys.length - 1] ?? '')
-  const sameMonth = first.split(' ').pop() === last.split(' ').pop()
-  return `${sameMonth ? first.split(' ').slice(0, 2).join(' ') : first} to ${last}`
-}
-
-function rememberCity(slug: string): void {
-  try {
-    const secure = window.location.protocol === 'https:' ? '; Secure' : ''
-    document.cookie = `${LINKS_CITY_COOKIE}=${encodeURIComponent(slug)}; Max-Age=${LINKS_CITY_COOKIE_MAX_AGE_SECONDS}; Path=/links; SameSite=Lax${secure}`
-  } catch (error) {
-    console.error('[#4318 links] could not remember the city', error)
-  }
-}
+type PinTarget = Extract<LinksTarget, { type: 'pin' }>
+type SheetState = { kind: 'pins' } | { kind: 'explore' } | { kind: 'host' } | { kind: 'item'; target: PinTarget }
 
 function hostLabel(href: string): string {
   try {
@@ -289,64 +181,25 @@ function hostLabel(href: string): string {
 export interface LinksExperienceProps {
   /** The sanitised `?src=` bio source (sanitizeLinksSrc on the server). */
   src: string
-  /** The server's clock, so server and client agree on "this week". */
+  /** The server's clock, so server and client agree on "today". */
   nowIso: string
-  /** Every city live in Explorer (`links_page_cities()`); the picker lists them all. */
-  cities: LinksCity[]
-  listings: LinksListing[]
+  /** Every live Admin Links strip, in Admin order. */
   pins: LinksPin[]
-  initialCity: string
-  visitor: { point: LinksPoint | null; useMiles: boolean }
-  /** A database read failed (logged on the server): nothing can be listed. */
-  readFailed?: boolean
-  /** Up to 3 places per quiet city (#4318 addendum 2), keyed by city slug. */
-  places?: Record<string, LinksPlace[]>
-  /** Cities whose places read failed. */
-  placesFailed?: string[]
 }
 
-export function LinksExperience({
-  src,
-  nowIso,
-  cities,
-  listings,
-  pins,
-  initialCity,
-  visitor,
-  readFailed = false,
-  places = {},
-  placesFailed = [],
-}: LinksExperienceProps) {
-  const [citySlug, setCitySlug] = useState(initialCity)
-  const [filter, setFilter] = useState<Filter>('all')
+export function LinksExperience({ src, nowIso, pins }: LinksExperienceProps) {
   const [sheet, setSheet] = useState<SheetState | null>(null)
   const [platform, setPlatform] = useState<Platform | null>(null)
-
-  const counts = useMemo(() => cityCounts(cities, listings, pins, nowIso), [cities, listings, pins, nowIso])
-  const live = useMemo(() => liveCities(cities, listings, pins, nowIso), [cities, listings, pins, nowIso])
-  const city = cities.find((c) => c.slug === citySlug) ?? cities[0]
-  const week = useMemo(() => cityWeek(city, listings, pins, nowIso), [city, listings, pins, nowIso])
-  const shown = filter === 'all' ? week.listings : week.listings.filter((l) => l.kind === filter)
-  // The main list shows one strip per recurring plan; the full-week sheet keeps one row per date.
-  const plans = useMemo(() => groupListings(shown), [shown])
-  const allPlans = useMemo(() => groupListings(week.listings), [week.listings])
-  const [fit, setFit] = useState<LinksFit>({ pinsShown: week.pins.length, listShown: plans.length })
-
-  const rootRef = useRef<HTMLElement>(null)
-  const leftRef = useRef<HTMLDivElement>(null)
-  const pinsRef = useRef<HTMLUListElement>(null)
-  const listRef = useRef<HTMLUListElement>(null)
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const moreRef = useRef<HTMLButtonElement>(null)
-  // The quiet week's "Plans in … / Host something in …" links play the more link's part.
-  const quietLinksRef = useRef<HTMLDivElement>(null)
-  const chipsRef = useRef<HTMLDivElement>(null)
-  const [chipLevel, setChipLevel] = useState<ChipFitLevel>(0)
+  const [pinsShown, setPinsShown] = useState(pins.length)
   // Strips stay invisible until the first measured fit, so none paints cut off.
   const [fitted, setFitted] = useState(false)
+  const today = localDateKey(nowIso, 'UTC')
+
+  const rootRef = useRef<HTMLElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const pinsRef = useRef<HTMLUListElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
-  const cityButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     const detected = detectClientPlatform()
@@ -355,101 +208,36 @@ export function LinksExperience({
     if (!html.hasAttribute('data-platform')) html.setAttribute('data-platform', detected)
   }, [])
 
-  // ---- the one-screen fit (design `fit()`), measured on the real layout.
-  // Visibility of strips is set here, imperatively and only here, so React
-  // never fights the measurement; the counts land in state for the labels.
+  // ---- the one-screen fit, measured on the real layout. Strip visibility is
+  // set here, imperatively and only here, so React never fights the
+  // measurement; the count lands in state for the "more" label.
   const runFit = useCallback(() => {
-    const root = rootRef.current
-    const list = listRef.current
     const wrap = wrapRef.current
-    // The "more" link is absent when the city has no listings.
-    const moreButton: HTMLElement | null = moreRef.current ?? quietLinksRef.current
-    if (!root || !list || !wrap) return
-    const grid = wrap.closest<HTMLElement>('[data-pins]')
-    // Measure with no spread room, then spread what the maximal fit leaves.
-    grid?.style.setProperty('--fill', '0px')
-    grid?.style.setProperty('--fill-bottom', '0px')
-
-    // Chips first (their row height is fixed): the first level that does not clip.
-    const chips = chipsRef.current
-    if (chips) {
-      const level = chipFitLevel((next) => {
-        chips.dataset.fit = String(next)
-        return chips.scrollWidth > chips.clientWidth + 0.5
-      })
-      chips.dataset.fit = String(level)
-      setChipLevel(level)
-    }
-
-    const strips = Array.from(list.querySelectorAll<HTMLElement>(':scope > li[data-strip]'))
-    const group = pinsRef.current
-    const pinItems = group ? Array.from(group.querySelectorAll<HTMLElement>(':scope > li[data-pin]')) : []
-    const pinsMore = group?.querySelector<HTMLElement>(':scope > li[data-pins-more]') ?? null
-    const left = leftRef.current
-    const applyPins = (count: number) => {
-      pinItems.forEach((li, i) => {
-        li.hidden = i >= count
-      })
-      if (pinsMore) pinsMore.hidden = pinItems.length - count <= 0
-    }
-    const fitList = (count: number) => {
-      applyPins(count)
-      strips.forEach((li) => {
-        li.hidden = false
-      })
-      // The listings and their "more" link share the box: a strip fits when it
-      // AND the link under it fit whole (offsets are relative to the box).
-      const gap = Number.parseFloat(getComputedStyle(wrap).rowGap) || 0
-      return stripsThatFit(
-        strips.map((li) => li.offsetTop + li.offsetHeight),
-        wrap.clientHeight,
-        moreButton?.offsetHeight ?? 0,
-        moreButton ? gap : 0,
-      )
-    }
-    const desk = left !== null && getComputedStyle(left).display !== 'contents'
-    const result = computeLinksFit({
-      pinCount: pinItems.length,
-      listCount: strips.length,
-      short: root.clientHeight < SHORT_SCREEN_PX,
-      desk,
-      fitList,
-      leftOverflows: (count) => {
-        applyPins(count)
-        if (desk) return left !== null && left.scrollHeight > left.clientHeight + 1
-        // Phones and tablet: with no listing shown, does everything else still
-        // fit whole (city, chips, the more link or empty state, socials)?
-        strips.forEach((li) => {
-          li.hidden = true
-        })
-        const pageOverflows = grid !== null && grid.scrollHeight > grid.clientHeight + 1
-        return pageOverflows || wrap.scrollHeight > wrap.clientHeight + 1
-      },
+    const list = pinsRef.current
+    if (!wrap || !list) return
+    const items = Array.from(list.querySelectorAll<HTMLElement>(':scope > li[data-pin]'))
+    const moreItem = list.querySelector<HTMLElement>(':scope > li[data-pins-more]')
+    items.forEach((li) => {
+      li.hidden = false
     })
-    applyPins(result.pinsShown)
-    strips.forEach((li, i) => {
-      li.hidden = i >= result.listShown
+    if (moreItem) moreItem.hidden = false
+    const style = getComputedStyle(list)
+    const columns = Math.max(1, style.gridTemplateColumns.split(' ').filter(Boolean).length)
+    const gap = Number.parseFloat(style.rowGap) || 0
+    const shown = pinsThatFit({
+      bottoms: items.map((li) => li.offsetTop + li.offsetHeight),
+      room: wrap.clientHeight,
+      moreHeight: moreItem?.offsetHeight ?? 0,
+      gap,
+      columns,
     })
-    // Phones and tablet: spread the leftover over the section gaps (desktop
-    // centres its columns instead).
-    if (grid && !desk) {
-      const last = moreButton ?? list
-      const leftover = wrap.clientHeight - (last.offsetTop + last.offsetHeight)
-      const sections = Array.from(grid.querySelectorAll<HTMLElement>(':scope > div > *')).filter(
-        (el) => getComputedStyle(el).display !== 'none',
-      ).length
-      const spread = spreadLeftover(leftover, sections - 1)
-      grid.style.setProperty('--fill', `${spread.perGap}px`)
-      grid.style.setProperty('--fill-bottom', `${spread.bottom}px`)
-    }
-    setFit((prev) => (prev.pinsShown === result.pinsShown && prev.listShown === result.listShown ? prev : result))
+    items.forEach((li, i) => {
+      li.hidden = i >= shown
+    })
+    if (moreItem) moreItem.hidden = items.length - shown <= 0
+    setPinsShown(shown)
     setFitted(true)
   }, [])
-
-  // Every commit can change the strips (city, filter, data), so measure after each.
-  useLayoutEffect(() => {
-    runFit()
-  })
 
   useEffect(() => {
     const root = rootRef.current
@@ -461,6 +249,7 @@ export function LinksExperience({
     void document.fonts?.ready.then(() => {
       if (!cancelled) runFit()
     })
+    runFit()
     return () => {
       cancelled = true
       observer?.disconnect()
@@ -484,8 +273,7 @@ export function LinksExperience({
     const opener = openerRef.current
     openerRef.current = null
     window.requestAnimationFrame(() => {
-      const target = opener && opener.isConnected ? opener : cityButtonRef.current
-      target?.focus({ preventScroll: true })
+      if (opener && opener.isConnected) opener.focus({ preventScroll: true })
     })
   }, [sheet])
 
@@ -534,37 +322,19 @@ export function LinksExperience({
     const device = detectClientPlatform()
     const handoff = resolveLinksHandoff(target, device, src)
     if (target.type === 'banner') {
-      captureMarketing('links_banner_tapped', {
-        banner: target.app === 'explorer' ? 'explore' : 'host',
-        device,
-        city: city.slug,
-      })
-    } else {
-      captureMarketing('links_strip_opened', {
-        kind: target.type === 'listing' ? target.listing.kind : target.type === 'place' ? 'place' : target.pin.opens,
-        source: target.type === 'listing' ? 'listing' : target.type === 'place' ? 'place' : 'custom',
-        device,
-        city: city.slug,
-      })
+      captureMarketing('links_banner_tapped', { banner: target.app === 'explorer' ? 'explore' : 'host', device })
+    } else if (target.type === 'pin') {
+      captureMarketing('links_strip_opened', { kind: target.pin.opens, source: 'custom', device })
     }
     if (handoff.action === 'sheet') {
       event.preventDefault()
       const opener = event.currentTarget
       if (target.type === 'banner') openSheet({ kind: target.app === 'explorer' ? 'explore' : 'host' }, opener)
-      else openSheet({ kind: 'item', target }, opener)
+      else if (target.type === 'pin') openSheet({ kind: 'item', target }, opener)
       return
     }
     // A phone: the anchor navigates; make sure it carries the device href now.
     event.currentTarget.setAttribute('href', handoff.href)
-  }
-
-  const pickCity = (slug: string) => {
-    if (slug !== city.slug) captureMarketing('links_city_changed', { city: slug, from: city.slug })
-    setCitySlug(slug)
-    setFilter('all')
-    rememberCity(slug)
-    openerRef.current = cityButtonRef.current
-    closeSheet()
   }
 
   // ---- pieces
@@ -573,70 +343,27 @@ export function LinksExperience({
     return { href: platform !== null && isPhone(platform) ? d.phoneHref : d.computerHref, phoneHref: d.phoneHref }
   }
 
-  const strip = (target: StripTarget, key: string, role?: 'strip' | 'pin', plan?: LinksPlan) => {
+  const strip = (target: PinTarget, key: string, role?: 'pin') => {
     const { href, phoneHref } = hrefFor(target)
-    const isPin = target.type === 'pin'
-    const newTab = isPin && target.pin.opens === 'web'
-    let thumb: ReactNode
-    let meta: ReactNode
-    if (target.type === 'pin') {
-      thumb = (
-        <span className={cn(styles['st-th'], styles['st-th--pin'])}>
-          <Icon name="pin" />
-        </span>
-      )
-      meta = <span className={styles.k}>{pinWhen(target.pin, week.today)}</span>
-    } else if (target.type === 'place') {
-      const pl = target.place
-      thumb = pl.photo ? (
-        <span className={styles['st-th']} style={{ backgroundImage: cssUrl(pl.photo) }} role="img" aria-label={pl.name} />
-      ) : (
-        <span className={cn(styles['st-th'], styles['st-th--experience'])} aria-hidden="true">
-          <Icon name="pin" />
-        </span>
-      )
-      meta = (
-        <>
-          <span className={styles.k}>{pl.category ?? 'Place'}</span>
-          {pl.area ? <span>{pl.area}</span> : null}
-        </>
-      )
-    } else {
-      const l = target.listing
-      // A recurring plan shows its day span; it opens its next date.
-      const when = plan ? planWhen(plan, week.today) : listingWhen(l, week.today)
-      thumb = l.cover ? (
-        <span className={styles['st-th']} style={{ backgroundImage: cssUrl(l.cover) }} role="img" aria-label={l.place ?? l.title} />
-      ) : (
-        <span className={cn(styles['st-th'], styles[`st-th--${l.kind}`])} aria-hidden="true">
-          {dayNumber(listingDayKey(l))}
-        </span>
-      )
-      const rest = [timeLabel(l.startsAt, l.tz), l.place].filter((x): x is string => Boolean(x)).join(' · ')
-      meta = (
-        <>
-          <span className={styles.k}>
-            {when.tonight ? <i /> : null}
-            {when.text}
-          </span>
-          {rest ? <span>{rest}</span> : null}
-        </>
-      )
-    }
+    const newTab = target.pin.opens === 'web'
     return (
-      <li key={key} data-strip={role === 'strip' ? '' : undefined} data-pin={role === 'pin' ? '' : undefined}>
+      <li key={key} data-pin={role === 'pin' ? '' : undefined}>
         <a
           href={href}
           data-cta-phone-href={phoneHref}
           target={newTab ? '_blank' : undefined}
           rel={newTab ? 'noopener' : undefined}
-          className={cn(styles.st, isPin && styles['st--pin'])}
+          className={cn(styles.st, styles['st--pin'])}
           onClick={(event) => onTap(target, event)}
         >
-          {thumb}
+          <span className={cn(styles['st-th'], styles['st-th--pin'])}>
+            <Icon name="pin" />
+          </span>
           <span className={styles['st-txt']}>
-            <b>{target.type === 'pin' ? target.pin.title : target.type === 'place' ? target.place.name : target.listing.title}</b>
-            <span className={styles['st-meta']}>{meta}</span>
+            <b>{target.pin.title}</b>
+            <span className={styles['st-meta']}>
+              <span className={styles.k}>{pinWhen(target.pin, today)}</span>
+            </span>
           </span>
           <span className={styles['st-go']}>
             <Icon name="arrow" />
@@ -677,63 +404,7 @@ export function LinksExperience({
     )
   }
 
-  const kindCount = (kind: LinksListingKind) => allPlans.filter((p) => p.next.kind === kind).length
-  const more = moreLabel(plans.length, fit.listShown)
-  const pinsMore = pinsMoreLabel(week.pins.length, fit.pinsShown)
-  const words = FILTERS.find((f) => f.id === filter) ?? FILTERS[0]
-  const otherLiveCity = live.some((l) => l.city.slug !== city.slug && l.count > 0)
-  // The shared "nothing this week" rule (lib/links-week.ts quietWeek).
-  const quiet = quietWeek({
-    city,
-    cityHasListings: week.listings.length > 0,
-    places: places[city.slug] ?? [],
-    live,
-    readFailed: readFailed || placesFailed.includes(city.slug),
-  })
-  // "Plans in … / Host something in …" under the places, or under the fallback
-  // line when the city has no places to show (not after a failed read).
-  const quietLinks =
-    quiet.mode === 'quiet'
-      ? { plansIn: quiet.plansIn, hostCity: quiet.hostCity }
-      : quiet.mode === 'fallback' && quiet.hostCity
-        ? { plansIn: quiet.plansIn ?? null, hostCity: quiet.hostCity }
-        : null
-  // Listings exist but the chip filter leaves none.
-  const emptyText = emptyListText({
-    nothingAnywhere: false,
-    cityHasListings: true,
-    cityName: city.name,
-    plural: words.plural,
-    otherLiveCity,
-  })
-  const hostTarget: LinksTarget = { type: 'banner', app: 'host' }
-  const hostHrefs = hrefFor(hostTarget)
-
-  const cityList = () => {
-    // Every live city, quiet ones too: nearest first, else most plans then name.
-    const rows = pickerOrder(counts, visitor.point)
-    return (
-      <ul className={styles.cities}>
-        {rows.map(({ city: c, count, km }) => (
-          <li key={c.slug}>
-            <button type="button" className={styles.cty} aria-current={c.slug === city.slug} onClick={() => pickCity(c.slug)}>
-              <span>
-                <b>{c.name}</b>
-                <small>
-                  {c.region}
-                  {km !== null ? ` · ${distanceLabel(km, visitor.useMiles)}` : ''}
-                </small>
-              </span>
-              <em>
-                {pickerCountLabel(count, c.hasPlaces)}
-                {c.slug === city.slug ? <Icon name="check" /> : null}
-              </em>
-            </button>
-          </li>
-        ))}
-      </ul>
-    )
-  }
+  const pinsMore = pinsMoreLabel(pins.length, pinsShown)
 
   return (
     <main
@@ -755,20 +426,15 @@ export function LinksExperience({
           <img src="/brand/links/mingla-wordmark-white.svg" alt="" width={68} height={24} />
         </a>
       </div>
-      <div
-        className={cn(styles['lk-grid'], 'min-h-0 flex-1')}
-        data-pins={week.pins.length > 0 ? '1' : '0'}
-        data-quiet={quiet.mode === 'listings' ? '0' : '1'}
-        inert={sheet !== null}
-      >
-        <div className={styles['lk-left']} ref={leftRef}>
-          <div className={styles['lk-ban']}>
-            {banner('explorer')}
-            {banner('host')}
-          </div>
-          {week.pins.length > 0 ? (
+      <div className={cn(styles['lk-grid'], 'min-h-0 flex-1')} data-pins={pins.length > 0 ? '1' : '0'} inert={sheet !== null}>
+        <div className={styles['lk-ban']}>
+          {banner('explorer')}
+          {banner('host')}
+        </div>
+        <div className={styles['lk-pinwrap']} ref={wrapRef}>
+          {pins.length > 0 ? (
             <ul className={styles['lk-pins']} aria-label="From Mingla" ref={pinsRef} data-fit-gate="">
-              {week.pins.map((pin) => strip({ type: 'pin', pin }, pin.id, 'pin'))}
+              {pins.map((pin) => strip({ type: 'pin', pin }, pin.id, 'pin'))}
               <li className={styles['pins-more']} data-pins-more="" hidden>
                 <button
                   type="button"
@@ -781,136 +447,26 @@ export function LinksExperience({
               </li>
             </ul>
           ) : null}
-          <footer className={styles['lk-foot']}>
-            <nav className={styles.soc} aria-label="Mingla on social">
-              {LINKS_SOCIALS.map((social) => (
-                <a
-                  key={social.id}
-                  href={social.href}
-                  target="_blank"
-                  rel="noopener"
-                  aria-label={social.label}
-                  onClick={() => captureMarketing('links_page_social_clicked', { network: social.id })}
-                >
-                  <SocialIcon id={social.id} />
-                </a>
-              ))}
-            </nav>
-          </footer>
         </div>
-        <div className={styles['lk-right']}>
-          <header className={styles['lk-head']}>
-            <button
-              type="button"
-              ref={cityButtonRef}
-              className={styles['lk-city']}
-              aria-haspopup="dialog"
-              aria-label={`${city.name}. Change city`}
-              onClick={(event) => openSheet({ kind: 'city' }, event.currentTarget)}
-            >
-              <span className={styles.nm}>
-                <CityName name={city.name} />
-              </span>
-              <span className={styles.chev}>
-                <Icon name="chev" />
-              </span>
-            </button>
-            <p className={styles['lk-line']}>Find places, events and plans that fit the vibe.</p>
-          </header>
-          <div
-            className={styles['lk-chips']}
-            role="group"
-            aria-label="Filter"
-            ref={chipsRef}
-            data-fit={chipLevel}
-            hidden={quiet.mode !== 'listings'}
-          >
-            {FILTERS.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className={styles.chip}
-                aria-pressed={filter === f.id}
-                onClick={() => {
-                  setFilter(f.id)
-                  captureMarketing('links_filter_changed', { filter: f.id, city: city.slug })
-                }}
+        <footer className={styles['lk-foot']}>
+          <nav className={styles.soc} aria-label="Mingla on social">
+            {LINKS_SOCIALS.map((social) => (
+              <a
+                key={social.id}
+                href={social.href}
+                target="_blank"
+                rel="noopener"
+                aria-label={social.label}
+                onClick={() => captureMarketing('links_page_social_clicked', { network: social.id })}
               >
-                {f.label} <span>{f.id === 'all' ? allPlans.length : kindCount(f.id)}</span>
-              </button>
+                <SocialIcon id={social.id} />
+              </a>
             ))}
-          </div>
-          <div className={styles['lk-listwrap']} ref={wrapRef} data-fit-gate="">
-            {quiet.mode === 'quiet' ? <p className={styles['lk-quiet-h']}>{quiet.heading}</p> : null}
-            <ul className={styles['lk-list']} aria-label={quiet.mode === 'quiet' ? 'Places' : 'Plans'} ref={listRef}>
-              {quiet.mode === 'quiet' ? (
-                quiet.places.map((place) => strip({ type: 'place', place }, place.id, 'strip'))
-              ) : quiet.mode === 'fallback' ? (
-                <li className={styles['lk-empty']}>
-                  <b>A quiet one.</b>
-                  {quiet.text}
-                </li>
-              ) : plans.length > 0 ? (
-                plans.map((plan) => strip({ type: 'listing', listing: plan.next }, plan.id, 'strip', plan))
-              ) : (
-                <li className={styles['lk-empty']}>
-                  <b>A quiet one.</b>
-                  {emptyText}
-                </li>
-              )}
-            </ul>
-            {quietLinks !== null ? (
-              <div className={styles['lk-quiet-links']} ref={quietLinksRef}>
-                {quietLinks.plansIn ? (
-                  <button type="button" className={styles['lk-more']} onClick={() => pickCity(quietLinks.plansIn?.slug ?? city.slug)}>
-                    <u>Plans in {quietLinks.plansIn.name}</u>
-                    <Icon name="right" />
-                  </button>
-                ) : null}
-                <a
-                  href={hostHrefs.href}
-                  data-cta-phone-href={hostHrefs.phoneHref}
-                  className={styles['lk-more']}
-                  onClick={(event) => onTap(hostTarget, event)}
-                >
-                  <u>Host something in {quietLinks.hostCity}</u>
-                  <Icon name="right" />
-                </a>
-              </div>
-            ) : null}
-            {week.listings.length > 0 ? (
-              <button
-                type="button"
-                ref={moreRef}
-                className={styles['lk-more']}
-                onClick={(event) => {
-                  captureMarketing('links_full_week_opened', { city: city.slug, plans: plans.length })
-                  openSheet({ kind: 'all' }, event.currentTarget)
-                }}
-              >
-                <u>{more.text}</u>
-                {more.count ? <span>{more.count}</span> : null}
-                <Icon name="right" />
-              </button>
-            ) : null}
-          </div>
-        </div>
+          </nav>
+        </footer>
       </div>
       {sheet !== null ? (
-        <Sheet
-          sheet={sheet}
-          closeRef={closeRef}
-          onClose={closeSheet}
-          city={city}
-          src={src}
-          week={week}
-          shown={shown}
-          planCount={plans.length}
-          words={words}
-          hasVisitor={visitor.point !== null}
-          renderStrip={strip}
-          renderCities={cityList}
-        />
+        <Sheet sheet={sheet} closeRef={closeRef} onClose={closeSheet} src={src} pins={pins} renderStrip={strip} />
       ) : null}
     </main>
   )
@@ -922,16 +478,9 @@ interface SheetProps {
   sheet: SheetState
   closeRef: RefObject<HTMLButtonElement | null>
   onClose: () => void
-  city: LinksCity
   src: string
-  week: LinksWeek
-  shown: LinksListing[]
-  /** Plans (a recurring plan counts once). */
-  planCount: number
-  words: { plural: string; singular: string }
-  hasVisitor: boolean
-  renderStrip: (target: StripTarget, key: string) => ReactNode
-  renderCities: () => ReactNode
+  pins: LinksPin[]
+  renderStrip: (target: PinTarget, key: string) => ReactNode
 }
 
 function StoreButtons({ app }: { app: 'explorer' | 'host' }): ReactNode {
@@ -969,7 +518,7 @@ function QrBlock({ value, title, body, children }: { value: string; title: strin
   )
 }
 
-function Sheet({ sheet, closeRef, onClose, city, src, week, shown, planCount, words, hasVisitor, renderStrip, renderCities }: SheetProps) {
+function Sheet({ sheet, closeRef, onClose, src, pins, renderStrip }: SheetProps) {
   let title: ReactNode = null
   let label = ''
   let sub = ''
@@ -977,25 +526,14 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, planCount, wo
   let tall = false
 
   switch (sheet.kind) {
-    case 'city': {
-      title = (
-        <>
-          Pick a <em>city</em>
-        </>
-      )
-      label = 'Pick a city'
-      sub = hasVisitor ? 'Closest to you first.' : ''
-      body = renderCities()
-      break
-    }
     case 'host': {
       const hrefs = linksTargetHrefs({ type: 'banner', app: 'host' }, src)
       title = (
         <>
-          Host in <em>{city.name}</em>
+          Host in <em>your city</em>
         </>
       )
-      label = `Host in ${city.name}`
+      label = 'Host in your city'
       sub = 'Sell tickets and keep more. Pages, RSVPs, the guest list and the door, in one place.'
       body = (
         <>
@@ -1028,7 +566,7 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, planCount, wo
         </>
       )
       label = 'Mingla lives on your phone'
-      sub = `Find places, events and plans that fit the vibe. Scan to get the app; it opens on ${city.name}.`
+      sub = 'Find places, events and plans that fit the vibe. Scan to get the app.'
       body = (
         <>
           <div className={cn(styles.hero, styles['hero--explore'])} />
@@ -1042,135 +580,65 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, planCount, wo
     case 'item': {
       const { target } = sheet
       const hrefs = linksTargetHrefs(target, src)
-      if (target.type === 'listing') {
-        const l = target.listing
-        title = l.title
-        label = l.title
-        body = (
+      const p = target.pin
+      const app = targetApp(target)
+      title = p.title
+      label = p.title
+      let action: ReactNode
+      if (p.opens === 'blog') {
+        action = (
+          <a className={cn(styles.btn, styles['btn--orange'])} href={hrefs.computerHref}>
+            <Icon name="right" />
+            Read on the Mingla blog
+          </a>
+        )
+      } else if (p.opens === 'web') {
+        const href = pinWebHref(p.url) ?? hrefs.computerHref
+        action = (
+          <a className={cn(styles.btn, styles['btn--orange'])} href={href} target="_blank" rel="noopener">
+            <Icon name="globe" />
+            Open {href.replace(/^https:\/\//, '').replace(/\/$/, '')}
+          </a>
+        )
+      } else if (app === 'host') {
+        const hostWeb = linksTargetHrefs({ type: 'banner', app: 'host' }, src).computerHref
+        action = (
           <>
-            {l.cover ? (
-              <div className={styles.hero} style={{ backgroundImage: cssUrl(l.cover) }} role="img" aria-label={l.place ?? l.title} />
-            ) : null}
-            <div>
-              <span className={styles.pill}>
-                {KIND_LABEL[l.kind]} · {city.name}
-              </span>
-            </div>
-            <ul className={styles.meta}>
-              <li>
-                <Icon name="cal" />
-                {longDayLabel(listingDayKey(l))}
-              </li>
-              <li>
-                <Icon name="clock" />
-                {timeLabel(l.startsAt, l.tz)}
-              </li>
-              {l.place ? (
-                <li>
-                  <Icon name="pin" />
-                  {l.place}
-                </li>
-              ) : null}
-            </ul>
             <QrBlock
               value={hrefs.phoneHref}
-              title="Open it in Mingla"
-              body={`Scan to land on this ${KIND_LABEL[l.kind].toLowerCase()} in the app.`}
+              title="Open it in Mingla Host"
+              body="Scan with your phone camera. It opens the right store for your phone."
             >
-              <StoreButtons app="explorer" />
+              <StoreButtons app="host" />
             </QrBlock>
-          </>
-        )
-      } else if (target.type === 'place') {
-        const pl = target.place
-        title = pl.name
-        label = pl.name
-        body = (
-          <>
-            {pl.photo ? (
-              <div className={styles.hero} style={{ backgroundImage: cssUrl(pl.photo) }} role="img" aria-label={pl.name} />
-            ) : null}
-            <div>
-              <span className={styles.pill}>
-                {pl.category ?? 'Place'} · {city.name}
-              </span>
-            </div>
-            {pl.area ? (
-              <ul className={styles.meta}>
-                <li>
-                  <Icon name="pin" />
-                  {pl.area}
-                </li>
-              </ul>
-            ) : null}
-            <QrBlock value={hrefs.phoneHref} title="Find it in Mingla" body="Scan to get the app and explore places like this one.">
-              <StoreButtons app="explorer" />
-            </QrBlock>
+            <div className={styles.or}>or</div>
+            <a className={cn(styles.btn, styles['btn--orange'])} href={hostWeb} target="_blank" rel="noopener">
+              <Icon name="globe" />
+              Continue on {hostLabel(hostWeb)}
+            </a>
           </>
         )
       } else {
-        const p = target.pin
-        const app = targetApp(target)
-        title = p.title
-        label = p.title
-        let action: ReactNode
-        if (p.opens === 'blog') {
-          action = (
-            <a className={cn(styles.btn, styles['btn--orange'])} href={hrefs.computerHref}>
-              <Icon name="right" />
-              Read on the Mingla blog
-            </a>
-          )
-        } else if (p.opens === 'web') {
-          const href = pinWebHref(p.url) ?? hrefs.computerHref
-          action = (
-            <a className={cn(styles.btn, styles['btn--orange'])} href={href} target="_blank" rel="noopener">
-              <Icon name="globe" />
-              Open {href.replace(/^https:\/\//, '').replace(/\/$/, '')}
-            </a>
-          )
-        } else if (app === 'host') {
-          const hostWeb = linksTargetHrefs({ type: 'banner', app: 'host' }, src).computerHref
-          action = (
-            <>
-              <QrBlock
-                value={hrefs.phoneHref}
-                title="Open it in Mingla Host"
-                body="Scan with your phone camera. It opens the right store for your phone."
-              >
-                <StoreButtons app="host" />
-              </QrBlock>
-              <div className={styles.or}>or</div>
-              <a className={cn(styles.btn, styles['btn--orange'])} href={hostWeb} target="_blank" rel="noopener">
-                <Icon name="globe" />
-                Continue on {hostLabel(hostWeb)}
-              </a>
-            </>
-          )
-        } else {
-          action = (
-            <QrBlock value={hrefs.phoneHref} title="Open it in Mingla" body="Scan to land on this page in the app.">
-              <StoreButtons app="explorer" />
-            </QrBlock>
-          )
-        }
-        body = (
-          <>
-            <div>
-              <span className={styles.pill}>
-                {p.label} · {city.name}
-              </span>
-            </div>
-            <ul className={styles.meta}>
-              <li>
-                <Icon name="cal" />
-                {pinDaysLabel(p)}
-              </li>
-            </ul>
-            {action}
-          </>
+        action = (
+          <QrBlock value={hrefs.phoneHref} title="Open it in Mingla" body="Scan to land on this page in the app.">
+            <StoreButtons app="explorer" />
+          </QrBlock>
         )
       }
+      body = (
+        <>
+          <div>
+            <span className={styles.pill}>{p.label}</span>
+          </div>
+          <ul className={styles.meta}>
+            <li>
+              <Icon name="cal" />
+              {pinDaysLabel(p)}
+            </li>
+          </ul>
+          {action}
+        </>
+      )
       break
     }
     case 'pins': {
@@ -1180,56 +648,9 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, planCount, wo
         </>
       )
       label = 'From Mingla'
-      sub = `${week.pins.length} pinned this week`
-      tall = week.pins.length > 6
-      body = <ul className={styles['lk-list']}>{week.pins.map((pin) => renderStrip({ type: 'pin', pin }, pin.id))}</ul>
-      break
-    }
-    case 'all': {
-      tall = shown.length + week.pins.length > 6
-      title = (
-        <>
-          <CityName name={city.name} />, the full week
-        </>
-      )
-      label = `${city.name}, the full week`
-      sub = `${planCount} ${planCount === 1 ? words.singular : words.plural} from ${weekRange(week.keys)}`
-      const groups = week.keys
-        .map((key) => ({ key, items: shown.filter((l) => listingDayKey(l) === key) }))
-        .filter((g) => g.items.length > 0)
-      body = (
-        <>
-          {week.pins.length > 0 ? (
-            <section className={styles.wk}>
-              <h3>
-                From Mingla<span>{week.pins.length} pinned</span>
-              </h3>
-              <ul className={styles['lk-list']}>{week.pins.map((pin) => renderStrip({ type: 'pin', pin }, pin.id))}</ul>
-            </section>
-          ) : null}
-          {groups.length > 0 ? (
-            groups.map((g) => (
-              <section key={g.key} className={styles.wk}>
-                <h3>
-                  {g.key === week.today ? 'Today, ' : ''}
-                  {longDayLabel(g.key)}
-                  <span>
-                    {g.items.length} {g.items.length === 1 ? 'plan' : 'plans'}
-                  </span>
-                </h3>
-                <ul className={styles['lk-list']}>
-                  {g.items.map((listing) => renderStrip({ type: 'listing', listing }, listing.id))}
-                </ul>
-              </section>
-            ))
-          ) : (
-            <p className={styles['lk-empty']}>
-              <b>A quiet one.</b>
-              Nothing to show yet.
-            </p>
-          )}
-        </>
-      )
+      sub = `${pins.length} from Mingla`
+      tall = pins.length > 6
+      body = <ul className={styles['lk-list']}>{pins.map((pin) => renderStrip({ type: 'pin', pin }, pin.id))}</ul>
       break
     }
     default: {

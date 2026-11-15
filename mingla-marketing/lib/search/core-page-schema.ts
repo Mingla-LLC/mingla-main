@@ -14,7 +14,7 @@ export function corePageStructuredData(record: CorePageRecord): Record<string, u
   if (record.slug === 'going-out') page.mainEntity = { '@id': `${SITE_ORIGIN}/#mingla-app` }
   if (record.slug === 'cities' && allCityHubsSearchReady()) {
     page.mainEntity = {
-      '@type': 'ItemList', itemListOrder: 'https://schema.org/ItemListOrderAscending', numberOfItems: 10,
+      '@type': 'ItemList', itemListOrder: 'https://schema.org/ItemListOrderAscending', numberOfItems: CITY_HUBS.length,
       itemListElement: CITY_HUBS.map((city, index) => ({ '@type': 'ListItem', position: index + 1, name: city.city, url: canonicalMarketingUrl(cityHubPath(city)) })),
     }
   }

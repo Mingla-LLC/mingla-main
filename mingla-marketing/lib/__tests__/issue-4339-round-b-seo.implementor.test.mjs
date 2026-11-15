@@ -78,10 +78,11 @@ test('1b. city descriptions are 140–155 characters and keyword first', async (
   }
 })
 
-test('2. /going-out renders its direct answer and links all ten cities', async () => {
+test('2. /going-out renders its direct answer and links every live city', async () => {
   const page = code(read('app/(core)/going-out/page.tsx'))
   assert.match(page, /<h2 className="h2" id="going-out-answer">\s*\{record\.directQuestion\}\s*<\/h2>\s*<p className="lead">\{record\.directAnswer\}<\/p>/)
-  assert.match(page, /CITY_HUBS\.map\(\(city\) => \([\s\S]*<Link href=\{cityHubPath\(city\)\}>\s*Things to do in \{city\.city\}/)
+  // #4339 (live cities): one link per LIVE city, A to Z (lib/live-cities.ts).
+  assert.match(page, /cityTiles\.map\(\(city\) => \([\s\S]*<Link href=\{`\/cities\/\$\{city\.slug\}`\}>\s*Things to do in \{city\.name\}/)
 })
 
 test('3. /about renders "What is Mingla?" and its direct answer', async () => {

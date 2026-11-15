@@ -146,7 +146,9 @@ function sourceContract() {
   assert.match(metadata, /record\.wasSearchReady/)
   assert.match(metadata, /const lifecycle = cityHubEffectiveLifecycle\(record\)/)
   assert.match(page, /generateStaticParams/)
-  assert.match(page, /export const dynamicParams = false/)
+  // #4339: live cities without a guide get an automatic page, so unknown slugs are
+  // decided at request time (live city -> page, switched-off guide -> /cities, else 404).
+  assert.match(page, /export const dynamicParams = true/)
   assert.match(page, /if \(!record\) notFound\(\)/)
   assert.match(page, /structuredData \? \(/)
   assert.match(schema, /if \(cityHubEffectiveLifecycle\(record\) !== 'search_ready'\) return null/)

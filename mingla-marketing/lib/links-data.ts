@@ -104,6 +104,20 @@ export async function getLinksData(): Promise<LinksData> {
   }
 }
 
+/**
+ * Only the Admin Links strips: what usemingla.com/links shows (#4339). A read
+ * that fails is logged and the page shows its banners and socials only.
+ */
+export async function getLinksStrips(): Promise<LinksStripRow[]> {
+  if (!linksDataConfigured()) return []
+  try {
+    return await rpc<LinksStripRow>('links_page_strips')
+  } catch (error) {
+    console.error('[#4339 links] links_page_strips read failed', error)
+    return []
+  }
+}
+
 export interface LinksPlacesData {
   /** Places per city slug (only the cities asked for). */
   places: Record<string, LinksPlace[]>

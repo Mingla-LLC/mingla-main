@@ -1,4 +1,4 @@
-import { actorWord, gigEventWord, money, shortDateTime } from "../../lib/creatorPrograms";
+import { actorWord, dedupeGigEvents, gigEventWord, money, shortDateTime } from "../../lib/creatorPrograms";
 
 // Issue #3872 — the shared contract timeline, in plain words: when, what, who.
 // Amounts in an event's data are shown in the contract's currency, never as
@@ -13,7 +13,9 @@ function eventDetail(event, currency) {
   return parts.join(" · ");
 }
 
-export function GigTimeline({ events = [], currency = null }) {
+export function GigTimeline({ events: rawEvents = [], currency = null }) {
+  // #4430 item 2: one row per action (the action/fact pair is shown once).
+  const events = dedupeGigEvents(rawEvents);
   if (!events.length) return <p className="text-sm text-[var(--color-text-secondary)]">Nothing has happened on this deal yet.</p>;
   return (
     <ol className="divide-y divide-[var(--gray-200)] rounded-lg border border-[var(--gray-200)]" aria-label="Shared contract timeline">

@@ -4,9 +4,10 @@ import { ArrowUpRight } from 'lucide-react'
 import { LandingMedia } from '@/components/landing/landing-media'
 import { FilterGrid, type FilterItem } from '@/components/site/filter-row'
 import { PageHero, SitePage } from '@/components/site/site-page'
-import { CITY_HUBS, cityHubForSlug, cityHubPath } from '@/content/cities/registry'
+import { cityHubForSlug, cityHubPath } from '@/content/cities/registry'
 import { CORE_PAGES } from '@/content/core-pages'
 import type { LandingMediaRef } from '@/content/host-landing/icps'
+import { getCityTiles } from '@/lib/live-cities'
 import { corePageMetadata } from '@/lib/search/metadata'
 import { corePageStructuredData, serializeCorePageStructuredData } from '@/lib/search/core-page-schema'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
@@ -67,7 +68,10 @@ function GuideTile({ guide }: { guide: Guide }) {
   )
 }
 
-export default function GoingOutPage() {
+export const revalidate = 300
+
+export default async function GoingOutPage() {
+  const { tiles: cityTiles } = await getCityTiles()
   const schema = corePageStructuredData(record)
   const items: FilterItem[] = GUIDES.map((guide) => ({ key: guide.title, tags: guide.tags, node: <GuideTile guide={guide} /> }))
   return (
@@ -129,10 +133,10 @@ export default function GoingOutPage() {
               Plans, <em>city by city.</em>
             </h2>
             <ul className="city-links mt-24">
-              {CITY_HUBS.map((city) => (
+              {cityTiles.map((city) => (
                 <li key={city.slug}>
-                  <Link href={cityHubPath(city)}>
-                    Things to do in {city.city} <ArrowUpRight aria-hidden="true" />
+                  <Link href={`/cities/${city.slug}`}>
+                    Things to do in {city.name} <ArrowUpRight aria-hidden="true" />
                   </Link>
                 </li>
               ))}

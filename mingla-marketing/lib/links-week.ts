@@ -1,4 +1,5 @@
-// #4318 — usemingla.com/links: the pure week model.
+// #4318 — the pure week model behind the city pages' "This weekend" and the
+// Admin strips on usemingla.com/links (/links itself has no city section, #4339).
 //
 // Everything here is a plain function of its inputs (no React, no fetch, no
 // clock), so the server page, the client page and the node tests share one
@@ -9,8 +10,6 @@
 //     live for consumers in Explorer), never a hand-kept list;
 //   - which live city a listing belongs to (nearest centre within its reach:
 //     60 km, Lagos 80 km);
-//   - which city the page opens on (?city= > visitor location > remembered
-//     city > busiest city > first by name);
 //   - the week (today through today+6 in the city's own time zone), its day
 //     grouping and the strip labels.
 //
@@ -183,20 +182,6 @@ export function nearestCity<C extends LinksPoint>(
   return best
 }
 
-/** "12 mi" for US visitors, "19 km" everywhere else. */
-export function distanceLabel(km: number, useMiles: boolean): string {
-  return useMiles ? `${Math.round(km * 0.621371)} mi` : `${Math.round(km)} km`
-}
-
-/** Vercel's coarse IP location headers, or null when missing or nonsense. */
-export function parseGeoHeaders(lat: string | null, lng: string | null): LinksPoint | null {
-  if (lat === null || lng === null || lat.trim() === '' || lng.trim() === '') return null
-  const point = { lat: Number(lat), lng: Number(lng) }
-  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return null
-  if (Math.abs(point.lat) > 90 || Math.abs(point.lng) > 180) return null
-  return point
-}
-
 // ---------------------------------------------------------------- the live cities
 
 /** "Fort Lauderdale" → "fort-lauderdale", "Washington, D.C." → "washington-dc", "Liège" → "liege". */
@@ -276,19 +261,6 @@ export function linksCitiesFromRows(rows: readonly LinksCityRow[], hints: readon
     })
   }
   return out
-}
-
-/**
- * A city the registry does not know takes the zone of its first listing this
- * week (listings carry their own zone); with none, UTC. Cities that already
- * have a zone are returned as they are.
- */
-export function withListingZones(cities: readonly LinksCity[], listings: readonly LinksListing[]): LinksCity[] {
-  return cities.map((city) => {
-    if (city.timezone !== '') return city
-    const first = listings.find((l) => l.citySlug === city.slug)
-    return { ...city, timezone: first ? first.tz : 'UTC' }
-  })
 }
 
 /**
@@ -619,84 +591,6 @@ export function liveCities(
   nowIso: string,
 ): Array<{ city: LinksCity; count: number }> {
   return cityCounts(cities, listings, pins, nowIso).filter((c) => c.count > 0)
-}
-
-export type CitySource = 'query' | 'geo' | 'cookie' | 'busiest' | 'fallback'
-
-export interface ResolveCityInput {
-  cities: readonly LinksCity[]
-  live: ReadonlyArray<{ city: LinksCity; count: number }>
-  query: string | null
-  geo: LinksPoint | null
-  cookie: string | null
-}
-
-/**
- * The city the page opens on (#4318 §10; live cities ruling, 8 Nov 2026):
- *   1. `?city=<slug>` always wins (city-specific bio links), an older registry
- *      slug included (`washington-dc` opens Washington);
- *   2. the visitor's coarse location: the nearest live city, however far,
- *      quiet or not (a quiet city shows its places and "Plans in <city> →");
- *   3. the city they picked last time, while it is live;
- *   4. the city with the most plans this week;
- *   5. with nothing on anywhere, the first live city.
- * `cities` is every live city; `live` is the ones with plans this week.
- */
-export function resolveCity({ cities, live, query, geo, cookie }: ResolveCityInput): { slug: string; source: CitySource } {
-  if (cities.length === 0) throw new Error('#4318 links: no live city')
-  const asked = cityForSlug(cities, query)
-  if (asked !== null) return { slug: asked.slug, source: 'query' }
-  if (geo !== null) {
-    const hit = nearestCity(cities, geo)
-    if (hit !== null) return { slug: hit.city.slug, source: 'geo' }
-  }
-  const remembered = cityForSlug(cities, cookie)
-  if (remembered !== null) return { slug: remembered.slug, source: 'cookie' }
-  if (live.length > 0) {
-    const busiest = live.reduce((best, next) => (next.count > best.count ? next : best))
-    return { slug: busiest.city.slug, source: 'busiest' }
-  }
-  return { slug: cities[0].slug, source: 'fallback' }
-}
-
-/**
- * Picker order over every live city: closest to the visitor first; with no
- * location, most plans this week first, then by name.
- */
-export function pickerOrder(
-  rows: ReadonlyArray<{ city: LinksCity; count: number }>,
-  geo: LinksPoint | null,
-): Array<{ city: LinksCity; count: number; km: number | null }> {
-  const out = rows.map((l) => ({ ...l, km: geo === null ? null : haversineKm(geo, l.city) }))
-  if (geo !== null) return out.sort((a, b) => (a.km ?? 0) - (b.km ?? 0) || a.city.name.localeCompare(b.city.name))
-  return out.sort((a, b) => b.count - a.count || a.city.name.localeCompare(b.city.name))
-}
-
-/**
- * The picker row's right-hand label: "3 this week"; a quiet city with photo
- * places, "Places to explore"; a quiet city with none (`has_places` false),
- * "Nothing listed yet", since it has nothing to show.
- */
-export function pickerCountLabel(count: number, hasPlaces?: boolean | null): string {
-  if (count > 0) return `${count} this week`
-  return hasPlaces === false ? 'Nothing listed yet' : 'Places to explore'
-}
-
-/**
- * The empty list's line (#4318 rulings): a city with nothing says so and only
- * offers another city when one is live; with nothing live anywhere (or a
- * failed read) it says to check back.
- */
-export function emptyListText(input: {
-  nothingAnywhere: boolean
-  cityHasListings: boolean
-  cityName: string
-  plural: string
-  otherLiveCity: boolean
-}): string {
-  if (input.nothingAnywhere) return 'Nothing is listed this week yet. Check back soon.'
-  if (input.cityHasListings) return `No ${input.plural} listed in ${input.cityName} this week yet.`
-  return `Nothing is listed in ${input.cityName} this week yet.${input.otherLiveCity ? ' Try another city.' : ''}`
 }
 
 // ---------------------------------------------------------------- places (the quiet week)

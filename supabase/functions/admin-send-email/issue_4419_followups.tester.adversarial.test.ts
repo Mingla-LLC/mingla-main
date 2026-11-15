@@ -124,7 +124,7 @@ function fakeDb(opts: { campaign: Row; deliveries: Row[]; reserve?: "ok" | "erro
 
 const campaignRow = (extra: Row = {}): Row => ({
   id: CAMPAIGN, subject: "Hello {first_name}", body: "Hi", body_document: GOOD_DOC,
-  status: "sending", started_at: "2026-11-13T09:00:00.000Z", processing_started_at: "2026-11-13T09:00:00.000Z",
+  status: "sending", started_at: new Date(Date.now() - 60_000).toISOString(), processing_started_at: new Date(Date.now() - 60_000).toISOString(), // #4430: relative to now; a fixed date expired the 24 h rate-limit window
   rendered_at: null, rendered_document: null, sent_count: 0, snapshot_attempts: 0, created_at: "2026-11-12T10:00:00.000Z",
   recipient_type: "bulk", timezone: "UTC", ...extra,
 });

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4430_paystack_partial_after_reversal.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4430-paystack-partial-after-reversal",
+  "profile": "deno-1.46-stripe"
+}

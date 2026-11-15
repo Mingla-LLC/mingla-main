@@ -143,6 +143,84 @@
       "licenseUrl": "https://unsplash.com/license",
       "aiGenerated": false,
       "sha256": "58b2a0899ca99467ceff47107c69330b6176b7c76a346226f73312193898609a"
+    },
+    {
+      "path": "/marketing/site/m/c-abuja.mp4",
+      "role": "city-clip",
+      "city": "Abuja",
+      "location": "Abuja, Nigeria",
+      "source": "Mingla Studio stock library",
+      "stockId": "1635446",
+      "license": "Premium stock licence (Mingla Studio)",
+      "aiGenerated": false,
+      "transformation": "Aerial panorama of the Abuja central district, cut to a 7 s 1280x720 H.264 web loop with a 640x360 phone copy and JPG/WebP posters.",
+      "documentary": true,
+      "generatedAt": "2026-11-14",
+      "sha256": "ba92cc3b80b61b9c41c9d883111c3124a0312e09c08fc86d2edbf986debe336f",
+      "files": {
+        "c-abuja-sm.mp4": "6252d9ad37613275881bb3451d8145e5e39d9d738ac0ffcf69ca1da3d22c3dce",
+        "c-abuja.jpg": "1204f2f1b88035fa48c977e9b95826f2a4cc0c87a4c8e69ec1976a92b02f1acd",
+        "c-abuja.webp": "7626b744226f2e6c977cbe5e3772c4029df09378677584536bde926298a82358"
+      }
+    },
+    {
+      "path": "/marketing/site/m/c-ibadan.mp4",
+      "role": "city-clip",
+      "city": "Ibadan",
+      "location": "Ibadan, Nigeria",
+      "source": "Mingla Studio stock library",
+      "stockId": "5751367",
+      "license": "Stock licence (Mingla Studio)",
+      "aiGenerated": false,
+      "transformation": "Drone flight over Oke Are hill and Bowers Tower towards the city, cut to a 7 s 1280x720 H.264 web loop with a 640x360 phone copy and JPG/WebP posters.",
+      "documentary": true,
+      "generatedAt": "2026-11-14",
+      "sha256": "faf27ddef54ee5128637ba580a6fdfc90e9f7298445b8981e66814213c985fde",
+      "files": {
+        "c-ibadan-sm.mp4": "e1eb01c490e5287125d00a415a8d64619b978c3e94c359b17fc8262dc23f747b",
+        "c-ibadan.jpg": "afa855391047c0bfc31a1fe94a8adcac6a8e98ef5b48ac0ed66a7ba28a13d1c7",
+        "c-ibadan.webp": "85651ac17d991bf114ef5f23b20ee48538b48e023de192a0cb43f67d39d767a6"
+      }
+    },
+    {
+      "path": "/marketing/site/m/c-kano.mp4",
+      "role": "city-clip",
+      "city": "Kano",
+      "location": "Kano, Nigeria",
+      "source": "Mingla Studio AI video creation",
+      "creationId": "s7oXsWSl8e",
+      "model": "wan-3-0",
+      "license": "Generated for Mingla",
+      "aiGenerated": true,
+      "transformation": "AI-generated drone flyover in the style of Kano (green-domed mosque and palace in an earthen old city); not a depiction of one real building. Cut to a 7 s 1280x720 H.264 web loop with a 640x360 phone copy and JPG/WebP posters.",
+      "documentary": false,
+      "generatedAt": "2026-11-14",
+      "sha256": "ab8f84df72d6f811ce7eda9d9c60b269eff6ea39d8fc94f59153b4095ab00675",
+      "files": {
+        "c-kano-sm.mp4": "7429343809ac82932fa7ed4d223508b23704d2dbf8941b4b9919c84ef8999057",
+        "c-kano.jpg": "e7920c9287bb71a7569f871ff8c3aded1807092888f1862992f3c4a3fb6c1740",
+        "c-kano.webp": "3d797782c8bd4fa2e2311e248ea144924672af109cbbe68211e60cb7b5b2fa68"
+      }
+    },
+    {
+      "path": "/marketing/site/m/c-kaduna.mp4",
+      "role": "city-clip",
+      "city": "Kaduna",
+      "location": "Kaduna, Nigeria",
+      "source": "Mingla Studio AI video creation",
+      "creationId": "lJ8BlcFgv9",
+      "model": "wan-3-0",
+      "license": "Generated for Mingla",
+      "aiGenerated": true,
+      "transformation": "AI-generated drone shot of a green-roofed colonial hall with columns, in the style of Lugard Hall; not a depiction of one real building. Cut to a 7 s 1280x720 H.264 web loop with a 640x360 phone copy and JPG/WebP posters.",
+      "documentary": false,
+      "generatedAt": "2026-11-14",
+      "sha256": "c376ab7a439a828a8d6898b14097fe7509f05080af1e53044707555c5957d7cd",
+      "files": {
+        "c-kaduna-sm.mp4": "b88e4c3b725d6259c597b0e72eebf5d8411d71b9e123f4f7ae1100bb40765233",
+        "c-kaduna.jpg": "68314e8f5b6aa331254795d8532546729cd703caf9d68d84f802ee0b6458e760",
+        "c-kaduna.webp": "1006136904bec6a7342292f173ff01c885687f7249e5b8c9fd0a385c9af2f1dc"
+      }
     }
   ]
 }

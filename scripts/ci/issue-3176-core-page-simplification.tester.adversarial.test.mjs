@@ -193,7 +193,7 @@ async function runtimeContract() {
       // geometry is retired with that hero; the tile grid is held to the same
       // bars: no overflow, canonical names in order, 44px targets, the 16px
       // gutters, and no motion under prefers-reduced-motion.
-      await waitFor(() => page.evaluate("document.readyState==='complete'&&document.querySelectorAll('.city-tiles a').length===10"), `${width}px /cities did not settle`)
+      await waitFor(() => page.evaluate("document.readyState==='complete'&&document.querySelectorAll('.city-tiles a').length>=10"), `${width}px /cities did not settle`)
       await page.evaluate('(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))})()')
       const geometry = await page.evaluate(`(()=>{
         const box=e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}}
@@ -204,8 +204,9 @@ async function runtimeContract() {
         return {tiles:tiles.map(box),tileText:tiles.map(t=>t.innerText.trim()),h1:{...box(h1),clientWidth:h1.clientWidth,scrollWidth:h1.scrollWidth},grid,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,mediaTransition:media.transitionDuration,mediaAnimation:media.animationName}
       })()`)
       assert.equal(geometry.overflow, 0, `${width}px /cities has horizontal overflow`)
-      assert.equal(geometry.tiles.length, 10, `${width}px /cities needs ten tiles`)
-      assert.deepEqual(geometry.tileText, CITY_NAMES, `${width}px tiles must expose only the canonical city names in order`)
+      assert(geometry.tiles.length >= 10, `${width}px /cities needs every city tile (ten at least)`)
+      // #4339: tiles are the live cities A to Z; with no database (this build) they are the ten guides A to Z.
+      assert.deepEqual(geometry.tileText, [...CITY_NAMES].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })), `${width}px tiles must expose only the canonical city names, A to Z`)
       assert(geometry.h1.scrollWidth <= geometry.h1.clientWidth + 1 && geometry.h1.left >= 16 && geometry.h1.right <= width - 16, `${width}px headline is clipped or inside the 16px gutter: ${JSON.stringify(geometry.h1)}`)
       assert(geometry.tiles.every((tile) => tile.height >= 44 && tile.width >= 44 && tile.left >= 16 && tile.right <= width - 16), `${width}px a city tile lost its 44px target or the 16px gutter`)
       const expectedColumns = width > 1000 ? 5 : width > 640 ? 3 : 2

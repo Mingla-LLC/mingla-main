@@ -4,11 +4,11 @@ import { StyleSheet, Text, View } from 'react-native';
 import { gigZone, type GigProposal, type GigTerms, type GigWorkspace } from '../../../services/creatorGigsService';
 import { chooseAndUploadCreatorMedia, isPickerCancel, pendingDeliveryMedia, waitForMediaReady } from '../../../services/creatorMediaService';
 import { programErrorText, toProgramError } from '../../../services/programResult';
-import { agreedVideoDue, agreedVideoDueZoned, deliverablesLabel, doorPassLine, formatDateRange, formatDateTime, formatInZone, formatMoney, formatShortDate, parseDay, platformLabel, postDeadlineText, proposalDueText, salesShareText, shootPickRange, uploadDueReason, usageLabel, videoDueText, zoneLabel, zonedInstant, zoneWallClock } from '../../../utils/programFormat';
+import { agreedVideoDue, agreedVideoDueZoned, deliverablesLabel, doorPassLine, formatDateRange, formatDateTime, formatInZone, formatMoney, formatShortDate, parseDay, platformLabel, postDeadlineText, proposalDueText, salesShareText, shootPickRange, uploadDueReason, usageLabel, zoneLabel, zonedInstant, zoneWallClock } from '../../../utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramField, ProgramNotice, ProgramPill, ProgramRow, ProgramSheet, programStyles as s } from '../../programs/ProgramUi';
 import { CalendarGrid, CheckRow, Chip, StarsInput, TimeChips } from '../../programs/ProgramPickers';
 import { playOwnVideo } from '../../programs/VideoTile';
-import { POST_URL_RULES, TRACK_STEPS, TRACK_TITLES, actorWords, currentTrackStep, eventWords, failedPostReason, fixWords, postCheckWords, scriptPartsFor, type ScriptPartSpec } from './contractWords';
+import { POST_URL_RULES, TRACK_STEPS, TRACK_TITLES, actorWords, currentTrackStep, dedupeGigEvents, eventWords, failedPostReason, fixWords, postCheckWords, scriptPartsFor, type ScriptPartSpec } from './contractWords';
 
 // ── Brand (revealed after acceptance) ──────────────────────────────────────
 
@@ -88,20 +88,27 @@ function termsVideoDue(terms: GigTerms, gig: GigWorkspace['gig'], zone: string |
   return agreedVideoDueZoned(terms, gig, zone);
 }
 
-export function TermsHistory({ terms }: { terms: GigTerms[] }): React.ReactElement | null {
+export function TermsHistory({ terms, zone = null }: { terms: GigTerms[]; zone?: string | null }): React.ReactElement | null {
   if (terms.length < 2) return null;
   return <>
     <Text style={s.label}>Terms history</Text>
     <ProgramCard>
       {terms.slice().reverse().map((t, i) => <ProgramRow key={t.version} title={t.version === 1 ? 'Original terms' : `Updated terms${t.created_at ? ` · ${formatShortDate(t.created_at)}` : ''}`}
-        subtitle={`Video due ${videoDueText(t.video_due_at ?? null, t.post_by ?? null)} · ${deliverablesLabel(t.deliverables)}`} value={formatMoney(t.fee_minor, t.currency)} chevron={false} isLast={i === terms.length - 1} />)}
+        subtitle={`Video due ${agreedVideoDueZoned(t, null, zone)} · ${deliverablesLabel(t.deliverables)}`} value={formatMoney(t.fee_minor, t.currency)} chevron={false} isLast={i === terms.length - 1} />)}
     </ProgramCard>
   </>;
 }
 
 /** A change the host proposed (accept / decline) or yours that's waiting. */
-export function ProposalCard({ proposal, currency, busy, onRespond }: { proposal: GigProposal; currency: string; busy: boolean; onRespond: (accept: boolean) => void }): React.ReactElement {
-  const due = proposalDueText(proposal.changes);
+export function ProposalCard({ proposal, currency, busy, onRespond, zone = null }: { proposal: GigProposal; currency: string; busy: boolean; onRespond: (accept: boolean) => void; zone?: string | null }): React.ReactElement {
+  // #4430 item 1e: the proposed due in the gig's zone, with the zone label.
+  const proposedDue = typeof proposal.changes.video_due_at === 'string' ? proposal.changes.video_due_at : null;
+  // A change is saved as the gig zone's wall clock ("2026-12-15T12:00"); an
+  // instant with an offset is read in the zone as it is.
+  const proposedAt = zone && proposedDue && proposedDue.length > 10
+    ? (/(Z|[+-]\d{2}:?\d{2})$/.test(proposedDue) ? parseDay(proposedDue) : zonedInstant(proposedDue.slice(0, 10), proposedDue.slice(11, 16), zone))
+    : null;
+  const due = proposedAt ? `Video due ${formatInZone(proposedAt, zone)}` : proposalDueText(proposal.changes);
   const lines = Object.entries(proposal.changes).filter(([key]) => key !== 'post_by' && key !== 'video_due_at').map(([key, value]) => {
     if (key === 'shoot_date') return `Shoot on ${formatShortDate(String(value))}`;
     if (key === 'usage_days') return `Legacy reuse period: ${usageLabel(Number(value))}`;
@@ -127,7 +134,8 @@ export function ProposalCard({ proposal, currency, busy, onRespond }: { proposal
 // ── Timeline ───────────────────────────────────────────────────────────────
 
 export function Timeline({ events }: { events: GigWorkspace['events'] }): React.ReactElement {
-  const shown = events.slice().reverse().slice(0, 30);
+  // #4430 item 2: one line per action (the action/fact pair is shown once).
+  const shown = dedupeGigEvents(events).slice().reverse().slice(0, 30);
   return <>
     <Text style={s.label}>Timeline</Text>
     <ProgramCard>

@@ -105,10 +105,12 @@ test('1. every new clip is wired to its slot, with its poster beside it', () => 
     assert.ok(media.includes(`${/-/.test(slug) ? `'${slug}'` : slug}: 'v:${name}'`), `${slug} → ${name}`)
     assertClipFiles(name)
   }
-  assert.match(media, /return <LandingMedia media=\{CITY_MEDIA\[slug\]\} hero=\{hero\} \/>/)
+  // #4339 (live cities): any city key resolves through cityMediaFor (the ten
+  // guides, then the live-only cities), and the Home row is the live list.
+  assert.match(media, /return <LandingMedia media=\{media\} hero=\{hero\} \/>/)
   const home = code(read('components/site/home-page.tsx'))
-  assert.match(home, /const CITY_TILES: readonly CityHubSlug\[\] = \['lagos', 'raleigh-nc', 'durham-nc', 'cary-nc', 'brussels'\]/)
-  assert.match(home, /<LandingMedia media=\{CITY_MEDIA\[slug\]\} \/>/)
+  assert.match(home, /const \{ tiles: cityTiles \} = await getCityTiles\(\)/)
+  assert.match(home, /<CityMedia slug=\{city\.slug\} \/>/)
   assert.doesNotMatch(home, /weekend-durham-cover|weekend-lagos-boat/)
 })
 

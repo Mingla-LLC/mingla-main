@@ -1,7 +1,7 @@
-/* #4318 — usemingla.com/links, "Mingla, Edited" (brand guide, 6 Nov 2026), light only.
-   Ported from the approved design contract (links.template.html, version 11): tokens,
-   spacing, container-query breakpoints (phone stack -> tablet column -> desktop two
-   equal panels) and the sheets. Scoped to this page by CSS Modules. */
+/* #4339 — usemingla.com/links, "Mingla, Edited" (brand guide, 6 Nov 2026), light only.
+   Tokens and the sheets come from the approved #4318 design contract. The page is the
+   banners, the Admin strips and the socials: one column on a phone, one grid of two
+   equal aligned columns from the tablet container query up. Scoped by CSS Modules. */
 
 .lk {
   --paper: #f5f4f0;
@@ -48,7 +48,6 @@
   outline: 2px solid var(--orange);
   outline-offset: 2px;
 }
-
 .lk-bar {
   flex: none;
   height: calc(56px + env(safe-area-inset-top, 0px));
@@ -81,106 +80,42 @@
 .lk-grid {
   --stH: 60px;
   --banH: 120px;
-  --cityF: 44px;
-  --chipH: 34px;
+  --gap: 10px;
   width: 100%;
   max-width: 640px;
   margin: 0 auto;
-  /* --fill / --fill-bottom: the room a maximal fit leaves, spread over the
-     section gaps (capped) and the rest at the very bottom (lib/links-fit.ts). */
-  padding: 14px 16px calc(12px + var(--fill-bottom, 0px));
+  padding: 14px 16px 12px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
-  grid-template-areas: 'ban' 'pin' 'head' 'chips' 'list' 'foot';
-  row-gap: calc(14px + var(--fill, 0px));
+  /* banners, the Admin strips (the box the fit measures), the socials */
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  row-gap: 14px;
 }
-/* No admin strips: no empty pin track, so no doubled gap. */
-.lk-grid[data-pins='0'] {
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  grid-template-areas: 'ban' 'head' 'chips' 'list' 'foot';
-}
-/* A quiet week has no chips: drop their track too. */
-.lk-grid[data-quiet='1'][data-pins='1'] {
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  grid-template-areas: 'ban' 'pin' 'head' 'list' 'foot';
-}
-.lk-grid[data-quiet='1'][data-pins='0'] {
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  grid-template-areas: 'ban' 'head' 'list' 'foot';
-}
-.lk-chips[hidden] {
-  display: none;
-}
-.lk-left,
-.lk-right {
-  display: contents;
-}
-.lk-head {
-  grid-area: head;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.lk-city {
-  align-self: flex-start;
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-  border: 0;
-  background: none;
-  padding: 0;
-  font: 400 var(--cityF) / 0.95 var(--serif);
-  letter-spacing: -0.015em;
-  text-align: left;
-  max-width: 100%;
-  min-height: 44px;
-}
-.nm {
-  min-width: 0;
+.lk-pinwrap {
+  position: relative;
+  min-height: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding-bottom: 0.08em;
 }
-.nm em,
 .bn-txt b em,
 .sh-head h2 em {
   font-style: italic;
 }
-.chev {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1.5px solid var(--ink);
-  background: var(--card);
-  transition: transform 0.25s var(--pop);
-}
-.lk-city:hover .chev {
-  transform: translateY(2px);
-}
-.chev svg {
-  width: 16px;
-  height: 16px;
-}
-.lk-line {
-  display: none;
-}
-
+/* No admin strips: no empty pin track, so no doubled gap. */
 .lk-pins {
-  grid-area: pin;
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  align-content: start;
+  gap: var(--gap);
   min-width: 0;
+}
+.lk-pins > li {
+  min-width: 0;
+}
+.pins-more {
+  grid-column: 1 / -1;
 }
 .pins-more .lk-more {
   width: 100%;
@@ -203,12 +138,10 @@
   background: var(--ink);
   color: var(--paper);
 }
-
 .lk-ban {
-  grid-area: ban;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--gap);
 }
 .bn {
   position: relative;
@@ -286,88 +219,10 @@
   padding-bottom: 0.08em;
   text-wrap: balance;
 }
-
-.lk-chips {
-  grid-area: chips;
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-}
-.chip {
-  height: var(--chipH);
-  border: 1.5px solid var(--ink);
-  background: var(--card);
-  border-radius: 999px;
-  padding: 0 12px;
-  font-family: var(--mono);
-  font-weight: 500;
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  white-space: nowrap;
-  flex: none;
-}
-.chip span {
-  color: var(--stone);
-}
-/* Measured chip fit (lib/links-fit.ts chipFitLevel): 1 hides the counts,
-   2 also tightens the chips, so a chip is never clipped. */
-.lk-chips[data-fit='1'] .chip span,
-.lk-chips[data-fit='2'] .chip span {
-  display: none;
-}
-.lk-chips[data-fit='2'] {
-  gap: 4px;
-}
-.lk-chips[data-fit='2'] .chip {
-  padding: 0 8px;
-  letter-spacing: 0.06em;
-}
-.chip[aria-pressed='true'] {
-  background: var(--ink);
-  color: var(--paper);
-}
-.chip[aria-pressed='true'] span {
-  color: rgba(245, 244, 240, 0.7);
-}
-
 /* No strip paints cut off before the first measured fit (a <noscript> rule
    in the component shows everything when scripts never run). */
 .lk[data-fitted='0'] [data-fit-gate] {
   visibility: hidden;
-}
-
-/* The listings and their "more" link share one box, so the link sits flush
-   under the last visible strip and any leftover room falls below it. */
-.lk-listwrap {
-  grid-area: list;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  overflow: hidden;
-}
-/* The quiet week (#4318 addendum 2): heading, up to 3 places, then the links. */
-.lk-quiet-h {
-  flex: none;
-  margin: 0;
-  font: 400 26px / 1.1 var(--serif);
-  letter-spacing: -0.01em;
-}
-.lk-quiet-links {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.lk-quiet-links .lk-more {
-  justify-content: flex-start;
-  padding: 0 4px;
 }
 .lk-list {
   list-style: none;
@@ -377,9 +232,6 @@
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 10px;
-}
-.lk-listwrap > .lk-list {
-  flex: none;
 }
 .st {
   width: 100%;
@@ -411,15 +263,6 @@
   place-items: center;
   font: 400 21px / 1 var(--serif);
   flex: none;
-}
-.st-th--trip {
-  background-color: var(--moss);
-}
-.st-th--experience {
-  background-color: var(--clay);
-}
-.st-th--event {
-  background-color: var(--night);
 }
 .st-th--pin {
   background: var(--orange);
@@ -496,22 +339,6 @@
   background: var(--orange);
   color: var(--ink);
 }
-.lk-empty {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
-  padding: 18px 20px;
-  border: 1.5px dashed var(--line);
-  border-radius: 26px;
-  color: var(--stone);
-  font-size: 14px;
-}
-.lk-empty b {
-  color: var(--ink);
-  font: 400 22px / 1.1 var(--serif);
-}
-
 .lk-more {
   flex: none;
   height: 40px;
@@ -539,9 +366,7 @@
   width: 14px;
   height: 14px;
 }
-
 .lk-foot {
-  grid-area: foot;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -568,9 +393,6 @@
   width: 18px;
   height: 18px;
 }
-
-/* Resets above use :where() so every component class below wins over them. */
-/* short phones */
 @container lk (max-height: 700px) {
   .lk-bar {
     height: calc(48px + env(safe-area-inset-top, 0px));
@@ -581,10 +403,8 @@
   .lk-grid {
     --stH: 54px;
     --banH: 98px;
-    --cityF: 36px;
-    --chipH: 32px;
-    padding: 12px 14px calc(8px + var(--fill-bottom, 0px));
-    row-gap: calc(10px + var(--fill, 0px));
+    padding: 12px 14px 8px;
+    row-gap: 10px;
   }
   .bn {
     border-radius: 26px;
@@ -597,32 +417,12 @@
   .bn-txt b {
     font-size: 19px;
   }
-  /* Short screens with admin strips: the empty state shrinks to its one line
-     so the first admin strip always has room (#4318 ruling). */
-  .lk-empty {
-    padding: 10px 14px;
-    border-radius: 18px;
-    font-size: 13px;
-  }
-  .lk-grid[data-pins='1'] .lk-empty b {
-    display: none;
-  }
-  .lk-quiet-h {
-    font-size: 22px;
-  }
-  .lk-quiet-links .lk-more {
-    height: 34px;
-  }
 }
 @container lk (max-width: 380px) {
-  .chip span {
-    display: none;
-  }
   .soc a {
     width: 32px;
   }
 }
-/* tablet */
 @container lk (min-width: 700px) {
   .lk-bar {
     height: calc(72px + env(safe-area-inset-top, 0px));
@@ -633,10 +433,18 @@
   .lk-grid {
     --stH: 66px;
     --banH: 170px;
-    --cityF: 64px;
-    --chipH: 38px;
-    padding: 28px 32px calc(22px + var(--fill-bottom, 0px));
-    row-gap: calc(18px + var(--fill, 0px));
+    --gap: 12px;
+    max-width: 960px;
+    padding: 28px 32px 22px;
+    row-gap: 18px;
+  }
+  .lk-ban,
+  .lk-pins {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--gap);
+  }
+  .lk-ban {
+    gap: var(--gap);
   }
   .bn {
     border-radius: 36px;
@@ -649,11 +457,6 @@
   .bn-txt b {
     font-size: 34px;
   }
-  .lk-list,
-  .lk-listwrap,
-  .lk-pins {
-    gap: 12px;
-  }
   .st {
     padding: 0 10px;
     gap: 16px;
@@ -661,13 +464,7 @@
   .st-txt b {
     font-size: 16.5px;
   }
-  .chip {
-    font-size: 11px;
-    padding: 0 15px;
-  }
 }
-/* desktop: two equal columns, same height, same inner padding, both centred.
-   Left = banners, admin strips, socials (vertically centred). Right = the week panel. */
 @container lk (min-width: 1024px) {
   .lk-bar {
     height: calc(76px + env(safe-area-inset-top, 0px));
@@ -678,73 +475,8 @@
   .lk-grid {
     --stH: 64px;
     --banH: 128px;
-    --cityF: 84px;
-    --chipH: 38px;
-    --pad: 32px;
-    max-width: 1240px;
-    padding: 36px 48px;
-    column-gap: 48px;
-    row-gap: 0;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-areas: none;
-  }
-  .lk-grid[data-pins='0'],
-  .lk-grid[data-quiet='1'][data-pins='1'],
-  .lk-grid[data-quiet='1'][data-pins='0'] {
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-areas: none;
-  }
-  .lk-left,
-  .lk-right {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    padding: var(--pad);
-    gap: 20px;
-  }
-  .lk-left {
-    justify-content: center;
-    border: 1.5px solid var(--line);
-    border-radius: 40px;
-  }
-  .lk-right {
-    background: var(--panel);
-    border-radius: 40px;
-  }
-  .lk-left > *,
-  .lk-right > * {
-    grid-area: auto;
-  }
-  .lk-head {
-    gap: 8px;
-  }
-  .chev {
-    width: 48px;
-    height: 48px;
-  }
-  .chev svg {
-    width: 20px;
-    height: 20px;
-  }
-  .lk-line {
-    display: block;
-    margin: 0;
-    max-width: 34ch;
-    font-size: 17px;
-    line-height: 1.5;
-    color: var(--stone);
-  }
-  .lk-listwrap {
-    flex: 1;
-  }
-  .lk-foot {
-    justify-content: flex-start;
-  }
-  .lk-ban {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    max-width: 1100px;
+    padding: 36px 48px 28px;
   }
   .bn {
     flex-direction: row;
@@ -769,10 +501,9 @@
     height: 22px;
   }
   .bn-txt b {
-    font-size: 34px;
+    font-size: 30px;
   }
 }
-
 /* sheets: bottom sheet on phone and tablet, centred card on desktop */
 .sh-wrap {
   position: absolute;
@@ -861,27 +592,6 @@
 .sh-body .lk-list {
   overflow: visible;
 }
-.wk {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.wk h3 {
-  margin: 6px 0 0;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  font: 400 22px / 1.1 var(--serif);
-}
-.wk h3 span {
-  font-family: var(--mono);
-  font-weight: 500;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--stone);
-}
 @container lk (min-width: 700px) {
   .sh {
     left: 50%;
@@ -911,9 +621,6 @@
     height: 88%;
     max-height: 88%;
   }
-  .sh.is-tall .wk .lk-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .sh-grab {
     display: none;
   }
@@ -942,60 +649,6 @@
     transform: translate(-50%, -47%) scale(0.97);
   }
 }
-
-.cities {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.cty {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 1.5px solid var(--line);
-  background: var(--card);
-  border-radius: 20px;
-  padding: 10px 14px;
-  text-align: left;
-  min-height: 56px;
-}
-.cty b {
-  display: block;
-  font: 400 22px / 1.1 var(--serif);
-}
-.cty small {
-  color: var(--stone);
-  font-size: 12.5px;
-}
-.cty em {
-  font-style: normal;
-  font-family: var(--mono);
-  font-weight: 500;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--stone);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-.cty[aria-current='true'] {
-  border-color: var(--ink);
-}
-.cty[aria-current='true'] em {
-  color: var(--ink);
-}
-.cty svg {
-  width: 16px;
-  height: 16px;
-}
-
 .opt {
   background: var(--card);
   border: 1.5px solid var(--ink);
@@ -1124,7 +777,6 @@
   color: var(--stone);
   flex: none;
 }
-
 @media (prefers-reduced-motion: reduce) {
   .lk *,
   .lk *::before,

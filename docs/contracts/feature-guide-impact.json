@@ -79,6 +79,7 @@
         "supabase/functions/refund-order/index.ts",
         "supabase/migrations/20280305003281_issue_3281_webhook_fee_unknown.sql",
         "supabase/functions/_shared/ticketRefundStripeThrow.ts",
+        "supabase/functions/_shared/paystackRefunds.ts",
         "mingla-business/src/components/orders/RefundSheet.tsx",
         "mingla-business/src/utils/refundReason.ts",
         "supabase/migrations/20280426004271_issue_4271_failed_refund_never_reaches_stripe.sql",
@@ -298,6 +299,7 @@
         "supabase/functions/_shared/gigMoney.ts",
         "supabase/functions/_shared/gigPaymentCapture.ts",
         "supabase/functions/_shared/paystackWebhookRouter.ts",
+        "supabase/functions/_shared/paystackRefunds.ts",
         "supabase/functions/_shared/stripeWebhookRouter.ts",
         "supabase/functions/gig-hire/function-policy.json",
         "supabase/functions/gig-hire/handler.ts",
@@ -326,7 +328,15 @@
         "supabase/migrations/20280704204402_issue_4402_local_pick_window.sql",
         "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
         "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
-        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql"
+        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql",
+        "app-mobile/src/components/local/localReviewRules.ts",
+        "app-mobile/src/services/programApi.ts",
+        "mingla-admin/src/hooks/useProgramLoad.js",
+        "mingla-admin/src/pages/ProgramDisputesPage.jsx",
+        "mingla-admin/src/pages/crm/GigTimeline.jsx",
+        "mingla-business/src/components/programs/dueChange.ts",
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
+        "mingla-business/src/components/programs/applicantFilters.ts"
       ]
     },
     {
@@ -553,7 +563,8 @@
       "capability_key": "social-referrals",
       "paths": [
         "app-mobile/src/components/ConnectionsPage.tsx",
-        "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql"
+        "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql",
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
       ]
     },
     {
@@ -2278,7 +2289,8 @@
         "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql",
         "supabase/migrations/20280508003645_issue_3645_payout_debt_returns.sql",
         "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
-        "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql"
+        "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql",
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
       ]
     },
     {
@@ -2805,7 +2817,28 @@
         "mingla-marketing/public/og/city-new-york-city.jpg",
         "mingla-marketing/public/og/city-paris.jpg",
         "mingla-marketing/public/og/city-raleigh-nc.jpg",
-        "mingla-marketing/public/og/city-washington-dc.jpg"
+        "mingla-marketing/public/og/city-washington-dc.jpg",
+        "mingla-marketing/components/cities/live-city-page.tsx",
+        "mingla-marketing/lib/cities-page.ts",
+        "mingla-marketing/lib/live-cities.ts",
+        "mingla-marketing/lib/search/core-page-schema.ts",
+        "mingla-marketing/public/marketing/cities/asset-manifest.json",
+        "mingla-marketing/public/marketing/site/m/c-abuja-sm.mp4",
+        "mingla-marketing/public/marketing/site/m/c-abuja.jpg",
+        "mingla-marketing/public/marketing/site/m/c-abuja.mp4",
+        "mingla-marketing/public/marketing/site/m/c-abuja.webp",
+        "mingla-marketing/public/marketing/site/m/c-ibadan-sm.mp4",
+        "mingla-marketing/public/marketing/site/m/c-ibadan.jpg",
+        "mingla-marketing/public/marketing/site/m/c-ibadan.mp4",
+        "mingla-marketing/public/marketing/site/m/c-ibadan.webp",
+        "mingla-marketing/public/marketing/site/m/c-kaduna-sm.mp4",
+        "mingla-marketing/public/marketing/site/m/c-kaduna.jpg",
+        "mingla-marketing/public/marketing/site/m/c-kaduna.mp4",
+        "mingla-marketing/public/marketing/site/m/c-kaduna.webp",
+        "mingla-marketing/public/marketing/site/m/c-kano-sm.mp4",
+        "mingla-marketing/public/marketing/site/m/c-kano.jpg",
+        "mingla-marketing/public/marketing/site/m/c-kano.mp4",
+        "mingla-marketing/public/marketing/site/m/c-kano.webp"
       ]
     },
     {
@@ -3703,7 +3736,8 @@
         "supabase/migrations/20280704304402_issue_4402_earnings_payout_floor.sql",
         "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
         "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
-        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql"
+        "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql",
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
       ]
     }
   ]
