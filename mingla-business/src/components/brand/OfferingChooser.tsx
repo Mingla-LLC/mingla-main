@@ -9,12 +9,11 @@ import {
 import * as Haptics from "expo-haptics";
 
 import {
-  accent,
-  glass,
+  color,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  scrim,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon, type IconName } from "../ui/Icon";
 // #4389 addendum 2 — one list of 5 with a silent looping clip behind each row.
@@ -306,7 +305,7 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
                   {option.subhead}
                 </Text>
               </View>
-              <Icon name="chevR" size={18} color="rgba(255,255,255,0.85)" />
+              <Icon name="chevR" size={18} color={color.text1} />
             </View>
           </Pressable>
         ))}
@@ -317,35 +316,35 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   headline: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
   subhead: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
     textAlign: "center",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   list: {
     width: "100%",
     maxWidth: 560,
     alignSelf: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   optionPressable: {
     minHeight: 76,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 2,
     borderColor: "transparent",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     justifyContent: "center",
   },
   // The venue row is the same height as the rest in the list (kept as its
@@ -354,7 +353,7 @@ const styles = StyleSheet.create({
     minHeight: 76,
   },
   optionFocused: {
-    borderColor: accent.warm,
+    borderColor: color.paper,
   },
   optionPressed: {
     opacity: 0.88,
@@ -363,50 +362,50 @@ const styles = StyleSheet.create({
   // over any frame.
   optionShade: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(8, 9, 12, 0.55)",
+    backgroundColor: scrim.modal,
   },
   optionInner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   optionText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: space[1],
   },
   optionTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: color.text1,
   },
   optionSubhead: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: "rgba(255,255,255,0.82)",
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   payoutNotice: {
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: accent.tint,
+    gap: space[1],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tabOn,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    marginBottom: spacing.xs,
+    borderColor: color.lineStrong,
+    marginBottom: space[1],
   },
   payoutNoticeTitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   payoutNoticeBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
 });
 

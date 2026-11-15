@@ -14,6 +14,7 @@ import { publicationReceiptLine } from "../../../../sites/publicationFlow";
 import type { BrandSiteVersion } from "../../../../sites/contracts";
 import { WEBSITE_SECTIONS, type WebsiteSection } from "../../../../sites/websiteNav";
 
+import { color } from "../../../../constants/designSystem";
 /** #2829 W2 — why a publish was refused, when the owner can fix it. */
 export const PUBLISH_REFUSAL_COPY: Readonly<Record<string, string>> = {
   PATH_COLLISION: "Two parts of your website use the same address. Change one page\u2019s address in Pages, then publish again.",
@@ -522,7 +523,7 @@ function History({ versions, activeId, canRestore, onRestore, loading }: {
 
 const styles = StyleSheet.create({
   setupHost: { gap: 12 },
-  setupRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: "rgba(255, 255, 255, 0.04)", flexWrap: "wrap" },
+  setupRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: color.fill.inset, flexWrap: "wrap" },
   setupRowText: { fontSize: 14, color: ui.t1 },
   setupRowValue: { flex: 1, textAlign: "right", fontSize: 14, color: ui.t3 },
   grow: { flex: 1, minWidth: 0 },

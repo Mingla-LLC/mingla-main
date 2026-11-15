@@ -36,7 +36,8 @@ describe("#4173 Guides, Community and Brand-group polish", () => {
     expect(community).toContain("selectedCommunityTabOffset");
     expect(community).toContain("revealActiveSection");
     expect(community).toContain("minHeight: 44");
-    expect(community).toContain("(width - 48 - spacing.sm) / 2");
+    // [TEST-MOD-APPROVED #4420] — spacing.sm is the space[2] token now (same 8).
+    expect(community).toContain("(width - 48 - space[2]) / 2");
   });
 
   it("keeps roster email out of the collapsed header and inside authorized details", () => {

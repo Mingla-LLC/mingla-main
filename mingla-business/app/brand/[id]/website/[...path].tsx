@@ -3,8 +3,9 @@ import React from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import { accent, canvas } from "../../../../src/constants/designSystem";
 
+
+import { color } from "../../../../src/constants/designSystem";
 /*
  * #2829 W9r — /brand/<id>/website/<section>[/<entry|new>] and
  * /website/preview, plus the old addresses (look, domains, plan?part=…),
@@ -31,7 +32,7 @@ export default function BrandWebsiteSectionRoute(): React.ReactElement {
   const brandId = first(params.id);
   const segments = Array.isArray(params.path) ? params.path : typeof params.path === "string" ? params.path.split("/") : [];
   return (
-    <React.Suspense fallback={<View style={styles.loading}><ActivityIndicator color={accent.warm} accessibilityLabel="Loading your website" /></View>}>
+    <React.Suspense fallback={<View style={styles.loading}><ActivityIndicator color={color.text1} accessibilityLabel="Loading your website" /></View>}>
       <LazyWebsiteApp
         brandId={typeof brandId === "string" ? brandId : ""}
         segments={segments}
@@ -42,5 +43,5 @@ export default function BrandWebsiteSectionRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: canvas.discover },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: color.canvas },
 });

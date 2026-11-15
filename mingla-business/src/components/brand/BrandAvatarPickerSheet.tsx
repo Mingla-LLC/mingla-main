@@ -40,12 +40,10 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import {
-  accent,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useBrandAvatarUpload } from "../../hooks/useBrandAvatarUpload";
 import { BRAND_AVATAR_MAX_BYTES, BrandAvatarError } from "../../utils/brandAvatarRules";
@@ -227,14 +225,14 @@ export const BrandAvatarPickerSheet: React.FC<BrandAvatarPickerSheetProps> = ({
 
         {step === "error" && errorMessage !== null ? (
           <View style={styles.errorRow}>
-            <Icon name="flag" size={16} color={semantic.error} />
+            <Icon name="flag" size={16} color={color.errorText} />
             <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         ) : null}
 
         {isBusy ? (
           <View style={styles.busyRow}>
-            <ActivityIndicator size="small" color={accent.warm} />
+            <ActivityIndicator size="small" color={color.text1} />
             <Text style={styles.busyText}>
               {step === "picking"
                 ? "Opening photos…"
@@ -277,53 +275,53 @@ export const BrandAvatarPickerSheet: React.FC<BrandAvatarPickerSheetProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
-    gap: spacing.md,
+    paddingTop: space[6],
+    paddingBottom: space[7],
+    gap: space[4],
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   errorRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    gap: space[2],
+    padding: space[2],
+    borderRadius: radius.sm,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.32)",
+    borderColor: color.errorLine,
   },
   errorText: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: semantic.error,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.errorText,
   },
   busyRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2],
   },
   busyText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   actionRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   actionCell: {
     flex: 1,

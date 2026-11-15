@@ -27,13 +27,10 @@ import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
 import { TopBar } from "../../src/components/ui/TopBar";
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
@@ -308,7 +305,7 @@ export default function AccountTab(): React.ReactElement {
            is populated, even if the status machine is transiently in a loading
            state during a background refetch. */}
         {brandList.status === "ready" || brands.length > 0 ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.title}>Your brands</Text>
             <Text style={styles.body}>Tap a brand to open its profile.</Text>
             <View style={styles.brandRowsCol}>
@@ -336,7 +333,7 @@ export default function AccountTab(): React.ReactElement {
                         : ""}
                     </Text>
                   </View>
-                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                  <Icon name="chevR" size={16} color={color.text3} />
                 </Pressable>
               ))}
             </View>
@@ -344,19 +341,19 @@ export default function AccountTab(): React.ReactElement {
         ) : brandList.status === "auth_loading" ||
           brandList.status === "query_loading" ||
           isAuthWarming ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.title}>Your brands</Text>
             <Text style={styles.body}>Loading your brands…</Text>
           </GlassCard>
         ) : brandList.status === "error" ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.title}>Your brands</Text>
             <Text style={styles.body}>
               Couldn&apos;t load your brands. Pull down or reopen Account to retry.
             </Text>
           </GlassCard>
         ) : brandList.status === "empty" ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.title}>Your brands</Text>
             <Text style={styles.body}>
               Create your first brand from the brand switcher.
@@ -370,7 +367,7 @@ export default function AccountTab(): React.ReactElement {
             within seconds of the toggle thanks to usePartnerStripeStatus
             staleTime:0 + refetchOnWindowFocus:true. */}
         {isPartner ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.title}>Mingla Partner</Text>
             <Text style={styles.body}>
               You earn 0.15% of every ticket sold on brands you manage as a brand admin.
@@ -404,7 +401,7 @@ export default function AccountTab(): React.ReactElement {
             reads zero rows via is_support_staff() RLS (SPEC §3.3 / §7.1, CF-C3:
             a sub-page card, never a bottom tab). */}
         {supportStaff.isStaff ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.title}>Support — Live Chats</Text>
             <Text style={styles.body}>
               You&apos;re a Mingla support staffer. Answer live chats, set your
@@ -421,7 +418,7 @@ export default function AccountTab(): React.ReactElement {
         ) : null}
 
         {/* Cycle 14 — Settings hub: 3 sub-route nav rows per SPEC §4.7.1 + DEC-096 D-14-17. */}
-        <GlassCard variant="elevated" padding={spacing.lg}>
+        <GlassCard variant="elevated" padding={space[6]}>
           <Text style={styles.title}>Settings</Text>
           <Text style={styles.body}>
             Manage your profile, notifications, and session.
@@ -605,7 +602,7 @@ const SettingsNavRow: React.FC<SettingsNavRowProps> = ({
           <Icon
             name={icon}
             size={18}
-            color={destructive ? semantic.error : textTokens.primary}
+            color={destructive ? color.errorText : color.text1}
           />
         )}
       </View>
@@ -625,7 +622,7 @@ const SettingsNavRow: React.FC<SettingsNavRowProps> = ({
           </Text>
         </View>
       ) : null}
-      <Icon name="chevR" size={16} color={textTokens.tertiary} />
+      <Icon name="chevR" size={16} color={color.text3} />
     </Pressable>
   );
 };
@@ -635,49 +632,49 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingBottom: spacing.xl * 4,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[6],
+    paddingBottom: space[7] * 4,
+    gap: space[4],
   },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[1],
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    fontWeight: type.small.fontWeight,
+    color: color.text2,
   },
   // Cycle 14 — Settings nav rows
   navRowsCol: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   settingsDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginVertical: spacing.xs,
+    backgroundColor: color.line,
+    marginVertical: space[1],
   },
   navRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[4],
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[2],
+    borderRadius: radius.md,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   navRowPressed: {
     opacity: 0.7,
@@ -685,92 +682,92 @@ const styles = StyleSheet.create({
   navIconBadge: {
     width: 36,
     height: 36,
-    borderRadius: radiusTokens.md,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
   navIconBadgeDestructive: {
-    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    backgroundColor: color.errorTint,
   },
   navLabel: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   navLabelDestructive: {
-    color: semantic.error,
+    color: color.errorText,
   },
   navUnreadBadge: {
     minWidth: 20,
     height: 20,
     borderRadius: 10,
     paddingHorizontal: 6,
-    backgroundColor: accent.warm,
+    backgroundColor: color.badge,
     alignItems: "center",
     justifyContent: "center",
   },
   navUnreadBadgeText: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#ffffff",
+    color: color.textStrong,
   },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    bottom: space[7],
+    paddingHorizontal: space[4],
   },
 
   // Your brands rows ----------------------------------------------------
   brandRowsCol: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[4],
+    paddingVertical: space[2],
+    paddingHorizontal: space[2],
+    borderRadius: radius.md,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   brandAvatar: {
     width: 40,
     height: 40,
-    borderRadius: radiusTokens.md,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   brandInitial: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
   },
   brandTextCol: {
     flex: 1,
     minWidth: 0,
   },
   brandName: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   brandEventCount: {
     marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    color: color.text2,
   },
 });

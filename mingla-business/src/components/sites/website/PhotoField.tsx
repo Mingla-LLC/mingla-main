@@ -7,6 +7,7 @@ import { WebsiteIcon } from "./WebsiteIcon";
 import { uploadSitePhoto, useMediaLibrary, type PictureRef } from "../../../sites/contentApi";
 import { BrandSitesError } from "../../../services/brandSitesService";
 
+import { color, scrim } from "../../../constants/designSystem";
 /*
  * #2829 W9r — picking a photo (or a cover video) for the website through the
  * existing media pipeline: from the site's photos, or uploaded from this
@@ -144,21 +145,21 @@ export function PhotoChooser({ visible, onClose, onPick, kind = "image" }: {
 
 const styles = StyleSheet.create({
   slot: {
-    borderWidth: 1, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.22)", borderRadius: 12,
-    alignItems: "center", justifyContent: "center", gap: 6, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.02)",
+    borderWidth: 1, borderStyle: "dashed", borderColor: color.lineStrong, borderRadius: 12,
+    alignItems: "center", justifyContent: "center", gap: 6, overflow: "hidden", backgroundColor: color.fill.tableHead,
   },
   slotFilled: { borderStyle: "solid", alignItems: "flex-start", justifyContent: "flex-end", padding: 10 },
-  slotChip: { backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999, paddingHorizontal: 9, height: 24, justifyContent: "center" },
-  slotChipText: { color: "#ffffff", fontSize: 12, fontWeight: "600" },
+  slotChip: { backgroundColor: scrim.modal, borderRadius: 999, paddingHorizontal: 9, height: 24, justifyContent: "center" },
+  slotChipText: { color: color.text1, fontSize: 12, fontWeight: "600" },
   slotText: { color: ui.t3, fontSize: 13 },
   slotActions: { flexDirection: "row", gap: 8, marginTop: 8 },
-  scrim: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 16 },
-  dialog: { width: "100%", maxWidth: 560, maxHeight: "90%", backgroundColor: "#16181c", borderWidth: 1, borderColor: ui.border2, borderRadius: 24, padding: 20 },
+  scrim: { flex: 1, backgroundColor: scrim.modal, alignItems: "center", justifyContent: "center", padding: 16 },
+  dialog: { width: "100%", maxWidth: 560, maxHeight: "90%", backgroundColor: color.card, borderWidth: 1, borderColor: ui.border2, borderRadius: 24, padding: 20 },
   title: { fontSize: 18, lineHeight: 24, fontWeight: "700", color: ui.t1, marginBottom: 6 },
   uploadRow: { flexDirection: "row", marginVertical: 12 },
   grid: { maxHeight: 320 },
   gridInner: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   gridItem: { width: 96, height: 72, borderRadius: 8, overflow: "hidden" },
-  gridImage: { width: "100%", height: "100%", backgroundColor: "rgba(255,255,255,0.06)" },
+  gridImage: { width: "100%", height: "100%", backgroundColor: color.fill.tile },
   actions: { flexDirection: "row", justifyContent: "flex-end", marginTop: 16 },
 });

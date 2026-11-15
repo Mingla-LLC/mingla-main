@@ -39,12 +39,9 @@ import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { Icon } from "../../../src/components/ui/Icon";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import {
-  accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
@@ -454,7 +451,7 @@ export default function BrandTeamRoute(): React.ReactElement {
               accessibilityLabel="Invite team member"
               style={styles.headerInviteCta}
             >
-              <Icon name="plus" size={22} color={textTokens.primary} />
+              <Icon name="plus" size={22} color={color.text1} />
             </Pressable>
           ) : null
         }
@@ -616,7 +613,7 @@ const SectionList: React.FC<SectionListProps> = ({
               // text.primary on accent.tint (10.66:1, DESIGN §4.3) —
               // deliberately NOT the role pill's warm-on-tint.
               <View style={styles.partnerBadge} testID="team-partner-badge">
-                <Icon name="award" size={10} color={accent.warm} />
+                <Icon name="award" size={10} color={color.text1} />
                 <Text style={styles.partnerBadgeText}>Mingla Partner</Text>
               </View>
             ) : null}
@@ -674,24 +671,24 @@ function memberRowToEntry(
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   banner: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(59, 130, 246, 0.10)",
+    marginTop: space[2],
+    marginBottom: space[4],
+    padding: space[2] + 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.infoTint,
     borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.24)",
+    borderColor: color.line,
   },
   bannerText: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 18,
   },
   headerInviteCta: {
@@ -700,12 +697,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
     alignItems: "center",
   },
   // ORCH-1309 — cold-load resolving spinner host.
@@ -715,27 +712,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   section: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   sectionTitle: {
     fontSize: 11,
     fontWeight: "700",
-    color: textTokens.tertiary,
+    color: color.text3,
     textTransform: "uppercase",
     letterSpacing: 0.6,
-    marginBottom: spacing.xs + 2,
+    marginBottom: space[1] + 2,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2] + 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.xs + 2,
+    borderColor: color.line,
+    marginBottom: space[1] + 2,
   },
   rowPending: {
     opacity: 0.85,
@@ -750,11 +747,11 @@ const styles = StyleSheet.create({
   rowName: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowEmail: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   rowMetaCol: {
@@ -762,17 +759,17 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   rolePill: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 3,
     borderRadius: 999,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.32)",
+    borderColor: color.lineStrong,
   },
   rolePillText: {
     fontSize: 11,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   // ORCH-1384 — "Mingla Partner" badge (DESIGN §2.4). accent.tint fill +
   // accent.border border are real tokens; text.primary text (10.66:1).
@@ -780,27 +777,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 3,
-    borderRadius: radiusTokens.full,
-    backgroundColor: accent.tint,
+    borderRadius: radius.full,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   partnerBadgeText: {
     fontSize: 11,
     fontWeight: "600",
     letterSpacing: 0.2,
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSubText: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   gateCaption: {
     fontSize: 12,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
+    color: color.text3,
+    marginTop: space[4],
     textAlign: "center",
   },
 });

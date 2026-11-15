@@ -13,7 +13,11 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { accent, glass, radius, semantic, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+} from "../../constants/designSystem";
 import { useCreateSupportTicket } from "../../hooks/useSupportTickets";
 import { useBrandList, useCurrentBrandId } from "../../store/currentBrandStore";
 import { uploadSupportImage } from "../../services/supportService";
@@ -158,7 +162,7 @@ export const SupportNewRequestForm: React.FC<SupportNewRequestFormProps> = ({
   }, [sending, topic, summary, details]);
 
   return (
-    <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+    <GlassCard variant="elevated" radius="md" padding={space[6]}>
       <View style={styles.headerRow}>
         <Text style={styles.cardTitle}>{supportCopy("form.title")}</Text>
         <Pressable
@@ -199,7 +203,7 @@ export const SupportNewRequestForm: React.FC<SupportNewRequestFormProps> = ({
         value={summary}
         onChangeText={setSummary}
         placeholder={supportCopy("form.summary_placeholder")}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         style={styles.subjectInput}
         maxLength={SUPPORT_SUMMARY_MAX}
         editable={!sending}
@@ -212,7 +216,7 @@ export const SupportNewRequestForm: React.FC<SupportNewRequestFormProps> = ({
         value={details}
         onChangeText={setDetails}
         placeholder={supportCopy("form.details_placeholder")}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         style={[styles.subjectInput, styles.detailsInput]}
         maxLength={SUPPORT_DETAILS_MAX}
         editable={!sending}
@@ -293,68 +297,68 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   cancel: {
     fontSize: 14,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   disabledText: { opacity: 0.4 },
   label: {
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    marginTop: space[4],
+    marginBottom: space[1],
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.4,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   hintSmall: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   chips: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1] + 2,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     maxWidth: 220,
   },
   chipSelected: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   chipText: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   chipTextSelected: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   subjectInput: {
     minHeight: 46,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: 12,
     overflow: "hidden",
-    color: textTokens.primary,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    color: color.text1,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: color.lineStrong,
     letterSpacing: 0,
   },
   detailsInput: {
@@ -362,17 +366,17 @@ const styles = StyleSheet.create({
     maxHeight: 220,
   },
   error: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     fontSize: 13,
-    color: semantic.errorText,
+    color: color.errorText,
   },
   sendRow: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   disabledHint: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     textAlign: "center",
-    color: textTokens.tertiary,
+    color: color.text3,
     fontSize: 12,
   },
 });

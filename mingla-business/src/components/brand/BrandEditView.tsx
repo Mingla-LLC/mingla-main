@@ -67,13 +67,10 @@ import {
 } from "./brandContactPhoneRules";
 
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { brandPublicUrl } from "../../constants/publicUrls";
 import { joinBrandDescription } from "../../services/brandMapping";
@@ -182,8 +179,8 @@ const InlineToggle: React.FC<InlineToggleProps> = ({
     style={[
       toggleStyles.track,
       {
-        backgroundColor: value ? accent.warm : glass.tint.profileBase,
-        borderColor: value ? accent.border : glass.border.profileBase,
+        backgroundColor: value ? color.paper : color.fill.inset,
+        borderColor: value ? color.lineStrong : color.line,
       },
     ]}
   >
@@ -210,7 +207,7 @@ const toggleStyles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 999,
-    backgroundColor: "#ffffff",
+    backgroundColor: color.paper,
   },
 });
 
@@ -244,8 +241,8 @@ const InlineTextArea: React.FC<InlineTextAreaProps> = ({
         {
           minHeight,
           borderColor: focused
-            ? accent.warm
-            : "rgba(255, 255, 255, 0.12)",
+            ? color.paper
+            : color.lineStrong,
           borderWidth: focused ? 1.5 : 1,
         },
       ]}
@@ -254,7 +251,7 @@ const InlineTextArea: React.FC<InlineTextAreaProps> = ({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         accessibilityLabel={accessibilityLabel}
         multiline
         textAlignVertical="top"
@@ -264,9 +261,9 @@ const InlineTextArea: React.FC<InlineTextAreaProps> = ({
         style={[
           textAreaStyles.input,
           {
-            color: textTokens.primary,
-            fontSize: typography.body.fontSize,
-            fontWeight: typography.body.fontWeight,
+            color: color.text1,
+            fontSize: type.body.fontSize,
+            fontWeight: type.body.fontWeight,
           },
         ]}
       />
@@ -276,8 +273,8 @@ const InlineTextArea: React.FC<InlineTextAreaProps> = ({
 
 const textAreaStyles = StyleSheet.create({
   container: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-    borderRadius: radiusTokens.sm,
+    backgroundColor: color.fill.inset,
+    borderRadius: radius.xs,
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 12,
@@ -660,7 +657,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           <TopBar leftKind="back" title="Edit brand" onBack={onCancel} rightSlot={<View />} />
         </View>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.notFoundTitle}>Brand not found</Text>
             {/*
               #3259 — was "doesn't exist or has been removed", which ASSERTS a
@@ -729,7 +726,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           ref={scrollRef}
           contentContainerStyle={[
             styles.scroll,
-            { paddingBottom: spacing.xl + Math.max(insets.bottom, spacing.md) },
+            { paddingBottom: space[7] + Math.max(insets.bottom, space[4]) },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -742,7 +739,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               ORCH-1256 — the anchor View wraps the card (GlassCard doesn't
               forward onLayout); as the first content child its y ≈ 0. */}
           <View onLayout={handleSectionLayout("photo")}>
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <View style={styles.photoBlock}>
               <View style={styles.heroAvatarWrap}>
                 {/* ORCH-0807 — read photo from draft so the just-uploaded
@@ -761,7 +758,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
                   style={styles.photoEditBtn}
                   hitSlop={6}
                 >
-                  <Icon name="edit" size={14} color="#ffffff" />
+                  <Icon name="edit" size={14} color={color.ink} />
                 </Pressable>
               </View>
               <View style={styles.slugRow}>
@@ -770,7 +767,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
                     {brandPublicUrl(brand.slug).replace(/^https?:\/\//, "")}
                   </Text>
                 </Text>
-                <Icon name="shield" size={12} color={textTokens.tertiary} />
+                <Icon name="shield" size={12} color={color.text3} />
               </View>
               {/* Cycle 17e-A: slug locked per I-17 + trg_brands_immutable_slug */}
               <Text style={styles.slugLockedHelper}>
@@ -848,7 +845,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
                 hue={draft.coverHue}
                 mediaUrl={draft.coverMediaUrl ?? null}
                 mediaType={draft.coverMediaType ?? null}
-                radius={radiusTokens.lg}
+                radius={radius.md}
                 label="cover"
                 height={120}
                 muted={true}
@@ -1039,7 +1036,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               Your email and phone stay private. Mingla uses them for reminders about waiting enquiries.
             </Text>
             {/* #4111 — "Let guests message us" (brands.enquiries_enabled). */}
-            <GlassCard variant="base" padding={spacing.md}>
+            <GlassCard variant="base" padding={space[4]}>
               <View style={styles.toggleRow}>
                 <View style={styles.toggleTextCol}>
                   <Text style={styles.toggleLabel}>Let guests message us</Text>
@@ -1158,7 +1155,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
 
           {/* SECTION E — Display */}
           <Text style={styles.sectionLabel}>DISPLAY</Text>
-          <GlassCard variant="base" padding={spacing.md}>
+          <GlassCard variant="base" padding={space[4]}>
             <View style={styles.toggleRow}>
               <View style={styles.toggleTextCol}>
                 <Text style={styles.toggleLabel}>Show attendee count</Text>
@@ -1289,17 +1286,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   kbWrap: {
     flex: 1,
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
   // ORCH-1309 — cold-load resolving spinner host.
   resolvingHost: {
@@ -1310,22 +1307,22 @@ const styles = StyleSheet.create({
 
   // Not-found state ------------------------------------------------------
   notFoundTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[1],
   },
   notFoundBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   notFoundBtnRow: {
     flexDirection: "row",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 
   // Photo card ----------------------------------------------------------
@@ -1337,7 +1334,7 @@ const styles = StyleSheet.create({
   // bounding box. Replaces the prior `heroAvatar` inline composition.
   heroAvatarWrap: {
     position: "relative",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   photoEditBtn: {
     position: "absolute",
@@ -1346,89 +1343,89 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 999,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
     borderWidth: 2,
-    borderColor: "#14171c",
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
   slugText: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   slugPrefix: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   slugValue: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text1,
     fontWeight: "600",
   },
 
   // Section labels + fields ---------------------------------------------
   sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
+    color: color.text3,
+    paddingHorizontal: space[1],
+    paddingTop: space[2],
   },
   fieldsCol: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   taglineCounter: {
     marginTop: 4,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     textAlign: "right",
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
 
   kindHint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.xs,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
+    marginTop: space[1],
+    paddingHorizontal: space[1],
   },
 
   // Brand cover (ORCH-0805) ------------------------------------------
   coverPreviewWrap: {
-    borderRadius: radiusTokens.lg,
+    borderRadius: radius.md,
     overflow: "hidden",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
     height: 120,
   },
   coverCtaRow: {
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 
   // Display toggle row --------------------------------------------------
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   toggleTextCol: {
     flex: 1,
     minWidth: 0,
   },
   toggleLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   toggleSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
   },
 
@@ -1437,8 +1434,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    bottom: space[7],
+    paddingHorizontal: space[4],
   },
 
   // Cycle 17e-A — slug-locked hint
@@ -1446,39 +1443,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   slugLockedHelper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
   },
 
   // Cycle 17e-A — danger zone for brand deletion (matches BrandProfileView pattern)
   dangerZone: {
-    marginTop: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.md,
+    marginTop: space[7],
+    paddingTop: space[6],
+    paddingHorizontal: space[4],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
-    gap: spacing.sm,
+    borderTopColor: color.line,
+    gap: space[2],
   },
   dangerLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: semantic.error,
+    color: color.errorText,
   },
   dangerHelper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
   },
   dangerCta: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
 });
 

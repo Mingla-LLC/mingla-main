@@ -39,13 +39,10 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Spinner } from "../ui/Spinner";
 import {
-  accent,
-  canvas,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -699,7 +696,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
     return (
       <View style={styles.host}>
         <View style={styles.centeredState} testID="bank-connect-opening-secure-setup">
-          <Spinner size={48} color={accent.warm} />
+          <Spinner size={48} color={color.text1} />
           <Text style={styles.stateTitle}>{BRAND_ONBOARD_COPY.onboard.opening}</Text>
         </View>
       </View>
@@ -710,7 +707,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
     return (
       <View style={styles.host}>
         <View style={styles.centeredState}>
-          <Spinner size={48} color={accent.warm} />
+          <Spinner size={48} color={color.text1} />
           <Text style={styles.stateTitle}>Loading bank setup…</Text>
           <Text style={styles.stateBody}>
             We{"’"}re getting the payout details for this brand.
@@ -828,7 +825,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
           {!setupCountryFixed ? (
             <>
               <View style={styles.heroIcon}>
-                <Icon name="bank" size={28} color={accent.warm} />
+                <Icon name="bank" size={28} color={color.text1} />
               </View>
               <Text style={styles.title} accessibilityRole="header">
                 {BRAND_ONBOARD_COPY.onboard.title}
@@ -884,7 +881,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
               accessibilityLabel="Updating your payout country"
               testID="bank-connect-rail-switching"
             >
-              <Spinner size={36} color={accent.warm} />
+              <Spinner size={36} color={color.text1} />
               <Text style={styles.stateBody}>
                 Updating your payout country…
               </Text>
@@ -944,7 +941,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
               {!isBrandCreateFunnel ? (
                 <GlassCard
                   variant="base"
-                  padding={spacing.md}
+                  padding={space[4]}
                   style={styles.prerequisites}
                   testID="bank-connect-have-ready"
                 >
@@ -1026,7 +1023,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
             skipChoicesOpen ? (
               <GlassCard
                 variant="base"
-                padding={spacing.md}
+                padding={space[4]}
                 style={styles.skipChoices}
                 testID="bank-connect-skip-choices"
               >
@@ -1066,13 +1063,13 @@ export default function BrandBankConnectBody(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   topBar: {
     minHeight: 56,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1080,10 +1077,10 @@ const styles = StyleSheet.create({
   topBarTitle: {
     flex: 1,
     textAlign: "center",
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   topBarSpacer: {
     width: 64,
@@ -1093,15 +1090,15 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxl,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
+    paddingBottom: space[9],
     alignItems: "center",
   },
   content: {
     width: "100%",
     maxWidth: 640,
-    gap: spacing.md,
+    gap: space[4],
   },
   heroIcon: {
     width: 56,
@@ -1110,74 +1107,74 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   prerequisites: {
     width: "100%",
   },
   prereqLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
   },
   prereqItem: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    paddingVertical: spacing.xxs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    paddingVertical: space[1],
   },
   errorCard: {
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
+    borderRadius: radius.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   errorText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text1,
     textAlign: "center",
   },
   railSwitching: {
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
+    gap: space[2],
+    paddingVertical: space[6],
   },
   legalPressable: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   legal: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
   legalLink: {
-    color: textTokens.secondary,
+    color: color.text2,
     textDecorationLine: "underline",
   },
   // #948 W4 [web-skip-download] — the Skip affordance. Kept deliberately quiet
@@ -1186,30 +1183,30 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.sm,
-    marginTop: spacing.xs,
+    paddingVertical: space[2],
+    marginTop: space[1],
   },
   skipLink: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
     textDecorationLine: "underline",
   },
   skipChoices: {
     width: "100%",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   skipHeading: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   skipSubtext: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   centeredState: {
     flex: 1,
@@ -1218,24 +1215,24 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
+    gap: space[4],
+    paddingHorizontal: space[6],
   },
   stateTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
   stateBody: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   stateActions: {
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
   },
 });

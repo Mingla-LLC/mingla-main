@@ -21,6 +21,7 @@ import { COLLECTION_COPY, formatWebsiteDay } from "../../../../sites/websiteCopy
 import type { CollectionSection as CollectionKind } from "../../../../sites/websiteNav";
 import { BrandSitesError } from "../../../../services/brandSitesService";
 
+import { color, scrim } from "../../../../constants/designSystem";
 const EMPTY_ICON: Record<CollectionKind, WebsiteIconName> = { destinations: "pin", stories: "book", reviews: "quote" };
 
 /** The site page that lists this collection ("Stamped destinations"), when there is one. */
@@ -313,19 +314,19 @@ const styles = StyleSheet.create({
   rowMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingLeft: 14, paddingRight: 4, minHeight: 64 },
   rowHover: { backgroundColor: ui.card2 },
   chevron: { width: 32, height: 44, alignItems: "center", justifyContent: "center" },
-  thumb: { width: 56, height: 42, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.06)" },
+  thumb: { width: 56, height: 42, borderRadius: 8, backgroundColor: color.fill.tile },
   title: { fontSize: 14, lineHeight: 20, fontWeight: "600", color: ui.t1 },
   quote: { fontWeight: "500" },
   sub: { fontSize: 12.5, lineHeight: 17, color: ui.t3 },
-  subWarn: { color: "#fcd27a" },
+  subWarn: { color: color.warningText },
   minis: { flexDirection: "row", gap: 4 },
   help: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 10 },
-  scrim: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 16 },
-  dialog: { width: "100%", maxWidth: 520, backgroundColor: "#16181c", borderWidth: 1, borderColor: ui.border2, borderRadius: 24, padding: 20 },
+  scrim: { flex: 1, backgroundColor: scrim.modal, alignItems: "center", justifyContent: "center", padding: 16 },
+  dialog: { width: "100%", maxWidth: 520, backgroundColor: color.card, borderWidth: 1, borderColor: ui.border2, borderRadius: 24, padding: 20 },
   dialogTitle: { fontSize: 18, lineHeight: 24, fontWeight: "700", color: ui.t1, marginBottom: 6 },
   categoryList: { marginTop: 12, gap: 8 },
   categoryRow: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44 },
-  input: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: "rgba(255,255,255,0.03)", paddingHorizontal: 12, color: ui.t1, fontSize: 14 },
+  input: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: color.fill.tableHead, paddingHorizontal: 12, color: ui.t1, fontSize: 14 },
   addRow: { flexDirection: "row", gap: 8, alignItems: "center", marginTop: 12 },
   dialogActions: { flexDirection: "row", justifyContent: "flex-end", marginTop: 16 },
 });

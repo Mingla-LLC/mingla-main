@@ -15,13 +15,10 @@ import {
 } from "react-native";
 import {
   accent,
-  androidOpaque,
-  glass,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { WebsiteIcon, type WebsiteIconName } from "./WebsiteIcon";
 
@@ -36,38 +33,38 @@ import { WebsiteIcon, type WebsiteIconName } from "./WebsiteIcon";
 const android = Platform.OS === "android";
 
 export const ui = {
-  card: android ? androidOpaque.rowFill : glass.tint.profileBase,
-  cardBorder: android ? androidOpaque.rowBorder : glass.border.profileBase,
-  card2: "rgba(255, 255, 255, 0.06)",
-  border2: glass.border.profileElevated,
-  border3: "rgba(255, 255, 255, 0.22)",
-  t1: textTokens.primary,
-  t2: textTokens.secondary,
-  t3: textTokens.tertiaryOnCard,
-  t4: textTokens.quaternary,
-  accent: accent.warm,
-  onAccent: "#140a03",
-  ok: semantic.success,
-  warn: semantic.warning,
-  err: semantic.errorText,
+  card: android ? color.card : color.fill.inset,
+  cardBorder: android ? color.card2 : color.line,
+  card2: color.fill.tile,
+  border2: color.lineStrong,
+  border3: color.lineStrong,
+  t1: color.text1,
+  t2: color.text2,
+  t3: color.text3,
+  t4: color.text4,
+  accent: color.paper,
+  onAccent: color.ink,
+  ok: color.success,
+  warn: color.warning,
+  err: color.errorText,
 } as const;
 
 type Tone = "neutral" | "ok" | "warn" | "err" | "info" | "accent";
 
 const CHIP: Record<Tone, { bg: string; fg: string }> = {
-  neutral: { bg: "rgba(255, 255, 255, 0.09)", fg: textTokens.secondary },
-  ok: { bg: android ? androidOpaque.successFill : semantic.successTint, fg: "#7ee2a3" },
-  warn: { bg: android ? androidOpaque.warningFill : semantic.warningTint, fg: "#fcd27a" },
-  err: { bg: android ? androidOpaque.errorFill : semantic.errorTint, fg: "#fca5a5" },
-  info: { bg: android ? androidOpaque.infoFill : semantic.infoTint, fg: "#a8cbff" },
-  accent: { bg: android ? androidOpaque.accentFill : "rgba(235, 120, 37, 0.16)", fg: "#ffb37a" },
+  neutral: { bg: color.fill.railOn, fg: color.text2 },
+  ok: { bg: android ? color.solidTint.success : color.successTint, fg: color.successText },
+  warn: { bg: android ? color.solidTint.warning : color.warningTint, fg: color.warningText },
+  err: { bg: android ? color.solidTint.error : color.errorTint, fg: color.errorText },
+  info: { bg: android ? color.solidTint.info : color.infoTint, fg: color.infoText },
+  accent: { bg: android ? color.card3 : color.fill.tabOn, fg: color.text1 },
 };
 
 const BANNER_BORDER: Record<Exclude<Tone, "neutral" | "accent">, string> = {
-  ok: "rgba(34, 197, 94, 0.35)",
-  warn: "rgba(245, 158, 11, 0.35)",
-  err: "rgba(248, 113, 113, 0.35)",
-  info: "rgba(96, 165, 250, 0.35)",
+  ok: color.line,
+  warn: color.line,
+  err: color.errorLine,
+  info: color.line,
 };
 
 export function Chip({ label, tone = "neutral", testID }: { label: string; tone?: Tone; testID?: string }): React.ReactElement {
@@ -392,12 +389,12 @@ export function Spinner({ label }: { label?: string }): React.ReactElement {
 }
 
 export function CheckCircle({ state }: { state: "on" | "off" | "warn" | "fail" }): React.ReactElement {
-  const bg = state === "on" ? ui.ok : state === "warn" ? ui.warn : state === "fail" ? "#f87171" : "transparent";
+  const bg = state === "on" ? ui.ok : state === "warn" ? ui.warn : state === "fail" ? color.errorText : color.transparent;
   return (
     <View style={[styles.ck, state === "off" ? styles.ckOff : { backgroundColor: bg, borderColor: bg }]}>
-      {state === "on" ? <WebsiteIcon name="check" size={12} color="#06210f" /> : null}
+      {state === "on" ? <WebsiteIcon name="check" size={12} color={color.ink} /> : null}
       {state === "warn" ? <Text style={styles.ckMark}>!</Text> : null}
-      {state === "fail" ? <WebsiteIcon name="x" size={12} color="#2a0606" /> : null}
+      {state === "fail" ? <WebsiteIcon name="x" size={12} color={color.ink} /> : null}
     </View>
   );
 }
@@ -418,40 +415,40 @@ export const styles = StyleSheet.create({
   buttonSecondary: { backgroundColor: ui.card2, borderColor: ui.border2 },
   buttonGhost: { backgroundColor: "transparent", borderColor: "transparent" },
   primaryPressed: { opacity: 0.9 },
-  secondaryPressed: { backgroundColor: "rgba(255, 255, 255, 0.09)" },
-  buttonText: { ...typography.buttonMd },
+  secondaryPressed: { backgroundColor: color.fill.railOn },
+  buttonText: { ...type.btnSm },
   buttonTextSm: { fontSize: 13 },
   mini: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, borderColor: ui.cardBorder, alignItems: "center", justifyContent: "center" },
   miniHover: { backgroundColor: ui.card2 },
   miniDisabled: { opacity: 0.3 },
-  toggle: { width: 48, height: 28, borderRadius: radius.full, backgroundColor: "rgba(255, 255, 255, 0.09)", padding: 3, justifyContent: "center" },
+  toggle: { width: 48, height: 28, borderRadius: radius.full, backgroundColor: color.fill.railOn, padding: 3, justifyContent: "center" },
   toggleOn: { backgroundColor: ui.accent },
-  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#ffffff" },
+  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: color.paper },
   segmented: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   segment: {
     minHeight: 40, paddingHorizontal: 14, borderRadius: radius.full, borderWidth: 1, borderColor: ui.border2,
     flexDirection: "row", alignItems: "center", gap: 6,
   },
   segmentCompact: { minHeight: 36, paddingHorizontal: 12 },
-  segmentOn: { borderColor: ui.accent, backgroundColor: android ? androidOpaque.accentFill : "rgba(235, 120, 37, 0.16)" },
+  segmentOn: { borderColor: ui.accent, backgroundColor: android ? color.card3 : color.fill.tabOn },
   segmentText: { fontSize: 13, fontWeight: "600", color: ui.t2 },
   segmentTextOn: { color: ui.t1 },
-  card: { backgroundColor: ui.card, borderWidth: 1, borderColor: ui.cardBorder, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, overflow: "hidden" },
-  cardWarn: { borderColor: "rgba(245, 158, 11, 0.45)" },
+  card: { backgroundColor: ui.card, borderWidth: 1, borderColor: ui.cardBorder, borderRadius: radius.md, padding: space[4], marginBottom: space[4], overflow: "hidden" },
+  cardWarn: { borderColor: color.line },
   cardTitle: { fontSize: 16, lineHeight: 24, fontWeight: "600", color: ui.t1, marginBottom: 4 },
   hint: { fontSize: 12, lineHeight: 16, color: ui.t3 },
-  body: { ...typography.bodySm, color: ui.t2 },
-  banner: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.md, flexWrap: "wrap" },
+  body: { ...type.small, color: ui.t2 },
+  banner: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: radius.sm, borderWidth: 1, marginBottom: space[4], flexWrap: "wrap" },
   bannerTitle: { fontSize: 14, fontWeight: "700", color: ui.t1 },
   bannerBody: { fontSize: 13, lineHeight: 18, color: ui.t2, marginTop: 2 },
   bannerActions: { flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" },
-  head: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.md, marginBottom: 20, flexWrap: "wrap" },
-  headPhone: { flexDirection: "column", gap: 12, marginBottom: spacing.md },
+  head: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space[4], marginBottom: 20, flexWrap: "wrap" },
+  headPhone: { flexDirection: "column", gap: 12, marginBottom: space[4] },
   headRight: { flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" },
   headRightPhone: { alignSelf: "stretch" },
-  h1: { ...typography.h2, lineHeight: 32, color: ui.t1, ...(Platform.OS === "web" ? ({ outlineWidth: 0 } as TextStyle) : {}) },
-  subtitle: { ...typography.bodySm, color: ui.t2, marginTop: 4 },
-  list: { borderWidth: 1, borderColor: ui.cardBorder, borderRadius: radius.lg, overflow: "hidden", backgroundColor: ui.card },
+  h1: { ...type.h1, lineHeight: 32, color: ui.t1, ...(Platform.OS === "web" ? ({ outlineWidth: 0 } as TextStyle) : {}) },
+  subtitle: { ...type.small, color: ui.t2, marginTop: 4 },
+  list: { borderWidth: 1, borderColor: ui.cardBorder, borderRadius: radius.md, overflow: "hidden", backgroundColor: ui.card },
   listDivider: { borderTopWidth: 1, borderTopColor: ui.cardBorder },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 14, minHeight: 64, flexWrap: "wrap" },
   rowHover: { backgroundColor: ui.card2 },
@@ -463,19 +460,19 @@ export const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, fontWeight: "600", color: ui.t2 },
   count: { fontSize: 13, color: ui.t3 },
   input: {
-    minHeight: 44, borderRadius: radius.md, borderWidth: 1, borderColor: ui.border2,
-    backgroundColor: "rgba(255, 255, 255, 0.03)", paddingHorizontal: 12, paddingVertical: 10,
+    minHeight: 44, borderRadius: radius.sm, borderWidth: 1, borderColor: ui.border2,
+    backgroundColor: color.fill.tableHead, paddingHorizontal: 12, paddingVertical: 10,
     color: ui.t1, fontSize: 14,
   },
   inputMultiline: { minHeight: 88, textAlignVertical: "top" },
-  inputError: { borderColor: "#f87171" },
+  inputError: { borderColor: color.errorLine },
   mono: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" }), fontSize: 13 },
   help: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 6 },
   fieldError: { fontSize: 12, lineHeight: 16, color: ui.err, marginTop: 6 },
-  skeleton: { borderRadius: 10, backgroundColor: "rgba(255, 255, 255, 0.06)" },
+  skeleton: { borderRadius: 10, backgroundColor: color.fill.tile },
   ck: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: "center", justifyContent: "center" },
-  ckOff: { borderColor: "rgba(255, 255, 255, 0.22)" },
-  ckMark: { fontSize: 12, fontWeight: "800", color: "#2a1700", lineHeight: 14 },
+  ckOff: { borderColor: color.lineStrong },
+  ckMark: { fontSize: 12, fontWeight: "800", color: color.ink, lineHeight: 14 },
   rowWrap: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  thumb: { width: 56, height: 42, borderRadius: 8, backgroundColor: "rgba(255, 255, 255, 0.06)" },
+  thumb: { width: 56, height: 42, borderRadius: 8, backgroundColor: color.fill.tile },
 });

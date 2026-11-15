@@ -24,6 +24,7 @@ import { useAuth } from "../../src/context/AuthContext";
 import { consumeNextRoute } from "../../src/utils/authNextHandoff";
 import { sanitizeNextRoute } from "../../src/utils/nextRoute";
 
+import { color } from "../../src/constants/designSystem";
 // ORCH-1098 Stage 3: the mobile→static-home redirect is GONE. Phones now boot
 // the real Expo app, so the callback simply routes everyone back to "/" once
 // the session is finalised (signed-in → real home, signed-out → welcome).
@@ -42,7 +43,7 @@ export default function AuthCallback(): React.ReactElement {
   if (loading) {
     return (
       <View style={styles.host}>
-        <ActivityIndicator size="large" color="#eb7825" />
+        <ActivityIndicator size="large" color={color.text1} />
       </View>
     );
   }
@@ -66,6 +67,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
 });

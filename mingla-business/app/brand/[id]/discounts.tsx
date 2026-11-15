@@ -4,16 +4,13 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "../../../src/components/ui/Icon";
-import {
-  canvas,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { useAuth } from "../../../src/context/AuthContext";
 import { createDiscountBlastDraft } from "../../../src/services/discountBlastService";
 
+import { color, space } from "../../../src/constants/designSystem";
 const LazyDiscountList = React.lazy(async () => {
   const mod =
     await import("../../../src/components/discounts/DiscountListView");
@@ -80,7 +77,7 @@ export default function DiscountsRoute(): React.ReactElement {
           accessibilityLabel="Back"
           style={styles.back}
         >
-          <Icon name="chevL" size={22} color={textTokens.primary} />
+          <Icon name="chevL" size={22} color={color.text1} />
         </Pressable>
         <Text style={styles.title}>Discounts</Text>
       </View>
@@ -104,12 +101,12 @@ export default function DiscountsRoute(): React.ReactElement {
   );
 }
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: canvas.profile },
+  page: { flex: 1, backgroundColor: color.canvas },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
   },
   back: {
     width: 40,
@@ -117,5 +114,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
+  title: { color: color.text1, fontSize: 20, fontWeight: "800" },
 });

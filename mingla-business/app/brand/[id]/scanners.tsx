@@ -22,11 +22,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  canvas,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
@@ -43,6 +41,7 @@ import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { Pill } from "../../../src/components/ui/Pill";
 import { Sheet } from "../../../src/components/ui/Sheet";
 import { Toast } from "../../../src/components/ui/Toast";
+import { Avatar } from "../../../src/components/ui/Avatar";
 import { Button } from "../../../src/components/ui/Button";
 
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
@@ -50,22 +49,6 @@ import { useBrand } from "../../../src/hooks/useBrands";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 
 import { LazyInviteScannerSheet } from "../../../src/components/scanners/LazyInviteScannerSheet";
-
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
-};
-
-const getInitials = (name: string | null | undefined): string => {
-  const safe = name ?? "";
-  const parts = safe.trim().split(/\s+/).filter((p) => p.length > 0);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-};
 
 interface InvitationStatusPillSpec {
   variant: "info" | "warn" | "draft" | "accent";
@@ -174,7 +157,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -222,7 +205,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.chromeRow}>
@@ -289,8 +272,6 @@ export default function BrandScannersListRoute(): React.ReactElement {
           <View style={styles.list}>
             {invitations.map((inv) => {
               const displayName = inv.invitee_name ?? inv.email;
-              const initials = getInitials(displayName);
-              const hue = hashStringToHue(inv.id);
               const pill = invitationStatusPill(inv.status);
               return (
                 <Pressable
@@ -300,14 +281,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
                   accessibilityLabel={`Brand scanner ${displayName}, ${pill.label}`}
                   style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                 >
-                  <View
-                    style={[
-                      styles.avatar,
-                      { backgroundColor: `hsl(${hue}, 60%, 45%)` },
-                    ]}
-                  >
-                    <Text style={styles.avatarText}>{initials}</Text>
-                  </View>
+                  <Avatar name={displayName} size="row" />
                   <View style={styles.rowBody}>
                     <Text style={styles.rowName} numberOfLines={1}>
                       {displayName}
@@ -412,75 +386,62 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
-  chromeRight: { flexDirection: "row", gap: spacing.xs },
+  chromeRight: { flexDirection: "row", gap: space[1] },
   chromeRightSlot: { width: 36 },
   scroll: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   lede: {
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
+    padding: space[2] + 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.md,
+    borderColor: color.line,
+    marginBottom: space[4],
   },
   ledeText: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 19,
   },
-  emptyHost: { paddingTop: spacing.xl },
+  emptyHost: { paddingTop: space[7] },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
-  list: { gap: spacing.sm },
+  list: { gap: space[2] },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 2,
-    padding: spacing.md - 2,
-    borderRadius: radiusTokens.md,
+    gap: space[2] + 2,
+    padding: space[4] - 2,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  rowPressed: { backgroundColor: "rgba(255, 255, 255, 0.04)" },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: textTokens.primary,
-  },
+  rowPressed: { backgroundColor: color.fill.inset },
   rowBody: { flex: 1, minWidth: 0 },
-  rowName: { fontSize: 14, fontWeight: "600", color: textTokens.primary },
+  rowName: { fontSize: 14, fontWeight: "600", color: color.text1 },
   rowSubline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   rowPills: {
@@ -490,29 +451,29 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   actionSheet: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   actionTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     marginBottom: 4,
   },
   actionEmail: {
     fontSize: 13,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    color: color.text2,
+    marginBottom: space[2],
   },
   actionPills: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
-  actionSpacer: { height: spacing.sm },
+  actionSpacer: { height: space[2] },
   actionDisabledNote: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   toastWrap: {
     position: "absolute",

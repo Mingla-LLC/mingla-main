@@ -36,7 +36,8 @@ import {
   useStripeConnectViewportZoomLock,
 } from "../../../components/stripe/connectEmbeddedPageHelpers";
 
-const MINGLA_BRAND_COLOR = "#eb7825" as const; // accent.warm per designSystem.ts:147
+import { color } from "../../../constants/designSystem";
+const MINGLA_BRAND_COLOR = color.accent; // accent.warm per designSystem.ts:147
 
 // META-ORCH-1234 (Bug B): the native "Set up payments" CTA opens this page in a
 // SESSIONLESS in-app browser (WebBrowser.openAuthSessionAsync) and asks the edge

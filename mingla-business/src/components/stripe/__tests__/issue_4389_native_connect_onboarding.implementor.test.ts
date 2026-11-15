@@ -221,10 +221,10 @@ describe("#4389 S-11 — 6. the native module probe", () => {
     jest.doMock("../../../services/brandStripeAccountSessionService", () => ({
       fetchBrandStripeAccountSession: jest.fn(),
     }));
+    // [TEST-MOD-APPROVED #4420] — the appearance reads Graphite tokens now.
     jest.doMock("../../../constants/designSystem", () => ({
-      accent: { warm: "#eb7825" },
-      radius: { md: 12 },
-      semantic: { error: "#ef4444" },
+      color: { accent: "#eb7825", danger: "#d92d20" },
+      radius: { sm: 12 },
     }));
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require("../ConnectOnboardingNative.native");

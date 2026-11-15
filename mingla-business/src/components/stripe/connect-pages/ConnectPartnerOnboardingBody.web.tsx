@@ -26,7 +26,8 @@ import {
   useStripeConnectViewportZoomLock,
 } from "../../../components/stripe/connectEmbeddedPageHelpers";
 
-const MINGLA_BRAND_COLOR = "#eb7825" as const;
+import { color } from "../../../constants/designSystem";
+const MINGLA_BRAND_COLOR = color.accent;
 
 export default function ConnectPartnerOnboardingBody(): React.ReactElement {
   const router = useRouter();

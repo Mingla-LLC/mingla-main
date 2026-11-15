@@ -14,7 +14,11 @@ import {
   View,
 } from "react-native";
 
-import { accent, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+} from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -169,7 +173,7 @@ export const FollowByEmailSheet: React.FC<FollowByEmailSheetProps> = ({
               label="Done"
               onPress={onClose}
               variant="primary"
-              accentColor={accent.warm}
+              accentColor={color.text1}
               size="lg"
               fullWidth
             />
@@ -216,7 +220,7 @@ export const FollowByEmailSheet: React.FC<FollowByEmailSheetProps> = ({
                 if (phase === "invalid") setPhase("idle");
               }}
               placeholder="you@example.com"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -251,7 +255,7 @@ export const FollowByEmailSheet: React.FC<FollowByEmailSheetProps> = ({
             <View style={styles.cta}>
               {phase === "sending" ? (
                 <View style={styles.sending}>
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={color.text1} />
                   <Text style={styles.sendingLabel}>Sending…</Text>
                 </View>
               ) : phase === "rate_limited" ? (
@@ -267,7 +271,7 @@ export const FollowByEmailSheet: React.FC<FollowByEmailSheetProps> = ({
                   }}
                   disabled={rateRetryIn > 0}
                   variant="primary"
-                  accentColor={accent.warm}
+                  accentColor={color.text1}
                   size="lg"
                   fullWidth
                 />
@@ -278,7 +282,7 @@ export const FollowByEmailSheet: React.FC<FollowByEmailSheetProps> = ({
                     void submit();
                   }}
                   variant="primary"
-                  accentColor={accent.warm}
+                  accentColor={color.text1}
                   size="lg"
                   fullWidth
                   testID={`${testID}-continue`}
@@ -307,78 +311,78 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 28,
     fontWeight: "800",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 6,
   },
   body: {
     fontSize: 15,
     lineHeight: 22,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    color: color.text2,
+    marginBottom: space[4],
   },
   label: {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 6,
   },
   input: {
     minHeight: 48,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: "#888a8f",
+    borderColor: color.line,
     paddingHorizontal: 14,
     fontSize: 16,
     lineHeight: 22,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginBottom: space[2],
   },
   inputInvalid: {
-    borderColor: "#b42318",
+    borderColor: color.errorLine,
     borderWidth: 2,
   },
   error: {
-    color: "#b42318",
+    color: color.errorText,
     fontSize: 13,
     lineHeight: 18,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   notice: {
-    backgroundColor: "#fffaeb",
-    borderColor: "#f5d38a",
+    backgroundColor: color.warningTint,
+    borderColor: color.line,
     borderWidth: 1,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     padding: 12,
-    color: "#93370d",
+    color: color.warningText,
     fontSize: 13,
     lineHeight: 18,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   cta: { marginTop: 4 },
   sending: {
     minHeight: 48,
     borderRadius: 999,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
   },
-  sendingLabel: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  sendingLabel: { color: color.ink, fontWeight: "700", fontSize: 16 },
   fine: {
     marginTop: 12,
     fontSize: 12,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   sentTo: {
     fontSize: 15,
     lineHeight: 22,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    color: color.text2,
+    marginBottom: space[4],
   },
-  sentEmail: { fontWeight: "700", color: textTokens.primary },
+  sentEmail: { fontWeight: "700", color: color.text1 },
   rowLinks: {
     marginTop: 12,
     flexDirection: "row",
@@ -387,8 +391,8 @@ const styles = StyleSheet.create({
   },
   link: {
     fontSize: 14,
-    color: accent.warm,
+    color: color.text1,
     textDecorationLine: "underline",
   },
-  linkMuted: { color: textTokens.tertiary },
+  linkMuted: { color: color.text3 },
 });

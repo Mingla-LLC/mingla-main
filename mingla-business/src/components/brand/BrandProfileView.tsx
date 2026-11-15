@@ -45,14 +45,11 @@ import { eventOrdersKeys } from "../../hooks/useEventOrders";
 import { useBusinessEventsForBrand } from "../../hooks/useBusinessEvents";
 
 import {
-  accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  scrim,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
@@ -672,7 +669,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           <TopBar leftKind="back" title="Brand" onBack={onBack} rightSlot={<View />} />
         </View>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.notFoundTitle}>Couldn{"’"}t load this brand</Text>
             <Text style={styles.notFoundBody}>
               Check your connection and try again.
@@ -701,7 +698,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         <View style={styles.loadingHost}>
           <ActivityIndicator
             size="large"
-            color={accent.warm}
+            color={color.text1}
             accessibilityLabel="Loading brand"
             testID="brand-profile-loading"
           />
@@ -718,7 +715,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           <TopBar leftKind="back" title="Brand" onBack={onBack} rightSlot={<View />} />
         </View>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.notFoundTitle}>Brand not found</Text>
             {/*
               #3259 — was "doesn't exist or has been removed", which ASSERTS a
@@ -765,7 +762,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // side (scroll uses `paddingHorizontal: spacing.md`). Height clamps to
   // [176, 240] — floor so the avatar overlap never eats the whole cover,
   // ceiling for tall screens.
-  const coverWidth = Math.max(0, windowWidth - spacing.md * 2);
+  const coverWidth = Math.max(0, windowWidth - space[4] * 2);
   const COVER_H = Math.min(240, Math.max(176, Math.round((coverWidth * 9) / 16)));
 
   // ORCH-1121 — has the events query settled into a genuine zero-result?
@@ -784,7 +781,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: SHELF_CLEARANCE + Math.max(insets.bottom, spacing.md) }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: SHELF_CLEARANCE + Math.max(insets.bottom, space[4]) }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
@@ -824,6 +821,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             ) : (
               <LinearGradient
                 colors={[
+                  // #4420 content colour: the brand's own cover hue (data), not chrome.
                   `hsl(${brand.coverHue}, 60%, 48%)`,
                   `hsl(${brand.coverHue}, 55%, 38%)`,
                 ]}
@@ -832,7 +830,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             )}
             {/* Scrim — legibility insurance on every media state. */}
             <LinearGradient
-              colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
+              colors={[scrim.photo.colors[1], scrim.photo.colors[3]]}
               style={styles.heroCoverScrim}
               pointerEvents="none"
             />
@@ -859,7 +857,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
 
             {typeof brand.address === "string" && brand.address.length > 0 ? (
               <View style={styles.heroLocationRow}>
-                <Icon name="location" size={13} color={textTokens.tertiary} />
+                <Icon name="location" size={13} color={color.text3} />
                 <Text style={styles.heroLocation} numberOfLines={1}>
                   {brand.address}
                 </Text>
@@ -905,7 +903,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
                 <Text style={styles.emptyBioText}>
                   Add a description so people know what you{"’"}re about
                 </Text>
-                <Icon name="chevR" size={16} color={accent.warm} />
+                <Icon name="chevR" size={16} color={color.text1} />
               </Pressable>
             )}
 
@@ -963,7 +961,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
                       pressed && styles.socialChipPressed,
                     ]}
                   >
-                    <Icon name={chip.icon} size={18} color={accent.warm} />
+                    <Icon name={chip.icon} size={18} color={color.text1} />
                   </Pressable>
                 ))}
               </View>
@@ -997,13 +995,13 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             style={styles.opsRow}
           >
             <View style={styles.opsIconWrap}>
-              <Icon name="megaphone" size={18} color={textTokens.primary} />
+              <Icon name="megaphone" size={18} color={color.text1} />
             </View>
             <View style={styles.opsTextCol}>
               <Text style={styles.opsLabel}>Promote</Text>
               <Text style={styles.opsSub}>Campaigns, ads, creators, referrals</Text>
             </View>
-            <Icon name="chevR" size={16} color={textTokens.tertiary} />
+            <Icon name="chevR" size={16} color={color.text3} />
           </Pressable>
         </GlassCard>
 
@@ -1023,7 +1021,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             >
               <GlassCard
                 variant="base"
-                padding={spacing.md}
+                padding={space[4]}
                 style={isRestricted ? styles.bannerDestructive : undefined}
               >
                 <View style={styles.bannerRow}>
@@ -1036,14 +1034,14 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
                     <Icon
                       name="bank"
                       size={20}
-                      color={isRestricted ? semantic.error : accent.warm}
+                      color={isRestricted ? color.errorText : color.text1}
                     />
                   </View>
                   <View style={styles.bannerTextCol}>
                     <Text style={styles.bannerTitle}>{bannerCopy.title}</Text>
                     <Text style={styles.bannerSub}>{bannerCopy.sub}</Text>
                   </View>
-                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                  <Icon name="chevR" size={16} color={color.text3} />
                 </View>
               </GlassCard>
             </Pressable>
@@ -1064,13 +1062,13 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
                 style={[styles.opsRow, !isLast && styles.opsRowDivider]}
               >
                 <View style={styles.opsIconWrap}>
-                  <Icon name={row.icon} size={18} color={textTokens.primary} />
+                  <Icon name={row.icon} size={18} color={color.text1} />
                 </View>
                 <View style={styles.opsTextCol}>
                   <Text style={styles.opsLabel}>{row.label}</Text>
                   <Text style={styles.opsSub}>{row.sub}</Text>
                 </View>
-                <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                <Icon name="chevR" size={16} color={color.text3} />
               </Pressable>
             );
           })}
@@ -1095,13 +1093,13 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
               ]}
             >
               <Text style={styles.seeAllText}>See all</Text>
-              <Icon name="chevR" size={14} color={accent.warm} />
+              <Icon name="chevR" size={14} color={color.text1} />
             </Pressable>
           ) : null}
         </View>
 
         {eventsError ? (
-          <GlassCard variant="base" padding={spacing.lg}>
+          <GlassCard variant="base" padding={space[6]}>
             <Text style={styles.emptyEventsTitle}>
               Couldn{"’"}t load your events.
             </Text>
@@ -1136,7 +1134,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             ))}
           </View>
         ) : eventsSettledEmpty ? (
-          <GlassCard variant="base" padding={spacing.lg}>
+          <GlassCard variant="base" padding={space[6]}>
             <Text style={styles.emptyEventsTitle}>No events yet</Text>
             <Text style={styles.emptyEventsBody}>
               Events you create will show here.
@@ -1190,7 +1188,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       <View
         style={[
           styles.shelfWrap,
-          { paddingBottom: Math.max(insets.bottom, spacing.md) },
+          { paddingBottom: Math.max(insets.bottom, space[4]) },
         ]}
         pointerEvents="box-none"
       >
@@ -1222,21 +1220,21 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
 };
 
 /** Shelf height (button + padding) plus a gap, so the last row clears it. */
-const SHELF_CLEARANCE = 44 + spacing.sm + spacing.lg + spacing.md;
+const SHELF_CLEARANCE = 44 + space[2] + space[6] + space[4];
 
 const styles = StyleSheet.create({
   host: {
     flex: 1,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
 
   // Loading state (ORCH-1100 Wave 3) -------------------------------------
@@ -1244,27 +1242,27 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.xl * 2,
+    paddingVertical: space[7] * 2,
   },
 
   // Not Found state ------------------------------------------------------
   notFoundTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[1],
   },
   notFoundBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   notFoundBtnRow: {
     flexDirection: "row",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 
   // Hero (ORCH-1121 — Direction 1 full-bleed) ----------------------------
@@ -1273,8 +1271,8 @@ const styles = StyleSheet.create({
   heroCover: {
     width: "100%",
     overflow: "hidden",
-    borderTopLeftRadius: radiusTokens.xl,
-    borderTopRightRadius: radiusTokens.xl,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
     // No Android shadow/elevation on the cover (square-halo bug); the clip +
     // scrim are the legibility mechanism.
   },
@@ -1293,8 +1291,8 @@ const styles = StyleSheet.create({
     height: "50%",
   },
   heroBody: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: space[6],
+    paddingBottom: space[6],
   },
   heroAvatarRing: {
     width: 96,
@@ -1302,29 +1300,29 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: canvas.profile, // page-color ring → crisp cutout over cover
+    backgroundColor: color.canvas, // page-color ring → crisp cutout over cover
     alignSelf: "center",
     marginTop: -48, // 50% of 96 overlaps the cover seam
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   heroNameRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   heroName: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
     textAlign: "center",
   },
   heroTagline: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     textAlign: "center",
     marginTop: 2,
   },
@@ -1336,64 +1334,64 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   heroLocation: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text3,
     flexShrink: 1,
   },
   heroDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginTop: spacing.md,
+    backgroundColor: color.line,
+    marginTop: space[4],
   },
   heroAboutEyebrow: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
     textTransform: "uppercase",
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
   heroAboutBody: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "left",
   },
   heroReadMore: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     alignSelf: "flex-start",
   },
   heroReadMorePressed: {
     opacity: 0.7,
   },
   heroReadMoreText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   emptyBioCta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    padding: spacing.sm,
-    borderRadius: radiusTokens.md,
+    gap: space[2],
+    marginTop: space[4],
+    padding: space[2],
+    borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
     borderStyle: "dashed",
   },
   emptyBioText: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: accent.warm,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text1,
     fontWeight: "500",
   },
 
@@ -1402,8 +1400,8 @@ const styles = StyleSheet.create({
   socialsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
     justifyContent: "center",
   },
   socialChip: {
@@ -1411,9 +1409,9 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1426,18 +1424,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.2,
     textTransform: "uppercase",
-    color: textTokens.tertiary,
-    marginBottom: -spacing.xs,
+    color: color.text3,
+    marginBottom: -space[1],
   },
 
   // Banner ---------------------------------------------------------------
   bannerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   bannerDestructive: {
-    borderColor: "rgba(239, 68, 68, 0.45)",
+    borderColor: color.errorLine,
     borderWidth: 1,
   },
   bannerIconWrap: {
@@ -1445,30 +1443,30 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
   bannerIconWrapDestructive: {
-    backgroundColor: semantic.errorTint,
-    borderColor: "rgba(239, 68, 68, 0.45)",
+    backgroundColor: color.errorTint,
+    borderColor: color.errorLine,
   },
   bannerTextCol: {
     flex: 1,
     minWidth: 0,
   },
   bannerTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   bannerSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
     marginTop: 2,
   },
 
@@ -1476,22 +1474,22 @@ const styles = StyleSheet.create({
   opsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[4],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
   },
   opsRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   opsIconWrap: {
     width: 36,
     height: 36,
-    borderRadius: radiusTokens.md,
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1500,15 +1498,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   opsLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   opsSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
   },
 
@@ -1517,39 +1515,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[1],
+    paddingTop: space[2],
   },
   sectionTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
   },
 
   // Events ---------------------------------------------------------------
   emptyEventsTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   emptyEventsBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     marginTop: 4,
   },
   emptyEventsBtnRow: {
     flexDirection: "row",
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
 
   // Recent events — populated list + "See all" + loading skeleton (ORCH-1121)
   recentEventsList: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   seeAllRow: {
     flexDirection: "row",
@@ -1560,26 +1558,26 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   seeAllText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   recentEventsLoading: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   recentEventsSkeletonRow: {
-    height: 92 + spacing.sm * 2,
-    borderRadius: radiusTokens.lg,
+    height: 92 + space[2] * 2,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     // Opaque Android fill (ANDROID_GLASS_USES_OPAQUE_FALLBACK); translucent on
     // iOS. No Android shadow under the rounded fill.
     backgroundColor: Platform.select({
-      ios: glass.tint.profileBase,
-      android: "rgba(20, 22, 26, 0.92)",
-      default: glass.tint.profileBase,
+      ios: color.fill.inset,
+      android: color.card,
+      default: color.fill.inset,
     }),
     overflow: "hidden",
   },
@@ -1590,17 +1588,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
     // #3872 round 2 — an opaque footer with a hairline, so the Edit brand and
     // Public page buttons never sit over a row (the scroll ends above it).
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   shelfRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   shelfBtnFlex: {
     flex: 1,
@@ -1608,29 +1606,29 @@ const styles = StyleSheet.create({
 
   // Cycle 17e-A — danger zone for brand deletion
   dangerZone: {
-    marginTop: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.md,
+    marginTop: space[7],
+    paddingTop: space[6],
+    paddingHorizontal: space[4],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
-    gap: spacing.sm,
+    borderTopColor: color.line,
+    gap: space[2],
     marginBottom: 100,
   },
   dangerLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: semantic.error,
+    color: color.errorText,
   },
   dangerHelper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
   },
   dangerCta: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
 });
 

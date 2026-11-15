@@ -40,8 +40,10 @@ import Animated, {
 
 import {
   accent,
+  color,
   durations,
   radius,
+  scrim,
   semantic,
   spacing,
   text as textTokens,
@@ -482,8 +484,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   pickerFieldDisabled: { opacity: 0.5 },
   pickerValue: { ...typography.body, color: textTokens.primary },
@@ -497,7 +499,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   verifiedLabel: { ...typography.caption, color: textTokens.tertiary },
   verifiedName: {
@@ -517,14 +519,14 @@ const styles = StyleSheet.create({
   },
   actions: { marginTop: spacing.lg },
   modalRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" },
+  backdrop: { flex: 1, backgroundColor: scrim.modal },
   sheet: {
     height: "64%",
     padding: spacing.lg,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     // Opaque fill — satisfies ANDROID_GLASS_USES_OPAQUE_FALLBACK by construction.
-    backgroundColor: "#14110f",
+    backgroundColor: color.canvas,
   },
   sheetTitle: {
     ...typography.bodyLg,
@@ -537,7 +539,7 @@ const styles = StyleSheet.create({
   bankRow: {
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.08)",
+    borderBottomColor: color.line,
   },
   bankRowText: { ...typography.body, color: textTokens.primary },
   bankEmpty: {

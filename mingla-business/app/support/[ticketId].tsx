@@ -21,7 +21,9 @@ import { StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
 import { LazySupportThread } from "../../src/components/support/LazySupportScreens";
-import { text as textTokens } from "../../src/constants/designSystem";
+import {
+  color,
+} from "../../src/constants/designSystem";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
 
 export default function SupportThreadRoute(): React.ReactElement {
@@ -52,11 +54,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#111318",
+    backgroundColor: color.card,
     padding: 24,
   },
   fallbackText: {
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
 });

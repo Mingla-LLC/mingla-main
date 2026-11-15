@@ -14,11 +14,10 @@ import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { PoolMatch } from "../../types/poolMatch";
 import { Button } from "../ui/Button";
@@ -42,7 +41,7 @@ export const PoolMatchCard: React.FC<PoolMatchCardProps> = ({
   const addressLine = [match.address, match.city].filter(Boolean).join(", ");
 
   return (
-    <GlassCard variant="elevated" padding={spacing.md} testID={testID}>
+    <GlassCard variant="elevated" padding={space[4]} testID={testID}>
       <Text style={styles.eyebrow}>We found a match in our directory</Text>
       <View style={styles.row}>
         {match.primaryPhotoUrl !== null ? (
@@ -95,47 +94,47 @@ export const PoolMatchCard: React.FC<PoolMatchCardProps> = ({
 
 const styles = StyleSheet.create({
   eyebrow: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
+    marginBottom: space[2],
   },
   row: {
     flexDirection: "row",
-    gap: spacing.md,
-    marginBottom: spacing.md,
+    gap: space[4],
+    marginBottom: space[4],
   },
   photo: {
     width: 72,
     height: 72,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "#E5E7EB",
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tile,
   },
   photoPlaceholder: {
     width: 72,
     height: 72,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "#E5E7EB",
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tile,
   },
   textCol: {
     flex: 1,
-    gap: spacing.xs,
+    gap: space[1],
   },
   name: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   address: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   prompt: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
-    marginTop: spacing.xs,
+    color: color.text1,
+    marginTop: space[1],
   },
   actions: {
-    gap: spacing.sm,
+    gap: space[2],
   },
 });

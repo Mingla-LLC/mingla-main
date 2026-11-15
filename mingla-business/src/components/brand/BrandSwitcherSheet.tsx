@@ -3,11 +3,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
-  accent,
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  size,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
@@ -161,13 +161,14 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                         : ` · ${BRAND_SWITCHER_COPY.n3.progress(setupState.doneCount)}`;
                   const canDiscard =
                     setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null);
-                  const subline = setupRest !== null
-                    ? null
-                    : isActive
-                      ? followerLine === null
-                        ? "Current brand"
-                        : `${followerLine} · Current brand`
-                      : followerLine;
+                  // #4420 round-3 item 2 — the current brand is shown by the
+                  // selected row and its check (and `selected` for screen
+                  // readers), so the line no longer repeats "Current brand".
+                  const subline = setupRest !== null ? null : followerLine;
+                  const showDelete =
+                    setupRest === null &&
+                    onRequestDeleteBrand !== undefined &&
+                    canDeleteBrand(brand, user?.id ?? null);
                   return (
                     <View key={brand.id} style={styles.brandRowOuter}>
                       {/* #4389 (retest) — the row is a plain box; the switch
@@ -182,6 +183,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           styles.brandRow,
                           styles.brandRowSplit,
                           isActive ? styles.brandRowActive : null,
+                          showDelete ? styles.brandRowWithDelete : null,
                         ]}
                         testID={`brand-switcher-rowbox-${brand.id}`}
                       >
@@ -219,7 +221,9 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           ) : null}
                         </View>
                         {isActive ? (
-                          <Icon name="check" size={18} color={accent.warm} />
+                          <View style={styles.activeCheck} testID={`brand-switcher-check-${brand.id}`}>
+                            <Icon name="check" size={16} color={color.ink} />
+                          </View>
                         ) : null}
                       </Pressable>
                         {setupRest !== null ? (
@@ -249,7 +253,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                             style={styles.rowMenuBtn}
                             testID={`brand-switcher-discard-${brand.id}`}
                           >
-                            <Icon name="moreH" size={16} color={textTokens.tertiary} />
+                            <Icon name="moreH" size={16} color={color.text3} />
                           </Pressable>
                         ) : null}
                       </View>
@@ -259,9 +263,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           be decided per brand: shown only on rows you own.
                           #4389 — an unfinished brand's row carries Continue
                           (and, on a draft, the Discard menu) instead. */}
-                      {setupRest === null &&
-                      onRequestDeleteBrand !== undefined &&
-                      canDeleteBrand(brand, user?.id ?? null) ? (
+                      {showDelete && onRequestDeleteBrand !== undefined ? (
                         <Pressable
                           onPress={() => {
                             onRequestDeleteBrand(brand);
@@ -272,7 +274,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           hitSlop={8}
                           style={styles.rowDeleteBtn}
                         >
-                          <Icon name="trash" size={16} color={textTokens.tertiary} />
+                          <Icon name="trash" size={18} color={color.text2} />
                         </Pressable>
                       ) : null}
                     </View>
@@ -298,63 +300,75 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
-  brandSubDraft: { color: accent.warm, fontWeight: "600" },
+  brandSubDraft: { color: color.text1, fontWeight: "600" },
   // 36pt pill; hitSlop 4 makes the target 44pt.
   rowContinueBtn: {
     height: 36,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
-  rowMenuBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginLeft: -spacing.xs },
-  rowContinueLabel: { ...typography.caption, color: textTokens.primary, fontWeight: "600" },
+  rowMenuBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginLeft: -space[1] },
+  rowContinueLabel: { ...type.caption, color: color.text1, fontWeight: "600" },
   host: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[5],
+    paddingTop: space[6],
+    paddingBottom: space[4],
   },
   headerTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   scrollArea: { flex: 1 },
-  scrollContent: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
-  loadingState: { flex: 1, justifyContent: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.xl },
-  emptyText: { fontSize: typography.body.fontSize, lineHeight: typography.body.lineHeight, color: textTokens.secondary, textAlign: "center" },
+  scrollContent: { gap: space[1], paddingHorizontal: space[5], paddingBottom: space[4] },
+  loadingState: { flex: 1, justifyContent: "center", paddingHorizontal: space[5], paddingVertical: space[7] },
+  emptyText: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, color: color.text2, textAlign: "center" },
   brandRowOuter: { position: "relative" },
   brandRow: {
     minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: 18,
+    gap: space[4],
+    padding: space[4],
+    borderRadius: radius.xl,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.transparent,
+    backgroundColor: color.transparent,
   },
+  // #4420 round-3 item 2 — the current brand is the one selected row: a
+  // filled pill with a paper check, the rest sit flat on the sheet.
   brandRowActive: {
-    borderColor: accent.border,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    borderColor: color.line,
+    backgroundColor: color.card3,
+  },
+  // Room for the trash, which sits centred at the row's trailing edge.
+  brandRowWithDelete: { paddingRight: size.iconBtn.md + space[2] },
+  activeCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
+    backgroundColor: color.paper,
+    alignItems: "center",
+    justifyContent: "center",
   },
   // The row box keeps its look; the switch target fills it up to the pill.
-  brandRowSplit: { padding: 0, paddingRight: spacing.md, gap: spacing.sm },
-  rowPick: { flex: 1, minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, paddingRight: 0 },
+  brandRowSplit: { padding: 0, paddingRight: space[4], gap: space[2] },
+  rowPick: { flex: 1, minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], paddingRight: 0 },
   brandTextCol: { flex: 1 },
-  brandName: { fontSize: typography.body.fontSize, lineHeight: typography.body.lineHeight, fontWeight: "600", color: textTokens.primary },
-  brandSub: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: textTokens.tertiary },
-  rowDeleteBtn: { position: "absolute", top: 6, right: 6, width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg },
+  brandName: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, fontWeight: "600", color: color.text1 },
+  brandSub: { fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, color: color.text3 },
+  rowDeleteBtn: { position: "absolute", top: 0, bottom: 0, right: space[1], width: size.iconBtn.md, alignItems: "center", justifyContent: "center" },
+  footer: { paddingHorizontal: space[5], paddingTop: space[4], paddingBottom: space[6], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
 });
 
 export default BrandSwitcherSheet;

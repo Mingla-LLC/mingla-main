@@ -26,7 +26,8 @@ import {
 } from "../../../components/stripe/connectEmbeddedPageHelpers";
 import { isAllowedAccountManagementReturnTo } from "../../../utils/accountManagementOpen";
 
-const MINGLA_BRAND_COLOR = "#eb7825" as const;
+import { color } from "../../../constants/designSystem";
+const MINGLA_BRAND_COLOR = color.accent;
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -203,8 +204,8 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
 // page-local style overrides for the header inner + done button.
 const headerStyle: React.CSSProperties = {
   padding: "18px 24px",
-  borderBottom: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
+  borderBottom: `1px solid ${color.paperPressed}`,
+  backgroundColor: color.paper,
 };
 
 const headerInnerStyle: React.CSSProperties = {
@@ -220,9 +221,9 @@ const doneButtonStyle: React.CSSProperties = {
   minHeight: "44px",
   padding: "0 16px",
   borderRadius: "999px",
-  border: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
-  color: "#0F172A",
+  border: `1px solid ${color.paperPressed}`,
+  backgroundColor: color.paper,
+  color: color.ink,
   fontSize: "15px",
   fontWeight: 600,
   cursor: "pointer",

@@ -19,12 +19,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
-} from "../src/constants/designSystem";
+
 import { Icon } from "../src/components/ui/Icon";
 import { IconChrome } from "../src/components/ui/IconChrome";
 import { ConfirmDialog } from "../src/components/ui/ConfirmDialog";
@@ -38,6 +33,7 @@ import {
 import { HapticFeedback } from "../src/utils/hapticFeedback";
 import type { BusinessNotification } from "../src/hooks/useBusinessNotifications";
 
+import { color, space } from "../src/constants/designSystem";
 export default function NotificationsRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -103,7 +99,7 @@ export default function NotificationsRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.chromeRow}>
@@ -132,7 +128,7 @@ export default function NotificationsRoute(): React.ReactElement {
                   pressed ? styles.markAllPressed : null,
                 ]}
               >
-                <Icon name="check" size={16} color={accent.warm} />
+                <Icon name="check" size={16} color={color.text1} />
                 <Text style={styles.markAllLabel}>Mark all read</Text>
               </Pressable>
             ) : null}
@@ -148,7 +144,7 @@ export default function NotificationsRoute(): React.ReactElement {
                   pressed ? styles.markAllPressed : null,
                 ]}
               >
-                <Icon name="trash" size={16} color={accent.warm} />
+                <Icon name="trash" size={16} color={color.text1} />
                 <Text style={styles.markAllLabel}>Clear read</Text>
               </Pressable>
             ) : null}
@@ -185,17 +181,17 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 20,
     lineHeight: 32,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -208,14 +204,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: spacing.md,
+    gap: space[4],
   },
   markAll: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.xs,
+    gap: space[1],
+    paddingVertical: space[1],
+    paddingHorizontal: space[1],
     minWidth: 36,
     justifyContent: "flex-end",
   },
@@ -225,6 +221,6 @@ const styles = StyleSheet.create({
   markAllLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 });

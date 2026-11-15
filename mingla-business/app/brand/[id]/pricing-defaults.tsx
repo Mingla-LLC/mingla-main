@@ -16,9 +16,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandPricingDefaultsView } from "../../../src/components/brand/BrandPricingDefaultsView";
 import {
   canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { Icon } from "../../../src/components/ui/Icon";
 
@@ -38,7 +38,7 @@ export default function BrandPricingDefaultsRoute(): React.ReactElement {
       style={{
         flex: 1,
         paddingTop: insets.top,
-        backgroundColor: canvas.profile,
+        backgroundColor: color.canvas,
       }}
     >
       <View style={styles.header}>
@@ -49,7 +49,7 @@ export default function BrandPricingDefaultsRoute(): React.ReactElement {
           hitSlop={8}
           style={styles.backBtn}
         >
-          <Icon name="chevL" size={22} color={textTokens.primary} />
+          <Icon name="chevL" size={22} color={color.text1} />
         </Pressable>
         <Text style={styles.headerTitle}>Pricing</Text>
       </View>
@@ -64,9 +64,9 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[2],
+    gap: space[1],
   },
   backBtn: {
     width: 36,
@@ -75,8 +75,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerTitle: {
-    fontSize: typography.h3.fontSize,
+    fontSize: type.h1.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });

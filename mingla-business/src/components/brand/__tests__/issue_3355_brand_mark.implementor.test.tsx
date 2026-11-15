@@ -30,9 +30,10 @@ jest.mock("react-native", () => {
     Image: host("image"),
   };
 });
+// [TEST-MOD-APPROVED #4420] — the component now reads Graphite tokens
+// (`color`, `space`, `type`); the mock carries the new names.
 jest.mock("../../../constants/designSystem", () => ({
-  glass: { border: { profileBase: "grey" } },
-  text: { primary: "white" },
+  color: { line: "grey", text1: "white", fill: { tabOn: "dim" } },
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports

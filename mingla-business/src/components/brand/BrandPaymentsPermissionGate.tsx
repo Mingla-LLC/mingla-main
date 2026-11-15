@@ -27,11 +27,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+
 import { useCanManageBrandPayments } from "../../hooks/useCanManageBrandPayments";
 import { useCanViewBrandPayments } from "../../hooks/useCanViewBrandPayments";
 import {
@@ -44,6 +40,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Spinner } from "../ui/Spinner";
 import { TopBar } from "../ui/TopBar";
 
+import { color, space, type } from "../../constants/designSystem";
 export interface BrandPaymentsPermissionGateProps {
   brandId: string | null;
   /** TopBar title for the non-allow branches; matches the wrapped surface. */
@@ -112,7 +109,7 @@ export const BrandPaymentsPermissionGate: React.FC<
   // other direction.
   if (isError) {
     return chrome(
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" padding={space[6]}>
         <Text style={styles.title} accessibilityRole="header">
           Couldn{"’"}t check your access
         </Text>
@@ -138,7 +135,7 @@ export const BrandPaymentsPermissionGate: React.FC<
   // DENY — the explanation card and nothing else. No controls, no money data,
   // and (because §4.2 stops both hooks from firing) no requests.
   return chrome(
-    <GlassCard variant="elevated" padding={spacing.lg}>
+    <GlassCard variant="elevated" padding={space[6]}>
       <Text style={styles.title} accessibilityRole="header">
         {BRAND_PAYMENTS_DENIED_TITLE}
       </Text>
@@ -162,41 +159,41 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   body: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   centred: {
     alignItems: "center",
-    paddingVertical: spacing.xl,
-    gap: spacing.md,
+    paddingVertical: space[7],
+    gap: space[4],
   },
   checkingLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[1],
   },
   body_: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   btnRow: {
     flexDirection: "row",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });
 

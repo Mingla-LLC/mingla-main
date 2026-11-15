@@ -77,11 +77,9 @@ import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 
 import {
-  accent,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 import { useStartBrandStripeOnboarding } from "../../hooks/useStartBrandStripeOnboarding";
@@ -1141,7 +1139,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   if (brand === null) {
     return (
       <View style={styles.host}>
-        <View style={[styles.topBarRow, { paddingTop: spacing.sm }]}>
+        <View style={[styles.topBarRow, { paddingTop: space[2] }]}>
           <View style={styles.topBarSlot}>
             <Button
               label="Cancel"
@@ -1155,7 +1153,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <View style={styles.topBarSlot} />
         </View>
         <View style={styles.notFoundWrap}>
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.notFoundTitle}>Brand not found</Text>
             {/*
               #3259 — was "doesn't exist or has been removed", which ASSERTS a
@@ -1198,7 +1196,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     onBack?: () => void;
     backLabel?: string;
   }): React.ReactElement => (
-    <View style={[styles.topBarRow, { paddingTop: spacing.sm }]}>
+    <View style={[styles.topBarRow, { paddingTop: space[2] }]}>
       <View style={styles.topBarSlot}>
         <Button
           label={opts?.backLabel ?? "Cancel"}
@@ -1276,8 +1274,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           contentContainerStyle={[
             styles.body,
             {
-              paddingTop: spacing.md,
-              paddingBottom: Math.max(insets.bottom, spacing.lg),
+              paddingTop: space[4],
+              paddingBottom: Math.max(insets.bottom, space[6]),
             },
           ]}
           // #1834 — the Verify/Connect CTAs must fire on the FIRST tap with the
@@ -1302,7 +1300,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               accessibilityLabel="Updating your payout country"
               testID="onboard-rail-switching"
             >
-              <Spinner size={48} color={accent.warm} />
+              <Spinner size={48} color={color.text1} />
               <Text style={styles.stateSub}>Updating your payout country…</Text>
             </View>
           ) : selectFailure !== null ? (
@@ -1373,7 +1371,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         style={styles.bodyScroll}
         contentContainerStyle={[
           styles.body,
-          { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+          { paddingBottom: Math.max(insets.bottom, space[6]) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -1395,7 +1393,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View
                 style={[styles.stateIconCircle, styles.stateIconCircleFailed]}
               >
-                <Icon name="flag" size={32} color={semantic.error} />
+                <Icon name="flag" size={32} color={color.errorText} />
               </View>
               <Text
                 style={styles.stateTitle}
@@ -1424,7 +1422,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View
                 style={[styles.stateIconCircle, styles.stateIconCircleSuccess]}
               >
-                <Icon name="bank" size={32} color={accent.warm} />
+                <Icon name="bank" size={32} color={color.text1} />
               </View>
               <Text style={styles.stateTitle}>Add your bank to get paid</Text>
               <Text style={styles.stateSub}>
@@ -1470,7 +1468,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View
                 style={[styles.stateIconCircle, styles.stateIconCircleSuccess]}
               >
-                <Icon name="check" size={32} color={accent.warm} />
+                <Icon name="check" size={32} color={color.text1} />
               </View>
               <Text style={styles.stateTitle}>You{"’"}re all set</Text>
               <Text style={styles.stateSub}>
@@ -1494,7 +1492,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
         {viewState === "checking-status" ? (
           <View style={styles.stateBlock}>
-            <Spinner size={48} color={accent.warm} />
+            <Spinner size={48} color={color.text1} />
             <Text style={styles.stateTitle}>Checking your payout status…</Text>
             <Text style={styles.stateSub}>
               We{"’"}re confirming your account before marking payments
@@ -1506,7 +1504,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         {/* #4389 — after the secure setup: say what is happening and for how long. */}
         {viewState === "settling-status" ? (
           <View style={styles.stateBlock} testID="onboard-settling">
-            <Spinner size={48} color={accent.warm} />
+            <Spinner size={48} color={color.text1} />
             <Text style={styles.stateTitle} accessibilityRole="header">
               {BRAND_ONBOARD_COPY.onboard.checking}
             </Text>
@@ -1530,14 +1528,14 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             setup opens (the terms sheet alone if they are not accepted). */}
         {autoStartPending && !tosAsking ? (
           <View style={styles.stateBlock} testID="onboard-opening-secure-setup">
-            <Spinner size={48} color={accent.warm} />
+            <Spinner size={48} color={color.text1} />
             <Text style={styles.stateTitle}>{BRAND_ONBOARD_COPY.onboard.opening}</Text>
           </View>
         ) : null}
 
         {viewState === "idle" && awaitingLockState ? (
           <View style={styles.stateBlock} testID="onboard-awaiting-lock-state">
-            <Spinner size={48} color={accent.warm} />
+            <Spinner size={48} color={color.text1} />
             <Text style={styles.stateTitle}>Checking your payout status…</Text>
           </View>
         ) : null}
@@ -1553,7 +1551,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View style={styles.prereqCard}>
                 {fixedCountryOption !== null ? (
                   // #4389 — the saved bank country, read-only.
-                  <GlassCard variant="base" padding={spacing.md}>
+                  <GlassCard variant="base" padding={space[4]}>
                     <Text style={styles.countrySummary} testID="onboard-country-summary">
                       {`${flagEmoji(fixedCountryOption.country)} ${fixedCountryOption.name} · ${fixedCountryOption.currency}`}
                     </Text>
@@ -1577,7 +1575,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               {!fromSetup ? (
                 <GlassCard
                   variant="base"
-                  padding={spacing.md}
+                  padding={space[4]}
                   style={styles.prereqCard}
                   testID="onboard-have-ready"
                 >
@@ -1640,7 +1638,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
         {viewState === "starting" ? (
           <View style={styles.stateBlock}>
-            <Spinner size={48} color={accent.warm} />
+            <Spinner size={48} color={color.text1} />
             <Text style={styles.stateTitle}>Setting up your payout account…</Text>
           </View>
         ) : null}
@@ -1648,7 +1646,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         {viewState === "in-flight" ? (
           <>
             <View style={styles.stateBlock}>
-              <Spinner size={48} color={accent.warm} />
+              <Spinner size={48} color={color.text1} />
               <Text style={styles.stateTitle}>
                 {nativeSession !== null
                   ? "Finish secure setup"
@@ -1689,7 +1687,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View
                 style={[styles.stateIconCircle, styles.stateIconCircleSuccess]}
               >
-                <Icon name="check" size={32} color={accent.warm} />
+                <Icon name="check" size={32} color={color.text1} />
               </View>
               <Text style={styles.stateTitle}>{"✓"} Set up complete</Text>
               <Text style={styles.stateSub}>
@@ -1716,7 +1714,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View
                 style={[styles.stateIconCircle, styles.stateIconCircleSuccess]}
               >
-                <Icon name="check" size={32} color={accent.warm} />
+                <Icon name="check" size={32} color={color.text1} />
               </View>
               <Text style={styles.stateTitle}>{"✓"} Submitted</Text>
               <Text style={styles.stateSub}>
@@ -1741,7 +1739,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <View style={[styles.stateIconCircle, styles.stateIconCircleNeedsInfo]}>
-                <Icon name="flag" size={32} color={semantic.error} />
+                <Icon name="flag" size={32} color={color.errorText} />
               </View>
               <Text style={styles.stateTitle}>More information needed</Text>
               <Text style={styles.stateSub}>
@@ -1775,7 +1773,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
-                <Icon name="flag" size={32} color={semantic.error} />
+                <Icon name="flag" size={32} color={color.errorText} />
               </View>
               <Text style={styles.stateTitle}>Onboarding cancelled</Text>
               <Text style={styles.stateSub}>
@@ -1808,7 +1806,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
-                <Icon name="flag" size={32} color={semantic.error} />
+                <Icon name="flag" size={32} color={color.errorText} />
               </View>
               <Text style={styles.stateTitle}>Onboarding link expired</Text>
               <Text style={styles.stateSub}>
@@ -1841,7 +1839,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
-                <Icon name="flag" size={32} color={semantic.error} />
+                <Icon name="flag" size={32} color={color.errorText} />
               </View>
               <Text style={styles.stateTitle}>Couldn{"’"}t reach bank setup</Text>
               <Text style={styles.stateSub}>
@@ -1875,7 +1873,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
-                <Icon name="mail" size={32} color={semantic.error} />
+                <Icon name="mail" size={32} color={color.errorText} />
               </View>
               <Text style={styles.stateTitle}>{BRAND_EMAIL_REQUIRED_TITLE}</Text>
               <Text style={styles.stateSub}>{BRAND_EMAIL_REQUIRED_SUB}</Text>
@@ -1910,7 +1908,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
-                <Icon name="flag" size={32} color={semantic.error} />
+                <Icon name="flag" size={32} color={color.errorText} />
               </View>
               <Text style={styles.stateTitle}>
                 {isCountryLockedError
@@ -1971,8 +1969,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
     minHeight: 56,
   },
   topBarSlot: {
@@ -1981,10 +1979,10 @@ const styles = StyleSheet.create({
   },
   topBarTitle: {
     flex: 1,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
 
@@ -2001,13 +1999,13 @@ const styles = StyleSheet.create({
   // killing the heading-over-top-bar overlap at ~640px.
   body: {
     flexGrow: 1,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     justifyContent: "center",
-    gap: spacing.xl,
+    gap: space[7],
   },
   stateBlock: {
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   stateIconCircle: {
     width: 64,
@@ -2018,124 +2016,124 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   stateIconCircleSuccess: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   stateIconCircleNeedsInfo: {
-    backgroundColor: semantic.errorTint,
-    borderColor: "rgba(239, 68, 68, 0.45)",
+    backgroundColor: color.errorTint,
+    borderColor: color.errorLine,
   },
   stateIconCircleFailed: {
-    backgroundColor: semantic.errorTint,
-    borderColor: "rgba(239, 68, 68, 0.45)",
+    backgroundColor: color.errorTint,
+    borderColor: color.errorLine,
   },
   stateTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
     textAlign: "center",
   },
   stateSub: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   addBankError: {
-    color: semantic.error,
+    color: color.errorText,
   },
   bold: {
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   actionsCol: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   supportLink: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
     textAlign: "center",
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
     textDecorationLine: "underline",
   },
   prereqCard: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     width: "100%",
   },
   countrySummary: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   prereqHeader: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
   },
   prereqItem: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     paddingVertical: 2,
   },
   poweredByRow: {
     alignItems: "center",
-    paddingTop: spacing.lg,
+    paddingTop: space[6],
   },
   poweredByText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
 
   // #3645 — failed payout-country switch, shown above the Nigeria bank form.
   railSwitchError: {
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
     borderRadius: 12,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   railSwitchErrorText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text1,
     textAlign: "center",
   },
 
   // Not-found ------------------------------------------------------------
   notFoundWrap: {
     flex: 1,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     justifyContent: "center",
   },
   notFoundTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[1],
   },
   notFoundBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   notFoundBtnRow: {
     flexDirection: "row",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });
 

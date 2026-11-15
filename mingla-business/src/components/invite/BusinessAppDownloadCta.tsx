@@ -34,12 +34,7 @@ import React, { useCallback } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../ui/Button";
-import {
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+
 // ORCH-1382 — the ONE business-side owner of "open an external destination".
 // Do NOT re-roll window.open here: a `noopener`/`noreferrer` feature string makes
 // open() return null EVEN ON SUCCESS, so a `if (!win)` fallback fires on every
@@ -60,6 +55,7 @@ import {
   openExternal,
 } from "../../services/guestFunnelLink";
 
+import { color, space, radius } from "../../constants/designSystem";
 /**
  * The exact destination this CTA opens. Composed in the PURE guestFunnelLink
  * module (not inline here) so it is unit-testable under the node/ts-jest
@@ -105,21 +101,21 @@ const styles = StyleSheet.create({
   host: {
     width: "100%",
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
-    borderRadius: radiusTokens.lg,
-    paddingTop: spacing.md,
-    marginTop: spacing.sm,
-    gap: spacing.sm,
+    borderTopColor: color.line,
+    borderRadius: radius.md,
+    paddingTop: space[4],
+    marginTop: space[2],
+    gap: space[2],
   },
   title: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   body: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
 });

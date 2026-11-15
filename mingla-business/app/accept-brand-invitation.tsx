@@ -70,13 +70,7 @@ import { WrongAccountRecovery } from "../src/components/invite/WrongAccountRecov
 // left the accessibility tree with no gesture that recovered it.
 import { InviteScreenShell } from "../src/components/invite/InviteScreenShell";
 import { sanitizeNextRoute } from "../src/utils/nextRoute";
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../src/constants/designSystem";
+
 import { useAuth } from "../src/context/AuthContext";
 import { useAcceptBrandInvitation } from "../src/hooks/useBrandInvitations";
 import {
@@ -88,6 +82,7 @@ import {
   withInviteFunnelParam,
 } from "../src/utils/bankFirstPartnerInvite";
 
+import { color, space, radius } from "../src/constants/designSystem";
 type Phase =
   | { kind: "loading" }
   | { kind: "success"; result: AcceptBrandInvitationResult }
@@ -334,7 +329,7 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
   // genuinely in flight.
   return (
     <InviteScreenShell>
-      <ActivityIndicator size="large" color={accent.warm} />
+      <ActivityIndicator size="large" color={color.text1} />
       <Text style={styles.copy}>
         {authStatus === "signed_in_ready"
           ? "Accepting your invitation…"
@@ -444,22 +439,22 @@ const styles = StyleSheet.create({
   card: {
     maxWidth: 480,
     width: "100%",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.lg,
-    padding: spacing.xl,
-    gap: spacing.md,
+    borderColor: color.line,
+    borderRadius: radius.md,
+    padding: space[7],
+    gap: space[4],
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
   },
   copy: {
     fontSize: 15,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 22,
   },
 });

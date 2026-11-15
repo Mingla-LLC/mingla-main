@@ -5,8 +5,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandPayoutDetailView } from "../../../../src/components/brand/BrandPayoutDetailView";
 import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/BrandPaymentsPermissionGate";
-import { canvas } from "../../../../src/constants/designSystem";
 
+
+import { color } from "../../../../src/constants/designSystem";
 const param = (value: string | string[] | undefined): string | null =>
   Array.isArray(value) ? value[0] ?? null : value ?? null;
 
@@ -19,7 +20,7 @@ export default function BrandPayoutDetailRoute(): React.ReactElement {
   const back = (): void => router.canGoBack() ? router.back() : router.replace(`/brand/${brandId}/payments` as never);
   if (brandId === null || releaseId === null) return <View />;
   return (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: color.canvas }}>
       <BrandPaymentsPermissionGate brandId={brandId} title="Payout" onBack={back} mode="view">
         <BrandPayoutDetailView
           brandId={brandId}

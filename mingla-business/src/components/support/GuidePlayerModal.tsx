@@ -17,7 +17,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  scrim,
+  space,
+} from "../../constants/designSystem";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { Icon } from "../ui/Icon";
 import { MediaViewerShell } from "../media/MediaViewerShell";
@@ -92,10 +97,10 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
   const activeCaption = useMemo(() => cues.find((cue) => time >= cue.start && time < cue.end)?.text ?? null, [cues, time]);
 
   return (
-    <View style={[styles.screen, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
+    <View style={[styles.screen, { paddingTop: Math.max(insets.top, space[2]) }]}>
       <View style={styles.header}>
         <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.close_guide_a11y")} onPress={onClose} style={styles.iconButton}>
-          <Icon name="close" size={20} color={textTokens.primary} />
+          <Icon name="close" size={20} color={color.text1} />
         </Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>Guide {guide.episode} · {guide.duration}</Text>
@@ -103,7 +108,7 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, space[7]) }]}>
         <View style={styles.videoShell}>
           {hls ? <VideoView player={player} style={styles.video} nativeControls contentFit="contain" accessibilityLabel={`${guide.title} video`} /> : (
             <View style={styles.videoUnavailable}><Text style={styles.muted}>This guide is being prepared.</Text></View>
@@ -124,7 +129,7 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
         {showTranscript ? (
           <View style={styles.panel}>
             <Text style={styles.sectionTitle}>Transcript</Text>
-            {loadingTranscript ? <ActivityIndicator color={accent.warm} /> : cues.length ? cues.map((cue, index) => (
+            {loadingTranscript ? <ActivityIndicator color={color.text1} /> : cues.length ? cues.map((cue, index) => (
               <Pressable key={`${cue.start}-${index}`} accessibilityRole="button" accessibilityLabel={`Jump to ${Math.floor(cue.start / 60)} minutes ${Math.floor(cue.start % 60)} seconds`} onPress={() => {
                 if (isVideoPlayerReleasedForReload(player)) return;
                 player.currentTime = cue.start;
@@ -147,7 +152,7 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
                 <Text style={styles.stepBody}>{step.body}</Text>
                 {step.links?.map((link) => (
                   <Pressable key={link.href} accessibilityRole="link" accessibilityLabel={link.label} onPress={() => void Linking.openURL(link.href)} style={styles.resourceLink}>
-                    <Text style={styles.resourceText}>{link.label}</Text><Icon name="externalLink" size={14} color={accent.warm} />
+                    <Text style={styles.resourceText}>{link.label}</Text><Icon name="externalLink" size={14} color={color.text1} />
                   </Pressable>
                 ))}
               </View>
@@ -169,36 +174,36 @@ export function GuidePlayerModal({ guide, userId, onClose }: { guide: HelpVideoR
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.profile },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
-  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: glass.border.profileElevated },
+  screen: { flex: 1, backgroundColor: color.canvas },
+  header: { flexDirection: "row", alignItems: "center", gap: space[4], paddingHorizontal: space[4], paddingBottom: space[4], borderBottomWidth: 1, borderBottomColor: color.line },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.lineStrong },
   headerCopy: { flex: 1, minWidth: 0 },
-  eyebrow: { color: accent.warm, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 },
-  title: { color: textTokens.primary, fontSize: 20, fontWeight: "800", marginTop: 2 },
-  content: { width: "100%", maxWidth: 980, alignSelf: "center", padding: spacing.md, gap: spacing.lg },
-  videoShell: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.lg, overflow: "hidden", backgroundColor: "#050607", borderWidth: 1, borderColor: glass.border.profileElevated },
+  eyebrow: { color: color.text1, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 },
+  title: { color: color.text1, fontSize: 20, fontWeight: "800", marginTop: 2 },
+  content: { width: "100%", maxWidth: 980, alignSelf: "center", padding: space[4], gap: space[6] },
+  videoShell: { width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md, overflow: "hidden", backgroundColor: color.canvas, borderWidth: 1, borderColor: color.lineStrong },
   video: { width: "100%", height: "100%" },
   videoUnavailable: { flex: 1, alignItems: "center", justifyContent: "center" },
-  caption: { position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.xl, alignItems: "center" },
-  captionText: { color: "#fff", backgroundColor: "rgba(0,0,0,0.82)", paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: 5, fontSize: 15, lineHeight: 21, textAlign: "center" },
-  controlRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  pill: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: 22, borderWidth: 1, borderColor: glass.border.profileElevated },
-  pillActive: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.1)" },
-  pillText: { color: textTokens.secondary, fontSize: 12, fontWeight: "700" },
-  pillTextActive: { color: accent.warm },
-  blurb: { color: textTokens.secondary, fontSize: 16, lineHeight: 24 },
-  panel: { gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
-  sectionTitle: { color: textTokens.primary, fontSize: 17, fontWeight: "800" },
-  transcriptRow: { minHeight: 44, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: glass.border.profileBase },
-  transcriptTime: { width: 42, color: accent.warm, fontSize: 12, fontWeight: "800" },
-  transcriptText: { flex: 1, color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
-  step: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: glass.border.profileBase },
-  stepNumber: { width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(235,120,37,0.14)", alignItems: "center", justifyContent: "center" },
-  stepNumberText: { color: accent.warm, fontWeight: "800" },
+  caption: { position: "absolute", left: space[4], right: space[4], bottom: space[7], alignItems: "center" },
+  captionText: { color: color.text1, backgroundColor: scrim.modal, paddingHorizontal: space[2], paddingVertical: 5, borderRadius: 5, fontSize: 15, lineHeight: 21, textAlign: "center" },
+  controlRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  pill: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[4], borderRadius: 22, borderWidth: 1, borderColor: color.lineStrong },
+  pillActive: { borderColor: color.paper, backgroundColor: color.fill.tabOn },
+  pillText: { color: color.text2, fontSize: 12, fontWeight: "700" },
+  pillTextActive: { color: color.text1 },
+  blurb: { color: color.text2, fontSize: 16, lineHeight: 24 },
+  panel: { gap: space[4], padding: space[4], borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset },
+  sectionTitle: { color: color.text1, fontSize: 17, fontWeight: "800" },
+  transcriptRow: { minHeight: 44, flexDirection: "row", alignItems: "flex-start", gap: space[2], paddingVertical: space[2], borderTopWidth: 1, borderTopColor: color.line },
+  transcriptTime: { width: 42, color: color.text1, fontSize: 12, fontWeight: "800" },
+  transcriptText: { flex: 1, color: color.text2, fontSize: 14, lineHeight: 20 },
+  step: { flexDirection: "row", alignItems: "flex-start", gap: space[4], paddingTop: space[2], borderTopWidth: 1, borderTopColor: color.line },
+  stepNumber: { width: 28, height: 28, borderRadius: 14, backgroundColor: color.fill.tabOn, alignItems: "center", justifyContent: "center" },
+  stepNumberText: { color: color.text1, fontWeight: "800" },
   stepCopy: { flex: 1, gap: 5 },
-  stepTitle: { color: textTokens.primary, fontSize: 14, fontWeight: "800" },
-  stepBody: { color: textTokens.secondary, fontSize: 14, lineHeight: 21 },
-  resourceLink: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  resourceText: { color: accent.warm, fontSize: 13, fontWeight: "700" },
-  muted: { color: textTokens.tertiary, fontSize: 13 },
+  stepTitle: { color: color.text1, fontSize: 14, fontWeight: "800" },
+  stepBody: { color: color.text2, fontSize: 14, lineHeight: 21 },
+  resourceLink: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[1] },
+  resourceText: { color: color.text1, fontSize: 13, fontWeight: "700" },
+  muted: { color: color.text3, fontSize: 13 },
 });

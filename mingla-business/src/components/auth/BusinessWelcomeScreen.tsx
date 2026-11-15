@@ -27,11 +27,15 @@ import { HapticFeedback } from "../../utils/hapticFeedback";
 import { BUTTON_MAX_FONT_SCALE } from "../../constants/dynamicType";
 import { Icon } from "../ui/Icon";
 import {
-  spacing,
-  radius,
-  shadows,
+  color,
+  edge,
   colors,
   fontWeights,
+  radius,
+  shadow,
+  size,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
 import { MINGLA_WORDMARK } from "@mingla/brand-assets";
@@ -54,6 +58,8 @@ const WELCOME_LOGO_PILL_HEIGHT = 54;
 const WELCOME_WORDMARK_WIDTH = 108;
 const WELCOME_DESKTOP_PILL_SCALE = 1.2;
 const WELCOME_DESKTOP_BREAKPOINT = 768;
+/** #4420 round-3 item 1 — desktop sign-in: video pane left, sign-in panel right. */
+const WELCOME_DESKTOP_PANEL_WIDTH = 560;
 const WEB_LOGO_SRC = "/brand/mingla-wordmark.png";
 
 export interface BusinessWelcomeScreenProps {
@@ -270,12 +276,17 @@ export default function BusinessWelcomeScreen({
   // SmartScrollView. JS-side keyboardPad preserves that existing mode layout.
   useEffect(() => {
     if (Platform.OS === "web") return;
+    // #4420 round-3 item 3 — iOS listens to the WILL events so the field and
+    // its button ride up WITH the keyboard animation instead of sitting under
+    // it until the Did event lands. Android keeps the Did events.
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
     // orch-strict-grep-allow orch-0892 — anchored sign-in (no ScrollView)
-    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
+    const showSub = Keyboard.addListener(showEvent, (e) => {
       setKeyboardPad(e.endCoordinates.height);
     });
     // orch-strict-grep-allow orch-0892 — anchored sign-in (no ScrollView)
-    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+    const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardPad(0);
     });
     return () => {
@@ -506,8 +517,25 @@ export default function BusinessWelcomeScreen({
     </Animated.View>
   );
 
+  const renderTagline = () => (
+    <Animated.Text
+      style={[
+        styles.tagline,
+        desktop && styles.taglineDesktop,
+        {
+          opacity: taglineOpacity,
+          transform: [{ translateY: taglineTranslateY }],
+        },
+      ]}
+      accessibilityLabel={WELCOME_TAGLINE_ACCESSIBILITY}
+      accessibilityRole="header"
+    >
+      {WELCOME_TAGLINE}
+    </Animated.Text>
+  );
+
   const renderIdleAuthGroup = () => (
-    <View style={styles.authGroup}>
+    <View style={[styles.authGroup, desktop && styles.authGroupDesktop]}>
       {(Platform.OS === "ios" || Platform.OS === "web") && (
         <Animated.View
           style={[
@@ -531,7 +559,7 @@ export default function BusinessWelcomeScreen({
             }}
           >
             {isAppleSignInInProgress ? (
-              <ActivityIndicator size="small" color="#111827" />
+              <ActivityIndicator size="small" color={color.ink} />
             ) : (
               <AppleLogo size={22} color="#111827" />
             )}
@@ -567,7 +595,7 @@ export default function BusinessWelcomeScreen({
           }}
         >
           {isGoogleSignInInProgress ? (
-            <ActivityIndicator size="small" color="#111827" />
+            <ActivityIndicator size="small" color={color.ink} />
           ) : (
             <Image source={googleIcon} style={styles.googleIcon} resizeMode="contain" />
           )}
@@ -603,7 +631,7 @@ export default function BusinessWelcomeScreen({
       </Animated.View>
 
       <Animated.View style={[styles.termsWrapper, { opacity: termsOpacity }]}>
-        <Text style={styles.termsText}>
+        <Text style={[styles.termsText, desktop && styles.termsTextDesktop]}>
           By continuing, you agree to our{" "}
           <Text style={styles.termsLink} onPress={openTerms} accessibilityRole="link">
             Terms of Service
@@ -618,146 +646,28 @@ export default function BusinessWelcomeScreen({
     </View>
   );
 
-  const renderModeActions = () => (
-    <View
-      style={[
-        styles.actionZone,
-        {
-          paddingBottom:
-            Math.max(insets.bottom, vs(24)) +
-            (keyboardPad > 0 ? keyboardPad + 42 : 0),
-        },
-      ]}
-    >
-      {mode === "email-input" && (
-        <View style={styles.modeWrapper}>
-          <TextInput
-            style={styles.emailField}
-            value={emailInput}
-            onChangeText={setEmailInput}
-            placeholder="you@example.com"
-            placeholderTextColor={colors.text.tertiary}
-            autoCapitalize="none"
-            autoComplete="email"
-            autoCorrect={false}
-            keyboardType="email-address"
-            returnKeyType="send"
-            onSubmitEditing={() => void handleSendCode()}
-            editable={!submittingEmail}
-            autoFocus
-            accessibilityLabel="Email address"
-          />
-          <TouchableOpacity
-            onPress={() => void handleSendCode()}
-            style={[
-              styles.primaryActionButton,
-              (submittingEmail || !emailInput.trim()) && styles.buttonDisabled,
-            ]}
-            disabled={submittingEmail || !emailInput.trim()}
-            activeOpacity={0.9}
-            accessibilityLabel="Send 6-digit code"
-            accessibilityRole="button"
-            accessibilityState={{
-              disabled: submittingEmail || !emailInput.trim(),
-              busy: submittingEmail,
-            }}
-          >
-            {submittingEmail ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <Text style={styles.primaryActionButtonText}>Send code</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleBackToIdle}
-            style={styles.linkButton}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityLabel="Back to sign-in options"
-            accessibilityRole="button"
-          >
-            <Text style={styles.linkButtonText}>Back</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {mode === "otp-input" && (
-        <View style={styles.modeWrapper}>
-          <TextInput
-            style={styles.codeField}
-            value={otpInput}
-            onChangeText={handleOtpChange}
-            placeholder="••••••"
-            placeholderTextColor={colors.text.tertiary}
-            keyboardType="number-pad"
-            autoComplete="one-time-code"
-            textContentType="oneTimeCode"
-            maxLength={6}
-            editable={!submittingOtp}
-            autoFocus
-            accessibilityLabel="6-digit code"
-          />
-          <TouchableOpacity
-            onPress={() => void handleResendCode()}
-            style={styles.linkButton}
-            disabled={submittingEmail || resendSecondsLeft > 0}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityLabel={
-              resendSecondsLeft > 0
-                ? `Resend code in ${resendSecondsLeft} seconds`
-                : "Resend code"
-            }
-            accessibilityRole="button"
-            accessibilityState={{ disabled: submittingEmail || resendSecondsLeft > 0 }}
-          >
-            <Text
-              style={[
-                styles.linkButtonText,
-                (submittingEmail || resendSecondsLeft > 0) && styles.linkButtonTextDisabled,
-              ]}
-            >
-              {resendSecondsLeft > 0
-                ? `Resend code in ${resendSecondsLeft}s`
-                : "Resend code"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleEditEmail}
-            style={styles.linkButton}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityLabel="Wrong email? Edit"
-            accessibilityRole="button"
-          >
-            <Text style={styles.linkButtonTextSubtle}>Wrong email? Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleBackToIdle}
-            style={styles.linkButton}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityLabel="Back to sign-in options"
-            accessibilityRole="button"
-          >
-            <Text style={styles.linkButtonTextSubtle}>Back to sign-in options</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {mode === "otp-verifying" && (
-        <View style={styles.verifyingWrapper}>
-          <ActivityIndicator size="large" color={colors.primary[500]} />
-        </View>
-      )}
-    </View>
-  );
-
   return (
     <View style={styles.root}>
-      <WelcomeVideoBackground />
-      <View pointerEvents="none" style={styles.videoVeil} />
-      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      {/* Desktop: the video fills the left pane only and carries the centred
+          tagline (#4420 round-3 item 1); phone: the video fills the screen. */}
+      <View
+        pointerEvents="none"
+        style={desktop ? styles.mediaPaneDesktop : StyleSheet.absoluteFill}
+      >
+        <WelcomeVideoBackground />
+        <View pointerEvents="none" style={styles.videoVeil} />
+        {desktop && mode === "idle" ? (
+          <View style={styles.mediaTaglineDesktop}>{renderTagline()}</View>
+        ) : null}
+      </View>
+      <SafeAreaView
+        style={[styles.container, desktop && styles.panelDesktop]}
+        edges={["top", "left", "right"]}
+      >
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
         {onBack ? (
-          <View style={[styles.topBar, { paddingLeft: Math.max(insets.left, spacing.md) }]}>
+          <View style={[styles.topBar, { paddingLeft: Math.max(insets.left, space[4]) }]}>
             <TouchableOpacity
               onPress={() => {
                 HapticFeedback.buttonPress();
@@ -767,7 +677,7 @@ export default function BusinessWelcomeScreen({
               accessibilityLabel="Go back"
               accessibilityRole="button"
             >
-              <Icon name="chevL" size={28} color="#ffffff" />
+              <Icon name="chevL" size={28} color={color.textOnPhoto} />
             </TouchableOpacity>
           </View>
         ) : null}
@@ -778,29 +688,17 @@ export default function BusinessWelcomeScreen({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
               styles.idleContent,
+              desktop && styles.idleContentDesktop,
               { paddingBottom: Math.max(insets.bottom, WELCOME_CONTENT_GUTTER) },
             ]}
           >
             {renderLogo()}
-            <Animated.Text
-              style={[
-                styles.tagline,
-                desktop && styles.taglineDesktop,
-                {
-                  opacity: taglineOpacity,
-                  transform: [{ translateY: taglineTranslateY }],
-                },
-              ]}
-              accessibilityLabel={WELCOME_TAGLINE_ACCESSIBILITY}
-              accessibilityRole="header"
-            >
-              {WELCOME_TAGLINE}
-            </Animated.Text>
+            {desktop ? null : renderTagline()}
             {renderIdleAuthGroup()}
           </ScrollView>
         ) : (
           <>
-        <View style={styles.centerZone}>
+        <View style={[styles.centerZone, desktop && styles.centerZoneDesktop]}>
           {renderLogo()}
 
           {mode === "email-input" && (
@@ -831,6 +729,7 @@ export default function BusinessWelcomeScreen({
         <View
           style={[
             styles.actionZone,
+            desktop && styles.actionZoneDesktop,
             {
               // ORCH-1165: +42pt (KEYBOARD_TOOLBAR_HEIGHT) only with the
               // keyboard open, so the Done bar never covers the action zone.
@@ -843,12 +742,15 @@ export default function BusinessWelcomeScreen({
           {/* Cycle 15 — email input mode (DEC-097 + SPEC §3.5.4). */}
           {mode === "email-input" && (
             <View style={styles.modeWrapper}>
+              <Text style={styles.fieldLabel} importantForAccessibility="no">
+                Email address
+              </Text>
               <TextInput
                 style={styles.emailField}
                 value={emailInput}
                 onChangeText={setEmailInput}
                 placeholder="you@example.com"
-                placeholderTextColor={colors.text.tertiary}
+                placeholderTextColor={color.text3}
                 autoCapitalize="none"
                 autoComplete="email"
                 autoCorrect={false}
@@ -876,7 +778,7 @@ export default function BusinessWelcomeScreen({
                 }}
               >
                 {submittingEmail ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
+                  <ActivityIndicator size="small" color={color.ink} />
                 ) : (
                   <Text style={styles.primaryActionButtonText}>Send code</Text>
                 )}
@@ -901,7 +803,7 @@ export default function BusinessWelcomeScreen({
                 value={otpInput}
                 onChangeText={handleOtpChange}
                 placeholder="••••••"
-                placeholderTextColor={colors.text.tertiary}
+                placeholderTextColor={color.text3}
                 keyboardType="number-pad"
                 autoComplete="one-time-code"
                 textContentType="oneTimeCode"
@@ -969,10 +871,12 @@ export default function BusinessWelcomeScreen({
           {/* Cycle 15 — verifying mode (DEC-097 + SPEC §3.5.4). */}
           {mode === "otp-verifying" && (
             <View style={styles.verifyingWrapper}>
-              <ActivityIndicator size="large" color={colors.primary[500]} />
+              <ActivityIndicator size="large" color={color.text1} />
             </View>
           )}
         </View>
+        {/* Desktop: balance the panel so the form sits mid-height. */}
+        {desktop ? <View style={styles.desktopSpacer} /> : null}
           </>
         )}
       </SafeAreaView>
@@ -980,10 +884,34 @@ export default function BusinessWelcomeScreen({
   );
 }
 
+// #4420 — the white logo pill, white-on-video text with its shadow, the Apple
+// button fill and the #111827 Apple mark are pinned byte-for-byte by the
+// issue-2052 video welcome contract (.github/scripts/strict-grep/
+// issue-2052-video-welcome-contract.mjs). They are content over the video, not
+// chrome; everything else on this screen reads tokens.
+const PHOTO_TEXT_SHADOW = {
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 2,
+} as const;
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: color.canvas,
+  },
+  mediaPaneDesktop: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: WELCOME_DESKTOP_PANEL_WIDTH,
+    overflow: "hidden",
+  },
+  mediaTaglineDesktop: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space[9],
   },
   videoVeil: {
     ...StyleSheet.absoluteFillObject,
@@ -992,10 +920,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  panelDesktop: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: WELCOME_DESKTOP_PANEL_WIDTH,
+    backgroundColor: color.canvas,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: color.line,
+  },
   topBar: {
-    paddingTop: 4,
-    paddingBottom: 4,
-    minHeight: 44,
+    paddingTop: space[1],
+    paddingBottom: space[1],
+    minHeight: size.iconBtn.md,
     justifyContent: "center",
   },
   idleContent: {
@@ -1006,12 +944,25 @@ const styles = StyleSheet.create({
     paddingTop: WELCOME_CONTENT_GUTTER,
     gap: WELCOME_CONTENT_GUTTER,
   },
+  idleContentDesktop: {
+    alignItems: "flex-start",
+    justifyContent: "center",
+    paddingHorizontal: space[10] + space[4],
+    gap: space[7],
+  },
   centerZone: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-    paddingBottom: vs(48),
+    alignItems: "flex-start",
+    justifyContent: "flex-end",
+    paddingHorizontal: space[6],
+    paddingBottom: space[6],
+    gap: space[3],
+  },
+  centerZoneDesktop: {
+    paddingHorizontal: space[10] + space[4],
+  },
+  desktopSpacer: {
+    flex: 1,
   },
   logoContainer: {
     alignItems: "center",
@@ -1026,31 +977,35 @@ const styles = StyleSheet.create({
   tagline: {
     width: "100%",
     maxWidth: 342,
-    fontSize: 22,
-    lineHeight: 28,
+    ...type.title,
     fontWeight: fontWeights.bold,
     color: "#ffffff",
-    letterSpacing: 0,
     textAlign: "center",
     textShadowColor: "rgba(0, 0, 0, 0.45)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    ...PHOTO_TEXT_SHADOW,
   },
   taglineDesktop: {
-    maxWidth: 430,
-    fontSize: 27,
-    lineHeight: 34,
+    maxWidth: 620,
+    ...type.display,
+    fontSize: 44,
+    lineHeight: 48,
   },
   authGroup: {
     width: "100%",
     maxWidth: 400,
     alignItems: "center",
-    gap: vs(14),
+    gap: space[3],
+  },
+  authGroupDesktop: {
+    alignItems: "stretch",
   },
   actionZone: {
-    paddingHorizontal: spacing.lg,
-    alignItems: "center",
-    gap: vs(14),
+    paddingHorizontal: space[6],
+    alignItems: "stretch",
+    gap: space[3],
+  },
+  actionZoneDesktop: {
+    paddingHorizontal: space[10] + space[4],
   },
   buttonAnimWrapper: {
     width: "100%",
@@ -1059,60 +1014,37 @@ const styles = StyleSheet.create({
   appleButton: {
     width: "100%",
     maxWidth: s(400),
-    // #2211 — `minHeight`, NOT `height`. `vs(56)` resolves to 44 pt on a
-    // 375x667 device and is blind to `fontScale`, so at accessibility text
-    // sizes the 17 pt label could not fit and "Continue with Apple" cropped
-    // to "Continue wi" — leaving a 22 pt icon as the only thing telling the
-    // three sign-in methods apart.
-    minHeight: vs(56),
+    // #2211 — `minHeight`, NOT `height`: at accessibility text sizes the
+    // label must grow the button rather than crop to "Continue wi".
+    minHeight: size.btn.phoneLg,
     backgroundColor: "#ffffff",
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    borderRadius: radius.lg,
+    borderRadius: radius.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    ...shadows.sm,
+    gap: space[3],
+    ...shadow.paper,
   },
   appleButtonText: {
     color: colors.text.primary,
-    fontSize: 17,
-    // #2211 — explicit, so `maxFontSizeMultiplier` governs the whole line
-    // box. iOS multiplies lineHeight by the same figure it multiplies
-    // fontSize by; leaving it implicit hid that from the layout.
-    lineHeight: 22,
-    fontWeight: fontWeights.semibold,
-    letterSpacing: 0.3,
+    ...type.btn,
   },
   googleButton: {
     width: "100%",
     maxWidth: s(400),
-    // #2211 — `minHeight`, NOT `height`. `vs(56)` resolves to 44 pt on a
-    // 375x667 device and is blind to `fontScale`, so at accessibility text
-    // sizes the 17 pt label could not fit and "Continue with Apple" cropped
-    // to "Continue wi" — leaving a 22 pt icon as the only thing telling the
-    // three sign-in methods apart.
-    minHeight: vs(56),
+    // #2211 — `minHeight`, NOT `height` (see appleButton).
+    minHeight: size.btn.phoneLg,
     backgroundColor: colors.background.primary,
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    borderRadius: radius.lg,
+    borderRadius: radius.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    ...shadows.sm,
+    gap: space[3],
+    ...shadow.paper,
   },
   googleButtonText: {
-    color: colors.text.primary,
-    fontSize: 17,
-    // #2211 — explicit, so `maxFontSizeMultiplier` governs the whole line
-    // box. iOS multiplies lineHeight by the same figure it multiplies
-    // fontSize by; leaving it implicit hid that from the layout.
-    lineHeight: 22,
-    fontWeight: fontWeights.semibold,
-    letterSpacing: 0.3,
+    color: color.ink,
+    ...type.btn,
   },
   googleIcon: {
     width: 22,
@@ -1122,163 +1054,144 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   termsWrapper: {
-    marginTop: vs(8),
+    marginTop: space[2],
+    alignSelf: "stretch",
   },
   termsText: {
-    fontSize: 12,
-    lineHeight: 18,
+    ...type.caption,
     fontWeight: fontWeights.regular,
     color: "#ffffff",
     textAlign: "center",
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: space[6],
     textShadowColor: "rgba(0, 0, 0, 0.45)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    ...PHOTO_TEXT_SHADOW,
+  },
+  termsTextDesktop: {
+    color: color.text2,
+    textAlign: "left",
+    paddingHorizontal: 0,
   },
   termsLink: {
-    color: "#ffffff",
+    color: color.textOnPhoto,
     fontWeight: fontWeights.semibold,
     textDecorationLine: "underline",
-    textShadowColor: "rgba(0, 0, 0, 0.45)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
   // Cycle 15 — email + OTP styles (DEC-097).
   emailButton: {
     width: "100%",
     maxWidth: s(400),
-    // #2211 — `minHeight`, NOT `height`. `vs(56)` resolves to 44 pt on a
-    // 375x667 device and is blind to `fontScale`, so at accessibility text
-    // sizes the 17 pt label could not fit and "Continue with Apple" cropped
-    // to "Continue wi" — leaving a 22 pt icon as the only thing telling the
-    // three sign-in methods apart.
-    minHeight: vs(56),
+    // #2211 — `minHeight`, NOT `height` (see appleButton).
+    minHeight: size.btn.phoneLg,
     backgroundColor: colors.background.primary,
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    borderRadius: radius.lg,
+    borderRadius: radius.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    ...shadows.sm,
+    gap: space[3],
+    ...shadow.paper,
   },
   emailButtonText: {
-    color: colors.text.primary,
-    fontSize: 17,
-    // #2211 — explicit, so `maxFontSizeMultiplier` governs the whole line
-    // box. iOS multiplies lineHeight by the same figure it multiplies
-    // fontSize by; leaving it implicit hid that from the layout.
-    lineHeight: 22,
-    fontWeight: fontWeights.semibold,
-    letterSpacing: 0.3,
+    color: color.ink,
+    ...type.btn,
   },
   modeHeading: {
-    fontSize: 22,
-    lineHeight: 30,
-    fontWeight: fontWeights.bold,
-    color: "#ffffff",
-    textAlign: "center",
-    marginTop: vs(8),
-    paddingHorizontal: spacing.xl,
-    textShadowColor: "rgba(0, 0, 0, 0.45)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    ...type.title,
+    color: color.textOnPhoto,
+    textAlign: "left",
+    marginTop: space[3],
+    textShadowColor: color.mask,
+    ...PHOTO_TEXT_SHADOW,
   },
   modeSubtext: {
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: fontWeights.regular,
-    color: "#ffffff",
-    textAlign: "center",
-    marginTop: vs(8),
-    paddingHorizontal: spacing.xl,
-    textShadowColor: "rgba(0, 0, 0, 0.45)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    ...type.body,
+    color: color.textOnPhoto2,
+    textAlign: "left",
+    textShadowColor: color.mask,
+    ...PHOTO_TEXT_SHADOW,
   },
   modeSubtextEmail: {
     fontWeight: fontWeights.semibold,
-    color: "#ffffff",
+    color: color.textOnPhoto,
   },
   modeWrapper: {
     width: "100%",
-    alignItems: "center",
-    gap: vs(14),
+    maxWidth: s(400),
+    alignSelf: "center",
+    alignItems: "stretch",
+    gap: space[3],
+  },
+  fieldLabel: {
+    ...type.caption,
+    color: color.textOnPhoto2,
+    marginBottom: -space[1],
   },
   emailField: {
     width: "100%",
-    maxWidth: s(400),
-    height: vs(56),
-    backgroundColor: colors.background.primary,
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    fontSize: 17,
-    color: colors.text.primary,
+    minHeight: size.btn.phoneLg,
+    backgroundColor: color.card,
+    borderWidth: edge.ringInputFocus.borderWidth,
+    borderColor: edge.ringInputFocus.borderColor,
+    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    ...type.body,
+    lineHeight: undefined,
+    color: color.text1,
   },
   codeField: {
     width: "100%",
-    maxWidth: s(280),
-    height: vs(64),
-    backgroundColor: colors.background.primary,
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    fontSize: 28,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
+    minHeight: 64,
+    backgroundColor: color.card,
+    borderWidth: edge.ringInputFocus.borderWidth,
+    borderColor: edge.ringInputFocus.borderColor,
+    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    ...type.title,
+    lineHeight: undefined,
+    color: color.text1,
     textAlign: "center",
-    letterSpacing: 8,
+    letterSpacing: space[2],
   },
   primaryActionButton: {
     width: "100%",
-    maxWidth: s(400),
-    height: vs(56),
-    backgroundColor: colors.primary[500],
-    borderRadius: radius.lg,
+    minHeight: size.btn.phoneLg,
+    backgroundColor: color.paper,
+    borderRadius: radius.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    ...shadows.md,
+    gap: space[3],
+    ...shadow.paper,
   },
   primaryActionButtonText: {
-    color: colors.text.inverse,
-    fontSize: 17,
-    fontWeight: fontWeights.semibold,
-    letterSpacing: 0.3,
+    color: color.ink,
+    ...type.btn,
   },
   linkButton: {
-    paddingVertical: vs(8),
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     alignItems: "center",
   },
   linkButtonText: {
-    fontSize: 15,
-    fontWeight: fontWeights.semibold,
-    color: "#ffffff",
-    textShadowColor: "rgba(0, 0, 0, 0.45)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    ...type.btn,
+    color: color.textOnPhoto,
+    textShadowColor: color.mask,
+    ...PHOTO_TEXT_SHADOW,
   },
   linkButtonTextDisabled: {
-    color: "rgba(255, 255, 255, 0.65)",
+    color: color.textOnPhoto2,
+    opacity: 0.75,
   },
   linkButtonTextSubtle: {
-    fontSize: 14,
+    ...type.small,
     fontWeight: fontWeights.medium,
-    color: "#ffffff",
-    textShadowColor: "rgba(0, 0, 0, 0.45)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    color: color.textOnPhoto2,
+    textShadowColor: color.mask,
+    ...PHOTO_TEXT_SHADOW,
   },
   verifyingWrapper: {
     width: "100%",
     alignItems: "center",
-    paddingVertical: vs(24),
-    gap: vs(12),
+    paddingVertical: space[6],
+    gap: space[3],
   },
 });

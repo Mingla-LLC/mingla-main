@@ -1,7 +1,12 @@
 import React, { useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
-import { radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
 
 /*
  * #2829 W9a — the live draft preview beside the plan (native: a WebView; web
@@ -41,9 +46,9 @@ export function SitePreviewPane({ url, title = "Website draft preview", height =
 }
 
 const styles = StyleSheet.create({
-  frame: { borderRadius: radius.md, overflow: "hidden", borderWidth: 1, borderColor: textTokens.quaternary, gap: spacing.xs },
-  web: { flex: 1, backgroundColor: "#ffffff" },
-  caption: { ...typography.caption, color: textTokens.tertiary, paddingHorizontal: spacing.sm, paddingTop: spacing.xs },
-  error: { ...typography.bodySm, color: semantic.errorText, padding: spacing.md },
+  frame: { borderRadius: radius.sm, overflow: "hidden", borderWidth: 1, borderColor: color.text4, gap: space[1] },
+  web: { flex: 1, backgroundColor: color.paper },
+  caption: { ...type.caption, color: color.text3, paddingHorizontal: space[2], paddingTop: space[1] },
+  error: { ...type.small, color: color.errorText, padding: space[4] },
   spinner: { position: "absolute", top: "50%", alignSelf: "center" },
 });

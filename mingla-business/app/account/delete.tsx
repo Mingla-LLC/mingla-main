@@ -49,12 +49,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import {
@@ -269,7 +266,7 @@ export default function DeleteAccountRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.chromeRow}>
@@ -288,7 +285,7 @@ export default function DeleteAccountRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -371,7 +368,7 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
 }) => (
   <View style={styles.warnHost}>
     <View style={styles.warnIconWrap}>
-      <Icon name="trash" size={48} color={accent.warm} />
+      <Icon name="trash" size={48} color={color.text1} />
     </View>
     <Text style={styles.warnTitle}>Delete your Mingla Host account?</Text>
     <Text style={styles.warnBody}>
@@ -379,7 +376,7 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
     </Text>
     {provider === "apple" ? (
       <View style={styles.appleNote}>
-        <Icon name="flag" size={14} color={accent.warm} />
+        <Icon name="flag" size={14} color={color.warningText} />
         <Text style={styles.appleNoteText}>
           If you used Apple's "Hide My Email", you may also need to remove
           Mingla from appleid.apple.com after deletion.
@@ -504,7 +501,7 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
     {/* #3660 active-events block: what happens to them, stated plainly. */}
     {preview.hasActiveOrUpcomingEvents ? (
       <View style={styles.activeEventsWarn}>
-        <Icon name="flag" size={16} color={accent.warm} />
+        <Icon name="flag" size={16} color={color.warningText} />
         <Text style={styles.activeEventsWarnText}>
           You have live or upcoming events. Events with no tickets or RSVPs are
           taken down when you delete. Events with tickets or RSVPs must be
@@ -515,7 +512,7 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
 
     {blockersFailed ? (
       <View style={styles.activeEventsWarn}>
-        <Icon name="flag" size={16} color={accent.warm} />
+        <Icon name="flag" size={16} color={color.warningText} />
         <Text style={styles.activeEventsWarnText}>
           {"We couldn't check your events right now. You can continue; we'll check again before anything is deleted."}
         </Text>
@@ -567,7 +564,7 @@ const BlockedPanel: React.FC<BlockedPanelProps> = ({
   <View style={styles.blockedHost}>
     <View style={styles.blockedCard} accessibilityRole="alert">
       <View style={styles.blockedTitleRow}>
-        <Icon name="flag" size={16} color={accent.warm} />
+        <Icon name="flag" size={16} color={color.warningText} />
         <Text style={styles.blockedTitle}>{ACCOUNT_DELETION_BLOCKED_TITLE}</Text>
       </View>
       {blockers.length === 0 ? (
@@ -658,7 +655,7 @@ const Step3Confirm: React.FC<Step3ConfirmProps> = ({
       <TextInput
         style={styles.confirmInput}
         placeholder={isEmailMode ? "Type your email" : "Type DELETE"}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         value={input}
         onChangeText={onChangeInput}
         autoCapitalize={isEmailMode ? "none" : "characters"}
@@ -710,7 +707,7 @@ const Step4Success: React.FC<Step4SuccessProps> = ({ retained }) => (
     <View style={styles.successIconWrap}>
       {/* #2321 — a retained login is not a green tick. Same check glyph (no new
           asset), recoloured to the warm accent so the affordance is not "done". */}
-      <Icon name="check" size={48} color={retained ? "#eb7825" : "#34c759"} />
+      <Icon name="check" size={48} color={retained ? color.warning : color.success} />
     </View>
     {retained ? (
       <>
@@ -730,7 +727,7 @@ const Step4Success: React.FC<Step4SuccessProps> = ({ retained }) => (
     )}
     <ActivityIndicator
       size="small"
-      color={textTokens.tertiary}
+      color={color.text3}
       style={styles.successSpinner}
     />
   </View>
@@ -763,7 +760,7 @@ interface CascadeRowProps {
 const CascadeRow: React.FC<CascadeRowProps> = ({ icon, label }) => (
   <View style={styles.cascadeRow}>
     <View style={styles.cascadeIconBadge}>
-      <Icon name={icon} size={16} color={textTokens.secondary} />
+      <Icon name={icon} size={16} color={color.text2} />
     </View>
     <Text style={styles.cascadeLabel} numberOfLines={2}>
       {label}
@@ -785,16 +782,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -805,232 +802,232 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
+    gap: space[4],
   },
 
   // Step 1 Warn ------------------------------------------------------
   warnHost: {
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   warnIconWrap: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+    backgroundColor: color.warningTint,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    marginTop: space[6],
+    marginBottom: space[2],
   },
   warnTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
     letterSpacing: -0.3,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   warnBody: {
     fontSize: 14,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   appleNote: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.md - 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    gap: space[2],
+    padding: space[4] - 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.warningTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.20)",
-    marginTop: spacing.sm,
+    borderColor: color.line,
+    marginTop: space[2],
   },
   appleNoteText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
-    color: textTokens.secondary,
+    color: color.text2,
   },
 
   // Step 2 Preview ---------------------------------------------------
   previewHost: {
-    gap: spacing.md,
+    gap: space[4],
   },
   previewTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   cascadeList: {
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[2],
+    padding: space[4],
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   cascadeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   cascadeIconBadge: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
     alignItems: "center",
     justifyContent: "center",
   },
   cascadeLabel: {
     flex: 1,
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
   },
   cascadeEmpty: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
     textAlign: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   activeEventsWarn: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.md - 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    gap: space[2],
+    padding: space[4] - 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.warningTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.30)",
+    borderColor: color.line,
   },
   activeEventsWarnText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
-    color: textTokens.secondary,
+    color: color.text2,
   },
 
   // Blocked panel (#3660) — built from the activeEventsWarn block ------
   blockedHost: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   blockedCard: {
-    gap: spacing.sm,
-    padding: spacing.md - 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    gap: space[2],
+    padding: space[4] - 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.warningTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.30)",
+    borderColor: color.line,
   },
   blockedTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   blockedTitle: {
     flex: 1,
     fontSize: 15,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   blockedLine: {
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
+    color: color.text2,
   },
 
   // Step 3 Confirm ---------------------------------------------------
   confirmHost: {
-    gap: spacing.md,
+    gap: space[4],
   },
   confirmTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   confirmSubtitle: {
     fontSize: 14,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   confirmEmailBox: {
-    padding: spacing.md - 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
+    padding: space[4] - 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     gap: 4,
   },
   confirmEmailLabel: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   confirmEmail: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   confirmInput: {
     fontSize: 15,
-    color: textTokens.primary,
-    backgroundColor: glass.tint.profileBase,
+    color: color.text1,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.md,
-    paddingHorizontal: spacing.md - 2,
-    paddingVertical: spacing.sm + 2,
+    borderColor: color.line,
+    borderRadius: radius.sm,
+    paddingHorizontal: space[4] - 2,
+    paddingVertical: space[2] + 2,
     minHeight: 44,
   },
 
   // Step 4 Success ---------------------------------------------------
   successHost: {
     alignItems: "center",
-    gap: spacing.md,
-    paddingTop: spacing.xl,
+    gap: space[4],
+    paddingTop: space[7],
   },
   successIconWrap: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "rgba(52, 199, 89, 0.12)",
+    backgroundColor: color.successTint,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   successTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
     letterSpacing: -0.3,
   },
   successBody: {
     fontSize: 14,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   successSpinner: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
 
   // CTAs -------------------------------------------------------------
   ctaRow: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 
   // Toast ------------------------------------------------------------
@@ -1046,6 +1043,6 @@ const styles = StyleSheet.create({
   // Reserved for any error variant tints (semantic.error available if needed)
   // keep import alive without dead-import warning
   _reserved: {
-    color: semantic.error,
+    color: color.errorText,
   },
 });

@@ -12,12 +12,10 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
+  color,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Brand } from "../../types/brand";
 import { currencyCodeOrNull } from "../../utils/currency";
@@ -97,23 +95,23 @@ export function PayoutCountryInlinePrompt({
 
 const styles = StyleSheet.create({
   card: {
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.lg,
+    gap: space[2],
+    padding: space[4],
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   title: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
 });
 

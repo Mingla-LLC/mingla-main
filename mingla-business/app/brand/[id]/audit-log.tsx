@@ -34,11 +34,9 @@ import { Spinner } from "../../../src/components/ui/Spinner";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import {
   accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
 } from "../../../src/constants/designSystem";
 import {
   useAuditLog,
@@ -210,7 +208,7 @@ export default function AuditLogRoute(): React.ReactElement {
                 {displayRows.map((r) => (
                   <View key={r.id} style={styles.row}>
                     <View style={styles.iconCol}>
-                      <Icon name={r.iconName} size={18} color={accent.warm} />
+                      <Icon name={r.iconName} size={18} color={color.text1} />
                     </View>
                     <View style={styles.rowText}>
                       <Text style={styles.rowTitle}>{r.title}</Text>
@@ -249,51 +247,51 @@ export default function AuditLogRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   banner: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(59, 130, 246, 0.10)",
+    marginTop: space[2],
+    marginBottom: space[4],
+    padding: space[2] + 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.infoTint,
     borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.24)",
+    borderColor: color.line,
   },
   bannerText: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 18,
   },
   filterRow: {
-    gap: spacing.xs,
-    paddingBottom: spacing.sm,
+    gap: space[1],
+    paddingBottom: space[2],
   },
   filterChipPressable: {
     marginRight: 0,
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
     alignItems: "center",
   },
   spinnerHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
     alignItems: "center",
   },
   row: {
     flexDirection: "row",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[2],
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[4],
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.xs + 2,
+    borderColor: color.line,
+    marginBottom: space[1] + 2,
   },
   iconCol: {
     width: 26,
@@ -307,21 +305,21 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   rowDetail: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 16,
     marginBottom: 2,
   },
   rowMeta: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   loadMoreHost: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     alignItems: "center",
   },
 });

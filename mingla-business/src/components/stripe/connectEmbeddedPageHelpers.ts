@@ -32,6 +32,7 @@
 import { useEffect } from "react";
 import type { CSSProperties } from "react";
 
+import { color } from "../../constants/designSystem";
 /**
  * Absolute-positioned scroll wrapper for Connect Embedded pages.
  *
@@ -48,7 +49,7 @@ export const pageWrapperStyle: CSSProperties = {
   left: 0,
   overflowY: "auto",
   WebkitOverflowScrolling: "touch",
-  backgroundColor: "#FAFAFA",
+  backgroundColor: color.paper,
   fontFamily:
     '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
 };
@@ -87,14 +88,14 @@ export const connectEmbeddedPageStyles = {
   headerStyle: {
     padding: "24px 24px 16px",
     textAlign: "center" as const,
-    borderBottom: "1px solid #E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderBottom: `1px solid ${color.paperPressed}`,
+    backgroundColor: color.paper,
   } satisfies CSSProperties,
   headerTitleStyle: {
     fontSize: "20px",
     fontWeight: 600,
     margin: 0,
-    color: "#0F172A",
+    color: color.ink,
   } satisfies CSSProperties,
   mainStyle: {
     padding: "24px",
@@ -105,41 +106,41 @@ export const connectEmbeddedPageStyles = {
   } satisfies CSSProperties,
   footerStyle: {
     padding: "16px 24px",
-    borderTop: "1px solid #E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderTop: `1px solid ${color.paperPressed}`,
+    backgroundColor: color.paper,
     textAlign: "center" as const,
   } satisfies CSSProperties,
   footerTextStyle: {
     fontSize: "13px",
-    color: "#475569",
+    color: color.text4,
     margin: 0,
   } satisfies CSSProperties,
   errorCardStyle: {
     maxWidth: "480px",
     margin: "80px auto",
     padding: "32px",
-    backgroundColor: "#FFFFFF",
-    border: "1px solid #FCA5A5",
+    backgroundColor: color.paper,
+    border: `1px solid ${color.errorText}`,
     borderRadius: "12px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+    boxShadow: `0 1px 3px ${color.spinnerTrackOnPaper}`,
   } satisfies CSSProperties,
   errorTitleStyle: {
     fontSize: "20px",
     fontWeight: 600,
     margin: "0 0 12px",
-    color: "#0F172A",
+    color: color.ink,
   } satisfies CSSProperties,
   errorBodyStyle: {
     fontSize: "15px",
     lineHeight: 1.5,
     margin: 0,
-    color: "#475569",
+    color: color.text4,
   } satisfies CSSProperties,
   loadingCardStyle: {
     maxWidth: "480px",
     margin: "80px auto",
     padding: "32px",
     textAlign: "center" as const,
-    color: "#475569",
+    color: color.text4,
   } satisfies CSSProperties,
 } as const;
