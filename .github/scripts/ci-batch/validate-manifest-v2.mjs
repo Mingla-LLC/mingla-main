@@ -505,7 +505,8 @@ export function phase3dContractDigest(manifest) {
 // #4435 Phase 0 characterization: listed the four new pg17 suites and their sidecars in the #1931 and #2117 replay inventories beside the #4436 rows; re-sealed.
 // #4436 follow-up 20280708046436 (invited self-join, own prefs): listed the migration after the #4436 guard migration in the #1857, #1931 and #2117 lanes and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4435 W2: listed migrations 20280708054435 (group lifecycle) and 20280708064435 (chat reopen and clear) after 20280708046436 in the #1857, #1931 and #2117 lanes, and their four pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "eec2e351cc9a5bbb74d9138e63645668184081c075aeda31f98c64cc7ece3336";
+// #4435 W3c: registered the concurrent-add cap race suite (issue_4435_group_cap_race) and its sidecar in the #1931 and #2117 inventories; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "0a1586fe099cb85590fee31b2ce596075adda308f6562b32254bca9d066cf3e7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

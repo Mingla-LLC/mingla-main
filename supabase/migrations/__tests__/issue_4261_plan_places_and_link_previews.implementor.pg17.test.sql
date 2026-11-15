@@ -1178,3 +1178,13 @@ END $p06$;
 ROLLBACK;
 
 \echo 'issue_4261_plan_places_and_link_previews: all assertions passed'
+
+-- #4435: this suite re-applies older migrations outside its transaction
+-- (above), which leaves their function bodies live for every suite after it
+-- in the one CI replay. Put back the newer migrations that redefine the same
+-- functions (all idempotent CREATE OR REPLACE / IF NOT EXISTS), so the next
+-- suite sees the head schema.
+\ir ../20280708044436_issue_4436_group_permission_guards.sql
+\ir ../20280708046436_issue_4436_invited_self_join_and_own_prefs.sql
+\ir ../20280708054435_issue_4435_group_lifecycle.sql
+\ir ../20280708064435_issue_4435_chat_reopen_and_clear.sql
