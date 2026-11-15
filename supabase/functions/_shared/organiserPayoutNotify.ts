@@ -33,6 +33,7 @@ import {
 } from "./stripeEdgeAuth.ts";
 import {
   claimBrandMilestone,
+  hostMoneyEventValues,
   postAppsFlyerS2SEvent,
   resolveBrandOwnerUserId,
 } from "./appsFlyerS2S.ts";
@@ -253,12 +254,13 @@ async function fireFirstPayoutMilestone(
       supabase,
       userId: ownerUserId,
       eventName: "mingla_first_payout",
+      // #4238 W6-2 (I-4238-HOST-EVENTS-NO-REVENUE): a payout is the host's
+      // money — plain values (currency-exponent aware), never af_revenue.
       eventValues: {
-        af_revenue: Math.round(payout.amountCents) / 100,
-        af_currency: payout.currency,
         brand_id: brandId,
         provider: "paystack",
         release_id: payout.releaseId,
+        ...hostMoneyEventValues("payout", payout.amountCents, payout.currency),
       },
     });
   } catch (afError) {

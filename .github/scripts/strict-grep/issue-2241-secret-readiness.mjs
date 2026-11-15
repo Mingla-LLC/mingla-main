@@ -63,9 +63,15 @@ export function violations(files) {
   for (
     const field of [
       "ATTENDANCE_CLAIM_PEPPER",
+      // #4238 W1-1 (I-4238-CAPI-KEYS-DECLARED): the four consumer CAPI
+      // tokens must stay governed fields, so a rewrite that drops one fails.
+      "META_CAPI_ACCESS_TOKEN",
       "META_COMPETITOR_ACCESS_TOKEN",
       "META_COMPETITOR_IG_USER_ID",
+      "REDDIT_ADS_CAPI_TOKEN",
       "RESEND_WEBHOOK_SECRET",
+      "SNAPCHAT_CAPI_TOKEN",
+      "TIKTOK_EVENTS_ACCESS_TOKEN",
     ]
   ) {
     if (!adFields.has(field)) {
@@ -425,9 +431,13 @@ function fixture() {
           name: "AD_CONVERSION_TOKENS",
           bundle_fields: [
             "ATTENDANCE_CLAIM_PEPPER",
+            "META_CAPI_ACCESS_TOKEN",
             "META_COMPETITOR_ACCESS_TOKEN",
             "META_COMPETITOR_IG_USER_ID",
+            "REDDIT_ADS_CAPI_TOKEN",
             "RESEND_WEBHOOK_SECRET",
+            "SNAPCHAT_CAPI_TOKEN",
+            "TIKTOK_EVENTS_ACCESS_TOKEN",
           ].map((name) => ({ name })),
         },
         {

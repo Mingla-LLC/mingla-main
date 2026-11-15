@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4238_missing_key_loud.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-missing-key-loud",
+  "profile": "deno-2-unit"
+}

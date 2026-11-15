@@ -148,11 +148,18 @@ export function resolveSiteTargetHandoff(target: LinksTarget, platform: Platform
 // ---------------------------------------------------------------------------
 // #4339 round B — campaign pass-through. The seam (lib/cta-destination.ts)
 // builds every URL; this only ADDS the visitor's landing campaign to the URLs
-// it returned, so paid traffic stays attributed after the hand-off:
+// it returned, so paid traffic stays attributed after the hand-off.
+// #4238 W3-2 (I-4238-CLICK-ID-KEEPS-NETWORK): a click id keeps its network's
+// parameter name everywhere it goes:
 //
-//   OneLink (phone)   af_sub1 = utm_campaign, af_sub2 = utm_source,
-//                     af_sub3 = the ad click id (gclid / gbraid / wbraid / …)
-//   host web          the utm_* parameters, unchanged
+//   OneLink (phone)   af_sub1 = "cmp:" + utm_campaign (the Host app reads a
+//                     cmp: value as a campaign, never a referral code, B9),
+//                     af_sub2 = utm_source, af_sub3 = "<key>:<value>" of the
+//                     ad click id (fbclid:…, gclid:…, gbraid:…)
+//   host web          the utm_* parameters, the ad click id under its own
+//                     name (fbclid=…, so host web's own pixel writes _fbc),
+//                     and mc_click = the first-party click id of this tab's
+//                     touch (host web adopts it as its first touch)
 //
 // Only the two known origins are touched: a OneLink is any https URL whose
 // query already carries `pid=` (every OneLink the seam builds does), host web
@@ -184,16 +191,22 @@ function isOneLink(href: string): boolean {
 
 /** One href with the landing campaign added (OneLink → af_sub1–3, host web → utm_*). */
 export function withLandingCampaignHref(href: string, campaign: LandingCampaign): string {
+  const click = campaign.clickId
   if (isOneLink(href)) {
+    const utmCampaign = campaign.utm.utm_campaign ?? ''
     return appendParams(href, {
-      af_sub1: campaign.utm.utm_campaign ?? '',
+      af_sub1: utmCampaign ? `cmp:${utmCampaign}` : '',
       af_sub2: campaign.utm.utm_source ?? '',
-      af_sub3: campaign.clickId ?? '',
+      af_sub3: click ? `${click.key}:${click.value}` : '',
     })
   }
   const hostOrigin = resolveCtaDestinations('host', siteAttribution('business_hero')).computerHref.replace(/\/+$/, '')
   if (href === hostOrigin || href.startsWith(`${hostOrigin}/`) || href.startsWith(`${hostOrigin}?`)) {
-    return appendParams(href, campaign.utm)
+    return appendParams(href, {
+      ...campaign.utm,
+      ...(click ? { [click.key]: click.value } : {}),
+      ...(campaign.firstPartyClickId ? { mc_click: campaign.firstPartyClickId } : {}),
+    })
   }
   return href
 }

@@ -2807,7 +2807,13 @@ export async function tiktokFetchIdentity(
 }
 
 export interface TikTokPixelSnapshot {
+  /** Numeric pixel id: what pixel/event/stats takes (28-day purchase gate). */
   pixelId: string;
+  /**
+   * #4238 W1-4 (Step 0 Z1): the Pixel Code shown in Events Manager. The Events
+   * API `event_source_id` for web events takes this code, not the numeric id.
+   */
+  pixelCode: string | null;
   pixelName: string | null;
   activityStatus: string | null;
   /** Zero events ⇒ conversion objectives stay gated until #865 (T-P4). */
@@ -2892,12 +2898,47 @@ export async function tiktokFetchPixels(
     )
     .map((row) => ({
       pixelId: String(row.pixel_id),
+      pixelCode: typeof row.pixel_code === "string" && row.pixel_code.trim()
+        ? row.pixel_code.trim()
+        : null,
       pixelName: typeof row.pixel_name === "string" ? row.pixel_name : null,
       activityStatus: typeof row.activity_status === "string"
         ? row.activity_status
         : null,
       eventsCount: Array.isArray(row.events) ? row.events.length : 0,
     }));
+}
+
+export interface TikTokPixelSelection {
+  pixel: TikTokPixelSnapshot | null;
+  /** The code the Events API sends as event_source_id, or null. */
+  pixelCode: string | null;
+  /** true when the code could not be tied to one pixel (health alerts). */
+  mismatch: boolean;
+}
+
+/**
+ * #4238 W1-4: pick the pixel the server sends to. With an expected code (the
+ * browser's pixel code), only the listed pixel with that code is used; no match
+ * means no code and `mismatch`. Without one, a single listed pixel is used; more
+ * than one is ambiguous, so no code is stored rather than guessing. The numeric
+ * id is never used as the code.
+ */
+export function selectTikTokPixel(
+  pixels: TikTokPixelSnapshot[],
+  expectedPixelCode: string | null,
+): TikTokPixelSelection {
+  if (expectedPixelCode) {
+    const match = pixels.find((pixel) => pixel.pixelCode === expectedPixelCode);
+    return match
+      ? { pixel: match, pixelCode: expectedPixelCode, mismatch: false }
+      : { pixel: pixels[0] ?? null, pixelCode: null, mismatch: true };
+  }
+  if (pixels.length === 1) {
+    const only = pixels[0];
+    return { pixel: only, pixelCode: only.pixelCode, mismatch: !only.pixelCode };
+  }
+  return { pixel: pixels[0] ?? null, pixelCode: null, mismatch: pixels.length > 1 };
 }
 
 /** Live CompletePayment count for the 28-day Sales eligibility gate. */

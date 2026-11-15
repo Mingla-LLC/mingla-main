@@ -8,6 +8,7 @@ import {
   fireAdCheckoutStart,
   fireAdConversion,
   persistCheckoutAdContext,
+  persistCheckoutSurface,
 } from "../_shared/adConversionFire.ts";
 // #3682 — auto-follow brand after signed-in free reservation (fail-open).
 import { autoFollowBrandBestEffort } from "../_shared/autoFollowBrand.ts";
@@ -131,7 +132,9 @@ import {
 } from "../_shared/installments/paystackInstallmentPricing.ts";
 // #3645 — event_type → buyer-web surface path (trip / experience / event),
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
-import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
+// #4238 W1-5: moved to _shared so the server ad events build the same
+// checkout URL (event_source_url) from one owner.
+import { buyerWebSurfacePath } from "../_shared/buyerWebSurfacePath.ts";
 import { capacityEventDateIdFromError } from "./capacityEventDateId.ts";
 import { expectedSessionLineQuantity } from "./checkoutSessionLines.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
@@ -646,6 +649,28 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
     default:
       return true;
   }
+}
+
+/**
+ * #4238 P1-1: where post-response ad work runs. On the edge runtime it is
+ * handed to `EdgeRuntime.waitUntil` (the same injectable global seam as
+ * scheduleCheckoutAdStart), so the buyer's response is never delayed. With no
+ * runtime to hold the work (Deno tests, a local `deno serve`), the returned
+ * promise is awaited by the handler, so the work is neither cut off nor left
+ * running after the request has been answered. Kept off
+ * TicketCheckoutCreateDeps, whose three members the #1929 contract pins.
+ */
+export function scheduleAdWorkDefault(
+  work: Promise<unknown>,
+): Promise<void> | void {
+  const runtime = (globalThis as unknown as {
+    EdgeRuntime?: { waitUntil: (work: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(work);
+    return;
+  }
+  return work.then(() => undefined, () => undefined);
 }
 
 export interface TicketCheckoutCreateDeps {
@@ -3166,6 +3191,9 @@ export const createTicketCheckoutCreateHandler = (
           ? body.client_user_agent
           : null),
     });
+    // #4238 W4-1 (D20): the finalize-time conversion reads this to keep a
+    // native app purchase off the website ad lanes. Own fail-open write.
+    await persistCheckoutSurface(supabase as never, checkoutSessionId, surface);
     scheduleCheckoutAdStart(
       fireAdCheckoutStart(supabase as never, checkoutSessionId),
     );
@@ -3620,7 +3648,14 @@ export const createTicketCheckoutCreateHandler = (
       // wait. Idempotent + fail-open; value_cents = 0 for a free RSVP. event_id
       // = orderId.
       if (finalizedRecord.replayed !== true) {
-        void fireAdConversion(supabase as never, { orderId, surface: "web" })
+        // #4238 W1-5: the free order finalized now; that is the action time.
+        // #4238 P1-1: scheduled through the injectable seam (waitUntil on the
+        // edge runtime), never a bare `void` that outlives the request.
+        const freeAdWork = fireAdConversion(supabase as never, {
+          orderId,
+          surface: "web",
+          eventTimeMs: Date.now(),
+        })
           .catch(
             (adConvErr) => {
               console.warn(
@@ -3631,6 +3666,8 @@ export const createTicketCheckoutCreateHandler = (
               );
             },
           );
+        const freeAdPending = scheduleAdWorkDefault(freeAdWork);
+        if (freeAdPending) await freeAdPending;
         // #3682 — free RSVP auto-follow from the persisted session buyer, not
         // the request auth uid (idempotency can reuse another session).
         void (async () => {

@@ -76,7 +76,7 @@ import {
   onForegroundNotification,
   resumeInAppMessages,
 } from "../src/services/oneSignalService";
-import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
+import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, logAppsFlyerAuthOutcome, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
 import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/oneLinkResolver";
 // Issue #4261 — personal invite links and group links (pure decisions).
 import { groupChatUrl, groupJoinAction } from "../src/utils/friendShareLink";
@@ -1074,18 +1074,17 @@ function AppContent() {
       setAppsFlyerUserId(user.id);
       registerAppsFlyerDevice(user.id);
 
-      // Fire attribution event once per auth session
+      // Fire attribution event once per auth session.
+      // #4238 W6-7: af_complete_registration once per user (persisted flag,
+      // not once per app session), with the real provider as the method.
       if (!afEventFiredRef.current && profile) {
         afEventFiredRef.current = true;
-        const method = (user as any).app_metadata?.provider === 'apple' ? 'apple' : 'google';
-        if (profile.has_completed_onboarding) {
-          logAppsFlyerEvent('af_login', { af_login_method: method });
-        } else {
-          logAppsFlyerEvent('af_complete_registration', {
-            af_registration_method: method,
-            country: profile.country || '',
-          });
-        }
+        void logAppsFlyerAuthOutcome({
+          userId: user.id,
+          provider: (user as { app_metadata?: { provider?: unknown } }).app_metadata?.provider,
+          completedOnboarding: profile.has_completed_onboarding === true,
+          country: profile.country || '',
+        });
       }
     } else {
       afEventFiredRef.current = false;

@@ -13,6 +13,10 @@ const FIELD = "BRAND_PERSON_ERASURE_CHALLENGE_SECRET";
 const READER = "supabase/functions/support-brand-person-erasure/erasureContract.ts";
 const EXPECTED_READERS = [
   "supabase/functions/_shared/adAppReadinessProviders/appsflyer.ts",
+  // #4238 W1-1: the conversion fire names the consumer CAPI token fields
+  // (META_CAPI_ACCESS_TOKEN, SNAPCHAT_CAPI_TOKEN, TIKTOK_EVENTS_ACCESS_TOKEN,
+  // REDDIT_ADS_CAPI_TOKEN) it resolves by default; it adds no secret name.
+  "supabase/functions/_shared/adConversionFire.ts",
   "supabase/functions/_shared/capiTokens.ts",
   // [TEST-MOD-APPROVED #4182] Creator review media reads Bunny provider
   // values from the existing governed bundle; it adds no top-level secret.
@@ -58,12 +62,17 @@ const EXPECTED_FIELDS = [
   // [TEST-MOD-APPROVED #4137] Existing AD_CONVERSION_TOKENS envelope field
   // used by the two Admin Blog readers above; no top-level secret is added.
   ["MARKETING_REVALIDATE_SECRET", "Marketing Engineering", "secure_vault"],
+  // #4238 W1-1: the four consumer CAPI tokens are declared bundle fields so a
+  // governed rewrite that drops one is refused; no top-level secret is added.
+  ["META_CAPI_ACCESS_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
   ["META_COMPETITOR_ACCESS_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
   ["META_COMPETITOR_IG_USER_ID", "Growth Engineering", "provider_dashboard"],
   ["NOTIFICATION_RECIPIENT_HMAC_SECRET", "Messaging Engineering", "secure_vault"],
   ["ONESIGNAL_EVENT_STREAM_TOKEN_CURRENT", "Messaging Engineering", "secure_vault"],
   ["ONESIGNAL_EVENT_STREAM_TOKEN_PREVIOUS", "Messaging Engineering", "secure_vault"],
+  ["REDDIT_ADS_CAPI_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
   ["RESEND_WEBHOOK_SECRET", "Messaging Security", "secure_vault"],
+  ["SNAPCHAT_CAPI_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
   ["SOURCE_REFUND_ATTENTION_IP_CURRENT_KEY_B64", "Platform Security", "secure_vault"],
   ["SOURCE_REFUND_ATTENTION_IP_CURRENT_KID", "Platform Security", "secure_vault"],
   ["SOURCE_REFUND_ATTENTION_IP_PREVIOUS_KEY_B64", "Platform Security", "secure_vault"],
@@ -76,6 +85,7 @@ const EXPECTED_FIELDS = [
   ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_CURRENT_KID", "Messaging Engineering", "secure_vault"],
   ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KEY_B64", "Messaging Engineering", "secure_vault"],
   ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KID", "Messaging Engineering", "secure_vault"],
+  ["TIKTOK_EVENTS_ACCESS_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
   // #3392 — four envelope fields; no new secret name.
   ["VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KEY_B64", "Payments Engineering", "secure_vault"],
   ["VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID", "Payments Engineering", "secure_vault"],

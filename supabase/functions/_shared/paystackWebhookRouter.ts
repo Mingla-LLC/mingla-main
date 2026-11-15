@@ -33,6 +33,8 @@ import {
 } from "./ticketEvidenceHold.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
+// #4238 W3-5: the host first-sale signals fire for Paystack sales too.
+import { fireHostFirstTicketSold } from "./hostFirstSale.ts";
 // #3682 — auto-follow brand after signed-in purchase (fail-open).
 import { autoFollowBrandBestEffort } from "./autoFollowBrand.ts";
 // ISSUE-1326 — the ONE finalize path for a paid NG (Paystack) venue reservation
@@ -676,13 +678,36 @@ export async function handlePaystackChargeSuccess(
   // = orderId. Belt-and-suspenders try/catch (the helper already never throws).
   try {
     if (orderId) {
-      await fireAdConversion(supabase as never, { orderId, surface: "web" });
+      // #4238 W1-5: event_time is Paystack's verified paid_at, not send time.
+      const paidAtMs = paidAtIso ? Date.parse(paidAtIso) : NaN;
+      await fireAdConversion(supabase as never, {
+        orderId,
+        surface: "web",
+        eventTimeMs: Number.isFinite(paidAtMs) ? paidAtMs : null,
+      });
     }
   } catch (adConvErr) {
     console.warn(
       "[paystack-webhook] ad-conversion fire threw (non-fatal):",
       adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
     );
+  }
+
+  // #4238 W3-5 (D11; I-4238-FIRST-SALE-BOTH-PROVIDERS): the host's first
+  // ticket sale, once per brand and only a true first sale. This finalize is
+  // shared by the webhook, the status poll, confirm and reconcile; none of them
+  // injects the AppsFlyer poster here, so mingla_host_first_sale stays pending
+  // and the hourly ad-conversion-retry run posts it. Never fails the finalize.
+  if (orderId.length > 0) {
+    const paidAtMs = paidAtIso ? Date.parse(paidAtIso) : NaN;
+    await fireHostFirstTicketSold(supabase as never, {
+      brandId: session.brand_id as string | null,
+      orderId,
+      amountCents: verifiedAmount,
+      currency: verifiedCurrency,
+      provider: "paystack",
+      eventTimeMs: Number.isFinite(paidAtMs) ? paidAtMs : null,
+    });
   }
 
   // #3682 — shared Paystack finalize path (webhook + status poll via

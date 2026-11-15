@@ -10,6 +10,7 @@
 // The edge fns re-validate everything; this transport only shapes the calls.
 
 import { postGrowthTools, type GrowthToolsError } from './growth-tools-transport'
+import { fireBrowserHostLead, leadEventIdFrom, marketingAdContext } from './marketing-ad-context'
 export type { GrowthToolsError } from './growth-tools-transport'
 
 // ─── Report contract (growth-tools-run {action:'run'}) ──────────────────────
@@ -248,16 +249,22 @@ export async function fetchVenuePreview(
 }
 
 /** Email gate: {run_id, email} → {ok:true}. Sends a summary email with a
- *  tokenized link; does NOT unlock the page (the full report opens from email). */
+ *  tokenized link; does NOT unlock the page (the full report opens from email).
+ *
+ *  #4238 W3-3: the email is the host lead. The request carries the page's ad
+ *  context (`ad`, ads-gated inside marketingAdContext); the server answers
+ *  `lead_event_id` (`lead:tool:<id>`) and the browser Lead twin fires with it
+ *  (ads on only), here, so all four tool pages send it the same way. */
 export async function submitGrowthToolsGate(
   run_id: string,
   email: string,
   signal?: AbortSignal,
 ): Promise<GrowthToolsGateResponse> {
   const origin = typeof window !== 'undefined' ? window.location.origin : undefined
+  const ad = marketingAdContext()
   const result = await postGrowthTools(
     'growth-tools-gate',
-    { run_id, email, ...(origin ? { origin } : {}) },
+    { run_id, email, ...(origin ? { origin } : {}), ...(ad ? { ad } : {}) },
     signal,
   )
   if (!result.ok) return result
@@ -266,6 +273,7 @@ export async function submitGrowthToolsGate(
       ? (result.body as { ok?: boolean }).ok
       : undefined
   if (ok !== true) return { ok: false, error: 'server' }
+  void fireBrowserHostLead(leadEventIdFrom(result.body))
   return { ok: true }
 }
 

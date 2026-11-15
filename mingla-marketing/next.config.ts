@@ -40,6 +40,23 @@ const CSP_SCRIPT_SRC = [
   'https://www.googletagmanager.com',
   'https://*.googletagmanager.com',
   'https://us-assets.i.posthog.com',
+  // #4238 W3-1 — the four ad pixels (lib/marketing-pixels.ts), loaded only
+  // while ads are on for this visitor.
+  'https://connect.facebook.net',
+  'https://analytics.tiktok.com',
+  'https://sc-static.net',
+  'https://www.redditstatic.com',
+]
+// #4238 W3-1 — where the four pixels send their beacons (report-only connect-src;
+// img-src https: already allows image beacons).
+const CSP_AD_PIXEL_CONNECT_SRC = [
+  'https://www.facebook.com',
+  'https://*.facebook.com',
+  'https://analytics.tiktok.com',
+  'https://*.tiktok.com',
+  'https://tr.snapchat.com',
+  'https://*.snapchat.com',
+  'https://*.reddit.com',
 ]
 // `next dev` only: its webpack runtime and Fast Refresh evaluate strings, so
 // without this nothing hydrates in development (the #2331 marketing privacy
@@ -57,7 +74,7 @@ function contentSecurityPolicy(): { enforced: string; reportOnly: string } {
   const full = [
     "default-src 'self'",
     ...base,
-    `connect-src 'self' ${supabaseOrigins().join(' ')} https://us.i.posthog.com https://us-assets.i.posthog.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://stats.g.doubleclick.net https://cdnapi.bamboo-cloud.com https://*.bamboo-cloud.com https://*.kaltura.com`,
+    `connect-src 'self' ${supabaseOrigins().join(' ')} https://us.i.posthog.com https://us-assets.i.posthog.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://stats.g.doubleclick.net https://cdnapi.bamboo-cloud.com https://*.bamboo-cloud.com https://*.kaltura.com ${CSP_AD_PIXEL_CONNECT_SRC.join(' ')}`,
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https:",
     "font-src 'self' data:",

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/public-submit-rsvp/issue_4238_rsvp_conversion.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-rsvp-conversion",
+  "profile": "deno-2-unit"
+}

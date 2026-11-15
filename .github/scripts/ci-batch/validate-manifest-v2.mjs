@@ -494,8 +494,15 @@ export function phase3dContractDigest(manifest) {
 // #4423 Wave 4a CI fix: re-sealed after adding the Wave 4a migration to the #1931 and #2117 skip lists; MANIFEST.json phase3eContractSha256 matches.
 // #4423 integration: merged origin/main a5a5c59094 (#4419 20280706004419 rows kept beside the #4423 rows) and renamed the thirteen #4423 migrations 20280705*4423 to 20280707*4423 (after 20280706004419), in order; re-sealed.
 // #4423 integration 2: merged origin/main ce482c996c; re-sealed.
+// #4238 Wave 1: re-sealed after registering M-1 (click-id type + tracking health) and its pg17 proof; MANIFEST.json phase3eContractSha256 matches.
+// #4238 Wave 4: re-sealed after registering M-3 (ticket_checkout_sessions.checkout_surface) and its pg17 proof; MANIFEST.json phase3eContractSha256 matches.
+// #4238 Wave 3: registered M-2 (host funnel: ad_match_contexts, host event types, sign-up and first-publish triggers) and its pg17 proof in the 1857/1931/2117 suites; re-sealed.
+// #4238 integration: merged origin/main 10ffda1eb5 (#4430 20280707424430 kept before the three #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4238 integration 2: merged origin/main ad97118a28 (#4339 20280708004339 and its implementor/tester proofs kept after the three #4238 rows); re-sealed.
+// #4238 order after production: renamed the three #4238 migrations (M-1, M-3, M-2) from 20280707*4238 to 20280708014238/20280708024238/20280708034238 (after 20280708004339, already applied in production), same relative order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c825eddaf8556b4c333a0d46a09919a57481d2e8e6857108379b0a4e544761e6";
+// #4238 integration 3: merged origin/main f512401461 (#4438 #4430 local review owner-read pg17 suite kept beside the #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "77a3064bccb83a7c628d4b752200073497b6f942f3d4f9b4e5aa3cbf4a162181";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
