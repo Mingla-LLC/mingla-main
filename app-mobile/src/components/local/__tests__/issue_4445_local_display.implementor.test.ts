@@ -43,7 +43,7 @@ Deno.test("#4445-2: source guard — Apply scrolls via the shared helper, screen
   assert(index.includes("scrollRef={scrollRef}"));
   assert(index.includes("layoutOf('why')") && index.includes("inputOf('why')"));
   const ui = read("app-mobile/src/components/programs/ProgramUi.tsx");
-  assert(ui.includes("ref={scrollRef}") && ui.includes("ref={inputRef as never}"));
+  assert(ui.includes("ref={scrollRef}") && ui.includes("ref={inputRef}"));
 });
 
 Deno.test("#4445-3: chip error needs a save attempt or a chip tap", () => {
