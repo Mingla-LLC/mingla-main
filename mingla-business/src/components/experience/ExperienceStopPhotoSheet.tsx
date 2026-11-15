@@ -47,13 +47,10 @@ import * as Haptics from "expo-haptics";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
@@ -412,7 +409,7 @@ export const ExperienceStopPhotoSheet: React.FC<
             hitSlop={12}
             style={({ pressed }) => [pressed && styles.pressed]}
           >
-            <Icon name="close" size={24} color={textTokens.secondary} />
+            <Icon name="close" size={24} color={color.text2} />
           </Pressable>
         </View>
 
@@ -432,7 +429,7 @@ export const ExperienceStopPhotoSheet: React.FC<
                 <Icon
                   name={tab.icon}
                   size={16}
-                  color={isActive ? accent.warm : textTokens.tertiary}
+                  color={isActive ? color.accent : color.text3}
                 />
                 <Text
                   style={[styles.tabLabel, isActive && styles.tabLabelActive]}
@@ -447,7 +444,7 @@ export const ExperienceStopPhotoSheet: React.FC<
         {/* Search — GIFs + Photos only. */}
         {activeTab === "gif" || activeTab === "stock" ? (
           <View style={styles.searchRow}>
-            <Icon name="search" size={18} color={textTokens.tertiary} />
+            <Icon name="search" size={18} color={color.text3} />
             <TextInput
               value={query}
               onChangeText={setQuery}
@@ -456,7 +453,7 @@ export const ExperienceStopPhotoSheet: React.FC<
                   ? "Search GIFs (or just browse)"
                   : "Search photos (or just browse)"
               }
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               returnKeyType="search"
               autoCapitalize="none"
               autoCorrect={false}
@@ -475,7 +472,7 @@ export const ExperienceStopPhotoSheet: React.FC<
                 accessibilityRole="button"
                 accessibilityLabel="Clear search"
               >
-                <Icon name="close" size={18} color={textTokens.tertiary} />
+                <Icon name="close" size={18} color={color.text3} />
               </Pressable>
             ) : null}
           </View>
@@ -485,7 +482,7 @@ export const ExperienceStopPhotoSheet: React.FC<
         {activeTab === "library" ? (
           <View style={styles.libraryBody}>
             <View style={styles.libraryPreview}>
-              <Icon name="grid" size={40} color={textTokens.tertiary} />
+              <Icon name="grid" size={40} color={color.text3} />
               <Text style={styles.libraryHint}>
                 Pick up to {remaining} from your phone — JPEG, PNG, WebP, or GIF.
               </Text>
@@ -631,7 +628,7 @@ const ProviderGrid: React.FC<{
   if (status === "loading" || status === "idle") {
     return (
       <View style={styles.gridStateHost}>
-        <ActivityIndicator size="small" color={accent.warm} />
+        <ActivityIndicator size="small" color={color.accent} />
         <Text style={styles.providerFooter}>{attribution}</Text>
       </View>
     );
@@ -644,7 +641,7 @@ const ProviderGrid: React.FC<{
     const noRetry = errorCode === "not_configured";
     return (
       <View style={styles.gridStateHost}>
-        <Icon name="globe" size={36} color={semantic.error} />
+        <Icon name="globe" size={36} color={color.danger} />
         <Text style={styles.stateTitle}>{copy.title}</Text>
         <Text style={styles.stateBody}>{copy.body}</Text>
         {noRetry ? (
@@ -672,7 +669,7 @@ const ProviderGrid: React.FC<{
   if (status === "empty") {
     return (
       <View style={styles.gridStateHost}>
-        <Icon name="search" size={36} color={textTokens.tertiary} />
+        <Icon name="search" size={36} color={color.text3} />
         <Text style={styles.stateTitle}>
           {searchActive
             ? kind === "gif"
@@ -809,26 +806,26 @@ const GridTile: React.FC<{
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingTop: space[2],
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   headerTextCol: { flex: 1 },
   headerTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   headerSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
   },
   pressed: { opacity: 0.7 },
@@ -837,130 +834,130 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     padding: 3,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   tabSegment: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
     borderRadius: radius.sm,
   },
   tabSegmentActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   tabLabel: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
-  tabLabelActive: { color: accent.warm },
+  tabLabelActive: { color: color.accent },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
     height: 40,
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+    borderColor: color.line,
+    paddingHorizontal: space[4],
+    gap: space[2],
+    marginBottom: space[4],
   },
   searchInput: {
     flex: 1,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
   libraryBody: {
-    gap: spacing.md,
+    gap: space[4],
   },
   libraryPreview: {
     minHeight: 160,
     borderRadius: radius.md,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: accent.border,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.accentLine,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    padding: spacing.lg,
+    gap: space[2],
+    padding: space[6],
   },
   libraryHint: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   gridWrap: { flex: 1 },
   gridStateHost: {
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xl,
+    gap: space[2],
+    paddingVertical: space[7],
   },
   stateTitle: {
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   stateBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   masonryHost: {
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.lg,
+    paddingTop: space[1],
+    paddingBottom: space[6],
   },
   masonryColumns: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   masonryColumn: {
     flex: 1,
-    gap: spacing.sm,
+    gap: space[2],
   },
   tile: {
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   tilePressed: { opacity: 0.82 },
   tileDisabled: { opacity: 0.4 },
   tileImage: {
     width: "100%",
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   tileCredit: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.xs,
+    color: color.text3,
+    paddingHorizontal: space[1],
     paddingVertical: 4,
   },
   providerFooter: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });
 

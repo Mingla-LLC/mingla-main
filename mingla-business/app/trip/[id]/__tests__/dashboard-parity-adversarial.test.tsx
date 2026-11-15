@@ -211,7 +211,8 @@ describe("ORCH-0913 trip dashboard parity — ADVERSARIAL", () => {
     // The Edit tile JSX must carry `primary` (with no preceding `// primary`
     // comment to fake it).
     const editTileMatch = ACTION_GRID.match(
-      /<ActionTile[\s\S]*?label=\{trip\.status[\s\S]*?\/>/,
+      // [TEST-MOD-APPROVED #4420] round-3 item 10: the Edit tile reads "Edit" in every status.
+      /<ActionTile[\s\S]*?label="Edit"[\s\S]*?\/>/,
     );
     expect(editTileMatch).not.toBeNull();
     expect(editTileMatch?.[0]).toMatch(/^\s*primary\s*$/m);

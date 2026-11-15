@@ -82,7 +82,8 @@ describe("META-ORCH-1059 Sub-A · FIX 2 — create wizard footers clear the phon
   test("experience wizard footer adds insets.bottom", () => {
     const src = read("experience/ExperienceCreatorWizard.tsx");
     expect(src).toContain("useSafeAreaInsets");
-    expect(src).toMatch(/paddingBottom:\s*insets\.bottom\s*\+\s*spacing\.lg/);
+    // [TEST-MOD-APPROVED #4420] spacing.lg (24) is now space[6] (24).
+    expect(src).toMatch(/paddingBottom:\s*insets\.bottom\s*\+\s*space\[6\]/);
   });
 
   test("event wizard dock adds insets.bottom (no static-only marginBottom bleed)", () => {
@@ -99,7 +100,8 @@ describe("META-ORCH-1059 Sub-A · FIX 2 — create wizard footers clear the phon
   test("trip wizard dock adds insets.bottom (no static-only marginBottom bleed)", () => {
     const src = read("trip/TripCreatorWizard.tsx");
     expect(src).toContain("useSafeAreaInsets");
-    expect(src).toMatch(/marginBottom:\s*insets\.bottom\s*\+\s*spacing\.lg/);
-    expect(src).not.toMatch(/dock:\s*\{[\s\S]*?marginBottom:\s*spacing\.lg/);
+    // [TEST-MOD-APPROVED #4420] spacing.lg (24) is now space[6] (24).
+    expect(src).toMatch(/marginBottom:\s*insets\.bottom\s*\+\s*space\[6\]/);
+    expect(src).not.toMatch(/dock:\s*\{[\s\S]*?marginBottom:\s*space\[6\]/);
   });
 });

@@ -7,10 +7,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { LazyExperienceCreatorWizard } from "../../src/components/experience/LazyExperienceCreatorWizard";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { experienceDetailKeys } from "../../src/hooks/useExperienceDetail";
@@ -104,17 +103,17 @@ export default function ExperienceCreateRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    backgroundColor: canvas.discover,
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    color: color.text2,
   },
 });

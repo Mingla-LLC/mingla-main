@@ -13,10 +13,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import {
@@ -173,7 +172,7 @@ export function VenueWaitlistModule({
                         style={styles.notifyBtn}
                         testID={`venue-waitlist-notify-${w.id}`}
                       >
-                        <MessageSquare size={15} color="#0c0e12" />
+                        <MessageSquare size={15} color={color.ink} />
                         <Text style={styles.notifyLabel}>Notify</Text>
                       </Pressable>
                     ) : null}
@@ -193,7 +192,7 @@ export function VenueWaitlistModule({
                       style={styles.lostBtn}
                       testID={`venue-waitlist-lost-${w.id}`}
                     >
-                      <X size={15} color={textTokens.tertiary} />
+                      <X size={15} color={color.text3} />
                     </Pressable>
                   </View>
                 ) : null}
@@ -240,34 +239,34 @@ export function VenueWaitlistModule({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   headerText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   subtitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   helper: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   card: {
     // ORCH-1190 R2 — full-width queue row on WEB. The row card carried only
@@ -276,66 +275,66 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   cardMain: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   pos: {
-    ...typography.h3,
-    color: textTokens.tertiary,
+    ...type.h1,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
     minWidth: 22,
   },
   cardText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   guest: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "600",
   },
   meta: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   notified: {
-    ...typography.caption,
-    color: semantic.success,
+    ...type.caption,
+    color: color.success,
     fontWeight: "700",
   },
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   notifyBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: 2,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: "#eb7825",
+    backgroundColor: color.accent,
   },
   notifyLabel: {
-    ...typography.caption,
-    color: "#0c0e12",
+    ...type.caption,
+    color: color.ink,
     fontWeight: "700",
   },
   seatBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: color.fill.tile,
   },
   seatLabel: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
     fontWeight: "700",
   },
   lostBtn: {
@@ -344,11 +343,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
   },
   errorNote: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
   },
 });
 

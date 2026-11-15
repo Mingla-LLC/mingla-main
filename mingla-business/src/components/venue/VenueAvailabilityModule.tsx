@@ -33,10 +33,9 @@ import { useNavigation } from "expo-router";
 
 import {
   restaurantHubLayout,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import {
@@ -1133,7 +1132,7 @@ export const VenueAvailabilityModule = forwardRef<
                 </Text>
               </View>
               {canMutate ? (
-                <ChevronRight size={18} color={textTokens.tertiary} />
+                <ChevronRight size={18} color={color.text3} />
               ) : null}
             </Pressable>
           ))
@@ -1239,27 +1238,27 @@ export const VenueAvailabilityModule = forwardRef<
 const styles = StyleSheet.create({
   host: {
     width: "100%",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   headerText: {
-    gap: spacing.xxs,
+    gap: 2,
     maxWidth: restaurantHubLayout.proseMaxWidth,
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   subtitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   section: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   numericLoadingRegion: {
-    gap: spacing.md,
+    gap: space[4],
   },
   sectionHead: {
     flexDirection: "row",
@@ -1267,30 +1266,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   sectionTitle: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   sectionHint: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   emptyLine: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   periodRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingVertical: space[2],
+    gap: space[2],
   },
   serviceGrid: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   serviceGridRow: {
     flexDirection: "row",
-    columnGap: spacing.lg,
+    columnGap: space[6],
   },
   serviceGridCell: {
     flex: 1,
@@ -1298,49 +1297,49 @@ const styles = StyleSheet.create({
   },
   flex1: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   periodName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   periodMeta: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   periodEditBtn: {
     alignSelf: "flex-start",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   turnRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    columnGap: spacing.md,
+    columnGap: space[4],
   },
   turnRowStacked: {
     alignItems: "stretch",
     flexDirection: "column",
-    rowGap: spacing.xs,
+    rowGap: space[1],
   },
   numericFieldGroup: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   numericGrid: {
-    gap: spacing.md,
+    gap: space[4],
   },
   numericGridRow: {
     flexDirection: "row",
-    columnGap: spacing.lg,
+    columnGap: space[6],
   },
   numericGridCell: {
     flex: 1,
     minWidth: 0,
   },
   turnLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     flex: 1,
   },
   turnInput: {
@@ -1350,48 +1349,48 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   inlineError: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
     fontWeight: "600",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   saveBlock: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   formError: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
     fontWeight: "600",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   loadErrorTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   tzPicker: {
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   tzList: {
     maxHeight: 220,
   },
   tzRow: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   tzRowText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   tzRowActive: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
   readOnlyNote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     textAlign: "center",
   },
 });

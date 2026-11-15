@@ -26,23 +26,11 @@ export function insightInstrumentRegistered(id: InsightInstrumentId): boolean {
 
 // ── Grade badge visuals (design v1 §3.1, carried by #1735 G-5) ──────────────
 //
-// Fill = `semantic.successTint` / `warningTint` / `errorTint` by grade band
-// A–B / C / D–F. Android composites below are the design v1 §3.0 opaque
-// fallbacks — the same arithmetic as `androidOpaque.accentFill`
-// (tint over canvas.discover #0c0e12); they live HERE because
-// `designSystem.ts` is outside this work item's allowlist. iOS/web keep the
-// translucent truths. RN color formats: hex/rgb only (house rule).
+// Fill = the status tints by grade band A–B / C / D–F. Android (and Reduce
+// Transparency) take the opaque composites of those tints over the canvas,
+// which #4420 moved into the token file (`color.solidTint`, read by
+// GradeBadge). iOS/web keep the translucent truths.
 
-export const INSIGHTS_ANDROID_OPAQUE = {
-  /** semantic.successTint (rgba(34,197,94,.18)) over #0c0e12. */
-  successFill: "#102f20",
-  /** semantic.warningTint (rgba(245,158,11,.18)) over #0c0e12. */
-  warningFill: "#362811",
-  /** semantic.errorTint (rgba(239,68,68,.18)) over #0c0e12. */
-  errorFill: "#35181b",
-  /** semantic.infoTint (rgba(59,130,246,.18)) over #0c0e12. */
-  infoFill: "#14233b",
-} as const;
 
 export type GradeBand = "good" | "mid" | "poor";
 

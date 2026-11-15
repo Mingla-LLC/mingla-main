@@ -64,12 +64,9 @@ import { Skeleton } from "../ui/Skeleton";
 import { Toast } from "../ui/Toast";
 import { VenuePitchField } from "./VenuePitchField";
 import {
-  accent,
-  canvas,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { venueSignalLabel } from "../../constants/venueSignals";
 import { useAuth } from "../../context/AuthContext";
@@ -91,23 +88,23 @@ import { listingStatusView, type ListingTone } from "../../utils/listingStatus";
 // strength for glanceability (one hue, the number is always shown so color is
 // never the only signal). ≥70 full warm, 40–69 mid, <40 faint.
 function scoreFill(score: number): string {
-  if (score >= 70) return accent.warm;
-  if (score >= 40) return "rgba(235,120,37,0.66)";
-  return "rgba(235,120,37,0.38)";
+  if (score >= 70) return color.accent;
+  if (score >= 40) return color.accentTint;
+  return color.accentTint;
 }
 const SCORES_TOP_N = 6;
 
 const TONE_COLOR: Record<ListingTone, string> = {
-  neutral: textTokens.secondary,
-  info: semantic.info,
-  warning: semantic.warning,
-  success: semantic.success,
+  neutral: color.text2,
+  info: color.info,
+  warning: color.warning,
+  success: color.success,
 };
 const TONE_TINT: Record<ListingTone, string> = {
-  neutral: "rgba(255,255,255,0.10)",
-  info: semantic.infoTint,
-  warning: semantic.warningTint,
-  success: semantic.successTint,
+  neutral: color.fill.tabOn,
+  info: color.infoTint,
+  warning: color.warningTint,
+  success: color.successTint,
 };
 
 const PRICE_TIER_LABEL: Record<string, string> = {
@@ -332,7 +329,7 @@ export function VenueListingContent({
   // the layout supply top chrome. Tab mode clears the floating BottomNav
   // (insets.bottom + 120, the nav-lock companion pin pattern) so the last card
   // stays tappable; page mode keeps the original generous bottom pad.
-  const scrollBottomPad = isTab ? insets.bottom + 120 : spacing.xl * 3;
+  const scrollBottomPad = isTab ? insets.bottom + 120 : space[7] * 3;
 
   return (
     <View style={[styles.host, isTab ? null : { paddingTop: insets.top }]}>
@@ -344,7 +341,7 @@ export function VenueListingContent({
             accessibilityLabel="Back"
             hitSlop={10}
           >
-            <ArrowLeft size={22} color={textTokens.primary} />
+            <ArrowLeft size={22} color={color.text1} />
           </Pressable>
           <Text style={styles.headerTitle}>Your listing</Text>
           <View style={styles.headerSpacer} />
@@ -357,7 +354,7 @@ export function VenueListingContent({
         keyboardShouldPersistTaps="handled"
       >
         {!hasVenue ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.sectionTitle}>No listing yet</Text>
             <Text style={styles.body}>
               Add your venue so Mingla can recommend it to people deciding where to go.
@@ -368,12 +365,12 @@ export function VenueListingContent({
           </GlassCard>
         ) : loading ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.accent} />
           </View>
         ) : (
           <>
             {/* Status */}
-            <GlassCard variant="elevated" padding={spacing.lg}>
+            <GlassCard variant="elevated" padding={space[6]}>
               <View style={[styles.badge, { backgroundColor: TONE_TINT[statusV.tone] }]}>
                 <View style={[styles.dot, { backgroundColor: TONE_COLOR[statusV.tone] }]} />
                 <Text style={[styles.badgeText, { color: TONE_COLOR[statusV.tone] }]}>
@@ -409,8 +406,8 @@ export function VenueListingContent({
 
             {/* Rejection message */}
             {rejected && rejectionReason !== null ? (
-              <GlassCard variant="base" padding={spacing.lg}>
-                <Text style={[styles.sectionTitle, { color: semantic.warning }]}>What to change</Text>
+              <GlassCard variant="base" padding={space[6]}>
+                <Text style={[styles.sectionTitle, { color: color.warning }]}>What to change</Text>
                 <Text style={styles.body}>{rejectionReason}</Text>
                 <Text style={styles.subtle}>
                   Make the changes below, then resubmit to go live.
@@ -419,7 +416,7 @@ export function VenueListingContent({
             ) : null}
 
             {/* What you submitted */}
-            <GlassCard variant="base" padding={spacing.lg}>
+            <GlassCard variant="base" padding={space[6]}>
               <Text style={styles.sectionTitle}>What you submitted</Text>
               <View style={styles.submittedRow}>
                 {ctx.data?.cover_media_url != null ? (
@@ -481,11 +478,11 @@ export function VenueListingContent({
                 POPULATED post-approval state (human labels, strength ramp, top-6
                 + Show all). The old edit-cap "changes-left" card is RETIRED with
                 the self-run "Recommend me" edit-cap (OQ-4). */}
-            <GlassCard variant="base" padding={spacing.lg}>
+            <GlassCard variant="base" padding={space[6]}>
               {hasScores ? (
                 <>
                   <View style={styles.scoreHeader}>
-                    <Sparkles size={16} color={accent.warm} />
+                    <Sparkles size={16} color={color.accent} />
                     <Text style={styles.sectionTitleInline}>
                       How you match Mingla moments
                     </Text>
@@ -495,7 +492,7 @@ export function VenueListingContent({
                   </Text>
                   {reScoring ? (
                     <View style={styles.reScoreRow}>
-                      <ActivityIndicator size="small" color={accent.warm} />
+                      <ActivityIndicator size="small" color={color.accent} />
                       <Text style={styles.reScoreText}>
                         Re-scoring your latest changes — this updates shortly.
                       </Text>
@@ -546,7 +543,7 @@ export function VenueListingContent({
               ) : (
                 <>
                   <View style={styles.scoreHeader}>
-                    <Sparkles size={16} color={textTokens.tertiary} />
+                    <Sparkles size={16} color={color.text3} />
                     <Text style={styles.sectionTitleInline}>Your vibe scores</Text>
                   </View>
                   <Text style={styles.body} accessibilityLiveRegion="polite">
@@ -635,142 +632,142 @@ export function VenueListingContent({
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: canvas.discover },
+  host: { flex: 1, backgroundColor: color.canvas },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   headerTitle: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   headerSpacer: { flex: 1 },
   scroll: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    gap: space[4],
   },
-  loadingBox: { paddingVertical: spacing.xl * 2, alignItems: "center" },
+  loadingBox: { paddingVertical: space[7] * 2, alignItems: "center" },
   badge: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[1],
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: 999,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  badgeText: { fontSize: typography.bodySm.fontSize, fontWeight: "700" },
+  badgeText: { fontSize: type.small.fontSize, fontWeight: "700" },
   statusHint: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
+    color: color.text2,
+    marginTop: space[2],
   },
   sectionTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   subtle: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
+    marginTop: space[1],
   },
-  submittedRow: { flexDirection: "row", gap: spacing.md, alignItems: "center" },
+  submittedRow: { flexDirection: "row", gap: space[4], alignItems: "center" },
   submittedText: { flex: 1, gap: 2 },
   venueName: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
-  metaLine: { fontSize: typography.caption.fontSize, color: textTokens.secondary },
+  metaLine: { fontSize: type.caption.fontSize, color: color.text2 },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: textTokens.tertiary,
+    color: color.text3,
     textTransform: "uppercase",
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
   // ORCH-1304 — read-only pitch placeholder for a pending/rejected venue (the
   // editable field appears only once the venue is approved/live).
   pitchPlaceholder: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   pitchPlaceholderText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
-  scoreList: { marginTop: spacing.sm, gap: spacing.sm },
-  scoreRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  scoreLabel: { width: 110, fontSize: typography.caption.fontSize, color: textTokens.secondary },
+  scoreList: { marginTop: space[2], gap: space[2] },
+  scoreRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  scoreLabel: { width: 110, fontSize: type.caption.fontSize, color: color.text2 },
   scoreBarTrack: {
     flex: 1,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: color.fill.tabOn,
     overflow: "hidden",
   },
-  scoreBarFill: { height: 8, borderRadius: 4, backgroundColor: accent.warm },
+  scoreBarFill: { height: 8, borderRadius: 4, backgroundColor: color.accent },
   scoreValue: {
     width: 28,
     textAlign: "right",
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   // META-ORCH-1290 D-5 scores card
   scoreHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
+    gap: space[1],
+    marginBottom: space[1],
   },
   sectionTitleInline: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   reScoreRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   reScoreText: {
     flex: 1,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
-  showAllRow: { marginTop: spacing.sm, alignItems: "flex-start" },
-  ghostPreview: { marginTop: spacing.sm, gap: spacing.sm, opacity: 0.6 },
+  showAllRow: { marginTop: space[2], alignItems: "flex-start" },
+  ghostPreview: { marginTop: space[2], gap: space[2], opacity: 0.6 },
   scoreValueGhost: {
     width: 28,
     textAlign: "right",
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
-  actionRow: { marginTop: spacing.md, alignItems: "flex-start" },
-  actionsCol: { gap: spacing.sm, marginTop: spacing.xs },
+  actionRow: { marginTop: space[4], alignItems: "flex-start" },
+  actionsCol: { gap: space[2], marginTop: space[1] },
   // ORCH-1064 — cancel the banner's own marginHorizontal so the re-homed
   // follow_up tile aligns flush with the surrounding GlassCards; trim its
-  // marginBottom (the scroll already supplies `gap: spacing.md`).
-  bannerHost: { marginHorizontal: -spacing.md, marginBottom: -spacing.sm },
+  // marginBottom (the scroll already supplies `gap: space[4]`).
+  bannerHost: { marginHorizontal: -space[4], marginBottom: -space[2] },
 });
 
 export default VenueListingContent;

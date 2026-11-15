@@ -16,9 +16,9 @@ import { ActivityIndicator, StyleSheet, Text } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 
@@ -43,13 +43,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
-    backgroundColor: "#0c0e12",
+    padding: space[7],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    color: color.text2,
     textAlign: "center",
   },
 });

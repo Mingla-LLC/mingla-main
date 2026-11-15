@@ -30,7 +30,11 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { glass, spacing } from "../../constants/designSystem";
+import {
+  color,
+  space,
+  materials,
+} from "../../constants/designSystem";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 
 export interface StayActionBarProps {
@@ -49,7 +53,7 @@ export function StayActionBar({
 
   return (
     <View
-      style={[styles.bar, { paddingBottom: insets.bottom + spacing.md }]}
+      style={[styles.bar, { paddingBottom: insets.bottom + space[4] }]}
       testID={testID}
     >
       {children}
@@ -63,13 +67,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingTop: space[4],
+    paddingHorizontal: space[4],
     // Opaque, not glass: content scrolls UNDER this bar, and a translucent
     // fill would let a half-scrolled input ghost through the primary action.
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    backgroundColor: materials.pane.solidFill,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
 });
 

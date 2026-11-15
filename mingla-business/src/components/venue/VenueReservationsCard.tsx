@@ -2,12 +2,10 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { UseQueryResult } from "@tanstack/react-query";
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { formatCount, formatCurrency } from "../../utils/currency";
 import {
@@ -16,6 +14,7 @@ import {
   type VenueReservationMetrics,
 } from "../../services/reservationMetricsService";
 import { GlassCard } from "../ui/GlassCard";
+import { venueTimezoneLabel } from "./venueTimezoneLabel";
 
 const SOURCE_LABELS: Record<ReservationSource, string> = {
   mingla: "Mingla",
@@ -82,7 +81,7 @@ export const VenueReservationsCard: React.FC<VenueReservationsCardProps> = ({
 }) => {
   if (query.isLoading && query.data === undefined) {
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" padding={space[6]}>
         <View
           style={styles.skeleton}
           testID="venue-reservations-skeleton"
@@ -96,7 +95,7 @@ export const VenueReservationsCard: React.FC<VenueReservationsCardProps> = ({
     query.data?.authorized === false;
   if (unavailable) {
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" padding={space[6]}>
         <Text style={styles.title} accessibilityRole="header">
           Reservations unavailable
         </Text>
@@ -109,7 +108,7 @@ export const VenueReservationsCard: React.FC<VenueReservationsCardProps> = ({
   }
   if (query.isError && query.data === undefined) {
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" padding={space[6]}>
         <Text style={styles.title} accessibilityRole="header">
           Couldn&apos;t load reservation performance
         </Text>
@@ -125,7 +124,7 @@ export const VenueReservationsCard: React.FC<VenueReservationsCardProps> = ({
   const hasReservations = data.bySource.some((source) => source.reservations > 0);
   const showNoShowRate = data.coversLifetime > 0 || data.noShowRate > 0;
   return (
-    <GlassCard variant="elevated" padding={spacing.lg}>
+    <GlassCard variant="elevated" padding={space[6]}>
       <Text style={styles.title} accessibilityRole="header">
         Reservations
       </Text>
@@ -205,7 +204,7 @@ export const VenueReservationsCard: React.FC<VenueReservationsCardProps> = ({
       </View>
       {data.resolvedTimezone === null ? null : (
         <Text style={styles.definition}>
-          {`Last 30 days · ${data.resolvedTimezone}`}
+          {`Last 30 days · ${venueTimezoneLabel(data.resolvedTimezone)}`}
         </Text>
       )}
       {query.isError && query.data !== undefined ? (
@@ -222,96 +221,96 @@ export const VenueReservationsCard: React.FC<VenueReservationsCardProps> = ({
 
 const styles = StyleSheet.create({
   title: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
   },
   subtitle: {
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
-    fontWeight: typography.bodyLg.fontWeight,
+    color: color.text1,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
+    fontWeight: type.row.fontWeight,
   },
   body: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[1],
   },
   bodyStrong: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text1,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   metricGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.md,
-    marginTop: spacing.md,
+    gap: space[4],
+    marginTop: space[4],
   },
   metric: { minWidth: 130, flexGrow: 1, flexBasis: "45%" },
   metricLabel: {
-    color: textTokens.tertiary,
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    marginTop: spacing.sm,
+    color: color.text3,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    marginTop: space[2],
   },
   metricValue: {
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
-    fontWeight: typography.bodyLg.fontWeight,
-    marginTop: spacing.xs,
+    color: color.text1,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
+    fontWeight: type.row.fontWeight,
+    marginTop: space[1],
   },
   definition: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    marginTop: space[1],
   },
-  emptyBlock: { marginTop: spacing.sm },
+  emptyBlock: { marginTop: space[2] },
   section: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
+    borderTopColor: color.line,
+    marginTop: space[4],
+    paddingTop: space[4],
   },
-  sourceRow: { marginTop: spacing.sm },
+  sourceRow: { marginTop: space[2] },
   action: {
     minHeight: 44,
     alignSelf: "flex-start",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.sm,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   actionText: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
+    color: color.accent,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
   skeleton: {
     height: 320,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   refreshFailure: {
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
+    marginTop: space[4],
+    paddingTop: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   refreshAnnouncement: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginBottom: spacing.sm,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginBottom: space[2],
   },
 });
 

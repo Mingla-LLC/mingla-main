@@ -16,12 +16,10 @@ import React from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 import { Icon } from "../ui/Icon";
@@ -51,7 +49,7 @@ export const EditAfterPublishExperienceBanner: React.FC<
   <View style={styles.host}>
     <View style={styles.headerRow}>
       <View style={styles.iconBadge}>
-        <Icon name="flag" size={18} color={accent.warm} />
+        <Icon name="flag" size={18} color={color.accent} />
       </View>
       <View style={styles.textCol}>
         <Text style={styles.heading}>You&rsquo;re editing a live experience</Text>
@@ -69,7 +67,7 @@ export const EditAfterPublishExperienceBanner: React.FC<
       value={reason}
       onChangeText={(v) => onReasonChange(v.slice(0, REASON_MAX))}
       placeholder="e.g. Fixing the meeting-point address (10–200 chars)"
-      placeholderTextColor={textTokens.quaternary}
+      placeholderTextColor={color.text4}
       accessibilityLabel="Reason for editing this live experience"
       testID="experience-live-edit-reason"
       multiline
@@ -90,19 +88,19 @@ export const EditAfterPublishExperienceBanner: React.FC<
 
 const styles = StyleSheet.create({
   host: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
+    borderColor: color.accentLine,
+    marginBottom: space[6],
+    gap: space[2],
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm + 4,
+    gap: space[2] + 4,
   },
   iconBadge: {
     width: 32,
@@ -110,9 +108,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
+    backgroundColor: color.accentTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.42)",
+    borderColor: color.accentLine,
     flexShrink: 0,
   },
   textCol: {
@@ -122,43 +120,43 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   body: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   label: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
-    marginTop: spacing.xxs,
+    color: color.text2,
+    marginTop: 2,
   },
   input: {
     minHeight: 64,
-    padding: spacing.sm + 2,
+    padding: space[2] + 2,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.accentLine,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlignVertical: "top",
   },
   error: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
   },
   notice: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
 });
 

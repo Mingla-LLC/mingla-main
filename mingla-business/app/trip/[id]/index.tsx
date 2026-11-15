@@ -25,9 +25,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../../src/constants/designSystem";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
@@ -491,7 +492,7 @@ export default function TripDashboardRoute(): React.ReactElement {
       <View
         style={[
           styles.headerWrap,
-          Platform.OS === "web" ? { paddingTop: spacing.sm } : null,
+          Platform.OS === "web" ? { paddingTop: space[2] } : null,
         ]}
       >
         <TopBar
@@ -534,7 +535,7 @@ export default function TripDashboardRoute(): React.ReactElement {
           // META-ORCH-1059 Pass 1 — clear the phone's bottom bar (home
           // indicator / gesture nav) so content doesn't bleed into it, mirroring
           // the event dashboard (app/event/[id]/index.tsx).
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -602,7 +603,9 @@ export default function TripDashboardRoute(): React.ReactElement {
         {/* [ORCH-0913 deliberate divergence from event] Edit remains primary. */}
         <ActionTile
           icon="edit"
-          label={trip.status === "draft" ? "Continue editing" : "Edit trip"}
+          // #4420 (round-3 item 10) — one Edit tile, the same label in every status, on every home.
+          label="Edit"
+          accessibilityLabel={`Edit ${trip.title}`}
           primary
           onPress={() => router.push(`/trip/${trip.id}/edit` as never)}
         />
@@ -690,7 +693,7 @@ export default function TripDashboardRoute(): React.ReactElement {
 
         <Text style={styles.sectionLabel}>PRICING TIERS</Text>
         {trip.pricingTiers.length === 0 ? (
-          <GlassCard variant="base" radius="md" padding={spacing.md}>
+          <GlassCard variant="base" radius="md" padding={space[4]}>
             <Text style={styles.emptySectionText}>No pricing tiers yet.</Text>
           </GlassCard>
         ) : (
@@ -714,7 +717,7 @@ export default function TripDashboardRoute(): React.ReactElement {
         )}
 
         <Text style={styles.sectionLabelSpacer}>RECENT ACTIVITY</Text>
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
+        <GlassCard variant="base" radius="md" padding={space[4]}>
           {recentActivity.length === 0 ? (
             <Text style={styles.emptySectionText}>No activity yet.</Text>
           ) : (
@@ -871,31 +874,31 @@ export default function TripDashboardRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   stateHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
-    backgroundColor: "#0c0e12",
+    padding: space[7],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    color: color.text1,
   },
   body: {
     flex: 1,
   },
   bodyContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[7],
+    gap: space[4],
   },
   headerWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   // ORCH-0874 [Trip surfaces visual parity with Events]
   headerRightSlot: {
@@ -914,37 +917,37 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(12, 14, 18, 0.35)",
+    backgroundColor: scrim.ambient.colors[0],
   },
   heroContent: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.md,
+    padding: space[4],
     gap: 4,
   },
   heroTitle: {
     fontSize: 24,
     fontWeight: "700",
     letterSpacing: -0.2,
-    color: textTokens.inverse,
+    color: color.textStrong,
     ...(Platform.OS === "web"
-      ? { textShadow: "0 1px 4px rgba(0, 0, 0, 0.6)" }
+      ? { textShadow: `0 1px 4px ${scrim.modal}` }
       : {
-          textShadowColor: "rgba(0, 0, 0, 0.6)",
+          textShadowColor: scrim.modal,
           textShadowOffset: { width: 0, height: 1 },
           textShadowRadius: 4,
         }),
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   heroSubline: {
     fontSize: 13,
-    color: "rgba(255, 255, 255, 0.85)",
+    color: color.text2,
     ...(Platform.OS === "web"
-      ? { textShadow: "0 1px 3px rgba(0, 0, 0, 0.5)" }
+      ? { textShadow: `0 1px 3px ${scrim.modal}` }
       : {
-          textShadowColor: "rgba(0, 0, 0, 0.5)",
+          textShadowColor: scrim.modal,
           textShadowOffset: { width: 0, height: 1 },
           textShadowRadius: 3,
         }),
@@ -958,29 +961,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[2],
+    marginBottom: space[1],
   },
   sectionLabelSpacer: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
   tiersList: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   activityList: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   emptySectionText: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   cancelTripWrap: {
-    marginTop: spacing.xl,
+    marginTop: space[7],
   },
 });

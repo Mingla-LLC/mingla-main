@@ -12,10 +12,8 @@ import React from "react";
 import { StyleSheet, Switch, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 
 export interface IntakeRequiredToggleProps {
@@ -38,9 +36,9 @@ export const IntakeRequiredToggle: React.FC<IntakeRequiredToggleProps> = ({
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
-        trackColor={{ false: glass.border.profileBase, true: accent.tint }}
-        thumbColor={value ? accent.warm : textTokens.tertiary}
-        ios_backgroundColor={glass.border.profileBase}
+        trackColor={{ false: color.line, true: color.accentLine }}
+        thumbColor={value ? color.accent : color.text3}
+        ios_backgroundColor={color.line}
         accessibilityRole="switch"
         accessibilityLabel="Required question"
         accessibilityHint={
@@ -60,14 +58,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
     minHeight: 44,
   },
   label: {
     fontSize: 16,
     lineHeight: 24,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });
 

@@ -15,12 +15,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type as typeToken,
 } from "../../constants/designSystem";
 import { flushDraftVenuePersistence, useDraftVenueStore } from "../../store/draftVenueStore";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
@@ -71,7 +69,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
   }, []);
 
   const cols = coverGridColumns(colWidth > 0 ? colWidth : 327);
-  const gap = spacing.sm;
+  const gap = space[2];
   const tileW =
     colWidth > 0 ? Math.floor((colWidth - gap * (cols - 1)) / cols) : 159;
   const tileH = Math.round(tileW * 1.25);
@@ -126,7 +124,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
       ]}
       testID="venue-cover-upload"
     >
-      <Icon name="upload" size={28} color={textTokens.secondary} />
+      <Icon name="upload" size={28} color={color.text2} />
       <Text style={styles.uploadLabel}>Upload new</Text>
     </Pressable>
   );
@@ -184,7 +182,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
               />
               {selected ? (
                 <View style={styles.checkBadge}>
-                  <Icon name="check" size={14} color={textTokens.inverse} />
+                  <Icon name="check" size={14} color={color.textStrong} />
                 </View>
               ) : null}
             </Pressable>
@@ -207,7 +205,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
               muted
             />
             <View style={styles.checkBadge}>
-              <Icon name="check" size={14} color={textTokens.inverse} />
+              <Icon name="check" size={14} color={color.textStrong} />
             </View>
           </View>
         ) : null}
@@ -219,7 +217,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
       {/* issue #1564 — MOUNT 1 of 4. Beside the cover, on the way to
           publishing, exactly where CreatorStep4Cover / ExperienceCoverStep /
           TripCreatorStep1Basics / RsvpStep7Preview / BrandEditView already put
-          it. `host: { gap: spacing.md }` gives the 16pt gap free. */}
+          it. `host: { gap: space[4] }` gives the 16pt gap free. */}
       <ThemeControlRow
         value={theme.value}
         onChange={theme.onChange}
@@ -257,26 +255,26 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: typeToken.h1.fontSize,
+    lineHeight: typeToken.h1.lineHeight,
+    fontWeight: typeToken.h1.fontWeight,
+    color: color.text1,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: typeToken.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   helperChosen: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: typeToken.small.fontSize,
     lineHeight: 20,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   previewBand: {
     borderRadius: 12,
@@ -285,7 +283,7 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   tile: {
     borderRadius: radiusTokens.lg,
@@ -293,11 +291,11 @@ const styles = StyleSheet.create({
   },
   tileSelected: {
     borderWidth: 2,
-    borderColor: accent.warm,
+    borderColor: color.accent,
   },
   tileUnselected: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   tilePressed: {
     transform: [{ scale: 0.97 }],
@@ -309,7 +307,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -317,24 +315,24 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   uploadTileFull: {
     width: "100%",
     height: 170,
   },
   uploadLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: typeToken.small.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   toast: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: typeToken.caption.fontSize,
+    color: color.text3,
   },
 });
 

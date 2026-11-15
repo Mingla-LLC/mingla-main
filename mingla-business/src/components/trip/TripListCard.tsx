@@ -25,10 +25,11 @@ import {
 
 import {
   accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  materials,
+  scrim,
 } from "../../constants/designSystem";
 import type { Trip } from "../../services/tripsService";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -245,7 +246,7 @@ export const TripListCard: React.FC<TripListCardProps> = ({
         </View>
 
         <View style={styles.tapAffordance} pointerEvents="none">
-          <Icon name="chevR" size={18} color={textTokens.tertiary} />
+          <Icon name="chevR" size={18} color={color.text3} />
         </View>
       </Pressable>
 
@@ -262,7 +263,7 @@ export const TripListCard: React.FC<TripListCardProps> = ({
             ]}
             hitSlop={6}
           >
-            <Icon name="moreH" size={16} color={textTokens.primary} />
+            <Icon name="moreH" size={16} color={color.text1} />
           </Pressable>
         </View>
       ) : null}
@@ -336,13 +337,13 @@ const styles = StyleSheet.create({
     // iOS keeps the translucent profileBase. All children are positioned inside host
     // bounds (no intentional overflow), so clipping to the radius is safe.
     backgroundColor: Platform.select({
-      ios: glass.tint.profileBase,
-      android: "rgba(20, 22, 26, 0.92)",
-      default: glass.tint.profileBase,
+      ios: color.fill.inset,
+      android: materials.pane.solidFill,
+      default: color.fill.inset,
     }),
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     overflow: "hidden",
   },
   hostFaded: {
@@ -350,7 +351,7 @@ const styles = StyleSheet.create({
   },
   // ORCH-1123 — selection visuals.
   hostSelected: {
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     borderWidth: 1.5,
   },
   hostDimmedInert: {
@@ -358,8 +359,8 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     flexDirection: "row",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     alignItems: "stretch",
   },
   cardBodyPressed: {
@@ -374,8 +375,8 @@ const styles = StyleSheet.create({
   },
   checkboxSlot: {
     position: "absolute",
-    top: spacing.xs,
-    left: spacing.xs,
+    top: space[1],
+    left: space[1],
     zIndex: 2,
   },
   draftOverlay: {
@@ -384,7 +385,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(12, 14, 18, 0.55)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -392,7 +393,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: "rgba(255, 255, 255, 0.7)",
+    color: color.text2,
   },
   bodyCol: {
     flex: 1,
@@ -414,7 +415,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: textTokens.primary,
+    color: color.text1,
   },
   pastPill: {
     flexDirection: "row",
@@ -422,36 +423,36 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     paddingHorizontal: 8,
     borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: color.line,
   },
   pastPillText: {
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   title: {
     fontSize: 15,
     fontWeight: "600",
     letterSpacing: -0.2,
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   dateVenue: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   subText: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   rightRail: {
     position: "absolute",
-    top: spacing.sm,
-    right: spacing.sm,
+    top: space[2],
+    right: space[2],
   },
   manageBtn: {
     width: 32,
@@ -460,9 +461,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: materials.chrome.glassFill,
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   manageBtnPressed: {
     opacity: 0.7,

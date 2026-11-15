@@ -20,11 +20,10 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import type { VenueListing } from "../../services/venueListingsService";
@@ -153,12 +152,12 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm + spacing.xs,
+    gap: space[4],
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2] + space[1],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   coverWrap: {
     width: COVER_SIZE,
@@ -172,17 +171,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   secondary: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text3,
   },
   chipWrap: {
     flexShrink: 0,
@@ -191,7 +190,7 @@ const styles = StyleSheet.create({
   // under the chip), so the narrow band reads as the same object as the card.
   chipRowNarrow: {
     flexDirection: "row",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
 });
 

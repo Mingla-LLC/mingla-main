@@ -24,14 +24,12 @@ import type {
 import { AlertTriangle } from "lucide-react-native";
 
 import {
-  androidOpaque,
-  glass,
   radius,
   reservationCalendarLayout,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -722,7 +720,7 @@ export function VenueReservationsModule({
           accessibilityRole="alert"
           testID="reservation-calendar-timezone-warning"
         >
-          <AlertTriangle size={18} color={semantic.warning} />
+          <AlertTriangle size={18} color={color.warning} />
           <Text style={styles.warningText}>
             Venue timezone unavailable — showing UTC.
           </Text>
@@ -757,7 +755,7 @@ export function VenueReservationsModule({
           style={[styles.scrollBody, isWideDesktop ? styles.agendaWide : null]}
           contentContainerStyle={[
             styles.agendaContent,
-            { paddingBottom: spacing.lg + scrollBottomPad },
+            { paddingBottom: space[6] + scrollBottomPad },
           ]}
           testID="reservation-calendar-agenda"
           renderSectionHeader={({ section }) => (
@@ -820,7 +818,7 @@ export function VenueReservationsModule({
           style={styles.scrollBody}
           contentContainerStyle={[
             styles.modeScrollContent,
-            { paddingBottom: spacing.lg + scrollBottomPad },
+            { paddingBottom: space[6] + scrollBottomPad },
           ]}
           showsVerticalScrollIndicator={false}
           testID="reservation-calendar-mode-scroll"
@@ -834,7 +832,7 @@ export function VenueReservationsModule({
               contentStyle={styles.stateCardContent}
               testID="reservation-calendar-error"
             >
-              <AlertTriangle size={28} color={semantic.error} />
+              <AlertTriangle size={28} color={color.danger} />
               <Text style={styles.stateTitle}>
                 Couldn&apos;t load reservations.
               </Text>
@@ -923,37 +921,37 @@ function CalendarSkeleton({
 }
 
 const warningFill =
-  Platform.OS === "android" ? androidOpaque.warningFill : semantic.warningTint;
+  Platform.OS === "android" ? color.solidTint.warning : color.warningTint;
 const errorFill =
-  Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint;
+  Platform.OS === "android" ? color.solidTint.error : color.errorTint;
 
 const styles = StyleSheet.create({
   host: {
     flex: 1,
     minHeight: 0,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   headerRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   headerText: {
     flex: 1,
     minWidth: 220,
-    gap: spacing.xxs,
+    gap: 2,
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   subtitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   newButtonTarget: {
     minHeight: reservationCalendarLayout.entryMinTarget,
@@ -961,38 +959,38 @@ const styles = StyleSheet.create({
   },
   warningBanner: {
     minHeight: reservationCalendarLayout.entryMinTarget,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: semantic.warning,
+    borderColor: color.warning,
     backgroundColor: warningFill,
   },
   warningText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     flex: 1,
   },
   errorBanner: {
     minHeight: reservationCalendarLayout.entryMinTarget,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
     backgroundColor: errorFill,
   },
   errorBannerText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     flex: 1,
     minWidth: 200,
   },
@@ -1005,11 +1003,11 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   stateTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   scrollBody: {
@@ -1029,49 +1027,49 @@ const styles = StyleSheet.create({
   },
   dayHeader: {
     minHeight: 36,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[1],
+    paddingVertical: space[2],
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
-    backgroundColor: "rgba(12,14,18,0.94)",
+    gap: space[2],
+    backgroundColor: materials.pane.solidFill,
   },
   dayHeaderTitle: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   dayHeaderCount: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   dayEmpty: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    paddingHorizontal: spacing.xs,
+    ...type.small,
+    color: color.text2,
+    paddingHorizontal: space[1],
   },
   agendaRowSeparator: {
-    height: spacing.sm,
+    height: space[2],
   },
   agendaGroupSeparator: {
-    height: spacing.lg,
+    height: space[6],
   },
   skeleton: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   skeletonHeader: {
     height: 36,
     borderRadius: radius.sm,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   skeletonRow: {
     minHeight: reservationCalendarLayout.agendaRowMinHeight,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
 });
 

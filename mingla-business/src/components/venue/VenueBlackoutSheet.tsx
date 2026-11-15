@@ -14,12 +14,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 // Issue #1503 [stay-date-pickers] — From/To are PICKED from a real calendar on
@@ -434,13 +432,13 @@ export function VenueBlackoutSheet({
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   heading: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    ...type.h1,
+    color: color.text1,
+    marginBottom: space[2],
   },
   // ORCH-1193: bound the scroll viewport to the fixed-height panel so the CTA
   // scrolls into view instead of overflowing past the panel's overflow:hidden.
@@ -448,60 +446,60 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.xs,
+    paddingBottom: space[9],
+    gap: space[1],
   },
   label: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xxs,
+    ...type.small,
+    color: color.text2,
+    marginTop: space[2],
+    marginBottom: 2,
   },
   dateRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   flex1: {
     flex: 1,
   },
   invalid: {
-    ...typography.caption,
-    color: semantic.error,
-    marginTop: spacing.xxs,
+    ...type.caption,
+    color: color.danger,
+    marginTop: 2,
   },
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
   },
   chipActive: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   chipLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
   chipLabelActive: {
-    color: "#0c0e12",
+    color: color.ink,
   },
   saveBtn: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   deleteError: {
-    ...typography.caption,
-    color: semantic.errorText,
-    marginTop: spacing.sm,
+    ...type.caption,
+    color: color.errorText,
+    marginTop: space[2],
     textAlign: "center",
   },
   deleteBtn: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
 });
 

@@ -25,10 +25,9 @@ import {
 
 import { Icon } from "../ui/Icon";
 import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 // Copy ≤ this fits the 3-line peek → render full, no toggle.
@@ -129,7 +128,7 @@ export const CollapsibleDescription: React.FC<CollapsibleDescriptionProps> = ({
         <Icon
           name={isClamped ? "chevD" : "chevU"}
           size={16}
-          color={accent.warm}
+          color={color.accent}
         />
       </Pressable>
     </View>
@@ -142,9 +141,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   peek: {
     marginTop: 0,
@@ -152,13 +151,13 @@ const styles = StyleSheet.create({
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     minHeight: 44,
   },
   toggleText: {
-    fontSize: typography.buttonMd.fontSize,
+    fontSize: type.btnSm.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
 });
 

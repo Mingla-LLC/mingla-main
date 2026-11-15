@@ -20,10 +20,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -126,34 +125,34 @@ export const RsvpChipInBankChoiceDialog: React.FC<
 
 const styles = StyleSheet.create({
   body: {
-    gap: spacing.md,
+    gap: space[4],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   description: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: typography.body.fontWeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    fontWeight: type.body.fontWeight,
+    color: color.text2,
   },
   errorText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   actions: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   footnote: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight * 1.35,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight * 1.35,
+    color: color.text3,
   },
 });
 

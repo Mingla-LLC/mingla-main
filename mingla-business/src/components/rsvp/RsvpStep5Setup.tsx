@@ -24,13 +24,11 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import type { DraftEventVisibility } from "../../store/draftEventStore";
 import { type StepBodyProps } from "../event/types";
@@ -45,9 +43,9 @@ import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 
 const ROW_BG = Platform.select({
-  ios: glass.tint.profileBase,
-  android: "#23262b",
-  default: glass.tint.profileBase,
+  ios: color.fill.inset,
+  android: materials.control.solidFill,
+  default: color.fill.inset,
 });
 
 /**
@@ -166,7 +164,7 @@ const MoneyField: React.FC<MoneyFieldProps> = ({
         }}
         keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
         placeholder="0"
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         accessibilityLabel={label}
         style={styles.moneyInput}
         testID={testID}
@@ -267,10 +265,10 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
       style={
         intelCapacityHighlight
           ? {
-              borderColor: accent.warm,
+              borderColor: color.accent,
               borderWidth: 2,
               borderRadius: radiusTokens.md,
-              padding: spacing.xs,
+              padding: space[1],
             }
           : undefined
       }
@@ -423,7 +421,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
                 testID="rsvp-contribution-ready-callout"
               >
                 <View style={styles.readyHeadingRow}>
-                  <Icon name="check" size={16} color={semantic.success} />
+                  <Icon name="check" size={16} color={color.success} />
                   <Text style={styles.readyHeading}>Ready to collect</Text>
                 </View>
                 <Text style={styles.readySub}>
@@ -454,7 +452,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
                       testID="rsvp-contribution-connect-bank"
                     >
                       <Text style={styles.connectBankLabel}>Connect bank</Text>
-                      <Icon name="chevR" size={14} color={accent.warm} />
+                      <Icon name="chevR" size={14} color={color.accent} />
                     </Pressable>
                   </>
                 ) : (
@@ -583,20 +581,20 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
 };
 
 const styles = StyleSheet.create({
-  field: { marginBottom: spacing.md, marginTop: spacing.sm },
+  field: { marginBottom: space[4], marginTop: space[2] },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
   helper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight * 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight * 1.4,
+    color: color.text3,
+    marginTop: space[2],
+    paddingHorizontal: space[1],
   },
   rowDisabled: { opacity: 0.55 },
 
@@ -604,87 +602,87 @@ const styles = StyleSheet.create({
   moneyRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     backgroundColor: ROW_BG,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    marginBottom: space[2],
     gap: 6,
   },
   moneyPrefix: {
-    fontSize: typography.bodyLg.fontSize,
+    fontSize: type.row.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   moneyInput: {
     flex: 1,
-    fontSize: typography.bodyLg.fontSize,
+    fontSize: type.row.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   connectCallout: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    marginTop: spacing.sm,
-    backgroundColor: "rgba(245,158,11,0.18)",
+    marginTop: space[2],
+    backgroundColor: color.accentText,
     borderWidth: 1,
-    borderColor: "rgba(245,158,11,0.45)",
+    borderColor: color.accentText,
   },
   connectHeading: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   connectSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight * 1.35,
-    color: textTokens.secondary,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight * 1.35,
+    color: color.text2,
+    marginTop: 2,
   },
   // #3645 — secondary "Connect bank" action inside the callout.
   connectBankBtn: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: spacing.xxs,
-    marginTop: spacing.sm,
+    gap: 2,
+    marginTop: space[2],
     minHeight: 44,
   },
   connectBankLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
 
   // ORCH-1335 — payout-ready positive callout (mirrors connectCallout with the
   // kit's green success tokens).
   readyCallout: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    marginTop: spacing.sm,
-    backgroundColor: semantic.successTint, // rgba(34, 197, 94, 0.18) — designSystem token
+    marginTop: space[2],
+    backgroundColor: color.successTint, // rgba(34, 197, 94, 0.18) — designSystem token
     borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.45)", // mirrors connectCallout's amber 0.45 border-alpha convention
+    borderColor: color.successTint, // mirrors connectCallout's amber 0.45 border-alpha convention
   },
   readyHeadingRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   readyHeading: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   readySub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight * 1.35,
-    color: textTokens.secondary,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight * 1.35,
+    color: color.text2,
+    marginTop: 2,
   },
 
   // Segmented control
@@ -695,22 +693,22 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     gap: 4,
   },
   segment: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     alignItems: "center",
     borderRadius: radiusTokens.md - 2,
   },
-  segmentActive: { backgroundColor: accent.tint },
+  segmentActive: { backgroundColor: color.accentLine },
   segmentLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
-  segmentLabelActive: { color: textTokens.primary },
+  segmentLabelActive: { color: color.text1 },
 
   // Visibility pills
   visibilityWrap: {
@@ -720,62 +718,62 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     gap: 4,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   visibilityPill: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     alignItems: "center",
     borderRadius: radiusTokens.md - 2,
   },
-  visibilityPillActive: { backgroundColor: accent.tint },
+  visibilityPillActive: { backgroundColor: color.accentLine },
   visibilityPillLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
-  visibilityPillLabelActive: { color: textTokens.primary },
+  visibilityPillLabelActive: { color: color.text1 },
 
   // Toggle row (Android opaque fallback via ROW_BG)
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     backgroundColor: ROW_BG,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    marginBottom: space[2],
   },
-  toggleLabelCol: { flex: 1, marginRight: spacing.sm },
+  toggleLabelCol: { flex: 1, marginRight: space[2] },
   toggleLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   toggleSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   toggleTrack: {
     width: 44,
     height: 26,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: color.fill.step,
     padding: 3,
   },
-  toggleTrackOn: { backgroundColor: accent.warm },
+  toggleTrackOn: { backgroundColor: color.accent },
   toggleThumb: {
     width: 20,
     height: 20,
     borderRadius: 999,
-    backgroundColor: "#fff",
+    backgroundColor: color.paper,
   },
   toggleThumbOff: { transform: [{ translateX: 0 }] },
   toggleThumbOn: { transform: [{ translateX: 18 }] },

@@ -27,9 +27,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../../src/constants/designSystem";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
@@ -391,7 +392,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
       <View
         style={[
           styles.headerWrap,
-          Platform.OS === "web" ? { paddingTop: spacing.sm } : null,
+          Platform.OS === "web" ? { paddingTop: space[2] } : null,
         ]}
       >
         <TopBar
@@ -425,7 +426,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           styles.bodyContent,
           // META-ORCH-1059 Pass 1 — clear the phone's bottom bar (home
           // indicator / gesture nav), mirroring the event dashboard.
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -470,7 +471,9 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         <View style={styles.actionGrid}>
           <ActionTile
             icon="edit"
-            label={isDraft ? "Continue editing" : "Edit"}
+            // #4420 (round-3 item 10) — one Edit tile, the same label in every status, on every home.
+            label="Edit"
+            accessibilityLabel={`Edit ${experience.title}`}
             primary
             onPress={() =>
               router.push(`/experience/${experience.id}/edit` as never)
@@ -532,7 +535,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
 
         {/* Pricing summary (price + capacity) — kept below the money card. */}
         <Text style={styles.sectionLabel}>PRICING</Text>
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
+        <GlassCard variant="base" radius="md" padding={space[4]}>
           <View style={styles.kpiRow}>
             <View style={styles.kpiCol}>
               <Text style={styles.kpiValue}>{priceLabel}</Text>
@@ -556,7 +559,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
 
         {/* Pass 2 — Recent activity (purchase / refund / cancel). */}
         <Text style={styles.sectionLabelSpacer}>RECENT ACTIVITY</Text>
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
+        <GlassCard variant="base" radius="md" padding={space[4]}>
           {ordersQuery.status === "loading" || ordersQuery.status === "disabled" ? (
             <Text style={styles.emptySectionText} accessibilityRole="progressbar">
               Loading activity…
@@ -747,33 +750,33 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
   stateHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
-    backgroundColor: "#0c0e12",
+    padding: space[7],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
-  title: { fontSize: typography.h3.fontSize, color: textTokens.primary },
+  title: { fontSize: type.h1.fontSize, color: color.text1 },
   // #3259 — the empty/error branches' body copy. Separate from `body` (which is
   // the main ScrollView's `flex: 1`) so it sizes to its text instead of
   // absorbing the whole column.
   stateBody: {
     fontSize: 15,
     lineHeight: 22,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   body: { flex: 1 },
   bodyContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[7],
+    gap: space[4],
   },
-  headerWrap: { paddingHorizontal: spacing.md },
+  headerWrap: { paddingHorizontal: space[4] },
   headerRightSlot: {
     flexDirection: "row",
     alignItems: "center",
@@ -786,37 +789,37 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(12, 14, 18, 0.35)",
+    backgroundColor: scrim.ambient.colors[0],
   },
   heroContent: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.md,
+    padding: space[4],
     gap: 4,
   },
   heroTitle: {
     fontSize: 24,
     fontWeight: "700",
     letterSpacing: -0.2,
-    color: textTokens.inverse,
+    color: color.textStrong,
     ...(Platform.OS === "web"
-      ? { textShadow: "0 1px 4px rgba(0, 0, 0, 0.6)" }
+      ? { textShadow: `0 1px 4px ${scrim.modal}` }
       : {
-          textShadowColor: "rgba(0, 0, 0, 0.6)",
+          textShadowColor: scrim.modal,
           textShadowOffset: { width: 0, height: 1 },
           textShadowRadius: 4,
         }),
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   heroSubline: {
     fontSize: 13,
-    color: "rgba(255, 255, 255, 0.85)",
+    color: color.text2,
     ...(Platform.OS === "web"
-      ? { textShadow: "0 1px 3px rgba(0, 0, 0, 0.5)" }
+      ? { textShadow: `0 1px 3px ${scrim.modal}` }
       : {
-          textShadowColor: "rgba(0, 0, 0, 0.5)",
+          textShadowColor: scrim.modal,
           textShadowOffset: { width: 0, height: 1 },
           textShadowRadius: 3,
         }),
@@ -826,30 +829,30 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[2],
+    marginBottom: space[1],
   },
   sectionLabelSpacer: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
-  kpiRow: { flexDirection: "row", gap: spacing.lg },
+  kpiRow: { flexDirection: "row", gap: space[6] },
   kpiCol: { flex: 1, gap: 2 },
   kpiValue: {
-    fontSize: typography.h3.fontSize,
+    fontSize: type.h1.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   kpiCaption: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
-  activityList: { gap: spacing.xs },
-  emptySectionText: { fontSize: 13, color: textTokens.tertiary },
-  cancelWrap: { marginTop: spacing.xl },
+  activityList: { gap: space[1] },
+  emptySectionText: { fontSize: 13, color: color.text3 },
+  cancelWrap: { marginTop: space[7] },
 });

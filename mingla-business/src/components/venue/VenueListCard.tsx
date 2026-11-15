@@ -21,12 +21,11 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { ViewStyle } from "react-native";
 
 import {
-  accent,
   glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  materials,
 } from "../../constants/designSystem";
 import type { VenueListing } from "../../services/venueListingsService";
 import type { ListingStatusView } from "../../utils/listingStatus";
@@ -156,7 +155,7 @@ export function VenueListCard({
             ) : null}
           </View>
           <View style={styles.tapAffordance}>
-            <Icon name="chevR" size={18} color={textTokens.tertiary} />
+            <Icon name="chevR" size={18} color={color.text3} />
           </View>
         </View>
       )}
@@ -169,29 +168,29 @@ const styles = StyleSheet.create({
     position: "relative",
     // META-ORCH-1002 opaque frosted Android fallback; translucent glass on iOS.
     backgroundColor: Platform.select({
-      ios: glass.tint.profileBase,
-      android: "rgba(20, 22, 26, 0.92)",
-      default: glass.tint.profileBase,
+      ios: color.fill.inset,
+      android: materials.pane.solidFill,
+      default: color.fill.inset,
     }),
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     overflow: "hidden",
   },
   hostHovered: {
     backgroundColor: Platform.select({
-      ios: glass.tint.profileElevated,
-      android: "rgba(20, 22, 26, 0.92)",
-      default: glass.tint.profileElevated,
+      ios: color.fill.tile,
+      android: materials.pane.solidFill,
+      default: color.fill.tile,
     }),
   },
   hostFocused: {
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   cardBody: {
     flexDirection: "row",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     alignItems: "stretch",
   },
   cardBodyPressed: {
@@ -218,21 +217,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     letterSpacing: -0.2,
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   addressLine: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   dataSlot: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   dataSlotWarning: {
-    color: semantic.warning,
+    color: color.warning,
     fontWeight: "600",
   },
   tapAffordance: {

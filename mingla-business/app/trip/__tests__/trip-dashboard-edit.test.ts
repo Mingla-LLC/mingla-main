@@ -41,9 +41,11 @@ describe("ORCH-0859 REWORK 4 — operator dashboard Edit affordance", () => {
     );
   });
 
-  test("Edit tile label is status-aware", () => {
-    expect(DASHBOARD_SRC).toMatch(/Continue editing/);
-    expect(DASHBOARD_SRC).toMatch(/Edit trip/);
+  // [TEST-MOD-APPROVED #4420] round-3 item 10 removes "Continue editing":
+  // every home has one Edit tile with the same label in every status.
+  test("Edit tile reads Edit in every status (no Continue editing)", () => {
+    expect(DASHBOARD_SRC).not.toMatch(/Continue editing/);
+    expect(DASHBOARD_SRC).toMatch(/label="Edit"/);
   });
 
   test("Edit primary-tile divergence is documented", () => {

@@ -64,7 +64,7 @@ describe("CHANGE 2 — curated intent taxonomy", () => {
   test("wizard makes ≥1 vibe part of the Step-1 Continue gate + publish gate (multi)", () => {
     const src = read("experience/ExperienceCreatorWizard.tsx");
     // Step-1 canContinue requires at least one selected vibe.
-    expect(src).toMatch(/if \(step === 1\)[\s\S]*?intents\.length > 0/);
+    expect(src).toMatch(/if \((?:step|target) === 1\)[\s\S]*?intents\.length > 0/);
     // Publish is blocked when no vibe is selected.
     expect(src).toMatch(/publish &&\s*\(\s*intents\.length === 0/);
     // The picker renders the canonical taxonomy.

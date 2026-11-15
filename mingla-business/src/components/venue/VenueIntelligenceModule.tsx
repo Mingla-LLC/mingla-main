@@ -30,13 +30,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { venueSignalLabel } from "../../constants/venueSignals";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
@@ -83,6 +81,7 @@ import {
   captureBusinessVenueReservationsViewed,
 } from "../../analytics/businessAnalyticsEvents";
 import { VenueOrganicEngagementSection } from "./VenueOrganicEngagementSection";
+import { venueTimezoneLabel } from "./venueTimezoneLabel";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -104,11 +103,19 @@ export interface VenueIntelligenceModuleProps {
    * server then falls back to single-venue resolution.
    */
   venueId?: string | null;
+  /**
+   * #4420 B8 — content that scrolls WITH the dashboard, above it (the venue
+   * page's Local reviews panel and the reservations invitation). It used to sit
+   * in the page's fixed header stack, where a long reviews list took the whole
+   * screen and nothing below it could be reached.
+   */
+  header?: React.ReactNode;
 }
 
 export function VenueIntelligenceModule({
   brandId,
   venueId = null,
+  header = null,
 }: VenueIntelligenceModuleProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -233,7 +240,7 @@ export function VenueIntelligenceModule({
           );
         });
       }}
-      tintColor={accent.warm}
+      tintColor={color.accent}
     />
   );
 
@@ -241,8 +248,9 @@ export function VenueIntelligenceModule({
   if (query.isLoading) {
     return (
       <View style={styles.host}>
+        {header}
         <View style={styles.centerFill}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.accent} />
         </View>
       </View>
     );
@@ -257,9 +265,10 @@ export function VenueIntelligenceModule({
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
       >
+        {header}
         <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
-        <GlassCard variant="base" padding={spacing.lg}>
-          <Flag size={24} color={semantic.error} />
+        <GlassCard variant="base" padding={space[6]}>
+          <Flag size={24} color={color.danger} />
           <Text style={styles.tileTitle}>Couldn&apos;t load your insights</Text>
           <Text style={styles.bodySm}>Pull to refresh or try again.</Text>
           <View style={styles.actionRow}>
@@ -290,8 +299,9 @@ export function VenueIntelligenceModule({
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
       >
+        {header}
         <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
-        <GlassCard variant="elevated" padding={spacing.lg}>
+        <GlassCard variant="elevated" padding={space[6]}>
           <Text style={styles.tileTitle}>No venue insights yet</Text>
           <Text style={styles.bodySm}>
             Add your venue to start seeing how it performs on Mingla.
@@ -361,6 +371,7 @@ export function VenueIntelligenceModule({
       showsVerticalScrollIndicator={false}
       refreshControl={refreshControl}
     >
+      {header}
       <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
       <Text style={styles.srOnly} accessibilityLiveRegion="polite">
         {organicRefreshStatus === "updating"
@@ -375,13 +386,14 @@ export function VenueIntelligenceModule({
           Overview, manager-plus gated, reuse-only composer deep-link. */}
       {canBlast && brandId !== null ? (
         <View style={styles.blastRow}>
+          {/* #4420 (round-3 item 13) — a compact secondary action with
+              breathing room, not a full-width primary block. */}
           <Button
             label="Message your guests"
             onPress={handleBlast}
-            variant="primary"
-            size="md"
+            variant="secondary"
+            size="sm"
             leadingIcon="send"
-            fullWidth
             accessibilityLabel="Message your guests"
             testID="venue-overview-message-guests"
           />
@@ -393,17 +405,17 @@ export function VenueIntelligenceModule({
         <Text style={styles.headerTitle}>Venue insights</Text>
         <View
           style={styles.tzChip}
-          accessibilityLabel={`Times shown in ${resolvedTimezone}`}
+          accessibilityLabel={`Times shown in ${venueTimezoneLabel(resolvedTimezone)}`}
         >
           <Text style={styles.tzChipText} numberOfLines={1}>
-            {`times in ${resolvedTimezone}`}
+            {`times in ${venueTimezoneLabel(resolvedTimezone)}`}
           </Text>
         </View>
       </View>
 
       <View style={styles.column}>
         {/* Tile A — Revenue */}
-        <GlassCard variant="elevated" padding={spacing.lg}>
+        <GlassCard variant="elevated" padding={space[6]}>
           <Text style={styles.tileTitle}>Revenue</Text>
           {orderCount === 0 ? (
             <Text style={styles.bodySm}>
@@ -442,7 +454,7 @@ export function VenueIntelligenceModule({
                           styles.sparklineBar,
                           {
                             height: `${Math.max(heightPct, SPARKLINE_FLOOR_PCT)}%`,
-                            backgroundColor: isRecent ? accent.warm : BAR_INACTIVE,
+                            backgroundColor: isRecent ? color.accent : BAR_INACTIVE,
                           },
                         ]}
                       />
@@ -469,7 +481,7 @@ export function VenueIntelligenceModule({
         {orderMetricsQuery.data?.authorized === false ? null : (
           <GlassCard
             variant="elevated"
-            padding={spacing.lg}
+            padding={space[6]}
             testID="venue-orders-overview-card"
           >
             <Text style={styles.tileTitle}>Venue orders</Text>
@@ -528,7 +540,7 @@ export function VenueIntelligenceModule({
               </>
             ) : orderMetricsQuery.isLoading ? (
               <View style={styles.orderStatusRow} accessibilityRole="progressbar">
-                <ActivityIndicator color={accent.warm} />
+                <ActivityIndicator color={color.accent} />
                 <Text style={styles.bodySm}>Loading venue orders…</Text>
               </View>
             ) : (
@@ -564,7 +576,7 @@ export function VenueIntelligenceModule({
         />
 
         {/* Tile B — Slow hours */}
-        <GlassCard variant="base" padding={spacing.lg}>
+        <GlassCard variant="base" padding={space[6]}>
           <Text style={styles.tileTitle}>Slow hours</Text>
           {enoughForTimeBuckets ? (
             <>
@@ -581,7 +593,7 @@ export function VenueIntelligenceModule({
                       {
                         height: `${Math.max(heightPct, BARROW_FLOOR_PCT)}%`,
                         backgroundColor: slowHourIdx.includes(i)
-                          ? accent.warm
+                          ? color.accent
                           : BAR_CONTEXT,
                       },
                     ]}
@@ -613,7 +625,7 @@ export function VenueIntelligenceModule({
         </GlassCard>
 
         {/* Tile C — Slow days */}
-        <GlassCard variant="base" padding={spacing.lg}>
+        <GlassCard variant="base" padding={space[6]}>
           <Text style={styles.tileTitle}>Slow days</Text>
           {enoughForTimeBuckets ? (
             <>
@@ -630,7 +642,7 @@ export function VenueIntelligenceModule({
                       {
                         height: `${Math.max(heightPct, BARROW_FLOOR_PCT)}%`,
                         backgroundColor: slowDayIdx.includes(i)
-                          ? accent.warm
+                          ? color.accent
                           : BAR_CONTEXT,
                       },
                     ]}
@@ -657,7 +669,7 @@ export function VenueIntelligenceModule({
         </GlassCard>
 
         {/* Tile D — Which moments you win */}
-        <GlassCard variant="base" padding={spacing.lg}>
+        <GlassCard variant="base" padding={space[6]}>
           <Text style={styles.tileTitle}>Which moments you win</Text>
           {signalScores.length > 0 ? (
             <>
@@ -714,17 +726,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   centerFill: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: spacing.xxl,
+    paddingVertical: space[9],
   },
   column: {
-    gap: spacing.md,
+    gap: space[4],
   },
   srOnly: {
     width: 1,
@@ -738,77 +750,77 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   headerTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
     flexShrink: 1,
   },
   tzChip: {
-    backgroundColor: glass.tint.badge.idle,
-    borderColor: glass.border.badge,
+    backgroundColor: materials.onPhoto.solidFill,
+    borderColor: color.lineStrong,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.full,
     paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    marginLeft: spacing.sm,
+    paddingHorizontal: space[2],
+    marginLeft: space[2],
     maxWidth: "55%",
   },
   tzChipText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
 
   // Tile text
   tileTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   subtitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginTop: space[1],
   },
   bodySm: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginTop: space[1],
   },
   insufficientTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-    marginTop: spacing.sm,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
+    marginTop: space[2],
   },
   takeaway: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
-    marginTop: spacing.sm,
+    color: color.text1,
+    marginTop: space[2],
   },
   footnote: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 4,
   },
   caveatFootnote: {
     // Required honesty caveat — uses secondary (never tertiary) per D-4.
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     marginTop: 4,
   },
 
@@ -817,30 +829,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   metricRight: {
     alignItems: "flex-end",
   },
   metricCap: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
   statValue: {
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
-    fontWeight: typography.statValue.fontWeight,
-    letterSpacing: typography.statValue.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.stat.fontSize,
+    lineHeight: type.stat.lineHeight,
+    fontWeight: type.stat.fontWeight,
+    letterSpacing: type.stat.letterSpacing,
+    color: color.text1,
   },
   metricSecondary: {
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
-    fontWeight: typography.bodyLg.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
+    fontWeight: type.row.fontWeight,
+    color: color.text1,
   },
 
   // Sparkline (30-day revenue)
@@ -849,7 +861,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 4,
     height: 56,
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   sparklineBar: {
     flex: 1,
@@ -862,14 +874,14 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 3,
     height: 72,
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   barRowDays: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
     height: 72,
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   bar: {
     flex: 1,
@@ -881,65 +893,66 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   tick: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
 
   // Score bars (signal effectiveness)
   scoreList: {
-    marginTop: spacing.sm,
-    gap: spacing.sm,
+    marginTop: space[2],
+    gap: space[2],
   },
   scoreRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   scoreLabel: {
     width: 110,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   scoreBarTrack: {
     flex: 1,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: color.fill.tabOn,
     overflow: "hidden",
   },
   scoreBarFill: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   scoreValue: {
     width: 28,
     textAlign: "right",
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
 
   // Shared
   actionRow: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     flexDirection: "row",
   },
   orderStatusRow: {
     minHeight: 44,
-    marginTop: spacing.sm,
+    marginTop: space[2],
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   // ORCH-1190 #7 — top-of-Overview blast button row.
   blastRow: {
-    marginBottom: spacing.md,
+    flexDirection: "row",
+    marginBottom: space[5],
   },
 });
 

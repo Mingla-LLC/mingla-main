@@ -18,9 +18,9 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import {
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
@@ -208,7 +208,7 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
       )}
 
       {/* #1022 M5 — last child of the root stepBody View, after the Button
-          ternary. `stepBody: { gap: spacing.md }` gives the 16pt gap free.
+          ternary. `stepBody: { gap: space[4] }` gives the 16pt gap free.
           Lands ABOVE the wizard-level StripeBlockedCard automatically,
           because that card is a sibling AFTER <ExperienceCoverStep>. */}
       <ThemeControlRow
@@ -260,35 +260,35 @@ export const ExperienceCoverStep = React.memo(ExperienceCoverStepImpl);
 ExperienceCoverStep.displayName = "ExperienceCoverStep";
 
 const styles = StyleSheet.create({
-  stepBody: { gap: spacing.md },
+  stepBody: { gap: space[4] },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   help: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   preview: {
     borderRadius: radiusTokens.md,
     overflow: "hidden",
   },
   creditText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   preparingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2],
   },
   preparingText: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    color: color.text2,
   },
 });

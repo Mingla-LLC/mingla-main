@@ -25,7 +25,11 @@
  * required `mingla-business jest suite` check actually lives.
  */
 
-import { spacing, typography } from "../../constants/designSystem";
+import {
+  spacing,
+  space,
+  type,
+} from "../../constants/designSystem";
 
 // ---------------------------------------------------------------------------
 // §4 — the spacing scale that never rendered.
@@ -39,37 +43,37 @@ import { spacing, typography } from "../../constants/designSystem";
  */
 export const STAY_SPACING = {
   /** label -> its own helper. Tightest pair on the screen; they are one unit. */
-  labelToHelper: spacing.xxs,
+  labelToHelper: 2,
   /** helper -> its own input. Still inside one field. */
-  helperToInput: spacing.sm,
+  helperToInput: space[2],
   /** field <-> field SIDE BY SIDE (inside `styles.row`). */
-  fieldToFieldInRow: spacing.md,
+  fieldToFieldInRow: space[4],
   /** field -> field STACKED in a card. The boundary that measured 0.0pt. */
-  fieldToFieldStacked: spacing.lg,
+  fieldToFieldStacked: space[6],
   /** section title -> its caption. */
-  sectionTitleToCaption: spacing.xxs,
+  sectionTitleToCaption: 2,
   /** section caption -> the card beneath it. */
-  captionToCard: spacing.sm,
+  captionToCard: space[2],
   /** section -> section. */
-  sectionToSection: spacing.xl,
+  sectionToSection: space[7],
   /** card interior padding. */
-  cardPadding: spacing.md,
+  cardPadding: space[4],
 } as const;
 
 /**
- * The pinned action bar's own height: `spacing.md` above a `size="lg"` Button
- * (52) and `spacing.md` below. Values lifted from the shipped trip dock
+ * The pinned action bar's own height: `space[4]` above a `size="lg"` Button
+ * (52) and `space[4]` below. Values lifted from the shipped trip dock
  * (`EditPublishedTripScreen.tsx` `styles.dock`), which is the precedent this
  * bar copies rather than reinvents. The device's bottom safe-area inset is
  * added at render time and is NOT part of this constant — it is not a layout
  * decision, it is a hardware fact that varies per device.
  */
-export const STAY_ACTION_BAR_HEIGHT = spacing.md + 52 + spacing.md;
+export const STAY_ACTION_BAR_HEIGHT = space[4] + 52 + space[4];
 
 /**
  * Every Stay page's scroll bottom padding.
  *
- * REPLACES `spacing.xxl * 3` (144pt) — dead space sized for a bottom nav that
+ * REPLACES `space[9] * 3` (144pt) — dead space sized for a bottom nav that
  * `/venue/[venueId]` does not render (it lives OUTSIDE `app/(tabs)/`), so it
  * gives back 44pt of real workspace on every Stay page.
  *
@@ -82,7 +86,7 @@ export const STAY_ACTION_BAR_HEIGHT = spacing.md + 52 + spacing.md;
  * requirement (all six destinations visible at rest) is met, the cost is real,
  * and it is Seth's call, not this constant's.
  */
-export const STAY_PAGE_BOTTOM_PAD = STAY_ACTION_BAR_HEIGHT + spacing.md;
+export const STAY_PAGE_BOTTOM_PAD = STAY_ACTION_BAR_HEIGHT + space[4];
 
 /** Half-leading: the empty band a line box puts above/below the glyph ink. */
 const halfLeading = (token: {
@@ -120,8 +124,8 @@ export function stayFieldProximity(input: {
   readonly fieldGap: number;
   readonly stackGap: number;
 }): StayFieldProximity {
-  const cohesionPt = halfLeading(typography.caption) + input.fieldGap;
-  const separationPt = input.stackGap + halfLeading(typography.bodySm);
+  const cohesionPt = halfLeading(type.caption) + input.fieldGap;
+  const separationPt = input.stackGap + halfLeading(type.small);
   return {
     cohesionPt,
     separationPt,

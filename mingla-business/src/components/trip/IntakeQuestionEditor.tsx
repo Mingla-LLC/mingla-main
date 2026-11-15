@@ -40,13 +40,10 @@ import DraggableFlatList, {
 } from "react-native-draggable-flatlist";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type as typeToken,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -252,10 +249,10 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
   const labelLen = draft.label.length;
   const labelCounterColor =
     labelLen >= LABEL_MAX
-      ? semantic.error
+      ? color.danger
       : labelLen >= LABEL_WARN_AT
-        ? semantic.warning
-        : textTokens.tertiary;
+        ? color.warning
+        : color.text3;
 
   return (
     <Sheet
@@ -281,7 +278,7 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
           value={draft.label}
           onChangeText={(t) => setField("label", t.slice(0, LABEL_MAX))}
           placeholder="e.g., What's your passport number?"
-          placeholderTextColor={textTokens.quaternary}
+          placeholderTextColor={color.text4}
           maxLength={LABEL_MAX}
           multiline={draft.type === "long_text" ? false : false}
           style={styles.labelInput}
@@ -413,7 +410,7 @@ const TextConfig: React.FC<TextConfigProps> = ({ draft, setField }) => {
         value={draft.placeholder ?? ""}
         onChangeText={(t) => setField("placeholder", t.slice(0, PLACEHOLDER_MAX))}
         placeholder="e.g., AB1234567"
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         maxLength={PLACEHOLDER_MAX}
         style={styles.textInputSm}
         accessibilityLabel="Optional placeholder hint"
@@ -523,7 +520,7 @@ const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft }) => {
               value={item.value}
               onChangeText={(t) => updateOption(item.index, t.slice(0, 100))}
               placeholder={`Option ${item.index + 1}`}
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               maxLength={100}
               style={styles.optionInput}
               accessibilityLabel={`Option ${item.index + 1}`}
@@ -545,7 +542,7 @@ const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft }) => {
               <Icon
                 name="close"
                 size={16}
-                color={textTokens.secondary}
+                color={color.text2}
                 strokeWidth={2}
               />
             </Pressable>
@@ -641,7 +638,7 @@ const NumberConfig: React.FC<NumberConfigProps> = ({ draft, setField }) => {
             value={minStr}
             onChangeText={handleMin}
             placeholder="—"
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             keyboardType="number-pad"
             style={styles.textInputSm}
             accessibilityLabel="Minimum number"
@@ -653,7 +650,7 @@ const NumberConfig: React.FC<NumberConfigProps> = ({ draft, setField }) => {
             value={maxStr}
             onChangeText={handleMax}
             placeholder="—"
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             keyboardType="number-pad"
             style={styles.textInputSm}
             accessibilityLabel="Maximum number"
@@ -679,7 +676,7 @@ const NumberConfig: React.FC<NumberConfigProps> = ({ draft, setField }) => {
               <Icon
                 name="check"
                 size={14}
-                color={textTokens.primary}
+                color={color.text1}
                 strokeWidth={3}
               />
             ) : null}
@@ -806,7 +803,7 @@ const FileTypeCheckbox: React.FC<FileTypeCheckboxProps> = ({
           <Icon
             name="check"
             size={14}
-            color={textTokens.primary}
+            color={color.text1}
             strokeWidth={3}
           />
         ) : null}
@@ -818,97 +815,97 @@ const FileTypeCheckbox: React.FC<FileTypeCheckboxProps> = ({
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.lg,
+    paddingTop: space[1],
+    paddingBottom: space[6],
   },
   eyebrow: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: accent.warm,
+    fontSize: typeToken.label.fontSize,
+    lineHeight: typeToken.label.lineHeight,
+    fontWeight: typeToken.label.fontWeight,
+    letterSpacing: typeToken.label.letterSpacing,
+    color: color.accent,
     textTransform: "uppercase",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: typeToken.caption.fontSize,
+    lineHeight: typeToken.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
-    marginTop: spacing.sm,
+    color: color.text2,
+    marginBottom: space[1],
+    marginTop: space[2],
   },
   subFieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: spacing.xxs,
+    fontSize: typeToken.caption.fontSize,
+    lineHeight: typeToken.caption.lineHeight,
+    color: color.text3,
+    marginBottom: 2,
   },
   labelInput: {
     minHeight: 44,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 10,
     borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    fontSize: typeToken.body.fontSize,
+    lineHeight: typeToken.body.lineHeight,
   },
   charCounter: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: typeToken.caption.fontSize,
+    lineHeight: typeToken.caption.lineHeight,
     textAlign: "right",
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   typeChipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   requiredWrap: {
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
+    marginTop: space[4],
+    paddingTop: space[2],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   typeConfigWrap: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
+    marginTop: space[4],
+    paddingTop: space[4],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   textInputSm: {
     minHeight: 40,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 8,
     borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    fontSize: typeToken.body.fontSize,
   },
   helperText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    fontSize: typeToken.caption.fontSize,
+    lineHeight: typeToken.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[2],
   },
   optionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   optionRowActive: {
     opacity: 0.85,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
   dragHandle: {
     width: 28,
@@ -918,28 +915,28 @@ const styles = StyleSheet.create({
   },
   dragHandleGlyph: {
     fontSize: 16,
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: -1,
     fontWeight: "700",
   },
   optionInput: {
     flex: 1,
     minHeight: 40,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 8,
     borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    fontSize: typeToken.body.fontSize,
   },
   optionRemove: {
     width: 32,
     height: 32,
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -950,12 +947,12 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   addOptionBtn: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
+    marginTop: space[2],
+    paddingVertical: space[1],
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     backgroundColor: "transparent",
     alignSelf: "flex-start",
     minHeight: 36,
@@ -963,65 +960,65 @@ const styles = StyleSheet.create({
   },
   addOptionBtnDisabled: {
     opacity: 0.4,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   addOptionBtnPressed: {
     opacity: 0.7,
   },
   addOptionLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: accent.warm,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
+    color: color.accent,
     fontWeight: "500",
   },
   numberRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   numberCell: {
     flex: 1,
   },
   maxFilesRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   maxFilesChip: {
     minWidth: 40,
     minHeight: 36,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.full,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
   maxFilesChipActive: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   maxFilesChipPressed: {
     opacity: 0.8,
   },
   maxFilesLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: typeToken.body.fontSize,
+    lineHeight: typeToken.body.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   maxFilesLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   allowedTypesHeader: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
     minHeight: 36,
   },
   toggleRowPressed: {
@@ -1033,44 +1030,44 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: "hidden",
     borderWidth: 1.5,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
   toggleCheckboxOn: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   toggleCheckboxPressed: {
     opacity: 0.7,
   },
   toggleLabel: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: typeToken.body.fontSize,
+    lineHeight: typeToken.body.lineHeight,
+    color: color.text1,
   },
   saveError: {
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    marginTop: space[4],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
+    color: color.text1,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
   },
   footer: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
+    gap: space[2],
+    marginTop: space[6],
+    paddingTop: space[4],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   footerCancelCell: {
     flex: 1,

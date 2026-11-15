@@ -20,12 +20,10 @@ import {
 } from "@mingla/offering-rendering/tripGuide";
 
 import {
-  accent,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useTripGuideForEditor } from "../../hooks/useTripGuide";
 
@@ -48,7 +46,7 @@ export const TripGuideReviewSections: React.FC<TripGuideReviewSectionsProps> = (
       <View style={styles.host} testID={testID}>
         <Text style={styles.title}>Before you go</Text>
         <View style={styles.row} testID={`${testID}-loading`}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.accent} />
           <Text style={styles.helper}>Loading the trip guide…</Text>
         </View>
       </View>
@@ -140,30 +138,30 @@ export const TripGuideReviewSections: React.FC<TripGuideReviewSectionsProps> = (
 
 const styles = StyleSheet.create({
   host: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    padding: spacing.md,
-    gap: spacing.md,
+    marginHorizontal: space[6],
+    marginTop: space[6],
+    padding: space[4],
+    gap: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: color.lineStrong,
   },
-  title: { fontSize: typography.body.fontSize, fontWeight: "800", color: textTokens.primary },
-  helper: { fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: textTokens.secondary },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  section: { gap: spacing.xs },
+  title: { fontSize: type.body.fontSize, fontWeight: "800", color: color.text1 },
+  helper: { fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 },
+  row: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  section: { gap: space[1] },
   sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: textTokens.secondary,
+    color: color.text2,
     textTransform: "uppercase",
   },
-  body: { fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: textTokens.primary },
-  faq: { gap: 2, paddingVertical: spacing.xs },
-  question: { fontSize: typography.bodySm.fontSize, fontWeight: "700", color: textTokens.primary },
-  errorText: { fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: semantic.errorText },
+  body: { fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text1 },
+  faq: { gap: 2, paddingVertical: space[1] },
+  question: { fontSize: type.small.fontSize, fontWeight: "700", color: color.text1 },
+  errorText: { fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.errorText },
   retryBtn: {
     alignSelf: "flex-start",
     minHeight: 44,
@@ -171,9 +169,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.4)",
+    borderColor: color.accentLine,
   },
-  retryText: { fontSize: typography.bodySm.fontSize, fontWeight: "700", color: accent.warm },
+  retryText: { fontSize: type.small.fontSize, fontWeight: "700", color: color.accent },
 });
 
 export default TripGuideReviewSections;

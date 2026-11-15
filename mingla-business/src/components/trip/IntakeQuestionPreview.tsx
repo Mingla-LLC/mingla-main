@@ -22,13 +22,11 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
   semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -63,7 +61,7 @@ export const IntakeQuestionPreview: React.FC<IntakeQuestionPreviewProps> = ({
           <Icon
             name="list"
             size={48}
-            color={textTokens.quaternary}
+            color={color.text4}
             strokeWidth={1.5}
           />
           <Text style={styles.emptyText}>
@@ -170,7 +168,7 @@ const PreviewInputForType: React.FC<{ question: IntakeQuestion }> = ({
                   <Icon
                     name="check"
                     size={12}
-                    color={textTokens.primary}
+                    color={color.text1}
                     strokeWidth={3}
                   />
                 ) : null}
@@ -190,7 +188,7 @@ const PreviewInputForType: React.FC<{ question: IntakeQuestion }> = ({
             <Icon
               name="calendar"
               size={16}
-              color={textTokens.tertiary}
+              color={color.text3}
               strokeWidth={2}
             />
           </View>
@@ -225,13 +223,13 @@ const PreviewInputForType: React.FC<{ question: IntakeQuestion }> = ({
         .filter((t): t is string => t !== null)
         .join(", ");
       return (
-        <GlassCard variant="base" padding={spacing.md} radius="lg">
+        <GlassCard variant="base" padding={space[4]} radius="lg">
           <View style={styles.fileUploadPreview}>
             <View style={styles.uploadIconWrap}>
               <Icon
                 name="upload"
                 size={24}
-                color={accent.warm}
+                color={color.accent}
                 strokeWidth={2}
               />
             </View>
@@ -259,74 +257,74 @@ const PreviewInputForType: React.FC<{ question: IntakeQuestion }> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   eyebrow: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: spacing.sm,
+    color: color.accent,
+    marginBottom: space[2],
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginVertical: spacing.md,
+    backgroundColor: color.line,
+    marginVertical: space[4],
   },
   emptyState: {
     alignItems: "center",
-    paddingVertical: spacing.xl,
-    gap: spacing.md,
+    paddingVertical: space[7],
+    gap: space[4],
   },
   emptyText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text3,
     textAlign: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   questions: {
-    gap: spacing.md,
+    gap: space[4],
   },
   questionWrap: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   labelRow: {
     flexDirection: "row",
     alignItems: "baseline",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
+    gap: space[1],
+    marginBottom: space[1],
   },
   questionLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     fontWeight: "500",
   },
   requiredAsterisk: {
-    color: accent.warm,
-    fontSize: typography.body.fontSize,
+    color: color.accent,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
   },
   optionalNote: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   disabledInput: {
     flexDirection: "row",
     alignItems: "center",
     minHeight: 44,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 10,
     borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     opacity: 0.7,
   },
   disabledInputMulti: {
@@ -336,27 +334,27 @@ const styles = StyleSheet.create({
   },
   disabledInputText: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.quaternary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text4,
   },
   inputTrailingIcon: {
-    marginLeft: spacing.sm,
+    marginLeft: space[2],
   },
   choicesWrap: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   choiceRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[1],
+    paddingHorizontal: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     minHeight: 44,
     opacity: 0.85,
   },
@@ -365,84 +363,84 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
   radioOuterFilled: {
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   radioDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   checkboxOuter: {
     width: 18,
     height: 18,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxOuterFilled: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   choiceLabel: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   minMaxHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: 2,
   },
   fileUploadPreview: {
     alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
+    gap: space[1],
+    paddingVertical: space[2],
   },
   uploadIconWrap: {
     width: 40,
     height: 40,
     borderRadius: radius.full,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   uploadPseudoButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     opacity: 0.7,
   },
   uploadPseudoButtonLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   uploadHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
   footerHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
 });

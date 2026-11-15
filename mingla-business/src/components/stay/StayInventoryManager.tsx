@@ -13,12 +13,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BedDouble, CalendarDays, Check, X } from "lucide-react-native";
 
 import {
-  accent,
-  glass,
   radius,
   optionCardMinHeight,
   optionCardMinWidth,
-  semantic,
   spacing,
   stayEditorFormMaxWidth,
   stayEditorSummaryMinWidth,
@@ -29,8 +26,10 @@ import {
   stayInventoryMaxWidth,
   stayProseMaxWidth,
   suiteFormMaxWidth,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  scrim,
+  type,
 } from "../../constants/designSystem";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -694,7 +693,7 @@ function LabeledInput({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         keyboardType={keyboardType}
         multiline={multiline}
         editable={editable}
@@ -1796,7 +1795,7 @@ export function OfferingEditor({
                             style={styles.mediaRemove}
                             testID={`stay-media-remove-${item.id}`}
                           >
-                            <X size={14} color={textTokens.primary} />
+                            <X size={14} color={color.text1} />
                           </Pressable>
                         </View>
                       ))}
@@ -1910,7 +1909,7 @@ function OfferingRow({
           />
         ) : (
           <View style={styles.coverFallback}>
-            <BedDouble size={24} color={accent.warm} />
+            <BedDouble size={24} color={color.accent} />
           </View>
         )}
         <View style={styles.flex}>
@@ -1948,7 +1947,7 @@ function OfferingRow({
         </View>
       ) : (
         <Text style={styles.ready}>
-          <Check size={14} color={semantic.success} /> Ready for status review
+          <Check size={14} color={color.success} /> Ready for status review
         </Text>
       )}
       {statusMutation.isError ? (
@@ -2401,7 +2400,7 @@ export function StayInventoryManager({
   if (inventory.isPending) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.accent} />
         <Text style={styles.helper}>Loading Stay inventory…</Text>
       </View>
     );
@@ -2544,7 +2543,7 @@ export function StayInventoryManager({
             value={search}
             onChangeText={setSearch}
             placeholder="Search Rooms & Places"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             style={styles.input}
             testID="stay-inventory-search"
           />
@@ -2566,7 +2565,7 @@ export function StayInventoryManager({
           </StayChipRow>
           {filtered.length === 0 ? (
             <GlassCard variant="base" contentStyle={styles.empty}>
-              <BedDouble size={30} color={accent.warm} />
+              <BedDouble size={30} color={color.accent} />
               <Text style={styles.cardTitle}>
                 {offerings.length === 0
                   ? "No Rooms or Places yet"
@@ -2597,7 +2596,7 @@ export function StayInventoryManager({
         </>
       ) : (
         <GlassCard variant="base" contentStyle={styles.form}>
-          <CalendarDays size={26} color={accent.warm} />
+          <CalendarDays size={26} color={color.accent} />
           {canManageInventory ? (
             <AvailabilityManager
               venueId={venueId}
@@ -2666,8 +2665,8 @@ export function StayInventoryManager({
 
 /** Geometry shared by every page measure below (see the note on `page`). */
 const PAGE_BASE = {
-  padding: spacing.md,
-  // #1532 §4 — was `spacing.xxl * 3` (144pt) of dead scroll sized for a bottom
+  padding: space[4],
+  // #1532 §4 — was `space[9] * 3` (144pt) of dead scroll sized for a bottom
   // nav that this route does not render. Now exactly the pinned action bar plus
   // one gutter: +44pt of real workspace back. (It does NOT offset the wrapped
   // module band, which MEASURED 142.0pt against a designed 96 — see
@@ -2723,7 +2722,7 @@ const styles = StyleSheet.create({
   editorSplitRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    columnGap: spacing.xl,
+    columnGap: space[7],
     width: "100%",
   },
   // #1532 §4 — section -> section is 32pt, the widest boundary on the page.
@@ -2772,10 +2771,10 @@ const styles = StyleSheet.create({
   },
   section: { gap: STAY_SPACING.captionToCard },
   sectionHead: { gap: STAY_SPACING.sectionTitleToCaption },
-  sectionTitle: { ...typography.h3, color: textTokens.primary },
+  sectionTitle: { ...type.h1, color: color.text1 },
   sectionCaption: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     maxWidth: stayProseMaxWidth,
   },
   // ROW-ONLY (I-AXIS-SCOPED-FLEX) — the editor's Cancel / readiness strip.
@@ -2788,11 +2787,11 @@ const styles = StyleSheet.create({
   headerCancel: {
     minHeight: 44,
     justifyContent: "center",
-    paddingRight: spacing.md,
+    paddingRight: space[4],
   },
   headerCancelText: {
-    ...typography.body,
-    color: accent.warm,
+    ...type.body,
+    color: color.accent,
     fontWeight: "600",
   },
   pressedChrome: { opacity: 0.6 },
@@ -2800,78 +2799,78 @@ const styles = StyleSheet.create({
   // an override, so neither can silently keep the other's colour on web.
   pillReady: {
     borderRadius: radius.full,
-    backgroundColor: semantic.successTint,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    backgroundColor: color.successTint,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
   },
   pillPending: {
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
   },
   pillReadyText: {
-    ...typography.caption,
-    color: semantic.success,
+    ...type.caption,
+    color: color.success,
     fontWeight: "700",
   },
   pillPendingText: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     fontWeight: "700",
   },
-  summaryBody: { gap: spacing.sm },
+  summaryBody: { gap: space[2] },
   summaryEyebrow: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
     textTransform: "uppercase",
   },
-  summaryHeadline: { ...typography.h3, color: textTokens.primary },
+  summaryHeadline: { ...type.h1, color: color.text1 },
   summaryNames: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     maxWidth: stayProseMaxWidth,
   },
-  summaryFacts: { gap: spacing.xxs },
-  summaryFact: { ...typography.bodySm, color: textTokens.secondary },
-  summaryChecks: { gap: spacing.xxs },
+  summaryFacts: { gap: 2 },
+  summaryFact: { ...type.small, color: color.text2 },
+  summaryChecks: { gap: 2 },
   // NEVER red on either branch: an unfinished draft is not an error.
-  checkDone: { ...typography.bodySm, color: semantic.success },
-  checkPending: { ...typography.bodySm, color: textTokens.tertiary },
-  chipStrip: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  checkDone: { ...type.small, color: color.success },
+  checkPending: { ...type.small, color: color.text3 },
+  chipStrip: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   chipStripText: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    borderColor: color.line,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: space[6],
+    gap: space[4],
   },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
-  title: { ...typography.h2, color: textTokens.primary },
-  cardTitle: { ...typography.h3, color: textTokens.primary },
-  helper: { ...typography.bodySm, color: textTokens.secondary },
-  label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700" },
+  title: { ...type.h1, color: color.text1 },
+  cardTitle: { ...type.h1, color: color.text1 },
+  helper: { ...type.small, color: color.text2 },
+  label: { ...type.small, color: color.text1, fontWeight: "700" },
   // #1501 §1 field anatomy — the helper sits between the LABEL and the INPUT,
   // never between an input and the next label (that ambiguity is what made the
   // old stack read as chaos). Capped at the prose measure so it wraps like
   // prose rather than running the width of a desktop column.
   fieldHelper: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     maxWidth: stayProseMaxWidth,
   },
   flex: { flex: 1, minWidth: 0 },
@@ -2882,7 +2881,7 @@ const styles = StyleSheet.create({
   /** label + helper are ONE unit at 2pt. */
   fieldLabelBlock: { gap: STAY_SPACING.labelToHelper },
   // ── #1501 §1 — AXIS-SCOPED FIELD MEASURES (I-AXIS-SCOPED-FLEX) ───────────
-  // The deleted `field: { flex: 1, minWidth: 140, gap: spacing.xs }` carried a
+  // The deleted `field: { flex: 1, minWidth: 140, gap: space[1] }` carried a
   // flex-axis key and was applied under TWO different `flexDirection` contexts.
   // In `styles.form` (a column) `flex: 1` told every field to take an equal
   // share of the container HEIGHT; a field whose input carries `minHeight: 96`
@@ -2927,12 +2926,12 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.body,
-    color: textTokens.primary,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    ...type.body,
+    color: color.text1,
   },
   // PROSE inputs are capped at a readable measure. Without the cap a
   // description box on a wide desktop column becomes a single unreadable line.
@@ -2940,7 +2939,7 @@ const styles = StyleSheet.create({
     minHeight: 96,
     maxWidth: stayProseMaxWidth,
     textAlignVertical: "top",
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
   inputDisabled: { opacity: 0.55 },
   // #1501 §1 — `twoCol` renamed to `row` because it is not always two columns;
@@ -2955,22 +2954,22 @@ const styles = StyleSheet.create({
     rowGap: STAY_SPACING.fieldToFieldInRow,
     alignItems: "flex-start",
   },
-  choices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  choices: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   choice: {
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    backgroundColor: color.fill.inset,
   },
   choiceActive: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235,120,37,0.14)",
+    borderColor: color.accent,
+    backgroundColor: color.accentTint,
   },
   choiceDisabled: { opacity: 0.55 },
-  choiceText: { ...typography.bodySm, color: textTokens.secondary },
-  choiceTextActive: { color: accent.warm, fontWeight: "700" },
+  choiceText: { ...type.small, color: color.text2 },
+  choiceTextActive: { color: color.accent, fontWeight: "700" },
   // #1501 §3 — an EXPLAINED choice is a card, not a pill: it has to hold a
   // label, a helper sentence and an example without truncating any of them.
   // ROW-ONLY (I-AXIS-SCOPED-FLEX): the name says `Row` because the flex-axis
@@ -2983,19 +2982,19 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 0,
-    gap: spacing.xxs,
-    paddingVertical: spacing.md,
+    gap: 2,
+    paddingVertical: space[4],
   },
-  choiceHelper: { ...typography.caption, color: textTokens.secondary },
-  choiceExample: { ...typography.caption, color: textTokens.tertiary },
-  photoBlock: { gap: spacing.sm },
-  mediaStrip: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  choiceHelper: { ...type.caption, color: color.text2 },
+  choiceExample: { ...type.caption, color: color.text3 },
+  photoBlock: { gap: space[2] },
+  mediaStrip: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   mediaThumbWrap: { position: "relative" },
   mediaThumb: {
     width: 76,
     height: 76,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   mediaRemove: {
     position: "absolute",
@@ -3006,13 +3005,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(12,14,18,0.82)",
+    backgroundColor: scrim.modal,
   },
-  error: { ...typography.bodySm, color: semantic.error },
-  warning: { ...typography.bodySm, color: semantic.warning },
+  error: { ...type.small, color: color.danger },
+  warning: { ...type.small, color: color.warning },
   ready: {
-    ...typography.bodySm,
-    color: semantic.success,
+    ...type.small,
+    color: color.success,
     flexDirection: "row",
     alignItems: "center",
   },
@@ -3020,22 +3019,22 @@ const styles = StyleSheet.create({
     minHeight: 240,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   // CONTENT-node measure (#1532 §4) — passed as `contentStyle`.
-  rowCard: { gap: spacing.md },
-  rowTop: { flexDirection: "row", gap: spacing.md },
+  rowCard: { gap: space[4] },
+  rowTop: { flexDirection: "row", gap: space[4] },
   rowTitleLine: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   cover: {
     width: 104,
     height: 104,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   coverFallback: {
     width: 104,
@@ -3043,33 +3042,33 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
-  status: { ...typography.caption, color: accent.warm, fontWeight: "800" },
-  price: { ...typography.body, color: textTokens.primary, fontWeight: "700" },
-  readiness: { gap: spacing.xs },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  availability: { gap: spacing.md },
+  status: { ...type.caption, color: color.accent, fontWeight: "800" },
+  price: { ...type.body, color: color.text1, fontWeight: "700" },
+  readiness: { gap: space[1] },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  availability: { gap: space[4] },
   offlineBanner: {
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: semantic.warning,
-    backgroundColor: semantic.warningTint,
-    padding: spacing.md,
+    borderColor: color.warning,
+    backgroundColor: color.warningTint,
+    padding: space[4],
   },
-  calendarList: { gap: spacing.sm, marginTop: spacing.md },
+  calendarList: { gap: space[2], marginTop: space[4] },
   calendarRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[4],
+    paddingVertical: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   calendarDate: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
 });

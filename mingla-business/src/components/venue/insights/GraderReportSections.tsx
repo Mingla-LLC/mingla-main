@@ -21,13 +21,11 @@ import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AlertTriangle, Check, X } from "lucide-react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../../constants/designSystem";
 import type {
   GraderReport,
@@ -43,11 +41,11 @@ import {
 const MAX_FIXES = 6;
 
 function SignalGlyph({ status }: { status: string }): React.ReactElement {
-  if (status === "pass") return <Check size={16} color={semantic.success} />;
+  if (status === "pass") return <Check size={16} color={color.success} />;
   if (status === "warn") {
-    return <AlertTriangle size={16} color={semantic.warning} />;
+    return <AlertTriangle size={16} color={color.warning} />;
   }
-  return <X size={16} color={semantic.error} />;
+  return <X size={16} color={color.danger} />;
 }
 
 function isRenderableSignal(
@@ -374,101 +372,101 @@ export function GraderReportSections({
 
 const styles = StyleSheet.create({
   column: {
-    gap: spacing.md,
+    gap: space[4],
   },
   cardContent: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   sectionCap: {
-    ...typography.labelCap,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
   bodySm: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   // screenshots
   shotWrap: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   shotLabel: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   shot: {
     width: "100%",
     aspectRatio: 16 / 10,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   // scores
   scoreHeadRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
   },
   scoreGrade: {
-    ...typography.statValue,
-    color: textTokens.primary,
+    ...type.stat,
+    color: color.text1,
   },
   scoreOverall: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     paddingBottom: 4,
   },
   subScoreList: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   subScoreRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   subScoreLabel: {
     width: 118,
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   subScoreTrack: {
     flex: 1,
     height: 8,
     borderRadius: 4,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   subScoreFill: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   subScoreValue: {
     width: 28,
     textAlign: "right",
-    ...typography.caption,
+    ...type.caption,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   // signals
   signalList: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   signalRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   signalTextWrap: {
     flex: 1,
     gap: 2,
   },
   signalLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   signalDetail: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   // fixes
   fixRow: {
@@ -477,94 +475,94 @@ const styles = StyleSheet.create({
   fixHeadRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   fixTitle: {
     flexShrink: 1,
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   fixImpactPill: {
-    backgroundColor: glass.tint.badge.idle,
-    borderColor: glass.border.badge,
+    backgroundColor: materials.onPhoto.solidFill,
+    borderColor: color.lineStrong,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.full,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 2,
   },
   fixImpactText: {
-    ...typography.micro,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
   fixChange: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   // hero
   heroBefore: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   heroAfter: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   // competition
   compRow: {
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   compCard: {
     width: 200,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    padding: space[2],
     gap: 4,
   },
   compName: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   compCity: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   compBetter: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   h2hWrap: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   h2hTitle: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   h2hScroll: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   h2hRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 4,
   },
   h2hDimension: {
     width: 120,
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   h2hCell: {
     width: 150,
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   h2hWin: {
-    color: semantic.success,
+    color: color.success,
     fontWeight: "600",
   },
   // honesty rail
@@ -572,8 +570,8 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   honesty: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
 });
 

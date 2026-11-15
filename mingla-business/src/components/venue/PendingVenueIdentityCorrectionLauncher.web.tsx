@@ -23,7 +23,10 @@
 import React, { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { spacing } from "../../constants/designSystem";
+import {
+  spacing,
+  space,
+} from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 
 type DialogModule = typeof import("./PendingVenueIdentityCorrectionDialog.web");
@@ -118,9 +121,9 @@ export function PendingVenueIdentityCorrectionLauncher({
 const styles = StyleSheet.create({
   host: {
     alignItems: "flex-start",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    gap: space[1],
+    paddingHorizontal: space[6],
+    paddingTop: space[2],
   },
 });
 

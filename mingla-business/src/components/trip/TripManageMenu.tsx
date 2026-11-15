@@ -21,9 +21,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
@@ -69,7 +68,7 @@ const Row: React.FC<RowProps> = ({ icon, label, onPress, destructive, testID }) 
     <Icon
       name={icon}
       size={20}
-      color={destructive === true ? semantic.error : textTokens.primary}
+      color={destructive === true ? color.danger : color.text1}
     />
     <Text style={[styles.rowLabel, destructive === true && styles.rowLabelDestructive]}>
       {label}
@@ -145,7 +144,7 @@ export const TripManageMenu: React.FC<TripManageMenuProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     gap: 2,
   },
   heading: {
@@ -153,35 +152,35 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    color: color.text3,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[1],
   },
   divider: {
     height: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    marginVertical: spacing.xs,
+    backgroundColor: color.fill.pressed,
+    marginVertical: space[1],
   },
   row: {
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[4],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radiusTokens.md,
   },
   rowPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   rowLabel: {
     fontSize: 15,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowLabelDestructive: {
-    color: semantic.error,
+    color: color.danger,
   },
 });
 

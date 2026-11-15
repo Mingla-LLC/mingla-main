@@ -12,9 +12,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import type { VenueCategory } from "../../../types/brand";
 import {
@@ -67,9 +67,9 @@ export const ClaimStepCategory: React.FC<ClaimStepCategoryProps> = ({
       <VenueCategoryPicker
         value={draft.venueCategory}
         onChange={(v: VenueCategory) => patch({ venueCategory: v })}
-        includeStay={
-          stayAuthoringFlag.data === true || draft.venueCategory === "stay"
-        }
+        // #4420 (round-3 item 11) — Stay is always listed; the server flag
+        // still decides whether it can be picked.
+        includeStay
         stayDisabled={stayAuthoringFlag.data !== true}
         testID="claim-category-picker"
       />
@@ -80,29 +80,29 @@ export const ClaimStepCategory: React.FC<ClaimStepCategoryProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   helperRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   helper: {
     flexShrink: 1,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   err: {
-    fontSize: typography.caption.fontSize,
-    color: "#EF4444",
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
   },
 });
 
