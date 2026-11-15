@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   color,
+  radius,
   space,
   type,
 } from "../../constants/designSystem";
@@ -17,6 +18,8 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
+import { DesktopColumns } from "../ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface BrandPayoutOverviewProps {
   brandId: string;
@@ -144,6 +147,7 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
   suppressAttention = false,
 }) => {
   const query = useBrandPayoutScreen(brandId);
+  const { isWideDesktop } = useResponsiveLayout();
   const data = query.data ?? null;
   const unpaid = useMemo(
     () => [...(data?.releases.filter((release) =>
@@ -202,6 +206,68 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
     ? "—"
     : formatCurrency(cents, currency, true);
 
+  const heroCard = (
+    <GlassCard variant="elevated" padding={space[6]} style={styles.hero}>
+      <Text style={styles.eyebrow}>{heroLabel}</Text>
+      <Text style={styles.heroAmount}>
+        {renderMoney(heroAmount)}
+      </Text>
+      {next !== null ? (
+        <Text style={styles.nextDate}>
+          {rowTiming(next)}
+        </Text>
+      ) : <Text style={styles.body}>New sales will appear here.</Text>}
+    </GlassCard>
+  );
+  const kpiTiles = (
+    <View style={[styles.kpis, isWideDesktop ? styles.kpisWideTiles : null]}>
+      <KpiTile label="Coming to you" value={renderMoney(data?.comingToYouCents ?? 0)} sub="Sold, not sent yet" style={styles.kpi} />
+      <KpiTile label="Paid this month" value={renderMoney(data?.paidThisMonthCents ?? 0)} sub="Reached your bank" style={styles.kpi} />
+    </View>
+  );
+  const rateLine = (
+    <Pressable onPress={onOpenExplainer} accessibilityRole="button" accessibilityLabel="How payouts work" style={styles.rateLine}>
+      <Text style={styles.rateText}>Mingla keeps a flat 4.5%. Mingla pays card processing.</Text>
+      <Text style={styles.learnText}>How payouts work</Text>
+    </Pressable>
+  );
+  const payoutsList = (
+    <>
+      <View style={styles.headingRow}>
+        <Text style={styles.eyebrow}>PAYOUTS</Text>
+      </View>
+      {(data?.releases.length ?? 0) === 0 ? (
+        <GlassCard variant="base" padding={space[6]}>
+          <Text style={styles.title}>No payouts yet</Text>
+          <Text style={styles.body}>Your first payout will be scheduled about a day after a payment.</Text>
+        </GlassCard>
+      ) : (
+        <GlassCard variant="base" padding={0}>
+          {data?.releases.map((release, index) => (
+            <View key={release.id} style={index > 0 ? styles.divider : null}>
+              <PayoutRow release={release} onPress={() => onOpenPayout(release.id)} />
+            </View>
+          ))}
+        </GlassCard>
+      )}
+    </>
+  );
+  const bankCard = latestBank !== null ? (
+    <GlassCard variant="base" padding={space[4]}>
+      <Text style={styles.title}>{latestBank}</Text>
+      <Text style={styles.body}>{bankAccountVerified === true || hasSuccessfulPayout ? "Account verified" : "Account on file"}</Text>
+      <View style={styles.bankActions}>
+        <Button label="Change bank account" onPress={onOpenBank} variant="secondary" size="md" />
+        {onDisconnectBank !== undefined ? (
+          <Button label="Disconnect bank" onPress={onDisconnectBank} variant="ghost" size="md" />
+        ) : null}
+      </View>
+    </GlassCard>
+  ) : null;
+  const csvButton = (
+    <Button label="Download payouts CSV" onPress={onDownloadPayouts} variant="secondary" size="md" leadingIcon="chart" fullWidth />
+  );
+
   return (
     <View style={styles.container} testID="payout-overview">
       {shownAttention !== null ? (
@@ -233,60 +299,32 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
           ) : null}
         </GlassCard>
       ) : null}
-      <GlassCard variant="elevated" padding={space[6]} style={styles.hero}>
-        <Text style={styles.eyebrow}>{heroLabel}</Text>
-        <Text style={styles.heroAmount}>
-          {renderMoney(heroAmount)}
-        </Text>
-        {next !== null ? (
-          <Text style={styles.nextDate}>
-            {rowTiming(next)}
-          </Text>
-        ) : <Text style={styles.body}>New sales will appear here.</Text>}
-      </GlassCard>
-
-      <View style={styles.kpis}>
-        <KpiTile label="Coming to you" value={renderMoney(data?.comingToYouCents ?? 0)} sub="Sold, not sent yet" style={styles.kpi} />
-        <KpiTile label="Paid this month" value={renderMoney(data?.paidThisMonthCents ?? 0)} sub="Reached your bank" style={styles.kpi} />
+      {/* #4420 — desktop: the next payout and both totals in one row, then
+          payouts (8) beside the bank, CSV and fee line (4). Phone keeps the
+          single column in the same order as before. */}
+      <View style={isWideDesktop ? styles.kpisWide : styles.container}>
+        <View style={isWideDesktop ? styles.heroWide : null}>{heroCard}</View>
+        {kpiTiles}
       </View>
-
-      <Pressable onPress={onOpenExplainer} accessibilityRole="button" accessibilityLabel="How payouts work" style={styles.rateLine}>
-        <Text style={styles.rateText}>Mingla keeps a flat 4.5%. Mingla pays card processing.</Text>
-        <Text style={styles.learnText}>How payouts work</Text>
-      </Pressable>
-
-      <View style={styles.headingRow}>
-        <Text style={styles.eyebrow}>PAYOUTS</Text>
-      </View>
-      {(data?.releases.length ?? 0) === 0 ? (
-        <GlassCard variant="base" padding={space[6]}>
-          <Text style={styles.title}>No payouts yet</Text>
-          <Text style={styles.body}>Your first payout will be scheduled about a day after a payment.</Text>
-        </GlassCard>
-      ) : (
-        <GlassCard variant="base" padding={0}>
-          {data?.releases.map((release, index) => (
-            <View key={release.id} style={index > 0 ? styles.divider : null}>
-              <PayoutRow release={release} onPress={() => onOpenPayout(release.id)} />
+      {isWideDesktop ? (
+        <DesktopColumns
+          main={<View style={styles.container}>{payoutsList}</View>}
+          aside={
+            <View style={styles.container}>
+              {bankCard}
+              {csvButton}
+              {rateLine}
             </View>
-          ))}
-        </GlassCard>
+          }
+        />
+      ) : (
+        <>
+          {rateLine}
+          {payoutsList}
+          {bankCard}
+          {csvButton}
+        </>
       )}
-
-      {latestBank !== null ? (
-        <GlassCard variant="base" padding={space[4]}>
-          <Text style={styles.title}>{latestBank}</Text>
-          <Text style={styles.body}>{bankAccountVerified === true || hasSuccessfulPayout ? "Account verified" : "Account on file"}</Text>
-          <View style={styles.bankActions}>
-            <Button label="Change bank account" onPress={onOpenBank} variant="secondary" size="md" />
-            {onDisconnectBank !== undefined ? (
-              <Button label="Disconnect bank" onPress={onDisconnectBank} variant="ghost" size="md" />
-            ) : null}
-          </View>
-        </GlassCard>
-      ) : null}
-
-      <Button label="Download payouts CSV" onPress={onDownloadPayouts} variant="secondary" size="md" leadingIcon="chart" fullWidth />
     </View>
   );
 };
@@ -307,9 +345,13 @@ const styles = StyleSheet.create({
   nextDate: { marginTop: space[2], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, fontWeight: "700", color: color.text1 },
   action: { marginTop: space[4], alignSelf: "flex-start" },
   kpis: { flexDirection: "row", gap: space[2] },
+  kpisWide: { flexDirection: "row", alignItems: "stretch", gap: space[4] },
+  heroWide: { flex: 1.4, minWidth: 0 },
+  kpisWideTiles: { flex: 2, minWidth: 0, gap: space[4] },
   kpi: { flex: 1 },
   headingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: space[1] },
-  rateLine: { minHeight: 44, padding: space[2], borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: color.lineStrong, flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: space[2] },
+  // #4420 — the fee line is a quiet pane (the mockup), not a dashed box.
+  rateLine: { minHeight: 44, paddingVertical: space[3], paddingHorizontal: space[4], borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: color.line, backgroundColor: color.card, flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: space[2] },
   rateText: { flex: 1, minWidth: 220, fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 },
   learnText: { fontSize: type.btnSm.fontSize, lineHeight: type.btnSm.lineHeight, fontWeight: type.btnSm.fontWeight, color: color.text1 },
   payoutRow: { minHeight: 88, padding: space[4], flexDirection: "row", alignItems: "center", gap: space[2] },
