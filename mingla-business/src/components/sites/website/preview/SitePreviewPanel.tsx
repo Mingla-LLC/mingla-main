@@ -14,6 +14,7 @@ import { previewFrameSource } from "../../../../sites/previewFrame";
 import { Chip, Hint, MiniButton, Segmented, Skeleton, WButton, ui } from "../ui";
 import { ScaledPreviewFrame } from "./ScaledPreviewFrame";
 
+import { color } from "../../../../constants/designSystem";
 const DEVICE_ICONS = { desktop: "monitor", tablet: "tablet", phone: "phone" } as const;
 
 /** Desktop / Tablet / Phone, rotate, and the size readout (DESIGN_SPEC §1.7). */
@@ -135,7 +136,7 @@ const styles = StyleSheet.create({
   readout: { fontSize: 12, lineHeight: 16, color: ui.t3, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" }), fontVariant: ["tabular-nums"] },
   pages: { marginBottom: 10 },
   caption: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 6 },
-  errorStage: { minHeight: 200, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.02)" },
+  errorStage: { minHeight: 200, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: color.fill.tableHead },
   errorTitle: { fontSize: 14, fontWeight: "600", color: ui.t1 },
   fullBody: { flex: 1 },
 });

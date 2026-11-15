@@ -26,7 +26,8 @@ import {
   useStripeConnectViewportZoomLock,
 } from "../../../components/stripe/connectEmbeddedPageHelpers";
 
-const MINGLA_BRAND_COLOR = "#eb7825" as const;
+import { color } from "../../../constants/designSystem";
+const MINGLA_BRAND_COLOR = color.accent;
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -183,8 +184,8 @@ const loadingCardStyle = connectEmbeddedPageStyles.loadingCardStyle;
 // from the centered-title onboarding header so kept inline.
 const headerStyle: React.CSSProperties = {
   padding: "18px 24px",
-  borderBottom: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
+  borderBottom: `1px solid ${color.paperPressed}`,
+  backgroundColor: color.paper,
 };
 
 const headerInnerStyle: React.CSSProperties = {
@@ -200,13 +201,13 @@ const headerTitleStyle: React.CSSProperties = {
   fontSize: "18px",
   fontWeight: 600,
   margin: 0,
-  color: "#0F172A",
+  color: color.ink,
 };
 
 const doneButtonStyle: React.CSSProperties = {
-  border: "1px solid #E5E7EB",
-  background: "#FFFFFF",
-  color: "#0F172A",
+  border: `1px solid ${color.paperPressed}`,
+  background: color.paper,
+  color: color.ink,
   padding: "8px 14px",
   borderRadius: "9999px",
   fontSize: "14px",

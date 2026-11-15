@@ -20,7 +20,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { TurboModuleRegistry } from "react-native";
 
-import { accent, radius, semantic } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+} from "../../constants/designSystem";
 import { fetchBrandStripeAccountSession } from "../../services/brandStripeAccountSessionService";
 import {
   CONNECT_ONBOARDING_COLLECTION_OPTIONS,
@@ -99,9 +102,9 @@ const readPublishableKey = (): string | null => {
 /** Mingla tokens the SDK's appearance variables accept. */
 const APPEARANCE = {
   variables: {
-    colorPrimary: accent.warm,
-    colorDanger: semantic.error,
-    borderRadius: `${radius.md}px`,
+    colorPrimary: color.accent,
+    colorDanger: color.danger,
+    borderRadius: `${radius.sm}px`,
   },
 } as const;
 

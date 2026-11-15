@@ -1,7 +1,8 @@
 import React from "react";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
-import { text as textTokens } from "../../../constants/designSystem";
 
+
+import { color } from "../../../constants/designSystem";
 /*
  * #2829 W9r — the Website section's icons (the approved prototype's set,
  * 24-unit grid, 1.8 stroke). Local to the Website chunk so the shared Icon
@@ -59,7 +60,7 @@ function shapes(name: WebsiteIconName): React.ReactNode {
   }
 }
 
-export function WebsiteIcon({ name, size = 18, color = textTokens.primary }: {
+export function WebsiteIcon({ name, size = 18, color = color.text1 }: {
   name: WebsiteIconName;
   size?: number;
   color?: string;

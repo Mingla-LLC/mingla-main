@@ -13,9 +13,9 @@ import { SafeScreen } from "../../ui/SafeScreen";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Toast } from "../../ui/Toast";
 import {
-  canvas,
+  color,
   radius,
-  spacing,
+  space,
   websitePaneMaxWidth,
   websitePreviewWidth,
   websiteRailActive,
@@ -108,7 +108,7 @@ export default function WebsiteApp({ brandId, segments, search }: {
   }
   if (websiteAvailable !== true) {
     return (
-      <SafeScreen style={{ backgroundColor: canvas.discover }}>
+      <SafeScreen style={{ backgroundColor: color.canvas }}>
         <View style={styles.loadingShell}>
           <LoadingPane />
         </View>
@@ -433,7 +433,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
   if (!phone) {
     return (
       <WebsiteProvider value={value}>
-        <SafeScreen style={{ backgroundColor: canvas.discover }}>
+        <SafeScreen style={{ backgroundColor: color.canvas }}>
           <View style={styles.desktop}>
             <View style={styles.topbar}>
               <BackButton label="Back to Brand profile" onPress={() => router.canGoBack() ? router.back() : router.replace(`/brand/${brandId}` as never)} />
@@ -482,7 +482,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
   const showPreviewPill = !atRoot && route.kind === "section" && hasSite && sectionShowsPreview(section) && section !== "overview";
   return (
     <WebsiteProvider value={value}>
-      <SafeScreen style={{ backgroundColor: canvas.discover }}>
+      <SafeScreen style={{ backgroundColor: color.canvas }}>
         <View style={styles.phoneTopbar}>
           <BackButton
             label={atRoot ? "Back to Brand profile" : route.kind === "editor" ? `Back to ${SECTION_LABELS[section]}` : "Back to Website"}
@@ -510,7 +510,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
         ) : null}
         {stickyBar && route.kind !== "editor" ? <StickyBarView bar={stickyBar} phone /> : null}
         <Modal visible={previewSheet} animationType="slide" onRequestClose={() => setPreviewSheet(false)} presentationStyle="fullScreen">
-          <SafeScreen style={{ backgroundColor: "#000000" }}>
+          <SafeScreen style={{ backgroundColor: color.canvas }}>
             <View style={styles.phoneTopbar}>
               <BackButton label="Close preview" icon="close" onPress={() => setPreviewSheet(false)} />
               <Text style={styles.topTitle} role="heading" aria-level={1}>Draft preview</Text>
@@ -748,7 +748,7 @@ function FullScreenPreview({ grant, search }: { grant: PreviewGrantState; search
     router.replace(`/brand/${brandId}/website` as never);
   };
   return (
-    <SafeScreen style={{ backgroundColor: "#050608" }}>
+    <SafeScreen style={{ backgroundColor: color.canvas }}>
       <View style={styles.phoneTopbar}>
         <BackButton label="Close full-screen preview" icon="close" onPress={close} />
         <Text style={styles.topTitle} role="heading" aria-level={1}>Draft preview</Text>
@@ -769,7 +769,7 @@ function FullScreenPreview({ grant, search }: { grant: PreviewGrantState; search
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  setupBack: { alignSelf: "flex-start", marginBottom: spacing.md },
+  setupBack: { alignSelf: "flex-start", marginBottom: space[4] },
   loadingShell: { padding: 24 },
   desktop: { flex: 1 },
   topbar: { height: 56, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
   railContent: { paddingTop: 12, paddingBottom: 16, paddingLeft: 16, paddingRight: 8 },
   railHeading: { marginTop: 16, marginBottom: 4, marginHorizontal: 8, fontSize: 12, lineHeight: 16, fontWeight: "600", color: ui.t3 },
   railHeadingFirst: { marginTop: 4 },
-  railRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, borderRadius: radius.md, marginBottom: 2 },
+  railRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, borderRadius: radius.sm, marginBottom: 2 },
   railRowActive: { backgroundColor: websiteRailActive },
   railRowHover: { backgroundColor: ui.card },
   railBar: { position: "absolute", left: -8, top: 10, bottom: 10, width: 3, borderRadius: 2, backgroundColor: ui.accent },
@@ -790,16 +790,16 @@ const styles = StyleSheet.create({
   railMeta: { fontSize: 12, color: ui.t3 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: ui.warn },
   pane: { flex: 1, minWidth: 0 },
-  paneContent: { paddingTop: spacing.lg, paddingHorizontal: spacing.xl, paddingBottom: 96 },
+  paneContent: { paddingTop: space[6], paddingHorizontal: space[7], paddingBottom: 96 },
   paneInner: { maxWidth: websitePaneMaxWidth, width: "100%" },
-  side: { width: websitePreviewWidth, flexGrow: 0, flexShrink: 0, borderLeftWidth: 1, borderLeftColor: ui.cardBorder, backgroundColor: canvas.depth },
-  sideContent: { padding: spacing.md },
+  side: { width: websitePreviewWidth, flexGrow: 0, flexShrink: 0, borderLeftWidth: 1, borderLeftColor: ui.cardBorder, backgroundColor: color.canvas },
+  sideContent: { padding: space[4] },
   phoneTopbar: { height: 56, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
-  sticky: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, paddingHorizontal: 24, borderTopWidth: 1, borderTopColor: ui.border2, backgroundColor: "rgba(12, 14, 18, 0.96)" },
+  sticky: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, paddingHorizontal: 24, borderTopWidth: 1, borderTopColor: ui.border2, backgroundColor: color.canvas },
   stickyPhone: { paddingHorizontal: 16, paddingBottom: 20, flexWrap: "wrap" },
   stickyText: { flex: 1, minWidth: 140, fontSize: 13, color: ui.t2 },
   phoneList: { paddingBottom: 24 },
-  phonePane: { padding: spacing.md, paddingBottom: 140, alignItems: "center" },
+  phonePane: { padding: space[4], paddingBottom: 140, alignItems: "center" },
   phoneInner: { width: "100%", maxWidth: 720 },
   phoneStatusWrap: { paddingHorizontal: 16, paddingTop: 16 },
   phoneStatus: { marginBottom: 0 },
@@ -809,7 +809,7 @@ const styles = StyleSheet.create({
   rowCenter: { flexDirection: "row", alignItems: "center", gap: 12 },
   rowGap: { flexDirection: "row", gap: 8 },
   phoneGroup: { marginTop: 18, marginBottom: 6, marginHorizontal: 16, fontSize: 12, fontWeight: "600", color: ui.t3 },
-  phoneGroupBox: { marginHorizontal: 16, borderWidth: 1, borderColor: ui.cardBorder, borderRadius: radius.lg, overflow: "hidden", backgroundColor: ui.card },
+  phoneGroupBox: { marginHorizontal: 16, borderWidth: 1, borderColor: ui.cardBorder, borderRadius: radius.md, overflow: "hidden", backgroundColor: ui.card },
   phoneRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },
   phoneRowDivider: { borderTopWidth: 1, borderTopColor: ui.cardBorder },
   phoneRowLabel: { flex: 1, fontSize: 15, color: ui.t1 },

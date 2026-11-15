@@ -9,6 +9,7 @@ import {
   type PreviewDevicePreference,
 } from "../../../../sites/previewDevice";
 
+import { color } from "../../../../constants/designSystem";
 /*
  * #2829 W9r — the draft at a simulated device size on iOS/Android: a WebView
  * laid out at the device's CSS width and scaled to fit (native only; web
@@ -58,8 +59,8 @@ export function ScaledPreviewFrame({ url, preference, maxHeight = 560, fill = fa
 }
 
 const styles = StyleSheet.create({
-  stage: { position: "relative", overflow: "hidden", width: "100%", borderRadius: 12, backgroundColor: "rgba(255,255,255,0.02)" },
+  stage: { position: "relative", overflow: "hidden", width: "100%", borderRadius: 12, backgroundColor: color.fill.tableHead },
   fill: { flex: 1, minHeight: 200 },
-  viewport: { position: "absolute", top: 0, left: 0, overflow: "hidden", backgroundColor: "#ffffff" },
-  web: { flex: 1, backgroundColor: "#ffffff" },
+  viewport: { position: "absolute", top: 0, left: 0, overflow: "hidden", backgroundColor: color.paper },
+  web: { flex: 1, backgroundColor: color.paper },
 });

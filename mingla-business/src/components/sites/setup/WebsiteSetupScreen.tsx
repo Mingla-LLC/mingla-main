@@ -2,7 +2,12 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { ActivityIndicator, StyleSheet, Text, View, type TextStyle } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { accent, ariThread, canvas, spacing, websitePaneMaxWidth } from "../../../constants/designSystem";
+import {
+  ariThread,
+  color,
+  space,
+  websitePaneMaxWidth,
+} from "../../../constants/designSystem";
 import { supabase } from "../../../services/supabase";
 import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { firstOfferingRoute } from "../../../sites/planRoutes";
@@ -397,7 +402,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
         </View>
       }
     >
-      <Suspense fallback={<View style={styles.ariFallback}><ActivityIndicator color={accent.warm} accessibilityLabel="Opening Ari" /></View>}>
+      <Suspense fallback={<View style={styles.ariFallback}><ActivityIndicator color={color.text1} accessibilityLabel="Opening Ari" /></View>}>
         <LazyAriChatScreen
           embedded
           setup={{
@@ -486,7 +491,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
 
   if (loading) {
     return (
-      <SafeScreen style={{ backgroundColor: canvas.discover }}>
+      <SafeScreen style={{ backgroundColor: color.canvas }}>
         <View style={styles.loadingShell} role="status" accessibilityLabel="Loading your setup" testID="setup-loading">
           <View style={styles.loadingRail}>
             {status.steps.map((row) => <Skeleton key={row.key} height={38} />)}
@@ -502,7 +507,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
 
   if (stateOne && plan) {
     return (
-      <SafeScreen style={{ backgroundColor: canvas.discover }}>
+      <SafeScreen style={{ backgroundColor: color.canvas }}>
         <ScrollView contentContainerStyle={styles.startPane} keyboardShouldPersistTaps="handled">
           {/* A teammate already here: say who, and the start buttons do nothing (startWith). */}
           {presenceCard}
@@ -525,7 +530,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
 
   if (!phone) {
     return (
-      <SafeScreen style={{ backgroundColor: canvas.discover }}>
+      <SafeScreen style={{ backgroundColor: color.canvas }}>
         <View style={styles.flex}>
           <View style={styles.topbar}>
             <WButton label="Back to Website" size="sm" variant="ghost" onPress={() => router.replace(`/brand/${brandId}/website` as never)} testID="setup-back" />
@@ -549,7 +554,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
   }
 
   return (
-    <SafeScreen style={{ backgroundColor: canvas.discover }}>
+    <SafeScreen style={{ backgroundColor: color.canvas }}>
       <View style={styles.flex}>
         <View style={styles.phoneHead}>
           <View style={styles.phoneTitleRow}>
@@ -671,10 +676,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" },
   body: { fontSize: 15, lineHeight: 22, color: ui.t2 },
   hidden: { display: "none" },
-  loadingShell: { flexDirection: "row", gap: spacing.lg, padding: spacing.lg },
+  loadingShell: { flexDirection: "row", gap: space[6], padding: space[6] },
   loadingRail: { width: 210, gap: 4 },
   loadingBlock: { marginTop: 14 },
-  startPane: { padding: spacing.lg, alignItems: "center" },
+  startPane: { padding: space[6], alignItems: "center" },
   topbar: { height: 56, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
   topTitle: { flex: 1, fontSize: 20, lineHeight: 28, fontWeight: "700", color: ui.t1 } as TextStyle,
   count: { fontSize: 13, color: ui.t3 },
@@ -682,18 +687,18 @@ const styles = StyleSheet.create({
   rail: { width: 240, flexGrow: 0, flexShrink: 0, borderRightWidth: 1, borderRightColor: ui.cardBorder },
   railContent: { padding: 14 },
   main: { flex: 1, minWidth: 0 },
-  mainContent: { padding: spacing.lg, paddingBottom: 96 },
+  mainContent: { padding: space[6], paddingBottom: 96 },
   mainInner: { maxWidth: websitePaneMaxWidth, width: "100%" },
   ariColumn: { flex: 1, minWidth: ariThread.websiteAriMinWidth, maxWidth: ariThread.websiteAriMaxWidth, borderLeftWidth: 1, borderLeftColor: ui.cardBorder },
-  ariFallback: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: spacing.lg },
+  ariFallback: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: space[6] },
   ariFallbackText: { fontSize: 15, lineHeight: 22, color: ui.t2, textAlign: "center" },
   phoneHead: { paddingHorizontal: 14, paddingTop: 8, gap: 8 },
   phoneTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   phoneTitle: { flex: 1, fontSize: 16, lineHeight: 22, fontWeight: "600", color: ui.t1 },
-  pgbar: { height: 6, borderRadius: 3, backgroundColor: "rgba(255, 255, 255, 0.14)", overflow: "hidden" },
+  pgbar: { height: 6, borderRadius: 3, backgroundColor: color.fill.step, overflow: "hidden" },
   pgfill: { height: "100%", backgroundColor: ui.accent },
   phoneBody: { padding: 14, paddingBottom: 120 },
   phoneActions: { padding: 14, gap: 8 },
-  sheetBody: { padding: spacing.md, gap: 8 },
+  sheetBody: { padding: space[4], gap: 8 },
   readyBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" },
 });

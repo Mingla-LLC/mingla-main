@@ -40,6 +40,7 @@ import {
   type LookSwatch,
 } from "../../../../sites/siteLook";
 
+import { color, scrim } from "../../../../constants/designSystem";
 /*
  * #2829 W9r (DESIGN_SPEC §3) — "Website design": the design (live
  * thumbnails), the cover, colours grouped by where they show (readability
@@ -242,7 +243,7 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
           const checked = option.key === design.key;
           const colors = option.tokens.colors as unknown as Record<string, unknown>;
           const ramp = colors.accent as { seed?: string; ramp?: Record<number, string> } | undefined;
-          const accent = ramp?.ramp?.[400] ?? ramp?.seed ?? String(colors.action ?? "#888888");
+          const accent = ramp?.ramp?.[400] ?? ramp?.seed ?? String(colors.action ?? color.text3);
           const headlineFont = drawable(option.fonts.display.family);
           return (
             <Pressable
@@ -256,8 +257,8 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
               testID={`design-tile-${key}`}
               style={[styles.tile, checked ? styles.tileOn : null]}
             >
-              <View style={[styles.tileThumb, { backgroundColor: String(colors.canvas ?? "#ffffff") }]}>
-                <View style={[styles.tileBand, { backgroundColor: String(colors.surface_deep ?? "#222222") }]} />
+              <View style={[styles.tileThumb, { backgroundColor: String(colors.canvas ?? color.paper) }]}>
+                <View style={[styles.tileBand, { backgroundColor: String(colors.surface_deep ?? color.card) }]} />
                 <Text
                   style={[styles.tileHeadline, {
                     fontFamily: headlineFont ?? option.fonts.display.family,
@@ -310,7 +311,7 @@ function CoverCard({ disabled }: { disabled: boolean }): React.ReactElement {
             {data.photo?.thumb_url ? <Image source={{ uri: data.photo.thumb_url }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel="Your cover" /> : null}
             {data.video || data.photo ? (
               <View style={styles.coverChip}>
-                <WebsiteIcon name={data.video ? "video" : "image"} size={14} color="#ffffff" />
+                <WebsiteIcon name={data.video ? "video" : "image"} size={14} color={color.text1} />
                 <Text style={styles.coverChipText} numberOfLines={1}>{data.video ? `${data.video.name}${seconds ? ` · ${seconds} s` : ""}` : data.photo!.name}</Text>
               </View>
             ) : (
@@ -388,7 +389,7 @@ function ColoursCard({ design, resolved, tokens, disabled, onTokens }: {
                   />
                   {warning && !kept.has(warning.pair) ? (
                     <View style={styles.warnLine} role="status" testID={`readability-${item.role}`}>
-                      <WebsiteIcon name="alert" size={14} color="#fde2a8" />
+                      <WebsiteIcon name="alert" size={14} color={color.warningText} />
                       <Text style={styles.warnText}>{`${warning.where} is hard to read (${warning.ratio.toFixed(1)}:1; aim for ${warning.required}:1).`}</Text>
                       {suggestion ? (
                         <>
@@ -450,7 +451,7 @@ function SwatchRow({ swatch, label, where, hex, disabled, onSet }: {
       >
         {Platform.OS === "web" ? React.createElement("input", {
           type: "color",
-          value: /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : "#000000",
+          value: /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : color.mask,
           disabled,
           "aria-label": `${label} colour picker`,
           "data-testid": `swatch-picker-${swatch.role}`,
@@ -661,35 +662,35 @@ const styles = StyleSheet.create({
   tileOn: { borderColor: ui.accent, borderWidth: 2 },
   tileThumb: { height: 96, overflow: "hidden" },
   tileBand: { position: "absolute", left: 0, right: 0, top: 0, bottom: "40%" },
-  tileHeadline: { position: "absolute", left: 10, right: 10, top: 14, color: "#ffffff", fontSize: 13, fontWeight: "800" },
+  tileHeadline: { position: "absolute", left: 10, right: 10, top: 14, color: color.text1, fontSize: 13, fontWeight: "800" },
   tileButton: { position: "absolute", left: 10, bottom: 8, width: 64, height: 16 },
   tileBody: { padding: 12, gap: 2 },
   tileTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   tileName: { fontSize: 14, fontWeight: "700", color: ui.t1 },
   tileDesc: { fontSize: 12, lineHeight: 16, color: ui.t3 },
   coverRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, alignItems: "stretch" },
-  coverSlot: { flex: 1, minWidth: 200, minHeight: 140, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.22)", alignItems: "flex-start", justifyContent: "flex-end", padding: 10, backgroundColor: "rgba(255,255,255,0.02)" },
-  coverChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999, paddingHorizontal: 9, height: 24, maxWidth: "100%" },
-  coverChipText: { color: "#ffffff", fontSize: 12, fontWeight: "600" },
+  coverSlot: { flex: 1, minWidth: 200, minHeight: 140, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: color.lineStrong, alignItems: "flex-start", justifyContent: "flex-end", padding: 10, backgroundColor: color.fill.tableHead },
+  coverChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: scrim.modal, borderRadius: 999, paddingHorizontal: 9, height: 24, maxWidth: "100%" },
+  coverChipText: { color: color.text1, fontSize: 12, fontWeight: "600" },
   coverEmpty: { color: ui.t3, fontSize: 13 },
   coverActions: { minWidth: 200, gap: 8 },
   groupName: { marginTop: 16, marginBottom: 4, fontSize: 12, fontWeight: "600", color: ui.t3 },
   swatchRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
-  swatch: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.22)", overflow: "hidden" },
+  swatch: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: color.lineStrong, overflow: "hidden" },
   swatchLabel: { fontSize: 14, fontWeight: "700", color: ui.t1 },
-  hex: { width: 112, minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: "rgba(255,255,255,0.03)", paddingHorizontal: 10, color: ui.t1, fontSize: 13, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" }) },
-  hexError: { borderColor: "#f87171" },
+  hex: { width: 112, minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: color.fill.tableHead, paddingHorizontal: 10, color: ui.t1, fontSize: 13, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" }) },
+  hexError: { borderColor: color.errorLine },
   error: { fontSize: 12, color: ui.err, marginTop: 2 },
-  warnLine: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginLeft: 52, marginTop: 6, marginBottom: 2, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, backgroundColor: Platform.OS === "android" ? "#362811" : "rgba(245, 158, 11, 0.18)" },
-  warnText: { flex: 1, minWidth: 180, fontSize: 12.5, lineHeight: 17, color: "#fde2a8" },
-  warnSwatch: { width: 16, height: 16, borderRadius: 4, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
+  warnLine: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginLeft: 52, marginTop: 6, marginBottom: 2, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, backgroundColor: Platform.OS === "android" ? color.solidTint.warning : color.warningTint },
+  warnText: { flex: 1, minWidth: 180, fontSize: 12.5, lineHeight: 17, color: color.warningText },
+  warnSwatch: { width: 16, height: 16, borderRadius: 4, borderWidth: 1, borderColor: color.lineStrong },
   restore: { alignSelf: "flex-start", marginTop: 10 },
   fontSlot: { borderWidth: 1, borderColor: ui.cardBorder, borderRadius: 12, padding: 12, marginTop: 10 },
   fontSlotRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   fontSlotLabel: { fontSize: 13, fontWeight: "700", color: ui.t2 },
   specimen: { fontSize: 30, lineHeight: 36, color: ui.t1, marginVertical: 4 },
   picker: { marginTop: 12 },
-  search: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: "rgba(255,255,255,0.03)", paddingHorizontal: 12, color: ui.t1, fontSize: 14 },
+  search: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: color.fill.tableHead, paddingHorizontal: 12, color: ui.t1, fontSize: 14 },
   styleChips: { marginVertical: 10 },
   result: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingVertical: 8, paddingHorizontal: 4, borderTopWidth: 1, borderTopColor: ui.cardBorder },
   resultHover: { backgroundColor: ui.card2 },

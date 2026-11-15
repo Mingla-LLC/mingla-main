@@ -1,7 +1,10 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { accent, spacing, text as textTokens } from "../../../constants/designSystem";
+import {
+  color,
+  space,
+} from "../../../constants/designSystem";
 
 /**
  * #2830 design state 11 — the way back stays visible through the whole creator.
@@ -31,8 +34,8 @@ export default function CreatorReturnBar({ onBack, savesDraft = true }: {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, flexWrap: "wrap", paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: "rgba(255, 255, 255, 0.1)" },
+  bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], flexWrap: "wrap", paddingHorizontal: space[4], borderBottomWidth: 1, borderBottomColor: color.line },
   back: { minHeight: 44, justifyContent: "center" },
-  backLabel: { fontSize: 14, fontWeight: "600", color: accent.warm },
-  note: { fontSize: 13, color: textTokens.tertiary },
+  backLabel: { fontSize: 14, fontWeight: "600", color: color.text1 },
+  note: { fontSize: 13, color: color.text3 },
 });

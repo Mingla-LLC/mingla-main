@@ -4,7 +4,12 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { accent, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
 import type { MainActionChip, StoryQuestions } from "../../../../packages/site-contracts/src/sitePlan.ts";
 import type { SitePlanStory } from "../../sites/sitePlanState";
 import { APPROVED_PLAN_LABELS } from "../../sites/planScreens";
@@ -126,7 +131,7 @@ export function SiteStoryView(props: SiteStoryViewProps): React.ReactElement {
         multiline
         maxLength={MAX}
         style={styles.input}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         accessibilityLabel={label}
         testID={`story-${key}`}
       />
@@ -175,20 +180,20 @@ export function SiteStoryView(props: SiteStoryViewProps): React.ReactElement {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  page: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
-  centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
-  title: { ...typography.h2, color: textTokens.primary },
-  heading: { ...typography.h3, color: textTokens.primary },
-  body: { ...typography.body, color: textTokens.secondary },
-  caption: { ...typography.caption, color: textTokens.tertiary },
-  error: { ...typography.bodySm, color: semantic.errorText },
-  card: { padding: spacing.md, gap: spacing.sm },
-  field: { gap: spacing.xs },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center" },
-  summaryRow: { minHeight: 44, justifyContent: "center", gap: spacing.xs },
-  summaryValue: { ...typography.body, color: textTokens.primary },
-  input: { ...typography.body, color: textTokens.primary, borderWidth: 1, borderColor: textTokens.quaternary, borderRadius: radius.sm, padding: spacing.sm, minHeight: 72, textAlignVertical: "top" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  chip: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: 999, borderWidth: 1, borderColor: textTokens.quaternary },
-  chipOn: { borderColor: accent.warm, backgroundColor: accent.tint },
+  page: { padding: space[4], gap: space[4], paddingBottom: space[7] },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
+  title: { ...type.h1, color: color.text1 },
+  heading: { ...type.h1, color: color.text1 },
+  body: { ...type.body, color: color.text2 },
+  caption: { ...type.caption, color: color.text3 },
+  error: { ...type.small, color: color.errorText },
+  card: { padding: space[4], gap: space[2] },
+  field: { gap: space[1] },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: space[2], alignItems: "center" },
+  summaryRow: { minHeight: 44, justifyContent: "center", gap: space[1] },
+  summaryValue: { ...type.body, color: color.text1 },
+  input: { ...type.body, color: color.text1, borderWidth: 1, borderColor: color.text4, borderRadius: radius.xs, padding: space[2], minHeight: 72, textAlignVertical: "top" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
+  chip: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[2], borderRadius: 999, borderWidth: 1, borderColor: color.text4 },
+  chipOn: { borderColor: color.paper, backgroundColor: color.fill.tabOn },
 });

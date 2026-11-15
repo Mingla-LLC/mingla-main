@@ -20,7 +20,8 @@ import {
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { useLocalSearchParams } from "expo-router";
 
-const MINGLA_BRAND_COLOR = "#eb7825" as const;
+import { color } from "../../../constants/designSystem";
+const MINGLA_BRAND_COLOR = color.accent;
 
 export default function ConnectTaxRegistrationsBody(): React.ReactElement {
   const params = useLocalSearchParams<{
@@ -137,16 +138,16 @@ function ErrorShell(
 
 const pageWrapperStyle: React.CSSProperties = {
   minHeight: "100vh",
-  backgroundColor: "#FAFAFA",
-  color: "#0F172A",
+  backgroundColor: color.paper,
+  color: color.ink,
   fontFamily:
     '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
 };
 
 const headerStyle: React.CSSProperties = {
   padding: "24px",
-  backgroundColor: "#FFFFFF",
-  borderBottom: "1px solid #E5E7EB",
+  backgroundColor: color.paper,
+  borderBottom: `1px solid ${color.paperPressed}`,
 };
 
 const headerTitleStyle: React.CSSProperties = {
@@ -180,8 +181,8 @@ const errorCardStyle: React.CSSProperties = {
   maxWidth: "560px",
   margin: "72px auto",
   padding: "24px",
-  backgroundColor: "#FFFFFF",
-  border: "1px solid #E5E7EB",
+  backgroundColor: color.paper,
+  border: `1px solid ${color.paperPressed}`,
   borderRadius: "12px",
 };
 
@@ -192,5 +193,5 @@ const errorTitleStyle: React.CSSProperties = {
 
 const errorBodyStyle: React.CSSProperties = {
   margin: 0,
-  color: "#475569",
+  color: color.text4,
 };

@@ -1,6 +1,10 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { radius, websiteRailActive } from "../../../constants/designSystem";
+import {
+  color,
+  radius,
+  websiteRailActive,
+} from "../../../constants/designSystem";
 import { setupStepChip, setupStepMark, type SetupStep } from "../../../sites/setupStatus";
 import { CheckCircle, ui } from "../website/ui";
 import type { PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
@@ -52,15 +56,15 @@ export function SetupStepList({ steps, active, canManage, published, onSelect }:
 }
 
 const markStyles = StyleSheet.create({
-  ring: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "rgba(255, 255, 255, 0.35)" },
+  ring: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: color.lineStrong },
   ringNow: { borderColor: ui.accent },
 });
 
 const styles = StyleSheet.create({
-  row: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 8, borderRadius: radius.md, marginBottom: 2 },
+  row: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 8, borderRadius: radius.sm, marginBottom: 2 },
   rowOn: { backgroundColor: websiteRailActive },
   label: { flex: 1, fontSize: 13, lineHeight: 18, color: ui.t2 },
   labelOn: { color: ui.t1, fontWeight: "600" },
-  meta: { fontSize: 12, color: "#fcd27a" },
+  meta: { fontSize: 12, color: color.warningText },
   metaErr: { color: ui.err },
 });
