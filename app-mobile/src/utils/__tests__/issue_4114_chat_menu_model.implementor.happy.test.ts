@@ -34,8 +34,8 @@ const chat = {
 Deno.test("one menu: the 1:1 chat order, Report then Block last", () => {
   assertEquals(
     buildFriendMenu(chat).map((item) => item.id),
-    // #4435: Clear chat is appended after today's items.
-    ["viewProfile", "media", "shareCard", "addToSession", "mute", "removeFriend", "report", "block", "clearChat"],
+    // #4435 (design v4 flow 7): Clear chat comes before Remove friend, Report and Block.
+    ["viewProfile", "media", "shareCard", "addToSession", "mute", "clearChat", "removeFriend", "report", "block"],
     "chat menu order",
   );
 });
@@ -43,7 +43,7 @@ Deno.test("one menu: the 1:1 chat order, Report then Block last", () => {
 Deno.test("one menu: a paired friend gets Birthday, holidays and saves after Mute", () => {
   const ids = buildFriendMenu({ ...chat, pairState: "paired" }).map((item) => item.id);
   assertEquals(ids.slice(4, 6), ["mute", "pairedView"], "paired row follows mute");
-  assertEquals(ids.slice(-3), ["report", "block", "clearChat"], "destructive rows stay last (#4435 Clear chat after Block)");
+  assertEquals(ids.slice(-4), ["clearChat", "removeFriend", "report", "block"], "destructive rows stay last (#4435 Clear chat first of them)");
 });
 
 Deno.test("one menu: muted reads Unmute", () => {
@@ -73,7 +73,7 @@ Deno.test("one menu: the collab slot is first, and only when the chat can start 
 Deno.test("one menu: a blocked or unfriended person keeps only the safe rows", () => {
   assertEquals(
     buildFriendMenu({ ...chat, isFriend: false, canViewProfile: false }).map((item) => item.id),
-    ["media", "shareCard", "mute", "report", "block", "clearChat"],
+    ["media", "shareCard", "mute", "clearChat", "report", "block"],
     "no add-to-session or remove for a non-friend (#4435: Clear chat stays)",
   );
 });

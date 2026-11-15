@@ -83,7 +83,7 @@
   "leave_group_title": "그룹에서 나갈까요?",
   "leave_group_body": "더 이상 메시지를 받지 않으며, Mingla에서 공유할 때 이 그룹이 표시되지 않아요.",
   "remove_chat_title": "채팅을 삭제할까요?",
-  "remove_chat_body": "목록에서 제거합니다. 둘 중 한 명이 메시지를 보내면 다시 나타납니다.",
+  "remove_chat_body": "이 채팅이 모든 기기의 목록에서 사라져요. 둘 중 한 명이 메시지를 보내면 다시 나타납니다.",
   "chat_removed": "채팅을 삭제했어요.",
   "archived_row": "보관됨",
   "archived_row_a11y": "보관된 채팅, {{count}}개",

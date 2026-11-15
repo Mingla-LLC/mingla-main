@@ -83,7 +83,7 @@
   "leave_group_title": "Lämna gruppen?",
   "leave_group_body": "Du slutar få meddelanden, och gruppen visas inte när du delar i Mingla.",
   "remove_chat_title": "Ta bort chatten?",
-  "remove_chat_body": "Tar bort den från din lista. Den kommer tillbaka när någon av er skickar ett meddelande.",
+  "remove_chat_body": "Chatten försvinner från dina listor på alla enheter. Den kommer tillbaka när någon av er skickar ett meddelande.",
   "chat_removed": "Chatten togs bort.",
   "archived_row": "Arkiverade",
   "archived_row_a11y": "Arkiverade chattar, {{count}}",

@@ -83,7 +83,7 @@
   "leave_group_title": "Rời nhóm?",
   "leave_group_body": "Bạn sẽ không nhận tin nhắn nữa và nhóm này sẽ không xuất hiện khi bạn chia sẻ trong Mingla.",
   "remove_chat_title": "Xóa cuộc trò chuyện?",
-  "remove_chat_body": "Xóa khỏi danh sách của bạn. Cuộc trò chuyện sẽ quay lại khi một trong hai người gửi tin nhắn.",
+  "remove_chat_body": "Cuộc trò chuyện này sẽ biến mất khỏi danh sách của bạn trên mọi thiết bị. Cuộc trò chuyện sẽ quay lại khi một trong hai người gửi tin nhắn.",
   "chat_removed": "Đã xóa cuộc trò chuyện.",
   "archived_row": "Đã lưu trữ",
   "archived_row_a11y": "Cuộc trò chuyện đã lưu trữ, {{count}}",

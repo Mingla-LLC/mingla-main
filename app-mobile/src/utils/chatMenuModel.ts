@@ -70,11 +70,12 @@ export const FRIEND_MENU_ORDER: readonly FriendMenuItemId[] = [
   "sendPair",
   "pairPending",
   "unpair",
+  // Issue #4435 (design v4 flow 7): Clear chat sits before the destructive
+  // friend actions (Remove friend, Report, Block).
+  "clearChat",
   "removeFriend",
   "report",
   "block",
-  // Issue #4435: appended after today's items.
-  "clearChat",
 ];
 
 const ITEMS: Record<FriendMenuItemId, Omit<FriendMenuItem, "id">> = {

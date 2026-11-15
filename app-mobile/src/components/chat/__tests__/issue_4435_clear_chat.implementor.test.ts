@@ -15,9 +15,9 @@ const chatCtx = {
   canViewProfile: true, hasConversation: true, isMuted: false,
 };
 
-Deno.test("#4435 Clear chat is the last item of the 1:1 menu, only with a conversation", () => {
+Deno.test("#4435 Clear chat sits before Remove friend / Report / Block in the 1:1 menu, only with a conversation", () => {
   const ids = buildFriendMenu(chatCtx).map((item) => item.id);
-  assert(ids[ids.length - 1] === "clearChat", "last item");
+  assert(ids.indexOf("clearChat") === ids.indexOf("removeFriend") - 1, "right before Remove friend (design v4 flow 7)");
   assert(!buildFriendMenu({ ...chatCtx, hasConversation: false }).some((item) => item.id === "clearChat"), "no conversation, no clear");
   assert(!buildFriendMenu({ ...chatCtx, surface: "friendSheet" }).some((item) => item.id === "clearChat"), "not on the friends sheet");
 });
@@ -48,7 +48,7 @@ Deno.test("#4435 the thread confirms, shows Clearing... and the quiet cleared ro
 
 Deno.test("#4435 copy: removed chats come back when either of you writes; every locale has the new keys", () => {
   const en = JSON.parse(read("src/i18n/locales/en/connections.json"));
-  assert(en.remove_chat_body === "Removes it from your list. It comes back when either of you sends a message.", "remove copy");
+  assert(en.remove_chat_body === "This chat will disappear from your lists on every device. It comes back when either of you sends a message.", "remove copy");
   const keys = ["menuClearChat", "clear_confirm_title", "clear_confirm_body_dm", "clear_confirm_body_group", "clear_action",
     "clearing", "cleared_notice", "clear_failed", "group_full_toast", "group_creator_protected", "group_last_admin",
     "group_not_allowed", "group_action_failed"];

@@ -83,7 +83,7 @@
   "leave_group_title": "Groep verlaten?",
   "leave_group_body": "Je ontvangt geen berichten meer en deze groep verschijnt niet meer als je deelt in Mingla.",
   "remove_chat_title": "Chat verwijderen?",
-  "remove_chat_body": "Haalt hem uit je lijst. Hij komt terug zodra een van jullie een bericht stuurt.",
+  "remove_chat_body": "Deze chat verdwijnt op al je apparaten uit je lijsten. Hij komt terug zodra een van jullie een bericht stuurt.",
   "chat_removed": "Chat verwijderd.",
   "archived_row": "Gearchiveerd",
   "archived_row_a11y": "Gearchiveerde chats, {{count}}",

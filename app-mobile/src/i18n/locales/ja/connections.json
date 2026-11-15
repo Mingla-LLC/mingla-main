@@ -83,7 +83,7 @@
   "leave_group_title": "グループを退出しますか？",
   "leave_group_body": "メッセージが届かなくなり、Minglaで共有するときにこのグループは表示されなくなります。",
   "remove_chat_title": "チャットを削除しますか？",
-  "remove_chat_body": "リストから削除します。どちらかがメッセージを送ると戻ってきます。",
+  "remove_chat_body": "このチャットはすべてのデバイスのリストから消えます。どちらかがメッセージを送ると戻ってきます。",
   "chat_removed": "チャットを削除しました。",
   "archived_row": "アーカイブ済み",
   "archived_row_a11y": "アーカイブ済みのチャット、{{count}}件",
