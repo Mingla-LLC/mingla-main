@@ -131,7 +131,9 @@ describe("#4273 P2-c the phone preview sheet's tabs are readable on its light he
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const path = require("path") as typeof import("path");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { colors } = require("../../../constants/designSystem") as typeof import("../../../constants/designSystem");
+  // [TEST-MOD-APPROVED #4420] the light-surface tokens are color.text4 / color.ink /
+  // color.paper now (the retired `colors.*` set mapped onto them); same contrast bar.
+  const { color } = require("../../../constants/designSystem") as typeof import("../../../constants/designSystem");
   const channel = (value: number): number => {
     const c = value / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
@@ -149,12 +151,12 @@ describe("#4273 P2-c the phone preview sheet's tabs are readable on its light he
   const compose = readFileSync(path.join(root, "app/(tabs)/marketing/campaigns/compose.tsx"), "utf8");
 
   it("the inactive label token clears 4.5:1 on the sheet (#F5F5F7) and its tab (#FFFFFF)", () => {
-    expect(contrast(colors.text.secondary, "#F5F5F7")).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(colors.text.secondary, colors.background.primary)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color.text4, "#F5F5F7")).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color.text4, color.paper)).toBeGreaterThanOrEqual(4.5);
   });
   it("the light surface uses those tokens, and the phone sheet asks for it", () => {
-    expect(tabs).toMatch(/tabLabelOnLight:\s*\{\s*color:\s*colors\.text\.secondary\s*\}/);
-    expect(tabs).toMatch(/tabLabelActiveOnLight:\s*\{\s*color:\s*colors\.text\.primary\s*\}/);
+    expect(tabs).toMatch(/tabLabelOnLight:\s*\{\s*color:\s*color\.text4\s*\}/);
+    expect(tabs).toMatch(/tabLabelActiveOnLight:\s*\{\s*color:\s*color\.ink\s*\}/);
     const sheet = compose.slice(compose.indexOf("styles.previewModal"));
     expect(sheet.slice(0, sheet.indexOf("</Modal>"))).toMatch(/<ComposerPreviewTabs[\s\S]*?surface="light"/);
   });
