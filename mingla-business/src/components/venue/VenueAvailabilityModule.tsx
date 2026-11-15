@@ -49,7 +49,11 @@ import { useVenueTables } from "../../hooks/useVenueTables";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { HapticFeedback } from "../../utils/hapticFeedback";
-import { formatTimezoneLabel, getAllTimezones } from "../../utils/timezones";
+import {
+  formatTimezoneLabel,
+  getAllTimezones,
+  timezoneMatchesQuery,
+} from "../../utils/timezones";
 import { setAvailabilityNumericToolbarState } from "../../wrappers/KeyboardToolbarRoot";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { ChevronRight } from "lucide-react-native";
@@ -548,7 +552,7 @@ export const VenueAvailabilityModule = forwardRef<
   const tzFiltered = useMemo<string[]>(() => {
     const q = tzQuery.trim().toLowerCase();
     if (q.length === 0) return tzOptions.slice(0, 60);
-    return tzOptions.filter((z) => z.toLowerCase().includes(q)).slice(0, 60);
+    return tzOptions.filter((z) => timezoneMatchesQuery(z, q)).slice(0, 60);
   }, [tzOptions, tzQuery]);
   const handleChooseTimezone = useCallback(
     (zone: string): void => {

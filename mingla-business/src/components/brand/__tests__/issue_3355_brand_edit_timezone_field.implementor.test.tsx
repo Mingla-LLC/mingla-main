@@ -95,8 +95,9 @@ describe("#3355 Wave A — Brand Edit Time zone field", () => {
   test("a set zone shows its label; searching Lagos and picking writes Africa/Lagos", () => {
     const picked: string[] = [];
     const r = mount("Europe/London", (zone) => picked.push(zone));
+    // [TEST-MOD-APPROVED #4420] — the label is the city, never the slug.
     expect(String(byTestId(r, "tz-value")[0].props.children)).toMatch(
-      /^Europe\/London/,
+      /^London \(GMT/,
     );
     void TestRenderer.act(() =>
       (byTestId(r, "tz-toggle")[0].props.onPress as () => void)()

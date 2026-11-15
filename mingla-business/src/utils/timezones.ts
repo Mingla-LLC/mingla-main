@@ -417,15 +417,44 @@ export const formatTimezoneOffset = (
 };
 
 /**
- * "America/New_York (GMT-5)" — IANA name + the offset in force at `at`
- * (default: now). Pass the event's start so the label matches the event.
+ * #4420 (round-3 item 12) — a zone is never shown as its IANA slug. The city
+ * is the last segment of the id with underscores as spaces:
+ * "America/New_York" → "New York", "America/Argentina/Buenos_Aires" →
+ * "Buenos Aires". `UTC` / `Etc/UTC` stay "UTC". The id stays the stored value.
+ */
+export const timezoneCityName = (tz: string): string => {
+  const trimmed = tz.trim();
+  if (trimmed === "UTC" || trimmed === "Etc/UTC") return "UTC";
+  const last = trimmed.split("/").pop() ?? trimmed;
+  return last.replace(/_/g, " ");
+};
+
+/**
+ * Picker search: a zone matches by its city name or its id, so "new york",
+ * "new_york", "America/New" and "america" all find America/New_York.
+ */
+export const timezoneMatchesQuery = (tz: string, query: string): boolean => {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0) return true;
+  const id = tz.toLowerCase();
+  return (
+    id.includes(q) ||
+    id.includes(q.replace(/\s+/g, "_")) ||
+    timezoneCityName(tz).toLowerCase().includes(q.replace(/_/g, " "))
+  );
+};
+
+/**
+ * "New York (GMT-5)" — the city + the offset in force at `at` (default: now).
+ * Pass the event's start so the label matches the event.
  */
 export const formatTimezoneLabel = (
   tz: string,
   at: TimezoneOffsetAt = new Date(),
 ): string => {
+  const city = timezoneCityName(tz);
   const offset = formatTimezoneOffset(tz, at);
-  return offset.length > 0 ? `${tz} (${offset})` : tz;
+  return offset.length > 0 ? `${city} (${offset})` : city;
 };
 
 /**

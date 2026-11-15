@@ -21,7 +21,11 @@ import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 
-import { formatTimezoneLabel, getAllTimezones } from "../../utils/timezones";
+import {
+  formatTimezoneLabel,
+  getAllTimezones,
+  timezoneMatchesQuery,
+} from "../../utils/timezones";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 
@@ -42,10 +46,10 @@ export function filterTimezones(
   query: string,
   limit = 40,
 ): string[] {
-  const q = query.trim().toLowerCase().replace(/\s+/g, "_");
+  const q = query.trim();
   const hits = q.length === 0
     ? zones
-    : zones.filter((zone) => zone.toLowerCase().includes(q));
+    : zones.filter((zone) => timezoneMatchesQuery(zone, q));
   return hits.slice(0, limit);
 }
 

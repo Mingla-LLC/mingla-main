@@ -31,6 +31,7 @@ import {
 // Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
 // booking-deadline picker was broken on web.
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+import { timezoneCityName } from "../../utils/timezones";
 // #2664 — Android has no `datetime` picker mode. This component's picker was
 // gated `Platform.OS !== "web"`, so it reached Android and carried the same
 // unmount crash as the sale window; it just had not been reported yet.
@@ -111,7 +112,8 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
   }, [value]);
 
   const toggleOn = wantsDeadline;
-  const tzLabel = brandTimezone ?? "UTC";
+  // #4420 round-3 item 12: the city, never the IANA slug.
+  const tzLabel = timezoneCityName(brandTimezone ?? "UTC");
 
   const openPicker = useCallback(() => {
     // Seed pending Date from current value, else default to +1h.

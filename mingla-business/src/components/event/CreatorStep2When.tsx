@@ -88,6 +88,8 @@ import { computeEndsAtUtcWithSmartInfer } from "../../utils/eventDateMath";
 import {
   formatTimezoneOffset,
   getAllTimezones,
+  timezoneCityName,
+  timezoneMatchesQuery,
   whenStepTimezoneReference,
 } from "../../utils/timezones";
 
@@ -199,11 +201,9 @@ const blankOverrides: MultiDateOverrides = {
 /**
  * #4420 (round-3 item 12) — time zones never show as slugs. "America/New_York"
  * reads "New York"; the zone id stays the stored value and stays searchable.
+ * Kept as an export for existing callers; the shared helper owns the rule.
  */
-export const timezoneDisplayName = (tz: string): string => {
-  const last = tz.split("/").pop() ?? tz;
-  return last.replace(/_/g, " ");
-};
+export const timezoneDisplayName = timezoneCityName;
 
 export const CreatorStep2When: React.FC<StepBodyProps> = ({
   showMultiDatePricingMode = false,
@@ -313,9 +313,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const filteredTimezones = useMemo<string[]>(() => {
     const q = tzSearchQuery.trim().toLowerCase();
     if (q.length === 0) return allTimezones;
-    return allTimezones.filter(
-      (tz) => tz.toLowerCase().includes(q) || timezoneDisplayName(tz).toLowerCase().includes(q),
-    );
+    return allTimezones.filter((tz) => timezoneMatchesQuery(tz, q));
   }, [allTimezones, tzSearchQuery]);
   // Offsets are seasonal: a 6 Nov New York event is GMT-5 even while it is set
   // up in September (GMT-4), so label at the event's own first start, not
