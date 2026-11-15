@@ -129,7 +129,7 @@ export function checkContract(fixture) {
   requireStyleNeedles(s.hostOwner, "logoContainer", ['backgroundColor: "#ffffff"', "borderRadius: 999"], "host owner");
   requireStyleNeedles(s.hostOwner, "tagline", ['color: "#ffffff"', 'textShadowColor: "rgba(0, 0, 0, 0.45)"'], "host owner");
   requireStyleNeedles(s.hostOwner, "appleButton", ['backgroundColor: "#ffffff"'], "host owner");
-  requireStyleNeedles(s.hostOwner, "appleButtonText", ["color: colors.text.primary"], "host owner");
+  requireStyleNeedles(s.hostOwner, "appleButtonText", ["color: color.ink"], "host owner");
   // #4420 Graphite Glass: Google and Email are the dark control material with
   // light text (the approved mockup). Only their colours changed; Apple keeps
   // its required white button and #111827 mark above, and the video, veil,
