@@ -23,6 +23,18 @@ export {
   OFFERING_GLASS_BAR_HEIGHT,
 } from "./OfferingGlassBar";
 export type { OfferingGlassBarProps } from "./OfferingGlassBar";
+// issue #4420 — the host app's optional real-blur material (expo-blur stays out).
+export {
+  OfferingGlassProvider,
+  OfferingGlassBackdrop,
+  useOfferingGlass,
+  glassBlurActive,
+  glassFillAlpha,
+} from "./OfferingGlassContext";
+export type {
+  OfferingGlassMaterial,
+  OfferingGlassBackdropProps,
+} from "./OfferingGlassContext";
 export { OfferingFactRows } from "./OfferingFactRows";
 export type {
   OfferingFact,

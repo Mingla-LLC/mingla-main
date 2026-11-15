@@ -65,6 +65,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { desktopBlur } from "./OfferingGlassBar";
 import {
+  OfferingGlassBackdrop,
+  glassBlurActive,
+  useOfferingGlass,
+} from "./OfferingGlassContext";
+import {
   OfferingCoverIdentity,
   type OfferingCoverIdentityData,
 } from "./OfferingCoverIdentity";
@@ -511,6 +516,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   });
   const identityData: OfferingCoverIdentityData | null = coverIdentity;
   const premiumTitle = headerTitle ?? identityData?.title ?? null;
+  const glassMaterial = useOfferingGlass();
+  const headerBlurred = glassBlurActive(glassMaterial, palette.glassTint);
 
   const motionOverlay = (textZone: { ref?: React.RefObject<unknown>; top?: Animated.Value }) => (
     <View
@@ -576,13 +583,18 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             backgroundColor: palette.page.startsWith("#")
               ? hexToRgba(
                   palette.page,
-                  Platform.OS === "web" ? (isDesktop ? 0.78 : 0.9) : Platform.OS === "android" ? 0.97 : 0.93,
+                  headerBlurred
+                    ? 0.72
+                    : Platform.OS === "web" ? (isDesktop ? 0.78 : 0.9) : Platform.OS === "android" ? 0.97 : 0.93,
                 )
               : palette.page,
           },
           desktopBlur(isDesktop ? 1024 : 0),
         ]}
-      />
+      >
+        {/* The host app's injected blur (iOS), when it has one. */}
+        <OfferingGlassBackdrop radius={0} tint={palette.glassTint} />
+      </Animated.View>
       <View
         style={[
           styles.premiumHeaderRow,

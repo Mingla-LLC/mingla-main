@@ -32,6 +32,12 @@ import type { ResolvedTheme } from "./designTokens";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { accentFill, themeFontFace } from "./themeAccentStyle";
 import { boldFontFamily, hexToRgba, type ThemePalette } from "./themePalette";
+import {
+  OfferingGlassBackdrop,
+  glassBlurActive,
+  glassFillAlpha,
+  useOfferingGlass,
+} from "./OfferingGlassContext";
 
 export interface OfferingGlassBarProps {
   palette: ThemePalette;
@@ -66,13 +72,24 @@ const DESKTOP_GLASS: WebGlassStyle = { backdropFilter: "blur(20px) saturate(1.4)
 export const desktopBlur = (width: number): StyleProp<ViewStyle> =>
   Platform.OS === "web" && width >= DESKTOP_BLUR_MIN_WIDTH ? DESKTOP_GLASS : null;
 
-/** Readable translucent glass tone over the page colour. */
-const glassFill = (palette: ThemePalette): string => {
+/**
+ * Readable translucent glass tone over the page colour. Android paints
+ * opaque; with no blur behind the bar (native without an injected material,
+ * phone web) it stays near-opaque; over a real blur (desktop web's CSS blur,
+ * or the host app's injected material on iOS) it lets the page show through.
+ */
+export const glassBarFill = (
+  palette: ThemePalette,
+  opts: { blurred: boolean; desktopWeb: boolean },
+): string => {
   const base = palette.panelStrong.startsWith("#") ? palette.panelStrong : palette.page;
   if (!base.startsWith("#")) return palette.panelStrong;
-  // Android paints opaque; native iOS and mobile web have no blur behind the
-  // bar, so they stay near-opaque; desktop web sits at ~78% over its blur.
-  return Platform.OS === "android" ? base : hexToRgba(base, Platform.OS === "web" ? 0.82 : 0.94);
+  const alpha = glassFillAlpha({
+    platform: Platform.OS,
+    blurred: opts.blurred,
+    desktopWeb: opts.desktopWeb,
+  });
+  return alpha >= 1 ? base : hexToRgba(base, alpha);
 };
 
 export const OfferingGlassBar: React.FC<OfferingGlassBarProps> = ({
@@ -89,6 +106,9 @@ export const OfferingGlassBar: React.FC<OfferingGlassBarProps> = ({
   actionTestID,
 }: OfferingGlassBarProps) => {
   const { width } = useWindowDimensions();
+  const material = useOfferingGlass();
+  const blurred = glassBlurActive(material, palette.glassTint);
+  const desktopWeb = Platform.OS === "web" && width >= DESKTOP_BLUR_MIN_WIDTH;
   const boldFace =
     theme !== undefined ? themeFontFace(boldFontFamily(theme)) : null;
   const showButton = ctaLabel !== null && ctaLabel.length > 0;
@@ -98,12 +118,16 @@ export const OfferingGlassBar: React.FC<OfferingGlassBarProps> = ({
     <View
       style={[
         styles.bar,
-        { borderColor: palette.panelBorder, backgroundColor: glassFill(palette) },
+        {
+          borderColor: palette.panelBorder,
+          backgroundColor: glassBarFill(palette, { blurred, desktopWeb }),
+        },
         desktopBlur(width),
         style,
       ]}
       testID={testID}
     >
+      <OfferingGlassBackdrop radius={999} tint={palette.glassTint} />
       <View
         style={styles.textCol}
         accessible

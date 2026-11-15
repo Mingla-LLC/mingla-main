@@ -131,8 +131,9 @@ import {
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
 
-export default function PublicTripRoute(): React.ReactElement {
+function PublicTripRouteBody(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
@@ -1022,3 +1023,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 });
+
+// issue #4420 — the Host app's real glass for the shared public page.
+export default function PublicTripRoute(): React.ReactElement {
+  return (
+    <PublicGlassProvider>
+      <PublicTripRouteBody />
+    </PublicGlassProvider>
+  );
+}

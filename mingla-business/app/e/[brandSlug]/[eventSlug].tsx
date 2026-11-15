@@ -36,8 +36,9 @@ import { PublicEventPage } from "../../../src/components/event/PublicEventPage";
 import { PublicEventNotFound } from "../../../src/components/event/PublicEventNotFound";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
+import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
 
-export default function PublicEventRoute(): React.ReactElement {
+function PublicEventRouteBody(): React.ReactElement {
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     eventSlug: string | string[];
@@ -224,3 +225,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+// issue #4420 — the Host app's real glass for the shared public page.
+export default function PublicEventRoute(): React.ReactElement {
+  return (
+    <PublicGlassProvider>
+      <PublicEventRouteBody />
+    </PublicGlassProvider>
+  );
+}

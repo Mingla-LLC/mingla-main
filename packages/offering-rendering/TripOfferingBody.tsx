@@ -68,6 +68,8 @@ import {
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
 import { OfferingFactRows } from "./OfferingFactRows";
+import { OfferingSubLabel } from "./OfferingSectionTitle";
+import { OfferingDotList } from "./OfferingDecideParts";
 import {
   BadgeCheck,
   Calendar,
@@ -639,35 +641,36 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
         </View>
       ) : null}
 
-      {/* (8) What's included. */}
-      {includedChips.length > 0 ? (
-        <View style={styles.section} testID="trip-body-included">
-          <Text
-            style={[
-              styles.secTitle,
-              surface.primaryText,
-              boldFace,
-            ]}
-          >
-            What&rsquo;s included
-          </Text>
-          <ChipGroup chips={includedChips} palette={palette} />
-        </View>
-      ) : null}
-
-      {/* (8) What's NOT included. */}
-      {excludedChips.length > 0 ? (
-        <View style={styles.section} testID="trip-body-excluded">
-          <Text
-            style={[
-              styles.secTitle,
-              surface.primaryText,
-              boldFace,
-            ]}
-          >
-            What&rsquo;s not included
-          </Text>
-          <ChipGroup chips={excludedChips} palette={palette} />
+      {/* (8) What's included. (8) What's NOT included. — issue #4420: two
+          quiet lists side by side (accent dots / hollow rings) instead of
+          chip clouds; each keeps its own section and testID. */}
+      {includedChips.length > 0 || excludedChips.length > 0 ? (
+        <View
+          style={[
+            styles.section,
+            includedChips.length > 0 && excludedChips.length > 0 ? styles.inclCols : null,
+          ]}
+        >
+          {includedChips.length > 0 ? (
+            <View style={styles.inclCol} testID="trip-body-included">
+              <OfferingSubLabel palette={palette}>Included</OfferingSubLabel>
+              <OfferingDotList
+                palette={palette}
+                kind="yes"
+                items={includedChips.map((c) => c.label)}
+              />
+            </View>
+          ) : null}
+          {excludedChips.length > 0 ? (
+            <View style={styles.inclCol} testID="trip-body-excluded">
+              <OfferingSubLabel palette={palette}>Not included</OfferingSubLabel>
+              <OfferingDotList
+                palette={palette}
+                kind="no"
+                items={excludedChips.map((c) => c.label)}
+              />
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -1149,14 +1152,15 @@ const TripPackageRow: React.FC<{
                 disabled={!canIncrement}
                 accessibilityRole="button"
                 accessibilityLabel={`Add one ${tier.tierName}`}
+                // issue #4420 — the shared stepper look: ink-filled plus.
                 style={[
                   styles.pkgStepBtn,
-                  { borderColor: palette.panelBorder },
+                  { backgroundColor: palette.primaryText, borderColor: palette.primaryText },
                   !canIncrement ? styles.pkgStepBtnDisabled : null,
                 ]}
                 testID={`trip-body-pkg-plus-${tier.ticketTypeId}`}
               >
-                <Plus size={18} color={palette.primaryText} />
+                <Plus size={18} color={palette.page} />
               </Pressable>
             </View>
           )}
@@ -1277,6 +1281,9 @@ const styles = StyleSheet.create({
   // issue #4420 — the premium rhythm: sections 34pt apart, headings in the
   // host's display face at 26pt (OfferingSectionTitle's metrics).
   section: { marginTop: 34 },
+  // issue #4420 — Included / Not included side by side.
+  inclCols: { flexDirection: "row", gap: 18 },
+  inclCol: { flex: 1, minWidth: 0 },
   secTitle: {
     fontSize: 26,
     fontWeight: "700",
@@ -1332,7 +1339,7 @@ const styles = StyleSheet.create({
   brandName: { fontSize: 15, fontWeight: "800" },
   brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
   // ---- §10 box (ONE merged box: payment toggle + price row + reserve CTA) ----
-  selectBox: { borderRadius: 18, padding: 14, marginTop: 12 },
+  selectBox: { borderRadius: 18, padding: 18, marginTop: 4 },
   // The payment-plan toggle sits ATOP the price row inside the same box.
   payChoiceWrap: { marginBottom: 14 },
   selectRow: {

@@ -328,6 +328,12 @@ export interface ExperienceOfferingBodyProps {
    * premium ParallaxCoverShell frame). Absent ⇒ false (Explorer).
    */
   identityOnCover?: boolean;
+  /**
+   * issue #4420 — the inline "Book a time" decide area (date strip, times,
+   * people), built by the surface from its shared reservation state. Absent
+   * (Explorer, single-date experiences) ⇒ nothing renders.
+   */
+  reservePicker?: React.ReactNode;
   testID?: string;
 }
 
@@ -356,6 +362,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   // parameter as `null` and every field read narrows to `never`.
   rightNow = null as RightNowFacts | null,
   identityOnCover = false,
+  reservePicker = undefined as React.ReactNode | undefined,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -455,8 +462,9 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         <View testID="experience-body-title" />
       )}
 
-      {/* (3)+(4) issue #4420 — the fact rows (where you meet · group size)
-          and the quiet vibe tag line replace the meta and vibe chips. The
+      {/* (3) Meta chips and (4) Vibe chips — issue #4420: the fact rows
+          (where you meet · group size) and the quiet vibe tag line replace
+          the meta and vibe chips. The
           dates and times live in the availability banner below (ORCH-1186). */}
       {data.cityCountry !== null || data.seatsLabel !== null || vibeLabels.length > 0 ? (
         <View testID="experience-body-meta">
@@ -625,6 +633,12 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             ) : null}
           </View>
         </View>
+      ) : null}
+
+      {/* (6a) issue #4420 — Book a time: the inline decide area, right under
+          the availability line so the hours and the choice read together. */}
+      {reservePicker !== undefined && reservePicker !== null ? (
+        <View testID="experience-body-book-a-time">{reservePicker}</View>
       ) : null}
 
       {/*

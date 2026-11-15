@@ -37,8 +37,9 @@ import {
 } from "../../../src/hooks/usePublicBrandSections";
 import { PublicBrandPage } from "../../../src/components/brand/PublicBrandPage";
 import { PublicBrandNotFound } from "../../../src/components/brand/PublicBrandNotFound";
+import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
 
-export default function PublicBrandRoute(): React.ReactElement {
+function PublicBrandRouteBody(): React.ReactElement {
   const params = useLocalSearchParams<{ brandSlug: string | string[] }>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
@@ -196,3 +197,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+// issue #4420 — the Host app's real glass for the shared public page.
+export default function PublicBrandRoute(): React.ReactElement {
+  return (
+    <PublicGlassProvider>
+      <PublicBrandRouteBody />
+    </PublicGlassProvider>
+  );
+}

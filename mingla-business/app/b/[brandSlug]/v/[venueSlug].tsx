@@ -121,6 +121,7 @@ import {
   settleBuyerVenueOrganicCapture,
   type VenueOrganicAnalyticsSurface,
 } from "../../../../src/services/venueOrganicCapturePolicy";
+import { PublicGlassProvider } from "../../../../src/components/offering/PublicGlassProvider";
 
 // #1390: Stay booking includes its own renderer and Stripe Payment Element.
 // Keep that product-specific bulk off the shared buyer-web boot path and load it
@@ -188,7 +189,7 @@ const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
   googlePlaceId: venue.googlePlaceId ?? null,
 });
 
-export default function PublicVenueRoute(): React.ReactElement {
+function PublicVenueRouteBody(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [shareModalVisible, setShareModalVisible] = React.useState(false);
@@ -834,3 +835,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
 });
+
+// issue #4420 — the Host app's real glass for the shared public page.
+export default function PublicVenueRoute(): React.ReactElement {
+  return (
+    <PublicGlassProvider>
+      <PublicVenueRouteBody />
+    </PublicGlassProvider>
+  );
+}

@@ -129,6 +129,8 @@ export interface ExperiencePreviewProps {
   onSeeWhosGoing?: () => void;
   /** The DOCKED Reserve CTA — LAST child of the PHONE body (route-owned). */
   dockedReserve?: React.ReactNode;
+  /** issue #4420 — the inline "Book a time" picker (route-owned state). */
+  reservePicker?: React.ReactNode;
   /** Scroll-awareness passthrough so the route hides its floating pill. */
   onScroll?: ParallaxScrollHandler;
   onScrollViewLayout?: ParallaxLayoutHandler;
@@ -218,6 +220,7 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
   socialProof = null,
   onSeeWhosGoing,
   dockedReserve,
+  reservePicker,
   onScroll,
   onScrollViewLayout,
 }) => {
@@ -251,6 +254,7 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
         socialProof={socialProof}
         onSeeWhosGoing={onSeeWhosGoing}
         dockedReserve={dockedReserve}
+        reservePicker={reservePicker}
         onScroll={onScroll}
         onScrollViewLayout={onScrollViewLayout}
         testID={testID}
@@ -296,6 +300,8 @@ const FoundationExperiencePreview: React.FC<{
   /** ORCH-1342 — web-only "See who's going" tap (absent ⇒ inert cluster). */
   onSeeWhosGoing?: () => void;
   dockedReserve?: React.ReactNode;
+  /** issue #4420 — the inline "Book a time" picker (route-owned state). */
+  reservePicker?: React.ReactNode;
   onScroll?: ParallaxScrollHandler;
   onScrollViewLayout?: ParallaxLayoutHandler;
   testID?: string;
@@ -320,6 +326,7 @@ const FoundationExperiencePreview: React.FC<{
   socialProof = null,
   onSeeWhosGoing,
   dockedReserve,
+  reservePicker,
   onScroll,
   onScrollViewLayout,
   testID,
@@ -444,6 +451,7 @@ const FoundationExperiencePreview: React.FC<{
         availabilityBlock={availabilityBlock}
         stateBanner={stateBanner}
         dockedReserve={!isDesktop ? dockedReserve : undefined}
+        reservePicker={reservePicker}
         identityOnCover
         // ORCH-1339 — cross-entity social proof (route-fetched, props-only).
         socialProof={socialProof}

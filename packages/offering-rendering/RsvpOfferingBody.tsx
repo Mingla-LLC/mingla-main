@@ -1694,50 +1694,66 @@ export const useRsvpOfferingState = (
       style={[styles.guestBlock, surface.card]}
       testID="orch-1163-rsvp-guests"
     >
+      {/* issue #4420 — "Bringing anyone?" (design file → P.rsvp): the title
+          and the cap on the left, the shared stepper look on the right
+          (outlined minus, ink plus). Each added guest still opens its own
+          name / email / phone form below, exactly as before. */}
       <View style={styles.guestHeaderRow}>
-        <Text style={[styles.guestHeaderLabel, surface.secondaryText]}>
-          Bringing extras?
-        </Text>
+        <View style={styles.guestHeaderText}>
+          <Text style={[styles.guestHeaderTitle, surface.primaryText, boldFace]}>
+            Bringing anyone?
+          </Text>
+          <Text style={[styles.guestHeaderLabel, surface.secondaryText]}>
+            {config.plusOnesMax === 1
+              ? "Up to 1 guest"
+              : `Up to ${config.plusOnesMax} guests`}
+          </Text>
+        </View>
         <View style={styles.stepperRow}>
           <Pressable
             onPress={removeGuest}
             disabled={submitting || guests.length <= 0}
             accessibilityRole="button"
             accessibilityLabel="Remove one extra guest"
+            hitSlop={6}
             style={[
               styles.stepBtn,
               {
                 borderColor: palette.panelBorder,
-                opacity: guests.length <= 0 ? 0.4 : 1,
+                opacity: guests.length <= 0 ? 0.35 : 1,
               },
             ]}
             testID="orch-1157-rsvp-plus-minus"
           >
-            <Minus size={18} {...accentIcon(palette)} />
+            <Minus size={17} color={palette.primaryText} />
           </Pressable>
           <Text
             style={[
               styles.stepCount,
               { color: palette.primaryText, ...boldFace },
             ]}
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={`${guests.length} extra ${guests.length === 1 ? "guest" : "guests"}`}
           >
-            +{guests.length}
+            {guests.length}
           </Text>
           <Pressable
             onPress={addGuest}
             disabled={submitting || guests.length >= config.plusOnesMax}
             accessibilityRole="button"
             accessibilityLabel="Add one extra guest"
+            hitSlop={6}
             style={[
               styles.stepBtn,
               {
-                borderColor: palette.panelBorder,
-                opacity: guests.length >= config.plusOnesMax ? 0.4 : 1,
+                backgroundColor: palette.primaryText,
+                borderColor: palette.primaryText,
+                opacity: guests.length >= config.plusOnesMax ? 0.35 : 1,
               },
             ]}
             testID="orch-1157-rsvp-plus-plus"
           >
-            <Plus size={18} {...accentIcon(palette)} />
+            <Plus size={17} color={palette.page} />
           </Pressable>
         </View>
       </View>
@@ -2883,8 +2899,8 @@ const styles = StyleSheet.create({
   },
   formMicro: { fontSize: 12, marginBottom: 10 },
   guestBlock: {
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 18,
+    padding: 18,
     marginBottom: 14,
     overflow: "hidden",
   },
@@ -2892,9 +2908,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 12,
     marginBottom: 4,
   },
-  guestHeaderLabel: { fontSize: 14, fontWeight: "700" },
+  guestHeaderText: { flex: 1, minWidth: 0 },
+  guestHeaderTitle: { fontSize: 16, fontWeight: "700" },
+  guestHeaderLabel: { fontSize: 13, fontWeight: "500", marginTop: 3 },
   guestRow: { marginTop: 10 },
   guestRowTitle: {
     fontSize: 12,
@@ -2903,11 +2922,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginTop: 6,
   },
-  stepperRow: { flexDirection: "row", alignItems: "center" },
+  stepperRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   stepBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -2915,9 +2934,10 @@ const styles = StyleSheet.create({
   stepGlyph: { fontSize: 20, fontWeight: "800", lineHeight: 22 },
   stepCount: {
     fontSize: 16,
-    fontWeight: "800",
-    minWidth: 40,
+    fontWeight: "700",
+    minWidth: 30,
     textAlign: "center",
+    fontVariant: ["tabular-nums"],
   },
   field: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, fontWeight: "700", marginBottom: 5 },
