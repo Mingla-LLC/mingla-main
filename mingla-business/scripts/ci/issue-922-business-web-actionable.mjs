@@ -145,11 +145,16 @@ function validateOwnerPins() {
   invariant(analytics.indexOf("window.__minglaPrebootPrivacy;") < analytics.indexOf("readPersistedChoice();"), "same-document privacy must be read before storage");
   invariant(!analytics.includes("delete window.__minglaPrebootPrivacy"), "page-lifetime privacy handoff must survive multiple readers");
   invariant(analytics.includes('PRIVACY_STORAGE_KEY = "mingla_privacy_v2"'), "canonical privacy storage key drifted");
-  invariant(files["src/components/ui/Button.tsx"].includes("sm: 36, md: 44, lg: 52"), "button height owner drifted");
-  invariant(files["src/components/ui/Button.tsx"].includes("outlineWidth: 2"), "button focus owner drifted");
-  for (const token of ['warm: "#eb7825"', 'discover: "#0c0e12"', "profileBase: \"rgba(255, 255, 255, 0.04)\""]) {
+  // #4420 — Graphite Glass: Button reads its web heights and focus ring from
+  // designSystem tokens, and the static entry copies the Graphite canvas, the
+  // brand orange and the 4% card wash from the token file.
+  invariant(files["src/components/ui/Button.tsx"].includes("lg: PHONE ? sizeTokens.btn.phone : sizeTokens.btn.lg,"), "button height owner drifted");
+  invariant(files["src/components/ui/Button.tsx"].includes("outlineWidth: edge.ringFocus.ringWidth"), "button focus owner drifted");
+  for (const token of ["btn: { sm: 36, md: 44, lg: 52,", "ringWidth: 2 }", '950: "#0f0f11", // canvas', '500: "#eb7825",', '"04": "rgba(255, 255, 255, 0.04)",']) {
     invariant(files["src/constants/designSystem.ts"].includes(token), `design token owner drift: ${token}`);
   }
+  invariant(files["scripts/build-invite-critical-entry.mjs"].includes("background:#0f0f11"), "static entry no longer paints the Graphite canvas");
+  invariant(!files["scripts/build-invite-critical-entry.mjs"].includes("#0c0e12"), "static entry still paints the retired #0c0e12 canvas");
   invariant(files["scripts/inject-mobile-blur-css.mjs"].includes('data-${JS_CACHE_BUST_MARKER}="true"'), "final script-attribute owner drifted");
 }
 
