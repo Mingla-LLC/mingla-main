@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../ui/Button";
+import { CenteredState } from "../ui/CenteredState";
+import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { Spinner } from "../ui/Spinner";
 import { SheetBody } from "../programs/ProgramKit";
 import type { BrandLocalReview } from "../../services/localReviewsService";
 import { replyState } from "./localReplyState";
@@ -17,7 +20,28 @@ import {
   edge,
 } from "../../constants/designSystem";
 
-type Props = { brandId: string; placePoolId: string };
+type Props = {
+  brandId: string;
+  placePoolId: string;
+  /**
+   * #4420 — "panel" (default) is an optional block inside another screen: it
+   * hides itself while loading, on a failed read and when there is nothing to
+   * show. "module" is the venue Reviews module, where the panel IS the page,
+   * so it shows loading, an empty state and an error state with Try again.
+   */
+  variant?: "panel" | "module";
+};
+
+type LoadState = "loading" | "ready" | "error";
+
+/** #4420 — empty and error copy: one line plus one short line. */
+export const LOCAL_REVIEWS_STATE_COPY = {
+  emptyTitle: "No reviews yet",
+  emptyBody: "Mingla Local reviews of this place show up here.",
+  errorTitle: "We couldn't load reviews",
+  errorBody: "Check your connection and try again.",
+  retry: "Try again",
+} as const;
 
 /*
  * #3872 round 2 (H2.7, keyboard rule): the reply is written in a sheet whose
@@ -30,8 +54,10 @@ type Props = { brandId: string; placePoolId: string };
 export function LocalReviewsManager({
   brandId,
   placePoolId,
+  variant = "panel",
 }: Props): React.ReactElement | null {
   const [reviews, setReviews] = useState<BrandLocalReview[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   // Which published reply is open for editing, and per-review outcome text.
@@ -58,11 +84,20 @@ export function LocalReviewsManager({
     });
   }, [brandId, placePoolId]);
 
-  useEffect(() => {
-    void load().catch(() => {
-      // This optional public-review module stays absent if its scoped read is unavailable.
-    });
+  const runLoad = useCallback((): void => {
+    setLoadState("loading");
+    void load()
+      .then(() => setLoadState("ready"))
+      .catch(() => {
+        // Panel: the optional block stays absent. Module: the error state below
+        // says so and offers Try again.
+        setLoadState("error");
+      });
   }, [load]);
+
+  useEffect(() => {
+    runLoad();
+  }, [runLoad]);
 
   const save = async (review: BrandLocalReview): Promise<void> => {
     const reply = drafts[review.local_month_id]?.trim() ?? "";
@@ -109,7 +144,48 @@ export function LocalReviewsManager({
     }
   };
 
-  if (reviews.length === 0) return null;
+  if (reviews.length === 0) {
+    if (variant === "panel") return null;
+    if (loadState === "loading") {
+      return (
+        <View style={styles.stateWrap} testID="venue-local-reviews-loading">
+          <Spinner />
+        </View>
+      );
+    }
+    if (loadState === "error") {
+      return (
+        <View style={styles.stateWrap}>
+          <CenteredState
+            tone="error"
+            icon={<Icon name="wifiOff" size={28} color={color.errorText} />}
+            title={LOCAL_REVIEWS_STATE_COPY.errorTitle}
+            body={LOCAL_REVIEWS_STATE_COPY.errorBody}
+            accessibilityRole="alert"
+            testID="venue-local-reviews-error"
+          >
+            <Button
+              label={LOCAL_REVIEWS_STATE_COPY.retry}
+              size="md"
+              variant="secondary"
+              onPress={runLoad}
+              testID="venue-local-reviews-retry"
+            />
+          </CenteredState>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.stateWrap}>
+        <CenteredState
+          icon={<Icon name="star" size={28} color={color.text3} />}
+          title={LOCAL_REVIEWS_STATE_COPY.emptyTitle}
+          body={LOCAL_REVIEWS_STATE_COPY.emptyBody}
+          testID="venue-local-reviews-empty"
+        />
+      </View>
+    );
+  }
   const editingReview =
     editingId === null
       ? null
@@ -266,6 +342,12 @@ export function LocalReviewsManager({
 
 const styles = StyleSheet.create({
   wrap: { paddingHorizontal: space[4], paddingBottom: space[2] },
+  stateWrap: {
+    paddingHorizontal: space[4],
+    paddingVertical: space[9],
+    alignItems: "center",
+    justifyContent: "center",
+  },
   card: {
     padding: space[6],
     gap: space[4],

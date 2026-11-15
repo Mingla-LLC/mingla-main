@@ -176,6 +176,8 @@ describe("#4420 B8 — Local reviews scroll with the venue Overview", () => {
     // [TEST-MOD-APPROVED #4420] round-3 item 19: the venue suite shows the panel as its own
     // Reviews module; the Stay suite still scrolls it with its Overview.
     expect(page.match(/overviewHeader=\{localReviewsPanel\}/g)?.length).toBe(1);
-    expect(page.match(/reviewsPanel=\{localReviewsPanel\}/g)?.length).toBe(1);
+    // [TEST-MOD-APPROVED #4420] the Reviews module renders the same panel in
+    // its "module" variant (loading / empty / error states); same single site.
+    expect(page.match(/reviewsPanel=\{renderLocalReviews\("module"\)\}/g)?.length).toBe(1);
   });
 });

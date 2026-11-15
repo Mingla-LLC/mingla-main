@@ -351,16 +351,25 @@ export default function VenueManagementPage(): React.ReactElement {
   // list ate the screen and nothing below it could be reached (iOS and short
   // desktop windows). An optional, lazily-loaded panel: if its chunk fails to
   // load or it throws, it hides itself and the rest of the venue page stays up.
-  const localReviewsPanel =
+  // #4420 — the Reviews module shows loading / empty / error states (the panel
+  // is the whole page there); as a Stay Overview header it stays optional.
+  const renderLocalReviews = (
+    variant: "panel" | "module",
+  ): React.ReactElement | null =>
     venue.claimStatus === "verified" &&
     brandId !== null &&
     venue.placePoolId !== null ? (
       <OptionalFeatureBoundary name="venue-local-reviews">
         <Suspense fallback={null}>
-          <LocalReviewsManager brandId={brandId} placePoolId={venue.placePoolId} />
+          <LocalReviewsManager
+            brandId={brandId}
+            placePoolId={venue.placePoolId}
+            variant={variant}
+          />
         </Suspense>
       </OptionalFeatureBoundary>
     ) : null;
+  const localReviewsPanel = renderLocalReviews("panel");
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + space[2] }]}>
@@ -481,7 +490,7 @@ export default function VenueManagementPage(): React.ReactElement {
           initialModule={initialModule ?? "overview"}
           // #4420 (round-3 item 19) — Local reviews are their own Reviews
           // module now, not a panel at the top of Overview.
-          reviewsPanel={localReviewsPanel}
+          reviewsPanel={renderLocalReviews("module")}
           renderReviewsSummary={
             localReviewsPanel !== null && brandId !== null && venue.placePoolId !== null
               ? (openReviews) => (
