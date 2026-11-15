@@ -196,7 +196,8 @@ function runSelfTest() {
     ['Business turn-off keeps cookies', { business: clean.business.replace('if (isAnalyticsStorageName(name)) expireCookie(name);', '') }],
     ['Business turn-off forgets analytics', { business: clean.business.replace('if (!analyticsOn) stopAnalytics();', '') }],
     ['Attribution loses the ads gate', { business: clean.business.replace('if (!hasWindow() || !isAdsOn()) return;', 'if (!hasWindow()) return;') }],
-    ['Region read restored', { business: clean.business.replace('export async function initWebAnalytics(): Promise<void> {', 'export async function initWebAnalytics(): Promise<void> {\n  void fetch("/api/ad-pixel-config");') }],
+    // #4238: initWebAnalytics takes the route (W2-4); the mutation anchors on the current signature.
+    ['Region read restored', { business: clean.business.replace('export async function initWebAnalytics(pathname?: string): Promise<void> {', 'export async function initWebAnalytics(pathname?: string): Promise<void> {\n  void fetch("/api/ad-pixel-config");') }],
     ['Marketing eager SDK', { marketingProvider: clean.marketingProvider.replace("import type { PostHog } from 'posthog-js'", "import posthog from 'posthog-js'") }],
     ['Marketing unconditional children', { marketingProvider: clean.marketingProvider.replace('return enabled ? children : null', 'return children') }],
     ['Marketing eager GA', { marketingLayout: clean.marketingLayout.replace('<PostHogProvider>\n          <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />\n        </PostHogProvider>', '<PostHogProvider>{null}</PostHogProvider>\n        <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />') }],
