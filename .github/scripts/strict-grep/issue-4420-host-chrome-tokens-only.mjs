@@ -63,6 +63,7 @@ export const COLOUR_ALLOWLIST_ENTRIES = [
   { path: "src/components/orders/OrderListCard.tsx", reason: "the buyer avatar tile hue is generated from the buyer's name (data)" },
   { path: "src/utils/brandGroupThreadModel.ts", reason: "the brand tile hues are generated from the brand id (data)" },
   { path: "src/analytics/ConsentBanner.web.tsx", reason: "the analytics/privacy bar is out of #4420 scope by rule, and its CSS is a verbatim mirror of server/publicPrivacyRuntime.js pinned by #922/#4318" },
+  { path: "src/components/ui/UpdateLaunchBoundary.tsx", reason: "the launch-failure screen is a byte twin of app-mobile's (only the services path may differ), pinned by the #2107 structural contract; it paints before the app's tokens can be trusted" },
   { path: "src/screens/ari/AriRenditionGalleryScreen.tsx", reason: "local dev rendition review tool (production redirect), excluded from the redesign" },
 ];
 export const COLOUR_ALLOWLIST = COLOUR_ALLOWLIST_ENTRIES.map((entry) => entry.path);

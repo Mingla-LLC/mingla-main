@@ -23,7 +23,6 @@ import {
   requestLaunchErrorRestart,
 } from "../../services/updateLaunchRuntime";
 
-import { color } from "../../constants/designSystem";
 // Installed when the root layout imports this file, before Sentry.init wraps
 // the global handler. Never throws.
 installUpdateLaunchGuard();
@@ -113,7 +112,7 @@ export class UpdateLaunchBoundary extends React.Component<
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: color.paper,
+    backgroundColor: "#ffffff",
   },
   scroll: {
     flex: 1,
@@ -128,14 +127,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: color.ink,
+    color: "#111827",
     textAlign: "center",
     marginBottom: 8,
   },
   message: {
     fontSize: 15,
     lineHeight: 22,
-    color: color.text4,
+    color: "#4b5563",
     textAlign: "center",
   },
   footer: {
@@ -144,7 +143,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   button: {
-    backgroundColor: color.accent,
+    backgroundColor: "#eb7825",
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
@@ -153,7 +152,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: color.textStrong,
+    color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
   },
