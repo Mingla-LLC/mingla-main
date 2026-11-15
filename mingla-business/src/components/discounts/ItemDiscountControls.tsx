@@ -15,12 +15,11 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
+  color,
+  materials,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import type {
@@ -300,7 +299,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
             onChangeText={setSalePrice}
             keyboardType="decimal-pad"
             placeholder="0.00"
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text3}
             style={styles.input}
             accessibilityLabel={`Sale price in ${code}`}
             testID={`${testID}-price`}
@@ -346,7 +345,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
               value={endsAt}
               onChangeText={setEndsAt}
               placeholder="End date (YYYY-MM-DDTHH:mm), optional"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text3}
               style={styles.input}
               testID={`${testID}-ends-at`}
             />
@@ -356,7 +355,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
               onChangeText={setEndsAfterCount}
               keyboardType="number-pad"
               placeholder="Number sold"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text3}
               style={styles.input}
               testID={`${testID}-ends-after-count`}
             />
@@ -440,66 +439,80 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
   );
 };
 
+// #4420 — Graphite tokens. The chosen limit and the chosen days use the
+// neutral selected material (orange is not a selection fill), and their labels
+// read `color.textStrong` instead of the old "#fff" literals.
+const selectedSurface = {
+  backgroundColor: materials.selected.solidFill,
+  borderColor: materials.selected.rim.edge,
+  borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
+} as const;
+
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   copy: { flex: 1 },
-  label: { color: textTokens.primary, fontWeight: "700", fontSize: 14 },
-  help: { color: textTokens.secondary, fontSize: 12, lineHeight: 17 },
-  fields: { gap: spacing.sm },
-  fieldLabel: { color: textTokens.secondary, fontSize: 12, fontWeight: "600" },
+  label: { ...type.row, color: color.text1 },
+  help: { ...type.caption, fontWeight: "400", color: color.text2 },
+  fields: { gap: space[2] },
+  fieldLabel: { ...type.caption, fontWeight: "600", color: color.text2 },
   input: {
-    minHeight: 42,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    minHeight: 44,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
     borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    color: textTokens.primary,
-    backgroundColor: glass.tint.profileElevated,
+    paddingHorizontal: space[3],
+    color: color.text1,
+    backgroundColor: color.fill.input,
   },
-  segments: { flexDirection: "row", gap: spacing.xs },
+  segments: { flexDirection: "row", gap: space[1] },
   segment: {
     flex: 1,
     alignItems: "center",
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: space[2],
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.tile,
   },
-  segmentOn: { backgroundColor: accent.warm, borderColor: accent.warm },
-  segmentText: { color: textTokens.secondary, fontSize: 12, fontWeight: "600" },
-  segmentTextOn: { color: "#fff" },
-  schedule: { gap: spacing.sm },
-  days: { flexDirection: "row", gap: spacing.xs },
+  segmentOn: selectedSurface,
+  segmentText: { ...type.caption, fontWeight: "600", color: color.text2 },
+  segmentTextOn: { color: color.textStrong },
+  schedule: { gap: space[2] },
+  days: { flexDirection: "row", gap: space[1] },
   day: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.tile,
   },
-  dayOn: { backgroundColor: accent.warm, borderColor: accent.warm },
-  dayText: { color: textTokens.secondary, fontWeight: "700" },
-  dayTextOn: { color: "#fff", fontWeight: "700" },
-  times: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  dayOn: selectedSurface,
+  dayText: { ...type.caption, fontWeight: "700", color: color.text2 },
+  dayTextOn: { ...type.caption, fontWeight: "700", color: color.textStrong },
+  times: { flexDirection: "row", alignItems: "center", gap: space[2] },
   timeInput: {
     flex: 1,
-    minHeight: 40,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    minHeight: 44,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
     borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    color: textTokens.primary,
+    paddingHorizontal: space[3],
+    color: color.text1,
+    backgroundColor: color.fill.input,
   },
-  error: { color: semantic.error, fontSize: 12 },
-  saved: { color: semantic.success, fontSize: 12, fontWeight: "600" },
+  error: { ...type.caption, fontWeight: "400", color: color.errorText },
+  saved: { ...type.caption, fontWeight: "600", color: color.successText },
 });
