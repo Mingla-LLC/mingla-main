@@ -177,7 +177,7 @@ let _installUid: string | null = null;
 export const APPSFLYER_EMAIL_CRYPT_SHA256 = 3;
 
 /**
- * W6-6 (I-4238-AF-RESPECTS-OPT-OUT): the in-app Analytics opt-out
+ * W6-6 (I-4238-AF-RESPECTS-OPT-OUT-HOST): the in-app Analytics opt-out
  * (analyticsPrefsStore). Lazy so a node test or a store that cannot load reads
  * "not opted out", never throws.
  */
@@ -193,7 +193,7 @@ function isAnalyticsOptedOut(): boolean {
 }
 
 /**
- * #4238 P2-2 (W6-6, I-4238-AF-DMA-CONSENT): DMA consent for EU / EEA / UK
+ * #4238 P2-2 (W6-6, I-4238-AF-DMA-CONSENT-HOST): DMA consent for EU / EEA / UK
  * devices from the same Analytics switch. Called before initSdk (this app
  * starts transmitting at init) and on every change. Never throws.
  */
@@ -972,7 +972,7 @@ export function initializeAppsFlyer(): void {
         _initialized = true;
         // #4238 W6-6 — the privacy choice applies before anything is replayed.
         applyPrivacyChoice();
-        // #4238 W6-1 (I-4238-AF-START-NEVER-LOST) — replay, in order, the
+        // #4238 W6-1 (I-4238-AF-START-NEVER-LOST-HOST) — replay, in order, the
         // events logged before init (none when opted out).
         const queued = _preInitEvents;
         _preInitEvents = [];
@@ -1173,7 +1173,7 @@ export function logAppsFlyerEvent(
   eventName: string,
   eventValues: Record<string, string | number | boolean> = {},
 ): void {
-  // #4238 W6-6 (I-4238-AF-RESPECTS-OPT-OUT) — analytics off: nothing logged.
+  // #4238 W6-6 (I-4238-AF-RESPECTS-OPT-OUT-HOST) — analytics off: nothing logged.
   if (isAnalyticsOptedOut()) return;
   if (!_initialized || !appsFlyer) {
     // #4238 W6-1 — keep it for the init replay (bounded, oldest dropped).

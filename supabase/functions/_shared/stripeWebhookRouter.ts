@@ -2154,8 +2154,8 @@ async function handleTicketCheckoutPaymentIntent(
     }
 
     // ORCH-0808 — the host's FIRST ticket sale, exactly once per brand
-    // (brand_appsflyer_milestones). #4238 W3-5 (I-4238-FIRST-SALE-BOTH-
-    // PROVIDERS): one helper for Stripe and Paystack — true-first guard, the
+    // (brand_appsflyer_milestones). #4238 W3-5
+    // (I-4238-FIRST-SALE-BOTH-PROVIDERS): one helper for Stripe and Paystack — true-first guard, the
     // AppsFlyer mingla_host_first_sale post (W6-2: plain values, never
     // revenue; this function holds the S2S secrets, so it posts now) and the
     // host_first_sale ad conversion. Never propagates failure to Stripe.

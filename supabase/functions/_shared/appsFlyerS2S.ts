@@ -139,7 +139,7 @@ export async function postAppsFlyerS2SEvent(
     }
     return false;
   }
-  // #4238 P1-4 / P2-4 (I-4238-AF-RESPECTS-OPT-OUT): the person switched
+  // #4238 P1-4 / P2-4 (I-4238-AF-SERVER-RESPECTS-OPT-OUT): the person switched
   // analytics off in this app; no server post for this install, ever.
   if (appsFlyerDeviceOptedOut(device)) {
     console.log(

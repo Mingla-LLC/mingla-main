@@ -41,7 +41,7 @@ let _started = false
 const registeredDeviceKeys = new Set<string>()
 
 // ─────────────────────────────────────────────────────────────────────────────
-// #4238 W6-1 (I-4238-AF-START-NEVER-LOST) — the ATT gate can resolve before
+// #4238 W6-1 (I-4238-AF-START-NEVER-LOST-EXPLORER) — the ATT gate can resolve before
 // initSdk's callback has run. A start, customer id or device registration that
 // arrives first is held and applied exactly once after init; events logged
 // before the SDK is transmitting are queued (oldest dropped past the cap) and
@@ -108,7 +108,7 @@ function asyncStorage(): AsyncStorageLike | null {
   }
 }
 
-/** #4238 W6-6 (I-4238-AF-RESPECTS-OPT-OUT): the Account "share usage data" switch. */
+/** #4238 W6-6 (I-4238-AF-RESPECTS-OPT-OUT-EXPLORER): the Account "share usage data" switch. */
 function isAnalyticsOptedOut(): boolean {
   try {
     return analyticsStore()?.getState().analyticsOptOut === true
@@ -118,7 +118,7 @@ function isAnalyticsOptedOut(): boolean {
 }
 
 /**
- * #4238 P2-2 (W6-6, I-4238-AF-DMA-CONSENT): DMA consent for EU / EEA / UK
+ * #4238 P2-2 (W6-6, I-4238-AF-DMA-CONSENT-EXPLORER): DMA consent for EU / EEA / UK
  * devices from the same switch. Called before startSdk (init callback) and on
  * every change. Lazy, like the store: a harness without it sends nothing.
  */
@@ -812,7 +812,7 @@ export function logAppsFlyerEvent(
   eventName: string,
   eventValues: Record<string, string | number | boolean> = {},
 ): void {
-  // #4238 W6-6 (I-4238-AF-RESPECTS-OPT-OUT): analytics off → nothing logged.
+  // #4238 W6-6 (I-4238-AF-RESPECTS-OPT-OUT-EXPLORER): analytics off → nothing logged.
   if (isAnalyticsOptedOut()) return
   if (!_initialized || !_started) {
     // #4238 W6-1: held for the replay in startAppsFlyer (bounded, FIFO).

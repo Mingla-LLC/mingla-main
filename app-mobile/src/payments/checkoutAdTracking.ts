@@ -1,5 +1,5 @@
 /**
- * #4238 P1-4 (I-4238-AF-RESPECTS-OPT-OUT): the Explorer "share usage data"
+ * #4238 P1-4 (I-4238-AF-RESPECTS-OPT-OUT-EXPLORER): the Explorer "share usage data"
  * switch rides the native checkout create request, so the server stores it on
  * the session (ticket_checkout_sessions.ad_tracking_opt_out) and its
  * af_purchase post skips an opted-out buyer.

@@ -117,7 +117,7 @@ function purchasesSdk(): PurchasesAppsFlyerLink {
 export async function linkAppsFlyerIdToRevenueCat(rcUserId: string | null | undefined): Promise<boolean> {
   const key = typeof rcUserId === 'string' ? rcUserId : ''
   if (key.length === 0) return false
-  // #4238 P2-3 (I-4238-AF-RESPECTS-OPT-OUT): with "share usage data" off,
+  // #4238 P2-3 (I-4238-AF-RESPECTS-OPT-OUT-EXPLORER): with "share usage data" off,
   // RevenueCat never holds the AppsFlyer id (its server integration would
   // otherwise send subscription revenue for this person). A link made before
   // the switch is cleared once; switching back on links again.

@@ -1,5 +1,6 @@
 \set ON_ERROR_STOP on
 -- MINGLA-INVARIANT: I-4238-HOST-FUNNEL-ONCE | issue #4238 | each host-funnel kind is queued at most once per subject (UNIQUE ad_conversions.event_id host_signup:<uid> / host_publish:<owner>), the queueing triggers never fail the host's own write, and ad_match_contexts is service-role only.
+-- MINGLA-INVARIANT: I-4238-HOST-FIRST-PUBLISH-TRUE-FIRST | issue #4238 | a host's first-publish conversion is queued only for a true first publish: an earlier publish on a soft-deleted brand still suppresses it, and an unverified (pending_review) venue listing never suppresses it.
 
 -- Issue #4238 Wave 3 (M-2) — run after the full migration chain on PostgreSQL 17
 -- as supabase_admin over 127.0.0.1. Everything runs in one rolled-back txn.

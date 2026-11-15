@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-FREE-AD-WORK-SCHEDULED | issue #4238 | the free-order fireAdConversion promise is handed to EdgeRuntime.waitUntil exactly once per non-replayed free finalize, and with no EdgeRuntime the default scheduler returns a promise the handler awaits, so no ad work runs after the response.
 /**
  * #4238 P1-1 — the free-order ad conversion runs through the handler's
  * injectable `EdgeRuntime.waitUntil` seam (scheduleAdWorkDefault), never

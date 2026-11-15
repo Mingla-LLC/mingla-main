@@ -1,5 +1,5 @@
 /**
- * #4238 P2-2 (W6-6, I-4238-AF-DMA-CONSENT): AppsFlyer DMA consent for
+ * #4238 P2-2 (W6-6, I-4238-AF-DMA-CONSENT-HOST): AppsFlyer DMA consent for
  * EU / EEA / UK devices, from the app's existing analytics switch.
  *
  * The SDK's `setConsentData` (react-native-appsflyer 6.16.2+ `AppsFlyerConsent`
