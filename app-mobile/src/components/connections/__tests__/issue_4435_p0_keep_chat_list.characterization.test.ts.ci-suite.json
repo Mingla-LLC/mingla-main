@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/connections/__tests__/issue_4435_p0_keep_chat_list.characterization.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4435-p0-keep-chat-list-characterization",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}
