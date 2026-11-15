@@ -677,7 +677,10 @@ export interface TicketCheckoutCreateDeps {
   userIdFromAuthHeader: typeof userIdFromAuthHeader;
   serviceClient: typeof serviceClient;
   paystackInitializeTransaction: typeof paystackInitializeTransaction;
-  /** #4238 P1-1: optional; defaults to `scheduleAdWorkDefault`. */
+  /**
+   * #4238 P1-1: optional; absent (production) means `scheduleAdWorkDefault`.
+   * Not listed in defaultDeps, which the #1929 gate pins.
+   */
   scheduleAdWork?: ScheduleAdWork;
 }
 
@@ -685,7 +688,6 @@ const defaultDeps: TicketCheckoutCreateDeps = {
   userIdFromAuthHeader,
   serviceClient,
   paystackInitializeTransaction,
-  scheduleAdWork: scheduleAdWorkDefault,
 };
 
 /**
