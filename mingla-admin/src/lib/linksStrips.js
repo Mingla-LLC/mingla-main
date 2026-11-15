@@ -5,6 +5,14 @@
 // The server (admin_links_strip_save / admin_links_strips_reorder) re-checks
 // every rule here; this module only lets the form say what is wrong before a
 // round trip.
+//
+// #4339: every strip has a time zone. The database owns the window (a strip
+// is public from 00:00 on "Shows on" to 23:59 on "Show until", in its zone:
+// links_strip_window) and the list's status; this module only words them,
+// plus the editor's live preview of the window before a save.
+
+import { browserTimeZone, formatInZone, isValidTimeZone, zonedLocalToUtc } from "./scheduleTime.js";
+import { zoneCity, zoneOffset } from "./timeZoneSearch.js";
 
 export const LINKS_STRIP_TITLE_MAX = 60;
 
@@ -37,6 +45,7 @@ export const LINKS_STRIP_MESSAGES = Object.freeze({
   titleTooLong: `Keep the title to ${LINKS_STRIP_TITLE_MAX} characters.`,
   showsOn: "Choose the day the strip shows on.",
   showsUntil: "“Show until” can't be before “Shows on”. Pick the same day or a later one, or leave it empty.",
+  timeZone: "Pick a time zone from the list.",
   label: "Choose a label.",
   opens: "Choose what the strip opens.",
   blog: "Choose the blog post this strip opens.",
@@ -64,6 +73,7 @@ export function validateStripDraft(draft) {
   if (until && (!ISO_DAY.test(until) || until < value.showsOn)) {
     return { field: "showsUntil", message: LINKS_STRIP_MESSAGES.showsUntil };
   }
+  if (!isValidTimeZone(value.timeZone)) return { field: "timeZone", message: LINKS_STRIP_MESSAGES.timeZone };
   if (!title) return { field: "title", message: LINKS_STRIP_MESSAGES.title };
   if (title.length > LINKS_STRIP_TITLE_MAX) return { field: "title", message: LINKS_STRIP_MESSAGES.titleTooLong };
   if (!LINKS_STRIP_LABELS.includes(value.label)) return { field: "label", message: LINKS_STRIP_MESSAGES.label };
@@ -91,6 +101,8 @@ export function stripSaveArgs(draft) {
     p_blog_post_id: draft.opens === "blog" ? draft.blogPostId : null,
     // Empty means the strip shows on its one day only.
     p_shows_until: String(draft.showsUntil ?? "").trim() || null,
+    // #4339: the zone the days are read in; the server refuses any it does not know.
+    p_time_zone: draft.timeZone,
   };
 }
 
@@ -190,4 +202,78 @@ export function stripOpensSummary(strip) {
   if (strip.opens === "host") return "opens the Host app";
   if (strip.opens === "explorer") return "opens the Explorer app";
   return "opens nothing yet";
+}
+
+// ── #4339 time zones ─────────────────────────────────────────────────────────
+
+/** The list pill for the server's status (admin_links_strips_list.status). */
+export const LINKS_STRIP_STATUS = Object.freeze({
+  scheduled: Object.freeze({ label: "Scheduled", tone: "scheduled" }),
+  live: Object.freeze({ label: "Live", tone: "live" }),
+  ended: Object.freeze({ label: "Ended", tone: "ended" }),
+});
+
+/** The pill for a strip, or null when the server sent no status this admin knows. */
+export function stripStatus(strip) {
+  const key = String(strip?.status || "");
+  return Object.hasOwn(LINKS_STRIP_STATUS, key) ? LINKS_STRIP_STATUS[key] : null;
+}
+
+function addDayIso(value) {
+  const [y, m, d] = value.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1));
+  return next.toISOString().slice(0, 10);
+}
+
+function dayWords(value) {
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", "");
+}
+
+// 00:00 on a day in a zone, as an instant. A zone whose clocks change at
+// midnight skips 00:00 on that day; the day then starts at 01:00.
+function zoneMidnight(day, zone) {
+  return zonedLocalToUtc(day, "00:00", zone) || zonedLocalToUtc(day, "01:00", zone);
+}
+
+/**
+ * The editor's live line under the dates: when the strip shows, in its zone
+ * and on the admin's own clock. The same window as the database's
+ * links_strip_window, for the preview only; the server decides. null until
+ * "Shows on" and a valid zone are set.
+ */
+export function stripWindowLine({ showsOn, showsUntil, timeZone }, viewerZone = browserTimeZone()) {
+  if (!ISO_DAY.test(String(showsOn ?? "")) || !isValidTimeZone(timeZone)) return null;
+  const until = ISO_DAY.test(String(showsUntil ?? "")) && showsUntil >= showsOn ? showsUntil : showsOn;
+  const start = zoneMidnight(showsOn, timeZone);
+  const end = zoneMidnight(addDayIso(until), timeZone);
+  if (!start || !end) return null;
+  const lastMinute = new Date(end.getTime() - 60_000).toISOString();
+  return {
+    from: `00:00 ${dayWords(showsOn)}`,
+    to: `23:59 ${dayWords(until)}`,
+    zone: `${zoneCity(timeZone)} time (${zoneOffset(timeZone, start)})`,
+    viewer: viewerZone && viewerZone !== timeZone
+      ? `That is ${formatInZone(start.toISOString(), viewerZone)} to ${formatInZone(lastMinute, viewerZone)} your time.`
+      : "That is your computer's time zone too.",
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+  };
+}
+
+/** The strip's zone for the list: "Lagos GMT+1" (the offset at its first day), or "" without one. */
+export function stripZoneLine(strip) {
+  const zone = strip?.time_zone;
+  if (!zone) return "";
+  // A zone this browser cannot format still names itself (tester P3-4).
+  if (!isValidTimeZone(zone)) return String(zone);
+  const at = Date.parse(strip?.starts_at || "");
+  return `${zoneCity(zone)} ${zoneOffset(zone, Number.isFinite(at) ? new Date(at) : new Date())}`;
+}
+
+/** "starts Mon 16 Nov · 00:00 your time" for a scheduled strip, from the server's starts_at; else "". */
+export function stripStartsLine(strip, viewerZone = browserTimeZone()) {
+  if (strip?.status !== "scheduled" || !strip?.starts_at) return "";
+  const when = formatInZone(strip.starts_at, viewerZone);
+  return when ? `starts ${when} your time` : "";
 }

@@ -222,13 +222,13 @@ test('the week turns over at the city’s own local midnight, not UTC', () => {
   assert.equal(week.cityWeek(city('raleigh-nc'), listings, [], now).today, '2026-11-07')
 
   // Admin strips are not cut by the city's own midnight (8 Nov live check: a
-  // strip posted Sunday evening in the US never showed in Lagos). A Sat 7
-  // strip shows in both until Saturday has ended in the last zone (UTC-12),
-  // then in neither.
-  const pins = week.normalisePins([pinRow({ shows_on: '2026-11-07' })])
+  // strip posted Sunday evening in the US never showed in Lagos). #4339: a
+  // Sat 7 strip in New York time shows in both cities until 00:00 Sunday in
+  // New York (the window links_page_strips() sends), then in neither.
+  const pins = week.normalisePins([pinRow({ shows_on: '2026-11-07', time_zone: 'America/New_York', starts_at: '2026-11-07T05:00:00Z', ends_at: '2026-11-08T05:00:00Z' })])
   assert.equal(week.cityWeek(city('lagos'), listings, pins, now).pins.length, 1)
   assert.equal(week.cityWeek(city('raleigh-nc'), listings, pins, now).pins.length, 1)
-  const later = '2026-11-08T12:00:01.000Z'
+  const later = '2026-11-08T05:00:00.000Z'
   assert.equal(week.cityWeek(city('lagos'), listings, pins, later).pins.length, 0)
   assert.equal(week.cityWeek(city('raleigh-nc'), listings, pins, later).pins.length, 0)
 })

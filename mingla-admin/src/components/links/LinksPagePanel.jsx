@@ -1,9 +1,12 @@
 // #4318 — Support › Links page: the custom strips shown on usemingla.com/links.
 //
-// Staff add, edit, reorder and remove strips. Strips sit in their own pinned
-// group under the page's two banners, the same in every city; the page's
-// filters never hide them. The list order is the order on the page, saved as
-// an explicit position by admin_links_strips_reorder.
+// Staff add, edit, reorder and remove strips. Strips sit under the page's two
+// banners in the order set here, saved as an explicit position by
+// admin_links_strips_reorder.
+//
+// #4339: each strip has a time zone. It shows only from 00:00 on "Shows on"
+// to 23:59 on "Show until" in that zone; the database decides
+// (links_strip_window) and the list shows its Scheduled / Live / Ended status.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowRight, ArrowUp, ExternalLink, GripVertical, MapPin, Pencil, Pin, Plus } from "lucide-react";
 import { Button } from "../ui/Button";
@@ -12,8 +15,12 @@ import { LoadError } from "../ui/LoadError";
 import { useToast } from "../../context/ToastContext";
 import {
   LINKS_STRIP_LABELS, LINKS_STRIP_OPENS, LINKS_STRIP_TITLE_MAX, moveStrip, runOptimisticReorder,
-  showsOnOptions, stripDateRange, stripDayLabel, stripMetaLine, stripOpensSummary, stripRows, stripSaveArgs, validateStripDraft,
+  showsOnOptions, stripDateRange, stripDayLabel, stripMetaLine, stripOpensSummary, stripRows, stripSaveArgs, stripStartsLine,
+  stripStatus, stripWindowLine, stripZoneLine, validateStripDraft,
 } from "../../lib/linksStrips";
+import { browserTimeZone, isValidTimeZone } from "../../lib/scheduleTime";
+import { zoneCity, zoneClock } from "../../lib/timeZoneSearch";
+import { TimeZoneCombobox } from "../ui/TimeZoneCombobox";
 import {
   LINKS_REFRESH_FALLBACK, deleteLinksStrip, linksStripsErrorField, linksStripsErrorMessage, listLinksStrips,
   listPublishedBlogPostsForLinks, refreshLinksPage, reorderLinksStrips, saveLinksStrip,
@@ -41,8 +48,16 @@ async function refreshAfterWrite() {
 
 const LABEL = "mb-1.5 block text-sm font-medium text-[var(--color-text-primary)]";
 
+// The list pill per server status (admin_links_strips_list.status).
+const STATUS_PILL = {
+  live: "bg-[var(--color-success-50)] text-[var(--color-success-700)]",
+  scheduled: "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]",
+  ended: "bg-[var(--gray-100)] text-[var(--color-text-secondary)]",
+};
+
 function emptyDraft(today) {
-  return { id: null, showsOn: today, showsUntil: "", title: "", label: LINKS_STRIP_LABELS[0], opens: "web", url: "", blogPostId: "" };
+  // New strips start in this computer's zone (#4339).
+  return { id: null, showsOn: today, showsUntil: "", timeZone: browserTimeZone(), title: "", label: LINKS_STRIP_LABELS[0], opens: "web", url: "", blogPostId: "" };
 }
 
 function draftFromStrip(strip) {
@@ -50,6 +65,10 @@ function draftFromStrip(strip) {
     id: strip.id,
     showsOn: strip.shows_on,
     showsUntil: strip.shows_until || "",
+    // Editing shows the saved zone. One this picker does not offer is kept as
+    // it is (never silently swapped for this computer's zone, tester P3-4);
+    // the form then asks for a zone from the list before it saves.
+    timeZone: strip.time_zone || browserTimeZone(),
     title: strip.title || "",
     label: strip.label,
     opens: strip.opens,
@@ -193,7 +212,7 @@ export function LinksPagePanel() {
       addToast({
         variant: "success",
         title,
-        description: stale || "Pinned under the banners on usemingla.com/links, in every city.",
+        description: stale || "It shows on usemingla.com/links between its dates, in its time zone.",
       });
     } catch (error) {
       const field = linksStripsErrorField(error);
@@ -256,15 +275,15 @@ export function LinksPagePanel() {
   const editingDayMissing = !dayOptions.some((option) => option.value === draft.showsOn);
   const fieldClass = (field) => `${FIELD} ${formError?.field === field ? FIELD_BAD : FIELD_OK}`;
   const errorFor = (field) => (formError?.field === field ? "links-strip-error" : undefined);
+  const windowLine = stripWindowLine(draft);
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" data-links-view="strips">
       <SectionCard title={editing ? "Edit custom strip" : "Add a custom strip"} subtitle="usemingla.com/links">
         <form noValidate onSubmit={submit} className="space-y-4">
           <p className="text-sm text-[var(--color-text-secondary)]">
-            Live listings fill each city on their own. Custom strips sit in their own pinned spot under the two banners,
-            above the city switcher, and show first in every city. Filters never hide them. They push the listings down until 3
-            are left; any more fold into &ldquo;See more from Mingla&rdquo;.
+            Custom strips sit under the two banners in the order you set. Any that don&rsquo;t fit fold into &ldquo;See more
+            from Mingla&rdquo;. Each strip shows only between its dates, in its time zone.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -296,6 +315,31 @@ export function LinksPagePanel() {
                 className={fieldClass("showsUntil")}
               />
               <p id="links-strip-until-help" className="mt-1 text-xs text-[var(--color-text-tertiary)]">Leave empty to show it on one day only.</p>
+            </div>
+            <div className="sm:col-span-2">
+              <label id="links-strip-zone-label" htmlFor="links-strip-zone" className={LABEL}>Time zone</label>
+              <TimeZoneCombobox
+                id="links-strip-zone"
+                ref={(node) => { fieldRefs.current.timeZone = node; }}
+                labelId="links-strip-zone-label"
+                value={draft.timeZone}
+                onChange={(zone) => update({ timeZone: zone })}
+                invalid={formError?.field === "timeZone"}
+                describedBy={errorFor("timeZone") || "links-strip-zone-help"}
+              />
+              <p id="links-strip-zone-help" className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+                {isValidTimeZone(draft.timeZone)
+                  ? `Type a city, country or zone. Now in ${zoneCity(draft.timeZone)}: ${zoneClock(draft.timeZone)}.`
+                  : "Type a city, country or zone. Your computer's zone is filled in for new strips."}
+              </p>
+            </div>
+            <div data-links-window aria-live="polite" className="rounded-xl border border-dashed border-[var(--gray-300)] bg-[var(--gray-50)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] sm:col-span-2">
+              {windowLine ? (
+                <>
+                  Shows from <strong className="tabular-nums">{windowLine.from}</strong> to <strong className="tabular-nums">{windowLine.to}</strong>, {windowLine.zone}.
+                  <span className="block text-[var(--color-text-secondary)]">{windowLine.viewer}</span>
+                </>
+              ) : "Pick the day it starts and a time zone."}
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="links-strip-title" className={LABEL}>Title</label>
@@ -424,7 +468,8 @@ export function LinksPagePanel() {
         )}
       >
         <p className="mb-4 text-sm text-[var(--color-text-secondary)]">
-          Drag a strip, or use the arrows, to set the order. The top of this list shows first on the page.
+          Drag a strip, or use the arrows, to set the order. The top of this list shows first on the page. Status is worked
+          out in each strip&rsquo;s own time zone; only Live strips are on usemingla.com/links now.
         </p>
         {loadError ? (
           <LoadError title="Couldn't load the strips" message={linksStripsErrorMessage(loadError)} onRetry={load} retrying={loading} />
@@ -442,6 +487,7 @@ export function LinksPagePanel() {
           <ul ref={listRef} className="space-y-2" aria-busy={reordering || undefined}>
             {strips.map((strip, index) => {
               const confirming = confirmingId === strip.id;
+              const status = stripStatus(strip);
               return (
                 <li
                   key={strip.id}
@@ -471,9 +517,14 @@ export function LinksPagePanel() {
                 >
                   <span aria-hidden="true" className="cursor-grab text-[var(--color-text-tertiary)]"><GripVertical className="h-4 w-4" /></span>
                   <div className="min-w-0">
-                    <b className="block truncate text-sm font-semibold">{strip.title}</b>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <b className="block min-w-0 truncate text-sm font-semibold">{strip.title}</b>
+                      {status ? (
+                        <span data-strip-status={status.tone} className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_PILL[status.tone]}`}>{status.label}</span>
+                      ) : null}
+                    </span>
                     <small className="block truncate text-xs text-[var(--color-text-secondary)]">
-                      {strip.label} · {stripDateRange(strip.shows_on, strip.shows_until)} · {stripOpensSummary(strip)}
+                      {[strip.label, stripDateRange(strip.shows_on, strip.shows_until), stripZoneLine(strip), stripStartsLine(strip), stripOpensSummary(strip)].filter(Boolean).join(" · ")}
                     </small>
                   </div>
                   {confirming ? (
