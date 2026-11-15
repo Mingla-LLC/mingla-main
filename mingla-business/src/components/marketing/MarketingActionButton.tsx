@@ -1,14 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 
-import {
-  accent,
-  radius,
-  shadows,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, shadow, space, type } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import type { MarketingAction } from "./MarketingActionContext";
 
@@ -37,7 +30,7 @@ export function MarketingActionButton({
         pressed && styles.pressed,
       ]}
     >
-      <Icon name={action.icon} size={compact ? 20 : 18} color={textTokens.inverse} />
+      <Icon name={action.icon} size={compact ? 20 : 18} color={color.textStrong} />
       {compact ? null : (
         <Text style={styles.label}>{floating ? action.label : action.label}</Text>
       )}
@@ -51,10 +44,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   compact: {
     width: 40,
@@ -63,15 +56,15 @@ const styles = StyleSheet.create({
   },
   floating: {
     position: "absolute",
-    right: spacing.md,
+    right: space[4],
     minHeight: 48,
     zIndex: 30,
-    ...shadows.glassCardElevated,
+    ...shadow.menu,
   },
   pressed: { opacity: 0.86, transform: [{ scale: 0.98 }] },
   label: {
-    ...typography.buttonMd,
-    color: textTokens.inverse,
+    ...type.btnSm,
+    color: color.ink,
     fontWeight: "800",
   },
 });

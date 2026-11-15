@@ -22,13 +22,7 @@ import React, { useCallback, type RefObject } from "react";
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { RichEditor, actions } from "./richEditor";
 
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../constants/designSystem";
+import { color, materials, radius, space, type } from "../../../constants/designSystem";
 
 export interface SelectionFormattingTooltipProps {
   editorRef: RefObject<RichEditor | null>;
@@ -118,33 +112,33 @@ const styles = StyleSheet.create({
   root: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: glass.tint.chrome.idle,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
+    backgroundColor: color.fill.tile,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.chrome,
+    borderBottomColor: color.lineStrong,
   },
   pill: {
     minHeight: 44, // I-WCAG-AA-TOUCH-44PT
     minWidth: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: glass.tint.badge.idle,
-    borderColor: glass.border.chrome,
+    backgroundColor: materials.onPhoto.solidFill,
+    borderColor: color.lineStrong,
   },
   pillPressed: {
     opacity: 0.7,
   },
   pillText: {
-    ...typography.buttonMd,
+    ...type.btnSm,
     fontWeight: "700",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   pillTextItalic: {
     fontStyle: "italic",

@@ -6,13 +6,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../constants/designSystem";
+import { color as colorTokens, radius, space, type } from "../../../../constants/designSystem";
 import { hostAdCharts } from "./hostAdChartColors";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
 import { platformName } from "../hostAdCopy";
@@ -40,7 +34,7 @@ export function AdPlatformSplit(props: {
       {props.bars.map((bar) => {
         const color =
           hostAdCharts.platform[bar.platform as keyof typeof hostAdCharts.platform] ??
-          textTokens.tertiary;
+          colorTokens.text3;
         return (
           <View key={bar.platform} style={styles.row}>
             <View style={styles.labels}>
@@ -65,11 +59,11 @@ export function AdPlatformSplit(props: {
 }
 
 const styles = StyleSheet.create({
-  list: { gap: spacing.sm, marginTop: spacing.md },
-  row: { gap: spacing.xs },
-  labels: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  name: { ...typography.bodySm, color: textTokens.primary, flexShrink: 1 },
-  value: { ...typography.bodySm, color: textTokens.secondary, flexShrink: 1, textAlign: "right" },
-  track: { height: 8, borderRadius: radius.full, backgroundColor: glass.border.profileElevated, overflow: "hidden" },
+  list: { gap: space[2], marginTop: space[4] },
+  row: { gap: space[1] },
+  labels: { flexDirection: "row", justifyContent: "space-between", gap: space[2] },
+  name: { ...type.small, color: colorTokens.text1, flexShrink: 1 },
+  value: { ...type.small, color: colorTokens.text2, flexShrink: 1, textAlign: "right" },
+  track: { height: 8, borderRadius: radius.full, backgroundColor: colorTokens.lineStrong, overflow: "hidden" },
   fill: { height: 8, borderRadius: radius.full },
 });

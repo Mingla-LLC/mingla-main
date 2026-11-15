@@ -11,14 +11,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 
 export interface ComposerStepComplianceProps {
   brandName: string | null;
@@ -65,43 +58,43 @@ const ComplianceRow: React.FC<ComplianceRowProps> = ({ label, value }) => (
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   stepLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   card: {
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.md,
-    gap: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    padding: space[4],
+    gap: space[2],
   },
   row: {
     gap: 2,
   },
   rowLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   rowValue: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   infoNote: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: semantic.infoTint,
+    backgroundColor: color.infoTint,
     borderLeftWidth: 3,
-    borderLeftColor: semantic.info,
+    borderLeftColor: color.info,
   },
   infoText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
 });

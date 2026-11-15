@@ -18,14 +18,7 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 
 import { Sheet } from "../../ui/Sheet";
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../constants/designSystem";
+import { color, radius, space, type } from "../../../constants/designSystem";
 
 export interface SchedulePickerSheetProps {
   visible: boolean;
@@ -192,10 +185,10 @@ export const SchedulePickerSheet: React.FC<SchedulePickerSheetProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[1],
+    paddingBottom: space[4],
+    gap: space[4],
   },
   // F.10b: pinned-top action header replacing the old title + subtitle +
   // bottom actions row pattern. Keeps Cancel / Continue always visible
@@ -204,62 +197,62 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.chrome,
+    borderBottomColor: color.lineStrong,
   },
   headerBtn: {
     minHeight: 32,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     justifyContent: "center",
   },
   headerBtnPressed: {
     opacity: 0.6,
   },
   headerBtnGhost: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     fontWeight: "500",
   },
   headerBtnPrimary: {
-    ...typography.body,
-    color: accent.warm,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   headerTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "600",
   },
   pillRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   pickerPill: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
     gap: 2,
   },
   pickerPillActive: {
-    borderColor: accent.warm,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   pickerPillPressed: {
     opacity: 0.8,
   },
   pickerPillLabel: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   pickerPillValue: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   pickerHost: {

@@ -16,12 +16,12 @@
  *   2. each glass surface fixed by ORCH-1100 imports `shouldUseRealBlur` from
  *      the shared `glassBlur` module AND calls it (so the blur decision is
  *      width-aware, with an opaque fallback below the threshold). The gated
- *      surfaces are: Material (#4420) and the two feature surfaces that still
- *      own a BlurView (BlastCustomersCta, AiDisclosureModal; #4420 wave 5).
- *   3. (#4420 wave 2) the ui/ surfaces that moved onto `<Material>` — TopSheet,
- *      GlassChrome, Toast, SheetMobile — must render `<Material` and must NOT
- *      import expo-blur again: their glass decision is Material's, which rule 2
- *      pins to the helper.
+ *      surface is Material (#4420), the one glass owner.
+ *   3. (#4420 waves 2 and 5) the surfaces that moved onto `<Material>` —
+ *      TopSheet, GlassChrome, Toast, SheetMobile, BlastCustomersCta,
+ *      AiDisclosureModal — must render `<Material` and must NOT import
+ *      expo-blur again: their glass decision is Material's, which rule 2 pins
+ *      to the helper.
  *
  * A surface that renders `BlurView` glass WITHOUT routing through
  * `shouldUseRealBlur` would paint a see-through panel on phone web — exactly the
@@ -46,20 +46,18 @@ const GLASS_HELPER_REL = "mingla-business/src/utils/glassBlur.ts";
 // Glass surfaces fixed in ORCH-1100 (relative to mingla-business/src).
 // #4420: `components/ui/Material.tsx` is the one glass owner and must route its
 // web decision through the helper. Wave 2 moved TopSheet, GlassChrome, Toast
-// and SheetMobile onto <Material> (MATERIAL_SURFACES below). The two feature
-// surfaces leave this list when wave 5 moves them.
-const GATED_SURFACES = [
-  "components/ui/Material.tsx",
-  "components/marketing/BlastCustomersCta.tsx",
-  "components/ari/AiDisclosureModal.tsx",
-];
+// and SheetMobile onto <Material>; wave 5 moved BlastCustomersCta and
+// AiDisclosureModal (MATERIAL_SURFACES below).
+const GATED_SURFACES = ["components/ui/Material.tsx"];
 
-// #4420 wave 2: glass drawn by <Material>, never by their own BlurView.
+// #4420 waves 2 and 5: glass drawn by <Material>, never by their own BlurView.
 const MATERIAL_SURFACES = [
   "components/ui/TopSheet.tsx",
   "components/ui/GlassChrome.tsx",
   "components/ui/Toast.tsx",
   "components/ui/SheetMobile.tsx",
+  "components/marketing/BlastCustomersCta.tsx",
+  "components/ari/AiDisclosureModal.tsx",
 ];
 const RENDERS_MATERIAL = /<Material\b/;
 const IMPORTS_EXPO_BLUR = /from\s*["']expo-blur["']|require\(\s*["']expo-blur["']\s*\)/;

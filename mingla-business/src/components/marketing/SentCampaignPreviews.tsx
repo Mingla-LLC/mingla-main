@@ -15,7 +15,7 @@ import { ComposerPreviewTabs, type ComposerPreviewTabsProps } from "./ComposerPr
 import { EmailPreviewPane } from "./EmailPreviewPane";
 import { SmsPreviewPane } from "./SmsPreviewPane";
 import { PushPreview } from "./PushComposeCard";
-import { canvas, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import { smsCostLabel } from "../../features/marketing/blastSendModel";
 import type { PreviewResolution } from "../../features/marketing/sentPreviewModel";
 import type { CampaignGroupMember } from "../../services/marketing/marketingCampaignGroupViewService";
@@ -110,19 +110,19 @@ export const SentSmsCost: React.FC<{ cost: CampaignGroupMember["cost"]; missing:
 
 const styles = StyleSheet.create({
   pushCanvas: {
-    padding: spacing.md,
-    gap: spacing.md,
-    backgroundColor: canvas.discover,
+    padding: space[4],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   pushVariant: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   pushCaption: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   costLine: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
 });

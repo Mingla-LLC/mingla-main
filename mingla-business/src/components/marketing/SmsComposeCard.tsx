@@ -35,13 +35,12 @@ import {
 } from "react-native";
 
 import {
+  color,
   composerSheetMinHeight,
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  scrim,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import { BrandSwitch } from "../ui/BrandSwitch";
@@ -175,7 +174,7 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
         editable={editable}
         multiline
         placeholder="Type your text blast. Links become trackable Mingla links automatically. We add “Reply STOP to opt out.” for you."
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         accessibilityLabel="SMS message body"
         accessibilityHint={`${estimate.charCount} characters, ${perRecipientUnit} per recipient`}
         textAlignVertical="top"
@@ -263,7 +262,7 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
                 )}
                 {item.uploading ? (
                   <View style={styles.thumbOverlay}>
-                    <ActivityIndicator size="small" color={textTokens.primary} />
+                    <ActivityIndicator size="small" color={color.text1} />
                   </View>
                 ) : null}
                 <Pressable
@@ -276,7 +275,7 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
                     pressed ? styles.pressed : null,
                   ]}
                 >
-                  <Icon name="close" size={14} color="#FFFFFF" />
+                  <Icon name="close" size={14} color={color.textStrong} />
                 </Pressable>
               </View>
             ))}
@@ -293,7 +292,7 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
                   pressed && !attachDisabled ? styles.pressed : null,
                 ]}
               >
-                <Icon name="upload" size={18} color={textTokens.primary} />
+                <Icon name="upload" size={18} color={color.text1} />
               </Pressable>
             ) : null}
           </ScrollView>
@@ -316,12 +315,12 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
         >
           {uploading ? (
             <>
-              <ActivityIndicator size="small" color={textTokens.secondary} />
+              <ActivityIndicator size="small" color={color.text2} />
               <Text style={styles.attachLabel}>Uploading…</Text>
             </>
           ) : (
             <>
-              <Icon name="upload" size={18} color={textTokens.primary} />
+              <Icon name="upload" size={18} color={color.text1} />
               <Text style={styles.attachLabel}>Add photo</Text>
             </>
           )}
@@ -350,31 +349,31 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     minHeight: composerSheetMinHeight,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-    gap: spacing.sm,
+    marginHorizontal: space[4],
+    marginTop: space[2],
+    padding: space[4],
+    gap: space[2],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   // Sized by its content: a zero basis clipped the Follow link row off the bottom.
   hostStacked: { flexGrow: 0, flexShrink: 0, flexBasis: "auto", minHeight: composerSheetMinHeight },
-  autoFill: { color: accent.warm, fontSize: 11, fontWeight: "700" },
+  autoFill: { color: color.text1, fontSize: 11, fontWeight: "700" },
   headerRow: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
   },
   label: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   reach: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   /**
    * #2262 — the body claims the space the sheet has left rather than declaring
@@ -383,22 +382,22 @@ const styles = StyleSheet.create({
    * I-AXIS-SCOPED-FLEX requires on the flexed axis.
    */
   input: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     flex: 1,
     minHeight: 0,
     paddingHorizontal: 0,
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   inputStacked: { flex: 0, minHeight: 96 },
   estimateBox: {
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xxs,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[1],
   },
   estimateRow: {
     flexDirection: "row",
@@ -406,76 +405,76 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   estimateKey: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   estimateKeyStrong: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   estimateVal: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   estimateValStrong: {
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "700",
   },
   estimateNote: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[1],
   },
   followRow: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   followCopy: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: space[1],
   },
   followLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   followHint: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   // ORCH-1282 — attach affordance + thumbnail chip.
   attachBtn: {
     minHeight: 44,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingHorizontal: space[4],
   },
   attachBtnDisabled: {
     opacity: 0.5,
   },
   attachLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   // ORCH-1289 — horizontal thumbnail row for multi-photo MMS.
   mediaSection: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   thumbRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xxs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   thumbWrap: {
     width: 64,
@@ -485,14 +484,14 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: radius.sm,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   thumbOverlay: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    backgroundColor: scrim.modal,
   },
   thumbRemove: {
     position: "absolute",
@@ -503,27 +502,27 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    backgroundColor: scrim.modal,
   },
   thumbAdd: {
     width: 64,
     height: 64,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
   mediaCount: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   pressed: {
     opacity: 0.7,
   },
   mmsCaption: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
 });

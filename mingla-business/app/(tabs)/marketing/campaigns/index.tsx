@@ -27,10 +27,7 @@ import {
   type CampaignFilter,
 } from "../../../../src/components/marketing/CampaignFilterPills";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
-import {
-  spacing,
-  text as textTokens,
-} from "../../../../src/constants/designSystem";
+import { color, space } from "../../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCampaigns } from "../../../../src/hooks/marketing/useCampaigns";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
@@ -137,7 +134,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
           communicating a terminal state. Per I-DISABLED-QUERY-IS-LOADING. */}
       {!campaignsQuery.hasResolved && !campaignsQuery.isError ? (
         <View style={styles.centerHost} testID="campaigns-spinner">
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         </View>
       ) : campaignsQuery.isError ? (
         <View style={styles.centerHost}>
@@ -210,14 +207,14 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingBottom: 120,
-    gap: spacing.sm,
+    gap: space[2],
   },
-  campaignGrid: { gap: spacing.sm },
+  campaignGrid: { gap: space[2] },
   campaignGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
   campaignCell: { width: "100%" },
   campaignCellWide: { flexBasis: "48%", flexGrow: 1, minWidth: 360 },

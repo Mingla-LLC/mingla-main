@@ -22,14 +22,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import {
   MARKETING_SUB_NAV_TABS,
   detectMarketingSubNavActive,
@@ -135,44 +128,44 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-    paddingRight: spacing.md,
+    gap: space[2],
+    paddingTop: space[2],
+    paddingBottom: space[1],
+    paddingRight: space[4],
   },
   scroller: { flex: 1, minWidth: 0 },
   bar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingHorizontal: space[4],
   },
   pill: {
     height: PILL_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderWidth: 1,
   },
   pillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   pillInactive: {
-    backgroundColor: glass.tint.chrome.idle,
-    borderColor: glass.border.chrome,
+    backgroundColor: color.fill.tile,
+    borderColor: color.lineStrong,
   },
   pillPressed: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   label: {
-    ...typography.caption,
+    ...type.caption,
   },
   labelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   labelInactive: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
 });

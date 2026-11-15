@@ -235,34 +235,16 @@ describe("Sub-D adversarial B/C — stragglers opaque via shared helper, iOS fro
     expect(code).toMatch(/<Material kind="sheet"/);
   });
 
-  test("AiDisclosureModal: opaque sheet gated behind !shouldUseRealBlur, iOS keeps real BlurView", () => {
-    const code = stripComments(readComp("ari/AiDisclosureModal.tsx"));
-    // Opaque branch is reached only when the shared helper says no real blur.
-    expect(code).toMatch(
-      /!\s*shouldUseRealBlur\(windowWidth\)[\s\S]{0,160}styles\.opaqueSheet/,
-    );
-    // No `Platform.OS !== 'ios'` style negation that would also flip web.
-    expect(code).not.toMatch(/Platform\.OS\s*!==\s*["']ios["']/);
-    // opaqueSheet is a fully opaque #hex (no rgba alpha => >=0.92 by construction).
-    const block = styleBlock(code, "opaqueSheet");
-    expect(block).not.toBeNull();
-    expect(block!).toMatch(/backgroundColor:\s*["']#[0-9a-fA-F]{6}["']/);
-    // Real-blur path still renders the real blur at intensity 40. #1062 B2
-    // drift-to-truth: a `pointerEvents="none"` prop now precedes `intensity`
-    // on the <BlurView>, so tolerate intervening props (still pins intensity 40).
-    expect(code).toMatch(/<BlurView[\s\S]{0,80}intensity=\{40\}/);
-  });
-
-  test("BlastCustomersCta: L1 BlurView when blurOk else opaque, via shared helper", () => {
-    const code = stripComments(readComp("marketing/BlastCustomersCta.tsx"));
-    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
-    expect(code).toMatch(
-      /blurOk\s*\?[\s\S]{0,120}<BlurView[\s\S]{0,400}FALLBACK_BACKGROUND/,
-    );
-    expect(code).toMatch(
-      /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
-    );
-  });
+  // [TEST-MOD-APPROVED #4420] AiDisclosureModal and BlastCustomersCta moved
+  // onto <Material> in wave 5: no own BlurView, no per-file opaque constant.
+  test.each([["ari/AiDisclosureModal.tsx"], ["marketing/BlastCustomersCta.tsx"]])(
+    "%s: no own blur guard; glass comes from Material (solid off iOS)",
+    (rel) => {
+      const code = stripComments(readComp(rel));
+      expect(code).not.toMatch(/from\s*["']expo-blur["']/);
+      expect(code).toMatch(/<Material\b/);
+    },
+  );
 
   test("no straggler opaque branch leaked onto an unconditional/iOS path", () => {
     // None of the 3 stragglers may opaque-fill on a path iOS can reach. We assert
