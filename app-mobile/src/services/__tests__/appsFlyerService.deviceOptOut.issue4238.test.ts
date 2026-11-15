@@ -135,14 +135,19 @@ Deno.test("#4238 P1-4 switching off (and back on) updates this person's Explorer
 
 Deno.test("#4238 P1-4 the native checkout create carries ad_tracking_opt_out only when opted out", async () => {
   for (const [optOut, expected] of [[true, { ad_tracking_opt_out: true }], [false, {}]] as const) {
-    const mod = await loadWithFakes("src/payments/checkoutAdTracking.ts", {
+    const reader = await loadWithFakes("src/services/analyticsOptOut.ts", {
       "../store/appStore": { useAppStore: { getState: () => ({ analyticsOptOut: optOut }) } },
+    });
+    assertEquals(reader.explorerAnalyticsOptedOut(), optOut);
+    const mod = await loadWithFakes("src/payments/checkoutAdTracking.ts", {
+      // (the harness's require table is per load, so the reader is faked here)
+      "../services/analyticsOptOut": { explorerAnalyticsOptedOut: () => optOut },
     });
     assertEquals(mod.checkoutAdTrackingFields(), expected);
   }
   // A store that cannot load reads "not opted out" and never throws.
-  const broken = await loadWithFakes("src/payments/checkoutAdTracking.ts", {});
-  assertEquals(broken.checkoutAdTrackingFields(), {});
+  const broken = await loadWithFakes("src/services/analyticsOptOut.ts", {});
+  assertEquals(broken.explorerAnalyticsOptedOut(), false);
   // Wiring: the create request body spreads these fields.
   const flow = await Deno.readTextFile(new URL("../../payments/nativeCheckoutFlow.ts", import.meta.url));
   const create = flow.slice(flow.indexOf('"ticket-checkout-create",\n'));

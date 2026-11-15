@@ -7,7 +7,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { flush, loadWithFakes } from "../../services/__tests__/appsFlyerHarness.issue4238.ts";
 
-function world(afUid: string | null = "af-uid-1") {
+function world(afUid: string | null = "af-uid-1", state: { optOut: boolean } = { optOut: false }) {
   const events: Array<[string, Record<string, unknown>]> = [];
   const setIds: string[] = [];
   const listeners: Array<(info: unknown) => void> = [];
@@ -20,7 +20,7 @@ function world(afUid: string | null = "af-uid-1") {
     },
     "react-native-purchases": {
       default: {
-        setAppsflyerID: async (id: string) => {
+        setAppsflyerID: async (id: string | null) => {
           setIds.push(id);
         },
       },
@@ -42,6 +42,8 @@ function world(afUid: string | null = "af-uid-1") {
       logAppsFlyerEvent: (n: string, v: Record<string, unknown>) => events.push([n, v]),
     },
     "../services/mixpanelService": { mixpanelService: { trackSubscriptionPurchased() {} } },
+    // #4238 P2-3: the Explorer "share usage data" switch.
+    "../services/analyticsOptOut": { explorerAnalyticsOptedOut: () => state.optOut },
   };
   return { fakes, events, setIds, listeners };
 }
@@ -88,4 +90,25 @@ Deno.test("#4238 W6-3 the onboarding trial is mingla_app_trial_started, not a st
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
   assert(src.includes("logAppsFlyerEvent('mingla_app_trial_started'"));
   assert(!src.includes("'af_start_trial'"));
+});
+
+Deno.test("#4238 P2-3 with share usage data off RevenueCat never gets the AppsFlyer id; a prior link is cleared once; back on links again", async () => {
+  const state = { optOut: true };
+  const w = world("af-uid-1", state);
+  const hooks = await loadWithFakes("src/hooks/useRevenueCat.ts", w.fakes);
+  hooks.useCustomerInfoListener();
+  w.listeners[0]({ originalAppUserId: "user-1" });
+  await flush();
+  assertEquals(w.setIds, [null], "opted out: the id is cleared, never set");
+  w.listeners[0]({ originalAppUserId: "user-1" });
+  await flush();
+  assertEquals(w.setIds, [null], "cleared once, not on every update");
+  state.optOut = false;
+  w.listeners[0]({ originalAppUserId: "user-1" });
+  await flush();
+  assertEquals(w.setIds, [null, "af-uid-1"], "back on: linked again");
+  state.optOut = true;
+  w.listeners[0]({ originalAppUserId: "user-1" });
+  await flush();
+  assertEquals(w.setIds, [null, "af-uid-1", null], "switched off after a link: cleared");
 });

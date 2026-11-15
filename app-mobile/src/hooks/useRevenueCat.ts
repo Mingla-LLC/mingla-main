@@ -22,6 +22,7 @@ import {
   logoutRevenueCatIfIdentified,
 } from '../services/revenueCatService'
 import { getAppsFlyerUid, logAppsFlyerEvent } from '../services/appsFlyerService'
+import { explorerAnalyticsOptedOut } from '../services/analyticsOptOut'
 import { mixpanelService } from '../services/mixpanelService'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,6 +97,15 @@ export function useCustomerInfoListener(): void {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _appsFlyerLinkedFor = new Set<string>()
+const _appsFlyerClearedFor = new Set<string>()
+
+type PurchasesAppsFlyerLink = { setAppsflyerID: (id: string | null) => Promise<void> }
+function purchasesSdk(): PurchasesAppsFlyerLink {
+  // Lazy: this hook file only type-imports the native SDK at module scope,
+  // so render suites that never configure RevenueCat never load it.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require('react-native-purchases') as { default: PurchasesAppsFlyerLink }).default
+}
 
 /**
  * Hand RevenueCat the AppsFlyer id via Purchases.setAppsflyerID (Step 0 Z13:
@@ -106,17 +116,28 @@ const _appsFlyerLinkedFor = new Set<string>()
  */
 export async function linkAppsFlyerIdToRevenueCat(rcUserId: string | null | undefined): Promise<boolean> {
   const key = typeof rcUserId === 'string' ? rcUserId : ''
-  if (key.length === 0 || _appsFlyerLinkedFor.has(key)) return false
+  if (key.length === 0) return false
+  // #4238 P2-3 (I-4238-AF-RESPECTS-OPT-OUT): with "share usage data" off,
+  // RevenueCat never holds the AppsFlyer id (its server integration would
+  // otherwise send subscription revenue for this person). A link made before
+  // the switch is cleared once; switching back on links again.
+  if (explorerAnalyticsOptedOut()) {
+    if (_appsFlyerClearedFor.has(key)) return false
+    try {
+      await purchasesSdk().setAppsflyerID(null)
+      _appsFlyerClearedFor.add(key)
+      _appsFlyerLinkedFor.delete(key)
+    } catch (e) {
+      console.warn('[RevenueCat] clearing the AppsFlyer id failed:', e)
+    }
+    return false
+  }
+  _appsFlyerClearedFor.delete(key)
+  if (_appsFlyerLinkedFor.has(key)) return false
   const uid = await getAppsFlyerUid()
   if (!uid) return false
   try {
-    // Lazy: this hook file only type-imports the native SDK at module scope,
-    // so render suites that never configure RevenueCat never load it.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Purchases = (require('react-native-purchases') as {
-      default: { setAppsflyerID: (id: string | null) => Promise<void> }
-    }).default
-    await Purchases.setAppsflyerID(uid)
+    await purchasesSdk().setAppsflyerID(uid)
     _appsFlyerLinkedFor.add(key)
     return true
   } catch (e) {
