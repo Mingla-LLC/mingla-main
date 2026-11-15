@@ -25,18 +25,17 @@ describe("Trip creator width parity with event creator", () => {
   const tripStep1 = read("components/trip/TripCreatorStep1Basics.tsx");
 
   it("keeps both wizard ScrollView bodies on the same horizontal gutter", () => {
-    expect(styleBlock(tripWizard, "body")).toContain(
-      "paddingHorizontal: spacing.md + 8",
-    );
-    expect(styleBlock(eventWizard, "body")).toContain(
-      "paddingHorizontal: spacing.md + 8",
-    );
+    // [TEST-MOD-APPROVED #4420] spacing.md (16) is now space[4] (16): same gutter.
+    const gutter = /paddingHorizontal: (?:spacing\.md|space\[4\]) \+ 8/;
+    expect(styleBlock(tripWizard, "body")).toMatch(gutter);
+    expect(styleBlock(eventWizard, "body")).toMatch(gutter);
   });
 
   it("does not add a nested horizontal gutter inside trip Step 1", () => {
     const host = styleBlock(tripStep1, "host");
-    expect(host).toContain("gap: spacing.md");
-    expect(host).toContain("paddingTop: spacing.sm");
+    // [TEST-MOD-APPROVED #4420] the same values as space[4] / space[2].
+    expect(host).toContain("gap: space[4]");
+    expect(host).toContain("paddingTop: space[2]");
     expect(host).not.toContain("paddingHorizontal");
   });
 });

@@ -16,8 +16,8 @@ import { color } from "../../constants/designSystem";
 export const INTELLIGENCE_MIN_ORDERS_FOR_TIME_BUCKETS = 14 as const;
 
 /** Bar-color tokens (verbatim from the established sparkline convention). */
-export const BAR_INACTIVE = color.fill.step as const;
-export const BAR_CONTEXT = color.text4 as const;
+export const BAR_INACTIVE: string = color.fill.step;
+export const BAR_CONTEXT: string = color.text4;
 
 /** Floor percentages so an empty bucket still shows a visible stub. */
 export const SPARKLINE_FLOOR_PCT = 4 as const;

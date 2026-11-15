@@ -784,8 +784,10 @@ describe("#3567 parent routing and preservation seams", () => {
       expect(source).toContain("minWidth: 0");
       expect(source).toContain('marginLeft: "auto"');
       expect(source).toContain('alignItems: "flex-end"');
+      // [TEST-MOD-APPROVED #4420] the opaque Android alert reads the Graphite
+      // tokens (color.solidTint.error / color.errorTint); same intent.
       expect(source).toContain(
-        'Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint',
+        'Platform.OS === "android" ? color.solidTint.error : color.errorTint',
       );
     }
     expect(editor).toContain("style={styles.optionBlock}");

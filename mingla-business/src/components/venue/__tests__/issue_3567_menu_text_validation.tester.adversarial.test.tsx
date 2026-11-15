@@ -341,8 +341,10 @@ describe("#3567 tester — authoring recovery and accessibility wiring", () => {
       expect(source).toContain('aria-labelledby=');
       expect(source).toContain('aria-describedby=');
       expect(source).toContain('renderErrorMessage={false}');
+      // [TEST-MOD-APPROVED #4420] the opaque Android alert reads the Graphite
+      // tokens (color.solidTint.error / color.errorTint); same intent.
       expect(source).toContain(
-        'Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint',
+        'Platform.OS === "android" ? color.solidTint.error : color.errorTint',
       );
     }
     const counter = read("src/components/venue/MenuTextCounter.tsx");

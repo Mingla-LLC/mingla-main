@@ -82,6 +82,24 @@ jest.mock("../../../analytics/businessAnalyticsEvents", () => ({
   captureBusinessVenueReservationsViewed: jest.fn(),
 }));
 
+jest.mock("../../../utils/hapticFeedback", () => ({
+  HapticFeedback: { buttonPress: jest.fn(), selection: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() },
+}));
+jest.mock("../VenueAvailabilityModule", () => ({
+  VenueAvailabilityModule: React.forwardRef(function Availability(props: Record<string, unknown>, _ref) {
+    return React.createElement("availability", props);
+  }),
+}));
+for (const [path, name] of [
+  ["../VenueMenuModule", "VenueMenuModule"],
+  ["../VenueReservationsModule", "VenueReservationsModule"],
+  ["../VenueSettingsModule", "VenueSettingsModule"],
+  ["../VenueTablesModule", "VenueTablesModule"],
+  ["../VenueWaitlistModule", "VenueWaitlistModule"],
+  ["../VenueOrdersModule", "VenueOrdersModule"],
+  ["../insights/VenueInsightsModule", "VenueInsightsModule"],
+]) jest.doMock(path, () => ({ [name]: host(name) }));
+
 const { VenueSuiteShell } = require("../VenueSuiteShell") as typeof import("../VenueSuiteShell");
 const { VenueIntelligenceModule } =
   require("../VenueIntelligenceModule") as typeof import("../VenueIntelligenceModule");

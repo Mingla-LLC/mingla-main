@@ -595,7 +595,8 @@ describe("#3564 independent menu-item UI adversarial proof", () => {
     expect(source).toContain("fontScale >= STACKED_ITEM_ROW_FONT_SCALE");
     expect(source).toMatch(/reorderFeedbackError:\s*\{[\s\S]*?minHeight: 48/);
     expect(source).toMatch(/reorderFeedbackStacked:\s*\{[\s\S]*?flexDirection: "column"/);
-    expect(source).toMatch(/reorderFeedbackErrorAndroid:\s*\{[\s\S]*?androidOpaque\.errorFill/);
+    // [TEST-MOD-APPROVED #4420] androidOpaque.errorFill retired → color.solidTint.error.
+    expect(source).toMatch(/reorderFeedbackErrorAndroid:\s*\{[\s\S]*?color\.solidTint\.error/);
     expect(source).toContain('Platform.OS === "android"');
   });
 });

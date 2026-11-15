@@ -532,7 +532,8 @@ const mock = StyleSheet.create({
   },
   seg: {
     flexDirection: "row",
-    backgroundColor: color.fill.inset,
+    // #4420 — the dark track over the host palette: a black wash token.
+    backgroundColor: color.spinnerTrackOnPaper,
     borderRadius: 12,
     padding: 4,
     gap: 4,

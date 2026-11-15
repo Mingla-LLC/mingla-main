@@ -177,13 +177,14 @@ describe("ORCH-0913 trip dashboard parity", () => {
       /<TopBar[\s\S]*?leftKind="back"[\s\S]*?title=\{trip\.title\}/,
     );
 
+    // [TEST-MOD-APPROVED #4420] spacing.md (16) is now space[4] (16): same gutter.
     const bodyContent = styleBlock(DASHBOARD_SRC, "bodyContent");
-    expect(bodyContent).toContain("paddingHorizontal: spacing.md");
-    expect(bodyContent).toContain("paddingTop: spacing.md");
-    expect(bodyContent).not.toContain("padding: spacing.lg");
+    expect(bodyContent).toContain("paddingHorizontal: space[4]");
+    expect(bodyContent).toContain("paddingTop: space[4]");
+    expect(bodyContent).not.toContain("padding: space[6]");
 
     expect(styleBlock(DASHBOARD_SRC, "headerWrap")).toContain(
-      "paddingHorizontal: spacing.md",
+      "paddingHorizontal: space[4]",
     );
     expect(styleBlock(DASHBOARD_SRC, "hero")).not.toContain("marginHorizontal");
     expect(styleBlock(DASHBOARD_SRC, "actionGrid")).not.toContain(

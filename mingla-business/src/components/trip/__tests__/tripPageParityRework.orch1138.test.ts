@@ -60,7 +60,8 @@ describe("RT-5 ORCH-1138 R2 — public trip page device-parity rework", () => {
     expect(paymentSrc).toContain("if (palette !== undefined) {");
     expect(paymentSrc).toContain("<PaymentMockupCard");
     // The mockup seg: dark track + two flex tabs, active = solid accent fill.
-    expect(paymentSrc).toContain('backgroundColor: "rgba(0,0,0,0.28)"');
+    // [TEST-MOD-APPROVED #4420] the dark track reads a token, not a literal.
+    expect(paymentSrc).toMatch(/seg: \{[\s\S]*?backgroundColor: color\.spinnerTrackOnPaper/);
     // issue #1023 (gradient everywhere): accent fills paint through accentFill(palette).
     expect(paymentSrc).toContain("isFull ? accentFill(palette)");
     // The 34px amount block (mockup `.pay-amt`).

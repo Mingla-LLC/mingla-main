@@ -471,7 +471,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         <View style={styles.actionGrid}>
           <ActionTile
             icon="edit"
-            // #4420 (round-3 item 10) — no "Continue editing": one Edit tile on every home.
+            // #4420 (round-3 item 10) — one Edit tile, the same label in every status, on every home.
             label="Edit"
             accessibilityLabel={`Edit ${experience.title}`}
             primary
