@@ -4,8 +4,8 @@
  * neutral selected material, never an orange fill (orange is only for Create,
  * the active nav icon, progress/steppers and the upcoming dot).
  *
- * [TEST-MOD-APPROVED #4420] — was a source-text pin (I-PROPOSED-1047-NO-SOLE-
- * SOURCE-PIN); now mounts the REAL WhoCoversCostsSection and reads the
+ * [TEST-MOD-APPROVED #4420] — was a source-text pin (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN)
+ *; now mounts the REAL WhoCoversCostsSection and reads the
  * painted styles off the selected segments. "No colour literal" is owned by
  * the I-HOST-CHROME-TOKENS-ONLY gate; "the three wizards mount it" by the
  * I-4420-HOST-WIRING gate.

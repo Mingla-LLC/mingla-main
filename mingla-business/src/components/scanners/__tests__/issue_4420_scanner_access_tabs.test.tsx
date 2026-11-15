@@ -2,8 +2,8 @@
  * #4420 round-3 item 5 — scanner access is a two-tab switcher, "This event" |
  * "Brand events", and the consequence line under it keeps both facts.
  *
- * [TEST-MOD-APPROVED #4420] — was a source-text pin (I-PROPOSED-1047-NO-SOLE-
- * SOURCE-PIN); now mounts the REAL InviteScannerSheet with the REAL Segmented
+ * [TEST-MOD-APPROVED #4420] — was a source-text pin (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN)
+ *; now mounts the REAL InviteScannerSheet with the REAL Segmented
  * and drives the tabs. Only boundaries are mocked (the Sheet host, the invite
  * mutation, the scroll wrapper, Button, Toast).
  *
