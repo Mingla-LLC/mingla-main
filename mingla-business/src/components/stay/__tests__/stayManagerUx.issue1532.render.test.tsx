@@ -456,7 +456,10 @@ describe("#1532 D2 — GlassCard's gap lands on the node that parents children",
     expect(measured.ratio).toBeGreaterThanOrEqual(
       STAY_FIELD_PROXIMITY_MIN_RATIO,
     );
-    expect(Number(measured.ratio.toFixed(2))).toBe(2.7);
+    // [TEST-MOD-APPROVED #4420] the Graphite field wrapper gap re-measures the
+    // ratio at 2.52 (was 2.7); the separation floor above (2.5) still holds,
+    // and the exact value is pinned so any further drift is a reviewed change.
+    expect(Number(measured.ratio.toFixed(2))).toBe(2.52);
     tree.unmount();
   });
 
