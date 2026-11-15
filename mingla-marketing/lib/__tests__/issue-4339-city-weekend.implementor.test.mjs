@@ -114,11 +114,16 @@ function row(slug, startsAt, kind = 'event', extra = {}) {
     ...extra,
   }
 }
+// #4339: each strip carries the window links_page_strips() sends (New York time).
 const STRIPS = [
-  { id: 'b', shows_on: '2026-11-13', title: 'Second strip', label: 'Featured', opens: 'blog', url: null, blog_slug: 'weekend-guide', position: 2 },
-  { id: 'a', shows_on: '2026-11-13', title: 'Free tools for hosts', label: 'From Mingla', opens: 'web', url: 'usemingla.com/tools', blog_slug: null, position: 1 },
-  { id: 'c', shows_on: '2026-11-10', title: 'Expired yesterday', label: 'New', opens: 'explorer', url: null, blog_slug: null, position: 0 },
-  { id: 'd', shows_on: '2026-11-14', title: 'Get the app', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 3 },
+  { id: 'b', shows_on: '2026-11-11', title: 'Second strip', label: 'Featured', opens: 'blog', url: null, blog_slug: 'weekend-guide', position: 2,
+    time_zone: 'America/New_York', starts_at: '2026-11-11T05:00:00Z', ends_at: '2026-11-12T05:00:00Z' },
+  { id: 'a', shows_on: '2026-11-10', shows_until: '2026-11-13', title: 'Free tools for hosts', label: 'From Mingla', opens: 'web', url: 'usemingla.com/tools', blog_slug: null, position: 1,
+    time_zone: 'America/New_York', starts_at: '2026-11-10T05:00:00Z', ends_at: '2026-11-14T05:00:00Z' },
+  { id: 'c', shows_on: '2026-11-10', title: 'Expired yesterday', label: 'New', opens: 'explorer', url: null, blog_slug: null, position: 0,
+    time_zone: 'America/New_York', starts_at: '2026-11-10T05:00:00Z', ends_at: '2026-11-11T05:00:00Z' },
+  { id: 'd', shows_on: '2026-11-14', title: 'Get the app', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 3,
+    time_zone: 'America/New_York', starts_at: '2026-11-14T05:00:00Z', ends_at: '2026-11-15T05:00:00Z' },
 ]
 const PLACES = [
   { id: 'aaaaaaaa-1111-2222-3333-444444444444', name: 'Spin Art Nation', category: 'Art studio', area: 'Cary', photo: 'https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/place-photos/aaaaaaaa-1111-2222-3333-444444444444/0_thumb.jpg', citySlug: 'cary-nc' },
@@ -176,7 +181,7 @@ test('rows are assigned to a city by the registry centre and reach, the #4318 ru
   assert.equal(model('lagos', rows).listings.length, 1, 'only the row inside Lagos’s own 80 km reach')
 })
 
-test('rule 1: admin strips first, admin order, unexpired, not by city, in EVERY branch', () => {
+test('rule 1: admin strips first, admin order, only inside their window (#4339), not by city, in EVERY branch', () => {
   const branches = [
     model('raleigh-nc', [row('raleigh-nc', '2026-11-14T15:00:00Z')]),
     model('raleigh-nc', [row('raleigh-nc', '2026-11-12T15:00:00Z')]),
@@ -186,9 +191,9 @@ test('rule 1: admin strips first, admin order, unexpired, not by city, in EVERY 
   ]
   assert.deepEqual(branches.map((b) => b.mode), ['weekend', 'weekday', 'quiet', 'fallback', 'fallback'])
   for (const b of branches) {
-    assert.deepEqual(b.strips.map((s) => s.pin.id), ['a', 'b', 'd'], `${b.mode}: strips first, in admin order, expired dropped`)
-    assert.equal(b.strips[0].when, 'From Mingla · Fri 13')
-    assert.equal(b.strips[2].when, 'Giveaway · Sat 14')
+    assert.deepEqual(b.strips.map((s) => s.pin.id), ['a', 'b'], `${b.mode}: strips first, in admin order, ended and scheduled dropped`)
+    assert.equal(b.strips[0].when, 'From Mingla · Today')
+    assert.equal(b.strips[1].when, 'Featured · Today')
   }
 })
 
