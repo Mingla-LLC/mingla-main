@@ -5,10 +5,10 @@
  *
  * FAILS-ON-REVERT: removing the pane or its wide-desktop gate fails block 3;
  * a slug/raw status in the values fails block 1.
+ *
+ * [TEST-MOD-APPROVED #4420] — the source-text half moved to the I-4420-HOST-WIRING
+ * strict-grep gate (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN); this file keeps the behaviour.
  */
-import fs from "fs";
-import path from "path";
-
 import { supportTicketDetails } from "../supportRequestModel";
 
 const base = {
@@ -50,12 +50,4 @@ describe("#4420 support ticket details pane", () => {
     expect(staff.find((r) => r.key === "shared")?.value).toBe("Brand team");
   });
 
-  test("3. the pane renders only on wide desktop, beside the thread", () => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../SupportThreadCore.tsx"), "utf8");
-    expect(src).toMatch(/const showDetailsPane = isWideDesktop && ticket !== null/);
-    expect(src).toContain('testID="support-ticket-details"');
-    expect(src).toMatch(/<KeyValue items=\{details\}/);
-    // The single column (phone) still renders the same thread content.
-    expect(src).toMatch(/\) : \(\s*threadColumn\s*\)\}/);
-  });
 });

@@ -4,11 +4,12 @@
  *
  * FAILS ON REVERT: tables stop grouping by zone (or a zone's order changes),
  * a table is dropped or duplicated by the grouping, or Add a venue hides Stay
- * again while the STAY_VENUE_AUTHORING switch is off.
+ * again while the STAY_VENUE_AUTHORING switch is off (I-4420-HOST-WIRING).
+ *
+ * [TEST-MOD-APPROVED #4420] — the source-text half moved to the I-4420-HOST-WIRING
+ * strict-grep gate (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN); this file keeps the behaviour.
  */
 /* eslint-disable @typescript-eslint/no-require-imports, import/first */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, test } from "@jest/globals";
 
 
@@ -42,21 +43,6 @@ describe("#4420 — zone-grouped Tables view", () => {
 
   test("an empty list has no groups", () => {
     expect(groupTablesByZone([])).toEqual([]);
-  });
-});
-
-describe("#4420 round-3 item 11 — Add a venue lists Stay", () => {
-  const read = (rel: string): string => readFileSync(join(__dirname, "../../../..", rel), "utf8");
-
-  test("the create flow always passes includeStay; the server switch only disables it", () => {
-    const create = read("app/venue/create.tsx");
-    expect(create).toMatch(/<VenueCategoryPicker[\s\S]*?\n\s*includeStay\n[\s\S]*?stayDisabled=\{!stayAuthoringEnabled\}/);
-    expect(create).not.toMatch(/includeStay=\{stayAuthoringEnabled\}/);
-  });
-
-  test("the claim flow always lists Stay too", () => {
-    const claim = read("src/components/venue/claim/ClaimStepCategory.tsx");
-    expect(claim).toMatch(/\n\s*includeStay\n\s*stayDisabled=\{stayAuthoringFlag\.data !== true\}/);
   });
 });
 

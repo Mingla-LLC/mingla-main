@@ -5,10 +5,10 @@
  *
  * FAILS-ON-REVERT: formatTimezoneLabel printing `${tz} (...)` fails block 1;
  * a picker filter that only matches the id fails block 2.
+ *
+ * [TEST-MOD-APPROVED #4420] — the source-text half moved to the I-4420-HOST-WIRING
+ * strict-grep gate (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN); this file keeps the behaviour.
  */
-import fs from "fs";
-import path from "path";
-
 import {
   formatTimezoneLabel,
   timezoneCityName,
@@ -35,17 +35,4 @@ describe("#4420 time zone city label", () => {
     expect(timezoneMatchesQuery("America/New_York", "  ")).toBe(true);
   });
 
-  test("3. every picker uses the shared matcher and no surface prints the raw id", () => {
-    const root = path.resolve(__dirname, "../..");
-    for (const f of [
-      "components/brand/BrandEditTimezoneField.tsx",
-      "components/venue/VenueAvailabilityModule.tsx",
-      "components/event/CreatorStep2When.tsx",
-    ]) {
-      const src = fs.readFileSync(path.join(root, f), "utf8");
-      expect([f, src.includes("timezoneMatchesQuery")]).toEqual([f, true]);
-    }
-    const trip = fs.readFileSync(path.join(root, "components/trip/BookingDeadlinePicker.tsx"), "utf8");
-    expect(trip).toContain("timezoneCityName(brandTimezone");
-  });
 });

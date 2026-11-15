@@ -4,16 +4,13 @@
  * Stripe's default white surface. Client appearance only.
  *
  * FAILS-ON-REVERT: an init that goes back to `{ variables: { colorPrimary } }`
- * fails block 2; a light background or a translucent colour fails block 1.
+ * fails I-4420-HOST-WIRING; a light background or a translucent colour fails block 1.
+ *
+ * [TEST-MOD-APPROVED #4420] — the source-text half moved to the I-4420-HOST-WIRING
+ * strict-grep gate (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN); this file keeps the behaviour.
  */
-import fs from "fs";
-import path from "path";
-
 import { color } from "../../../constants/designSystem";
 import { MINGLA_CONNECT_APPEARANCE } from "../connectAppearance";
-
-const STRIPE = path.resolve(__dirname, "..");
-const read = (p: string): string => fs.readFileSync(path.join(STRIPE, p), "utf8");
 
 describe("#4420 Connect Graphite appearance", () => {
   test("1. dark surfaces from our tokens, opaque colours only", () => {
@@ -28,30 +25,4 @@ describe("#4420 Connect Graphite appearance", () => {
     }
   });
 
-  test("2. every init site uses the shared appearance", () => {
-    const sites = [
-      "connect-pages/ConnectAccountManagementBody.web.tsx",
-      "connect-pages/ConnectOnboardingBody.web.tsx",
-      "connect-pages/ConnectPartnerAccountManagementBody.web.tsx",
-      "connect-pages/ConnectPartnerOnboardingBody.web.tsx",
-      "connect-pages/ConnectTaxRegistrationsBody.web.tsx",
-      "ConnectOnboardingNative.native.tsx",
-    ];
-    for (const site of sites) {
-      const src = read(site);
-      expect([site, src.includes("loadConnectAndInitialize")]).toEqual([site, true]);
-      expect([site, src.includes("MINGLA_CONNECT_APPEARANCE")]).toEqual([site, true]);
-      expect([site, /colorPrimary:/.test(src)]).toEqual([site, false]);
-    }
-  });
-
-  test("3. the page chrome around the iframe is Graphite, not paper", () => {
-    const helpers = read("connectEmbeddedPageHelpers.ts");
-    const wrapper = helpers.slice(
-      helpers.indexOf("export const pageWrapperStyle"),
-      helpers.indexOf("};", helpers.indexOf("export const pageWrapperStyle")),
-    );
-    expect(wrapper).toContain("color.canvas");
-    expect(wrapper).not.toContain("color.paper");
-  });
 });

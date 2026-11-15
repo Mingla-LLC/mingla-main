@@ -7,6 +7,7 @@
 // address step never loaded. This gate scans the app source for every lazy
 // workspace subpath import and proves the resolver re-roots each one.
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { access } from "node:fs/promises";
 import path from "node:path";
 
 import { describe, expect, test } from "@jest/globals";
@@ -73,6 +74,27 @@ describe("#4420 every lazy workspace subpath import resolves on the dev server",
       }
     }
     expect(unresolved).toEqual([]);
+  });
+
+  // [TEST-MOD-APPROVED #4420] — re-rooting alone could still point at a file
+  // that is not there; every re-rooted chunk must land on a real module.
+  test("each re-rooted chunk lands on a module that exists", async () => {
+    const missing: string[] = [];
+    for (const { pkg, subpath, file } of imports) {
+      const out = metro.resolver.resolveRequest(context, `./packages/${pkg}/${subpath}`, "web");
+      const target = out.filePath ?? out.delegated ?? "";
+      let found = false;
+      for (const ext of ["", ".ts", ".tsx", ".web.tsx", ".web.ts", ".js", "/index.ts", "/index.tsx"]) {
+        try {
+          await access(target + ext);
+          if (statSync(target + ext).isFile()) { found = true; break; }
+        } catch {
+          /* try the next extension */
+        }
+      }
+      if (!found) missing.push(`${pkg}/${subpath} (from ${file}) -> ${target}`);
+    }
+    expect(missing).toEqual([]);
   });
 
   test("the web address field chunk resolves to the shared AddressInput", () => {
