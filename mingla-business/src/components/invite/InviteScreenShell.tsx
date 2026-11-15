@@ -38,12 +38,12 @@
  */
 
 import React from "react";
-import { Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 
 
-import { color, space } from "../../constants/designSystem";
+import { color, radius, size, space } from "../../constants/designSystem";
 export interface InviteScreenShellProps {
   /** The scrolling, optically-centred region. Cards, spinners, copy. */
   children: React.ReactNode;
@@ -61,6 +61,8 @@ export function InviteScreenShell({
   actions,
   testID,
 }: InviteScreenShellProps): React.ReactElement {
+  const { width } = useWindowDimensions();
+  const isWideWeb = Platform.OS === "web" && width >= 768;
   return (
     <SafeAreaView
       style={styles.host}
@@ -84,12 +86,17 @@ export function InviteScreenShell({
           none, so the top of the card can never leave the scrollable range.
         */}
         <View style={styles.centerer}>
-          {children}
-          {Platform.OS === "web" && actions !== undefined && actions !== null ? (
-            <View style={styles.webActions} testID="invite-shell-web-actions">
-              {actions}
-            </View>
-          ) : null}
+          {/* #4420 — wide web: the message and its action sit in ONE centred
+              card on the field (the kit's allowed auth / invite pattern);
+              phones keep them flat on the canvas. */}
+          <View style={isWideWeb ? styles.webCard : styles.flatCol}>
+            {children}
+            {Platform.OS === "web" && actions !== undefined && actions !== null ? (
+              <View style={styles.webActions} testID="invite-shell-web-actions">
+                {actions}
+              </View>
+            ) : null}
+          </View>
         </View>
       </ScrollView>
       {Platform.OS === "web" || actions === undefined || actions === null ? null : (
@@ -155,5 +162,21 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 480,
     gap: space[4],
+  },
+  flatCol: {
+    width: "100%",
+    alignItems: "center",
+    gap: space[4],
+  },
+  webCard: {
+    width: "100%",
+    maxWidth: size.dialog + space[7],
+    alignItems: "center",
+    gap: space[4],
+    padding: space[6],
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
   },
 });

@@ -436,25 +436,25 @@ const styles = StyleSheet.create({
   // out of the accessibility tree. InviteScreenShell owns the layout host now,
   // and deleting this entry means the broken shape cannot be reintroduced by
   // copying it.
+  // #4420 — flat and centred (the mockup); on wide web the shell draws the
+  // one card around this and its action.
   card: {
     maxWidth: 480,
     width: "100%",
-    backgroundColor: color.fill.inset,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.md,
-    padding: space[7],
-    gap: space[4],
+    alignItems: "center",
+    gap: space[3],
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
     color: color.text1,
     letterSpacing: -0.2,
+    textAlign: "center",
   },
   copy: {
     fontSize: 15,
     color: color.text2,
     lineHeight: 22,
+    textAlign: "center",
   },
 });

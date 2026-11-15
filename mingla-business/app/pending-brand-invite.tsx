@@ -20,7 +20,7 @@ import { TopBar } from "../src/components/ui/TopBar";
 import { useAuth } from "../src/context/AuthContext";
 import { useMyPendingInvites } from "../src/hooks/useBrandInvitations";
 
-import { color, space } from "../src/constants/designSystem";
+import { color, radius, space, type } from "../src/constants/designSystem";
 function firstParam(value: string | string[] | undefined): string {
   if (typeof value === "string") return value;
   if (Array.isArray(value) && typeof value[0] === "string") return value[0];
@@ -119,19 +119,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingTop: space[7],
   },
+  // #4420 — the notice is one pane under the bar (the mockup).
   missing: {
-    paddingHorizontal: space[6],
-    paddingTop: space[7],
+    marginHorizontal: space[4],
+    marginTop: space[4],
+    padding: space[4],
+    gap: space[1],
+    borderRadius: radius.lg,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
   },
   missingTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+    ...type.row,
+    fontWeight: "600",
     color: color.text1,
-    marginBottom: space[2],
   },
   missingBody: {
-    fontSize: 15,
+    ...type.small,
     color: color.text2,
-    lineHeight: 22,
   },
 });

@@ -305,25 +305,25 @@ const styles = StyleSheet.create({
   // #2211 — `host` is GONE, not merely unused: `flex: 1` +
   // `justifyContent: "center"` with no scroll container is the exact shape that
   // stranded an invited scanner. InviteScreenShell owns the layout host now.
+  // #4420 — flat and centred (the mockup); on wide web the shell draws the
+  // one card around this and its action.
   card: {
     maxWidth: 480,
     width: "100%",
-    backgroundColor: color.fill.inset,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.md,
-    padding: space[7],
-    gap: space[4],
+    alignItems: "center",
+    gap: space[3],
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
     color: color.text1,
     letterSpacing: -0.2,
+    textAlign: "center",
   },
   copy: {
     fontSize: 15,
     color: color.text2,
     lineHeight: 22,
+    textAlign: "center",
   },
 });
