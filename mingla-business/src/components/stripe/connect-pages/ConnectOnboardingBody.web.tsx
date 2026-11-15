@@ -35,9 +35,8 @@ import {
   connectEmbeddedPageStyles,
   useStripeConnectViewportZoomLock,
 } from "../../../components/stripe/connectEmbeddedPageHelpers";
+import { MINGLA_CONNECT_APPEARANCE } from "../connectAppearance";
 
-import { color } from "../../../constants/designSystem";
-const MINGLA_BRAND_COLOR = color.accent; // accent.warm per designSystem.ts:147
 
 // META-ORCH-1234 (Bug B): the native "Set up payments" CTA opens this page in a
 // SESSIONLESS in-app browser (WebBrowser.openAuthSessionAsync) and asks the edge
@@ -131,11 +130,7 @@ export default function ConnectOnboardingBody(): React.ReactElement {
       return loadConnectAndInitialize({
         publishableKey,
         fetchClientSecret: async () => sessionClientSecret,
-        appearance: {
-          variables: {
-            colorPrimary: MINGLA_BRAND_COLOR,
-          },
-        },
+        appearance: MINGLA_CONNECT_APPEARANCE,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -221,10 +221,9 @@ describe("#4389 S-11 — 6. the native module probe", () => {
     jest.doMock("../../../services/brandStripeAccountSessionService", () => ({
       fetchBrandStripeAccountSession: jest.fn(),
     }));
-    // [TEST-MOD-APPROVED #4420] — the appearance reads Graphite tokens now.
-    jest.doMock("../../../constants/designSystem", () => ({
-      color: { accent: "#eb7825", danger: "#d92d20" },
-      radius: { sm: 12 },
+    // [TEST-MOD-APPROVED #4420] — the appearance is the shared Graphite object now.
+    jest.doMock("../connectAppearance", () => ({
+      MINGLA_CONNECT_APPEARANCE: { variables: {} },
     }));
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require("../ConnectOnboardingNative.native");

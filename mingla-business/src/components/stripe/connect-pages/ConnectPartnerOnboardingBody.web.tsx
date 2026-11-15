@@ -25,9 +25,8 @@ import {
   pageWrapperStyle,
   useStripeConnectViewportZoomLock,
 } from "../../../components/stripe/connectEmbeddedPageHelpers";
+import { MINGLA_CONNECT_APPEARANCE } from "../connectAppearance";
 
-import { color } from "../../../constants/designSystem";
-const MINGLA_BRAND_COLOR = color.accent;
 
 export default function ConnectPartnerOnboardingBody(): React.ReactElement {
   const router = useRouter();
@@ -71,7 +70,7 @@ export default function ConnectPartnerOnboardingBody(): React.ReactElement {
       return loadConnectAndInitialize({
         publishableKey,
         fetchClientSecret: async () => sessionClientSecret,
-        appearance: { variables: { colorPrimary: MINGLA_BRAND_COLOR } },
+        appearance: MINGLA_CONNECT_APPEARANCE,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

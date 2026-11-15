@@ -24,10 +24,10 @@ import {
   connectEmbeddedPageStyles,
   useStripeConnectViewportZoomLock,
 } from "../../../components/stripe/connectEmbeddedPageHelpers";
+import { MINGLA_CONNECT_APPEARANCE } from "../connectAppearance";
 import { isAllowedAccountManagementReturnTo } from "../../../utils/accountManagementOpen";
 
 import { color } from "../../../constants/designSystem";
-const MINGLA_BRAND_COLOR = color.accent;
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -67,11 +67,7 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
       return loadConnectAndInitialize({
         publishableKey,
         fetchClientSecret: async () => sessionClientSecret,
-        appearance: {
-          variables: {
-            colorPrimary: MINGLA_BRAND_COLOR,
-          },
-        },
+        appearance: MINGLA_CONNECT_APPEARANCE,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -204,8 +200,8 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
 // page-local style overrides for the header inner + done button.
 const headerStyle: React.CSSProperties = {
   padding: "18px 24px",
-  borderBottom: `1px solid ${color.paperPressed}`,
-  backgroundColor: color.paper,
+  borderBottom: `1px solid ${color.line}`,
+  backgroundColor: color.canvas,
 };
 
 const headerInnerStyle: React.CSSProperties = {
@@ -221,7 +217,7 @@ const doneButtonStyle: React.CSSProperties = {
   minHeight: "44px",
   padding: "0 16px",
   borderRadius: "999px",
-  border: `1px solid ${color.paperPressed}`,
+  border: `1px solid ${color.paper}`,
   backgroundColor: color.paper,
   color: color.ink,
   fontSize: "15px",
