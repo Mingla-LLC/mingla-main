@@ -147,9 +147,10 @@ Deno.test("#4238 P1-4 / P3-R2 switching off (and back on) updates only this inst
 
 Deno.test("#4238 P1-4 the native checkout create carries ad_tracking_opt_out only when opted out", async () => {
   for (const [optOut, expected] of [[true, { ad_tracking_opt_out: true }], [false, {}]] as const) {
-    const reader = await loadWithFakes("src/services/analyticsOptOut.ts", {
-      "../store/appStore": { useAppStore: { getState: () => ({ analyticsOptOut: optOut }) } },
-    });
+    // The store registers its reader when created (appStore.ts); the reader
+    // module never loads the persisted store itself.
+    const reader = await loadWithFakes("src/services/analyticsOptOut.ts", {});
+    reader.registerExplorerAnalyticsOptOutReader(() => optOut);
     assertEquals(reader.explorerAnalyticsOptedOut(), optOut);
     const mod = await loadWithFakes("src/payments/checkoutAdTracking.ts", {
       // (the harness's require table is per load, so the reader is faked here)
@@ -157,9 +158,20 @@ Deno.test("#4238 P1-4 the native checkout create carries ad_tracking_opt_out onl
     });
     assertEquals(mod.checkoutAdTrackingFields(), expected);
   }
-  // A store that cannot load reads "not opted out" and never throws.
-  const broken = await loadWithFakes("src/services/analyticsOptOut.ts", {});
-  assertEquals(broken.explorerAnalyticsOptedOut(), false);
+  // No store registered (a harness without it) reads "not opted out"; a
+  // reader that throws does too.
+  const unregistered = await loadWithFakes("src/services/analyticsOptOut.ts", {});
+  assertEquals(unregistered.explorerAnalyticsOptedOut(), false);
+  unregistered.registerExplorerAnalyticsOptOutReader(() => {
+    throw new Error("store unavailable");
+  });
+  assertEquals(unregistered.explorerAnalyticsOptedOut(), false);
+  // Wiring: the store registers the real switch.
+  const store = await Deno.readTextFile(new URL("../../store/appStore.ts", import.meta.url));
+  assert(
+    /registerExplorerAnalyticsOptOutReader\(\s*\(\) => useAppStore\.getState\(\)\.analyticsOptOut === true,?\s*\)/.test(store),
+    "appStore no longer registers the share-usage-data reader",
+  );
   // Wiring: the create request body spreads these fields.
   const flow = await Deno.readTextFile(new URL("../../payments/nativeCheckoutFlow.ts", import.meta.url));
   const create = flow.slice(flow.indexOf('"ticket-checkout-create",\n'));
