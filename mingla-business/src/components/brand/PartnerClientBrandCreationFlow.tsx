@@ -1232,7 +1232,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           // #4420 B7 — reachable = already passed; forward stays on Continue.
           furthestValidIndex={currentIndex}
           onStepPress={handleStepPress}
-          sheetTitle="Brand setup"
+          style={styles.stepper}
         />
       </View>
 
@@ -1969,6 +1969,7 @@ const styles = StyleSheet.create({
     paddingTop: space[6],
     paddingBottom: space[2],
   },
+  stepper: { flex: 1, minWidth: 0 },
   backTouch: {
     width: 44,
     height: 44,
