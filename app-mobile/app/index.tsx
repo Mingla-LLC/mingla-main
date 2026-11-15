@@ -2206,6 +2206,16 @@ function AppContent() {
       createdSessionId = created.sessionId;
       const session = { id: created.sessionId };
       const successfulInvites = created.added.length;
+      // Issue #4435 (Q3): the friends the server actually added get one push.
+      const creatorProfile = useAppStore.getState().profile;
+      const { notifyAddedToGroup } = await import('../src/services/boardNotificationService');
+      notifyAddedToGroup({
+        sessionId: created.sessionId,
+        sessionName,
+        actorId: user.id,
+        actorFirstName: creatorProfile?.first_name || creatorProfile?.display_name || '',
+        addedUserIds: created.added,
+      });
 
       // Process phone invitees — tie pending invites to this session
       if (createdSessionId && phoneInvitees && phoneInvitees.length > 0) {

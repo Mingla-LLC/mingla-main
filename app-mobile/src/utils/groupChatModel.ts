@@ -110,3 +110,97 @@ export function groupErrorKey(code: string | null | undefined): string {
       return "chat:group_action_failed";
   }
 }
+
+/**
+ * Decision Q3: the one push a directly added friend gets. English like every
+ * other board push (the server-side text has no recipient locale).
+ */
+export function addedToGroupPush(actorFirstName: string, groupName: string): { title: string; body: string } {
+  const actor = actorFirstName.trim() || "A friend";
+  const group = groupName.trim() || "a group";
+  return { title: `${actor} added you to ${group}`, body: "Open the chat to start planning together." };
+}
+
+/** One push per added person: never the adder, never twice. */
+export function addedToGroupRecipients(addedUserIds: readonly string[], actorId: string): string[] {
+  return Array.from(new Set(addedUserIds.filter((id) => typeof id === "string" && id.length > 0 && id !== actorId)));
+}
+
+/**
+ * The 6-second Undo for Remove (decision H): the remove call is held, sent
+ * when the window ends or at once when the sheet closes / the app goes to the
+ * background, and Undo cancels it so nothing was ever written. Timers are
+ * injected so the rule runs under Deno.
+ */
+export interface DeferredAction {
+  /** Start (or restart) the window for this key. */
+  schedule(key: string, run: () => void): void;
+  /** Undo: drop it without running. True when something was pending. */
+  cancel(key: string): boolean;
+  /** Run every pending action now (sheet closed, app backgrounded). */
+  flush(): void;
+  pending(): string[];
+}
+
+export function createDeferredAction(
+  delayMs: number,
+  timers: { set: (fn: () => void, ms: number) => unknown; clear: (handle: unknown) => void },
+): DeferredAction {
+  const queue = new Map<string, { run: () => void; handle: unknown }>();
+  const fire = (key: string): void => {
+    const entry = queue.get(key);
+    if (!entry) return;
+    queue.delete(key);
+    timers.clear(entry.handle);
+    entry.run();
+  };
+  return {
+    schedule(key, run) {
+      const prior = queue.get(key);
+      if (prior) timers.clear(prior.handle);
+      queue.set(key, { run, handle: timers.set(() => fire(key), delayMs) });
+    },
+    cancel(key) {
+      const entry = queue.get(key);
+      if (!entry) return false;
+      timers.clear(entry.handle);
+      queue.delete(key);
+      return true;
+    },
+    flush() {
+      for (const key of Array.from(queue.keys())) fire(key);
+    },
+    pending() {
+      return Array.from(queue.keys());
+    },
+  };
+}
+
+export interface GroupMemberRow extends GroupMemberRole {
+  joinedAt: string | null;
+}
+
+/** joined_at ascending, NULLS LAST (the server's handover order). */
+const joinedKey = (m: GroupMemberRow): string => m.joinedAt ?? "\uffff";
+
+/** Group info order: you first, then the creator, admins, then by join time. */
+export function sortGroupMembers<T extends GroupMemberRow>(members: readonly T[], viewerId: string | null): T[] {
+  const rank = (m: T): number => (m.userId === viewerId ? 0 : m.isCreator ? 1 : m.isAdmin ? 2 : 3);
+  return [...members].sort((a, b) => {
+    const r = rank(a) - rank(b);
+    if (r !== 0) return r;
+    return joinedKey(a).localeCompare(joinedKey(b));
+  });
+}
+
+/**
+ * Leave confirm detail: when the last admin leaves a group that stays open,
+ * the longest-standing other member inherits (server A7); the copy names them.
+ */
+export function leaveHeir<T extends GroupMemberRow>(members: readonly T[], leaverId: string): T | null {
+  const others = members.filter((m) => m.userId !== leaverId);
+  const leaver = members.find((m) => m.userId === leaverId);
+  if (!leaver || !(leaver.isAdmin || leaver.isCreator) || others.length === 0) return null;
+  if (others.some((m) => m.isAdmin || m.isCreator)) return null;
+  return [...others].sort((a, b) => joinedKey(a).localeCompare(joinedKey(b)))[0] ?? null;
+}

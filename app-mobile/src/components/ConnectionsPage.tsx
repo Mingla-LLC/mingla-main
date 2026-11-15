@@ -163,6 +163,7 @@ import {
   CreateGroupChatSheet,
   type CreateGroupChatFriend,
 } from "./connections/CreateGroupChatSheet";
+import { GroupLiveSheet } from "./chat/GroupLiveSheet";
 import {
   PendingSessionInviteRow,
   type PendingSessionInvite,
@@ -969,6 +970,8 @@ function ConnectionsPageRefactored({
   const unpairMutation = useUnpair();
   const [showPairRequestModal, setShowPairRequestModal] = useState(false);
   const [showCreateGroupChatSheet, setShowCreateGroupChatSheet] = useState(false);
+  // Issue #4435: the "{name} is live" link sheet shown over a new group's chat.
+  const [liveGroup, setLiveGroup] = useState<{ conversationId: string; name: string; friendFirstNames: string[] } | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   // ORCH-1239: which gated feature opened the paywall (drives header/analytics).
   // Group-chat create path opens it as 'session_creation'; pairing paths as 'pairing'.
@@ -4767,6 +4770,8 @@ function ConnectionsPageRefactored({
         visible={showCreateGroupChatSheet}
         onClose={() => setShowCreateGroupChatSheet(false)}
         availableFriends={availableFriendsForCreate}
+        loadingFriends={friendsLoading && availableFriendsForCreate.length === 0}
+        myFirstName={profile?.first_name || currentUserDisplayName.split(/\s+/)[0] || ""}
         isCreating={isCreatingGroupChat}
         onSubmit={async (sessionName, selectedFriends) => {
           if (!onCreateGroupChat) {
@@ -4774,17 +4779,60 @@ function ConnectionsPageRefactored({
           }
           return onCreateGroupChat(sessionName, selectedFriends);
         }}
-        onCreated={(conversationId) => {
+        onCreated={(created, groupName, selectedFriends) => {
+          // Issue #4435 (R30): the group is live at once. Open its chat, then
+          // offer the group link (Share, Copy, QR). No waiting sheet.
           setShowCreateGroupChatSheet(false);
-          setConversations((prev) => prev.filter((conversation) => conversation.id !== conversationId));
-          showToast({
-            message: t('connections:group_invites_sent'),
-            type: "info",
+          if (!user?.id) return;
+          const me = {
+            id: user.id,
+            username: profile?.username || "",
+            display_name: profile?.display_name || undefined,
+            first_name: profile?.first_name || undefined,
+            last_name: profile?.last_name || undefined,
+            avatar_url: profile?.avatar_url || undefined,
+          };
+          const createdConversation: Conversation & { sessionCreatorId: string } = {
+            id: created.conversationId,
+            type: "group",
+            name: groupName,
+            session_id: created.sessionId,
+            linked_entity_type: "session",
+            sessionCreatorId: user.id,
+            created_by: user.id,
+            created_at: new Date().toISOString(),
+            participants: [
+              me,
+              ...selectedFriends.map((friend) => ({
+                id: friend.friend_user_id || friend.id,
+                username: friend.username || "",
+                display_name: friend.display_name || undefined,
+                first_name: friend.first_name || undefined,
+                last_name: friend.last_name || undefined,
+                avatar_url: friend.avatar_url || friend.avatar || undefined,
+              })),
+            ],
+            unread_count: 0,
+            messages: [],
+          };
+          void fetchConversations(user.id);
+          void handleSelectConversation(createdConversation);
+          setLiveGroup({
+            conversationId: created.conversationId,
+            name: groupName,
+            friendFirstNames: selectedFriends.map((friend) =>
+              (friend.first_name || friend.name || getDisplayName(friend as Parameters<typeof getDisplayName>[0])).trim().split(/\s+/)[0] ?? "",
+            ),
           });
-          if (user?.id) {
-            void fetchConversations(user.id);
-          }
         }}
+      />
+
+      <GroupLiveSheet
+        visible={Boolean(liveGroup)}
+        conversationId={liveGroup?.conversationId ?? null}
+        groupName={liveGroup?.name ?? ""}
+        friendFirstNames={liveGroup?.friendFirstNames ?? []}
+        onClose={() => setLiveGroup(null)}
       />
 
       <PendingCollabChatSheet
