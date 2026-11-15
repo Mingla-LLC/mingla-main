@@ -215,9 +215,20 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //   arbiter: `id boolean PRIMARY KEY` in
   //   20280707114423_issue_4423_w3_db_health_probe.sql.
   //
+  // #4238 tracking airtight, census +4 (116, after #4423):
+  //   +3  `ad_conversions (event_id)` — _shared/adConversionFire.ts writes the
+  //       native-purchase, host first-sale and unshared-conversion rows with
+  //       `ignoreDuplicates: true`; arbiter: `event_id text NOT NULL UNIQUE`
+  //       in 20270105000865_issue_865_attribution_conversion_schema.sql.
+  //   +1  `ad_tracking_health (channel,lane)` — _shared/adTrackingHealth.ts
+  //       records the hourly key-presence row; arbiter: `PRIMARY KEY
+  //       (channel, lane)` in 20280708014238_issue_4238_click_id_type_and_health.sql.
+  //   (`brand_appsflyer_milestones (brand_id)` moved from appsFlyerS2S.ts to
+  //   appsFlyerDevice.ts: same site, count unchanged.)
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 112);
+  assert.equal(sites.length, 116);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

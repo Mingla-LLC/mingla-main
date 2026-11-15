@@ -19,10 +19,10 @@
  *
  * FAIL-OPEN (mirrors redditCapi's pending_config, SC-12): a Google failure must
  * NEVER block a purchase/reservation nor the other 4 senders. This sender NEVER
- * throws upward. Soft-skips:
- *   • no conversion_action_resource on the connection → { skipped, pending_config }
- *   • no google gclid on the attributed touch          → { skipped, no_gclid }
- *   • resolveGoogleClient throws (lane unprovisioned)  → { skipped, pending_config }
+ * throws upward. #4238 W1-2: missing config is loud (failed, retried 72 h):
+ *   • no conversion_action_resource on the connection → { failed, pending_config }
+ *   • no google click id on the attributed touch      → { skipped, no_google_click }
+ *   • resolveGoogleClient throws (lane unprovisioned)  → { failed, pending_config }
  *   • a platform 4xx/5xx / network / timeout           → { failed, ... }
  *
  * ENHANCED CONVERSIONS: hashed email/phone (already SHA-256'd by adConversionFire,
@@ -45,6 +45,7 @@
 
 import type {
   ConversionSendInput,
+  GoogleConversionKind,
   Lane,
   SenderConnection,
   SenderDeps,
@@ -63,6 +64,20 @@ import type { GoogleClient } from "./google.ts";
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_ATTRIBUTION_WINDOW_DAYS = 30;
 
+/**
+ * #4238 W5-1 (Step 0 Z7, read 14 Nov 2026): the conversion upload and the
+ * conversion-action provisioning call Google Ads API v26, the version the
+ * current ClickConversion / ConversionAction references document. Campaign
+ * management keeps the configured google_ads_api_version (google.ts); only
+ * these two paths are pinned here.
+ */
+export const GOOGLE_ADS_CONVERSION_API_VERSION = "v26";
+
+/** The resolved client, on the conversion API version. */
+function onConversionApiVersion(client: GoogleClient): GoogleClient {
+  return { ...client, apiVersion: GOOGLE_ADS_CONVERSION_API_VERSION };
+}
+
 let googleModule: typeof import("./google.ts") | null = null;
 /** Load google.ts safely (adChannel-registry cycle initialized FIRST), then cache. */
 async function loadGoogleModule(): Promise<typeof import("./google.ts")> {
@@ -76,6 +91,24 @@ async function loadGoogleModule(): Promise<typeof import("./google.ts")> {
 async function realResolveClient(lane: Lane): Promise<GoogleClient> {
   const { resolveGoogleClient } = await loadGoogleModule();
   return resolveGoogleClient(null, lane);
+}
+
+/**
+ * #4238 W1-2: the tracking-health key check for the Google upload lane. Resolves
+ * the client exactly as the sender does (an OAuth mint, cached by google.ts).
+ * google_not_provisioned = keys missing; any other refusal = the mint was
+ * rejected (revoked or expired refresh token). Never throws.
+ */
+export async function probeGoogleUploadClient(
+  lane: Lane,
+): Promise<"ok" | "not_configured" | "auth_failed"> {
+  try {
+    await realResolveClient(lane);
+    return "ok";
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "";
+    return detail === "google_not_provisioned" ? "not_configured" : "auth_failed";
+  }
 }
 
 /** Real default: resolve a Google client from a connection row (used by provisioning). */
@@ -138,20 +171,27 @@ export function formatGoogleConversionDateTime(eventTimeMs: number): string {
   return `${iso.slice(0, 19).replace("T", " ")}+00:00`; // 2027-01-18 10:30:00+00:00
 }
 
-/** Enhanced-Conversions identifiers from the already-hashed PII (SC-9). */
+/**
+ * Enhanced-Conversions identifiers from the already-hashed PII (SC-9).
+ * #4238 W5-1 (Step 0 Z6/Z7): Google wants the phone hashed in E.164 WITH the
+ * `+` and the email in its own normalisation (gmail dots / +suffix dropped).
+ * The digits-only phone hash (Meta/Snap) is never sent to Google: with no
+ * E.164 hash the phone is left out.
+ */
 function buildUserIdentifiers(
   input: ConversionSendInput,
 ): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
-  if (input.hashedEmail) {
+  const email = input.hashedEmailGoogle ?? input.hashedEmail;
+  if (email) {
     out.push({
-      hashedEmail: input.hashedEmail,
+      hashedEmail: email,
       userIdentifierSource: "FIRST_PARTY",
     });
   }
-  if (input.hashedPhone) {
+  if (input.hashedPhoneE164) {
     out.push({
-      hashedPhoneNumber: input.hashedPhone,
+      hashedPhoneNumber: input.hashedPhoneE164,
       userIdentifierSource: "FIRST_PARTY",
     });
   }
@@ -168,14 +208,25 @@ function buildConsent(conn: SenderConnection): Record<string, unknown> | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+/**
+ * #4238 W2-6 (I-4238-CLICK-ID-TYPED): the ClickConversion field for the click
+ * id's URL parameter. A legacy touch with no type was always a gclid.
+ */
+export function googleClickIdField(
+  type: string | null | undefined,
+): "gclid" | "gbraid" | "wbraid" {
+  return type === "gbraid" || type === "wbraid" ? type : "gclid";
+}
+
 /** Pure builder for one ClickConversion — testable without any network. */
 export function buildGoogleClickConversion(
   input: ConversionSendInput,
   conversionAction: string,
   conn: SenderConnection,
 ): Record<string, unknown> {
+  const clickField = googleClickIdField(input.externalClickIdType);
   const conversion: Record<string, unknown> = {
-    gclid: input.externalClickId?.trim(),
+    [clickField]: input.externalClickId?.trim(),
     conversionAction,
     conversionDateTime: formatGoogleConversionDateTime(input.eventTimeMs),
     orderId: input.eventId, // Mingla order/reservation id — the cross-side dedup key.
@@ -185,7 +236,12 @@ export function buildGoogleClickConversion(
     conversion.conversionValue = value;
     if (input.currency) conversion.currencyCode = input.currency;
   }
-  const userIdentifiers = buildUserIdentifiers(input);
+  // Step 0 Z7: with gbraid or wbraid and no gclid, Google ignores
+  // userIdentifiers (and refuses customVariables / cartData, which this
+  // builder never sends), so they are left off a braid conversion.
+  const userIdentifiers = clickField === "gclid"
+    ? buildUserIdentifiers(input)
+    : [];
   if (userIdentifiers.length > 0) conversion.userIdentifiers = userIdentifiers;
   const consent = buildConsent(conn);
   if (consent) conversion.consent = consent;
@@ -207,10 +263,10 @@ export async function sendGoogleConversion(
 
   const conversionAction = conn.conversionActionResource?.trim();
   if (!conversionAction) {
-    // PENDING-CONFIG (mirror reddit SC-12): the conversion action has not been
-    // provisioned yet (the admin one-shot) — skip softly, NEVER error, so the
-    // lane stays green until admin-ad-google-provision-conversion has run.
-    return { channel, status: "skipped", reason: "pending_config" };
+    // PENDING-CONFIG: the conversion action has not been provisioned yet (the
+    // admin one-shot). #4238 W1-2: failed, so the retry lane and the
+    // tracking-health alert see it. Never throws.
+    return { channel, status: "failed", reason: "pending_config" };
   }
 
   const gclid = input.externalClickId?.trim();
@@ -218,19 +274,21 @@ export async function sendGoogleConversion(
     // Fail-open: no google click id on the attributed touch → nothing to anchor
     // the click conversion on. The userIdentifiers ride ALONGSIDE the gclid to
     // improve matching; a truly gclid-less conversion is skipped per contract.
-    return { channel, status: "skipped", reason: "no_gclid" };
+    // #4238 W1-2: renamed from no_gclid (it will also cover gbraid/wbraid).
+    return { channel, status: "skipped", reason: "no_google_click" };
   }
 
   const lane: Lane = conn.lane ?? "consumer";
   let client: GoogleClient;
   try {
     const resolveClient = deps.resolveClient ?? realResolveClient;
-    client = await resolveClient(lane);
+    client = onConversionApiVersion(await resolveClient(lane));
   } catch {
     // resolveGoogleClient fail-closes (AdNotConnectedError) when the lane's
     // Google secrets are unset. For THIS post-paid, off-critical-path send that
-    // is a soft skip — the connect flow owns the hard 409/424, never this sender.
-    return { channel, status: "skipped", reason: "pending_config" };
+    // is a config failure (#4238 W1-2: failed, retried, alerted) — the connect
+    // flow owns the hard 409/424, never this sender.
+    return { channel, status: "failed", reason: "pending_config" };
   }
 
   const request = deps.requestImpl ?? realRequest;
@@ -279,6 +337,13 @@ export interface GoogleConversionActionProvisionResult {
   validated: boolean;
   /** Google request id — what Google support asks for; audit-bound. */
   requestId: string | null;
+  /** #4238 W5-1: the kind created. */
+  kind?: GoogleConversionKind;
+  /**
+   * #4238 W5-1: the primary_for_goal=false update for a secondary kind —
+   * "updated", "failed", "not_needed" (purchase) or "skipped_validate_only".
+   */
+  secondaryUpdate?: "updated" | "failed" | "not_needed" | "skipped_validate_only";
 }
 
 /** Clamp the click-through lookback to Google's supported 1..90 day range. */
@@ -289,15 +354,59 @@ function clampAttributionWindow(days?: number): number {
   return Math.min(90, Math.max(1, Math.round(days)));
 }
 
+/**
+ * #4238 W5-1 (I-4238-GOOGLE-ACTION-PER-KIND, Step 0 Z8): one conversion action
+ * per kind. Only the purchase action is primary for its goal; the others are
+ * created and then updated to primary_for_goal=false (Z8: the field is a plain
+ * bool that defaults to true, so it is set by an update after create).
+ */
+export const GOOGLE_CONVERSION_KINDS: Record<
+  GoogleConversionKind,
+  { category: string; name: string; primary: boolean }
+> = {
+  purchase: {
+    category: "PURCHASE",
+    name: "Mingla Purchase (server upload)",
+    primary: true,
+  },
+  free_signup: {
+    category: "SIGNUP",
+    name: "Mingla Free ticket sign-up (server upload)",
+    primary: false,
+  },
+  host_lead: {
+    category: "SUBMIT_LEAD_FORM",
+    name: "Mingla Host lead (server upload)",
+    primary: false,
+  },
+  host_signup: {
+    category: "SIGNUP",
+    name: "Mingla Host sign-up (server upload)",
+    primary: false,
+  },
+};
+
+export function isGoogleConversionKind(
+  value: unknown,
+): value is GoogleConversionKind {
+  return typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(GOOGLE_CONVERSION_KINDS, value);
+}
+
 /** Pure builder for the conversionActions:mutate create operation — testable. */
 export function buildConversionActionCreateOperation(
-  opts: { name?: string; attributionWindowDays?: number } = {},
+  opts: {
+    name?: string;
+    attributionWindowDays?: number;
+    kind?: GoogleConversionKind;
+  } = {},
 ): Record<string, unknown> {
-  const name = opts.name?.trim() || "Mingla Purchase (server upload)";
+  const kind = GOOGLE_CONVERSION_KINDS[opts.kind ?? "purchase"];
+  const name = opts.name?.trim() || kind.name;
   return {
     create: {
       name,
-      category: "PURCHASE",
+      category: kind.category,
       type: "UPLOAD_CLICKS",
       status: "ENABLED",
       countingType: "ONE_PER_CLICK",
@@ -310,6 +419,19 @@ export function buildConversionActionCreateOperation(
         alwaysUseDefaultValue: false,
       },
     },
+  };
+}
+
+/**
+ * #4238 W5-1 (Step 0 Z8): the follow-up update that makes a secondary action
+ * not primary for its goal. It is never part of the create operation.
+ */
+export function buildConversionActionSecondaryUpdateOperation(
+  resourceName: string,
+): Record<string, unknown> {
+  return {
+    update: { resourceName, primaryForGoal: false },
+    updateMask: "primaryForGoal",
   };
 }
 
@@ -346,6 +468,8 @@ export async function provisionGoogleConversionAction(
     validateOnly?: boolean;
     name?: string;
     attributionWindowDays?: number;
+    /** #4238 W5-1: which conversion action to create (default purchase). */
+    kind?: GoogleConversionKind;
     resolveClient?: (
       conn: AdConnectionRow | null,
       lane?: Lane,
@@ -356,25 +480,57 @@ export async function provisionGoogleConversionAction(
   const lane: Lane = conn?.lane ?? opts.lane ?? "consumer";
   const resolveClient = opts.resolveClient ?? realResolveClientForConn;
   const request = opts.requestImpl ?? realRequest;
-  const client = await resolveClient(conn ?? null, lane);
+  const client = onConversionApiVersion(
+    await resolveClient(conn ?? null, lane),
+  );
+  const kind: GoogleConversionKind = opts.kind ?? "purchase";
   const body = {
     operations: [
       buildConversionActionCreateOperation({
         name: opts.name,
         attributionWindowDays: opts.attributionWindowDays,
+        kind,
       }),
     ],
     partialFailure: false,
     validateOnly: opts.validateOnly === true,
   };
-  const { payload, requestId } = await request(
-    client,
-    `customers/${client.customerId}/conversionActions:mutate`,
-    body,
-  );
+  const path = `customers/${client.customerId}/conversionActions:mutate`;
+  const { payload, requestId } = await request(client, path, body);
+  const resourceName = parseConversionActionResourceName(payload);
+  let secondaryUpdate: GoogleConversionActionProvisionResult[
+    "secondaryUpdate"
+  ] = "not_needed";
+  if (!GOOGLE_CONVERSION_KINDS[kind].primary) {
+    if (opts.validateOnly === true) {
+      secondaryUpdate = "skipped_validate_only";
+    } else if (resourceName) {
+      try {
+        await request(client, path, {
+          operations: [
+            buildConversionActionSecondaryUpdateOperation(resourceName),
+          ],
+          partialFailure: false,
+        });
+        secondaryUpdate = "updated";
+      } catch (err) {
+        // The action exists; only its goal role is unset. Loud, never thrown:
+        // the caller stores the resource and reports the failed update.
+        console.error(
+          "[googleConversionUpload] primary_for_goal=false update failed:",
+          err instanceof Error ? err.message : String(err),
+        );
+        secondaryUpdate = "failed";
+      }
+    } else {
+      secondaryUpdate = "failed";
+    }
+  }
   return {
-    resourceName: parseConversionActionResourceName(payload),
+    resourceName,
     validated: opts.validateOnly === true,
     requestId,
+    kind,
+    secondaryUpdate,
   };
 }

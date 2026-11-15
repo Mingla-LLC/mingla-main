@@ -50,7 +50,9 @@ test('Content-Security-Policy: enforced script-src allowlist, frame-ancestors ke
   assert.match(config, /\{ key: 'Content-Security-Policy', value: csp\.enforced \}/)
   assert.match(config, /\{ key: 'Content-Security-Policy-Report-Only', value: csp\.reportOnly \}/)
   const scriptSrc = /const CSP_SCRIPT_SRC = \[([\s\S]*?)\]/.exec(config)[1].match(/'[^']+'|"[^"]+"/g).map((s) => s.slice(1, -1))
-  assert.deepEqual(scriptSrc, ["'self'", "'unsafe-inline'", 'https://www.googletagmanager.com', 'https://*.googletagmanager.com', 'https://us-assets.i.posthog.com'])
+  // #4238 W3-1 added the four ad pixels' script origins (loaded only while ads
+  // are on; lib/__tests__/issue-4238-marketing-pixels.implementor.test.mjs).
+  assert.deepEqual(scriptSrc, ["'self'", "'unsafe-inline'", 'https://www.googletagmanager.com', 'https://*.googletagmanager.com', 'https://us-assets.i.posthog.com', 'https://connect.facebook.net', 'https://analytics.tiktok.com', 'https://sc-static.net', 'https://www.redditstatic.com'])
   // 'unsafe-eval' is added for `next dev` only, never for a production build.
   assert.match(config, /const CSP_DEV_SCRIPT_SRC = process\.env\.NODE_ENV === 'production' \? '' : " 'unsafe-eval'"/)
   for (const directive of ["\"frame-ancestors 'self'\"", "\"object-src 'none'\"", "\"base-uri 'self'\"", "\"form-action 'self'\""]) assert.ok(config.includes(directive), directive)

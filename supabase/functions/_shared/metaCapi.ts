@@ -68,13 +68,13 @@ export async function sendMetaConversion(
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const pixelId = conn.pixelId?.trim();
-  if (!pixelId) return { channel: "meta", status: "skipped", reason: "no_pixel" };
+  if (!pixelId) return { channel: "meta", status: "failed", reason: "no_pixel" };
 
   const tokenName = conn.tokenEnvVar?.trim();
-  if (!tokenName) return { channel: "meta", status: "skipped", reason: "no_token_name" };
+  if (!tokenName) return { channel: "meta", status: "failed", reason: "no_token_name" };
   const token = getToken(tokenName);
   if (!token || !token.trim()) {
-    return { channel: "meta", status: "skipped", reason: "no_token" };
+    return { channel: "meta", status: "failed", reason: "no_token" };
   }
 
   const userData = definedOnly({

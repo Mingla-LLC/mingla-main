@@ -24,6 +24,8 @@ function input(eventName = "Purchase"): ConversionSendInput {
     eventSourceUrl: "https://usemingla.com/e/brand/event",
     hashedEmail: "hashed-email",
     hashedPhone: "hashed-phone",
+    // #4238 P2-1: TikTok takes the E.164-with-`+` hash (Step 0 Z6).
+    hashedPhoneE164: "hashed-phone-e164",
     fbc: "fb.1.1.click",
     fbp: "fb.1.1.browser",
     externalId: "hashed-buyer-id",
@@ -83,7 +85,7 @@ Deno.test("#3697 TikTok CAPI carries event, brand, _ttp and external buyer id", 
   const event = (wire.sent().data as Record<string, unknown>[])[0];
   assertEquals(event.user, {
     email: "hashed-email",
-    phone: "hashed-phone",
+    phone: "hashed-phone-e164",
     ttclid: "platform-click",
     external_id: "hashed-buyer-id",
     ttp: "tiktok-cookie",

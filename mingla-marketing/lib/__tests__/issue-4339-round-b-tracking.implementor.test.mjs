@@ -118,20 +118,25 @@ test('9. campaign pass-through: OneLink af_sub1–3 and host web utm_*, ads-gate
   const links = await loader.load('lib/links-src.ts')
   const stores = await loader.load('lib/store-links.ts')
   const campaign = lc.parseLandingCampaign('?utm_source=google&utm_medium=cpc&utm_campaign=ng_events&gclid=Cj0abc&email=a@b.c')
-  assert.deepEqual(campaign, { utm: { utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'ng_events' }, clickId: 'Cj0abc' })
+  // #4238 W3-2: the click id keeps its network's parameter name.
+  assert.deepEqual(campaign, { utm: { utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'ng_events' }, clickId: { key: 'gclid', value: 'Cj0abc' }, firstPartyClickId: null })
   const hrefs = handoff.appHandoffHrefs('host', links.siteAttribution('business_hero'))
   const out = handoff.withLandingCampaign(hrefs, campaign)
   const phone = new URL(out.phoneHref)
   assert.ok(out.phoneHref.startsWith(stores.BUSINESS_ONELINK_URL))
-  assert.equal(phone.searchParams.get('af_sub1'), 'ng_events')
+  // #4238 W3-2: af_sub1 is marked as a campaign (cmp:), af_sub3 names the click id's network.
+  assert.equal(phone.searchParams.get('af_sub1'), 'cmp:ng_events')
   assert.equal(phone.searchParams.get('af_sub2'), 'google')
-  assert.equal(phone.searchParams.get('af_sub3'), 'Cj0abc')
+  assert.equal(phone.searchParams.get('af_sub3'), 'gclid:Cj0abc')
   assert.equal(phone.searchParams.get('pid'), 'mingla_web', 'attribution kept')
   const web = new URL(out.computerHref)
   assert.ok(out.computerHref.startsWith(stores.BUSINESS_WEB_URL))
   assert.equal(web.searchParams.get('utm_campaign'), 'ng_events')
   assert.equal(web.searchParams.get('utm_source'), 'google')
-  assert.equal(web.searchParams.get('gclid'), null, 'click ids never go to host web')
+  // #4238 W3-2 reversed this: host web now gets the click id under its own name
+  // (and mc_click when a first-party touch exists), so its own pixels and
+  // touch see the ad click (issue-4238-click-id-names.implementor.test.mjs).
+  assert.equal(web.searchParams.get('gclid'), 'Cj0abc', 'the click id goes to host web under its own name')
   assert.deepEqual(out.stores, hrefs.stores, 'store listings untouched')
   // Explorer: /download is not touched; no campaign leaves the URLs as they were.
   const explorer = handoff.appHandoffHrefs('explorer', links.siteAttribution('explorer_nav'))

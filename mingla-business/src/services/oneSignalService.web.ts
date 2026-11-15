@@ -74,3 +74,8 @@ export function onNotificationClicked(
 ): () => void {
   return (): void => {};
 }
+
+// #4238 W6-5 — no push token on web; the listener is never called.
+export function onPushSubscriptionToken(
+  _listener: (token: string | null) => void,
+): void {}

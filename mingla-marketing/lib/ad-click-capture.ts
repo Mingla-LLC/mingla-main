@@ -14,8 +14,7 @@ import {
   MARKETING_BRAND_SLUG,
   marketingSlugFromPathname,
 } from '@/lib/ad-marketing-routes'
-
-const AD_CLICK_KEY = 'mingla_ad_click_v1'
+import { AD_CLICK_KEY, parseClickId, type ClickIdKey } from '@/lib/landing-campaign'
 const ATTR_TIMEOUT_MS = 2500
 
 function functionsBase(): string | null {
@@ -78,6 +77,16 @@ async function postCapture(body: Record<string, unknown>): Promise<string | null
   }
 }
 
+const CLICK_ID_NETWORK: Readonly<Record<ClickIdKey, string>> = {
+  fbclid: 'meta',
+  ttclid: 'tiktok',
+  sccid: 'snapchat',
+  rdt_cid: 'reddit',
+  gclid: 'google',
+  gbraid: 'google',
+  wbraid: 'google',
+}
+
 export function captureMarketingAdClickIds(): void {
   if (typeof window === 'undefined') return
   const existingClickId = storedClickId()
@@ -106,11 +115,10 @@ export function captureMarketingAdClickIds(): void {
   }
   try {
     const params = new URLSearchParams(window.location.search)
-    const fbclid = params.get('fbclid')
-    const ttclid = params.get('ttclid')
-    const sccid = params.get('sccid') ?? params.get('ScCid')
-    const gclid = params.get('gclid')
-    const rdtCid = params.get('rdt_cid')
+    // #4238 W2-6 / W3-2 (I-4238-CLICK-ID-KEEPS-NETWORK): one click id, by host
+    // web's precedence, with its own network and parameter name (gbraid and
+    // wbraid are Google clicks that are never uploaded as a gclid).
+    const click = parseClickId(params)
     const mcId = params.get('mc_id')
     const afCId = params.get('af_c_id') ?? params.get('c_id')
     const utm: Record<string, string> = {}
@@ -124,7 +132,7 @@ export function captureMarketingAdClickIds(): void {
       const v = params.get(k)
       if (v) utm[k] = v
     }
-    const external = fbclid ?? ttclid ?? sccid ?? gclid ?? rdtCid ?? null
+    const external = click?.value ?? null
     if (
       external === null &&
       mcId === null &&
@@ -133,17 +141,7 @@ export function captureMarketingAdClickIds(): void {
     ) {
       return
     }
-    const network = fbclid
-      ? 'meta'
-      : ttclid
-        ? 'tiktok'
-        : sccid
-          ? 'snapchat'
-          : rdtCid
-            ? 'reddit'
-            : gclid
-              ? 'google'
-              : 'other'
+    const network = click ? CLICK_ID_NETWORK[click.key] : 'other'
     const consentState = 'granted'
     const marketingSlug = marketingSlugFromPathname(window.location.pathname)
     void postCapture({
@@ -152,6 +150,7 @@ export function captureMarketingAdClickIds(): void {
       lane: 'business',
       network,
       external_click_id: external,
+      external_click_id_type: click?.key ?? null,
       mc_id: mcId,
       af_c_id: afCId,
       utm,

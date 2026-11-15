@@ -5,8 +5,8 @@
  *   • each sender's WIRE SHAPE (endpoint / fields / hashing / shared event_id),
  *   • FAIL-OPEN (a 500 / timeout is absorbed, a status is recorded, the caller
  *     is never thrown at) — RT-1,
- *   • Reddit PENDING-CONFIG skip (token unset → 'skipped'/'pending_config',
- *     never an error) — SC-12,
+ *   • Reddit PENDING-CONFIG (token unset → 'failed'/'pending_config' since
+ *     #4238 W1-2, never a throw) — SC-12,
  *   • the shared fire hook is IDEMPOTENT (one event → one send per channel; a
  *     replay with all-sent statuses re-sends nothing) — RT-2 / SC-3,
  *   • the DEDUP CONTRACT (the shared event_id reaches every sender) — SC-15,
@@ -100,11 +100,15 @@ Deno.test("metaCapi: FAIL-OPEN — a 500 is absorbed as 'failed', never thrown (
   assertEquals(res.httpStatus, 500);
 });
 
-Deno.test("metaCapi: skipped when the pixel id or token is absent (never errors)", async () => {
+// #4238 W1-2: a missing pixel or token is `failed` (retried + alerted), never
+// a silent `skipped`. It still never throws.
+Deno.test("metaCapi: failed when the pixel id or token is absent (never errors)", async () => {
   const noPixel = await sendMetaConversion(baseInput(), { pixelId: null, tokenEnvVar: "T" }, { getToken: () => "tok" });
-  assertEquals(noPixel.status, "skipped");
+  assertEquals(noPixel.status, "failed");
+  assertEquals(noPixel.reason, "no_pixel");
   const noToken = await sendMetaConversion(baseInput(), { pixelId: "px", tokenEnvVar: "T" }, { getToken: () => undefined });
-  assertEquals(noToken.status, "skipped");
+  assertEquals(noToken.status, "failed");
+  assertEquals(noToken.reason, "no_token");
 });
 
 // ── TikTok sender ─────────────────────────────────────────────────────────────
@@ -150,32 +154,36 @@ Deno.test("snapCapi: endpoint w/ pixel + access_token query, client_dedup_id == 
 
 // ── Reddit sender — PENDING-CONFIG (SC-12) ────────────────────────────────────
 
-Deno.test("redditCapi: token UNSET → skipped 'pending_config' (never errors, never blocks) — SC-12", async () => {
+// #4238 W1-2: an unset Reddit token is `failed / pending_config` (loud, retried).
+Deno.test("redditCapi: token UNSET → failed 'pending_config' (never errors, never blocks) — SC-12", async () => {
   const { fn, calls } = stubFetch(200);
   const res = await sendRedditConversion(baseInput({ eventName: "Purchase" }), {
     pixelId: "a2_jcfwvnfcfqcs",
     tokenEnvVar: "REDDIT_ADS_CAPI_TOKEN",
   }, { fetchImpl: fn, getToken: () => undefined }); // token not provisioned
-  assertEquals(res.status, "skipped");
+  assertEquals(res.status, "failed");
   assertEquals(res.reason, "pending_config");
   assertEquals(calls.length, 0); // no network attempted while pending
 });
 
-Deno.test("redditCapi: with a token it POSTs to the v2.0 conversions endpoint with the shared conversion_id", async () => {
+// #4238 (Step 0 Z5): v2.0 is deprecated; the sender moved to CAPI v3. The
+// ORCH-1405 400 ("unknown field events") on the v3 path came from posting the
+// v2 body there; v3 wants { data: { events } }. Rewritten for the v3 contract.
+Deno.test("redditCapi: with a token it POSTs to the CAPI v3 pixel endpoint with the shared conversion_id", async () => {
   const { fn, calls } = stubFetch(200, { data: { message: "Successfully processed 1 conversion events." } });
   const res = await sendRedditConversion(baseInput({ eventName: "Purchase" }), {
     pixelId: "a2_jcfwvnfcfqcs",
     tokenEnvVar: "REDDIT_ADS_CAPI_TOKEN",
   }, { fetchImpl: fn, getToken: () => "rtok" });
   assertEquals(res.status, "sent");
-  // ORCH-1405: account-scoped v2.0 endpoint (pixelId == account id). The v3
-  // /pixels/{id}/conversion_events path is rejected by Reddit (400) — proven by live fire.
-  assert(calls[0].url.includes("ads-api.reddit.com/api/v2.0/conversions/events/a2_jcfwvnfcfqcs"));
-  assert(!calls[0].url.includes("/pixels/"), "must NOT use the rejected v3 /pixels path");
+  assertEquals(
+    calls[0].url,
+    "https://ads-api.reddit.com/api/v3/pixels/a2_jcfwvnfcfqcs/conversion_events",
+  );
   assertEquals((calls[0].init.headers as Record<string, string>).Authorization, "Bearer rtok");
   const sent = JSON.parse(String(calls[0].init.body));
-  assertEquals(sent.events[0].event_metadata.conversion_id, EVENT_ID);
-  assertEquals(sent.events[0].event_type.tracking_type, "Purchase"); // tracking_type body (accepted by v2.0)
+  assertEquals(sent.data.events[0].metadata.conversion_id, EVENT_ID);
+  assertEquals(sent.data.events[0].type.tracking_type, "PURCHASE");
 });
 
 // ── ORCH-1405: consolidated CAPI-token resolver (100-secret-cap fix) ───────────

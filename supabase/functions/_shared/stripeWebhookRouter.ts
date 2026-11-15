@@ -29,6 +29,8 @@ import {
 // ISSUE-865 WP-B — the single post-finalize ad-conversion hook (CAPI fan-out,
 // deduped with the browser pixel on the shared event_id; idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
+// #4238 W3-5: the host first-sale signals, shared with the Paystack finalize.
+import { fireHostFirstTicketSold } from "./hostFirstSale.ts";
 // #3682 — auto-follow brand after signed-in purchase (fail-open).
 import { autoFollowBrandBestEffort } from "./autoFollowBrand.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
@@ -73,6 +75,7 @@ import {
 import {
   claimBrandMilestone,
   postAppsFlyerS2SEvent,
+  hostMoneyEventValues,
   resolveBrandOwnerUserId,
 } from "./appsFlyerS2S.ts";
 import {
@@ -969,11 +972,12 @@ async function handlePayout(
             supabase,
             userId: ownerUserId,
             eventName: "mingla_first_payout",
+            // #4238 W6-2: a payout is the host's money — plain values only.
             eventValues: {
-              af_revenue: Math.round(amountCents) / 100,
-              af_currency: currency,
               brand_id: brandId,
               stripe_payout_id: payoutId,
+              provider: "stripe",
+              ...hostMoneyEventValues("payout", amountCents, currency),
             },
           });
         }
@@ -2110,7 +2114,22 @@ async function handleTicketCheckoutPaymentIntent(
     // suspenders try/catch: the helper already never throws.
     try {
       if (orderId) {
-        await fireAdConversion(supabase as never, { orderId, surface: "web" });
+        // #4238 W1-5: event_time is when Stripe recorded the payment (the
+        // event's created second), else the PaymentIntent's; never send time.
+        const eventCreated = (event as { created?: unknown }).created;
+        const piCreated = paymentIntent.created;
+        const paidSeconds = typeof eventCreated === "number"
+          ? eventCreated
+          : typeof piCreated === "number"
+          ? piCreated
+          : NaN;
+        // #4238 W4-1: a native (Explorer app) order posts af_purchase to
+        // AppsFlyer from here; this function already holds the S2S secrets.
+        await fireAdConversion(supabase as never, {
+          orderId,
+          surface: "web",
+          eventTimeMs: Number.isFinite(paidSeconds) ? paidSeconds * 1000 : null,
+        }, { postAppsFlyer: postAppsFlyerS2SEvent });
       }
     } catch (adConvErr) {
       console.warn(
@@ -2134,42 +2153,26 @@ async function handleTicketCheckoutPaymentIntent(
       );
     }
 
-    // ORCH-0808 — AppsFlyer S2S: fire af_purchase exactly once per brand
-    // for the FIRST ticket sale. Idempotent via brand_appsflyer_milestones.
-    // Never propagates failure to Stripe (the helper swallows + logs).
+    // ORCH-0808 — the host's FIRST ticket sale, exactly once per brand
+    // (brand_appsflyer_milestones). #4238 W3-5
+    // (I-4238-FIRST-SALE-BOTH-PROVIDERS): one helper for Stripe and Paystack — true-first guard, the
+    // AppsFlyer mingla_host_first_sale post (W6-2: plain values, never
+    // revenue; this function holds the S2S secrets, so it posts now) and the
+    // host_first_sale ad conversion. Never propagates failure to Stripe.
     try {
-      const brandId = session.brand_id as string | null;
-      if (brandId) {
-        const isFirst = await claimBrandMilestone(
-          supabase,
-          brandId,
-          "first_ticket_sold_at",
-        );
-        if (isFirst) {
-          const ownerUserId = await resolveBrandOwnerUserId(supabase, brandId);
-          if (ownerUserId) {
-            const amountCents = Number(paymentIntent.amount ?? 0);
-            const currency = char3(paymentIntent.currency, "USD");
-            const revenue = Math.round(amountCents) / 100;
-            await postAppsFlyerS2SEvent({
-              supabase,
-              userId: ownerUserId,
-              eventName: "af_purchase",
-              eventValues: {
-                af_revenue: revenue,
-                af_currency: currency,
-                brand_id: brandId,
-                milestone: "first_ticket_sold",
-              },
-            });
-          }
-        }
-      }
+      const eventCreated = (event as { created?: unknown }).created;
+      await fireHostFirstTicketSold(supabase as never, {
+        brandId: session.brand_id as string | null,
+        orderId,
+        amountCents: Number(paymentIntent.amount ?? 0),
+        currency: char3(paymentIntent.currency, "USD"),
+        provider: "stripe",
+        eventTimeMs: typeof eventCreated === "number" ? eventCreated * 1000 : null,
+      }, { postAppsFlyer: postAppsFlyerS2SEvent });
     } catch (afError) {
-      // Belt-and-suspenders: helper already never throws, but if anything
-      // wraps it (e.g. lookup throws unexpectedly), do not propagate.
+      // Belt-and-suspenders: the helper already never throws.
       console.warn(
-        "[stripe-webhook] AppsFlyer first-ticket S2S threw:",
+        "[stripe-webhook] host first-sale signal threw:",
         afError instanceof Error ? afError.message : String(afError),
       );
     }

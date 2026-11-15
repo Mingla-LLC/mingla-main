@@ -29,6 +29,11 @@ import {
   autoFollowBrandBestEffort,
   rsvpStatusAutoFollows,
 } from "../_shared/autoFollowBrand.ts";
+import {
+  fireRsvpAdConversion,
+  parseRsvpAdContext,
+  scheduleRsvpAdConversion,
+} from "./rsvpAdConversion.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,6 +60,8 @@ interface SubmitRsvpRequest {
   // ORCH-1163 [rsvp-shared-body] — one CONTACT record per plus-one (name/email/
   // phone), NOT a count. Length must match plusCount for going/maybe.
   guests?: RsvpGuestInput[];
+  // #4238 W2-5 — the web browser's ad match keys + click id (web only).
+  ad_context?: unknown;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -136,6 +143,7 @@ serve(async (req: Request): Promise<Response> => {
         "rsvpStatus",
         "plusCount",
         "guests",
+        "ad_context",
       ].includes(key)
     )
   ) {
@@ -505,6 +513,19 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
   }
+
+  // #4238 W2-5 (I-4238-RSVP-CONVERSION-PAIRED): a going / waitlisted web RSVP
+  // is a free sign-up on the ad platforms, event_id = the RSVP id. After the
+  // commit, never blocking it; bounded when waitUntil is unavailable.
+  await scheduleRsvpAdConversion(
+    // `as never`: the dual @supabase/supabase-js type graph, as every other
+    // fireAdConversion caller does (ticket-checkout-confirm, venue-reservation-confirm).
+    fireRsvpAdConversion(admin as never, {
+      rsvpId: result.rsvpId,
+      status: result.status ?? rsvpStatus,
+      adContext: parseRsvpAdContext(body.ad_context, req),
+    }),
+  );
 
   if (typeof result.rsvpId === "string") {
     // Drain the acknowledgement rows as well as pass rows. Delivery remains

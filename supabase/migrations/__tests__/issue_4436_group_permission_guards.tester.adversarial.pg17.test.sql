@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4436 migration 20280708014436: independent coverage of the group write
+-- #4436 migration 20280708044436: independent coverage of the group write
 -- guards on session_participants and collaboration_sessions, from angles the
 -- implementor suite does not take. Everything is rolled back.
 --

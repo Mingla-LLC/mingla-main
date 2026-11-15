@@ -268,6 +268,38 @@ export const isPublicBuyerRoute = (
 };
 
 /**
+ * #4238 W2-4 (I-4238-NO-BUYER-PIXEL-ON-HOST-ROUTES) — the routes where buyer ad
+ * pixels may boot and fire PageView / ViewContent.
+ *
+ * It reads PUBLIC_BUYER_ROUTE_PREFIXES (never edits it) and leaves out the
+ * account-service pages that are not shopping:
+ *   /refund/  (guest refund recovery)
+ *   /booking/ (cancel from email)
+ *   /m/       (signed-out enquiry thread)
+ *   /pay/     (instalment pay / approve link)
+ * Everything else on host.usemingla.com (the dashboard, `/`, `/events`,
+ * `/account`, `/team`, sign-in) is not a pixel route, so hosts and staff never
+ * enter buyer audiences. Same segment-safe matching as isPublicBuyerRoute.
+ */
+const NON_SHOPPING_BUYER_ROUTE_PREFIXES: readonly string[] = [
+  "/refund/",
+  "/booking/",
+  "/m/",
+  "/pay/",
+];
+
+export const isAdPixelRoute = (
+  pathname: string | null | undefined,
+): boolean => {
+  if (!isPublicBuyerRoute(pathname)) return false;
+  const trimmed = (pathname as string).trim();
+  const normalized = trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+  return !NON_SHOPPING_BUYER_ROUTE_PREFIXES.some(
+    (prefix) => normalized === prefix.slice(0, -1) || normalized.startsWith(prefix),
+  );
+};
+
+/**
  * SELF-AUTHENTICATING STRIPE-CONNECT SELLER ROUTES — ORCH-1139.
  *
  * Exempt from the ORCH-1102 route-agnostic sign-in redirect. These are NOT

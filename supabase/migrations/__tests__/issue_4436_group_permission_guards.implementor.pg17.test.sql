@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4436 migration 20280708014436: guard who can change group membership and
+-- #4436 migration 20280708044436: guard who can change group membership and
 -- group settings (session_participants and collaboration_sessions), on the
 -- fully replayed PG17 schema. Everything is rolled back.
 --

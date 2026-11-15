@@ -29,6 +29,24 @@ const EXPECTED = {
     host: "developers.google.com",
     ids: ["cstr6suwn9.skadnetwork"],
   },
+  // #4238 W4-2 (Step 0 Z11, Seth-approved 14 Nov 2026): TikTok, Snap and Reddit
+  // publish no identifier first-party; these are pinned to the exact rows of
+  // AppsFlyer's SKAN integrated-partners list (the MMP Mingla attributes with).
+  tiktok: {
+    source: "https://support.appsflyer.com/hc/en-us/articles/360012640377-SKAN-integrated-partners-list",
+    host: "support.appsflyer.com",
+    ids: ["mj797d8u6f.skadnetwork", "22mmun2rn5.skadnetwork"],
+  },
+  snap: {
+    source: "https://support.appsflyer.com/hc/en-us/articles/360012640377-SKAN-integrated-partners-list",
+    host: "support.appsflyer.com",
+    ids: ["424m5254lk.skadnetwork"],
+  },
+  reddit: {
+    source: "https://support.appsflyer.com/hc/en-us/articles/360012640377-SKAN-integrated-partners-list",
+    host: "support.appsflyer.com",
+    ids: ["2tdux39lx8.skadnetwork"],
+  },
 };
 
 function readRoster() {
@@ -47,10 +65,10 @@ test("first-party evidence is exact, HTTPS, and one-to-one with every rostered i
   const seen = new Set();
   for (const [network, expected] of Object.entries(EXPECTED)) {
     const actual = roster[network];
-    assert.equal(actual.source, expected.source, `${network} must retain its reviewed first-party source`);
+    assert.equal(actual.source, expected.source, `${network} must retain its reviewed source`);
     const parsed = new URL(actual.source);
     assert.equal(parsed.protocol, "https:", `${network} source must use HTTPS`);
-    assert.equal(parsed.hostname, expected.host, `${network} source must stay on the first-party host`);
+    assert.equal(parsed.hostname, expected.host, `${network} source must stay on its reviewed host`);
     assert.deepEqual(Array.from(actual.ids), expected.ids, `${network} identifier roster changed`);
     for (const id of actual.ids) {
       assert.equal(seen.has(id), false, `${id} is attributed to more than one network`);

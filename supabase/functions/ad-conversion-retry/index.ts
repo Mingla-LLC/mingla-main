@@ -1,21 +1,31 @@
 // toward #3697: scheduled retry for server conversions and checkout-start
 // signals. It re-evaluates the latest touch consent and browser opt-out latch on
-// every attempt, and never retries anything older than 24 hours.
+// every attempt. Every failure is retried for 24 hours; #4238 W1-2: a missing
+// or rejected key (config/auth class) is retried for 72 hours, and every run
+// ends with the tracking-health pass (key presence, failures, daily probe,
+// alert email).
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
   AD_CONVERSION_RETRY_BATCH,
+  AD_CONVERSION_RETRY_WINDOW_MS,
   type AdConversionRetryRow,
+  RETRY_EVENT_TYPES,
+  configRetryWindowCutoff,
   conversionRetryInput,
-  failedStatusesToPending,
+  retryableChannels,
   retryGraceCutoff,
   retryWindowCutoff,
 } from "../_shared/adConversionRetry.ts";
+import { runAdTrackingHealth } from "../_shared/adTrackingHealth.ts";
 import {
   fireAdCheckoutStart,
   fireAdConversion,
 } from "../_shared/adConversionFire.ts";
+// #4238 W4-1: this run posts native (Explorer app) af_purchase events that a
+// caller without the AppsFlyer secrets left pending.
+import { postAppsFlyerS2SEvent } from "../_shared/appsFlyerS2S.ts";
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -38,16 +48,18 @@ serve(async (req) => {
   });
   const nowMs = Date.now();
   const windowStart = retryWindowCutoff(nowMs);
+  const configWindowStart = configRetryWindowCutoff(nowMs);
   const graceCutoff = retryGraceCutoff(nowMs);
 
   const { data: conversions, error: conversionQueryError } = await db
     .from("ad_conversions")
     .select(
-      "event_id,order_id,stay_group_id,event_type,surface,lane,updated_at,meta_capi_status,tiktok_events_status,snap_capi_status,reddit_capi_status,google_ads_status",
+      "event_id,order_id,stay_group_id,event_type,surface,lane,created_at,updated_at,provider_response,meta_capi_status,tiktok_events_status,snap_capi_status,reddit_capi_status,google_ads_status",
     )
-    .gte("created_at", windowStart)
+    .gte("created_at", configWindowStart)
     .lte("updated_at", graceCutoff)
-    .in("event_type", ["purchase", "reservation"])
+    // #4238 W3-3: host leads, sign-ups, first publishes and first sales too.
+    .in("event_type", [...RETRY_EVENT_TYPES])
     .or(
       "meta_capi_status.in.(pending,failed),tiktok_events_status.in.(pending,failed),snap_capi_status.in.(pending,failed),reddit_capi_status.in.(pending,failed),google_ads_status.in.(pending,failed)",
     )
@@ -60,7 +72,13 @@ serve(async (req) => {
   const conversionResults: Array<Record<string, unknown>> = [];
   for (const raw of conversions ?? []) {
     const row = raw as AdConversionRetryRow;
-    const failedPatch = failedStatusesToPending(row);
+    const failedPatch = retryableChannels(row, nowMs);
+    const createdMs = row.created_at ? Date.parse(row.created_at) : NaN;
+    const pastDefaultWindow = Number.isFinite(createdMs) &&
+      nowMs - createdMs > AD_CONVERSION_RETRY_WINDOW_MS;
+    // A row past 24 h is only re-fired for a config/auth channel; anything
+    // else on it (including a consent-pending lane) is left alone.
+    if (pastDefaultWindow && Object.keys(failedPatch).length === 0) continue;
     if (Object.keys(failedPatch).length > 0) {
       const { data: claimed, error: claimError } = await db
         .from("ad_conversions")
@@ -77,7 +95,9 @@ serve(async (req) => {
         continue;
       }
     }
-    const result = await fireAdConversion(db, conversionRetryInput(row));
+    const result = await fireAdConversion(db, conversionRetryInput(row), {
+      postAppsFlyer: postAppsFlyerS2SEvent,
+    });
     conversionResults.push({
       event_id: row.event_id,
       status: result.ok ? "evaluated" : "failed",
@@ -87,6 +107,49 @@ serve(async (req) => {
         status: item.status,
         reason: item.reason ?? null,
       })) ?? [],
+    });
+  }
+
+  // #4238 W4-1 (I-4238-NATIVE-PURCHASE-VIA-APPSFLYER): native purchases whose
+  // AppsFlyer post is still pending (and #4238 W3-5 host first sales). Their ad channels are already skipped, so
+  // the query above never selects them. The fire claims the post atomically.
+  const nativeBudget = Math.max(
+    0,
+    AD_CONVERSION_RETRY_BATCH - conversionResults.length,
+  );
+  const { data: nativeRows, error: nativeQueryError } = nativeBudget === 0
+    ? { data: [], error: null }
+    : await db
+      .from("ad_conversions")
+      .select(
+        "event_id,order_id,stay_group_id,event_type,surface,lane,created_at,updated_at",
+      )
+      .gte("created_at", configWindowStart)
+      .lte("updated_at", graceCutoff)
+      // #4238 W3-5: plus host first sales whose mingla_host_first_sale post
+      // was left pending by a caller without the AppsFlyer secrets (Paystack).
+      .or(
+        "and(event_type.eq.purchase,surface.in.(ios,android)),event_type.eq.host_first_sale",
+      )
+      .eq("appsflyer_status", "pending")
+      .order("updated_at", { ascending: true })
+      .limit(nativeBudget);
+  if (nativeQueryError) {
+    console.warn(
+      "[ad-conversion-retry] native AppsFlyer query failed:",
+      nativeQueryError.message,
+    );
+  }
+  for (const raw of nativeRows ?? []) {
+    const row = raw as AdConversionRetryRow;
+    const result = await fireAdConversion(db, conversionRetryInput(row), {
+      postAppsFlyer: postAppsFlyerS2SEvent,
+    });
+    conversionResults.push({
+      event_id: row.event_id,
+      status: result.ok ? "evaluated_native" : "failed",
+      reason: result.reason ?? null,
+      channels: [],
     });
   }
 
@@ -125,8 +188,16 @@ serve(async (req) => {
     });
   }
 
+  const health = await runAdTrackingHealth(db);
+
   return json({
     window_start: windowStart,
+    config_window_start: configWindowStart,
+    health: {
+      ok: health.ok,
+      reason: health.reason ?? null,
+      alerts: health.alerts,
+    },
     conversion_rows: conversionResults.length,
     checkout_start_rows: checkoutResults.length,
     conversions: conversionResults,

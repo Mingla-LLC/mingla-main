@@ -42,6 +42,12 @@ import {
 // ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
+// #4238 W3-3 (D7): a successful email unlock with the page's ad context is a
+// host lead (event_id lead:tool:<tool_leads.id>).
+import {
+  parseHostAdContext,
+  recordHostLead,
+} from "../_shared/hostFunnelConversion.ts";
 
 const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED, BRAND_BORDER } =
   SHELL_TOKENS;
@@ -1287,6 +1293,19 @@ export async function handler(req: Request): Promise<Response> {
       console.error("[growth-tools-gate] email save failed", gateErr.message);
       return json({ error: "server" }, 500);
     }
+
+    // #4238 W3-3: the email is captured, so this is the lead. Only with the
+    // page's ad context; never fails or delays the unlock past one sender
+    // timeout. The same row always yields the same event id (dedup).
+    const ad = parseHostAdContext(body.ad, req);
+    const leadEventId = ad
+      // `as never`: this function's supabase-js@2 graph differs from the
+      // shared module's pinned type (the pattern every fire caller uses).
+      ? await recordHostLead(supabase as never, {
+        subjectId: `tool:${runId as string}`,
+        ad,
+      })
+      : null;
     const reportPath = tool === "events"
       ? "/tools/events/report"
       : tool === "trips"
@@ -1437,7 +1456,10 @@ export async function handler(req: Request): Promise<Response> {
       );
     }
 
-    return json({ ok: true }, 200);
+    return json(
+      leadEventId ? { ok: true, lead_event_id: leadEventId } : { ok: true },
+      200,
+    );
   } catch (err) {
     console.error(
       "[growth-tools-gate] unexpected error",

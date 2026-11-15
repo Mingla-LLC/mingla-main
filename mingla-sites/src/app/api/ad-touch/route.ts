@@ -62,6 +62,13 @@ export async function POST(request: Request) {
       typeof input.external_click_id === "string"
         ? input.external_click_id
         : null;
+    // #4238 W3-6: the click id's URL parameter (gbraid / wbraid must never be
+    // uploaded as a gclid). attribution-capture keeps it only when it matches
+    // the network.
+    payload.external_click_id_type =
+      typeof input.external_click_id_type === "string"
+        ? input.external_click_id_type.slice(0, 16)
+        : null;
     payload.mc_id = typeof input.mc_id === "string" ? input.mc_id : null;
     payload.af_c_id = typeof input.af_c_id === "string" ? input.af_c_id : null;
     payload.utm =

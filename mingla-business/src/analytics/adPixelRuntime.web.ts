@@ -100,7 +100,7 @@ function createQueuedPixel(handlerKey: string, queueKey: string): QueuedPixel {
   return pixel;
 }
 
-function bootstrapMetaPixel(pixelId: string): void {
+function bootstrapMetaPixel(pixelId: string, pageView = true): void {
   const runtime = pixelWindow();
   if (runtime.fbq === undefined) {
     const queued = createQueuedPixel("callMethod", "queue");
@@ -121,11 +121,19 @@ function bootstrapMetaPixel(pixelId: string): void {
     "https://connect.facebook.net/en_US/fbevents.js",
     "meta",
   );
+  // #4238 (Wave 2 note; Meta's SPA guide, read 14 Nov 2026: setting
+  // fbq.disablePushState to true stops the automatic PageView on history
+  // changes). Each buyer page sends its own PageView (fireAdPageView), so the
+  // automatic one double-counted buyer routes and counted host dashboard
+  // routes. Set before init, as Meta's pixel pages show it.
+  if (runtime.fbq) {
+    (runtime.fbq as unknown as { disablePushState?: boolean }).disablePushState = true;
+  }
   runtime.fbq?.("init", pixelId);
-  runtime.fbq?.("track", "PageView");
+  if (pageView) runtime.fbq?.("track", "PageView");
 }
 
-function bootstrapTikTokPixel(pixelCode: string): void {
+function bootstrapTikTokPixel(pixelCode: string, pageView = true): void {
   const runtime = pixelWindow();
   runtime.TiktokAnalyticsObject = "ttq";
   const ttq = (runtime.ttq = runtime.ttq ?? {}) as unknown as {
@@ -191,10 +199,10 @@ function bootstrapTikTokPixel(pixelCode: string): void {
     );
   };
   ttq.load(pixelCode);
-  ttq.page();
+  if (pageView) ttq.page();
 }
 
-function bootstrapSnapPixel(pixelId: string): void {
+function bootstrapSnapPixel(pixelId: string, pageView = true): void {
   const runtime = pixelWindow();
   if (runtime.snaptr === undefined) {
     runtime.snaptr = createQueuedPixel(
@@ -204,10 +212,10 @@ function bootstrapSnapPixel(pixelId: string): void {
   }
   injectPixelScriptOnce("https://sc-static.net/scevent.min.js", "snap");
   runtime.snaptr?.("init", pixelId);
-  runtime.snaptr?.("track", "PAGE_VIEW");
+  if (pageView) runtime.snaptr?.("track", "PAGE_VIEW");
 }
 
-function bootstrapRedditPixel(pixelId: string): void {
+function bootstrapRedditPixel(pixelId: string, pageView = true): void {
   const runtime = pixelWindow();
   if (runtime.rdt === undefined) {
     runtime.rdt = createQueuedPixel(
@@ -217,23 +225,67 @@ function bootstrapRedditPixel(pixelId: string): void {
   }
   injectPixelScriptOnce("https://www.redditstatic.com/ads/pixel.js", "reddit");
   runtime.rdt?.("init", pixelId);
-  runtime.rdt?.("track", "PageVisit");
+  if (pageView) runtime.rdt?.("track", "PageVisit");
 }
 
-/** Bootstrap every configured provider once; one failure cannot block another. */
+type AdPixelProvider = keyof AdPixelIds;
+
+const PROVIDER_GLOBAL: Record<AdPixelProvider, "fbq" | "ttq" | "snaptr" | "rdt"> = {
+  meta: "fbq",
+  tiktok: "ttq",
+  snap: "snaptr",
+  reddit: "rdt",
+};
+
+const PROVIDER_BOOT: Record<
+  AdPixelProvider,
+  (id: string, pageView?: boolean) => void
+> = {
+  meta: bootstrapMetaPixel,
+  tiktok: bootstrapTikTokPixel,
+  snap: bootstrapSnapPixel,
+  reddit: bootstrapRedditPixel,
+};
+
+/** A provider is booted when its global or its `data-mingla-pixel` script exists. */
+function providerBooted(provider: AdPixelProvider): boolean {
+  if (pixelWindow()[PROVIDER_GLOBAL[provider]] !== undefined) return true;
+  return (
+    window.document.querySelector(`script[data-mingla-pixel="${provider}"]`) !==
+    null
+  );
+}
+
+/**
+ * #4238 W2-1: per-provider idempotent boot. A provider that is already booted
+ * (by this runtime or by the server-rendered page) is never booted again, so
+ * its PageView is never re-sent. One failure cannot block another.
+ */
+function bootMissingProviders(pixelIds: AdPixelIds, pageView = true): void {
+  for (const provider of Object.keys(PROVIDER_BOOT) as AdPixelProvider[]) {
+    const id = pixelIds[provider];
+    if (!id || providerBooted(provider)) continue;
+    safePixel(() => PROVIDER_BOOT[provider](id, pageView));
+  }
+}
+
+/** Bootstrap every configured provider that is not booted yet. */
 export function bootstrapAdPixels(pixelIds: AdPixelIds): void {
   const runtime = pixelWindow();
-  if (runtime.__minglaAdPixelsBootstrapped === true) return;
   runtime.__minglaAdPixelsBootstrapped = true;
-  if (pixelIds.meta)
-    safePixel(() => bootstrapMetaPixel(pixelIds.meta as string));
-  if (pixelIds.tiktok)
-    safePixel(() => bootstrapTikTokPixel(pixelIds.tiktok as string));
-  if (pixelIds.snap)
-    safePixel(() => bootstrapSnapPixel(pixelIds.snap as string));
-  if (pixelIds.reddit)
-    safePixel(() => bootstrapRedditPixel(pixelIds.reddit as string));
+  bootMissingProviders(pixelIds);
   markAdPageViewFired();
+}
+
+/**
+ * #4238 W2-1 (I-4238-SPA-PIXEL-RUNTIME-ALWAYS-LOADS): take over pixels a
+ * server-rendered page booted. Providers the page left out (for example
+ * Reddit on an older page config) are booted here; providers it booted are
+ * left alone, and the page's PageView for this URL is not re-sent.
+ */
+export function adoptBootedPixels(pixelIds: AdPixelIds): void {
+  pixelWindow().__minglaAdPixelsBootstrapped = true;
+  bootMissingProviders(pixelIds);
 }
 
 function definedProps(obj: Record<string, unknown>): Record<string, unknown> {
@@ -394,7 +446,9 @@ function fireAdConversion(
     runtime.rdt?.(
       "track",
       purchase ? "Purchase" : "SignUp",
-      definedProps({ value, currency, conversion_id: eventId }),
+      // #4238 W2-3 (I-4238-REDDIT-CONVERSIONID): Reddit's documented pixel
+      // dedup key is `conversionId`; it equals the server CAPI conversion_id.
+      definedProps({ value, currency, conversionId: eventId }),
     ),
   );
 }
@@ -489,4 +543,65 @@ export async function identifyAdBuyer(input: {
     phone_number: phone ? await sha256Browser(phone) : undefined,
   });
   if (Object.keys(payload).length > 0) safePixel(() => identify(payload));
+}
+
+// ── #4238 W3-3 / W3-4: host-funnel events on host web (no PageView) ─────────
+
+export type HostFunnelPixelKind = "host_signup_started" | "host_signup";
+
+/**
+ * The browser rows of the host-funnel catalogue. They MUST equal the same rows
+ * of supabase/functions/_shared/adEventCatalog.ts HOST_FUNNEL_EVENT_NAMES
+ * (issue_4238_event_catalog_parity.test.ts reads both files). null = that
+ * pixel gets nothing (Step 0 Z3: no Snap custom web event is used).
+ */
+export const HOST_FUNNEL_PIXEL_EVENTS: Record<
+  HostFunnelPixelKind,
+  { meta: string; tiktok: string; snap: string | null; reddit: string }
+> = {
+  host_signup_started: {
+    meta: "HostSignUpStarted",
+    tiktok: "HostSignUpStarted",
+    snap: null,
+    reddit: "HostSignUpStarted",
+  },
+  host_signup: {
+    meta: "HostSignUp",
+    tiktok: "HostSignUp",
+    snap: "SIGN_UP",
+    reddit: "HostSignUp",
+  },
+};
+
+/**
+ * Fire one host-funnel event on host web. A provider that is not booted yet is
+ * booted WITHOUT a PageView (host routes never send buyer PageViews, W2-4).
+ * Meta and TikTok get custom events, Reddit a Custom event; each carries the
+ * shared event id so the server twin deduplicates.
+ */
+export function fireHostFunnelPixel(
+  kind: HostFunnelPixelKind,
+  eventId: string,
+  pixelIds: AdPixelIds,
+): void {
+  if (!eventId) return;
+  bootMissingProviders(pixelIds, false);
+  const runtime = pixelWindow();
+  const names = HOST_FUNNEL_PIXEL_EVENTS[kind];
+  safePixel(() =>
+    runtime.fbq?.("trackCustom", names.meta, {}, { eventID: eventId }),
+  );
+  safePixel(() => runtime.ttq?.track?.(names.tiktok, {}, { event_id: eventId }));
+  if (names.snap !== null) {
+    const snapEvent = names.snap;
+    safePixel(() =>
+      runtime.snaptr?.("track", snapEvent, { client_dedup_id: eventId }),
+    );
+  }
+  safePixel(() =>
+    runtime.rdt?.("track", "Custom", {
+      customEventName: names.reddit,
+      conversionId: eventId,
+    }),
+  );
 }
