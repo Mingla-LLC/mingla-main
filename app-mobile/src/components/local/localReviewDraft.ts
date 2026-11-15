@@ -63,11 +63,13 @@ export function changesCardWords(
   month: { changes_due_at?: string | null },
   requests: string[] | null | undefined,
   now: Date,
+  /** Date AND time in the phone's own time: the caller passes formatInZone(value, null, now). */
+  formatDue: (value: string, now: Date) => string,
 ): ChangesWords {
   const due = month.changes_due_at ? new Date(month.changes_due_at) : null;
   const ended = Boolean(due && !Number.isNaN(due.getTime()) && now.getTime() > due.getTime());
   const list = (requests ?? []).map((r) => r.trim()).filter(Boolean);
-  const date = shortDate(month.changes_due_at, now);
+  const date = month.changes_due_at ? (formatDue(month.changes_due_at, now) || shortDate(month.changes_due_at, now)) : '';
   return {
     ended,
     line: ended ? 'The time to update this review has ended.' : date ? `Send your update by ${date}.` : 'Send your update soon.',
