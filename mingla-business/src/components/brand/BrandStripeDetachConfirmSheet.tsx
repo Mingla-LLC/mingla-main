@@ -25,13 +25,10 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useBrandStripeDetach } from "../../hooks/useBrandStripeDetach";
 import type { BrandStripeDetachResult } from "../../services/brandStripeDetachService";
@@ -132,7 +129,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
               Disconnect bank from {brandName}?
             </Text>
             <View style={styles.warnCard}>
-              <Icon name="bank" size={18} color={textTokens.tertiary} />
+              <Icon name="bank" size={18} color={color.text3} />
               <View style={styles.warnTextCol}>
                 <Text style={styles.warnTitle}>This stops incoming payments</Text>
                 <Text style={styles.warnBody}>
@@ -145,7 +142,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
               </View>
             </View>
             <View style={[styles.warnCard, styles.warnCardWarn]}>
-              <Icon name="flag" size={18} color={accent.warm} />
+              <Icon name="flag" size={18} color={color.text1} />
               <View style={styles.warnTextCol}>
                 <Text style={styles.warnTitleWarn}>
                   Reconnecting means starting again
@@ -170,7 +167,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
                 value={confirmInput}
                 onChangeText={setConfirmInput}
                 placeholder={brandName}
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 autoCapitalize="none"
                 autoCorrect={false}
                 style={styles.input}
@@ -218,7 +215,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
         {step === "done" ? (
           <View style={styles.doneWrap}>
             <View style={styles.doneHeaderRow}>
-              <Icon name="check" size={20} color={semantic.success} />
+              <Icon name="check" size={20} color={color.success} />
               <Text style={styles.title}>Disconnected</Text>
             </View>
             <Text style={styles.confirmHelper}>
@@ -226,7 +223,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
             </Text>
             {detachResult?.stripeDeleteStatus === "rejected" ? (
               <View style={[styles.warnCard, styles.warnCardWarn]}>
-                <Icon name="flag" size={18} color={accent.warm} />
+                <Icon name="flag" size={18} color={color.text1} />
                 <View style={styles.warnTextCol}>
                   <Text style={styles.warnTitleWarn}>
                     Payment account not fully closed
@@ -263,110 +260,110 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.md,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[4],
   },
   warnCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radiusTokens.md,
+    gap: space[2],
+    padding: space[4],
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    marginBottom: space[2],
   },
   warnCardWarn: {
-    backgroundColor: "rgba(245, 158, 11, 0.08)",
-    borderColor: "rgba(245, 158, 11, 0.32)",
+    backgroundColor: color.warningTint,
+    borderColor: color.line,
   },
   warnTextCol: {
     flex: 1,
     gap: 4,
   },
   warnTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   warnTitleWarn: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   warnBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   confirmHelper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginTop: space[4],
+    marginBottom: space[2],
   },
   brandLabelLarge: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
-    marginVertical: spacing.sm,
+    color: color.text1,
+    marginVertical: space[2],
   },
   inputWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     height: 48,
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: radiusTokens.md,
+    borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   inputWrapError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   input: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     padding: 0,
     margin: 0,
   },
   errorText: {
-    fontSize: typography.caption.fontSize,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
+    marginTop: space[1],
   },
   actionRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: space[2],
+    marginTop: space[6],
   },
   actionCell: {
     flex: 1,
   },
   submittingWrap: {
-    paddingVertical: spacing.xl,
+    paddingVertical: space[7],
   },
   doneWrap: {
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
   },
   doneHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: space[2],
+    marginBottom: space[1],
   },
 });

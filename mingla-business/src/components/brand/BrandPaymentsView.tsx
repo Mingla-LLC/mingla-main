@@ -38,12 +38,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
 import {
-  accent,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 
@@ -177,7 +174,7 @@ const PaymentsStatusCard: React.FC<{
 }> = ({ config, onCta }) => (
   <GlassCard
     variant="base"
-    padding={spacing.md}
+    padding={space[4]}
     style={[
       config.destructive ? styles.bannerDestructive : null,
       config.success ? styles.bannerSuccess : null,
@@ -488,7 +485,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           />
         </View>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.notFoundTitle}>Brand not found</Text>
             <Text style={styles.notFoundBody}>
               The brand you tried to open doesn{"’"}t exist or has been removed.
@@ -525,7 +522,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           />
         </View>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.notFoundTitle} accessibilityRole="header">
               {BRAND_PAYMENTS_DENIED_TITLE}
             </Text>
@@ -608,7 +605,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
       }
       if (connected) setPaystackEditing(true);
       paystackScrollRef.current?.scrollTo({
-        y: Math.max(0, paystackFormYRef.current - spacing.md),
+        y: Math.max(0, paystackFormYRef.current - space[4]),
         animated: true,
       });
       setPaystackFormFocusSignal((signal) => signal + 1);
@@ -627,7 +624,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           ref={paystackScrollRef}
           contentContainerStyle={[
             styles.scroll,
-            { paddingBottom: spacing.xl + Math.max(insets.bottom, spacing.md) },
+            { paddingBottom: space[7] + Math.max(insets.bottom, space[4]) },
           ]}
           // #1834 — the Verify/Connect CTAs must fire on the FIRST tap with the
           // keyboard up; without this the tap is consumed dismissing it (a dead
@@ -699,7 +696,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingBottom: spacing.xl + Math.max(insets.bottom, spacing.md) },
+          { paddingBottom: space[7] + Math.max(insets.bottom, space[4]) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -755,12 +752,12 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           ? (
             <GlassCard
               variant="base"
-              padding={spacing.md}
+              padding={space[4]}
               style={styles.taxCtaCard}
             >
               <View style={styles.taxCtaRow}>
                 <View style={styles.taxCtaIconCol}>
-                  <Icon name="bank" size={20} color={accent.warm} />
+                  <Icon name="bank" size={20} color={color.text1} />
                 </View>
                 <View style={styles.taxCtaTextCol}>
                   <Text style={styles.taxCtaTitle}>Tax & registrations</Text>
@@ -824,113 +821,113 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
 
   // Not-found state ------------------------------------------------------
   notFoundTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[1],
   },
   notFoundBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   notFoundBtnRow: {
     flexDirection: "row",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 
   // Banner ---------------------------------------------------------------
   bannerDestructive: {
-    borderColor: "rgba(239, 68, 68, 0.45)", // Pill error border style
+    borderColor: color.errorLine, // Pill error border style
     borderWidth: 1,
   },
   bannerSuccess: {
-    borderColor: "rgba(34, 197, 94, 0.45)",
+    borderColor: color.line,
     borderWidth: 1,
   },
   bannerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: space[4],
   },
   bannerIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
   bannerIconWrapDestructive: {
-    backgroundColor: semantic.errorTint,
-    borderColor: "rgba(239, 68, 68, 0.45)",
+    backgroundColor: color.errorTint,
+    borderColor: color.errorLine,
   },
   bannerIconWrapSuccess: {
-    backgroundColor: semantic.successTint,
-    borderColor: "rgba(34, 197, 94, 0.45)",
+    backgroundColor: color.successTint,
+    borderColor: color.line,
   },
   bannerTextCol: {
     flex: 1,
     minWidth: 0,
   },
   bannerTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   bannerSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
     marginTop: 2,
   },
   bannerCtaRow: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   statusRefreshWarning: {
-    borderColor: "rgba(251, 191, 36, 0.35)",
+    borderColor: color.line,
     borderWidth: 1,
   },
   statusRefreshTitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   statusRefreshBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
     marginTop: 4,
   },
 
   // ORCH-0954 — Embedded Stripe account-management entry ----------------
   manageStripeCard: {
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     borderWidth: 1,
   },
   manageStripeRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   manageStripeIconCol: {
     width: 26,
@@ -941,32 +938,32 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   manageStripeTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   manageStripeBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   manageStripeError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.errorText,
     marginTop: 4,
   },
   manageStripeBtnRow: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     flexDirection: "row",
   },
 
   // KPI tiles ------------------------------------------------------------
   kpisRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   kpiCell: {
     flex: 1,
@@ -974,11 +971,11 @@ const styles = StyleSheet.create({
 
   // ORCH-0804 — Tax & registrations CTA card -----------------------------
   taxCtaCard: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   taxCtaRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   taxCtaIconCol: {
     width: 26,
@@ -989,53 +986,53 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   taxCtaTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   taxCtaBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   taxCtaError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.errorText,
     marginTop: 4,
   },
   taxCtaBtnRow: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     alignItems: "flex-start",
   },
 
   // Section labels -------------------------------------------------------
   sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
+    color: color.text3,
+    paddingHorizontal: space[1],
+    paddingTop: space[2],
   },
   sectionLabelGap: {
-    paddingTop: spacing.md,
+    paddingTop: space[4],
   },
 
   // Empty state ----------------------------------------------------------
   emptyTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   emptyBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     marginTop: 4,
   },
 
@@ -1043,66 +1040,66 @@ const styles = StyleSheet.create({
   txnRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[4],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
   },
   txnRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   txnLeftCol: {
     flex: 1,
     minWidth: 0,
   },
   txnAmount: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   txnAmountRefund: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.errorText,
   },
   txnSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
   },
   refundDate: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
 
   // Export CTA -----------------------------------------------------------
   exportRow: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 
   // ORCH-0802 — Danger zone (Disconnect Stripe) --------------------------
   dangerZone: {
-    marginTop: spacing.lg,
-    gap: spacing.sm,
+    marginTop: space[6],
+    gap: space[2],
   },
   dangerZoneTitle: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: semantic.error,
+    color: color.errorText,
   },
   dangerZoneBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   dangerZoneBtnRow: {
     flexDirection: "row",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });
 

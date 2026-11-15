@@ -13,9 +13,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LazyBrandCreationFlow } from "../../../src/components/brand/LazyBrandCreationFlow";
-import { canvas } from "../../../src/constants/designSystem";
+
 import { isSetupFlowHop, parseSetupStep } from "../../../src/services/brandSetupCore";
 
+import { color } from "../../../src/constants/designSystem";
 export default function BrandSetupRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -27,7 +28,7 @@ export default function BrandSetupRoute(): React.ReactElement {
     else router.replace("/(tabs)/home" as never);
   }, [router]);
   return (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: color.canvas }}>
       <Suspense fallback={null}>
         <LazyBrandCreationFlow
           brandId={typeof brandId === "string" && brandId.length > 0 ? brandId : null}

@@ -37,13 +37,10 @@ import { Sheet } from "../ui/Sheet";
 import { PayoutCountryTriggerRow } from "./PayoutCountryTriggerRow";
 import { Spinner } from "../ui/Spinner";
 import {
-  spacing,
+  color,
   radius,
-  typography,
-  text as textTokens,
-  accent,
-  semantic,
-  glass,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useBrandStripeCountries } from "../../hooks/useBrandStripeCountries";
 import {
@@ -281,7 +278,7 @@ export function PayoutCountrySheet({
             value={search}
             onChangeText={setSearch}
             placeholder="Search by country or currency"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             style={styles.search}
             accessibilityLabel="Search countries"
             autoCorrect={false}
@@ -290,7 +287,7 @@ export function PayoutCountrySheet({
 
           {countriesQuery.isLoading ? (
             <View style={styles.statusRow}>
-              <Spinner size={24} color={accent.warm} />
+              <Spinner size={24} color={color.text1} />
               <Text style={styles.statusText}>Loading countries…</Text>
             </View>
           ) : null}
@@ -365,131 +362,131 @@ export function PayoutCountrySheet({
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   sheetWrap: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[6],
+    gap: space[2],
   },
   sheetTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
   },
   sheetBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    paddingBottom: spacing.sm,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    paddingBottom: space[2],
   },
   search: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radius.md,
+    borderColor: color.line,
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     minHeight: 44,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
+    gap: space[2],
+    paddingVertical: space[4],
   },
   statusText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   statusError: {
-    fontSize: typography.bodySm.fontSize,
-    color: semantic.error,
+    fontSize: type.small.fontSize,
+    color: color.errorText,
     flex: 1,
   },
   retryBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: accent.tint,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tabOn,
     minHeight: 44,
     justifyContent: "center",
   },
   retryBtnText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
     fontWeight: "600",
   },
   list: {
     flex: 1,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   listContent: {
-    paddingBottom: spacing.lg,
-    gap: spacing.xs,
+    paddingBottom: space[6],
+    gap: space[1],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
+    borderRadius: radius.sm,
     minHeight: 56,
     borderWidth: 1,
     borderColor: "transparent",
   },
   rowPressed: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   rowSelected: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   rowLeft: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowCode: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.2,
     minWidth: 28,
   },
   rowName: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     fontWeight: "500",
   },
   rowSublabel: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 1,
   },
   rowRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowCurrency: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: textTokens.secondary,
+    color: color.text2,
     letterSpacing: 0.8,
   },
   rowCheck: {
     fontSize: 18,
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "700",
     minWidth: 20,
     textAlign: "center",

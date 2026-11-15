@@ -24,9 +24,10 @@ import { BrandFinanceReportsView } from "../../../../src/components/brand/BrandF
 // away silently. On a money surface a fabricated total is worse than a locked
 // door (Constitution rule 3).
 import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/BrandPaymentsPermissionGate";
-import { canvas } from "../../../../src/constants/designSystem";
+
 import { useBrandList } from "../../../../src/store/currentBrandStore";
 
+import { color } from "../../../../src/constants/designSystem";
 export default function BrandFinanceReportsRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -55,7 +56,7 @@ export default function BrandFinanceReportsRoute(): React.ReactElement {
       style={{
         flex: 1,
         paddingTop: insets.top,
-        backgroundColor: canvas.discover, // I-12
+        backgroundColor: color.canvas, // I-12
       }}
     >
       <BrandPaymentsPermissionGate

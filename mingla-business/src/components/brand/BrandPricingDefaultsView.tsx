@@ -23,13 +23,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 
 import {
-  canvas,
-  glass,
+  color,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  scrim,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { formatCurrencyRound, currencyCodeOrNull } from "../../utils/currency";
@@ -121,7 +119,7 @@ export const BrandPricingDefaultsView: React.FC<
   if (brand === null || defaults === null) {
     return (
       <View style={[styles.host, styles.center]}>
-        <ActivityIndicator color={textTokens.secondary} />
+        <ActivityIndicator color={color.text2} />
       </View>
     );
   }
@@ -191,43 +189,43 @@ export const BrandPricingDefaultsView: React.FC<
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.profile,
+    backgroundColor: color.canvas,
   },
   center: {
     alignItems: "center",
     justifyContent: "center",
   },
   content: {
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
+    padding: space[4],
+    paddingBottom: space[7],
   },
   screenTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   screenSubtitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginTop: space[1],
   },
   regionChip: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[1],
+    paddingHorizontal: space[2],
     borderRadius: radiusTokens.full,
-    backgroundColor: glass.tint.backdrop,
+    backgroundColor: scrim.modal,
     alignSelf: "flex-start",
   },
   regionText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
   },
   error: {
-    fontSize: typography.caption.fontSize,
-    color: semantic.error,
-    marginTop: spacing.md,
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
+    marginTop: space[4],
   },
 });
 

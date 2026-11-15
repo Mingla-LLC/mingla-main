@@ -38,10 +38,9 @@ import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { useBrandCustomers } from "../../../src/hooks/marketing/useBrandCustomers";
 import { useBrand } from "../../../src/hooks/useBrands";
@@ -98,7 +97,7 @@ export default function BrandBlastsRoute(): React.ReactElement {
           />
         </View>
         <View style={styles.centerHost}>
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         </View>
       </View>
     );
@@ -201,48 +200,48 @@ export default function BrandBlastsRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   // Matches the home/events/account barWrap pattern so the TopBar glass
   // capsule sits inset from screen edges with breathing space above + below
   // (NOT flush — flush reads as "zoomed-in" per operator visual review).
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   centerHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   // Card header inside the GlassCard wrapping the buyer list. Replaces
   // the old "bare bodyLg text floating on canvas" pattern that read as
   // orphaned per operator visual review 2026-05-12.
   cardHeader: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   cardHeaderLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   cardHeaderCounts: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   cardDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md, // page margin around the GlassCard
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4], // page margin around the GlassCard
+    paddingTop: space[2],
     paddingBottom: 140, // breathe room for sticky CTA (60pt + 8pt + safe-area + buffer)
   },
   ctaWrap: {

@@ -9,7 +9,9 @@
 import React, { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
-import { glass, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+} from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 
 export type BrandMarkBrand = Pick<
@@ -72,15 +74,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: color.fill.tabOn,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   photo: {
     resizeMode: "cover",
   },
   initial: {
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });

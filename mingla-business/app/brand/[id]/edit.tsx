@@ -29,7 +29,10 @@ import {
   BrandEditView,
   type BrandEditSection,
 } from "../../../src/components/brand/BrandEditView";
-import { canvas } from "../../../src/constants/designSystem";
+import {
+  canvas,
+  color,
+} from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import {
   useCurrentBrandStore,
@@ -191,7 +194,7 @@ export default function BrandEditRoute(): React.ReactElement {
       style={{
         flex: 1,
         paddingTop: insets.top,
-        backgroundColor: canvas.discover,
+        backgroundColor: color.canvas,
       }}
     >
       <BrandEditView

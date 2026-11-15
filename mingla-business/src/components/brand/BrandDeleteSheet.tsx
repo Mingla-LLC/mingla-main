@@ -41,13 +41,10 @@ import {
 // the library KeyboardAvoidingView on the type-to-confirm step). Per SPEC §7.F.
 
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   useBrandCascadePreview,
@@ -253,7 +250,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
           <Text style={styles.title}>Only the owner can delete this brand</Text>
           <Text style={styles.brandLabel}>{brand.displayName}</Text>
           <View style={[styles.warnCard, styles.warnCardDanger]}>
-            <Icon name="flag" size={18} color={semantic.error} />
+            <Icon name="flag" size={18} color={color.errorText} />
             <View style={styles.warnTextCol}>
               <Text style={styles.warnTitleDanger}>You&apos;re not the owner</Text>
               <Text style={styles.warnBody}>
@@ -367,7 +364,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
             <Text style={styles.title}>Delete this brand?</Text>
             <Text style={styles.brandLabel}>{brand.displayName}</Text>
             <View style={styles.warnCard}>
-              <Icon name="flag" size={18} color={accent.warm} />
+              <Icon name="flag" size={18} color={color.text1} />
               <View style={styles.warnTextCol}>
                 {/* #4389 — host words (no internal terms), through i18n. */}
                 <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.restoreTitle}</Text>
@@ -375,7 +372,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
               </View>
             </View>
             <View style={styles.warnCard}>
-              <Icon name="flag" size={18} color={textTokens.tertiary} />
+              <Icon name="flag" size={18} color={color.text3} />
               <View style={styles.warnTextCol}>
                 <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.undoTitle}</Text>
                 <Text style={styles.warnBody}>{BRAND_DELETE_COPY.delete.undoBody}</Text>
@@ -394,7 +391,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
               </View>
             ) : previewQuery.isError ? (
               <View style={[styles.warnCard, styles.warnCardDanger]}>
-                <Icon name="flag" size={18} color={semantic.error} />
+                <Icon name="flag" size={18} color={color.errorText} />
                 <View style={styles.warnTextCol}>
                   <Text style={styles.warnTitle}>{BRAND_DELETE_COPY.delete.previewErrorTitle}</Text>
                   <Text style={styles.warnBody}>{BRAND_DELETE_COPY.delete.previewErrorBody}</Text>
@@ -440,7 +437,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 ) : null}
                 {counts.upcomingEventCount > 0 || counts.liveEventCount > 0 ? (
                   <View style={[styles.warnCard, styles.warnCardDanger]}>
-                    <Icon name="flag" size={18} color={semantic.error} />
+                    <Icon name="flag" size={18} color={color.errorText} />
                     <View style={styles.warnTextCol}>
                       <Text style={styles.warnTitleDanger}>
                         Active events block delete
@@ -480,7 +477,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 value={confirmInput}
                 onChangeText={setConfirmInput}
                 placeholder={brand.displayName}
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 autoCapitalize="none"
                 autoCorrect={false}
                 style={styles.input}
@@ -512,7 +509,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 : BRAND_DELETE_COPY.delete.nothingDeleted}
             </Text>
             <View style={[styles.warnCard, styles.warnCardDanger]}>
-              <Icon name="flag" size={18} color={semantic.error} />
+              <Icon name="flag" size={18} color={color.errorText} />
               <View style={styles.warnTextCol}>
                 <Text style={styles.warnBody}>
                   {rejection.reason === "delete_blocked"
@@ -529,7 +526,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
           <View>
             <Text style={styles.title}>Cannot delete this brand</Text>
             <View style={[styles.warnCard, styles.warnCardDanger]}>
-              <Icon name="flag" size={18} color={semantic.error} />
+              <Icon name="flag" size={18} color={color.errorText} />
               <View style={styles.warnTextCol}>
                 <Text style={styles.warnTitleDanger}>
                   {rejectionCount} upcoming event
@@ -582,67 +579,67 @@ export const BankPayoutsPreviewRow: React.FC<{ hasBankPayouts: boolean }> = ({ h
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[2],
   },
   brandLabel: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
-    marginBottom: spacing.lg,
+    fontSize: type.small.fontSize,
+    color: color.text3,
+    marginBottom: space[6],
   },
   brandLabelLarge: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
-    marginVertical: spacing.md,
+    color: color.text1,
+    marginVertical: space[4],
   },
   warnCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radiusTokens.md,
+    gap: space[2],
+    padding: space[4],
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    marginBottom: space[2],
   },
   warnCardDanger: {
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
-    borderColor: "rgba(239, 68, 68, 0.32)",
+    backgroundColor: color.errorTint,
+    borderColor: color.errorLine,
   },
   warnTextCol: {
     flex: 1,
     gap: 4,
   },
   warnTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   warnTitleDanger: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.errorText,
   },
   warnBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   actionRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   actionCell: {
     flex: 1,
@@ -651,93 +648,93 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.xs,
+    borderColor: color.line,
+    marginBottom: space[1],
   },
   previewRowStacked: {
     flexDirection: "column",
     alignItems: "flex-start",
     justifyContent: "flex-start",
-    gap: spacing.xs,
+    gap: space[1],
   },
   previewValueWrap: {
     flexShrink: 1,
     alignSelf: "stretch",
   },
   previewRowDanger: {
-    borderColor: "rgba(239, 68, 68, 0.32)",
+    borderColor: color.errorLine,
   },
   previewLabel: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   previewLabelDanger: {
-    fontSize: typography.bodySm.fontSize,
-    color: semantic.error,
+    fontSize: type.small.fontSize,
+    color: color.errorText,
     fontWeight: "600",
   },
   previewValue: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   previewValueDanger: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: semantic.error,
+    color: color.errorText,
   },
   previewFooter: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
+    marginTop: space[2],
   },
   previewLoading: {
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
     alignItems: "center",
   },
   previewLoadingText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
   },
   confirmHelper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[2],
   },
   inputWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     height: 48,
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: radiusTokens.md,
+    borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   inputWrapError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   input: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     padding: 0,
     margin: 0,
   },
   errorText: {
-    fontSize: typography.caption.fontSize,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
+    marginTop: space[1],
   },
   submittingWrap: {
-    paddingVertical: spacing.xl,
+    paddingVertical: space[7],
   },
 });

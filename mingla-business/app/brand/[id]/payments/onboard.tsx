@@ -21,11 +21,12 @@ import { BrandOnboardView } from "../../../../src/components/brand/BrandOnboardV
 // #1863 [error-toast-covers-bank-field] — role gate at the ROUTE, above the
 // view's Paystack early return, so both rails are covered by one decision.
 import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/BrandPaymentsPermissionGate";
-import { canvas } from "../../../../src/constants/designSystem";
+
 import { useBrand } from "../../../../src/hooks/useBrands";
 import { sanitizeBankSetupReturnPath } from "../../../../src/utils/bankSetupReturn";
 import { setupFlowHop } from "../../../../src/services/brandSetupCore";
 
+import { color } from "../../../../src/constants/designSystem";
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -121,7 +122,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
       style={{
         flex: 1,
         paddingTop: insets.top,
-        backgroundColor: canvas.discover, // I-12
+        backgroundColor: color.canvas, // I-12
       }}
     >
       <BrandPaymentsPermissionGate

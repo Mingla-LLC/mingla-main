@@ -18,13 +18,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
+  color,
   glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -171,7 +169,7 @@ export function VenueClaimFeedbackSheet({
   const allFixed = totalCount > 0 && openCount === 0;
   const isResubmitting = resubmit.isPending;
 
-  const ctaBottomPad = insets.bottom + spacing.md;
+  const ctaBottomPad = insets.bottom + space[4];
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="full">
@@ -204,7 +202,7 @@ export function VenueClaimFeedbackSheet({
         {isError ? (
           <View style={[styles.itemCard, styles.errorCard]}>
             <View style={styles.errorRow}>
-              <Icon name="flag" size={18} color={semantic.error} />
+              <Icon name="flag" size={18} color={color.errorText} />
               <Text style={styles.errorTitle}>Couldn&apos;t load your feedback</Text>
             </View>
             <Text style={styles.errorBody}>
@@ -222,7 +220,7 @@ export function VenueClaimFeedbackSheet({
         {/* Empty (defensive) */}
         {isEmpty ? (
           <View style={styles.emptyWrap}>
-            <Icon name="sparkle" size={28} color={textTokens.tertiary} />
+            <Icon name="sparkle" size={28} color={color.text3} />
             <Text style={styles.emptyTitle}>You&apos;re all caught up</Text>
             <Text style={styles.emptyBody}>
               No open items right now. If you just fixed everything, re-submit
@@ -236,7 +234,7 @@ export function VenueClaimFeedbackSheet({
           <>
             {overallMessage ? (
               <View style={styles.messageCard}>
-                <Icon name="chat" size={18} color={accent.warm} />
+                <Icon name="chat" size={18} color={color.text1} />
                 <View style={styles.messageCol}>
                   <Text style={styles.messageEyebrow}>
                     A note from the Mingla team
@@ -284,7 +282,7 @@ export function VenueClaimFeedbackSheet({
                   <Icon
                     name={CATEGORY_ICON[group.category]}
                     size={16}
-                    color={textTokens.tertiary}
+                    color={color.text3}
                   />
                   <Text style={styles.groupHeader}>
                     {CATEGORY_LABEL[group.category]}
@@ -316,10 +314,10 @@ export function VenueClaimFeedbackSheet({
                             : "Mark this item fixed"
                         }
                         hitSlop={{
-                          top: spacing.sm,
-                          bottom: spacing.sm,
-                          left: spacing.sm,
-                          right: spacing.sm,
+                          top: space[2],
+                          bottom: space[2],
+                          left: space[2],
+                          right: space[2],
                         }}
                         style={({ pressed }) => [
                           styles.toggle,
@@ -330,12 +328,12 @@ export function VenueClaimFeedbackSheet({
                         <Icon
                           name="check"
                           size={18}
-                          color={fixed ? semantic.success : accent.warm}
+                          color={fixed ? color.success : color.text1}
                         />
                         <Text
                           style={[
                             styles.toggleLabel,
-                            { color: fixed ? semantic.success : accent.warm },
+                            { color: fixed ? color.success : color.text1 },
                           ]}
                         >
                           {fixed ? "Fixed" : "Mark fixed"}
@@ -387,189 +385,189 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   headerTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginBottom: spacing.xxs,
+    ...type.h1,
+    color: color.text1,
+    marginBottom: space[1],
   },
   headerSubtitle: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
-    marginBottom: spacing.md,
+    ...type.small,
+    color: color.text3,
+    marginBottom: space[4],
   },
   skeletonGap: {
-    height: spacing.sm,
+    height: space[2],
   },
   // Overall-message banner
   messageCard: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    borderColor: color.line,
+    borderRadius: radius.sm,
+    padding: space[4],
     overflow: "hidden",
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   messageCol: {
     flex: 1,
   },
   messageEyebrow: {
-    ...typography.caption,
+    ...type.caption,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   messageBody: {
-    ...typography.bodySm,
+    ...type.small,
     lineHeight: 20,
-    color: textTokens.primary,
-    marginTop: spacing.xxs,
+    color: color.text1,
+    marginTop: space[1],
   },
   // Progress meter
   progressRow: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   progressLabel: {
-    ...typography.caption,
+    ...type.caption,
     fontWeight: "600",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
   progressTrack: {
     height: 4,
     borderRadius: radius.full,
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.line,
     overflow: "hidden",
   },
   progressFill: {
     height: 4,
     borderRadius: radius.full,
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
   },
   // Category group
   groupHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    gap: space[1],
+    marginTop: space[6],
+    marginBottom: space[2],
   },
   groupHeaderFirst: {
     marginTop: 0,
   },
   groupHeader: {
-    ...typography.labelCap,
+    ...type.label,
     textTransform: "uppercase",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   // Item card
   itemCard: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    borderColor: color.line,
+    borderRadius: radius.sm,
+    padding: space[4],
     overflow: "hidden",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   itemCardFixed: {
-    backgroundColor: "rgba(34, 197, 94, 0.08)",
-    borderColor: "rgba(34, 197, 94, 0.32)",
+    backgroundColor: color.successTint,
+    borderColor: color.line,
   },
   itemNote: {
-    ...typography.bodySm,
+    ...type.small,
     lineHeight: 20,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginBottom: space[2],
   },
   itemNoteFixed: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   // Open/Fixed pill toggle
   toggle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     alignSelf: "flex-end",
     height: 36,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
   },
   toggleOpen: {
     backgroundColor: "transparent",
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   toggleFixed: {
-    backgroundColor: semantic.successTint,
-    borderColor: "rgba(34, 197, 94, 0.45)",
+    backgroundColor: color.successTint,
+    borderColor: color.line,
   },
   togglePressed: {
     opacity: 0.7,
   },
   toggleLabel: {
-    ...typography.caption,
+    ...type.caption,
     fontWeight: "600",
   },
   // Error
   errorCard: {
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
-    borderColor: "rgba(239, 68, 68, 0.32)",
+    backgroundColor: color.errorTint,
+    borderColor: color.errorLine,
   },
   errorRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: space[2],
+    marginBottom: space[1],
   },
   errorTitle: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.errorText,
   },
   errorBody: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    ...type.caption,
+    color: color.text2,
+    marginBottom: space[4],
   },
   // Empty
   emptyWrap: {
     alignItems: "center",
-    paddingVertical: spacing.xl,
-    gap: spacing.sm,
+    paddingVertical: space[7],
+    gap: space[2],
   },
   emptyTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   emptyBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     textAlign: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   // Pinned CTA
   ctaWrap: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   helperLine: {
-    ...typography.caption,
+    ...type.caption,
     textAlign: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   helperLineOpen: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   helperLineDone: {
-    color: semantic.success,
+    color: color.success,
   },
 });

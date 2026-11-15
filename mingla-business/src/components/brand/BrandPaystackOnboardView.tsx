@@ -35,16 +35,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 
 import {
-  accent,
   bpCompact,
   bpRegular,
-  canvas,
-  glass,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  scrim,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -99,7 +96,7 @@ const BANK_PICKER_MAX_WIDTH = 640;
 const BANK_PICKER_MIN_HEIGHT = 360;
 const BANK_PICKER_MAX_HEIGHT = 720;
 const BANK_PICKER_ROW_MIN_HEIGHT = 56;
-const BANK_PICKER_SCRIM = "rgba(0, 0, 0, 0.50)";
+const BANK_PICKER_SCRIM = scrim.modal;
 
 export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> = ({
   brandId,
@@ -260,8 +257,8 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
           )
         : windowHeight * 0.64,
       maxWidth: regular ? BANK_PICKER_MAX_WIDTH : undefined,
-      paddingHorizontal: windowWidth < bpCompact ? spacing.md : spacing.lg,
-      paddingBottom: Math.max(safeArea.bottom, spacing.md),
+      paddingHorizontal: windowWidth < bpCompact ? space[4] : space[6],
+      paddingBottom: Math.max(safeArea.bottom, space[4]),
       // #4389 (device r4) — with the keyboard up the avoiding view pads the
       // root by the keyboard height; the fixed height is only the preferred
       // size, so the sheet shrinks to the room left under the top safe area
@@ -272,7 +269,7 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
   }, [safeArea.bottom, windowHeight, windowWidth]);
   /** The picker's root never reaches above the top safe area (plus a gap). */
   const modalRootInsetStyle = useMemo<ViewStyle>(
-    () => ({ paddingTop: safeArea.top + spacing.sm }),
+    () => ({ paddingTop: safeArea.top + space[2] }),
     [safeArea.top],
   );
 
@@ -425,7 +422,7 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
   };
 
   return (
-    <GlassCard variant="elevated" padding={spacing.lg}>
+    <GlassCard variant="elevated" padding={space[6]}>
       {/* #3645 PR11c — shared Organiser Terms door for every Paystack bank form
           site (BrandOnboardView, BrandBankConnectBody, BrandPaymentsView). */}
       {userId !== null ? (
@@ -540,7 +537,7 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
           />
         )}
         {onCancel != null && isUpdate ? (
-          <View style={{ marginTop: spacing.sm }}>
+          <View style={{ marginTop: space[2] }}>
             <Button
               label="Cancel"
               variant="ghost"
@@ -619,7 +616,7 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
               value={bankSearch}
               onChangeText={setBankSearch}
               placeholder="Search banks"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               clearable
               disabled={!searchInteractive}
               tabIndex={
@@ -630,7 +627,7 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
             />
             {authPending || initialBankLoading ? (
               <View style={styles.noDataState} accessibilityLiveRegion="polite">
-                <Spinner size={24} color={accent.warm} />
+                <Spinner size={24} color={color.text1} />
                 <Text style={styles.statusText}>
                   {authPending ? "Finishing sign-in…" : "Loading banks…"}
                 </Text>
@@ -738,140 +735,140 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
 const styles = StyleSheet.create({
   backRow: {
     alignItems: "flex-start",
-    marginBottom: spacing.xs,
-    marginLeft: -spacing.xs,
+    marginBottom: space[1],
+    marginLeft: -space[1],
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    ...type.h1,
+    color: color.text1,
+    marginBottom: space[1],
   },
   subtitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginBottom: spacing.lg,
+    ...type.small,
+    color: color.text2,
+    marginBottom: space[6],
   },
   label: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginBottom: spacing.xs,
-    marginTop: spacing.md,
+    ...type.caption,
+    color: color.text3,
+    marginBottom: space[1],
+    marginTop: space[4],
   },
   pickerField: {
     height: 48,
     justifyContent: "center",
     paddingHorizontal: 14,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
-  pickerValue: { ...typography.body, color: textTokens.primary },
-  pickerPlaceholder: { ...typography.body, color: textTokens.quaternary },
+  pickerValue: { ...type.body, color: color.text1 },
+  pickerPlaceholder: { ...type.body, color: color.text4 },
   verifiedRow: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    marginTop: space[4],
+    padding: space[4],
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.inset,
   },
-  verifiedLabel: { ...typography.caption, color: textTokens.tertiary },
+  verifiedLabel: { ...type.caption, color: color.text3 },
   verifiedName: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
-    marginTop: spacing.xxs,
+    ...type.row,
+    color: color.text1,
+    marginTop: space[1],
   },
   verifiedHint: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[1],
   },
   error: {
-    ...typography.caption,
-    color: semantic.error,
-    marginTop: spacing.md,
+    ...type.caption,
+    color: color.errorText,
+    marginTop: space[4],
   },
-  actions: { marginTop: spacing.lg },
+  actions: { marginTop: space[6] },
   modalRoot: { flex: 1, justifyContent: "flex-end" },
   backdrop: { flex: 1, backgroundColor: BANK_PICKER_SCRIM },
   sheet: {
     alignSelf: "center",
     width: "100%",
-    paddingTop: spacing.lg,
+    paddingTop: space[6],
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
-    backgroundColor: canvas.profile,
+    backgroundColor: color.canvas,
     overflow: "hidden",
   },
   sheetTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
-    marginBottom: spacing.md,
+    ...type.row,
+    color: color.text1,
+    marginBottom: space[4],
   },
   noDataState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.md,
+    marginTop: space[6],
+    paddingHorizontal: space[4],
   },
   statusText: {
-    ...typography.body,
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
+    ...type.body,
+    color: color.text2,
+    marginTop: space[2],
     textAlign: "center",
   },
   errorTitle: {
-    ...typography.bodyLg,
-    color: semantic.error,
+    ...type.row,
+    color: color.errorText,
     textAlign: "center",
   },
   retryButton: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   catalogueRegion: {
     flex: 1,
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   refreshNotice: {
     alignItems: "center",
-    backgroundColor: semantic.errorTint,
-    borderRadius: radius.md,
+    backgroundColor: color.errorTint,
+    borderRadius: radius.sm,
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
     justifyContent: "space-between",
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    marginBottom: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   refreshNoticeText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     flexShrink: 1,
   },
   bankList: { flex: 1 },
   bankRow: {
     minHeight: BANK_PICKER_ROW_MIN_HEIGHT,
     justifyContent: "center",
-    paddingVertical: spacing.md,
+    paddingVertical: space[4],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   bankRowIdle: { backgroundColor: "transparent" },
-  bankRowActive: { backgroundColor: glass.tint.profileBase },
+  bankRowActive: { backgroundColor: color.fill.inset },
   bankRowFocused: {
-    outlineColor: accent.warm,
+    outlineColor: color.paper,
     outlineOffset: -2,
     outlineStyle: "solid",
     outlineWidth: 2,
   },
   bankRowUnfocused: { outlineWidth: 0 },
-  bankRowText: { ...typography.body, color: textTokens.primary },
+  bankRowText: { ...type.body, color: color.text1 },
   bankEmpty: {
-    ...typography.body,
-    color: textTokens.tertiary,
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.md,
+    ...type.body,
+    color: color.text3,
+    marginTop: space[6],
+    paddingHorizontal: space[4],
     textAlign: "center",
   },
 });

@@ -18,7 +18,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandProfileView } from "../../../src/components/brand/BrandProfileView";
-import { canvas } from "../../../src/constants/designSystem";
+
 import { useAuth } from "../../../src/context/AuthContext";
 import { useBrandStripeStatus } from "../../../src/hooks/useBrandStripeStatus";
 import { useBrand } from "../../../src/hooks/useBrands";
@@ -37,6 +37,7 @@ import {
   deriveBrandStripePresentation,
 } from "../../../src/utils/brandStripeUiState";
 
+import { color } from "../../../src/constants/designSystem";
 // #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
 // Account tab and Hub layout; a static import here kept it in `__common`.
 const LazyBrandDeleteSheet = React.lazy(async () => {
@@ -257,7 +258,7 @@ export default function BrandProfileRoute(): React.ReactElement {
   };
 
   return (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: color.canvas }}>
       <BrandProfileView
         brand={brand}
         isResolving={isBrandResolving}

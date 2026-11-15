@@ -20,14 +20,10 @@ import { inviteBrandMember } from "../../services/brandInvitationsService";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 
 import {
-  accent,
-  canvas,
-  glass,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore";
@@ -195,7 +191,9 @@ export type BrandCreationAction =
   | { type: "setMode"; mode: PartnerMode }
   | { type: "showCreate" }
   | { type: "next" }
-  | { type: "back" };
+  | { type: "back" }
+  // #4420 B7 — clickable stepper: jump BACK to a step already completed.
+  | { type: "goTo"; step: BrandCreationStep };
 
 export const BRAND_CREATION_INITIAL_STATE: BrandCreationState = {
   step: 1,
@@ -335,6 +333,11 @@ export const brandCreationReducer = (
           : Math.max(min, (state.step as number) - 1);
       return { ...state, step: prevStep as BrandCreationStep };
     }
+    case "goTo":
+      // #4420 B7 — the stepper only offers steps the wizard already passed
+      // (see `brandCreationStepperTargets`), so this is a back-jump; a
+      // forward target is ignored rather than skipping a server write.
+      return action.step < state.step ? { ...state, step: action.step } : state;
     default:
       return state;
   }
@@ -356,6 +359,31 @@ const STEPS_CLIENT = [
   { id: "cover", label: "Look" },
   { id: "invite", label: "Invite" },
 ];
+
+/** Reducer step for each stepper position, per mode (mirrors `currentIndex`). */
+const STEPPER_TARGETS_SELF: readonly BrandCreationStep[] = [1, 2, 3, 4, 6];
+const STEPPER_TARGETS_CLIENT: readonly BrandCreationStep[] = [0, 1, 2, 3, 5];
+
+/**
+ * #4420 B7 — where pressing stepper position `index` goes, or null when that
+ * step is not reachable. Reachable = a step the wizard already passed (the
+ * forward moves are server writes — create, address, cover — so the existing
+ * Continue path stays the only way forward; no new validation rule). Step 0
+ * ("For") is reachable only for flagged partners, exactly like Back.
+ */
+export const brandCreationStepperTarget = (
+  mode: PartnerMode,
+  currentIndex: number,
+  index: number,
+  isPartner: boolean,
+): BrandCreationStep | null => {
+  if (index >= currentIndex || index < 0) return null;
+  const targets = mode === "client" ? STEPPER_TARGETS_CLIENT : STEPPER_TARGETS_SELF;
+  const step = targets[index];
+  if (step === undefined) return null;
+  if (step === 0 && !isPartner) return null;
+  return step;
+};
 
 const slugify = (value: string): string =>
   value
@@ -1114,6 +1142,20 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 
   const isAtEntry = state.step === 0 || (state.step === 1 && !isPartner);
 
+  const handleStepPress = useCallback(
+    (index: number): void => {
+      const target = brandCreationStepperTarget(state.mode, currentIndex, index, isPartner);
+      if (target === null) return;
+      if (target === 0) {
+        // Same reset Back does when it returns a partner to step 0.
+        stepZeroCommittedRef.current = false;
+        pendingHeadingFocusRef.current = 0;
+      }
+      updateState({ type: "goTo", step: target });
+    },
+    [currentIndex, isPartner, state.mode, updateState],
+  );
+
   // #3260 — same stale-snapshot hazard as payoutState: a brand that flipped to
   // the Paystack rail during the connect round trip must not be labelled from
   // the pre-connect local copy.
@@ -1182,9 +1224,16 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           accessibilityLabel={isAtEntry ? "Cancel brand creation" : "Back"}
           style={styles.backTouch}
         >
-          <Icon name={isAtEntry ? "close" : "chevL"} size={18} color={textTokens.secondary} />
+          <Icon name={isAtEntry ? "close" : "chevL"} size={18} color={color.text2} />
         </Pressable>
-        <Stepper steps={stepperVariant} currentIndex={currentIndex} />
+        <Stepper
+          steps={stepperVariant}
+          currentIndex={currentIndex}
+          // #4420 B7 — reachable = already passed; forward stays on Continue.
+          furthestValidIndex={currentIndex}
+          onStepPress={handleStepPress}
+          sheetTitle="Brand setup"
+        />
       </View>
 
       {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
@@ -1196,7 +1245,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         contentContainerStyle={[
           styles.scrollContent,
           // ORCH-1165: +42pt clearance for the Done bar while the keyboard is up.
-          keyboardVisible ? { paddingBottom: spacing.lg + 42 } : null,
+          keyboardVisible ? { paddingBottom: space[6] + 42 } : null,
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -1230,7 +1279,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               >
                 <GlassCard
                   variant="elevated"
-                  padding={spacing.lg}
+                  padding={space[6]}
                   style={state.mode === "self" ? styles.modeCardActive : undefined}
                 >
                   <View style={styles.modeCardRow}>
@@ -1260,7 +1309,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               >
                 <GlassCard
                   variant="elevated"
-                  padding={spacing.lg}
+                  padding={space[6]}
                   style={
                     state.mode === "client" ? styles.modeCardActive : undefined
                   }
@@ -1343,7 +1392,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   ? BRAND_CREATION_COPY.step1.bioPlaceholderClient
                   : BRAND_CREATION_COPY.step1.bioPlaceholder
               }
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               accessibilityLabel={BRAND_CREATION_COPY.step1.bioLabel}
               multiline
               style={styles.textArea}
@@ -1480,7 +1529,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         {state.step === 3 ? (
           <View style={styles.stepBody}>
             <Text style={styles.title}>{BRAND_CREATION_COPY.step3.title}</Text>
-            <GlassCard variant="elevated" padding={spacing.lg}>
+            <GlassCard variant="elevated" padding={space[6]}>
               <View style={styles.coverPrompt}>
                 {/* WS2: render the chosen cover so the user sees it saved. */}
                 {brand?.coverMediaUrl != null ? (
@@ -1489,7 +1538,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                       hue={25}
                       mediaUrl={brand.coverMediaUrl}
                       mediaType={brand.coverMediaType ?? "image"}
-                      radius={radius.md}
+                      radius={radius.sm}
                       label="Brand cover preview"
                       height={170}
                       muted
@@ -1497,7 +1546,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   </View>
                 ) : (
                   <>
-                    <Icon name="upload" size={24} color={accent.warm} />
+                    <Icon name="upload" size={24} color={color.text1} />
                     <Text style={styles.body}>
                       Use your existing cover picker to add a photo or GIF, or skip it for now.
                     </Text>
@@ -1552,10 +1601,10 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             <View style={styles.stepBody}>
               <Text style={styles.title}>{BRAND_CREATION_COPY.step4.title}</Text>
               <Text style={styles.body}>{BRAND_CREATION_COPY.step4.body}</Text>
-              <GlassCard variant="elevated" padding={spacing.lg}>
+              <GlassCard variant="elevated" padding={space[6]}>
                 <View style={styles.payoutCard}>
                   <View style={styles.payoutRailRow}>
-                    <Icon name="bank" size={24} color={accent.warm} />
+                    <Icon name="bank" size={24} color={color.text1} />
                     <Text style={styles.payoutRail}>
                       {chosenPayoutRail !== null
                         ? `${chosenPayoutRail.displayName} · ${chosenPayoutRail.currency}`
@@ -1668,13 +1717,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               value={inviteeNote}
               onChangeText={(v) => setInviteeNote(v.slice(0, 280))}
               placeholder={BRAND_CREATION_COPY.step5.notePlaceholder}
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               accessibilityLabel={BRAND_CREATION_COPY.step5.noteLabel}
               multiline
               style={styles.textArea}
             />
             {/* Preview card — minimal hero/title/CTA mirror of the email. */}
-            <GlassCard variant="elevated" padding={spacing.lg}>
+            <GlassCard variant="elevated" padding={space[6]}>
               <Text style={styles.previewEyebrow}>EMAIL PREVIEW</Text>
               {brand?.coverMediaUrl != null ? (
                 <View style={styles.coverPreview}>
@@ -1682,7 +1731,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                     hue={25}
                     mediaUrl={brand.coverMediaUrl}
                     mediaType={brand.coverMediaType ?? "image"}
-                    radius={radius.md}
+                    radius={radius.sm}
                     label="Brand cover preview"
                     height={120}
                     muted
@@ -1910,15 +1959,15 @@ function capitalize(s: string): string {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    paddingBottom: space[2],
   },
   backTouch: {
     width: 44,
@@ -1927,134 +1976,134 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: space[6],
+    paddingBottom: space[6],
   },
   stepBody: {
-    gap: spacing.md,
+    gap: space[4],
   },
   modeGroup: {
-    gap: spacing.md,
+    gap: space[4],
   },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   // Issue #1363 — inline hint under the address field (best-effort coords).
   addressHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.warning,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.warning,
+    marginTop: space[1],
   },
   label: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   textArea: {
     minHeight: 112,
-    padding: spacing.md,
-    borderRadius: radius.md,
+    padding: space[4],
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlignVertical: "top",
   },
   // META-ORCH-1232 (H1) — persistent inline error surface (non-auto-dismissing).
   inlineError: {
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
+    gap: space[2],
+    padding: space[4],
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: "rgba(220, 38, 38, 0.10)",
+    backgroundColor: color.errorTint,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(220, 38, 38, 0.45)",
+    borderColor: color.errorLine,
     alignItems: "flex-start",
   },
   inlineErrorText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: "#B91C1C",
+    color: color.danger,
   },
   coverPrompt: {
-    gap: spacing.md,
+    gap: space[4],
     alignItems: "flex-start",
   },
   coverPreview: {
     width: "100%",
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     overflow: "hidden",
   },
   footer: {
-    padding: spacing.lg,
+    padding: space[6],
   },
   footerRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   footerButton: {
     flex: 1,
   },
   payoutFooter: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   payoutCard: {
-    gap: spacing.md,
+    gap: space[4],
   },
   payoutRailRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   payoutRail: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   payoutTrust: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   payoutStatus: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: accent.tint,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tabOn,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   payoutStatusText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   payoutConsequence: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   // ORCH-1081 — Step 0 + Step 5 + partner chip styles.
   titleRow: {
@@ -2064,19 +2113,19 @@ const styles = StyleSheet.create({
     // and was pushing the partner chip past the sheet edge. Allow wrap so the
     // chip falls to a second line on narrow screens instead of clipping.
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   partnerChip: {
     // ORCH-1081 hotfix: caption-size was too small to read at-a-glance and the
     // tint-on-tint contrast made "Client setup" look like a placeholder. Bump
-    // to bodySm with a solid Mingla-orange tint background + white text so it
-    // reads as an unambiguous status pill, not decoration.
-    fontSize: typography.bodySm.fontSize,
+    // to bodySm on a solid selected fill so it reads as an unambiguous status
+    // pill, not decoration (#4420: orange is reserved, so the fill is neutral).
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: "#FFFFFF",
-    backgroundColor: accent.warm,
+    color: color.text1,
+    backgroundColor: color.fill.tabOn,
     borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 6,
     overflow: "hidden",
   },
@@ -2090,93 +2139,93 @@ const styles = StyleSheet.create({
     // Pressable wrapping a GlassCard so the entire surface is tappable.
   },
   modeCardActive: {
-    borderColor: accent.warm,
+    borderColor: color.paper,
     borderWidth: 2,
   },
   modeCardRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   modeCardCol: {
     flex: 1,
     gap: 4,
   },
   modeCardTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   modeCardBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   radioDot: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
   },
   radioDotActive: {
-    borderColor: accent.warm,
-    backgroundColor: accent.warm,
+    borderColor: color.paper,
+    backgroundColor: color.paper,
   },
   previewEyebrow: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
   },
   previewHeroFallback: {
     width: "100%",
     height: 120,
-    borderRadius: radius.md,
-    backgroundColor: accent.warm,
+    borderRadius: radius.sm,
+    backgroundColor: color.card3,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   previewHeroFallbackText: {
     fontSize: 36,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: color.text1,
   },
   previewAttribution: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: accent.warm,
-    marginTop: spacing.sm,
+    color: color.text1,
+    marginTop: space[2],
     marginBottom: 4,
   },
   previewTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   previewBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     marginTop: 4,
   },
   previewCta: {
-    marginTop: spacing.sm + 2,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    backgroundColor: accent.warm,
-    borderRadius: radius.md,
+    marginTop: space[2] + 2,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[4],
+    backgroundColor: color.paper,
+    borderRadius: radius.sm,
     alignItems: "center",
   },
   previewCtaText: {
-    color: "#FFFFFF",
-    fontSize: typography.bodySm.fontSize,
+    color: color.ink,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
 });
