@@ -259,3 +259,17 @@ export const POST_URL_RULES: Record<string, { example: string; pattern: RegExp }
   youtube: { example: 'https://www.youtube.com/shorts/…', pattern: /^https:\/\/(www\.)?youtube\.com\/shorts\//i },
   x: { example: 'https://x.com/you/status/…', pattern: /^https:\/\/(www\.)?x\.com\/[^/]+\/status\//i },
 };
+
+/** #4430 D-9: the state each creator step moves the contract into. */
+export const TRANSITION_TARGET: Record<string, string> = { start_script: 'script_drafting', start_posting: 'posting' };
+
+/**
+ * A step the host already took counts as done. A `stale_contract_state` refusal
+ * that reports the state this step was moving to is success; any other stale
+ * refusal shows the neutral "moved on" notice; every other code is a real error.
+ */
+export function staleOutcome(code: string, detail: string | null, action: string | null | undefined): 'success' | 'show_stale' | 'error' {
+  if (code !== 'stale_contract_state') return 'error';
+  const target = action ? TRANSITION_TARGET[action] : undefined;
+  return target && detail === target ? 'success' : 'show_stale';
+}
