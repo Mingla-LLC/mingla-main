@@ -197,7 +197,14 @@ describe("Sub-D adversarial A — no clipped surface was flattened to opaque", (
       if (!hb || !bb) continue;
       const bgH = (hb.match(/backgroundColor:\s*([^,\n]+)/) || [])[1];
       const bgB = (bb.match(/backgroundColor:\s*([^,\n]+)/) || [])[1];
-      if (bgH && bgB && bgH.trim() !== bgB.trim()) {
+      // [TEST-MOD-APPROVED #4420] Graphite Glass re-picks every fill from the
+      // one token file (spec §2, §4): a block whose fill now reads a Graphite
+      // token (`color.*`, `materials.*`, `scrim.*`) is a deliberate #4420
+      // re-pick, not a Sub-D flatten. Android opacity is owned by Material and
+      // the materials' solid fills (issue_4420_material.test.tsx). Blocks still
+      // on the pre-Graphite names keep the exact no-flatten check.
+      const graphiteRepick = bgH !== undefined && /^(?:Platform\.OS[^?]*\?\s*)?(?:color|colorTokens|materials|scrim)\b/.test(bgH.trim());
+      if (bgH && bgB && !graphiteRepick && bgH.trim() !== bgB.trim()) {
         flattened.push({
           file,
           block,

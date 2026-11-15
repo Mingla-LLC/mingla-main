@@ -346,9 +346,10 @@ const CHOICE_IDLE = Platform.select({
   default: { backgroundColor: color.fill.inset, borderColor: color.line },
 }) as ViewStyle;
 
+// #4420: mirrors ui/OptionCard's selected surface exactly (Paper border).
 const CHOICE_SELECTED = Platform.select({
-  android: { backgroundColor: materials.selected.solidFill, borderColor: color.lineStrong },
-  default: { backgroundColor: color.fill.tile, borderColor: color.lineStrong },
+  android: { backgroundColor: materials.selected.solidFill, borderColor: color.paper },
+  default: { backgroundColor: materials.selected.glassFill, borderColor: color.paper },
 }) as ViewStyle;
 
 const choiceStyles = StyleSheet.create({
@@ -359,7 +360,9 @@ const choiceStyles = StyleSheet.create({
     flexBasis: 0,
     minWidth: optionCardMinWidth,
     minHeight: optionCardMinHeight,
-    gap: space[1],
+    // Mirrors ui/OptionCard's 2pt label/helper gap (it has not moved to the
+    // space scale yet); the two must stay identical (#4270 W6 parity test).
+    gap: 2,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: space[4],
