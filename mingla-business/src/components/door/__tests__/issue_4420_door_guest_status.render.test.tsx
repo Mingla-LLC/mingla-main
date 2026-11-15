@@ -10,6 +10,7 @@
  *   S4  no code (not found): one full-width status, no summary.
  *   S5  the page stays anonymous (no useAuth) and keeps no old token import.
  *   S6  the Tap to Pay sale on wide web sits in the same 1040 status column.
+ *   S7  Tap to Pay setup on wide web sits in that column too (wave 6).
  *
  * FAILS-ON-REVERT: putting the old single centred card back fails S1 and S3.
  */
@@ -228,5 +229,16 @@ describe("#4420 door guest page on the Public status template", () => {
     expect(sale).toContain("maxWidth: DESKTOP_TEMPLATE_MAX_WIDTH.status");
     // Phones and native keep the full-screen tool exactly as before.
     expect(sale).toMatch(/\) : \(\n\s+<>\n\s+\{chrome\}\n\s+\{renderBody\(\)\}/);
+  });
+
+  test("S7 Tap to Pay setup on wide web uses the 1040 status column with a readable step", () => {
+    // [TEST-MOD-APPROVED #4420] — wave 6: the setup screen joins the sale's column.
+    const setup = fs.readFileSync(path.resolve(__dirname, "../tap/TapToPaySetupScreen.tsx"), "utf8");
+    expect(setup).toContain('const wideWeb = Platform.OS === "web" && isWideDesktop;');
+    expect(setup).toContain('testID="tap-setup-status-template"');
+    expect(setup).toContain("maxWidth: DESKTOP_TEMPLATE_MAX_WIDTH.status");
+    expect(setup).toContain("wideStep: { flex: 1, width: \"100%\", maxWidth: size.modal }");
+    // Phones and native keep the full-screen setup exactly as before.
+    expect(setup).toMatch(/\) : \(\n\s+<>\n\s+\{chrome\}\n\s+\{body\}/);
   });
 });

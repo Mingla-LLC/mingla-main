@@ -149,7 +149,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
   const [search, setSearch] = useState("");
   const listRef = useRef<FlatList<CountryData>>(null);
 
-  const t: Required<PhoneInputTheme> = useMemo(
+  const t: Required<Omit<PhoneInputTheme, "fieldBackground">> = useMemo(
     () => ({ ...DEFAULT_PHONE_INPUT_THEME, ...(theme ?? {}) }),
     [theme],
   );
@@ -371,7 +371,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
 export const CountryPickerOverlay: React.FC<CountryPickerContentProps> = (
   props,
 ) => {
-  const t: Required<PhoneInputTheme> = useMemo(
+  const t: Required<Omit<PhoneInputTheme, "fieldBackground">> = useMemo(
     () => ({ ...DEFAULT_PHONE_INPUT_THEME, ...(props.theme ?? {}) }),
     [props.theme],
   );
