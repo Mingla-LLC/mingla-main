@@ -508,7 +508,6 @@ const MasterCard: React.FC<MasterCardProps> = ({
         onValueChange={onToggleMaster}
         accessibilityLabel={`${label} master toggle`}
         disabled={preferencesDisabled}
-        accessibilityState={{ checked: masterOn, disabled: preferencesDisabled }}
       />
     </View>
 
