@@ -53,7 +53,6 @@ import {
   hasPrivateUrlToken,
   PRIVATE_URL_QUERY_KEYS,
   stripPrivateUrlParams,
-  stripPrivateUrlProperties,
 } from "../utils/privateUrlTokens";
 
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
@@ -97,24 +96,10 @@ function sanitizeLegacyPageview(
   event: CaptureResult | null,
 ): CaptureResult | null {
   if (event === null) return null;
-  // #4238 P1-5: no PostHog event (custom, autocapture, exception, replay)
-  // carries a buyer return page's private keys in any URL-bearing property.
-  event = {
-    ...event,
-    properties: stripPrivateUrlProperties(
-      (event.properties ?? {}) as Record<string, unknown>,
-    ) as CaptureResult["properties"],
-    ...(event.$set
-      ? { $set: stripPrivateUrlProperties(event.$set as Record<string, unknown>) }
-      : {}),
-    ...(event.$set_once
-      ? {
-          $set_once: stripPrivateUrlProperties(
-            event.$set_once as Record<string, unknown>,
-          ),
-        }
-      : {}),
-  };
+  // #4238 P1-5: no PostHog event carries a buyer return page's private keys.
+  // The scrub loads with posthog-js, before init; without it, send nothing.
+  if (posthogPrivacy === null) return null;
+  event = posthogPrivacy.stripPrivateEventUrls(event);
   if (event.event !== LEGACY_PAGEVIEW_EVENT) return event;
   const properties = { ...(event.properties ?? {}) } as Record<string, unknown>;
   for (const key of [
@@ -199,6 +184,8 @@ function readEnv(name: string): string | undefined {
   }
 }
 let posthogClient: PostHog | null = null;
+/** #4238 P1-5: loaded with posthog-js in bootAnalytics, before init. */
+let posthogPrivacy: typeof import("./posthogPrivacy.web") | null = null;
 let posthogOptedOut = false;
 let bootPromise: Promise<void> | null = null;
 let gaMeasurementId: string | null = null;
@@ -741,7 +728,13 @@ async function bootAnalytics(): Promise<void> {
     return;
   }
   try {
-    const { default: posthog } = await import("posthog-js");
+    // #4238 P1-5: the private-URL scrub arrives with posthog-js (never in the
+    // eager chunk) and is in place before init, so before_send has it.
+    const [{ default: posthog }, privacy] = await Promise.all([
+      import("posthog-js"),
+      import("./posthogPrivacy.web"),
+    ]);
+    posthogPrivacy = privacy;
     if (!isAnalyticsOn()) return;
     posthog.init(posthogKey, {
       api_host: posthogHost,
@@ -783,7 +776,7 @@ async function bootAnalytics(): Promise<void> {
         sampleRate: SESSION_REPLAY_SAMPLE_RATE,
       },
     });
-    scrubPostHogInitialPersonInfo(posthog);
+    privacy.scrubPostHogInitialPersonInfo(posthog);
     if (!isAnalyticsOn()) {
       posthogClient = posthog;
       posthogOptedOut = false;
@@ -797,51 +790,11 @@ async function bootAnalytics(): Promise<void> {
     // #4238 P1-R4: a first visit stores the first page's address inside that
     // first capture(), not during init, so scrub again now (belt to the
     // masking above; also strips a private key carried in the hash).
-    scrubPostHogInitialPersonInfo(posthog);
+    privacy.scrubPostHogInitialPersonInfo(posthog);
     posthogClient = posthog;
     posthogOptedOut = false;
   } catch (err) {
     console.warn("[webAnalytics] PostHog init failed (non-fatal):", err);
-  }
-}
-
-/**
- * #4238 P1-5: PostHog stores the first page's address once
- * (`$initial_person_info`) and sends it as person properties with every flags
- * request, which never passes through before_send. Rewrite the stored copy
- * without a buyer return page's private keys, right after init (before the
- * first flags request) and for a copy persisted on an earlier visit.
- */
-const POSTHOG_INITIAL_PERSON_INFO = "$initial_person_info";
-const POSTHOG_CLIENT_SESSION_PROPS = "$client_session_props";
-
-function scrubPostHogInitialPersonInfo(posthog: PostHog): void {
-  try {
-    const persistence = posthog.persistence;
-    if (persistence === undefined || persistence === null) return;
-    const props = persistence.props as Record<string, unknown> | undefined;
-    const updates: Record<string, unknown> = {};
-    const info = props?.[POSTHOG_INITIAL_PERSON_INFO];
-    if (info !== null && typeof info === "object") {
-      const record = info as Record<string, unknown>;
-      const next = stripPrivateUrlProperties(record);
-      if (next.u !== record.u || next.r !== record.r) {
-        updates[POSTHOG_INITIAL_PERSON_INFO] = next;
-      }
-    }
-    // The per-session first page ({ sessionId, props: { r, u } }).
-    const session = props?.[POSTHOG_CLIENT_SESSION_PROPS];
-    if (session !== null && typeof session === "object") {
-      const sessionRecord = session as Record<string, unknown>;
-      const next = stripPrivateUrlProperties(sessionRecord);
-      if (JSON.stringify(next) !== JSON.stringify(sessionRecord)) {
-        updates[POSTHOG_CLIENT_SESSION_PROPS] = next;
-      }
-    }
-    if (Object.keys(updates).length === 0) return;
-    persistence.register(updates);
-  } catch (err) {
-    console.warn("[webAnalytics] PostHog initial URL scrub failed (non-fatal):", err);
   }
 }
 
