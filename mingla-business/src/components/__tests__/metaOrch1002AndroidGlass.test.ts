@@ -66,8 +66,10 @@ describe("META-ORCH-1002 Sub-1 — S6 list-card host clipped + opaque on Android
       const code = stripComments(read(rel));
       const host = code.match(/host:\s*\{[\s\S]*?\n\s{2}\},/);
       expect(host).not.toBeNull();
+      // [TEST-MOD-APPROVED #4420] — the opaque Android fill may be the
+      // Graphite solid material token instead of the old literal.
       expect(host![0]).toMatch(
-        /backgroundColor:\s*Platform\.select\(\{[\s\S]*?android:\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
+        /backgroundColor:\s*Platform\.select\(\{[\s\S]*?android:\s*(?:["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']|materials\.\w+\.solidFill)/,
       );
     },
   );
@@ -84,7 +86,9 @@ describe("META-ORCH-1002 Sub-1 — T-07 iOS frozen (business)", () => {
     const code = stripComments(read(rel));
     const host = code.match(/host:\s*\{[\s\S]*?\n\s{2}\},/);
     expect(host).not.toBeNull();
-    expect(host![0]).toMatch(/ios:\s*glass\.tint\.profileBase/);
-    expect(host![0]).toMatch(/default:\s*glass\.tint\.profileBase/);
+    // [TEST-MOD-APPROVED #4420] — the translucent wash may be its Graphite
+    // role token (`glass.tint.profileBase` aliases `color.fill.inset`).
+    expect(host![0]).toMatch(/ios:\s*(?:glass\.tint\.profileBase|color\.fill\.inset)/);
+    expect(host![0]).toMatch(/default:\s*(?:glass\.tint\.profileBase|color\.fill\.inset)/);
   });
 });

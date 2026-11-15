@@ -1716,7 +1716,8 @@ const styles = StyleSheet.create({
     color: color.errorText,
   },
   body: {
-    paddingHorizontal: space[5],
+    // 24, the same gutter as the trip wizard (TripCreatorWidthParity).
+    paddingHorizontal: space[6],
     paddingTop: space[4],
     paddingBottom: space[7],
   },

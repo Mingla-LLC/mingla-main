@@ -88,7 +88,9 @@ describe("META-ORCH-1059 Sub-A · FIX 2 — create wizard footers clear the phon
   test("event wizard dock adds insets.bottom (no static-only marginBottom bleed)", () => {
     const src = read("event/EventCreatorWizard.tsx");
     expect(src).toContain("useSafeAreaInsets");
-    expect(src).toMatch(/marginBottom:\s*insets\.bottom\s*\+\s*spacing\.lg/);
+    // [TEST-MOD-APPROVED #4420] — the floating dock became the sticky
+    // footer (B7); it still adds the bottom inset on phone.
+    expect(src).toMatch(/paddingBottom:\s*space\[3\]\s*\+\s*\(isWideDesktop \? 0 : insets\.bottom\)/);
     // The static dock style must NOT still hardcode marginBottom (it would
     // override / fight the inline inset value or re-introduce the bleed).
     expect(src).not.toMatch(/dock:\s*\{[\s\S]*?marginBottom:\s*spacing\.lg/);
