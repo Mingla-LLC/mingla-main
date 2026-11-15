@@ -11,5 +11,7 @@ const root = new URL("../../../../", import.meta.url);
 export function renderPlanCardOpen(): string {
   return [
     "src/components/chat/PlanCardBubble.tsx",
+    // #4435 W3c: the card folds by default; its open body is PlanCardDetails.
+    "src/components/chat/PlanCardDetails.tsx",
   ].map((p) => Deno.readTextFileSync(new URL(p, root))).join("\n");
 }

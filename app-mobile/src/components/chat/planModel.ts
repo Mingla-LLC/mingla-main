@@ -1041,3 +1041,88 @@ export function needsLinkPreviewRetry(
   const links = [plan.link, ...(plan.places ?? []).map((option) => option.link)];
   return links.some((link) => link !== null && link !== undefined && link.fetchedAt === null);
 }
+
+// ---------------------------------------------------------------------------
+// Issue #4435 (design v4 flow 4): the folded card. Two lines and one action.
+// ---------------------------------------------------------------------------
+
+export type FoldedPlanAction = "rsvp" | "vote_time" | "vote_place" | "lock" | "none";
+
+/**
+ * The one action a folded card offers: Lock in for whoever may lock a time
+ * that has votes, "Vote on a time" (or a place) while the group decides, else
+ * Going / Maybe / Can't. A cancelled plan offers nothing.
+ */
+export function foldedPlanAction(
+  plan: Pick<ChatPlan, "status" | "whenMode" | "canLock" | "options" | "places" | "whereKind">,
+): FoldedPlanAction {
+  if (plan.status === "cancelled") return "none";
+  if (plan.status === "deciding") {
+    if (lockableLeader(plan)) return "lock";
+    if (plan.whenMode === "poll") return "vote_time";
+    const places = plan.places ?? [];
+    if (places.length >= 2 || (places.length >= 1 && plan.whereKind === "none")) return "vote_place";
+  }
+  return "rsvp";
+}
+
+export type FoldedPlanLine =
+  | { kind: "cancelled" }
+  | { kind: "poll"; count: number; leadingTime: string | null }
+  | { kind: "when_where"; time: string | null; place: string | null };
+
+/** Line 2: "Fri 7 Nov · 8:00 PM · Rooftop" or "3 times · leading Fri 7:30 PM". */
+export function foldedPlanLine(plan: ChatPlan, locale: string, timeZone?: string): FoldedPlanLine {
+  if (plan.status === "cancelled") return { kind: "cancelled" };
+  if (plan.status === "deciding" && plan.whenMode === "poll") {
+    const leader = leadingOption(plan.options);
+    return {
+      kind: "poll",
+      count: plan.options.length,
+      leadingTime: leader && leader.voterIds.length > 0 ? shortPlanTime(leader.startsAt, locale, timeZone) || null : null,
+    };
+  }
+  const time = plan.scheduledAt ? formatPlanTime(plan.scheduledAt, locale, timeZone) || null : null;
+  const leadPlace = (plan.places ?? []).length >= 2 ? leadingPlace(plan.places) : null;
+  const place = (leadPlace ? placeOptionName(leadPlace) : plan.place?.name?.trim() || plan.link?.domain || "") || null;
+  return { kind: "when_where", time, place };
+}
+
+/**
+ * Open cards stay open for the life of the open chat (decision F): a card that
+ * scrolls off and back keeps its state. Cleared when the chat closes.
+ */
+const openPlanCards = new Map<string, Set<string>>();
+
+export function isPlanCardOpen(conversationId: string, planId: string): boolean {
+  return openPlanCards.get(conversationId)?.has(planId) ?? false;
+}
+
+export function setPlanCardOpen(conversationId: string, planId: string, open: boolean): void {
+  const set = openPlanCards.get(conversationId) ?? new Set<string>();
+  if (open) set.add(planId);
+  else set.delete(planId);
+  if (set.size > 0) openPlanCards.set(conversationId, set);
+  else openPlanCards.delete(conversationId);
+}
+
+export function clearOpenPlanCards(conversationId: string): void {
+  openPlanCards.delete(conversationId);
+}
+
+/**
+ * Issue #4435 (design v4 flow 5): what the sticky Post line says is missing,
+ * in the order canPostPlan checks it; null when the plan can post.
+ */
+export type PlanFormMissing = "place_link" | "what" | "set_time" | "vote_times";
+
+export function planFormMissing(form: PlanFormDraft): PlanFormMissing | null {
+  if (canPostPlan(form)) return null;
+  if (form.where === "place" && placeLinkInvalid(form.placeLink)) return "place_link";
+  const what =
+    form.title.trim().length > 0 ||
+    (form.where === "place" && form.place !== null) ||
+    (form.where === "link" && linkDomainOf(form.link) !== "");
+  if (!what) return "what";
+  return form.when === "set" ? "set_time" : "vote_times";
+}

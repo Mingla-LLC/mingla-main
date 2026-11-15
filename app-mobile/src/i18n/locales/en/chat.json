@@ -588,5 +588,21 @@
   "group_delete": "Delete group",
   "group_delete_title": "Delete {{name}}?",
   "group_delete_body": "The chat, its plans and the deck are removed for everyone. This can't be undone.",
-  "group_delete_failed": "Couldn't delete the group. Nothing changed."
+  "group_delete_failed": "Couldn't delete the group. Nothing changed.",
+  "plan_fold_poll": "{{count}} times to vote on",
+  "plan_fold_poll_leading": "{{count}} times · leading {{time}}",
+  "plan_fold_no_time": "No time yet",
+  "plan_fold_hint_open": "Opens the plan",
+  "plan_fold_hint_close": "Folds the plan",
+  "plan_fold_vote_time": "Vote on a time",
+  "plan_fold_vote_place": "Vote on a place",
+  "plan_member_left": "{{name}} (left)",
+  "plan_where_none": "None",
+  "plan_add_note": "Add a note",
+  "plan_missing_what": "Add what the plan is, a place or a link.",
+  "plan_missing_set_time": "Pick a day and time.",
+  "plan_missing_vote_times": "Add at least 2 times, or let friends add times.",
+  "plan_missing_place_link": "Fix the place's link or remove it.",
+  "plan_auto_lock_group": "A plan locks in by itself once everyone is going. This only applies with 2 or more people.",
+  "plan_auto_lock_solo": "It's just you for now, so lock it in yourself."
 }

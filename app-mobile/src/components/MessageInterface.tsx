@@ -204,6 +204,7 @@ import {
   planQuoteFallbackKey,
   planQuoteNote,
   viewerQuoteSnapshot,
+  clearOpenPlanCards,
   type PlanCommentReply,
 } from "./chat/planModel";
 import { PlanPlaceSuggestSheet } from "./chat/PlanPlaceSuggestSheet";
@@ -2524,9 +2525,22 @@ function MessageInterfaceInner({
     // cleanName / getHeaderParticipantName are pure helpers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId, currentUserName, headerParticipants, participantsQuery.data, t]);
+  // Issue #4435 (decision 5): a vote or RSVP from someone no longer in the
+  // group (they stay on locked plans) reads "{name} (left)".
+  const memberListLoaded = Boolean(participantsQuery.data);
+  // Decision F: opened plan cards stay open for the life of this open chat.
+  useEffect(() => {
+    if (!conversationId) return;
+    return () => clearOpenPlanCards(conversationId);
+  }, [conversationId]);
   const planNameOf = useCallback(
-    (userId: string | null): string => resolveMemberName(userId) ?? t('chat:planSetBySomeone'),
-    [resolveMemberName, t],
+    (userId: string | null): string => {
+      const current = resolveMemberName(userId);
+      if (current) return current;
+      if (!userId || !isGroupChat || !memberListLoaded) return t('chat:planSetBySomeone');
+      return t('chat:plan_member_left', { name: messagingService.cachedSenderName(userId) ?? t('chat:planSetBySomeone') });
+    },
+    [isGroupChat, memberListLoaded, resolveMemberName, t],
   );
   const [planCommentsFor, setPlanCommentsFor] = useState<ChatPlan | null>(null);
 
@@ -3549,6 +3563,7 @@ function MessageInterfaceInner({
             conversationId={planConversationId}
             senderId={currentUserId}
             chatName={headerTitle}
+            memberCount={chatPlansPayload?.memberCount ?? 2}
           />
           <PlanActionsMenu
             plan={planMenuFor}

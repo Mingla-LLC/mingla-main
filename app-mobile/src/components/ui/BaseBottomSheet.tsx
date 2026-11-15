@@ -88,8 +88,8 @@ export { BottomSheetTextInput };
 
 // META-ORCH-0991 Wave B Batch 3 — re-export the gorhom scroll container for
 // consumers that own their body tree (scrollMode="view") but still need a
-// gorhom-aware bounded inner scroll region (first used by the retired
-// PendingCollabChatSheet people list). A raw RN <ScrollView> nested in a gorhom sheet fights the sheet's pan
+// gorhom-aware bounded inner scroll region (PendingCollabChatSheet's people
+// list). A raw RN <ScrollView> nested in a gorhom sheet fights the sheet's pan
 // gesture; BottomSheetScrollView coordinates with it. Same gate rationale as
 // BottomSheetTextInput above (consumers may not import @gorhom/bottom-sheet).
 export { BottomSheetScrollView };

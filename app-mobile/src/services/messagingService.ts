@@ -875,6 +875,16 @@ export class MessagingService {
     this.failedSenderLookups.delete(senderId);
   }
 
+  /**
+   * Issue #4435: a name this phone already resolved for someone (a past
+   * sender), or null. Used to label a removed member "(left)" on a locked plan
+   * without a new read.
+   */
+  cachedSenderName(senderId: string): string | null {
+    const name = this.senderProfileCache.get(senderId)?.name ?? null;
+    return name && name !== 'Unknown' ? name : null;
+  }
+
   /** Issue #4275: sign-out. Names, lookups in flight and failure marks belonged to that account. */
   clearSenderNames(): void {
     this.senderProfileCache.clear();

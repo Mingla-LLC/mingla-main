@@ -126,3 +126,62 @@ Deno.test("#4435 group info for session groups: roles, held remove with Undo, le
   assert(!/from\("session_participants"\)\s*\.delete\(\)/.test(chat), "no client-side leave delete in the chat");
   assert(/session=\{sessionGroupInfo\}/.test(chat), "session groups pass their roles");
 });
+
+import {
+  clearOpenPlanCards, foldedPlanAction, foldedPlanLine, isPlanCardOpen, planFormMissing, setPlanCardOpen,
+} from "../planModel.ts";
+
+const basePlan = (over = {}) => ({
+  id: "p", title: "Rooftop", status: "deciding", whenMode: "set", whereKind: "none", canLock: false,
+  options: [], places: [], scheduledAt: null, place: null, link: null, commentCount: 0,
+  rsvps: { going: [], maybe: [], cant: [] }, ...over,
+});
+
+Deno.test("#4435 folded card: one action and line 2 per plan state", () => {
+  equals(foldedPlanAction(basePlan({ status: "scheduled" })), "rsvp", "a set plan: Going / Maybe / Can't");
+  equals(foldedPlanAction(basePlan({ status: "cancelled" })), "none", "cancelled: nothing");
+  equals(foldedPlanAction(basePlan({ whenMode: "poll", options: [{ id: "o", startsAt: "2099-01-01T19:00:00Z", voterIds: [] }] })), "vote_time", "a time vote");
+  equals(foldedPlanAction(basePlan({ whenMode: "poll", canLock: true, options: [{ id: "o", startsAt: "2099-01-01T19:00:00Z", voterIds: ["a"] }] })), "lock", "the maker locks a voted time");
+  equals(foldedPlanAction(basePlan({ places: [{ voterIds: [] }, { voterIds: [] }] })), "vote_place", "a place vote");
+  const poll = foldedPlanLine(basePlan({ whenMode: "poll", options: [
+    { id: "a", startsAt: "2099-01-02T19:00:00Z", voterIds: ["x"] },
+    { id: "b", startsAt: "2099-01-03T19:00:00Z", voterIds: ["x", "y"] },
+    { id: "c", startsAt: "2099-01-04T19:00:00Z", voterIds: [] },
+  ] }), "en-US", "UTC");
+  equals(poll.kind, "poll", "poll line");
+  equals(poll.count, 3, "3 times");
+  assert(typeof poll.leadingTime === "string" && poll.leadingTime.length > 0, "leading time named");
+  const set = foldedPlanLine(basePlan({ status: "scheduled", scheduledAt: "2099-01-02T19:00:00Z", place: { name: "Rooftop bar" } }), "en-US", "UTC");
+  equals(set.kind, "when_where", "when · where");
+  equals(set.place, "Rooftop bar", "where");
+});
+
+Deno.test("#4435 decision F: folded by default; an opened card stays open until the chat closes", () => {
+  assert(!isPlanCardOpen("c1", "p1"), "folded by default");
+  setPlanCardOpen("c1", "p1", true);
+  assert(isPlanCardOpen("c1", "p1"), "stays open (scroll away and back)");
+  assert(!isPlanCardOpen("c2", "p1"), "per chat");
+  clearOpenPlanCards("c1");
+  assert(!isPlanCardOpen("c1", "p1"), "closing the chat forgets it");
+  const bubble = strip(read("src/components/chat/PlanCardBubble.tsx"));
+  assert(/useState\(\(\) => isPlanCardOpen\(conversationId, planId\)\)/.test(bubble), "the card starts folded");
+  assert(/accessibilityState=\{\{ expanded: open \}\}/.test(bubble), "the header is one button with expanded state");
+  assert(/\{open \? \([\s\S]*?<PlanCardDetails/.test(bubble), "opening shows PlanCardDetails");
+  assert(/LayoutAnimation\.configureNext\([\s\S]*?duration: 220/.test(bubble) && /reduceMotion/.test(bubble), "220 ms, cross-fade under Reduce Motion");
+  const chat = strip(read("src/components/MessageInterface.tsx"));
+  assert(/return \(\) => clearOpenPlanCards\(conversationId\)/.test(chat), "cleared when the chat closes");
+  assert(/t\('chat:plan_member_left'/.test(chat), "removed members read '(left)'");
+});
+
+Deno.test("#4435 plan sheet: sticky Post says what's missing; same payload; auto-lock line", () => {
+  const blank = { title: "", where: "none", place: null, placeLink: "", link: "", when: "set", date: "", time: "19:00", options: [], openTimes: false, note: "" };
+  equals(planFormMissing(blank), "what", "nothing yet");
+  equals(planFormMissing({ ...blank, title: "Drinks" }), "set_time", "needs a time");
+  equals(planFormMissing({ ...blank, title: "Drinks", when: "poll" }), "vote_times", "needs 2 times");
+  equals(planFormMissing({ ...blank, title: "Drinks", date: "2099-01-01" }), null, "ready");
+  const sheet = strip(read("src/components/chat/PlanFormSheet.tsx"));
+  assert(/stickyFooter=\{/.test(sheet) && /chat:plan_missing_\$\{missing\}/.test(sheet), "sticky Post with the missing line");
+  assert(/const input = planCreateInput\(form, conversationId, clientId\);/.test(sheet), "the server payload is unchanged");
+  assert(/memberCount >= 2 \? t\("chat:plan_auto_lock_group"\) : t\("chat:plan_auto_lock_solo"\)/.test(sheet), "auto-lock line, group of one");
+  assert(/noteOpen \|\| form\.note \?/.test(sheet), "the note is folded");
+});
