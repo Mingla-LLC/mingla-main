@@ -142,7 +142,9 @@ Deno.test("A2 fireAdConversion: plaintext buyer email/phone NEVER reach any send
   assert(calls.length >= 3, `meta+tiktok+snap should each POST (reddit pending); got ${calls.length}`);
 
   const expectedEmailHash = await sha256Hex("buyer.secret@example.com"); // trim+lowercase
-  const expectedPhoneHash = await sha256Hex("447700900123"); // digits-only
+  const expectedPhoneHash = await sha256Hex("447700900123"); // digits-only (Meta, Snap)
+  // #4238 P2-1 (Step 0 Z5/Z6): TikTok and Reddit take E.164 WITH the `+`.
+  const expectedPhoneHashE164 = await sha256Hex("+447700900123");
 
   for (const c of calls) {
     // The plaintext MUST NOT appear anywhere in the serialized request body.
@@ -151,7 +153,8 @@ Deno.test("A2 fireAdConversion: plaintext buyer email/phone NEVER reach any send
     assert(!c.body.includes("+44"), `raw phone prefix leaked to ${c.url}`);
     // The hash MUST be present (advanced matching still works).
     assertStringIncludes(c.body, expectedEmailHash);
-    assertStringIncludes(c.body, expectedPhoneHash);
+    const e164Platform = c.url.includes("business-api.tiktok.com") || c.url.includes("ads-api.reddit.com");
+    assertStringIncludes(c.body, e164Platform ? expectedPhoneHashE164 : expectedPhoneHash);
   }
 });
 
