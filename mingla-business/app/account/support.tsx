@@ -1,7 +1,11 @@
 /** #3720 Help & Support hub for Host iOS, Android and web. */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import type { ScrollView as RNScrollView } from "react-native";
+// #4420 keyboard rule: the Support tab holds the new-request form (subject +
+// message), so the scroller keeps the focused field above the keyboard.
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
 // orch-strict-grep-allow orch-0892 — requester hub inputs remain above the fold; support thread keyboard handling stays in SupportThread.native.
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -88,7 +92,7 @@ export default function SupportRoute(): React.ReactElement {
   const targetPostId = firstParam(params.communityPost);
   const targetSection = firstParam(params.section) === "roadmap" ? "roadmap" : undefined;
   const hasCommunityTarget = Boolean(targetAnnouncementId || targetPostId || targetSection);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<RNScrollView>(null);
   const { count: unreadCount, isLoading: unreadLoading } = useCommunityUnreadCount();
   const [activeTab, setActiveTab] = useState<HelpSupportTabId | null>(hasCommunityTarget ? "community" : null);
   const [communitySection, setCommunitySection] = useState<CommunitySectionId>(targetSection ?? "announcements");
@@ -203,7 +207,6 @@ export default function SupportRoute(): React.ReactElement {
 
         <HelpSupportHubTabs active={tab} onChange={handleTabChange} communityBadge={unreadCount} />
 
-        {/* orch-strict-grep-allow orch-0892 — short requester sections; no chat composer or thread keyboard lifecycle here. */}
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
