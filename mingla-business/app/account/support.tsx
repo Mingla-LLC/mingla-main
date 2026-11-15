@@ -17,7 +17,12 @@ import { Icon, type IconName } from "../../src/components/ui/Icon";
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
-import { accent, canvas, radius, spacing, text as textTokens, typography } from "../../src/constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../src/constants/designSystem";
 import { DESKTOP_RAIL_WIDTH } from "../../src/constants/desktopLayout";
 import { useCommunityUnreadCount } from "../../src/hooks/useCommunity";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
@@ -51,7 +56,7 @@ function SupportDesktopRail({ onChange, locked }: { onChange: (id: string) => vo
       <Image source={MINGLA_BUSINESS_LOGO} style={styles.brandLogo} resizeMode="contain" accessibilityIgnoresInvertColors />
       {tabs.map((item) => (
         <Pressable key={item.id} onPress={() => onChange(item.id)} accessibilityRole="tab" accessibilityLabel={item.label} style={styles.appRailItem}>
-          <Icon name={item.icon} size={20} color="#b9b9c2" />
+          <Icon name={item.icon} size={20} color={color.text2} />
           <Text style={styles.appRailLabel}>{item.label}</Text>
         </Pressable>
       ))}
@@ -179,7 +184,7 @@ export default function SupportRoute(): React.ReactElement {
       targetAnnouncementId={targetAnnouncementId}
       targetPostId={targetPostId}
       targetSection={targetSection}
-      onTargetLayout={(contentY) => scrollRef.current?.scrollTo({ y: Math.max(0, contentY - spacing.sm), animated: true })}
+      onTargetLayout={(contentY) => scrollRef.current?.scrollTo({ y: Math.max(0, contentY - space[2]), animated: true })}
       composeRequestKey={composeRequestKey}
       action={communityAction}
     />
@@ -187,7 +192,7 @@ export default function SupportRoute(): React.ReactElement {
 
   return (
     <DesktopCanvas>
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         {!isWideDesktop ? (
           <View style={styles.chromeRow}>
             <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
@@ -205,7 +210,7 @@ export default function SupportRoute(): React.ReactElement {
           contentContainerStyle={[
             styles.scrollContent,
             tab === "guides" && styles.guidesContent,
-            { paddingBottom: insets.bottom + (tab === "community" && !isWideDesktop ? 144 : spacing.xl) },
+            { paddingBottom: insets.bottom + (tab === "community" && !isWideDesktop ? 144 : space[7]) },
           ]}
           scrollEnabled={tab !== "guides"}
           showsVerticalScrollIndicator={false}
@@ -224,7 +229,7 @@ export default function SupportRoute(): React.ReactElement {
             testID="community-floating-action"
             style={({ pressed }) => [styles.floatingAction, { bottom: floatingBottom }, pressed && styles.floatingActionPressed]}
           >
-            <Icon name={communityAction.icon} size={20} color={textTokens.inverse} />
+            <Icon name={communityAction.icon} size={20} color={color.ink} />
             <Text style={styles.floatingActionText}>{communityAction.label}</Text>
           </Pressable>
         ) : null}
@@ -237,18 +242,18 @@ export default function SupportRoute(): React.ReactElement {
 
 const styles = StyleSheet.create({
   host: { flex: 1 },
-  chromeRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm, gap: spacing.sm },
-  chromeTitle: { flex: 1, fontSize: 17, fontWeight: "600", color: textTokens.primary, textAlign: "center" },
+  chromeRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: space[4], paddingTop: space[2], paddingBottom: space[2], gap: space[2] },
+  chromeTitle: { flex: 1, fontSize: 17, fontWeight: "600", color: color.text1, textAlign: "center" },
   chromeRightSlot: { width: 36 },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.md, width: "100%" },
+  scrollContent: { paddingHorizontal: space[4], paddingTop: space[2], gap: space[4], width: "100%" },
   guidesContent: { flexGrow: 1 },
-  floatingAction: { position: "absolute", right: spacing.md, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingHorizontal: spacing.md, borderRadius: radius.full, backgroundColor: accent.warm, zIndex: 40, elevation: 8 },
+  floatingAction: { position: "absolute", right: space[4], minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space[1], paddingHorizontal: space[4], borderRadius: radius.full, backgroundColor: color.paper, zIndex: 40, elevation: 8 },
   floatingActionPressed: { opacity: 0.86, transform: [{ scale: 0.98 }] },
-  floatingActionText: { ...typography.buttonMd, color: textTokens.inverse, fontWeight: "800" },
+  floatingActionText: { ...type.btnSm, color: color.ink, fontWeight: "800" },
   toastWrap: { position: "absolute", top: 80, left: 0, right: 0, zIndex: 100, elevation: 12 },
-  appRail: { position: "fixed" as unknown as "absolute", top: 0, left: 0, bottom: "var(--mingla-privacy-inset, 0px)" as unknown as number, width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: spacing.lg, gap: spacing.sm, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: "rgba(255,255,255,0.10)", zIndex: 50 },
-  brandLogo: { width: 40, height: 40, marginBottom: spacing.md },
+  appRail: { position: "fixed" as unknown as "absolute", top: 0, left: 0, bottom: "var(--mingla-privacy-inset, 0px)" as unknown as number, width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: space[6], gap: space[2], borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: color.line, zIndex: 50 },
+  brandLogo: { width: 40, height: 40, marginBottom: space[4] },
   appRailItem: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 2 },
-  appRailLabel: { color: "#a1a1aa", fontSize: 9, lineHeight: 11 },
+  appRailLabel: { color: color.text2, fontSize: 9, lineHeight: 11 },
 });

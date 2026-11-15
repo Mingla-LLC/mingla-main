@@ -13,12 +13,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import {
-  accent,
-  glass,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+
 import {
   useCommunityAnnouncements,
   useCommunityEmailPref,
@@ -41,6 +36,7 @@ import { Icon, type IconName } from "../ui/Icon";
 import { CommunityMarkdown } from "./CommunityMarkdown";
 import { CommunityConversationsPanel } from "./CommunityConversationsPanel";
 
+import { color, space } from "../../constants/designSystem";
 export type CommunitySectionId = "announcements" | "roadmap" | "ideas" | "questions";
 
 export const COMMUNITY_SECTIONS: readonly { id: CommunitySectionId; label: string }[] = [
@@ -62,7 +58,7 @@ function AnnouncementCard({ item, onOpen }: { item: CommunityAnnouncement; onOpe
   const unread = item.read_at === null;
   return (
     <Pressable onPress={() => onOpen(item.id)} accessibilityRole="button" accessibilityLabel={`${item.title}${unread ? ", unread" : ""}`} style={({ pressed }) => [pressed && styles.pressed]}>
-      <GlassCard variant="elevated" radius="md" padding={spacing.md} style={unread ? styles.unreadCard : null}>
+      <GlassCard variant="elevated" radius="md" padding={space[4]} style={unread ? styles.unreadCard : null}>
         <View style={styles.rowTop}>
           <Text style={styles.cardTitle} numberOfLines={2}>{communityMarkdownToPlainText(item.title)}</Text>
           {unread ? <View style={styles.unreadDot} /> : null}
@@ -76,7 +72,7 @@ function AnnouncementCard({ item, onOpen }: { item: CommunityAnnouncement; onOpe
 
 function RoadmapCardRow({ card }: { card: CommunityRoadmapCard }) {
   return (
-    <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+    <GlassCard variant="elevated" radius="md" padding={space[4]}>
       <Text style={styles.cardTitle}>{card.public_title}</Text>
       {card.public_body ? <Text style={styles.bodyPreview}>{truncateRoadmapBlurb(card.public_body)}</Text> : null}
       {card.target_label || card.idea_count > 0 ? (
@@ -173,7 +169,7 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
   }));
   const laneWidth = Math.max(
     132,
-    Math.min(220, width > 0 ? (width - 48 - spacing.sm) / 2 : 156),
+    Math.min(220, width > 0 ? (width - 48 - space[2]) / 2 : 156),
   );
   const unreadCount = announcements.data.filter((item) => item.read_at === null).length;
 
@@ -236,7 +232,7 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
               style={[styles.sectionAction, !isWideDesktop && styles.sectionActionCompact]}
               testID="community-tab-action"
             >
-              <Icon name={action.icon} size={18} color={textTokens.inverse} />
+              <Icon name={action.icon} size={18} color={color.ink} />
               {isWideDesktop ? <Text style={styles.sectionActionText}>{action.label}</Text> : null}
             </Pressable>
           ) : null}
@@ -251,12 +247,12 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
               isWideDesktop && styles.announcementFeedWide,
             ]}
           >
-            {announcements.isLoading ? <ActivityIndicator color={textTokens.secondary} /> : announcements.isError ? (
-              <GlassCard variant="elevated" radius="md" padding={spacing.lg}><Text style={styles.cardBody}>We couldn&apos;t load announcements just now.</Text><Button label="Try again" variant="secondary" onPress={() => void announcements.refetch()} /></GlassCard>
+            {announcements.isLoading ? <ActivityIndicator color={color.text2} /> : announcements.isError ? (
+              <GlassCard variant="elevated" radius="md" padding={space[6]}><Text style={styles.cardBody}>We couldn&apos;t load announcements just now.</Text><Button label="Try again" variant="secondary" onPress={() => void announcements.refetch()} /></GlassCard>
             ) : announcements.data.length === 0 ? (
-              <GlassCard variant="elevated" radius="md" padding={spacing.lg}><Text style={styles.emptyTitle}>No news yet</Text><Text style={styles.cardBody}>When Mingla posts an update, it will show up here.</Text></GlassCard>
+              <GlassCard variant="elevated" radius="md" padding={space[6]}><Text style={styles.emptyTitle}>No news yet</Text><Text style={styles.cardBody}>When Mingla posts an update, it will show up here.</Text></GlassCard>
             ) : expanded ? (
-              <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+              <GlassCard variant="elevated" radius="md" padding={space[4]}>
                 <Button label="Back to announcements" variant="secondary" onPress={() => setExpandedId(null)} />
                 <Text style={styles.detailTitle}>{communityMarkdownToPlainText(expanded.title)}</Text>
                 {expanded.published_at ? <Text style={styles.meta}>{new Date(expanded.published_at).toLocaleDateString()}</Text> : null}
@@ -277,7 +273,7 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
               isWideDesktop && styles.announcementSupportWide,
             ]}
           >
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <GlassCard variant="elevated" radius="md" padding={space[6]}>
               <View style={styles.prefRow}><View style={styles.prefCopy}><Text style={styles.cardTitle}>Email me announcements</Text><Text style={styles.cardBodyTight}>Service notices from Mingla. On by default; turn off anytime. Push stays on.</Text></View><BrandSwitch value={emailOn} onValueChange={(value) => void handleEmailToggle(value)} disabled={prefLoading || prefSaving} accessibilityLabel="Email me community announcements" /></View>
               {prefToast ? <Text style={styles.prefError}>{prefToast}</Text> : null}
             </GlassCard>
@@ -287,15 +283,15 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
 
       {activeSection === "roadmap" ? (
         <View style={styles.list}>
-          {roadmap.isLoading ? <ActivityIndicator color={textTokens.secondary} /> : roadmap.isError ? (
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}><Text style={styles.cardBody}>We couldn&apos;t load the roadmap just now.</Text><Button label="Try again" variant="secondary" onPress={() => void roadmap.refetch()} /></GlassCard>
+          {roadmap.isLoading ? <ActivityIndicator color={color.text2} /> : roadmap.isError ? (
+            <GlassCard variant="elevated" radius="md" padding={space[6]}><Text style={styles.cardBody}>We couldn&apos;t load the roadmap just now.</Text><Button label="Try again" variant="secondary" onPress={() => void roadmap.refetch()} /></GlassCard>
           ) : (
             <ScrollView
               horizontal
               scrollEnabled={!isWideDesktop}
               showsHorizontalScrollIndicator={false}
               decelerationRate="fast"
-              snapToInterval={isWideDesktop ? undefined : laneWidth + spacing.md}
+              snapToInterval={isWideDesktop ? undefined : laneWidth + space[4]}
               contentContainerStyle={[styles.roadmapBoard, isWideDesktop && styles.roadmapBoardWide]}
               testID="community-roadmap-board"
             >
@@ -303,7 +299,7 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
                 <View key={lane} style={[styles.laneBlock, isWideDesktop ? styles.laneBlockWide : { width: laneWidth }]}>
                   <Text style={styles.laneLabel}>{LANE_LABEL[lane]}</Text>
                   {cards.length > 0 ? cards.map((card) => <RoadmapCardRow key={card.id} card={card} />) : (
-                    <GlassCard variant="base" radius="md" padding={spacing.md}>
+                    <GlassCard variant="base" radius="md" padding={space[4]}>
                       <Text style={styles.laneEmpty}>Nothing here yet.</Text>
                     </GlassCard>
                   )}
@@ -321,47 +317,47 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
 };
 
 const styles = StyleSheet.create({
-  col: { gap: spacing.md },
-  list: { gap: spacing.md },
-  sectionChrome: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  col: { gap: space[4] },
+  list: { gap: space[4] },
+  sectionChrome: { flexDirection: "row", alignItems: "center", gap: space[2] },
   sectionScroller: { flex: 1, minWidth: 0 },
-  sectionTabs: { flexDirection: "row", gap: spacing.xs, paddingBottom: spacing.xs },
-  sectionTab: { minHeight: 44, minWidth: 108, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 999, borderWidth: 1, borderColor: glass.border.profileElevated, paddingHorizontal: spacing.sm },
-  sectionTabActive: { backgroundColor: accent.tint, borderColor: accent.border },
-  sectionTabText: { color: textTokens.tertiary, fontSize: 12, fontWeight: "700" },
-  sectionTabTextActive: { color: textTokens.primary },
-  sectionAction: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: 999, paddingHorizontal: spacing.md, backgroundColor: accent.warm },
+  sectionTabs: { flexDirection: "row", gap: space[1], paddingBottom: space[1] },
+  sectionTab: { minHeight: 44, minWidth: 108, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 999, borderWidth: 1, borderColor: color.lineStrong, paddingHorizontal: space[2] },
+  sectionTabActive: { backgroundColor: color.fill.tabOn, borderColor: color.lineStrong },
+  sectionTabText: { color: color.text3, fontSize: 12, fontWeight: "700" },
+  sectionTabTextActive: { color: color.text1 },
+  sectionAction: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space[1], borderRadius: 999, paddingHorizontal: space[4], backgroundColor: color.paper },
   sectionActionCompact: { width: 40, minWidth: 40, paddingHorizontal: 0 },
-  sectionActionText: { color: textTokens.inverse, fontSize: 13, fontWeight: "800" },
-  announcementWorkspace: { gap: spacing.md },
-  announcementWorkspaceWide: { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg },
-  announcementFeed: { minWidth: 0, gap: spacing.md },
+  sectionActionText: { color: color.ink, fontSize: 13, fontWeight: "800" },
+  announcementWorkspace: { gap: space[4] },
+  announcementWorkspaceWide: { flexDirection: "row", alignItems: "flex-start", gap: space[6] },
+  announcementFeed: { minWidth: 0, gap: space[4] },
   announcementFeedWide: { flexBasis: 0, flexGrow: 5 },
-  announcementSupport: { minWidth: 0, gap: spacing.md },
+  announcementSupport: { minWidth: 0, gap: space[4] },
   announcementSupportWide: { flexBasis: 0, flexGrow: 3 },
   pressed: { opacity: 0.7 },
-  unreadCard: { borderColor: accent.warm, borderWidth: 2 },
-  rowTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.sm },
-  cardTitle: { flex: 1, fontSize: 15, fontWeight: "600", color: textTokens.primary },
-  detailTitle: { fontSize: 22, fontWeight: "800", color: textTokens.primary, marginTop: spacing.md },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: accent.warm },
-  meta: { fontSize: 12, color: textTokens.tertiary, marginTop: spacing.xs },
-  bodyPreview: { marginTop: spacing.sm, fontSize: 13, lineHeight: 19, color: textTokens.secondary },
-  cardBody: { fontSize: 13, lineHeight: 19, color: textTokens.secondary, marginBottom: spacing.md },
-  cardBodyTight: { fontSize: 13, lineHeight: 19, color: textTokens.secondary, marginTop: spacing.xs },
-  emptyTitle: { fontSize: 15, fontWeight: "700", color: textTokens.primary, marginBottom: spacing.xs },
-  roadmapBoard: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, paddingBottom: spacing.xs },
+  unreadCard: { borderColor: color.paper, borderWidth: 2 },
+  rowTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space[2] },
+  cardTitle: { flex: 1, fontSize: 15, fontWeight: "600", color: color.text1 },
+  detailTitle: { fontSize: 22, fontWeight: "800", color: color.text1, marginTop: space[4] },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: color.paper },
+  meta: { fontSize: 12, color: color.text3, marginTop: space[1] },
+  bodyPreview: { marginTop: space[2], fontSize: 13, lineHeight: 19, color: color.text2 },
+  cardBody: { fontSize: 13, lineHeight: 19, color: color.text2, marginBottom: space[4] },
+  cardBodyTight: { fontSize: 13, lineHeight: 19, color: color.text2, marginTop: space[1] },
+  emptyTitle: { fontSize: 15, fontWeight: "700", color: color.text1, marginBottom: space[1] },
+  roadmapBoard: { flexDirection: "row", alignItems: "flex-start", gap: space[4], paddingBottom: space[1] },
   roadmapBoardWide: { width: "100%", flexGrow: 1 },
-  laneBlock: { gap: spacing.sm },
+  laneBlock: { gap: space[2] },
   laneBlockWide: { flexBasis: 0, flexGrow: 1, minWidth: 0 },
-  laneLabel: { fontSize: 12, fontWeight: "700", color: accent.warm, textTransform: "uppercase" },
-  laneEmpty: { color: textTokens.tertiary, fontSize: 13 },
-  roadmapMetaRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.sm, marginTop: spacing.sm },
-  actionBox: { marginTop: spacing.lg, borderLeftWidth: 3, borderLeftColor: accent.warm, paddingLeft: spacing.md },
-  actionHeading: { color: textTokens.primary, fontSize: 14, fontWeight: "800" },
-  roadmapLink: { marginTop: spacing.md, borderRadius: 12, borderWidth: 1, borderColor: accent.border, backgroundColor: accent.tint, padding: spacing.md },
-  roadmapLinkLabel: { color: accent.warm, fontSize: 11, fontWeight: "800", marginBottom: spacing.xs },
-  prefRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  laneLabel: { fontSize: 12, fontWeight: "700", color: color.text1, textTransform: "uppercase" },
+  laneEmpty: { color: color.text3, fontSize: 13 },
+  roadmapMetaRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[2], marginTop: space[2] },
+  actionBox: { marginTop: space[6], borderLeftWidth: 3, borderLeftColor: color.paper, paddingLeft: space[4] },
+  actionHeading: { color: color.text1, fontSize: 14, fontWeight: "800" },
+  roadmapLink: { marginTop: space[4], borderRadius: 12, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tabOn, padding: space[4] },
+  roadmapLinkLabel: { color: color.text1, fontSize: 11, fontWeight: "800", marginBottom: space[1] },
+  prefRow: { flexDirection: "row", alignItems: "center", gap: space[4] },
   prefCopy: { flex: 1 },
-  prefError: { marginTop: spacing.sm, fontSize: 12, color: textTokens.secondary },
+  prefError: { marginTop: space[2], fontSize: 12, color: color.text2 },
 });

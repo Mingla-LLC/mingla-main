@@ -9,13 +9,10 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   applyWizardInvitePeopleEdits,
@@ -482,7 +479,7 @@ export function InvitePeopleStep({
     return <InviteStepState title="Save the basics first" description="Your invite selection attaches to the saved draft." />;
   }
   if (model.plan.isPending) {
-    return <View style={styles.center}><ActivityIndicator color={accent.warm} /><Text style={styles.muted}>Loading your saved selection…</Text></View>;
+    return <View style={styles.center}><ActivityIndicator color={color.text1} /><Text style={styles.muted}>Loading your saved selection…</Text></View>;
   }
   const resolvedAccessFailure = accessFailure ?? accessFailureFor(model.plan.error) ??
     accessFailureFor(model.quote.error);
@@ -751,13 +748,13 @@ function PeoplePickerSheet(props: {
             value={props.search}
             onChangeText={props.onSearch}
             placeholder="Search by name, email, or phone"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             accessibilityLabel="Search by name, email, or phone"
             style={styles.search}
           />
         </View>
         <ScrollView style={styles.peopleScroll} contentContainerStyle={styles.peopleContent} keyboardShouldPersistTaps="handled">
-          {props.pending ? <ActivityIndicator color={accent.warm} /> :
+          {props.pending ? <ActivityIndicator color={color.text1} /> :
             props.error ? <View style={styles.inlineError}><Text style={styles.error}>People are unavailable.</Text>
               <Button label="Retry people" size="sm" variant="secondary" onPress={props.onRetry} /></View> :
               noBook ? <Text style={styles.muted}>Your Book is empty. Add people before choosing invitations.</Text> :
@@ -912,61 +909,61 @@ function InviteStepState(props: { title: string; description: string; actionLabe
 }
 
 const styles = StyleSheet.create({
-  root: { gap: spacing.md, width: "100%" },
-  center: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  title: { ...typography.h2, color: textTokens.primary },
-  subtitle: { ...typography.body, color: textTokens.secondary },
-  trustBanner: { borderRadius: radius.md, borderWidth: 1, borderColor: "rgba(34,197,94,0.35)", backgroundColor: "rgba(34,197,94,0.10)", padding: spacing.md },
-  trustTitle: { ...typography.body, color: semantic.success, fontWeight: "700" },
-  trustBody: { ...typography.bodySm, color: textTokens.secondary },
-  sourceCard: { borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase, padding: spacing.md, gap: spacing.sm },
-  sourceRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 64 },
-  sourceTitle: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: glass.border.profileBase },
-  checkRow: { borderRadius: radius.md, paddingHorizontal: spacing.sm },
-  checkRowOn: { backgroundColor: "rgba(235,120,37,0.10)" },
+  root: { gap: space[4], width: "100%" },
+  center: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: space[2] },
+  title: { ...type.h1, color: color.text1 },
+  subtitle: { ...type.body, color: color.text2 },
+  trustBanner: { borderRadius: radius.sm, borderWidth: 1, borderColor: color.line, backgroundColor: color.successTint, padding: space[4] },
+  trustTitle: { ...type.body, color: color.success, fontWeight: "700" },
+  trustBody: { ...type.small, color: color.text2 },
+  sourceCard: { borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset, padding: space[4], gap: space[2] },
+  sourceRow: { flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 64 },
+  sourceTitle: { ...type.body, color: color.text1, fontWeight: "600" },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: color.line },
+  checkRow: { borderRadius: radius.sm, paddingHorizontal: space[2] },
+  checkRowOn: { backgroundColor: color.fill.tabOn },
   checkRowDisabled: { opacity: 0.5 },
-  checkBox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: glass.border.profileBase, alignItems: "center", justifyContent: "center" },
-  checkBoxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
-  checkMark: { ...typography.caption, color: textTokens.inverse, fontWeight: "700" },
-  methodBlock: { gap: spacing.xs },
-  methodLabel: { ...typography.caption, color: textTokens.secondary, fontWeight: "700", letterSpacing: 0.6 },
-  methodRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  methodChip: { minHeight: 44, justifyContent: "center", borderRadius: radius.full, borderWidth: 1, borderColor: glass.border.profileBase, paddingHorizontal: spacing.md },
-  methodChipOn: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.12)" },
-  methodChipText: { ...typography.bodySm, color: textTokens.secondary, fontWeight: "600" },
-  methodChipTextOn: { color: textTokens.primary },
-  summaryCard: { flexDirection: "row", alignItems: "center", borderRadius: radius.md, backgroundColor: glass.tint.profileElevated, padding: spacing.md, gap: spacing.sm },
-  avatarStack: { flexDirection: "row", marginTop: spacing.xxs },
-  smallAvatar: { width: 24, height: 24, marginRight: -6, borderRadius: 12, backgroundColor: accent.warm, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#171717" },
-  smallAvatarText: { ...typography.caption, color: textTokens.inverse, fontWeight: "700" },
-  sectionTitle: { ...typography.h3, color: textTokens.primary },
-  search: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase, color: textTokens.primary, paddingHorizontal: spacing.md, ...typography.body },
-  personRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md },
-  personSelected: { backgroundColor: "rgba(235,120,37,0.12)" },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: glass.tint.profileElevated, alignItems: "center", justifyContent: "center" },
-  avatarSelected: { backgroundColor: accent.warm },
-  avatarText: { ...typography.body, color: textTokens.primary, fontWeight: "700" },
-  personName: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
-  check: { ...typography.h3, color: textTokens.tertiary },
-  checkSelected: { color: accent.warm },
-  quoteCard: { borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase, padding: spacing.md, gap: spacing.sm },
-  metricRow: { flexDirection: "row", gap: spacing.lg },
+  checkBox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: color.line, alignItems: "center", justifyContent: "center" },
+  checkBoxOn: { backgroundColor: color.paper, borderColor: color.paper },
+  checkMark: { ...type.caption, color: color.ink, fontWeight: "700" },
+  methodBlock: { gap: space[1] },
+  methodLabel: { ...type.caption, color: color.text2, fontWeight: "700", letterSpacing: 0.6 },
+  methodRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  methodChip: { minHeight: 44, justifyContent: "center", borderRadius: radius.full, borderWidth: 1, borderColor: color.line, paddingHorizontal: space[4] },
+  methodChipOn: { borderColor: color.paper, backgroundColor: color.fill.tabOn },
+  methodChipText: { ...type.small, color: color.text2, fontWeight: "600" },
+  methodChipTextOn: { color: color.text1 },
+  summaryCard: { flexDirection: "row", alignItems: "center", borderRadius: radius.sm, backgroundColor: color.fill.tile, padding: space[4], gap: space[2] },
+  avatarStack: { flexDirection: "row", marginTop: space[1] },
+  smallAvatar: { width: 24, height: 24, marginRight: -6, borderRadius: 12, backgroundColor: color.paper, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: color.line },
+  smallAvatarText: { ...type.caption, color: color.ink, fontWeight: "700" },
+  sectionTitle: { ...type.h1, color: color.text1 },
+  search: { minHeight: 48, borderRadius: radius.sm, borderWidth: 1, borderColor: color.line, color: color.text1, paddingHorizontal: space[4], ...type.body },
+  personRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[2], padding: space[2], borderRadius: radius.sm },
+  personSelected: { backgroundColor: color.fill.tabOn },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: color.fill.tile, alignItems: "center", justifyContent: "center" },
+  avatarSelected: { backgroundColor: color.paper },
+  avatarText: { ...type.body, color: color.text1, fontWeight: "700" },
+  personName: { ...type.body, color: color.text1, fontWeight: "600" },
+  check: { ...type.h1, color: color.text3 },
+  checkSelected: { color: color.text1 },
+  quoteCard: { borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset, padding: space[4], gap: space[2] },
+  metricRow: { flexDirection: "row", gap: space[6] },
   metric: { flex: 1 },
-  metricValue: { ...typography.h3, color: textTokens.primary },
-  channelText: { ...typography.bodySm, color: textTokens.secondary },
-  cost: { ...typography.bodySm, color: accent.warm, fontWeight: "600" },
-  reviewSummary: { borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase, padding: spacing.md, gap: spacing.xxs },
+  metricValue: { ...type.h1, color: color.text1 },
+  channelText: { ...type.small, color: color.text2 },
+  cost: { ...type.small, color: color.text1, fontWeight: "600" },
+  reviewSummary: { borderRadius: radius.sm, borderWidth: 1, borderColor: color.line, padding: space[4], gap: space[1] },
   sheetRoot: { flex: 1, minHeight: 0 },
-  sheetHeader: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
+  sheetHeader: { paddingHorizontal: space[6], paddingBottom: space[4], gap: space[2] },
   peopleScroll: { flex: 1, minHeight: 0 },
-  peopleContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.xxs },
-  sheetFooter: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase, padding: spacing.lg, gap: spacing.sm },
-  zeroReachable: { ...typography.bodySm, color: textTokens.primary },
-  dirty: { ...typography.bodySm, color: accent.warm, fontWeight: "600" },
-  muted: { ...typography.bodySm, color: textTokens.secondary },
-  error: { ...typography.bodySm, color: semantic.error },
-  inlineError: { gap: spacing.sm, alignItems: "flex-start" },
+  peopleContent: { paddingHorizontal: space[6], paddingBottom: space[6], gap: space[1] },
+  sheetFooter: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line, padding: space[6], gap: space[2] },
+  zeroReachable: { ...type.small, color: color.text1 },
+  dirty: { ...type.small, color: color.text1, fontWeight: "600" },
+  muted: { ...type.small, color: color.text2 },
+  error: { ...type.small, color: color.errorText },
+  inlineError: { gap: space[2], alignItems: "flex-start" },
   flex: { flex: 1 },
 });
 

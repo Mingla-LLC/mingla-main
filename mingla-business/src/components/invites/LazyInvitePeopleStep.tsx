@@ -66,12 +66,10 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
+  color,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { DefaultFallback } from "../ui/ErrorBoundary";
 import type {
@@ -179,7 +177,7 @@ export const InvitePeopleStep: React.FC<InvitePeopleStepProps> = (props) => {
   // wait and the plan wait are one uninterrupted state to the host.
   return (
     <View style={styles.center} testID="invite-people-step-loading">
-      <ActivityIndicator color={accent.warm} />
+      <ActivityIndicator color={color.text1} />
       <Text style={styles.muted}>Loading your saved selection…</Text>
     </View>
   );
@@ -237,14 +235,14 @@ export const InvitePlanSummaryBridge: React.FC<SummaryBridgeProps> = (props) => 
 const styles = StyleSheet.create({
   // Mirrors InvitePeopleStep's `center`, `muted`, `reviewSummary` and
   // `sectionTitle` so each placeholder occupies the same box as the real thing.
-  center: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  muted: { ...typography.bodySm, color: textTokens.secondary },
+  center: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: space[2] },
+  muted: { ...type.small, color: color.text2 },
   reviewSummary: {
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    padding: spacing.md,
-    gap: spacing.xxs,
+    borderColor: color.line,
+    padding: space[4],
+    gap: space[1],
   },
-  sectionTitle: { ...typography.h3, color: textTokens.primary },
+  sectionTitle: { ...type.h1, color: color.text1 },
 });

@@ -3,8 +3,9 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 
 import { createRetryableLazyErrorBoundary } from "../../src/components/ui/RetryableLazyBoundary";
-import { canvas } from "../../src/constants/designSystem";
 
+
+import { color } from "../../src/constants/designSystem";
 /**
  * #4255 W5 — Mingla team: the chat list and Mentions, a chat (?thread=<id>)
  * and new chats (?compose=…), all on this one route (staff only; not a bottom tab: staff is not a brand
@@ -28,5 +29,5 @@ export default function TeamRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.discover },
+  screen: { flex: 1, backgroundColor: color.canvas },
 });

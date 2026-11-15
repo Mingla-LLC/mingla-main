@@ -9,7 +9,12 @@ import {
 import React, { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  scrim,
+  space,
+} from "../../constants/designSystem";
 import { HELP_CENTRE_URL } from "../../constants/supportHostFacing";
 import { useAuth } from "../../context/AuthContext";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -51,7 +56,7 @@ function GuideCard({ guide, onPress }: { guide: HelpVideoRecord; onPress: () => 
     >
       <View style={styles.cardPoster}>
         {poster ? <Image source={{ uri: poster }} style={styles.cardPosterImage} accessibilityIgnoresInvertColors /> : null}
-        <View style={styles.cardPlay}><Icon name="play" size={14} color={accent.warm} /></View>
+        <View style={styles.cardPlay}><Icon name="play" size={14} color={color.text1} /></View>
         <View style={styles.duration}><Text style={styles.durationText}>{guide.duration}</Text></View>
       </View>
       <Text style={styles.cardTitle} numberOfLines={2}>{guide.title}</Text>
@@ -101,12 +106,12 @@ export const GuidesTabPanel: React.FC<GuidesTabPanelProps> = ({ onToast }) => {
           <Text style={styles.eyebrow}>Start here · {START_GUIDE.duration}</Text>
           <Text style={[styles.heroTitle, isWideDesktop && styles.heroTitleDesktop]} numberOfLines={2}>{START_GUIDE.title}</Text>
           <Text style={styles.heroBody} numberOfLines={isWideDesktop ? 3 : 2}>{START_GUIDE.blurb}</Text>
-          <View style={styles.heroAction}><Icon name="play" size={14} color="#17100c" /><Text style={styles.heroActionText}>Play guide</Text></View>
+          <View style={styles.heroAction}><Icon name="play" size={14} color={color.ink} /><Text style={styles.heroActionText}>Play guide</Text></View>
         </View>
         <View style={[styles.heroArt, isWideDesktop && styles.heroArtDesktop]}>
           {startPoster ? <Image source={{ uri: startPoster }} style={styles.heroPoster} accessibilityIgnoresInvertColors /> : null}
           <View style={styles.heroShade} />
-          <View style={styles.heroPlay}><Icon name="play" size={20} color="#17100c" /></View>
+          <View style={styles.heroPlay}><Icon name="play" size={20} color={color.ink} /></View>
         </View>
       </Pressable>
 
@@ -119,7 +124,7 @@ export const GuidesTabPanel: React.FC<GuidesTabPanelProps> = ({ onToast }) => {
           style={({ pressed }) => [styles.viewMore, pressed && styles.pressed]}
         >
           <Text style={styles.viewMoreText}>View more videos</Text>
-          <Icon name="externalLink" size={14} color={accent.warm} />
+          <Icon name="externalLink" size={14} color={color.text1} />
         </Pressable>
       </View>
 
@@ -137,38 +142,38 @@ export const GuidesTabPanel: React.FC<GuidesTabPanelProps> = ({ onToast }) => {
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, gap: spacing.sm },
-  rootDesktop: { width: "100%", maxWidth: 1120, alignSelf: "center", gap: spacing.md },
-  hero: { minHeight: 144, flexDirection: "row", overflow: "hidden", borderRadius: 22, borderWidth: 1, borderColor: "rgba(235,120,37,0.32)", backgroundColor: "rgba(235,120,37,0.10)" },
+  root: { flex: 1, gap: space[2] },
+  rootDesktop: { width: "100%", maxWidth: 1120, alignSelf: "center", gap: space[4] },
+  hero: { minHeight: 144, flexDirection: "row", overflow: "hidden", borderRadius: 22, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
   heroDesktop: { minHeight: 162 },
-  heroCopy: { flex: 1, minWidth: 0, justifyContent: "center", padding: spacing.md },
-  heroCopyDesktop: { padding: spacing.xl },
-  eyebrow: { color: "#f3a36a", fontSize: 10, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase" },
-  heroTitle: { marginTop: 5, color: textTokens.primary, fontSize: 20, lineHeight: 22, fontWeight: "900", letterSpacing: -0.5 },
+  heroCopy: { flex: 1, minWidth: 0, justifyContent: "center", padding: space[4] },
+  heroCopyDesktop: { padding: space[7] },
+  eyebrow: { color: color.warningText, fontSize: 10, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase" },
+  heroTitle: { marginTop: 5, color: color.text1, fontSize: 20, lineHeight: 22, fontWeight: "900", letterSpacing: -0.5 },
   heroTitleDesktop: { fontSize: 25, lineHeight: 27 },
-  heroBody: { marginTop: 5, color: textTokens.secondary, fontSize: 11, lineHeight: 15 },
-  heroAction: { minHeight: 34, alignSelf: "flex-start", marginTop: spacing.sm, flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, borderRadius: 18, backgroundColor: accent.warm },
-  heroActionText: { color: "#17100c", fontSize: 11, fontWeight: "900" },
-  heroArt: { width: 106, overflow: "hidden", alignItems: "center", justifyContent: "center", backgroundColor: "#1d1a1a" },
+  heroBody: { marginTop: 5, color: color.text2, fontSize: 11, lineHeight: 15 },
+  heroAction: { minHeight: 34, alignSelf: "flex-start", marginTop: space[2], flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, borderRadius: 18, backgroundColor: color.paper },
+  heroActionText: { color: color.ink, fontSize: 11, fontWeight: "900" },
+  heroArt: { width: 106, overflow: "hidden", alignItems: "center", justifyContent: "center", backgroundColor: color.card },
   heroArtDesktop: { width: "34%" },
   heroPoster: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
-  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(20,13,10,0.35)" },
-  heroPlay: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "#ffffff" },
-  sectionHeading: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  heading: { flex: 1, color: textTokens.primary, fontSize: 16, fontWeight: "800" },
-  viewMore: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 11, borderRadius: 999, borderWidth: 1, borderColor: "rgba(235,120,37,0.38)", backgroundColor: "rgba(235,120,37,0.09)" },
-  viewMoreText: { color: accent.warm, fontSize: 11, fontWeight: "800" },
-  grid: { flex: 1, minHeight: 0, flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: color.fill.inset },
+  heroPlay: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: color.paper },
+  sectionHeading: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] },
+  heading: { flex: 1, color: color.text1, fontSize: 16, fontWeight: "800" },
+  viewMore: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 11, borderRadius: 999, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
+  viewMoreText: { color: color.text1, fontSize: 11, fontWeight: "800" },
+  grid: { flex: 1, minHeight: 0, flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   gridDesktop: { flexWrap: "nowrap" },
   mobileCell: { width: "48%", height: "48%", flexGrow: 1, flexBasis: 140 },
   desktopCell: { flex: 1, height: "100%", minWidth: 0 },
-  card: { flex: 1, minHeight: 0, overflow: "hidden", padding: 8, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated },
-  cardPoster: { flex: 1, minHeight: 48, overflow: "hidden", alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: "rgba(235,120,37,0.12)" },
+  card: { flex: 1, minHeight: 0, overflow: "hidden", padding: 8, borderRadius: radius.md, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tile },
+  cardPoster: { flex: 1, minHeight: 48, overflow: "hidden", alignItems: "center", justifyContent: "center", borderRadius: radius.sm, backgroundColor: color.fill.tabOn },
   cardPosterImage: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
-  cardPlay: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: "rgba(10,10,12,0.76)" },
-  duration: { position: "absolute", right: 4, bottom: 4, paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(0,0,0,0.82)" },
-  durationText: { color: "#ffffff", fontSize: 8, fontWeight: "800" },
-  cardTitle: { marginTop: 7, color: textTokens.primary, fontSize: 11, lineHeight: 14, fontWeight: "800" },
-  cardMeta: { marginTop: 2, color: textTokens.tertiary, fontSize: 9 },
+  cardPlay: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: scrim.modal },
+  duration: { position: "absolute", right: 4, bottom: 4, paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4, backgroundColor: scrim.modal },
+  durationText: { color: color.text1, fontSize: 8, fontWeight: "800" },
+  cardTitle: { marginTop: 7, color: color.text1, fontSize: 11, lineHeight: 14, fontWeight: "800" },
+  cardMeta: { marginTop: 2, color: color.text3, fontSize: 9 },
   pressed: { opacity: 0.72 },
 });

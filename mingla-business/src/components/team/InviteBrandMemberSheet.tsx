@@ -23,11 +23,9 @@ import {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
 } from "../../constants/designSystem";
 import {
   type BrandRole,
@@ -233,7 +231,7 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
                   value={name}
                   onChangeText={setName}
                   placeholder="Tunde Olu"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   maxLength={NAME_MAX}
                   style={styles.input}
                   editable={!submitting}
@@ -260,7 +258,7 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
                   value={email}
                   onChangeText={setEmail}
                   placeholder="tunde@example.com"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -288,7 +286,7 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
                 <Text style={styles.rolePickerValue}>
                   {roleDisplayName(role)}
                 </Text>
-                <Icon name="chevD" size={16} color={textTokens.tertiary} />
+                <Icon name="chevD" size={16} color={color.text3} />
               </Pressable>
               <Pressable
                 onPress={openRolesExplained}
@@ -440,127 +438,127 @@ function errorMessageFor(err: unknown): string {
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
     flex: 1,
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   subhead: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   scroll: {
     flex: 1,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   scrollContent: {
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   fieldGroup: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   label: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     marginBottom: 6,
   },
   required: {
-    color: accent.warm,
+    color: color.text1,
   },
   inputWrap: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.md,
+    borderColor: color.line,
+    borderRadius: radius.sm,
     overflow: "hidden",
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: space[2] + 2,
     paddingVertical: 4,
   },
   inputError: {
-    borderColor: "rgba(235, 120, 37, 0.5)",
+    borderColor: color.lineStrong,
   },
   input: {
     fontSize: 15,
-    color: textTokens.primary,
+    color: color.text1,
     minHeight: 40,
     paddingVertical: 6,
   },
   errorText: {
     fontSize: 12,
-    color: accent.warm,
+    color: color.text1,
     marginTop: 4,
   },
   rolePickerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.md,
+    borderColor: color.line,
+    borderRadius: radius.sm,
     overflow: "hidden",
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: space[2] + 4,
+    paddingVertical: space[2] + 2,
     minHeight: 48,
   },
   rolePickerValue: {
     fontSize: 15,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   rolesExplainedLink: {
-    paddingTop: spacing.xs + 2,
+    paddingTop: space[1] + 2,
     alignSelf: "flex-start",
   },
   rolesExplainedText: {
     fontSize: 13,
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "500",
   },
   dispositionHint: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 18,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   dispositionOption: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.md,
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.xs,
+    borderColor: color.line,
+    borderRadius: radius.sm,
+    paddingHorizontal: space[2] + 4,
+    paddingVertical: space[2],
+    marginBottom: space[1],
   },
   dispositionOptionSelected: {
-    borderColor: accent.warm,
+    borderColor: color.paper,
   },
   dispositionLabel: {
     fontSize: 15,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
     marginBottom: 2,
   },
   dispositionCaption: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 18,
   },
   actions: {
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
   actionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
   toastWrap: {
     position: "absolute",
@@ -570,7 +568,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: "flex-end",
     alignItems: "center",
-    padding: spacing.lg,
+    padding: space[6],
   },
 });
 

@@ -34,12 +34,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  accent,
-  glass,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
+  space,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import { HELP_AND_SUPPORT_ROUTE, SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
@@ -288,7 +285,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
           onPress={handleBack}
           style={styles.iconButton}
         >
-          <Icon name="arrowL" size={18} color={textTokens.primary} />
+          <Icon name="arrowL" size={18} color={color.text1} />
         </Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.title} numberOfLines={1}>
@@ -306,7 +303,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 
       {isLoading ? (
         <View style={styles.state}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.text1} />
         </View>
       ) : isError ? (
         <View style={styles.state}>
@@ -419,7 +416,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                               {url !== null ? (
                                 <Image source={{ uri: url }} style={styles.messageImageFill} resizeMode="cover" />
                               ) : (
-                                <Icon name="eye" size={16} color={textTokens.tertiary} />
+                                <Icon name="eye" size={16} color={color.text3} />
                               )}
                             </Pressable>
                           );
@@ -436,7 +433,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
           </ScrollView>
 
           {composerMode === "start_new" ? (
-            <View style={[styles.closedBox, { paddingBottom: Math.max(insets.bottom, 0) + spacing.lg }]}>
+            <View style={[styles.closedBox, { paddingBottom: Math.max(insets.bottom, 0) + space[6] }]}>
               {!staffMode ? (
                 <Button label={supportCopy("thread.start_new")} leadingIcon="plus" onPress={handleStartNew} />
               ) : (
@@ -445,7 +442,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
             </View>
           ) : (
             <KeyboardWrap>
-              <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 0) + spacing.lg }]}>
+              <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 0) + space[6] }]}>
                 {staffMode && !isInternalTicket ? (
                   <View style={styles.modeRow} accessibilityRole="radiogroup">
                     {([false, true] as const).map((note) => (
@@ -480,13 +477,13 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                     accessibilityLabel={supportCopy("thread.attach")}
                     style={styles.attachButton}
                   >
-                    <Icon name="plus" size={18} color={textTokens.primary} />
+                    <Icon name="plus" size={18} color={color.text1} />
                   </Pressable>
                   <TextInput
                     value={composer}
                     onChangeText={setComposer}
                     placeholder={sendingNote ? supportCopy("thread.note_placeholder") : supportCopy("thread.composer_placeholder")}
-                    placeholderTextColor={textTokens.tertiary}
+                    placeholderTextColor={color.text3}
                     style={[styles.input, sendingNote && styles.inputNote]}
                     multiline
                     editable={!sending}
@@ -513,16 +510,16 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#111318",
+    backgroundColor: color.card,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   iconButton: {
     width: 40,
@@ -531,9 +528,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   iconButtonSpacer: {
     width: 40,
@@ -545,182 +542,182 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   subtitle: {
     marginTop: 2,
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   state: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
   },
   stateText: {
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
     lineHeight: 20,
   },
   banner: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
+    marginHorizontal: space[4],
+    marginTop: space[2],
+    padding: space[4],
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   bannerResolved: {
-    borderColor: "rgba(34, 197, 94, 0.45)",
-    backgroundColor: semantic.successTint,
+    borderColor: color.line,
+    backgroundColor: color.successTint,
   },
   bannerClosed: {
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   systemLine: {
     alignSelf: "center",
     fontSize: 12,
     fontStyle: "italic",
-    color: textTokens.secondary,
-    paddingVertical: spacing.xs,
+    color: color.text2,
+    paddingVertical: space[1],
   },
   bannerProduct: {
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   bannerTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   bannerBody: {
     marginTop: 2,
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   messages: {
     flex: 1,
   },
   messagesContent: {
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   threadEmpty: {
-    padding: spacing.lg,
+    padding: space[6],
   },
   threadEmptyText: {
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
     lineHeight: 20,
   },
   messageRow: {
     maxWidth: "84%",
-    padding: spacing.md,
-    borderRadius: radius.md,
+    padding: space[4],
+    borderRadius: radius.sm,
     borderWidth: 1,
   },
   messageRowMine: {
     alignSelf: "flex-end",
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.paper,
+    borderColor: color.paper,
   },
   messageRowOther: {
     alignSelf: "flex-start",
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   messageRowNote: {
     alignSelf: "stretch",
     maxWidth: "100%",
-    backgroundColor: semantic.warningTint,
-    borderColor: semantic.warning,
+    backgroundColor: color.warningTint,
+    borderColor: color.warning,
     borderStyle: "dashed",
   },
   noteLabel: {
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
     fontSize: 11,
     fontWeight: "700",
-    color: semantic.warning,
+    color: color.warning,
   },
   agentLabel: {
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
     fontSize: 12,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   messageText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 14,
     lineHeight: 20,
   },
   messageTextMine: {
-    color: textTokens.inverse,
+    color: color.ink,
   },
   messageImages: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
+    gap: space[1],
+    marginTop: space[2],
   },
   messageImage: {
     width: 72,
     height: 72,
-    borderRadius: radius.sm,
+    borderRadius: radius.xs,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.25)",
+    backgroundColor: color.fill.inset,
   },
   messageImageFill: {
     width: "100%",
     height: "100%",
   },
   messageMeta: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 10,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   closedBox: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   composerWrap: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   modeRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   modeChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   modeChipReply: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   modeChipNote: {
-    backgroundColor: semantic.warningTint,
-    borderColor: semantic.warning,
+    backgroundColor: color.warningTint,
+    borderColor: color.warning,
   },
   modeText: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
   },
   attachButton: {
     width: 44,
@@ -728,25 +725,25 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   input: {
     flex: 1,
     minHeight: 44,
     maxHeight: 120,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    borderRadius: radius.sm,
     overflow: "hidden",
-    color: textTokens.primary,
-    backgroundColor: glass.tint.profileBase,
+    color: color.text1,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   inputNote: {
-    borderColor: semantic.warning,
+    borderColor: color.warning,
     borderStyle: "dashed",
   },
 });

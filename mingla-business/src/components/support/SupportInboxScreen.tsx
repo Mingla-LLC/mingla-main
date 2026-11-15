@@ -36,7 +36,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from "react-native";
@@ -45,9 +44,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   accent,
-  canvas,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useSupportStaff } from "../../hooks/useSupportStaff";
@@ -65,6 +63,7 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
+import { Switch } from "../ui/Switch";
 import { Pill, type PillVariant } from "../ui/Pill";
 import { Toast } from "../ui/Toast";
 import { formatTicketNumber, supportCopy } from "./supportRequestModel";
@@ -266,7 +265,7 @@ export function SupportInboxScreen(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.chromeRow}>
@@ -282,7 +281,7 @@ export function SupportInboxScreen(): React.ReactElement {
 
       {isStaffResolving ? (
         <View style={styles.fullState}>
-          <ActivityIndicator color={textTokens.secondary} />
+          <ActivityIndicator color={color.text2} />
         </View>
       ) : !staff.isStaff ? (
         // Cosmetic client gate; RLS is the real boundary. A non-staff viewer
@@ -300,12 +299,12 @@ export function SupportInboxScreen(): React.ReactElement {
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: insets.bottom + spacing.xl },
+            { paddingBottom: insets.bottom + space[7] },
           ]}
           showsVerticalScrollIndicator={false}
         >
           {/* Availability + degradation note */}
-          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={space[6]}>
             <View style={styles.availRow}>
               <View style={styles.availText}>
                 <Text style={styles.cardTitle}>Available for support</Text>
@@ -318,10 +317,7 @@ export function SupportInboxScreen(): React.ReactElement {
                 value={available}
                 onValueChange={(v) => void handleToggleAvailable(v)}
                 disabled={availabilityBusy}
-                trackColor={{ false: "rgba(255,255,255,0.12)", true: accent.warm }}
-                thumbColor="#ffffff"
                 accessibilityLabel="Available for support"
-                accessibilityState={{ checked: available, disabled: availabilityBusy }}
               />
             </View>
             <Text style={styles.degradeNote}>
@@ -334,10 +330,10 @@ export function SupportInboxScreen(): React.ReactElement {
 
           {queue.isLoading ? (
             <View style={styles.listState}>
-              <ActivityIndicator color={textTokens.secondary} />
+              <ActivityIndicator color={color.text2} />
             </View>
           ) : queue.isError ? (
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <GlassCard variant="elevated" radius="md" padding={space[6]}>
               <Text style={styles.cardBody}>
                 We couldn&apos;t load the queue just now.
               </Text>
@@ -348,7 +344,7 @@ export function SupportInboxScreen(): React.ReactElement {
               />
             </GlassCard>
           ) : queue.data.length === 0 ? (
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <GlassCard variant="elevated" radius="md" padding={space[6]}>
               <Text style={styles.emptyTitle}>Queue&apos;s clear</Text>
               <Text style={styles.cardBody}>
                 No open support chats right now. New ones land here the moment
@@ -367,7 +363,7 @@ export function SupportInboxScreen(): React.ReactElement {
                     key={ticket.id}
                     variant="elevated"
                     radius="md"
-                    padding={spacing.md}
+                    padding={space[4]}
                   >
                     <Pressable
                       onPress={() =>
@@ -404,7 +400,7 @@ export function SupportInboxScreen(): React.ReactElement {
                         <Icon
                           name={expanded ? "chevU" : "chevD"}
                           size={16}
-                          color={textTokens.tertiary}
+                          color={color.text3}
                         />
                       </View>
                     </Pressable>
@@ -413,7 +409,7 @@ export function SupportInboxScreen(): React.ReactElement {
                       <View style={styles.actions}>
                         {busy ? (
                           <View style={styles.actionBusy}>
-                            <ActivityIndicator color={textTokens.secondary} />
+                            <ActivityIndicator color={color.text2} />
                           </View>
                         ) : (
                           <>
@@ -476,16 +472,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -496,109 +492,109 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    padding: spacing.xl,
+    gap: space[4],
+    padding: space[7],
   },
   deniedTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   deniedBody: {
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
   availRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   availText: {
     flex: 1,
     minWidth: 0,
   },
   degradeNote: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   cardBody: {
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   sectionLabel: {
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 0.4,
-    color: textTokens.tertiary,
-    paddingTop: spacing.xs,
+    color: color.text3,
+    paddingTop: space[1],
   },
   listState: {
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
     alignItems: "center",
   },
   emptyTitle: {
     fontSize: 15,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowSubject: {
     flex: 1,
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowBottom: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.sm,
-    gap: spacing.sm,
+    marginTop: space[2],
+    gap: space[2],
   },
   rowMeta: {
     flex: 1,
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
+    paddingTop: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.08)",
+    borderTopColor: color.line,
   },
   actionBusy: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   toastWrap: {
     position: "absolute",

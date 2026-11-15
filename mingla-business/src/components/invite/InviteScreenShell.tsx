@@ -41,8 +41,9 @@ import React from "react";
 import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { canvas, spacing } from "../../constants/designSystem";
 
+
+import { color, space } from "../../constants/designSystem";
 export interface InviteScreenShellProps {
   /** The scrolling, optically-centred region. Cards, spinners, copy. */
   children: React.ReactNode;
@@ -105,7 +106,7 @@ export function InviteScreenShell({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   scroll: {
     flex: 1,
@@ -119,8 +120,8 @@ const styles = StyleSheet.create({
     // the slack the `auto` margin below needs in order to centre at all.
     flexGrow: 1,
     alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+    paddingHorizontal: space[7],
+    paddingVertical: space[6],
   },
   centerer: {
     width: "100%",
@@ -129,21 +130,21 @@ const styles = StyleSheet.create({
     // `justifyContent: "center"`.
     marginVertical: "auto",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   footer: {
     // #2211 — never allowed to shrink, and never inside the scrolling region.
     flexShrink: 0,
     alignItems: "center",
     width: "100%",
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: space[7],
+    paddingBottom: space[6],
+    gap: space[4],
   },
   footerInner: {
     width: "100%",
     maxWidth: 480,
-    gap: spacing.md,
+    gap: space[4],
   },
   // #2211 web correction — the global first-visit consent panel is an
   // absolute bottom overlay. A native-style bottom footer sits underneath it
@@ -153,6 +154,6 @@ const styles = StyleSheet.create({
   webActions: {
     width: "100%",
     maxWidth: 480,
-    gap: spacing.md,
+    gap: space[4],
   },
 });

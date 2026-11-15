@@ -12,13 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  accent,
-  canvas,
-  glass,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+
 import {
   useCommunityComments,
   useCommunityPosts,
@@ -34,6 +28,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Pill } from "../ui/Pill";
 
+import { color, space } from "../../constants/designSystem";
 const IDEA_STATUS_LABELS: Record<string, string> = {
   new: "New",
   under_review: "Under review",
@@ -80,7 +75,7 @@ function PostThread(
     setReply("");
   };
   return (
-    <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+    <GlassCard variant="elevated" radius="md" padding={space[4]}>
       <Button label="Back to Community" variant="secondary" onPress={close} />
       <View style={styles.titleRow}>
         <Text style={styles.title}>{post.title}</Text>
@@ -105,7 +100,7 @@ function PostThread(
       <Text style={styles.sectionLabel}>
         {post.kind === "question" ? "Answers" : "Comments"}
       </Text>
-      {thread.isLoading ? <ActivityIndicator color={textTokens.secondary} /> : thread.data.length === 0 ? (
+      {thread.isLoading ? <ActivityIndicator color={color.text2} /> : thread.data.length === 0 ? (
         <Text style={styles.muted}>No replies yet.</Text>
       ) : (
         <View style={styles.list}>
@@ -133,7 +128,7 @@ function PostThread(
             value={reply}
             onChangeText={setReply}
             placeholder={post.kind === "question" ? "Write an answer" : "Write a comment"}
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             multiline
             maxLength={3000}
             style={[styles.input, styles.bodyInput]}
@@ -190,24 +185,24 @@ function ComposerSheet({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[styles.composerHost, { paddingTop: Math.max(insets.top, spacing.md) }]}>
+      <View style={[styles.composerHost, { paddingTop: Math.max(insets.top, space[4]) }]}>
         <View style={styles.composerHeader}>
           <View style={styles.headerCopy}>
             <Text style={styles.composerTitle}>{kind === "idea" ? "Suggest an idea" : "Ask a question"}</Text>
             <Text style={styles.muted}>Share enough detail for other Hosts to understand and respond.</Text>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Close composer" onPress={onClose} style={styles.closeButton}>
-            <Icon name="close" size={20} color={textTokens.primary} />
+            <Icon name="close" size={20} color={color.text1} />
           </Pressable>
         </View>
-        <ScrollView contentContainerStyle={[styles.composerScroll, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.composerScroll, { paddingBottom: Math.max(insets.bottom, space[7]) }]} keyboardShouldPersistTaps="handled">
           {firstPost ? (
-            <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+            <GlassCard variant="elevated" radius="md" padding={space[4]}>
               <Text style={styles.title}>Community guidelines</Text>
               <Text style={styles.body}>Be constructive, protect private information, and keep the conversation useful for other Hosts. Your first three posts are reviewed before everyone can see them.</Text>
             </GlassCard>
           ) : null}
-          <TextInput value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={textTokens.tertiary} maxLength={160} style={styles.input} accessibilityLabel="Post title" />
+          <TextInput value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={color.text3} maxLength={160} style={styles.input} accessibilityLabel="Post title" />
           {kind === "idea" && similar.length > 0 ? (
             <View style={styles.similarBox}>
               <Text style={styles.similarHeading}>Vote instead?</Text>
@@ -219,7 +214,7 @@ function ComposerSheet({
               ))}
             </View>
           ) : null}
-          <TextInput value={body} onChangeText={setBody} placeholder={kind === "idea" ? "What would make Mingla better?" : "What would you like help with?"} placeholderTextColor={textTokens.tertiary} multiline maxLength={5000} style={[styles.input, styles.bodyInput]} accessibilityLabel="Post details" />
+          <TextInput value={body} onChangeText={setBody} placeholder={kind === "idea" ? "What would make Mingla better?" : "What would you like help with?"} placeholderTextColor={color.text3} multiline maxLength={5000} style={[styles.input, styles.bodyInput]} accessibilityLabel="Post details" />
           <Button label={kind === "idea" ? "Suggest idea" : "Ask question"} loading={saving} disabled={!ready} onPress={() => void onSubmit(title.trim(), body.trim())} />
         </ScrollView>
       </View>
@@ -265,11 +260,11 @@ export function CommunityConversationsPanel({
   return (
     <View style={styles.list}>
       {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
-      {posts.isLoading ? <ActivityIndicator color={textTokens.secondary} /> : posts.isError ? (
+      {posts.isLoading ? <ActivityIndicator color={color.text2} /> : posts.isError ? (
         <Button label="Try again" variant="secondary" onPress={() => void posts.refetch()} />
       ) : posts.data.length === 0 ? (
-        <GlassCard variant="elevated" radius="md" padding={spacing.xl}>
-          <View style={styles.emptyIcon}><Icon name={kind === "idea" ? "sparkle" : "chat"} size={24} color={accent.warm} /></View>
+        <GlassCard variant="elevated" radius="md" padding={space[7]}>
+          <View style={styles.emptyIcon}><Icon name={kind === "idea" ? "sparkle" : "chat"} size={24} color={color.text1} /></View>
           <Text style={styles.emptyTitle}>{kind === "idea" ? "Be the first to shape Mingla" : "No questions yet"}</Text>
           <Text style={styles.emptyCopy}>{kind === "idea" ? "Suggest something that would make hosting easier. Other Hosts can vote and add context." : "Start a useful conversation with other Hosts."}</Text>
           <Button label={kind === "idea" ? "Suggest an idea" : "Ask a question"} onPress={() => setComposerOpen(true)} />
@@ -277,7 +272,7 @@ export function CommunityConversationsPanel({
       ) : (
         <View style={[styles.postGrid, isWideDesktop && styles.postGridWide]}>
           {posts.data.map((post) => (
-            <GlassCard key={post.id} variant="elevated" radius="md" padding={spacing.md} style={isWideDesktop ? styles.postCardWide : undefined}>
+            <GlassCard key={post.id} variant="elevated" radius="md" padding={space[4]} style={isWideDesktop ? styles.postCardWide : undefined}>
               <Pressable accessibilityRole="button" accessibilityLabel={`Open ${post.title}`} onPress={() => setSelectedId(post.id)}>
                 <View style={styles.titleRow}>
                   <Text style={styles.title}>{post.title}</Text>
@@ -297,38 +292,38 @@ export function CommunityConversationsPanel({
 }
 
 const styles = StyleSheet.create({
-  list: { gap: spacing.md },
-  postGrid: { gap: spacing.md },
+  list: { gap: space[4] },
+  postGrid: { gap: space[4] },
   postGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
   postCardWide: { flexBasis: "48%", flexGrow: 1, minWidth: 320 },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[4] },
   headerCopy: { flex: 1, minWidth: 0 },
-  heading: { fontSize: 20, fontWeight: "800", color: textTokens.primary },
-  sectionLabel: { fontSize: 13, fontWeight: "700", color: textTokens.tertiary },
-  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  title: { flex: 1, fontSize: 15, fontWeight: "700", color: textTokens.primary, marginBottom: spacing.sm },
-  body: { fontSize: 14, lineHeight: 20, color: textTokens.secondary, marginBottom: spacing.sm },
-  meta: { fontSize: 12, color: textTokens.tertiary, marginBottom: spacing.sm },
-  input: { minHeight: 46, borderWidth: 1, borderColor: glass.border.profileElevated, borderRadius: 12, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, color: textTokens.primary, marginBottom: spacing.sm, letterSpacing: 0 },
+  heading: { fontSize: 20, fontWeight: "800", color: color.text1 },
+  sectionLabel: { fontSize: 13, fontWeight: "700", color: color.text3 },
+  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
+  title: { flex: 1, fontSize: 15, fontWeight: "700", color: color.text1, marginBottom: space[2] },
+  body: { fontSize: 14, lineHeight: 20, color: color.text2, marginBottom: space[2] },
+  meta: { fontSize: 12, color: color.text3, marginBottom: space[2] },
+  input: { minHeight: 46, borderWidth: 1, borderColor: color.lineStrong, borderRadius: 12, paddingHorizontal: space[4], paddingVertical: space[2], color: color.text1, marginBottom: space[2], letterSpacing: 0 },
   bodyInput: { minHeight: 120, textAlignVertical: "top" },
-  pending: { fontSize: 11, fontWeight: "700", color: accent.warm },
-  notice: { color: textTokens.secondary, fontSize: 12 },
-  muted: { color: textTokens.secondary, fontSize: 13 },
-  actions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
-  comment: { borderTopWidth: 1, borderTopColor: glass.border.profileElevated, paddingTop: spacing.sm },
-  accepted: { color: accent.warm, fontWeight: "700", fontSize: 12 },
-  teamResponse: { borderLeftWidth: 3, borderLeftColor: accent.warm, paddingLeft: spacing.md, marginBottom: spacing.md },
-  teamBadge: { color: accent.warm, fontSize: 10, fontWeight: "800", letterSpacing: 0 },
-  composerHost: { flex: 1, backgroundColor: canvas.profile },
-  composerHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.md, paddingBottom: spacing.md },
-  composerTitle: { color: textTokens.primary, fontSize: 22, fontWeight: "800" },
-  closeButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: glass.border.profileElevated },
-  composerScroll: { width: "100%", maxWidth: 760, alignSelf: "center", padding: spacing.md, gap: spacing.md },
-  similarBox: { borderWidth: 1, borderColor: accent.border, borderRadius: 12, padding: spacing.md, gap: spacing.sm },
-  similarHeading: { color: accent.warm, fontSize: 12, fontWeight: "800" },
-  similarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingVertical: spacing.xs },
-  similarTitle: { flex: 1, color: textTokens.primary, fontSize: 13, fontWeight: "600" },
-  emptyIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: accent.tint, marginBottom: spacing.md },
-  emptyTitle: { color: textTokens.primary, fontSize: 18, fontWeight: "800", marginBottom: spacing.xs },
-  emptyCopy: { color: textTokens.secondary, fontSize: 14, lineHeight: 20, marginBottom: spacing.md },
+  pending: { fontSize: 11, fontWeight: "700", color: color.text1 },
+  notice: { color: color.text2, fontSize: 12 },
+  muted: { color: color.text2, fontSize: 13 },
+  actions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginBottom: space[2] },
+  comment: { borderTopWidth: 1, borderTopColor: color.lineStrong, paddingTop: space[2] },
+  accepted: { color: color.text1, fontWeight: "700", fontSize: 12 },
+  teamResponse: { borderLeftWidth: 3, borderLeftColor: color.paper, paddingLeft: space[4], marginBottom: space[4] },
+  teamBadge: { color: color.text1, fontSize: 10, fontWeight: "800", letterSpacing: 0 },
+  composerHost: { flex: 1, backgroundColor: color.canvas },
+  composerHeader: { flexDirection: "row", alignItems: "center", gap: space[4], paddingHorizontal: space[4], paddingBottom: space[4] },
+  composerTitle: { color: color.text1, fontSize: 22, fontWeight: "800" },
+  closeButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.lineStrong },
+  composerScroll: { width: "100%", maxWidth: 760, alignSelf: "center", padding: space[4], gap: space[4] },
+  similarBox: { borderWidth: 1, borderColor: color.lineStrong, borderRadius: 12, padding: space[4], gap: space[2] },
+  similarHeading: { color: color.text1, fontSize: 12, fontWeight: "800" },
+  similarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[4], paddingVertical: space[1] },
+  similarTitle: { flex: 1, color: color.text1, fontSize: 13, fontWeight: "600" },
+  emptyIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tabOn, marginBottom: space[4] },
+  emptyTitle: { color: color.text1, fontSize: 18, fontWeight: "800", marginBottom: space[1] },
+  emptyCopy: { color: color.text2, fontSize: 14, lineHeight: 20, marginBottom: space[4] },
 });
