@@ -1,7 +1,7 @@
 // @ts-nocheck — Deno-runtime suite; app-mobile's tsc sweep has no Deno globals.
 //
-// I-4430-L3: a changes_requested Local review opens prefilled from local_reviews, with Admin's request and due date shown
-// I-4430-L2: Local refresh refetches only active queries; no Local query key carries an empty id
+// MINGLA-INVARIANT: I-4430-L3 | issue #4430 | a changes_requested Local review opens prefilled from local_reviews, with Admin's request and due date shown
+// MINGLA-INVARIANT: I-4430-L2 | issue #4430 | Local refresh refetches only the queries on screen; no Local query key carries an empty id
 //
 // FAILS-ON-REVERT: dropping the prefill (a blank form again), putting `type: 'active'` back to the
 // default in refreshLocal (Missing queryFn on every pull), or a second `place-name` key, fails here.

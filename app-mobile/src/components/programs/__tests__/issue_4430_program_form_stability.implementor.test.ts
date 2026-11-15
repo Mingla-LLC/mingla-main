@@ -1,6 +1,6 @@
 // @ts-nocheck — Deno-runtime suite; app-mobile's tsc sweep has no Deno globals.
 //
-// I-4430-6: program form layout height does not change while typing or when the keyboard opens
+// MINGLA-INVARIANT: I-4430-6 | issue #4430 | program form layout height does not change while typing or when the keyboard opens
 //
 // Source-contract checks: render suites cannot drive a keyboard. The real proof is a person typing
 // on a phone (Local review and the creator script form).

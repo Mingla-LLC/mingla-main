@@ -1,6 +1,6 @@
 // @ts-nocheck — Deno-runtime suite; app-mobile's tsc sweep has no Deno globals.
 //
-// I-4430-D9: a creator step the host already took counts as done; a stale-state refusal never shows the generic error and never outlives a state change
+// MINGLA-INVARIANT: I-4430-D9 | issue #4430 | a creator step the host already took counts as done; a stale-state refusal never shows the generic error and never outlives a state change
 //
 // FAILS-ON-REVERT: removing stale_contract_state from MESSAGES (generic error again), counting
 // every stale refusal as failure, or dropping the clear-on-state-change effect fails here.
