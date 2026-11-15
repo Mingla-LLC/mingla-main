@@ -6,10 +6,12 @@
 // FAILS-ON-REVERT: dropping the prefill (a blank form again), putting `type: 'active'` back to the
 // default in refreshLocal (Missing queryFn on every pull), or a second `place-name` key, fails here.
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { changesCardWords, draftToFormState } from "../localReviewDraft.ts";
+import { changesCardWords as changesCardWordsWith, draftToFormState } from "../localReviewDraft.ts";
+import { formatInZone } from "../../../utils/programFormat.ts";
 import { localKeys } from "../localKeys.ts";
 import { placeNamesQueryEnabled, refreshLocal } from "../localRefresh.ts";
 
+const changesCardWords = (m: { changes_due_at?: string | null }, r: string[] | undefined, now: Date) => changesCardWordsWith(m, r, now, (v, at) => formatInZone(v, null, at));
 const app = new URL("../../../../../", import.meta.url);
 const read = (p: string): string => Deno.readTextFileSync(new URL(p, app));
 
@@ -42,7 +44,7 @@ Deno.test("#4430 L-3: the card names the due date, the first request and how man
   const now = new Date(2026, 10, 14, 12);
   const w = changesCardWords({ changes_due_at: "2026-11-20T10:00:00Z" }, DRAFT.changes_requested, now);
   assertEquals(w.ended, false);
-  assertEquals(w.line, "Send your update by Nov 20.");
+  assert(/^Send your update by \w{3} Nov 20, \d{1,2}:\d{2} (AM|PM)\.$/.test(w.line), w.line);
   assertEquals(w.first, "Show the receipt");
   assertEquals(w.more, "+ 2 more");
   const one = changesCardWords({ changes_due_at: "2026-11-20T10:00:00Z" }, ["Only this"], now);

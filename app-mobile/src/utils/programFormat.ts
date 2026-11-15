@@ -717,7 +717,7 @@ export function formatInZone(value: string | Date | null | undefined, timeZone: 
   const date = parseDay(value);
   if (!date) return '';
   const parts = timeZone ? zoneParts(date, timeZone, 'en-US') : null;
-  if (!parts) return formatDateTime(date, now).replace(' · ', ', ');
+  if (!parts) return formatDateTime(date, now).replace(/[\u202f\u00a0]/g, ' ').replace(', ', ' ').replace(' · ', ', ');
   const sameYear = Number(parts.year) === now.getFullYear();
   const day = `${capitalizeFirst(parts.month)} ${parts.day}${sameYear ? '' : `, ${parts.year}`}`;
   const time = parts.hour && parts.minute && parts.dayPeriod

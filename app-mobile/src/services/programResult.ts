@@ -158,6 +158,7 @@ const MESSAGES: Record<string, string> = {
   visited_on_outside_month: 'Pick a visit date in this month that isn’t in the future.',
   social_post_url_not_allowed: 'Paste the link to your public post on Instagram, TikTok, YouTube, Facebook, Threads or X.',
   review_evidence_invalid: 'Add one ready video (or up to 6 photos) from this month, then send again.',
+  month_already_picked: 'Your place for this month is already picked.',
   network: 'You’re offline. Check your connection and try again.',
 };
 
@@ -190,6 +191,8 @@ export function toProgramError(error: unknown, body?: unknown): ProgramActionErr
     const tail = message.slice(raised.length + 1).trim();
     return new ProgramActionError(raised, raised === 'stale_contract_state' && RAISED_CODE.test(tail) ? { detail: tail } : {});
   }
+  // #4430 L-7: the one-pick-per-month unique key keeps its meaning instead of becoming unknown_error.
+  if (message.includes('local_months_local_id_month_key')) return new ProgramActionError('month_already_picked');
   if (/network request failed|failed to fetch|network error/i.test(message)) return new ProgramActionError('network');
   return new ProgramActionError('unknown_error');
 }
