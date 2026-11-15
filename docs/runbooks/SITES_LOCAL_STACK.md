@@ -198,6 +198,10 @@ the `STRIPE_RAK_<ROLE>_TEST` restricted keys (`rk_test_`; at least
 `TICKET_CHECKOUT`, `ONBOARD`, `REFRESH_STATUS`, `WEBHOOK`) and
 `STRIPE_WEBHOOK_SECRET` from `stripe listen`; the app's
 `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` must be the same real `pk_test_` key.
+If the colima VM's resolver stops answering for outside names, every Stripe
+and Google call from the functions fails ("connection to Stripe",
+`suggest_exception`). The `run-local-sites.sh` edge watcher detects this and
+adds public resolver fallbacks inside the edge container only.
 Extra seed data must use RFC 4122 ids (`randomUUID()` / `gen_random_uuid()`):
 ids such as `md5(...)::uuid` are refused by the Sites functions (400
 `VALIDATION_FAILED`), so the Website section returns to the brand profile.
