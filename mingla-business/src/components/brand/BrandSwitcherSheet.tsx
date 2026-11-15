@@ -339,7 +339,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space[4],
     padding: space[4],
-    borderRadius: radius.xl,
+    // #4420 — the mockup's selected row is a md (16) pill inside the sheet.
+    borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: color.transparent,
@@ -364,7 +365,7 @@ const styles = StyleSheet.create({
   // The row box keeps its look; the switch target fills it up to the pill.
   brandRowSplit: { padding: 0, paddingRight: space[4], gap: space[2] },
   rowPick: { flex: 1, minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], paddingRight: 0 },
-  brandTextCol: { flex: 1 },
+  brandTextCol: { flex: 1, minWidth: 0 },
   brandName: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, fontWeight: "600", color: color.text1 },
   brandSub: { fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, color: color.text3 },
   rowDeleteBtn: { position: "absolute", top: 0, bottom: 0, right: space[1], width: size.iconBtn.md, alignItems: "center", justifyContent: "center" },
