@@ -81,7 +81,6 @@ import {
   Calendar,
   Clock,
   MapPin,
-  Sparkles,
   Users,
 } from "./LucideIcons";
 import {
@@ -898,37 +897,6 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
 };
 
 // ---- meta chip ----
-const MetaChip: React.FC<{
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  font: string;
-  icon: "calendar" | "location" | "users" | "clock";
-  children: React.ReactNode;
-}> = ({ palette, surface, font, icon, children }) => {
-  const Glyph =
-    icon === "calendar"
-      ? Calendar
-      : icon === "location"
-        ? MapPin
-        : icon === "users"
-          ? Users
-          : Clock;
-  return (
-    <View style={[styles.metaChip, surface.card]}>
-      <Glyph size={15} {...accentIcon(palette)} />
-      <Text
-        style={[
-          styles.metaChipText,
-          surface.secondaryText,
-          themeFontFace(font),
-        ]}
-        numberOfLines={1}
-      >
-        {children}
-      </Text>
-    </View>
-  );
-};
 
 const styles = StyleSheet.create({
   // #1708 — Right now. Label/value rows in the body's existing register; no new
@@ -953,7 +921,6 @@ const styles = StyleSheet.create({
   // #3859 — no fixed lineHeight: the selected host font owns its native metrics.
   title: { fontSize: 32, fontWeight: "900", letterSpacing: -0.5 },
   // ---- meta chips ----
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
   metaChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -965,17 +932,6 @@ const styles = StyleSheet.create({
   },
   metaChipText: { fontSize: 13, fontWeight: "600", flexShrink: 1 },
   // ---- vibe chips ----
-  vibesRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
-  vibeChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1,
-  },
-  vibeChipText: { fontSize: 12, fontWeight: "800", letterSpacing: 0.2 },
   // ---- availability banner (ORCH-1186 Fix 1) ----
   availability: {
     flexDirection: "row",

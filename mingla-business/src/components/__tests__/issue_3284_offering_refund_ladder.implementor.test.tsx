@@ -477,7 +477,9 @@ describe("#3284 L — OfferingRefundLadder copy and accessibility", () => {
     const zero = hostText(tree, "No refund");
     expect(zero).toHaveLength(1);
     expect(flattenStyle(zero[0].props.style).color).toBe("#3a3f47");
-    expect(hostText(tree, "100% refund").map((n) => flattenStyle(n.props.style).color)).toEqual(["#101418"]);
+    // issue #4420 — the timeline names a 100% window "Full refund" (its
+    // accessibility label still says "100% refund").
+    expect(hostText(tree, "Full refund").map((n) => flattenStyle(n.props.style).color)).toEqual(["#101418"]);
   });
 
   test("L-8 the ladder carries no Animated value and no CSS transition style", () => {

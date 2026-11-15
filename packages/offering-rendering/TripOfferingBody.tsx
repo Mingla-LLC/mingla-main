@@ -72,7 +72,6 @@ import {
   BadgeCheck,
   Calendar,
   Minus,
-  Moon,
   Plane,
   Plus,
   Users,
@@ -401,36 +400,39 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               value: data.spotsLabel,
             },
           ]}
-          tagsNode={
-            routeLabel !== null ||
-            (data.bookingDeadlineIso !== null && !data.bookingsClosed) ? (
-              <View style={styles.pillsRow} testID="trip-body-meta-pills">
-                {data.departureCityCountry !== null ? (
-                  <RoutePill palette={palette} label={data.departureCityCountry} />
-                ) : null}
-                {data.departureCityCountry !== null &&
-                data.destinationCityCountry !== null ? (
-                  <View style={[styles.routeDash, { backgroundColor: palette.tertiaryText }]} />
-                ) : null}
-                {data.destinationCityCountry !== null ? (
-                  <View testID="trip-body-route-pill">
-                    <RoutePill palette={palette} label={data.destinationCityCountry} />
-                  </View>
-                ) : null}
-                {data.bookingDeadlineIso !== null && !data.bookingsClosed ? (
-                  <TripCountdownPill
-                    deadlineIso={data.bookingDeadlineIso}
-                    palette={palette}
-                    fontFamily={boldFamily}
-                    testID="trip-body-countdown-pill"
-                  />
-                ) : null}
-              </View>
-            ) : (
-              <View testID="trip-body-meta-pills" />
-            )
-          }
         />
+        {/* issue #4420 — the route as pills under the facts, with the live
+            booking countdown; the anchor always mounts (section-order gate). */}
+        <View
+          style={
+            routeLabel !== null ||
+            (data.bookingDeadlineIso !== null && !data.bookingsClosed)
+              ? [styles.pillsRow, styles.routeRow]
+              : null
+          }
+          testID="trip-body-meta-pills"
+        >
+          {data.departureCityCountry !== null ? (
+            <RoutePill palette={palette} label={data.departureCityCountry} />
+          ) : null}
+          {data.departureCityCountry !== null &&
+          data.destinationCityCountry !== null ? (
+            <View style={[styles.routeDash, { backgroundColor: palette.tertiaryText }]} />
+          ) : null}
+          {data.destinationCityCountry !== null ? (
+            <View testID="trip-body-route-pill">
+              <RoutePill palette={palette} label={data.destinationCityCountry} />
+            </View>
+          ) : null}
+          {data.bookingDeadlineIso !== null && !data.bookingsClosed ? (
+            <TripCountdownPill
+              deadlineIso={data.bookingDeadlineIso}
+              palette={palette}
+              fontFamily={boldFamily}
+              testID="trip-body-countdown-pill"
+            />
+          ) : null}
+        </View>
       </View>
 
       {/* ORCH-1339 — cross-entity social proof; gates are SERVER-authoritative
@@ -1226,7 +1228,11 @@ const RoutePill: React.FC<{ palette: ThemePalette; label: string }> = ({
       { backgroundColor: palette.card, borderColor: palette.panelBorder },
     ]}
   >
-    <Text style={[styles.routePillText, { color: palette.primaryText }]} numberOfLines={1}>
+    <Text
+      style={[styles.routePillText, { color: palette.primaryText }]}
+      numberOfLines={1}
+      ellipsizeMode="tail"
+    >
       {label}
     </Text>
   </View>
@@ -1242,6 +1248,7 @@ const styles = StyleSheet.create({
   },
   routePillText: { fontSize: 13.5, fontWeight: "700" },
   routeDash: { width: 14, height: 1, alignSelf: "center" },
+  routeRow: { marginTop: 14 },
   leadBlock: { marginBottom: 4 },
   eyebrowLead: {
     fontSize: 11,
@@ -1253,25 +1260,6 @@ const styles = StyleSheet.create({
   // #3859 — no fixed lineHeight: the selected host font owns its native metrics.
   title: { fontSize: 32, fontWeight: "900", letterSpacing: -0.5 },
   // ---- §3 full-width pills ----
-  fullPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "stretch",
-    width: "100%",
-    gap: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginTop: 12,
-  },
-  fullPillText: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-  },
   // ---- §4 meta pills (Leg A.4: COMPACT icon+label row — tighter padding/font so
   //      days&nights + seats-left sit side-by-side on one line) ----
   pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },

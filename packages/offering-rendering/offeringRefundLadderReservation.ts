@@ -19,10 +19,13 @@ export function reservedLadderHeight({
   const deadline = isTrip && Number.isFinite(Date.parse(bookingDeadline ?? ""));
   if (policy === null && !deadline && !disclosure) return 0;
   return (
-    60 +
+    // issue #4420 — section 34 + the 26pt display heading (31.2) + 14.
+    79.2 +
     (policy === null ? 0 : final ? 56 : 57) +
     (disclosure ? 56 : 0) +
-    (tiers.length > 0 && !final ? 7 + tiers.length * 30.6 : 0) +
+    // issue #4420 — the vertical timeline: 8 above, then per window the
+    // refund line (18.6) + the window line (22) + 18 between windows.
+    (tiers.length > 0 && !final ? 8 + tiers.length * 58.6 - 18 : 0) +
     (!isTrip && policy !== null && !final ? 30 : 0) +
     (deadline ? 57 : 0)
   );

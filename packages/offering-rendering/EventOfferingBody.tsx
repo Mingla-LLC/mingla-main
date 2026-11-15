@@ -142,7 +142,7 @@ import {
   LazySaleAvailabilityText,
 } from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
-import { accentFill, themeBoldFace, themeFontFace } from "./themeAccentStyle";
+import { accentFill, accentOutline, themeBoldFace, themeFontFace } from "./themeAccentStyle";
 import { StaticMapImage } from "./StaticMapFrame";
 
 // Re-export the pure totals so a single import surface stays one place.
@@ -1361,7 +1361,10 @@ const TicketStepperRow: React.FC<{
         styles.tierCard,
         surface.card,
         selected
-          ? { borderColor: palette.accent, backgroundColor: palette.accentWash }
+          ? accentOutline(palette, {
+              background: palette.accentWash,
+              opaqueBackground: palette.page,
+            })
           : null,
         !sellable && !offChosenDays ? styles.stepperRowMuted : null,
       ]}

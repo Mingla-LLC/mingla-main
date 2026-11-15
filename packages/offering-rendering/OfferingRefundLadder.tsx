@@ -219,25 +219,27 @@ export const OfferingRefundLadder = ({
                   isZero ? "no refund" : `${tier.refund_pct}% refund`
                 }`}
               >
-                <View
-                  style={[
-                    styles.rlDot,
-                    {
-                      backgroundColor: palette.page,
-                      borderColor: isZero ? palette.tertiaryText : themeTextAccent(palette),
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.rlPct,
-                    {
-                      color: isZero ? palette.secondaryText : palette.primaryText,
-                    },
-                  ]}
-                >
-                  {pctLabel}
-                </Text>
+                <View style={styles.rlHead}>
+                  <View
+                    style={[
+                      styles.rlDot,
+                      {
+                        backgroundColor: palette.page,
+                        borderColor: isZero ? palette.tertiaryText : themeTextAccent(palette),
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.rlPct,
+                      {
+                        color: isZero ? palette.secondaryText : palette.primaryText,
+                      },
+                    ]}
+                  >
+                    {pctLabel}
+                  </Text>
+                </View>
                 <Text style={[styles.rlLabel, surface.secondaryText]}>
                   {label}
                 </Text>
@@ -294,9 +296,10 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
   },
   rlRowLast: { paddingBottom: 0 },
+  rlHead: { flexDirection: "row", alignItems: "center" },
   rlDot: {
     position: "absolute",
-    left: -5,
+    left: -25,
     top: 5,
     width: 9,
     height: 9,

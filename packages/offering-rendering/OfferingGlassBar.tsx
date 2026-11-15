@@ -9,8 +9,10 @@
 //
 // Theme: the button is the ONLY gradient fill (accentFill + the gradient
 // layer); every text accent stays the first colour (#1023 rule). The frosted
-// layer uses GlassBlur, which skips backdrop blur on mobile web (stacked
-// backdrop filters crash the mobile browser) and paints opaque on Android.
+// layer is a translucent page-tone fill; desktop web adds a CSS backdrop
+// blur (never mobile web: stacked backdrop filters crash the mobile browser,
+// see GlassBlur) and Android paints it opaque. No expo-blur import, so the
+// public route bundle and the node render suites stay unchanged.
 //
 // Pure: react-native + this package only. Wave B (venues, stays) reuses it.
 
@@ -21,12 +23,12 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
 
 import type { ResolvedTheme } from "./designTokens";
-import { GlassBlur } from "./GlassBlur";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { accentFill, themeFontFace } from "./themeAccentStyle";
 import { boldFontFamily, hexToRgba, type ThemePalette } from "./themePalette";
@@ -51,12 +53,26 @@ export interface OfferingGlassBarProps {
   actionTestID?: string;
 }
 
+/** The width from which web gets a real backdrop blur (GlassBlur's rule). */
+const DESKTOP_BLUR_MIN_WIDTH = 768;
+
+/**
+ * Desktop web only: a CSS backdrop blur behind the translucent fill.
+ * react-native-web passes the style through; native ignores nothing here
+ * because it never receives it.
+ */
+type WebGlassStyle = ViewStyle & { backdropFilter?: string };
+const DESKTOP_GLASS: WebGlassStyle = { backdropFilter: "blur(20px) saturate(1.4)" };
+export const desktopBlur = (width: number): StyleProp<ViewStyle> =>
+  Platform.OS === "web" && width >= DESKTOP_BLUR_MIN_WIDTH ? DESKTOP_GLASS : null;
+
 /** Readable translucent glass tone over the page colour. */
 const glassFill = (palette: ThemePalette): string => {
   const base = palette.panelStrong.startsWith("#") ? palette.panelStrong : palette.page;
   if (!base.startsWith("#")) return palette.panelStrong;
-  // Android paints opaque (no real blur); everywhere else ~78% over the blur.
-  return Platform.OS === "android" ? base : hexToRgba(base, 0.78);
+  // Android paints opaque; native iOS and mobile web have no blur behind the
+  // bar, so they stay near-opaque; desktop web sits at ~78% over its blur.
+  return Platform.OS === "android" ? base : hexToRgba(base, Platform.OS === "web" ? 0.82 : 0.94);
 };
 
 export const OfferingGlassBar: React.FC<OfferingGlassBarProps> = ({
@@ -72,6 +88,7 @@ export const OfferingGlassBar: React.FC<OfferingGlassBarProps> = ({
   testID,
   actionTestID,
 }: OfferingGlassBarProps) => {
+  const { width } = useWindowDimensions();
   const boldFace =
     theme !== undefined ? themeFontFace(boldFontFamily(theme)) : null;
   const showButton = ctaLabel !== null && ctaLabel.length > 0;
@@ -82,16 +99,11 @@ export const OfferingGlassBar: React.FC<OfferingGlassBarProps> = ({
       style={[
         styles.bar,
         { borderColor: palette.panelBorder, backgroundColor: glassFill(palette) },
+        desktopBlur(width),
         style,
       ]}
       testID={testID}
     >
-      <GlassBlur
-        intensity={40}
-        tint={palette.glassTint}
-        style={[StyleSheet.absoluteFill, styles.blur]}
-        pointerEvents="none"
-      />
       <View
         style={styles.textCol}
         accessible
@@ -189,7 +201,6 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  blur: { borderRadius: 999 },
   textCol: { flex: 1, minWidth: 0 },
   title: {
     fontSize: 15,

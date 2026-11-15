@@ -74,10 +74,9 @@ describe("ORCH-1186 — Fix 1 adaptive availability banner", () => {
 
 describe("ORCH-1186 — Fix 2 vibe chip color parity", () => {
   test("vibe chip TEXT uses palette.primaryText (icon stays accent)", () => {
-    expect(bodySrc).toMatch(/styles\.vibeChipText,\s*\n?\s*\{\s*color: palette\.primaryText/);
-    // the Sparkles icon keeps accent.
-    // [TEST-MOD-APPROVED #1023] the icon stays accent, now via the gradient-aware icon props.
-    expect(bodySrc).toMatch(/<Sparkles size=\{13\} \{\.\.\.accentIconProps\}/);
+    // issue #4420 — the vibe chips became the quiet tag line under the fact
+    // rows (no brown-on-brown: the line is in the page's secondary ink).
+    expect(bodySrc).toMatch(/tags=\{vibeLabels\}/);
   });
 });
 

@@ -63,7 +63,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 
 import { EventCoverMedia } from "./EventCoverMedia";
-import { GlassBlur } from "./GlassBlur";
+import { desktopBlur } from "./OfferingGlassBar";
 import {
   OfferingCoverIdentity,
   type OfferingCoverIdentityData,
@@ -571,18 +571,18 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           {
             opacity: bandOpacity,
             borderBottomColor: palette.panelBorder,
+            // No blur behind the band on native or mobile web, so it stays
+            // near-opaque there; desktop web blurs what scrolls under it.
             backgroundColor: palette.page.startsWith("#")
-              ? hexToRgba(palette.page, Platform.OS === "android" ? 0.97 : 0.8)
+              ? hexToRgba(
+                  palette.page,
+                  Platform.OS === "web" ? (isDesktop ? 0.78 : 0.9) : Platform.OS === "android" ? 0.97 : 0.93,
+                )
               : palette.page,
           },
+          desktopBlur(isDesktop ? 1024 : 0),
         ]}
-      >
-        <GlassBlur
-          intensity={40}
-          tint={palette.glassTint}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
+      />
       <View
         style={[
           styles.premiumHeaderRow,
