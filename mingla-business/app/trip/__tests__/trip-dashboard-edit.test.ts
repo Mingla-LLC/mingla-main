@@ -26,10 +26,13 @@ const DASHBOARD_SRC = readFileSync(
 );
 
 describe("ORCH-0859 REWORK 4 — operator dashboard Edit affordance", () => {
-  test("renders Edit as a primary dashboard action tile", () => {
+  // [TEST-MOD-APPROVED #4420] TILE_MATRIX P10: the tile is data for the
+  // shared <OfferingTilePage>, and it leads the trip's tiles.
+  test("renders Edit as the first dashboard action tile", () => {
     expect(DASHBOARD_SRC).toMatch(
-      /<ActionTile[\s\S]*?icon="edit"[\s\S]*?primary[\s\S]*?router\.push\(\s*`\/trip\/\$\{trip\.id\}\/edit`/,
+      /const editTile: OfferingTile = \{[\s\S]*?icon: "edit",[\s\S]*?router\.push\(\s*`\/trip\/\$\{trip\.id\}\/edit`/,
     );
+    expect(DASHBOARD_SRC).toMatch(/const tripCoreTiles: OfferingTile\[\] = \[\s*editTile,/);
   });
 
   test("Edit Pressable routes to /trip/{trip.id}/edit regardless of status", () => {
@@ -45,7 +48,7 @@ describe("ORCH-0859 REWORK 4 — operator dashboard Edit affordance", () => {
   // every home has one Edit tile with the same label in every status.
   test("Edit tile reads Edit in every status (no Continue editing)", () => {
     expect(DASHBOARD_SRC).not.toMatch(/Continue editing/);
-    expect(DASHBOARD_SRC).toMatch(/label="Edit"/);
+    expect(DASHBOARD_SRC).toMatch(/label: "Edit",/);
   });
 
   test("Edit primary-tile divergence is documented", () => {

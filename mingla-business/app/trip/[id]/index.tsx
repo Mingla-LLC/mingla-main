@@ -6,9 +6,10 @@
  * activity, then the cancel CTA. Travelers and Money now live on dedicated
  * routes.
  *
- * [ORCH-0913 deliberate divergence from event] Edit trip remains a primary
+ * [ORCH-0913 deliberate divergence from event] Edit trip remains the first
  * action tile because trip operators edit drafts more frequently than event
- * operators. Do not remove the primary styling during parity cleanup.
+ * operators (#4420: the shared tile page has no primary styling, so the
+ * divergence is kept as position). Do not move it during parity cleanup.
  */
 
 import React, { useMemo, useState } from "react";

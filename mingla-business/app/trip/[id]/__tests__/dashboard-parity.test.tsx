@@ -43,15 +43,14 @@ function styleBlock(source: string, styleName: string): string {
   return source.match(new RegExp(`${styleName}: \\{[^}]*\\}`))?.[0] ?? "";
 }
 
-// ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the actionGrid terminator marker went
-// stale — META-ORCH-1059 Pass 2 rebuilt the grid from buildOfferingDashboardTiles
-// and now renders <EventDetailKpiCard> (then <TripDetailKpiCard>) after the grid,
-// not <TripDetailKpiCard> directly. The grid's ActionTiles are all self-closing,
-// so its single `</View>` is the reliable terminator; drop the fragile
-// following-element anchor.
-const actionGrid = DASHBOARD_SRC.match(
-  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>/,
-)?.[1] ?? "";
+// [TEST-MOD-APPROVED #4420] TILE_MATRIX P10: the trip home renders its tiles
+// through the shared <OfferingTilePage>; each tile (route, label, sub) is
+// built as data between `const configTiles` and `const tripMoreTiles`. That
+// block is the tile scope now (it holds no manage-menu / share / cancel press).
+const TILE_START = DASHBOARD_SRC.indexOf("const configTiles");
+const TILE_END = DASHBOARD_SRC.indexOf("const tripMoreTiles");
+const actionGrid =
+  TILE_START > -1 && TILE_END > TILE_START ? DASHBOARD_SRC.slice(TILE_START, TILE_END) : "";
 
 describe("ORCH-0913 trip dashboard parity", () => {
   test("T-01 Dashboard renders zero tabs", () => {
@@ -82,13 +81,11 @@ describe("ORCH-0913 trip dashboard parity", () => {
   });
 
   test("T-06 KPI strip renders directly beneath action grid", () => {
-    // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: META-ORCH-1059 Pass 2 inserted the
-    // shared <EventDetailKpiCard> (revenue/payout summary) between the action grid
-    // and <TripDetailKpiCard>. The invariant is unchanged — the KPI strip renders
-    // directly beneath the grid and PRICING TIERS follows the KPI cards — so the
-    // pin is updated to the current EventDetailKpiCard→TripDetailKpiCard shape.
+    // [TEST-MOD-APPROVED #4420] the tiles are <OfferingTilePage>; the money
+    // summary sits above them on phone (in the aside on desktop) and the trip
+    // KPI card then PRICING TIERS follow the tiles.
     expect(DASHBOARD_SRC).toMatch(
-      /<\/View>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<EventDetailKpiCard[\s\S]*?<TripDetailKpiCard[\s\S]*?<Text style=\{styles\.sectionLabel\}>PRICING TIERS<\/Text>/,
+      /<OfferingTilePage[\s\S]*?core=\{tripCoreTiles\}[\s\S]*?\{tripKpiCard\}[\s\S]*?<Text style=\{styles\.sectionLabel\}>PRICING TIERS<\/Text>/,
     );
   });
 
@@ -155,19 +152,10 @@ describe("ORCH-0913 trip dashboard parity", () => {
     expect(MONEY_SRC).toContain("Retry now");
   });
 
-  // [TEST-MOD-APPROVED #4420] the hero text shadow reads the scrim token
-  // instead of a raw rgba literal (I-HOST-CHROME-TOKENS-ONLY); same intent.
-  test("T-17 Web textShadow uses CSS shorthand on Platform.OS=web", () => {
-    expect(DASHBOARD_SRC).toContain('Platform.OS === "web"');
-    expect(DASHBOARD_SRC).toContain("textShadow: `0 1px 4px ${scrim.modal}`");
-    expect(DASHBOARD_SRC).toContain("textShadow: `0 1px 3px ${scrim.modal}`");
-  });
-
-  test("T-18 Mobile textShadow uses RN triple on native platforms", () => {
-    expect(DASHBOARD_SRC).toContain("textShadowColor: scrim.modal");
-    expect(DASHBOARD_SRC).toContain("textShadowOffset: { width: 0, height: 1 }");
-    expect(DASHBOARD_SRC).toContain("textShadowRadius: 4");
-  });
+  // T-17 + T-18 REMOVED [TEST-MOD-APPROVED #4420]: TILE_MATRIX P10 replaced the
+  // 200pt photo hero (white title over the cover, which needed the text shadow)
+  // with the compact <OfferingHomeHeader> card, whose title sits beside the
+  // thumbnail on the card surface. No text is drawn over the photo any more.
 
   test("T-19 Dashboard width matches event detail: TopBar shell + single md gutter", () => {
     expect(DASHBOARD_SRC).toContain(

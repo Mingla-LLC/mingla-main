@@ -30,23 +30,19 @@ const S5_FILES = [
 const S6_FILES = ["event/EventListCard.tsx", "trip/TripListCard.tsx"];
 
 describe("META-ORCH-1002 Sub-1 — S5 trip tab-bar Android elevation zeroed", () => {
+  // [TEST-MOD-APPROVED #4420] Graphite Glass retires the orange tab glow on
+  // every platform: tabActive spreads shadow.none, whose elevation is 0, so
+  // Android still draws no elevation artefact (the Sub-1 intent).
   test.each(S5_FILES)("%s tabActive Android elevation resolves to 0", (rel) => {
     const code = stripComments(read(rel));
-    // No bare `elevation: 8` remains.
-    expect(code).not.toMatch(/elevation:\s*8\s*,/);
-    // Android elevation is explicitly zeroed via Platform.select (ios:8, android:0).
+    expect(code).not.toMatch(/elevation:\s*[1-9]/);
     const tabActive = code.match(/tabActive:\s*\{[\s\S]*?\n\s{2}\},/);
     expect(tabActive).not.toBeNull();
-    expect(tabActive![0]).toMatch(
-      /elevation:\s*Platform\.select\(\{[\s\S]*?ios:\s*8[\s\S]*?android:\s*0[\s\S]*?\}\)/,
-    );
-  });
-
-  test.each(S5_FILES)("%s imports Platform from react-native", (rel) => {
-    const code = stripComments(read(rel));
-    expect(code).toMatch(
-      /import\s+\{[^}]*\bPlatform\b[^}]*\}\s+from\s+["']react-native["']/,
-    );
+    expect(tabActive![0]).toMatch(/\.\.\.shadow\.none/);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { shadow } = require("../../constants/designSystem") as typeof import("../../constants/designSystem");
+    expect(shadow.none.elevation).toBe(0);
+    expect(shadow.none.shadowOpacity).toBe(0);
   });
 });
 
@@ -76,11 +72,14 @@ describe("META-ORCH-1002 Sub-1 — S6 list-card host clipped + opaque on Android
 });
 
 describe("META-ORCH-1002 Sub-1 — T-07 iOS frozen (business)", () => {
-  test.each(S5_FILES)("%s keeps iOS elevation 8 + glow shadow", (rel) => {
+  // [TEST-MOD-APPROVED #4420] the iOS orange glow is retired by design (no
+  // orange shadow anywhere in the Host chrome); the tab must not bring it back.
+  test.each(S5_FILES)("%s carries no orange glow shadow", (rel) => {
     const code = stripComments(read(rel));
-    expect(code).toMatch(/shadowColor:\s*["']#eb7825["']/);
-    expect(code).toMatch(/ios:\s*8/);
+    expect(code).not.toMatch(/shadowColor:\s*["']#eb7825["']/);
+    expect(code).not.toMatch(/shadowColor:\s*(?:accent\.warm|color\.accent)\b/);
   });
+
 
   test.each(S6_FILES)("%s keeps iOS translucent profileBase fill", (rel) => {
     const code = stripComments(read(rel));
