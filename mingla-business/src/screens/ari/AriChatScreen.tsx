@@ -563,6 +563,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   ]);
   const previousBrandId = React.useRef(selectedBrandId);
   const brandScopeStable = previousBrandId.current === selectedBrandId;
+  // #4420 — wide desktop keeps past conversations open in a side pane beside
+  // the chat (mockup ari-chat__conversation-drawer); phone and narrow web keep
+  // the sheet. Setup, embedded and the website split keep their own layout.
+  const historyPane = isWideDesktop && !setup && !embedded && !websiteSplit;
 
   React.useEffect(() => {
     if (previousBrandId.current === selectedBrandId) return;
@@ -1650,8 +1654,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         // 390pt a split column gives neither half enough room, so the phone
         // keeps the full-width conversation it already had.
         websiteSplit && !websiteSetup && isWideDesktop ? styles.websiteSplitHost : null,
+        historyPane ? styles.historyHost : null,
       ]}
     >
+      {historyPane ? (
+        <ConversationDrawer
+          presentation="pane"
+          visible={brandScopeStable}
+          onClose={() => setDrawerOpen(false)}
+          conversations={brandScopeStable ? conversations.conversations : []}
+          activeId={chat.conversationId}
+          onSelect={handleSelectConversation}
+          selectedBrandName={brandName}
+          hasSelectedBrand={!!selectedBrandId}
+          isLoading={conversations.isLoading || !brandScopeStable}
+          isError={conversations.isError}
+          onRetry={conversations.refetch}
+          surface={surface}
+        />
+      ) : null}
       {/*
         #3583 — "EDIT WITH ARI" NOW SAYS SO ON A PHONE.
         The website context used to render only when `websiteSplit &&
@@ -1717,15 +1738,17 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   <LazyMessagesAndBell />
                 </React.Suspense>
               ) : null}
-              <Pressable
-                onPress={() => setDrawerOpen(true)}
-                style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={ARI_BRAND_BAR_COPY.chats}
-                testID="ari-bar-chats"
-              >
-                <Menu size={24} color={color.text1} strokeWidth={2} />
-              </Pressable>
+              {historyPane ? null : (
+                <Pressable
+                  onPress={() => setDrawerOpen(true)}
+                  style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={ARI_BRAND_BAR_COPY.chats}
+                  testID="ari-bar-chats"
+                >
+                  <Menu size={24} color={color.text1} strokeWidth={2} />
+                </Pressable>
+              )}
               <Pressable
                 onPress={() => router.push("/ari/settings" as never)}
                 style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
@@ -2255,7 +2278,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       </View>
 
       <ConversationDrawer
-        visible={drawerOpen && brandScopeStable}
+        visible={drawerOpen && brandScopeStable && !historyPane}
         onClose={() => setDrawerOpen(false)}
         conversations={conversations.conversations}
         activeId={chat.conversationId}
@@ -2328,6 +2351,11 @@ const styles = StyleSheet.create({
     backgroundColor: color.canvas,
   },
   ariPane: { flex: 1, minWidth: 0 },
+  historyHost: {
+    flexDirection: "row",
+    gap: space[4],
+    padding: space[4],
+  },
   websiteAriPane: {
     flexGrow: 0,
     flexShrink: 1,

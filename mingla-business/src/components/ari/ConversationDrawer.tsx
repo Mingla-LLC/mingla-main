@@ -19,6 +19,9 @@ import { AriOrb } from "./AriOrb";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ariPalette, color, radius, space } from "../../constants/designSystem";
+
+/** #4420 — the desktop conversations pane width (mockup ari-chat__conversation-drawer). */
+export const ariConversationPaneWidth = 320;
 import { Sheet } from "../ui/Sheet";
 // ORCH-0892: a file that hosts a TextInput scrolls through the keyboard-aware
 // wrapper (KeyboardAwareScrollView on native, ScrollView on web).
@@ -74,6 +77,12 @@ export interface ConversationDrawerProps {
   isError: boolean;
   onRetry: () => void;
   surface?: "main" | "website";
+  /**
+   * #4420 — "sheet" (default): the list opens in a sheet (phone, narrow web).
+   * "pane": wide desktop keeps the list open as a side pane beside the chat
+   * (mockup ari-chat__conversation-drawer); opening a chat does not close it.
+   */
+  presentation?: "sheet" | "pane";
 }
 
 export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
@@ -88,7 +97,9 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   isError,
   onRetry,
   surface = "main",
+  presentation = "sheet",
 }) => {
+  const asPane = presentation === "pane";
   const qc = useQueryClient();
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -242,9 +253,9 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         return;
       }
       onSelect(c.id);
-      onClose();
+      if (!asPane) onClose();
     },
-    [onClose, onSelect, selectMode, toggleSelect],
+    [asPane, onClose, onSelect, selectMode, toggleSelect],
   );
 
   const headerRight = conversations.length > 0
@@ -326,9 +337,8 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
     );
   };
 
-  return (
-    <Sheet visible={visible} onClose={onClose} snapPoint={0.82} style={Platform.OS === "web" ? styles.webSheet : undefined}>
-      <View style={styles.host}>
+  const body = (
+      <View style={[styles.host, asPane ? styles.paneHost : null]}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Conversations</Text>
           {headerRight}
@@ -338,7 +348,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           <Pressable
             onPress={() => {
               onSelect(null);
-              onClose();
+              if (!asPane) onClose();
             }}
             style={({ pressed }) => [styles.newBtn, pressed && styles.btnPressed]}
             accessibilityRole="button"
@@ -507,6 +517,22 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         </React.Suspense>
         ) : null}
       </View>
+  );
+
+  if (asPane) {
+    return (
+      <View
+        style={styles.pane}
+        accessibilityLabel="Conversations"
+        testID="ari-conversation-pane"
+      >
+        {body}
+      </View>
+    );
+  }
+  return (
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.82} style={Platform.OS === "web" ? styles.webSheet : undefined}>
+      {body}
     </Sheet>
   );
 };
@@ -520,6 +546,19 @@ const styles = StyleSheet.create({
     gap: space[2],
   },
   webSheet: { width: 440, maxHeight: "80%" },
+  // #4420 — wide-desktop side pane (mockup: 320 wide, its own card).
+  pane: {
+    width: ariConversationPaneWidth,
+    alignSelf: "stretch",
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    overflow: "hidden",
+  },
+  paneHost: {
+    paddingHorizontal: space[4],
+  },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
