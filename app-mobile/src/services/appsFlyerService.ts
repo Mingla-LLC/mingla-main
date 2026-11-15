@@ -61,8 +61,18 @@ let _signedInUserId: string | null = null
 /** #4238 P3-R2: this install's AppsFlyer id, once the SDK has returned it. */
 let _installUid: string | null = null
 let _emailSetForUserId: string | null = null
-let _lastUninstallToken: string | null = null
-let _pendingUninstallToken: string | null = null
+/**
+ * #4238 W6-5 / sim rework F1+F3: the latest valid push token, held until the
+ * SDK is STARTED (never sent at init: the native call transmits at once, which
+ * would reach AppsFlyer before the ATT answer). The token last handed to
+ * AppsFlyer is persisted so a cold launch does not re-apply the same token;
+ * `undefined` means "not read from storage yet". Opting out forgets it, so
+ * opting back in re-applies.
+ */
+let _heldUninstallToken: string | null = null
+let _lastUninstallToken: string | null | undefined = undefined
+let _uninstallChain: Promise<void> = Promise.resolve()
+export const UNINSTALL_TOKEN_SENT_KEY = '@mingla_af_uninstall_token_sent'
 
 /**
  * #4238 W6-11 (Step 0 Z22): AppsFlyer `emailsCryptType` 3 = SHA-256; the SDK
@@ -158,8 +168,10 @@ function applyPrivacyChoice(): void {
   if (optedOut) {
     _eventQueue = []
     clearAppsFlyerUserEmails()
-  } else if (wasOptedOut && _signedInUserId) {
-    void syncAppsFlyerUserEmail(_signedInUserId)
+    forgetSentUninstallToken()
+  } else {
+    if (wasOptedOut && _signedInUserId) void syncAppsFlyerUserEmail(_signedInUserId)
+    flushUninstallToken()
   }
 }
 
@@ -269,12 +281,22 @@ async function syncAppsFlyerUserEmail(userId: string): Promise<void> {
   }
 }
 
+/**
+ * #4238 sim rework F2: the 6.18 bridge rejects an empty list on iOS
+ * (RNAppsFlyer.m "ENO ARGUMENTS FOUND OR LIST IS CORRUPTED") and on Android
+ * (RNAppsFlyerModule.setUserEmails), so `[]` never cleared anything. A single
+ * empty entry is accepted by both and replaces the previous user's hash. Only
+ * sent when this run set an email, so a signed-out launch makes no call.
+ */
+export const APPSFLYER_CLEARED_EMAILS: string[] = ['']
+
 function clearAppsFlyerUserEmails(): void {
+  const hadEmail = _emailSetForUserId !== null
   _emailSetForUserId = null
-  if (!_initialized || typeof appsFlyer.setUserEmails !== 'function') return
+  if (!hadEmail || !_initialized || typeof appsFlyer.setUserEmails !== 'function') return
   try {
     appsFlyer.setUserEmails(
-      { emails: [], emailsCryptType: APPSFLYER_EMAIL_CRYPT_SHA256 },
+      { emails: APPSFLYER_CLEARED_EMAILS, emailsCryptType: APPSFLYER_EMAIL_CRYPT_SHA256 },
       () => {},
       (err: unknown) => console.warn('[AppsFlyer] clear emails failed:', err),
     )
@@ -306,7 +328,8 @@ export function classifyUninstallToken(token: string | null | undefined, platfor
 
 /**
  * #4238 W6-5: pass the device push token to AppsFlyer for uninstall
- * measurement, once per token change; held until init. Skipped when opted out.
+ * measurement, once per token change (across launches); held until the SDK is
+ * started (after the ATT answer). Skipped when opted out.
  */
 export function updateAppsFlyerUninstallToken(token: string | null | undefined): void {
   const verdict = classifyUninstallToken(token, Platform.OS)
@@ -320,21 +343,60 @@ export function updateAppsFlyerUninstallToken(token: string | null | undefined):
     }
     return
   }
-  if (verdict.token === _lastUninstallToken || isAnalyticsOptedOut()) return
-  if (!_initialized) {
-    _pendingUninstallToken = verdict.token
-    return
-  }
+  _heldUninstallToken = verdict.token
+  flushUninstallToken()
+}
+
+/** Serialised so a storage read never lets two sends of one token race. */
+function flushUninstallToken(): void {
+  _uninstallChain = _uninstallChain.then(sendHeldUninstallToken, sendHeldUninstallToken)
+}
+
+function uninstallSendAllowed(): boolean {
+  return _initialized && _started && !isAnalyticsOptedOut()
+}
+
+async function sendHeldUninstallToken(): Promise<void> {
+  const token = _heldUninstallToken
+  if (!token || !uninstallSendAllowed()) return
   if (typeof appsFlyer.updateServerUninstallToken !== 'function') return
+  const storage = asyncStorage()
+  if (_lastUninstallToken === undefined) {
+    try {
+      _lastUninstallToken = (await storage?.getItem(UNINSTALL_TOKEN_SENT_KEY)) ?? null
+    } catch (e) {
+      console.warn('[AppsFlyer] uninstall token memory unavailable:', e)
+      _lastUninstallToken = null
+    }
+  }
+  if (token !== _heldUninstallToken || !uninstallSendAllowed()) return
+  if (token === _lastUninstallToken) return
   try {
-    appsFlyer.updateServerUninstallToken(verdict.token, () => {
+    appsFlyer.updateServerUninstallToken(token, () => {
       if (__DEV__) console.log('[AppsFlyer] updateServerUninstallToken ok')
     })
-    _lastUninstallToken = verdict.token
-    _pendingUninstallToken = null
+    _lastUninstallToken = token
   } catch (e) {
     console.warn('[AppsFlyer] updateServerUninstallToken failed:', e)
+    return
   }
+  try {
+    await storage?.setItem(UNINSTALL_TOKEN_SENT_KEY, token)
+  } catch (e) {
+    console.warn('[AppsFlyer] uninstall token memory not saved:', e)
+  }
+}
+
+/** Opt-out: forget the sent token so opting back in re-applies it. */
+function forgetSentUninstallToken(): void {
+  _uninstallChain = _uninstallChain.then(async () => {
+    _lastUninstallToken = null
+    try {
+      await asyncStorage()?.setItem(UNINSTALL_TOKEN_SENT_KEY, '')
+    } catch (e) {
+      console.warn('[AppsFlyer] uninstall token memory not cleared:', e)
+    }
+  })
 }
 
 function watchPushTokenForUninstall(): void {
@@ -438,7 +500,6 @@ export function initializeAppsFlyer(): void {
         const pendingDeviceUserId = _pendingDeviceUserId
         _pendingDeviceUserId = null
         if (pendingDeviceUserId) registerAppsFlyerDevice(pendingDeviceUserId)
-        if (_pendingUninstallToken) updateAppsFlyerUninstallToken(_pendingUninstallToken)
         if (_startPending) {
           _startPending = false
           startAppsFlyer()
@@ -582,6 +643,8 @@ export function startAppsFlyer(): void {
     console.warn('[AppsFlyer] startSdk failed:', e)
     return
   }
+  // #4238 sim rework F1: the uninstall token goes only now, after startSdk.
+  flushUninstallToken()
   // #4238 W6-1: replay, in order, events logged before transmission began.
   const queued = _eventQueue
   _eventQueue = []
