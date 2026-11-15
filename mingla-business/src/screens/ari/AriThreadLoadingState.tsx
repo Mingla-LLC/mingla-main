@@ -2,10 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { AriOrb } from "../../components/ari/AriOrb";
-import {
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 
 /** The visible, motion-aware transition while an existing Ari thread loads. */
 export const AriThreadLoadingState: React.FC = () => (
@@ -25,10 +22,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   copy: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "500",

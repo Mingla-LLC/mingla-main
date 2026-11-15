@@ -46,16 +46,19 @@ const stripComments = (src: string): string =>
 // MATERIAL_SURFACES block below (they render <Material>, never their own
 // BlurView); Material itself is pinned here and in issue_4420_material.test.tsx.
 // The intent (no see-through glass on phone web / Android) is unchanged.
-const WIDTH_AWARE_SURFACES: readonly string[] = [
-  "components/marketing/BlastCustomersCta.tsx",
-  "components/ari/AiDisclosureModal.tsx",
-];
+// [TEST-MOD-APPROVED #4420] Wave 5 moved BlastCustomersCta and
+// AiDisclosureModal onto <Material> too, so no feature surface owns a BlurView
+// any more: they are pinned by MATERIAL_SURFACES (render <Material>, no
+// expo-blur import). The width-aware intent is unchanged; Material carries it.
+const WIDTH_AWARE_SURFACES: readonly string[] = [];
 
 const MATERIAL_SURFACES: readonly string[] = [
   "components/ui/SheetMobile.tsx",
   "components/ui/TopSheet.tsx",
   "components/ui/GlassChrome.tsx",
   "components/ui/Toast.tsx",
+  "components/marketing/BlastCustomersCta.tsx",
+  "components/ari/AiDisclosureModal.tsx",
 ];
 
 describe("#4420 — Material is the width-aware glass owner", () => {
@@ -95,9 +98,11 @@ describe("ORCH-1100 RC-2 — shared helper exists + breakpoint", () => {
   });
 });
 
-describe.each(WIDTH_AWARE_SURFACES.map((f) => [f]))(
+(WIDTH_AWARE_SURFACES.length > 0 ? describe.each(WIDTH_AWARE_SURFACES.map((f) => [f])) : describe.skip.each([["(none)"]]))(
   "ORCH-1100 RC-2 — %s is width-aware",
   (rel) => {
+    // [TEST-MOD-APPROVED #4420] no feature surface owns its own blur any more.
+    if (rel === "(none)") return;
     const code = stripComments(read(rel));
 
     test("imports shouldUseRealBlur from the shared glassBlur helper", () => {

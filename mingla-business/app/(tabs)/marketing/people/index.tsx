@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
-import { canvas, spacing } from "../../../../src/constants/designSystem";
+import { color, space } from "../../../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 
 const PeoplePage = React.lazy(() => import("../../../../src/components/people/people"));
@@ -81,14 +81,14 @@ export default function MarketingPeopleRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   content: {
     flexGrow: 1,
-    backgroundColor: canvas.discover,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    backgroundColor: color.canvas,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[4],
   },
   screenReaderHeading: {
     position: "absolute",
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
   workspace: {
-    gap: spacing.lg,
+    gap: space[6],
   },
   workspaceWide: {
     flexDirection: "row",
@@ -121,24 +121,24 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   card: {
-    gap: spacing.md,
+    gap: space[4],
   },
   rows: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   personRow: {
     minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   copy: {
     flex: 1,
-    gap: spacing.xs,
+    gap: space[1],
   },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
 });

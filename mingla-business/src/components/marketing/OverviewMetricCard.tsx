@@ -16,15 +16,7 @@ import {
   View,
 } from "react-native";
 
-import {
-  glass,
-  androidOpaque,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, materials, radius, space, type } from "../../constants/designSystem";
 
 export type OverviewMetricTone = "default" | "warning";
 export type MetricMeasurementState = "measured" | "notMeasured" | "degraded";
@@ -59,12 +51,12 @@ export const OverviewMetricCard: React.FC<OverviewMetricCardProps> = ({
   accessibilityLabel,
 }) => {
   const { width, fontScale } = useWindowDimensions();
-  const useOneColumn = fontScale >= 1.6 || width - spacing.md * 2 < 320;
+  const useOneColumn = fontScale >= 1.6 || width - space[4] * 2 < 320;
   const applyWarning = tone === "warning" && value !== null && value > 0;
   const shownValue = value === null ? "—" : value.toLocaleString();
   const a11yValue = value === null ? "not tracked" : String(value);
-  const valueColor = applyWarning ? semantic.warning : textTokens.primary;
-  const percentColor = applyWarning ? semantic.warning : textTokens.tertiary;
+  const valueColor = applyWarning ? color.warning : color.text1;
+  const percentColor = applyWarning ? color.warning : color.text3;
 
   const pctLabel =
     typeof percent === "number" && Number.isFinite(percent)
@@ -109,41 +101,41 @@ const styles = StyleSheet.create({
   host: {
     flexBasis: "47%",
     flexGrow: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     gap: 2,
   },
   hostAndroid: {
-    backgroundColor: androidOpaque.rowFill,
-    borderColor: androidOpaque.rowBorder,
+    backgroundColor: materials.pane.solidFill,
+    borderColor: color.card2,
     elevation: 0,
   },
   hostOneColumn: {
     flexBasis: "100%",
   },
   label: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   valueRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    gap: spacing.xs,
+    gap: space[1],
   },
   value: {
-    ...typography.h3,
+    ...type.h1,
   },
   percent: {
-    ...typography.bodySm,
+    ...type.small,
   },
   helper: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[1],
   },
 });

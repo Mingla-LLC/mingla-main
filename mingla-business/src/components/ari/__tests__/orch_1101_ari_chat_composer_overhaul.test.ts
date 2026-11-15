@@ -58,7 +58,9 @@ describe("ORCH-1101 · Bug B — send button is a flat ember disc, no SVG blob",
       inputBar.indexOf("sendBtn:"),
       inputBar.indexOf("attachBtn:"),
     );
-    expect(sendBtnBlock).toMatch(/backgroundColor:\s*ariPalette\.userBubble/);
+    // [TEST-MOD-APPROVED #4420] the floating composer's send is the Paper control
+    // (color.paper, ink arrow), dimmed to card2 when idle; still one opaque fill.
+    expect(sendBtnBlock).toMatch(/backgroundColor:\s*color\.paper/);
     // Opaque fill — never a translucent rgba/hsla (Android opaque-glass policy).
     expect(sendBtnBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/);
   });
@@ -69,12 +71,15 @@ describe("ORCH-1101 · Bug B — send button is a flat ember disc, no SVG blob",
     // canvas.depth, pinned by issue_3429_ari_chat_polish.implementor.test.ts).
     // "exactly one lucide ArrowUp, no SVG sibling" is unchanged.
     expect(inputBar).toMatch(/import\s*\{\s*ArrowUp\s*\}\s*from\s*["']lucide-react-native["']/);
-    expect(inputBar).toMatch(/<ArrowUp\s+size=\{20\}\s+color=\{canvas\.depth\}\s+strokeWidth=\{2\.75\}\s*\/>/);
+    // [TEST-MOD-APPROVED #4420] the glyph is ink on Paper, text4 while idle.
+    expect(inputBar).toMatch(/<ArrowUp\s+size=\{20\}\s+color=\{canSend \? color\.ink : color\.text4\}\s+strokeWidth=\{2\.75\}\s*\/>/);
   });
 
-  it("keeps the Animated.View + iOS ember shadow-glow + reduced-motion gate", () => {
+  it("keeps the Animated.View + reduced-motion gate (no Android shadow)", () => {
     expect(inputBar).toContain("Animated.View");
-    expect(inputBar).toContain("shadowColor: ariPalette.ember");
+    // [TEST-MOD-APPROVED #4420] the orange ember glow is retired with the ember disc (orange
+    // stays on Create, nav, progress and steppers); the send is a flat Paper disc.
+    expect(inputBar).not.toContain("shadowColor: ariPalette.ember");
     expect(inputBar).toMatch(/const\s+reduceMotion\s*=\s*useReducedMotion\(\)/);
     expect(inputBar).toContain("withSpring");
     // Android branch carries NO shadow/elevation (opaque-glass policy).
@@ -89,7 +94,8 @@ describe("ORCH-1101 · Bug B — send button is a flat ember disc, no SVG blob",
     // "controlSize: 44" is pinned by issue_3429_ari_chat_polish.implementor
     // .test.ts). The protection kept: both sizes come from tokens, never from
     // a hardcoded number in the component.
-    expect(inputBar).toMatch(/width:\s*ariThread\.sendSize/);
+    // [TEST-MOD-APPROVED #4420] the send circle takes the phone button size token (50).
+    expect(inputBar).toMatch(/width:\s*size\.btn\.phone/);
     const attachBlock = inputBar.slice(inputBar.indexOf("attachBtn:"));
     expect(attachBlock).toMatch(/width:\s*ariThread\.controlSize/);
   });
@@ -145,7 +151,7 @@ describe("ORCH-1101 · Bug A — composer is one line tall on web (no bottom gap
     // src/screens/ari/__tests__/issue_3460_ari_composer_narrow_web_clearance
     // .happy.test.ts, not by this string.
     expect(chatScreen).toMatch(
-      /paddingBottom:\s*[\s\S]*?Platform\.OS === ["']web["']\s*\?\s*isWideDesktop\s*\?\s*spacing\.sm/,
+      /paddingBottom:\s*[\s\S]*?Platform\.OS === ["']web["']\s*\?\s*isWideDesktop\s*\?\s*space\[2\]/, // [TEST-MOD-APPROVED #4420] spacing.sm → space[2] (8)
     );
     // The phantom-80px clearance is still present for native, gated behind the
     // non-web keyboard branch (BOTTOM_NAV_CLEARANCE_PX kept for native).

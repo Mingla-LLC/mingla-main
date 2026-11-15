@@ -22,14 +22,7 @@ import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 // issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
 // Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
 // marketing send-schedule picker was broken on web.
@@ -287,7 +280,7 @@ export const ComposerStepWhen: React.FC<ComposerStepWhenProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   // F.8: compact segmented control replacing two large radio rows.
   segmented: {
@@ -295,8 +288,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     padding: 2,
   },
   segmentedPill: {
@@ -307,28 +300,28 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   segmentedPillActive: {
-    backgroundColor: "rgba(235, 120, 37, 0.42)",
+    backgroundColor: color.fill.tabOn,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.warm,
+    borderColor: color.accent,
   },
   segmentedPillPressed: {
     opacity: 0.85,
   },
   segmentedLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
   segmentedLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   scheduleHost: {
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   pillRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   // issue #1027 Thread B — web date/time cell (label + visible native input).
   webPickerCell: {
@@ -338,48 +331,47 @@ const styles = StyleSheet.create({
   pickerPill: {
     flex: 1,
     minHeight: 44, // F.8: was 56
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs, // F.8: was spacing.sm
+    paddingHorizontal: space[4],
+    paddingVertical: space[1], // F.8: was spacing.sm
     borderRadius: radius.md, // F.8: was radius.lg
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     gap: 2,
   },
   pickerPillActive: {
-    borderColor: accent.border,
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   pickerPillPressed: {
     opacity: 0.85,
   },
   pickerPillLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   pickerPillValue: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   pickerHost: {
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingVertical: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingVertical: space[2],
     alignItems: "center",
   },
   doneBtn: {
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
+    marginTop: space[1],
+    paddingHorizontal: space[6],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: "rgba(235, 120, 37, 0.42)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
+    // #4420: the one primary of the view is Paper with ink text.
+    backgroundColor: color.paper,
     minHeight: 36,
     alignItems: "center",
     justifyContent: "center",
@@ -388,16 +380,16 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   doneBtnLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.ink,
     fontWeight: "600",
   },
   helperText: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   validationMessage: {
-    ...typography.bodySm,
-    color: accent.warm,
+    ...type.small,
+    color: color.text1,
   },
 });

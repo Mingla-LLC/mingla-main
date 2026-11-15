@@ -27,11 +27,7 @@ import {
   StatusTag,
 } from "../../../components/programs/ProgramKit";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
-import {
-  accent,
-  spacing,
-  text as textTokens,
-} from "../../../constants/designSystem";
+import { color, space } from "../../../constants/designSystem";
 import { ShowcaseStrip } from "../../../components/programs/ShowcaseStrip";
 import { useProgramParams } from "../../../components/programs/useProgramParams";
 import {
@@ -320,10 +316,10 @@ export default function PrehireCreatorProfile(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  who: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  who: { flexDirection: "row", alignItems: "center", gap: space[4] },
   whoText: { flex: 1, minWidth: 0, gap: 2 },
-  name: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
-  sub: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
-  pass: { color: accent.warm, fontSize: 15, fontWeight: "700" },
-  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
+  name: { color: color.text1, fontSize: 18, fontWeight: "800" },
+  sub: { color: color.text2, fontSize: 13, lineHeight: 18 },
+  pass: { color: color.text1, fontSize: 15, fontWeight: "700" },
+  tiny: { color: color.text3, fontSize: 12, lineHeight: 16 },
 });

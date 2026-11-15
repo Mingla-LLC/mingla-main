@@ -9,12 +9,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
-import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../constants/designSystem";
+import { color, space, type } from "../../../../constants/designSystem";
 import type { HostAdListSummary } from "../../../../services/hostAdCampaignService";
 import { GlassCard } from "../../../ui/GlassCard";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
@@ -59,7 +54,7 @@ export function AdListSummaryCard({
   const line = hostAdListSummaryLine(summary);
   const hasSpend = summary.daily_spend.some((day) => (day.cents ?? 0) > 0);
   return (
-    <GlassCard variant="base" padding={spacing.lg} testID="ads-list-summary">
+    <GlassCard variant="base" padding={space[6]} testID="ads-list-summary">
       <Text style={styles.line}>{line}</Text>
       {hasSpend ? (
         <View
@@ -78,7 +73,7 @@ export function AdListSummaryCard({
             <Path
               d={sparklinePath(summary.daily_spend)}
               fill="none"
-              stroke={accent.warm}
+              stroke={color.text1}
               strokeWidth="2.5"
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -92,7 +87,7 @@ export function AdListSummaryCard({
 }
 
 const styles = StyleSheet.create({
-  line: { ...typography.body, color: textTokens.primary },
-  spark: { marginTop: spacing.sm },
-  caption: { ...typography.caption, color: textTokens.tertiary, marginTop: spacing.xs },
+  line: { ...type.body, color: color.text1 },
+  spark: { marginTop: space[2] },
+  caption: { ...type.caption, color: color.text3, marginTop: space[1] },
 });

@@ -15,13 +15,7 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius as radiusTokens, space, type } from "../../constants/designSystem";
 import type {
   FirstRunChip,
   FirstRunGreetingCopy,
@@ -144,32 +138,32 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "flex-end",
     // Top inset: the first line (or the orb) never touches the bar's edge.
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[4],
+    gap: space[2],
   },
   orbWrap: {
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   desktopHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   desktopColumn: {
     width: "100%",
     maxWidth: 640,
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   headline: {
     fontSize: 24,
     lineHeight: 30,
     fontWeight: "800",
     letterSpacing: -0.5,
-    color: textTokens.primary,
+    color: color.text1,
   },
   headlineDesktop: {
     fontSize: 28,
@@ -177,9 +171,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   bodyDesktop: {
     textAlign: "center",
@@ -192,8 +186,8 @@ const styles = StyleSheet.create({
   chips: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs + 2,
-    marginTop: spacing.sm,
+    gap: space[1] + 2,
+    marginTop: space[2],
   },
   chipsCentred: {
     justifyContent: "center",
@@ -202,26 +196,26 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 36,
     justifyContent: "center",
-    paddingHorizontal: spacing.md - 2,
+    paddingHorizontal: space[4] - 2,
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-    backgroundColor: "#1a1e24",
+    borderColor: color.lineStrong,
+    backgroundColor: color.card,
   },
   chipPrimary: {
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
-    borderColor: accent.border,
+    backgroundColor: color.fill.tile,
+    borderColor: color.lineStrong,
   },
   chipDisabled: {
     opacity: 0.5,
   },
   chipLabel: {
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   chipLabelPrimary: {
-    color: "#ffd2b0",
+    color: color.text1,
     fontWeight: "600",
   },
   pressed: { opacity: 0.72 },

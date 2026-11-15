@@ -4,13 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "../../../src/components/ui/Button";
-import {
-  canvas,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { color, edge, radius, space } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { acceptReferralInvite } from "../../../src/services/referralInviteService";
 
@@ -40,7 +34,7 @@ export default function ReferralInviteRoute(): React.ReactElement {
       style={styles.page}
       contentContainerStyle={[
         styles.pageContent,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg },
+        { paddingTop: insets.top + space[6], paddingBottom: insets.bottom + space[6] },
       ]}
       keyboardShouldPersistTaps="handled"
     >
@@ -84,13 +78,13 @@ export default function ReferralInviteRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: canvas.profile,
+    backgroundColor: color.canvas,
   },
   pageContent: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: spacing.lg,
+    padding: space[6],
   },
   card: {
     alignSelf: "center",
@@ -98,12 +92,12 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.control,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.lg,
-    gap: spacing.md,
+    borderColor: edge.ringInputFocus.borderColor,
+    backgroundColor: color.fill.inset,
+    padding: space[6],
+    gap: space[4],
   },
-  title: { color: textTokens.primary, fontSize: 25, fontWeight: "900" },
-  copy: { color: textTokens.secondary, lineHeight: 21 },
-  error: { color: "#f87171", fontWeight: "700" },
+  title: { color: color.text1, fontSize: 25, fontWeight: "900" },
+  copy: { color: color.text2, lineHeight: 21 },
+  error: { color: color.errorText, fontWeight: "700" },
 });

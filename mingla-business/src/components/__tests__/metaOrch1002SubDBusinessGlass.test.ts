@@ -79,55 +79,25 @@ describe("Sub-D Symptom-B — ui/Toast.tsx glass comes from Material", () => {
   });
 });
 
-describe("Sub-D Symptom-B — ari/AiDisclosureModal.tsx guarded (via shared helper)", () => {
-  const code = stripComments(read("ari/AiDisclosureModal.tsx"));
-
-  test("uses the shared shouldUseRealBlur(windowWidth) helper", () => {
-    expect(code).toMatch(/import\s*\{[^}]*shouldUseRealBlur[^}]*\}\s*from\s*["'][^"']*glassBlur["']/);
-    expect(code).toMatch(/shouldUseRealBlur\(windowWidth\)/);
-  });
-
-  test("opaque branch renders an opaque sheet instead of the raw BlurView", () => {
-    expect(code).toMatch(
-      /!\s*shouldUseRealBlur\(windowWidth\)[\s\S]{0,120}styles\.opaqueSheet/,
-    );
-  });
-
-  test("opaqueSheet fill is fully opaque (#hex, no rgba alpha)", () => {
-    const block = styleBlock(code, "opaqueSheet");
-    expect(block).not.toBeNull();
-    expect(block!).toMatch(/backgroundColor:\s*["']#[0-9a-fA-F]{6}["']/);
-  });
-
-  test("real-blur path still renders a real BlurView", () => {
-    // [ORCH-1062 pin-fix] A `pointerEvents="none"` prop was inserted before
-    // `intensity={40}` on the BlurView (prop ORDER is incidental source shape;
-    // intensity is still 40). Tolerate intervening props while keeping the real
-    // assertion: the real-blur path renders a <BlurView> with intensity 40.
-    expect(code).toMatch(/<BlurView[\s\S]{0,160}intensity=\{40\}/);
-  });
-});
-
-describe("Sub-D Symptom-B — marketing/BlastCustomersCta.tsx guarded (via shared helper)", () => {
-  const code = stripComments(read("marketing/BlastCustomersCta.tsx"));
-
-  test("uses the shared shouldUseRealBlur(windowWidth) helper", () => {
-    expect(code).toMatch(/import\s*\{[^}]*shouldUseRealBlur[^}]*\}\s*from\s*["'][^"']*glassBlur["']/);
-    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
-  });
-
-  test("L1 renders BlurView when blurOk, opaque fallback otherwise", () => {
-    expect(code).toMatch(
-      /blurOk\s*\?[\s\S]{0,120}<BlurView[\s\S]{0,400}FALLBACK_BACKGROUND/,
-    );
-  });
-
-  test("opaque fill is the kit fallback rgba(20, 22, 26, 0.92)", () => {
-    expect(code).toMatch(
-      /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
-    );
-  });
-});
+// [TEST-MOD-APPROVED #4420] Wave 5 moved AiDisclosureModal and
+// BlastCustomersCta onto <Material> (the one glass owner): no own BlurView, no
+// per-file opaque constant. Their Sub-D guarantee (solid where blur is
+// unavailable, real blur on iOS) is Material's, pinned in
+// issue_4420_material.test.tsx and the Toast block above.
+describe.each([["ari/AiDisclosureModal.tsx", "sheet"], ["marketing/BlastCustomersCta.tsx", "chrome"]])(
+  "Sub-D Symptom-B — %s glass comes from Material",
+  (rel, kind) => {
+    const code = stripComments(read(rel));
+    test("no BlurView of its own and no per-file opaque fallback", () => {
+      expect(code).not.toMatch(/from\s*["']expo-blur["']/);
+      expect(code).not.toMatch(/<BlurView\b/);
+      expect(code).not.toMatch(/FALLBACK_BACKGROUND|opaqueSheet/);
+    });
+    test(`draws its surface with <Material kind="${kind}">`, () => {
+      expect(code).toMatch(new RegExp(`<Material[^>]*kind="${kind}"`));
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Half 2 — Symptom-A sweep: representative swept surfaces carry overflow:hidden

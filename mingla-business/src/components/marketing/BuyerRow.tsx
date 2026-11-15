@@ -22,13 +22,7 @@
 import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import type { BuyerRowData } from "../../types/marketing";
 
 export interface BuyerRowProps {
@@ -165,37 +159,37 @@ export const BuyerRow: React.FC<BuyerRowProps> = ({ buyer, onPress }) => {
 const styles = StyleSheet.create({
   row: {
     minHeight: ROW_HEIGHT,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   rowPressed: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   stack: {
-    gap: spacing.xxs,
+    gap: space[1],
   },
   name: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   meta: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   subMeta: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   consent: {
-    ...typography.caption,
-    marginTop: spacing.xxs,
+    ...type.caption,
+    marginTop: space[1],
   },
   consentOk: {
-    color: semantic.success,
+    color: color.success,
   },
   consentMuted: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });

@@ -17,14 +17,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import {
   LIST_METHOD_LABEL,
   type CampaignListGroup,
@@ -234,21 +227,21 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   hostPressed: {
     opacity: 0.85,
   },
   statusIcon: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     width: 28,
     textAlign: "center",
   },
@@ -257,29 +250,29 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   name: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   metaText: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   failedText: {
     // semantic.warning is the solid hex (#f59e0b); semantic.warningTint is an
     // 18%-alpha background tint and would be near-invisible as a text color
     // on the card's translucent glass background (QA finding P2-2).
-    color: semantic.warning,
+    color: color.warning,
   },
   actionBtn: {
     minHeight: 36,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -287,26 +280,26 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   actionLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   chip: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 2,
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   chipLabel: {
-    ...typography.labelCap,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
 });

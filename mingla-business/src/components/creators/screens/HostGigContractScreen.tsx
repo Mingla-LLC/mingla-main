@@ -132,12 +132,7 @@ import {
   workspacePendingRefundMinor,
   zoneLabel,
 } from "../../../utils/creatorProgramFormat";
-import {
-  accent,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../../constants/designSystem";
+import { color, radius, space } from "../../../constants/designSystem";
 
 type SheetKind =
   | null
@@ -1051,7 +1046,7 @@ export default function HostGigContract(): React.ReactElement {
                         name="star"
                         size={30}
                         color={
-                          stars >= value ? accent.warm : textTokens.quaternary
+                          stars >= value ? color.text1 : color.text4
                         }
                       />
                     </Pressable>
@@ -1420,7 +1415,7 @@ export default function HostGigContract(): React.ReactElement {
                 <Icon
                   name={checks.disclosure ? "check" : "flag"}
                   size={14}
-                  color={checks.disclosure ? accent.warm : textTokens.tertiary}
+                  color={checks.disclosure ? color.success : color.text3}
                 />
                 <Text style={programStyles.small}>
                   {[
@@ -1513,7 +1508,7 @@ export default function HostGigContract(): React.ReactElement {
                     accessibilityIgnoresInvertColors
                   />
                 ) : null}
-                <Icon name="play" size={32} color={textTokens.primary} />
+                <Icon name="play" size={32} color={color.text1} />
                 <Text style={styles.playerCaption}>
                   {`Version ${delivery.round + 1} · tap to play`}
                 </Text>
@@ -2001,7 +1996,7 @@ export default function HostGigContract(): React.ReactElement {
 
 const styles = StyleSheet.create({
   statusTitle: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 16,
     fontWeight: "800",
     flexShrink: 1,
@@ -2012,18 +2007,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minHeight: 44,
   },
-  activityLabel: { color: textTokens.secondary, fontSize: 13 },
-  activityAction: { color: accent.warm, fontSize: 13, fontWeight: "700" },
-  notice: { color: accent.warm, fontWeight: "700", fontSize: 14 },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  section: { gap: 2, paddingVertical: spacing.xs },
+  activityLabel: { color: color.text2, fontSize: 13 },
+  activityAction: { color: color.text1, fontSize: 13, fontWeight: "700" },
+  notice: { color: color.text1, fontWeight: "700", fontSize: 14 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  section: { gap: 2, paddingVertical: space[1] },
   sectionLabel: {
-    color: textTokens.tertiary,
+    color: color.text3,
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.4,
   },
-  checkRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  checkRow: { flexDirection: "row", alignItems: "center", gap: space[1] },
   rowBetween: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2040,31 +2035,31 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     aspectRatio: 9 / 16,
     borderRadius: radius.lg,
-    backgroundColor: "#5b3a22",
+    backgroundColor: color.card2,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
     overflow: "hidden",
     ...(Platform.OS === "web"
       ? ({ maxWidth: "min(100%, calc(min(70vh, 640px) * 0.5625))" } as object)
       : null),
   },
   playerPoster: { ...StyleSheet.absoluteFillObject },
-  playerCaption: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
-  stars: { flexDirection: "row", gap: spacing.sm },
+  playerCaption: { color: color.text1, fontSize: 13, fontWeight: "600" },
+  stars: { flexDirection: "row", gap: space[2] },
   // Breathing room: 10 px between the buttons, 28 px under the last one.
   confirmActions: { gap: 10, paddingBottom: 28 },
   offer: {
-    gap: spacing.xs,
-    padding: spacing.md,
+    gap: space[1],
+    padding: space[4],
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     borderRadius: radius.md,
   },
-  pair: { flexDirection: "row", gap: spacing.sm },
+  pair: { flexDirection: "row", gap: space[2] },
   pairDate: { flex: 1.4 },
   quote: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontStyle: "italic",
     fontSize: 14,
     lineHeight: 20,

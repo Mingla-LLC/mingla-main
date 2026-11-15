@@ -11,7 +11,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { ariThread, text as textTokens } from "../../constants/designSystem";
+import { ariThread, color } from "../../constants/designSystem";
 import { captureAriRevealOutcome } from "../../services/ariPolishAnalytics";
 import {
   type AriBubbleSegment,
@@ -71,7 +71,7 @@ const ChunkBody: React.FC<{ chunk: Chunk; textStyle: object }> = ({ chunk, textS
       <View accessibilityRole="header">
         <ChunkInline
           text={chunk.text}
-          textStyle={[textStyle, { fontWeight: "600", color: textTokens.secondary }]}
+          textStyle={[textStyle, { fontWeight: "600", color: color.text2 }]}
         />
       </View>
     );
@@ -300,8 +300,8 @@ const styles = StyleSheet.create({
   gap: { marginTop: ariThread.gapGroup },
   listRow: { flexDirection: "row" },
   // Identical to ChatBubble's hanging bullet so reveal and settled rows match.
-  bulletGlyph: { color: textTokens.tertiary, width: 6, marginRight: 6 },
-  numberGlyph: { color: textTokens.tertiary, width: 18, marginRight: 6 },
+  bulletGlyph: { color: color.text3, width: 6, marginRight: 6 },
+  numberGlyph: { color: color.text3, width: 18, marginRight: 6 },
   listText: { flex: 1 },
 });
 

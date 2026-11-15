@@ -8,15 +8,7 @@
 import React from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
-import {
-  accent,
-  composerSheetMinHeight,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, composerSheetMinHeight, radius, space, type } from "../../constants/designSystem";
 
 export const PUSH_BODY_MAX = 120;
 
@@ -109,7 +101,7 @@ export const PushComposeCard: React.FC<PushComposeCardProps> = ({
         value={body}
         onChangeText={onChangeBody}
         placeholder="Doors open at 9. New dates just added."
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         multiline
         maxLength={PUSH_BODY_MAX + 40}
         accessibilityLabel="Push message"
@@ -127,37 +119,37 @@ export const PushComposeCard: React.FC<PushComposeCardProps> = ({
 const styles = StyleSheet.create({
   host: {
     minHeight: composerSheetMinHeight,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-    gap: spacing.sm,
+    marginHorizontal: space[4],
+    marginTop: space[2],
+    padding: space[4],
+    gap: space[2],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   headerRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-  label: { ...typography.labelCap, color: textTokens.tertiary },
-  counter: { color: textTokens.tertiary, fontSize: 12, fontWeight: "600" },
-  counterOver: { color: accent.warm },
-  autoFill: { color: accent.warm, fontSize: 11, fontWeight: "700" },
+  label: { ...type.label, color: color.text3 },
+  counter: { color: color.text3, fontSize: 12, fontWeight: "600" },
+  counterOver: { color: color.text1 },
+  autoFill: { color: color.text1, fontSize: 11, fontWeight: "700" },
   input: {
     minHeight: 72,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 16,
     lineHeight: 22,
     textAlignVertical: "top",
   },
   preview: {
     borderRadius: radius.md,
-    padding: spacing.sm,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    padding: space[2],
+    backgroundColor: color.fill.pressed,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     gap: 2,
   },
-  previewApp: { color: textTokens.tertiary, fontSize: 11, fontWeight: "700" },
-  previewTitle: { color: textTokens.primary, fontSize: 14, fontWeight: "800" },
-  previewBody: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
-  note: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
+  previewApp: { color: color.text3, fontSize: 11, fontWeight: "700" },
+  previewTitle: { color: color.text1, fontSize: 14, fontWeight: "800" },
+  previewBody: { color: color.text2, fontSize: 13, lineHeight: 18 },
+  note: { color: color.text3, fontSize: 12, lineHeight: 16 },
 });

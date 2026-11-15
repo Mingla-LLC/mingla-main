@@ -11,7 +11,7 @@ import { AppState, Pressable, StyleSheet, Text, View, type AppStateStatus } from
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { canvas, semantic, text as textTokens, typography } from "../../constants/designSystem";
+import { color, type } from "../../constants/designSystem";
 import { teamChatKey } from "../../hooks/useBusinessNotifications";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { supabase } from "../../services/supabase";
@@ -142,8 +142,8 @@ export default function MinglaTeamSlot({ userId }: { userId: string }): React.Re
 const styles = StyleSheet.create({
   // A solid chip: the one filled icon in the cluster, so staff can tell the
   // team space from the brand's own Messages at a glance.
-  button: { width: 36, height: 36, borderRadius: 18, backgroundColor: textTokens.primary, alignItems: "center", justifyContent: "center" },
-  mark: { color: canvas.discover, fontSize: 16, lineHeight: 20, fontWeight: "800" },
-  badge: { position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: semantic.error, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
-  badgeLabel: { color: textTokens.inverse, fontSize: typography.micro.fontSize, lineHeight: typography.micro.lineHeight, fontWeight: typography.micro.fontWeight },
+  button: { width: 36, height: 36, borderRadius: 18, backgroundColor: color.text1, alignItems: "center", justifyContent: "center" },
+  mark: { color: color.canvas, fontSize: 16, lineHeight: 20, fontWeight: "800" },
+  badge: { position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: color.danger, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
+  badgeLabel: { color: color.textStrong, fontSize: type.label.fontSize, lineHeight: type.label.lineHeight, fontWeight: type.label.fontWeight },
 });

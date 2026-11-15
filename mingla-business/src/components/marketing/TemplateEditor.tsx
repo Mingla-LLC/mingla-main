@@ -30,13 +30,7 @@ import {
   type TextInputChangeEventData,
 } from "react-native";
 
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 
 export type TemplateEditorMode = "readonly" | "editable" | "new";
 
@@ -88,7 +82,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
             value={subject}
             onChange={handleSubjectChange}
             placeholder="Subject line — what your buyers see in their inbox"
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             style={styles.input}
             accessibilityLabel="Subject"
             autoCorrect
@@ -112,7 +106,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
             value={body}
             onChange={handleBodyChange}
             placeholder={"Hi {first_name},\n\nWrite your message here…"}
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             style={[styles.input, styles.inputMultiline]}
             multiline
             textAlignVertical="top"
@@ -133,53 +127,53 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.lg,
+    gap: space[6],
   },
   block: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   label: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   readonlyText: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   input: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2] + 2,
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: typography.body.fontWeight,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    fontWeight: type.body.fontWeight,
     minHeight: 48,
   },
   inputMultiline: {
     minHeight: 192,
   },
   cheatsheet: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   cheatsheetText: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   token: {
-    fontSize: typography.monoMd.fontSize,
-    lineHeight: typography.monoMd.lineHeight,
-    fontWeight: typography.monoMd.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.mono.fontSize,
+    lineHeight: type.mono.lineHeight,
+    fontWeight: type.mono.fontWeight,
+    color: color.text1,
   },
 });

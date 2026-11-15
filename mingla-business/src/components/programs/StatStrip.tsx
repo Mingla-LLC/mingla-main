@@ -17,11 +17,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { GlassCard } from "../ui/GlassCard";
-import {
-  glass,
-  typography,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, type } from "../../constants/designSystem";
 import { stripItems } from "./programLayout";
 
 export type StatStripItem = {
@@ -122,10 +118,10 @@ const styles = StyleSheet.create({
   stripCellWide: { paddingHorizontal: 24, alignItems: "flex-start", gap: 6 },
   stripDivider: {
     borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: glass.border.profileElevated,
+    borderLeftColor: color.lineStrong,
   },
   stripValue: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 20,
     lineHeight: 26,
     fontWeight: "800",
@@ -133,13 +129,13 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
   },
   stripValueWide: {
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
+    fontSize: type.stat.fontSize,
+    lineHeight: type.stat.lineHeight,
   },
-  stripValueMuted: { color: textTokens.tertiary },
+  stripValueMuted: { color: color.text3 },
   stripLabel: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     textAlign: "center",
     // Two lines tall so a one-line label ("Spent") and a two-line label
     // ("Sold via promotion") leave every value on the same baseline.

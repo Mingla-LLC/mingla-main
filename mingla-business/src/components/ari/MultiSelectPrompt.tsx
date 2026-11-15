@@ -13,15 +13,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Check, CheckSquare, Square } from "lucide-react-native";
 
-import {
-  ariPalette,
-  ariThread,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { ariPalette, ariThread, color, radius, space, type } from "../../constants/designSystem";
 import { GlassChrome } from "../ui/GlassChrome";
 
 export interface MultiSelectOption {
@@ -69,7 +61,7 @@ export const MultiSelectPrompt: React.FC<MultiSelectPromptProps> = ({
         accessibilityRole="text"
         accessibilityLabel={`${count} selected: ${labels}`}
       >
-        <Check size={13} color={semantic.success} strokeWidth={2.5} />
+        <Check size={13} color={color.success} strokeWidth={2.5} />
         <Text style={styles.submittedText} numberOfLines={2}>
           {count} selected: {labels}
         </Text>
@@ -85,8 +77,8 @@ export const MultiSelectPrompt: React.FC<MultiSelectPromptProps> = ({
   return (
     <GlassChrome
       intensity="cardBase"
-      tintColor={glass.tint.profileBase}
-      borderColor={glass.border.profileBase}
+      tintColor={color.fill.inset}
+      borderColor={color.line}
       radius="lg"
       style={[styles.card, isDisabled && styles.cardDisabled]}
     >
@@ -114,7 +106,7 @@ export const MultiSelectPrompt: React.FC<MultiSelectPromptProps> = ({
                   {checked ? (
                     <CheckSquare size={18} color={ariPalette.userBubble} strokeWidth={2} />
                   ) : (
-                    <Square size={18} color={textTokens.tertiary} strokeWidth={2} />
+                    <Square size={18} color={color.text3} strokeWidth={2} />
                   )}
                   <Text style={styles.rowLabel} numberOfLines={1}>
                     {opt.label}
@@ -164,21 +156,21 @@ const styles = StyleSheet.create({
     fontSize: ariThread.cardTitleFont,
     lineHeight: ariThread.cardTitleLine,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   rows: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   divider: {
     height: 1,
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.line,
   },
   row: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowPressed: {
     opacity: 0.7,
@@ -186,27 +178,27 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: ariThread.bodyFont,
     lineHeight: ariThread.bodyLine,
-    color: textTokens.primary,
+    color: color.text1,
     flexShrink: 1,
   },
   footer: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   countPill: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
     letterSpacing: 0.3,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   confirmBtn: {
     minHeight: 44,
     minWidth: 96,
     borderRadius: 10,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: ariPalette.userBubble,
@@ -215,7 +207,7 @@ const styles = StyleSheet.create({
   confirmText: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.inverse,
+    color: color.textStrong,
     letterSpacing: -0.1,
   },
   btnPressed: {
@@ -230,19 +222,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     marginVertical: 6,
-    backgroundColor: semantic.successTint,
+    backgroundColor: color.successTint,
     borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.4)",
-    borderRadius: 999,
+    borderColor: color.success,
+    borderRadius: radius.full,
     overflow: "hidden",
     paddingHorizontal: ariThread.ribbonPadH,
     paddingVertical: ariThread.ribbonPadV,
     maxWidth: "100%",
   },
   submittedText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: semantic.success,
+    color: color.success,
     flexShrink: 1,
   },
 });

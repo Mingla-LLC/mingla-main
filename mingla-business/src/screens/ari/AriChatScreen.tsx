@@ -32,15 +32,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
 
 import {
-  accent,
-  canvas,
   ariPalette,
   ariThread,
-  glass,
+  color,
+  materials,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { AriOrb } from "../../components/ari/AriOrb";
 import { AiDisclosureModal } from "../../components/ari/AiDisclosureModal";
@@ -1299,7 +1297,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // rows and orb sizes step down rather than rendering clipped fragments.
   // Web has no soft keyboard, so this is 0 there and nothing changes.
   const composerRestingOccupiedPx =
-    Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
+    Math.max(insets.bottom, space[4]) + BOTTOM_NAV_CLEARANCE_PX;
   // The one lift, read by both consumers — see `composerOccupiedPxFor`.
   const composerOccupiedPx = composerOccupiedPxFor(
     keyboardHeight,
@@ -1307,7 +1305,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   );
   const emptyHeroComposerClamp = Math.max(
     0,
-    composerOccupiedPx + spacing.sm - composerRestingOccupiedPx,
+    composerOccupiedPx + space[2] - composerRestingOccupiedPx,
   );
   // #3429 REWORK-4 N-1 — the hero's drop order is EmptyState's to enforce, and
   // this is the only number it needs from the screen.
@@ -1726,7 +1724,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 accessibilityLabel={ARI_BRAND_BAR_COPY.chats}
                 testID="ari-bar-chats"
               >
-                <Menu size={24} color={textTokens.primary} strokeWidth={2} />
+                <Menu size={24} color={color.text1} strokeWidth={2} />
               </Pressable>
               <Pressable
                 onPress={() => router.push("/ari/settings" as never)}
@@ -1735,7 +1733,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 accessibilityLabel={ARI_BRAND_BAR_COPY.settings}
                 testID="ari-bar-settings"
               >
-                <Settings size={22} color={textTokens.primary} strokeWidth={2} />
+                <Settings size={22} color={color.text1} strokeWidth={2} />
               </Pressable>
             </View>
           </View>
@@ -1767,7 +1765,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               accessibilityRole="button"
               accessibilityLabel="Show conversations"
             >
-              <Menu size={24} color={textTokens.primary} strokeWidth={2} />
+              <Menu size={24} color={color.text1} strokeWidth={2} />
             </Pressable>
           )}
           <View style={styles.headerTitle}>
@@ -1784,7 +1782,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               accessibilityRole="button"
               accessibilityLabel="Open Ari settings"
             >
-              <Settings size={22} color={textTokens.primary} strokeWidth={2} />
+              <Settings size={22} color={color.text1} strokeWidth={2} />
             </Pressable>
           )}
         </View>
@@ -1829,7 +1827,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   styles.firstRunOverlay,
                   {
                     paddingBottom:
-                      Math.max(insets.bottom, spacing.md) +
+                      Math.max(insets.bottom, space[4]) +
                       BOTTOM_NAV_CLEARANCE_PX +
                       60 +
                       Math.max(0, composerContentHeight - 60) +
@@ -1871,7 +1869,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   styles.emptyOverlay,
                   {
                     paddingBottom:
-                      Math.max(insets.bottom, spacing.md) +
+                      Math.max(insets.bottom, space[4]) +
                       BOTTOM_NAV_CLEARANCE_PX +
                       60 +
                       Math.max(0, composerContentHeight - 60),
@@ -2226,13 +2224,13 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 paddingBottom:
                   Platform.OS === "web"
                     ? isWideDesktop
-                      ? spacing.sm
+                      ? space[2]
                       : // #2830 — no tab bar on the setup screen either.
                         setup
-                        ? spacing.sm
+                        ? space[2]
                         : // #3460 — narrow web HAS the floating capsule, so it needs the
                         // same clearance the native branch below reserves.
-                        Math.max(insets.bottom, spacing.md) +
+                        Math.max(insets.bottom, space[4]) +
                         BOTTOM_NAV_CLEARANCE_PX
                     : // ORCH-1101 ADV-3 checks that the web result precedes the
                       // native clearance term IN THIS EXPRESSION, so the resting
@@ -2241,7 +2239,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                       // lift itself — the ternary still lives in one place.
                       composerOccupiedPxFor(
                         keyboardHeight,
-                        Math.max(insets.bottom, spacing.md) +
+                        Math.max(insets.bottom, space[4]) +
                           BOTTOM_NAV_CLEARANCE_PX,
                       ),
               },
@@ -2327,7 +2325,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   ariPane: { flex: 1, minWidth: 0 },
   websiteAriPane: {
@@ -2339,18 +2337,18 @@ const styles = StyleSheet.create({
   },
   websiteSplitHost: {
     flexDirection: "row",
-    gap: spacing.lg,
-    padding: spacing.md,
+    gap: space[6],
+    padding: space[4],
   },
   websiteDraftPane: {
     flex: 1.2,
     minWidth: 0,
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     justifyContent: "center",
   },
   /*
@@ -2362,25 +2360,25 @@ const styles = StyleSheet.create({
    */
   websiteDraftBanner: {
     flex: 0,
-    gap: spacing.sm,
-    padding: spacing.md,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    gap: space[2],
+    padding: space[4],
+    marginHorizontal: space[4],
+    marginTop: space[2],
     justifyContent: "flex-start",
   },
   websiteDraftLabel: {
-    ...typography.micro,
-    color: accent.warm,
+    ...type.label,
+    color: color.text1,
     textTransform: "uppercase",
   },
-  websiteDraftBody: { ...typography.body, color: textTokens.secondary },
+  websiteDraftBody: { ...type.body, color: color.text2 },
   websiteDraftAction: {
     minHeight: 44,
     justifyContent: "center",
   },
   websiteDraftActionLabel: {
-    ...typography.buttonMd,
-    color: accent.warm,
+    ...type.btnSm,
+    color: color.text1,
   },
   headerEmbedded: {
     display: "none",
@@ -2391,24 +2389,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   ariBarLeft: { flexShrink: 1, minWidth: 0 },
   ariBarRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     flexShrink: 0,
   },
   draftKept: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    paddingHorizontal: space[4],
+    paddingBottom: space[1],
   },
   firstRunOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -2423,10 +2421,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   iconBtn: {
     width: 44,
@@ -2437,18 +2435,18 @@ const styles = StyleSheet.create({
   headerTitle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   headerIdentityCopy: {
     gap: 1,
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   titleMeta: {
-    color: textTokens.tertiary,
+    color: color.text3,
     fontSize: 9,
     lineHeight: 12,
     fontWeight: "700",
@@ -2493,52 +2491,52 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inputWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
     width: "100%",
     maxWidth: ariThread.threadMaxWidth,
     alignSelf: "center",
   },
   composerColumn: { width: "100%" },
   composerHelper: {
-    color: textTokens.tertiary,
+    color: color.text3,
     fontSize: 12,
     lineHeight: 16,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   attachmentError: {
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    paddingLeft: spacing.md,
+    gap: space[2],
+    paddingLeft: space[4],
     borderRadius: radius.md,
     backgroundColor:
-      Platform.OS === "android" ? "#2b1d15" : "rgba(235, 120, 37, 0.12)",
+      color.errorTint,
   },
   attachmentErrorText: {
     flex: 1,
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
   },
   attachmentRecoveryActions: {
     flexDirection: "row",
-    gap: spacing.xs,
-    paddingLeft: spacing.md,
-    paddingBottom: spacing.sm,
+    gap: space[1],
+    paddingLeft: space[4],
+    paddingBottom: space[2],
     width: "100%",
   },
   attachmentRecoveryAction: {
     minHeight: 40,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.sm,
-    backgroundColor: ariThread.composerSurface,
+    backgroundColor: color.card,
   },
   attachmentRecoveryActionText: {
-    color: accent.warm,
+    color: color.text1,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -2547,28 +2545,28 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   attachmentErrorDismissText: {
-    color: accent.warm,
+    color: color.errorText,
     fontSize: 14,
     fontWeight: "600",
   },
   recoveryPanel: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
     backgroundColor:
       Platform.OS === "android"
-        ? ariThread.ariBubbleAndroid
-        : glass.tint.profileElevated,
+        ? materials.pane.solidFill
+        : color.fill.tile,
     overflow: "hidden",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  recoveryTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "600" },
-  recoveryBody: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  recoveryTitle: { color: color.text1, fontSize: 15, fontWeight: "600" },
+  recoveryBody: { color: color.text2, fontSize: 14, lineHeight: 20 },
   recoveryAction: {
     minHeight: 44,
     width: "100%",
@@ -2587,7 +2585,7 @@ const styles = StyleSheet.create({
         } as object)
       : {},
   recoveryActionText: {
-    color: ariThread.onUserBubble,
+    color: color.ink,
     fontWeight: "700",
     textAlign: "center",
   },

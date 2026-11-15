@@ -59,13 +59,14 @@ import {
 } from "./richEditor";
 
 import {
-  accent,
+  color,
   composerSheetMinHeight,
-  glass,
+  materials,
   radius,
-  spacing,
+  scrim,
+  space,
   text as textTokens,
-  typography,
+  type,
 } from "../../../constants/designSystem";
 import {
   bodyHtmlToTenTapDoc,
@@ -553,8 +554,8 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
             onSelectionChange={onSubjectSelectionChange}
             editable={editable}
             placeholder="Subject line"
-            placeholderTextColor={textTokens.tertiary}
-            selectionColor={accent.warm}
+            placeholderTextColor={color.text3}
+            selectionColor={color.accent}
             style={styles.subjectInput}
             accessibilityLabel="Email subject"
             testID="composer-v2-subject"
@@ -638,6 +639,10 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
               }
               editorStyle={{
                 backgroundColor: "transparent",
+                // #2267 gate: pell inlines these raw into its WebView <style>, so
+                // they stay on a namespace the gate lists as frozen. `text` is
+                // the TRANSITIONAL #4420 alias of color.text1/text3 (same
+                // values); it moves to `color` once the #2267 gate accepts it.
                 color: textTokens.primary,
                 placeholderColor: textTokens.tertiary,
                 contentCSSText:
@@ -710,7 +715,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
                 value={linkPromptValue}
                 onChangeText={setLinkPromptValue}
                 placeholder="https://example.com"
-                placeholderTextColor="rgba(255, 255, 255, 0.42)"
+                placeholderTextColor={color.text3}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
@@ -726,7 +731,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
                 value={linkPromptText}
                 onChangeText={setLinkPromptText}
                 placeholder="Get your free ticket"
-                placeholderTextColor="rgba(255, 255, 255, 0.42)"
+                placeholderTextColor={color.text3}
                 autoCapitalize="sentences"
                 autoCorrect
                 returnKeyType="done"
@@ -808,32 +813,32 @@ const styles = StyleSheet.create({
   sheet: {
     flex: 1,
     minHeight: composerSheetMinHeight,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    marginHorizontal: space[4],
+    marginTop: space[2],
     // The scrim owns the gap to the commit bar; a margin here would double it.
     marginBottom: 0,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   desktopSheet: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
+    marginTop: space[4],
+    marginBottom: space[4],
   },
   /** Full-bleed hairline. ONE rule, not a box. */
   sheetRule: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.line,
   },
   subjectRow: {
     height: 44,
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
   },
   subjectInput: {
     flex: 1,
@@ -841,7 +846,7 @@ const styles = StyleSheet.create({
     // `typography.bodyLg` WITHOUT its lineHeight — see the render comment.
     fontSize: 18,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
     paddingVertical: 0,
   },
   subjectPersonalize: {
@@ -852,17 +857,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   subjectPersonalizeActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
   },
   subjectPersonalizePressed: {
     opacity: 0.7,
   },
   subjectPersonalizeText: {
-    ...typography.monoMd,
-    color: textTokens.secondary,
+    ...type.mono,
+    color: color.text2,
   },
   subjectPersonalizeTextActive: {
-    color: accent.warm,
+    color: color.text1,
   },
   /**
    * THE BODY REGION — and the ONLY `onLayout` on this screen.
@@ -881,26 +886,26 @@ const styles = StyleSheet.create({
   // header strip with title + Done button. EmailPreviewPane fills the rest.
   previewModal: {
     flex: 1,
-    backgroundColor: "#F5F5F7",
+    backgroundColor: color.paper,
   },
   previewHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: "#FFFFFF",
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    backgroundColor: color.paper,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#ECECEE",
+    borderBottomColor: color.paperPressed,
   },
   previewTitle: {
-    ...typography.bodyLg,
-    color: "#0F1115",
+    ...type.row,
+    color: color.ink,
     fontWeight: "700",
   },
   previewDone: {
     minHeight: 36,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
@@ -909,82 +914,82 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   previewDoneLabel: {
-    ...typography.body,
-    color: "#F47C20",
+    ...type.body,
+    color: color.ink,
     fontWeight: "700",
   },
 
   // Link prompt modal — dark glass card centered over a dim backdrop.
   linkPromptBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.62)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   linkPromptCard: {
     width: "100%",
     maxWidth: 420,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: "rgba(20, 22, 28, 0.98)",
-    padding: spacing.lg,
-    gap: spacing.sm,
+    borderColor: color.lineStrong,
+    backgroundColor: color.card,
+    padding: space[6],
+    gap: space[2],
   },
   linkPromptTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "700",
   },
   linkPromptBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   linkPromptInput: {
     minHeight: 44,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
     fontSize: 15,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   linkPromptActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
+    gap: space[1],
+    marginTop: space[2],
   },
   linkPromptButton: {
     minHeight: 44,
     minWidth: 88,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.full,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.badge.idle,
+    borderColor: color.lineStrong,
+    backgroundColor: materials.onPhoto.solidFill,
   },
   linkPromptButtonPrimary: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tile,
+    borderColor: color.lineStrong,
   },
   linkPromptButtonPressed: {
     opacity: 0.7,
   },
   linkPromptButtonLabel: {
-    ...typography.buttonMd,
-    color: textTokens.secondary,
+    ...type.btnSm,
+    color: color.text2,
   },
   linkPromptButtonLabelPrimary: {
-    color: textTokens.primary,
+    color: color.text1,
   },
 });

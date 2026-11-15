@@ -23,11 +23,11 @@ import { Check } from "lucide-react-native";
 import {
   ariPalette,
   ariThread,
-  glass,
+  color,
+  materials,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 export interface ChoiceOption {
@@ -91,9 +91,9 @@ export const QuickReplyChips: React.FC<QuickReplyChipsProps> = ({
               hitSlop={6}
             >
               {isLoading ? (
-                <ActivityIndicator size="small" color={textTokens.inverse} />
+                <ActivityIndicator size="small" color={color.textStrong} />
               ) : isSelected ? (
-                <Check size={13} color={textTokens.inverse} strokeWidth={2.5} />
+                <Check size={13} color={color.textStrong} strokeWidth={2.5} />
               ) : null}
               <Text
                 style={[styles.choiceText, isSelected && styles.choiceTextSelected]}
@@ -132,33 +132,33 @@ export const QuickReplyChips: React.FC<QuickReplyChipsProps> = ({
 
 const styles = StyleSheet.create({
   stack: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   row: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     flexWrap: "wrap",
   },
   chip: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radius.md,
     overflow: "hidden",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 12,
     minHeight: 44,
     justifyContent: "center",
   },
   legacyChipPressed: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     opacity: 0.95,
   },
   chipText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   // CHOICE mode -----------------------------------------------------------
   choiceRow: {
@@ -176,10 +176,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     // Android opaque equivalent; iOS/web glass tint + hairline.
     backgroundColor:
-      Platform.OS === "android" ? ariThread.ariBubbleAndroid : glass.tint.profileBase,
+      Platform.OS === "android" ? materials.pane.solidFill : color.fill.inset,
     ...(Platform.OS === "android"
       ? {}
-      : { borderWidth: 1, borderColor: glass.border.profileBase }),
+      : { borderWidth: 1, borderColor: color.line }),
   },
   choiceChipSelected: {
     backgroundColor: ariPalette.userBubble,
@@ -189,10 +189,10 @@ const styles = StyleSheet.create({
     fontSize: ariThread.chipFont, // 13
     lineHeight: ariThread.chipLine, // 17
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   choiceTextSelected: {
-    color: textTokens.inverse,
+    color: color.textStrong,
   },
   chipPressed: {
     opacity: 0.85,

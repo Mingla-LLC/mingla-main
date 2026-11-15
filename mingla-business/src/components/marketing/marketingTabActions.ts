@@ -27,7 +27,7 @@ export const MARKETING_TAB_ACTIONS: Readonly<
   ads: {
     label: "Create an ad",
     compactLabel: "Create",
-    icon: "sparkle",
+    icon: "target",
     href: "/(tabs)/marketing/ads/create",
   },
   creators: {

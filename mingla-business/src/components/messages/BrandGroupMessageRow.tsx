@@ -19,6 +19,7 @@ import {
 } from "react-native";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
+import { color } from "../../constants/designSystem";
 import type { BrandGroupMessage } from "../../services/brandGroupsService";
 import {
   brandGroupClockTime,
@@ -248,7 +249,7 @@ const styles = StyleSheet.create({
   reactions: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: -4, marginLeft: 8 },
   reactionsMine: { marginLeft: 0, marginRight: 8, justifyContent: "flex-end" },
   pill: { minHeight: 24, flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, borderRadius: 12, borderWidth: 1, borderColor: brandGroupChat.screenBg, backgroundColor: brandGroupChat.surfaceRaised },
-  pillMine: { borderColor: brandGroupChat.accent, backgroundColor: "#2A1C12" },
+  pillMine: { borderColor: brandGroupChat.accent, backgroundColor: color.card },
   pillEmoji: { fontSize: 13 },
   pillCount: { color: brandGroupChat.textSecondary, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] },
   meta: { color: brandGroupChat.textMuted, fontSize: 11, marginTop: 3, marginLeft: 12 },

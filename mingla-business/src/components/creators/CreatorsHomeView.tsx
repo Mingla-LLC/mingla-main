@@ -41,13 +41,7 @@ import {
   programErrorMessage,
   shortDate,
 } from "../../utils/creatorProgramFormat";
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 
 export interface CreatorsHomeViewProps {
   brandId: string;
@@ -271,14 +265,14 @@ export function LinkChip({
       accessibilityLabel={label}
       style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
     >
-      <Icon name={icon} size={14} color={accent.warm} />
+      <Icon name={icon} size={14} color={color.text1} />
       <Text style={styles.chipText}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -287,9 +281,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   chipPressed: { opacity: 0.85 },
-  chipText: { color: textTokens.primary, fontSize: 14, fontWeight: "600" },
+  chipText: { color: color.text1, fontSize: 14, fontWeight: "600" },
 });
