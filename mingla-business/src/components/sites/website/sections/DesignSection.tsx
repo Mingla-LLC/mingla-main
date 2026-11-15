@@ -438,6 +438,7 @@ function SwatchRow({ swatch, label, where, hex, disabled, onSet }: {
       setError(null);
       return;
     }
+    // #4420 content: the example hex is copy shown to the host, not a chrome colour.
     setError(onSet(draft.trim()) ? null : "That isn't a colour code. Try something like #89cff0");
   };
   return (

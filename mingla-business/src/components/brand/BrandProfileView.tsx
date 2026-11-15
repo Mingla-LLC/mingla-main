@@ -821,6 +821,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             ) : (
               <LinearGradient
                 colors={[
+                  // #4420 content colour: the brand's own cover hue (data), not chrome.
                   `hsl(${brand.coverHue}, 60%, 48%)`,
                   `hsl(${brand.coverHue}, 55%, 38%)`,
                 ]}
