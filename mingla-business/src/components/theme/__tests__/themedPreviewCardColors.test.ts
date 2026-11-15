@@ -76,7 +76,10 @@ describe("themedPreviewCardColors — AA on the themed surface", () => {
     // exists to prevent — keep it visible so nobody routes chrome text back in.
     const palette = createThemePalette(resolved("#1e3a8a"));
     expect(resolveOfferingSurface(resolved("#1e3a8a"))).toBe("light");
-    expect(textContrastOn(chromeText.secondary, palette.page)).toBeLessThan(1.5);
+    // [TEST-MOD-APPROVED #4420] Graphite text2 is an opaque grey (#a8a8ad), not a
+    // white wash, so it no longer collapses to ~1:1; it still fails AA (4.5) on a
+    // light page, which is the regression this pin keeps visible.
+    expect(textContrastOn(chromeText.secondary, palette.page)).toBeLessThan(4.5);
     const card = themedPreviewCardColors(palette);
     expect(textContrastOn(card.venueText, card.surface)).toBeGreaterThanOrEqual(
       AA_TEXT_CONTRAST,

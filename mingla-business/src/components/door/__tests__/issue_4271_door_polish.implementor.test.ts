@@ -23,7 +23,7 @@ jest.mock("../../../constants/publicUrls", () => ({
   BUSINESS_PUBLIC_ORIGIN: "https://host.usemingla.com",
 }));
 
-import { glass, semantic, text as textTokens } from "../../../constants/designSystem";
+import { color, glass, semantic, text as textTokens } from "../../../constants/designSystem";
 import { encodeTapToPayDraft, parseTapToPayDraft, sellAnotherDraft } from "../../../services/terminal/tapToPayDraft";
 import {
   DOOR_PAY_URGENT_SECONDS,
@@ -65,7 +65,8 @@ describe("P1 four door tones", () => {
   });
 
   test("red has a named token; caution and bad interrupt a screen reader", () => {
-    expect(semantic.errorRing).toBe("rgba(239, 68, 68, 0.16)");
+    // [TEST-MOD-APPROVED #4420] the red ring is the Graphite error tint token.
+    expect(semantic.errorRing).toBe(color.errorTint);
     expect(DOOR_TONE_STYLES.caution.liveRegion).toBe("assertive");
     expect(DOOR_TONE_STYLES.bad.liveRegion).toBe("assertive");
     expect(DOOR_TONE_STYLES.ok.liveRegion).toBe("polite");

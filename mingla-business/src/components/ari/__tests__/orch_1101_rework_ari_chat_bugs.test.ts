@@ -204,7 +204,11 @@ describe("ORCH-1101 REWORK · #3 — thinking signal shows while sending", () =>
 
 describe("ORCH-1101 REWORK · #4 — composer is OPAQUE, nothing bleeds through", () => {
   it("adds an opaque composerSurface token (solid hex, no rgba/hsla)", () => {
-    expect(designSystem).toMatch(/composerSurface:\s*["']#[0-9a-fA-F]{6}["']/);
+    // [TEST-MOD-APPROVED #4420] the composer surface now aliases the opaque
+    // Graphite card (color.card → palette.graphite[910]); still a 6-digit hex.
+    expect(designSystem).toMatch(/composerSurface:\s*color\.card\b/);
+    expect(designSystem).toMatch(/\bcard:\s*palette\.graphite\[910\]/);
+    expect(designSystem).toMatch(/\b910:\s*["']#[0-9a-fA-F]{6}["']/);
     const tokenLine = designSystem
       .split("\n")
       .find((l) => l.includes("composerSurface:")) as string;

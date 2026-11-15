@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { ariThread as ariThreadTokens } from "../../../constants/designSystem";
 
 /**
  * ORCH-1101 REWORK — TESTER ADVERSARIAL regression test.
@@ -162,9 +163,10 @@ describe("ORCH-1101 REWORK ADV-R3 · composerSurface has ZERO alpha transparency
 
   it("the token is a fully-opaque 6-digit hex — not 8-digit (#RRGGBBAA), rgba, or hsla", () => {
     expect(tokenLine).toBeTruthy();
-    const m = tokenLine.match(/composerSurface:\s*["']([^"']+)["']/);
-    expect(m).not.toBeNull();
-    const val = m![1].trim();
+    // [TEST-MOD-APPROVED #4420] the token is now an alias (color.card), so
+    // read the RESOLVED value the app paints rather than the source text.
+    expect(tokenLine).toMatch(/composerSurface:\s*color\.card\b/);
+    const val = String(ariThreadTokens.composerSurface).trim();
     // Exactly 6 hex digits => no alpha channel. 8-digit hex carries AA.
     expect(val).toMatch(/^#[0-9a-fA-F]{6}$/);
     expect(val).not.toMatch(/^#[0-9a-fA-F]{8}$/);

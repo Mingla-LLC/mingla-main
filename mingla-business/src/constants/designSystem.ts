@@ -1,71 +1,644 @@
 /**
- * Shared tokens aligned with app-mobile for consistent Mingla branding.
+ * Mingla Host design tokens: Graphite Glass (#4420, approved option K).
  *
- * Cycle 0a: extended additively with the design-package token set
- * (accent / canvas / glass / semantic / text / blurIntensity / easings /
- * durations / typography). Existing exports preserved verbatim.
+ * This file holds every raw colour literal in host chrome. Primitives and
+ * screens read the named exports below and never a literal; to retune the
+ * look you edit this one file. The structure follows the kit's TOKENS.md
+ * sections 1–4 one to one:
  *
- * Sub-phase E.2: glass shadow tokens (`glassBadge`, `glassChrome`,
- * `glassChromeActive`, `glassCardBase`, `glassCardElevated`, `glassModal`)
- * use `Platform.select` to zero `elevation` on Android. Reason: Android
- * `elevation` draws a hard rectangular drop-shadow regardless of border-
- * radius or alpha, which bleeds through translucent glass surfaces and
- * creates a "solid box inside" artifact (ORCH-BIZ-0a-E4). iOS shadow*
- * fields are preserved verbatim — premium blur unchanged on iOS.
+ *   palette   (§1 primitives)   PRIVATE: read only here and by `materials`.
+ *   color     (§2 semantic)     incl. `color.status` and `color.fill`.
+ *   edge                        rims and hairline edges as RN border pairs.
+ *   scrim                       modal scrim, photo shades, ambient veil.
+ *   materials (§3)              { glassFill, solidFill, reducedFill, blur, webBackdrop, rim }.
+ *                               `components/ui/Material.tsx` is the only reader
+ *                               that turns one into pixels (and the only BlurView owner).
+ *   type, radius, space, size, shadow, motion (§4).
+ *
+ * Content palettes (data, not chrome) also live here and are allow-listed by
+ * the #4420 guard: `trafficAnalytics` (#4037) and `ariPalette` (ORCH-0821).
+ *
+ * The retired pre-Graphite exports (`colors`, `glass`, `text`, `semantic`,
+ * `accent`, `canvas`, `shadows`, `typography`, `blurIntensity`, ...) are kept
+ * at the bottom as `// TRANSITIONAL #4420` re-exports mapped to the closest
+ * new value, so nothing breaks before the screen waves migrate their
+ * importers. Exit condition: wave 6 of #4420 deletes every one of them and
+ * turns `ISSUE_4420_ENFORCE=1` on for the guard.
+ *
+ * Android: shadows never draw (`androidSafeElevation`, ORCH-BIZ-0a-E4/E8),
+ * because Android `elevation` draws a hard rectangle under rounded or
+ * translucent surfaces; the rim does the separating instead.
  */
 
-import { Platform } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 
-// Sub-phase E.3 (ORCH-BIZ-0a-E8): renamed from `glassElevation` and applied
-// to ALL shadow tokens (including non-glass `sm`/`md`/`lg`/`xl`). Reason:
-// styleguide demos render the generic shadows on translucent backgrounds,
-// so the same Android elevation-rectangle artifact applied. There are no
-// opaque-card consumers in mingla-business today; if a future cycle needs
-// Android elevation on a specific opaque surface, override at the component
-// level.
+// Sub-phase E.3 (ORCH-BIZ-0a-E8): zero `elevation` on Android for EVERY shadow
+// token. Android `elevation` draws a hard rectangular drop-shadow regardless of
+// border-radius or alpha. Override at the component level if a future opaque
+// surface truly needs it.
 const androidSafeElevation = (ios: number): number =>
   Platform.select({ ios, android: 0, default: ios }) ?? ios;
 
-export const spacing = {
-  xxs: 2,
-  xs: 4,
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
-  xxl: 48,
+// ===========================================================================
+// §1 · Primitives (the only raw values; NOT exported)
+// ===========================================================================
+
+const palette = {
+  graphite: {
+    1000: "#000000",
+    975: "#0a0a0a", // ink
+    950: "#0f0f11", // canvas
+    930: "#151518", // solid chrome
+    920: "#1a1a1d", // solid pane
+    910: "#1b1b1e", // card
+    900: "#1e1e22", // solid sheet / dialog
+    880: "#212125", // solid control
+    870: "#222226", // card-2
+    850: "#26262a", // solid liquid (tab bar)
+    820: "#2b2b30", // card-3
+    810: "#2c2c30", // solid selected
+    700: "#5a5a60", // text-4
+    500: "#8b8b91", // text-3
+    400: "#a8a8ad", // text-2
+    300: "#d4d4d8",
+    150: "#e6e6e8",
+    100: "#f3f3f5",
+    50: "#f5f5f7", // text-1
+  },
+  white: "#ffffff",
+  pane: {
+    88: "rgba(28, 28, 31, 0.88)",
+    90: "rgba(35, 35, 39, 0.90)",
+    92: "rgba(46, 46, 51, 0.92)",
+    sheet: "rgba(30, 30, 34, 0.94)",
+  },
+  chrome90: "rgba(22, 22, 25, 0.90)",
+  veil: {
+    35: "rgba(15, 15, 17, 0.35)",
+    65: "rgba(15, 15, 17, 0.65)",
+    88: "rgba(15, 15, 17, 0.88)",
+  },
+  onPhotoSolid: "rgba(24, 24, 27, 0.84)",
+  w: {
+    "025": "rgba(255, 255, 255, 0.025)",
+    "03": "rgba(255, 255, 255, 0.03)",
+    "035": "rgba(255, 255, 255, 0.035)",
+    "04": "rgba(255, 255, 255, 0.04)",
+    "045": "rgba(255, 255, 255, 0.045)",
+    "06": "rgba(255, 255, 255, 0.06)",
+    "07": "rgba(255, 255, 255, 0.07)",
+    "075": "rgba(255, 255, 255, 0.075)",
+    "08": "rgba(255, 255, 255, 0.08)",
+    "09": "rgba(255, 255, 255, 0.09)",
+    "10": "rgba(255, 255, 255, 0.10)",
+    "11": "rgba(255, 255, 255, 0.11)",
+    "12": "rgba(255, 255, 255, 0.12)",
+    "13": "rgba(255, 255, 255, 0.13)",
+    "14": "rgba(255, 255, 255, 0.14)",
+    "16": "rgba(255, 255, 255, 0.16)",
+    "22": "rgba(255, 255, 255, 0.22)",
+    "26": "rgba(255, 255, 255, 0.26)",
+    "28": "rgba(255, 255, 255, 0.28)",
+    "30": "rgba(255, 255, 255, 0.30)",
+    "40": "rgba(255, 255, 255, 0.40)",
+    "72": "rgba(255, 255, 255, 0.72)",
+    "75": "rgba(255, 255, 255, 0.75)",
+    "86": "rgba(255, 255, 255, 0.86)",
+    "88": "rgba(255, 255, 255, 0.88)",
+    "92": "rgba(255, 255, 255, 0.92)",
+  },
+  b: {
+    "00": "rgba(0, 0, 0, 0)",
+    "10": "rgba(0, 0, 0, 0.10)",
+    "12": "rgba(0, 0, 0, 0.12)",
+    "18": "rgba(0, 0, 0, 0.18)",
+    "20": "rgba(0, 0, 0, 0.20)",
+    "25": "rgba(0, 0, 0, 0.25)",
+    "35": "rgba(0, 0, 0, 0.35)",
+    "45": "rgba(0, 0, 0, 0.45)",
+    "50": "rgba(0, 0, 0, 0.50)",
+    "55": "rgba(0, 0, 0, 0.55)",
+    "60": "rgba(0, 0, 0, 0.60)",
+    "62": "rgba(0, 0, 0, 0.62)",
+    "70": "rgba(0, 0, 0, 0.70)",
+    "75": "rgba(0, 0, 0, 0.75)",
+    "80": "rgba(0, 0, 0, 0.80)",
+    "90": "rgba(0, 0, 0, 0.90)",
+  },
+  orange: {
+    500: "#eb7825",
+    300: "#f39a55",
+    a14: "rgba(235, 120, 37, 0.14)",
+    a40: "rgba(235, 120, 37, 0.40)",
+  },
+  red: {
+    500: "#ff3b30", // badges, dots
+    450: "#ff453a", // live now dot
+    600: "#d92d20", // destructive fill
+    650: "#c4271c", // destructive pressed
+    300: "#f87171", // error text
+    a14: "rgba(248, 113, 113, 0.14)",
+    a45: "rgba(248, 113, 113, 0.45)",
+  },
+  green: { 500: "#22c55e", 300: "#5ee08f", a12: "rgba(34, 197, 94, 0.12)" },
+  blue: { 500: "#3b82f6", 300: "#8fb3ff", a14: "rgba(59, 130, 246, 0.14)" },
+  amber: { 500: "#f59e0b", 300: "#fbbf24", a14: "rgba(245, 158, 11, 0.14)" },
+  transparent: "transparent",
+  // Opaque composites of the status tints over the canvas #0f0f11, for Android
+  // and Reduce Transparency (ANDROID_GLASS_USES_OPAQUE_FALLBACK):
+  //   success a12 → (17.3, 36.8, 26.2)  warning a14 → (47.2, 35.0, 16.2)
+  //   error   a14 → (47.6, 28.7, 30.4)  info    a14 → (21.2, 31.1, 49.1)
+  solidTint: {
+    success: "#11251a",
+    warning: "#2f2310",
+    error: "#301d1e",
+    info: "#151f31",
+  },
 } as const;
+
+// ===========================================================================
+// §2 · Semantic colour
+// ===========================================================================
+
+export const color = {
+  canvas: palette.graphite[950],
+  card: palette.graphite[910],
+  card2: palette.graphite[870],
+  card3: palette.graphite[820],
+  line: palette.w["075"],
+  lineStrong: palette.w["13"],
+  text1: palette.graphite[50],
+  text2: palette.graphite[400],
+  text3: palette.graphite[500],
+  text4: palette.graphite[700],
+  textOnPhoto: palette.white,
+  textOnPhoto2: palette.w["86"],
+  /** Selected labels. */
+  textStrong: palette.white,
+  /** Count inside a selected segment. */
+  textSelectedMeta: palette.w["72"],
+  textSelectedChipMeta: palette.w["75"],
+  /** The primary button. Orange is not a button fill. */
+  paper: palette.white,
+  paperEnd: palette.graphite[100],
+  paperPressed: palette.graphite[150],
+  ink: palette.graphite[975],
+  /** Used ONLY for Create, the active nav icon, progress and steppers, and the "upcoming" dot. */
+  accent: palette.orange[500],
+  accentText: palette.orange[300],
+  onAccent: palette.graphite[975],
+  accentTint: palette.orange.a14,
+  accentLine: palette.orange.a40,
+  focus: palette.white,
+  danger: palette.red[600],
+  dangerPressed: palette.red[650],
+  onDanger: palette.white,
+  badge: palette.red[500],
+  badgeRing: palette.graphite[950],
+  tabDotRing: palette.graphite[1000],
+  live: palette.red[450],
+  success: palette.green[500],
+  successText: palette.green[300],
+  successTint: palette.green.a12,
+  info: palette.blue[500],
+  infoText: palette.blue[300],
+  infoTint: palette.blue.a14,
+  warning: palette.amber[500],
+  warningText: palette.amber[300],
+  warningTint: palette.amber.a14,
+  errorText: palette.red[300],
+  errorTint: palette.red.a14,
+  errorLine: palette.red.a45,
+  /** Opaque status tints (Android, Reduce Transparency): the tint pre-composited over the canvas. */
+  solidTint: palette.solidTint,
+  skeleton: palette.w["06"],
+  skeletonHi: palette.w["10"],
+  homeIndicator: palette.w["92"],
+  systemBarFg: palette.white,
+  tabIcon: palette.w["88"],
+  camera: palette.graphite[1000],
+  spinnerTrackOnPaper: palette.b["12"],
+  mask: palette.graphite[1000],
+  transparent: palette.transparent,
+  /** StatusPill dot colours. */
+  status: {
+    neutral: palette.graphite[500],
+    refunded: palette.graphite[500],
+    partial: palette.graphite[300],
+    muted: palette.w["40"],
+  },
+  /** White-over-graphite washes, by role. */
+  fill: {
+    tableHead: palette.w["025"],
+    rowHover: palette.w["035"],
+    inset: palette.w["045"],
+    tile: palette.w["06"],
+    status: palette.w["06"],
+    quietHover: palette.w["06"],
+    quiet: palette.transparent,
+    railOn: palette.w["09"],
+    tabOn: palette.w["10"],
+    step: palette.w["12"],
+    pager: palette.w["28"],
+    pagerOn: palette.white,
+    handle: palette.w["30"],
+    pressed: palette.w["08"],
+    input: palette.w["045"],
+    inputDisabled: palette.w["025"],
+  },
+} as const;
+
+// ===========================================================================
+// Rims and edges. RN has no inset box-shadow, so each one is a border pair:
+// a `rim` is a 1px TOP border (the soft top-edge highlight), an `edge` is a
+// hairline frame. Spread these into a style or read `.color` for an overlay.
+// ===========================================================================
+
+const hairline = StyleSheet.hairlineWidth;
+
+export const edge = {
+  /** One soft top-edge highlight (CSS `--rim`). */
+  rim: { borderTopWidth: 1, borderTopColor: palette.w["075"] },
+  /** Hairline frame on panes (CSS `--edge`). */
+  edge: { borderWidth: hairline, borderColor: palette.w["07"] },
+  control: { borderWidth: hairline, borderColor: palette.w["11"] },
+  seg: { borderWidth: hairline, borderColor: palette.w["08"] },
+  inset: { borderWidth: hairline, borderColor: palette.w["06"] },
+  photo: { borderWidth: hairline, borderColor: palette.w["08"] },
+  line: { borderWidth: hairline, borderColor: palette.w["075"] },
+  lineStrong: { borderWidth: hairline, borderColor: palette.w["13"] },
+  rimSelected: { borderTopWidth: 1, borderTopColor: palette.w["10"] },
+  rimRailOn: { borderTopWidth: 1, borderTopColor: palette.w["08"] },
+  rimTile: { top: palette.w["08"], edge: palette.w["07"] },
+  rimOnPhoto: { top: palette.w["16"], edge: palette.w["26"], edgeWidth: 0.5 },
+  rimStatusOnPhoto: { borderWidth: 0.5, borderColor: palette.w["26"] },
+  rimLiquid: { top: palette.w["30"], bottom: palette.w["06"], edge: palette.w["16"], edgeWidth: 0.5 },
+  rimLiquidOn: { borderTopWidth: 1, borderTopColor: palette.w["14"] },
+  /** Top glint stop of the liquid rim gradient. */
+  liquidGlint: palette.w["22"],
+  tableHead: palette.w["10"],
+  table: palette.w["06"],
+  /** 2px canvas gap + 2px paper ring. */
+  ringFocus: { gap: palette.graphite[950], ring: palette.white, gapWidth: 2, ringWidth: 2 },
+  ringError: { borderWidth: 1.5, borderColor: palette.red.a45 },
+  ringInputFocus: { borderWidth: 1.5, borderColor: palette.w["40"], halo: palette.w["10"], haloWidth: 4 },
+} as const;
+
+// ===========================================================================
+// Scrims and photo shades (LinearGradient stops: `colors` + `locations`).
+// ===========================================================================
+
+export const scrim = {
+  modal: Platform.select({ android: palette.b["62"], default: palette.b["55"] }) ?? palette.b["55"],
+  hero: {
+    colors: [palette.b["50"], palette.b["12"], palette.b["20"], palette.b["62"], palette.b["50"], palette.b["45"]],
+    locations: [0, 0.18, 0.3, 0.52, 0.75, 1],
+  },
+  cardPhoto: {
+    colors: [palette.b["25"], palette.b["10"], palette.b["75"], palette.b["90"]],
+    locations: [0, 0.3, 0.68, 1],
+  },
+  photo: {
+    colors: [palette.b["18"], palette.b["00"], palette.b["00"], palette.b["55"]],
+    locations: [0, 0.3, 0.55, 1],
+  },
+  /** Ambient veil over the dim photo field on photo pages. */
+  ambient: {
+    colors: [palette.veil[35], palette.veil[65], palette.veil[88], palette.graphite[950]],
+    locations: [0, 0.4, 0.7, 0.92],
+  },
+  maskHero: {
+    colors: [palette.graphite[1000], palette.b["00"]],
+    locations: [0.45, 0.92],
+  },
+} as const;
+
+// ===========================================================================
+// §3 · Materials (one recipe per platform). Rendered ONLY by
+// `components/ui/Material.tsx`:
+//   Android                 → solidFill (alpha 1; onPhoto .84 by design), no BlurView.
+//   Reduce Transparency     → reducedFill (onPhoto → solid control).
+//   web                     → shouldUseRealBlur ? glassFill + webBackdrop : solidFill.
+//   iOS                     → BlurView(blur) + glassFill overlay (blur null = fill only).
+// iOS cannot saturate(); the frost comes from the graphite fill over the blur.
+// ===========================================================================
+
+export type MaterialBlur = {
+  readonly intensity: number;
+  readonly tint: "systemChromeMaterialDark";
+};
+
+export type MaterialRim = {
+  /** 1px top highlight colour, or null for none. */
+  readonly top: string | null;
+  /** Hairline frame colour. */
+  readonly edge: string;
+  readonly edgeWidth: number;
+};
+
+export type MaterialRecipe = {
+  readonly glassFill: string;
+  readonly solidFill: string;
+  readonly reducedFill: string;
+  readonly blur: MaterialBlur | null;
+  readonly webBackdrop: string | null;
+  readonly rim: MaterialRim;
+};
+
+const chromeBlur = (intensity: number): MaterialBlur => ({ intensity, tint: "systemChromeMaterialDark" });
+const paneRim: MaterialRim = { top: palette.w["075"], edge: palette.w["07"], edgeWidth: hairline };
+
+export const materials = {
+  pane: {
+    glassFill: palette.pane[88],
+    solidFill: palette.graphite[920],
+    reducedFill: palette.graphite[920],
+    blur: chromeBlur(24),
+    webBackdrop: "blur(10px) saturate(20%)",
+    rim: paneRim,
+  },
+  control: {
+    glassFill: palette.pane[90],
+    solidFill: palette.graphite[880],
+    reducedFill: palette.graphite[880],
+    blur: chromeBlur(24),
+    webBackdrop: "blur(10px) saturate(20%)",
+    rim: { top: palette.w["075"], edge: palette.w["11"], edgeWidth: hairline },
+  },
+  selected: {
+    glassFill: palette.pane[92],
+    solidFill: palette.graphite[810],
+    reducedFill: palette.graphite[810],
+    blur: null,
+    webBackdrop: null,
+    rim: { top: palette.w["10"], edge: palette.w["08"], edgeWidth: hairline },
+  },
+  chrome: {
+    glassFill: palette.chrome90,
+    solidFill: palette.graphite[930],
+    reducedFill: palette.graphite[930],
+    blur: chromeBlur(24),
+    webBackdrop: "blur(10px) saturate(20%)",
+    rim: paneRim,
+  },
+  liquid: {
+    glassFill: palette.w["06"],
+    solidFill: palette.graphite[850],
+    reducedFill: palette.graphite[850],
+    blur: chromeBlur(34),
+    webBackdrop: "blur(14px) saturate(170%)",
+    // Android keeps the SAME rim on its solid capsule.
+    rim: { top: palette.w["30"], edge: palette.w["16"], edgeWidth: 0.5 },
+  },
+  onPhoto: {
+    glassFill: palette.w["10"],
+    // The one near-opaque exception: still reads as floating over the photo.
+    solidFill: palette.onPhotoSolid,
+    reducedFill: palette.graphite[880],
+    blur: chromeBlur(43),
+    webBackdrop: "blur(18px) saturate(140%)",
+    rim: { top: palette.w["16"], edge: palette.w["26"], edgeWidth: 0.5 },
+  },
+  sheet: {
+    glassFill: palette.pane.sheet,
+    solidFill: palette.graphite[900],
+    reducedFill: palette.graphite[900],
+    blur: chromeBlur(24),
+    webBackdrop: "blur(24px) saturate(20%)",
+    rim: paneRim,
+  },
+} as const satisfies Record<string, MaterialRecipe>;
+
+export type MaterialKind = keyof typeof materials;
+
+// ===========================================================================
+// §4 · Type, radius, space, size, shadow, motion
+// ===========================================================================
+
+export type TypeStyle = {
+  readonly fontSize: number;
+  readonly lineHeight: number;
+  readonly fontWeight: "400" | "500" | "600" | "700";
+  readonly letterSpacing: number;
+};
+
+/** letterSpacing in px from the kit's em values. */
+const em = (value: number, fontSize: number): number => Math.round(value * fontSize * 100) / 100;
+const t = (
+  fontSize: number,
+  lineHeight: number,
+  fontWeight: TypeStyle["fontWeight"],
+  letterSpacingEm = 0,
+): TypeStyle => ({ fontSize, lineHeight, fontWeight, letterSpacing: em(letterSpacingEm, fontSize) });
+
+const typeWeb = {
+  display: t(34, 40, "700", -0.028),
+  title: t(28, 34, "700", -0.024),
+  // The kit's h1 weight is 650; RN's fontWeight union stops at hundreds.
+  h1: t(21, 28, "600", -0.016),
+  h2: t(17, 24, "600", -0.01),
+  row: t(15, 21, "600"),
+  body: t(15, 22, "400"),
+  small: t(14, 20, "400"),
+  caption: t(13, 18, "500"),
+  label: t(12, 16, "600", 0.07),
+  statXl: t(44, 48, "700", -0.035),
+  stat: t(28, 32, "700", -0.025),
+  btn: t(15, 20, "600", -0.006),
+  btnSm: t(14, 18, "600"),
+  chip: t(14, 18, "600"),
+  mono: t(13, 18, "500", -0.01),
+  nav: t(12, 14, "600"),
+} as const;
+
+const typeIos = {
+  display: t(34, 41, "700", -0.026),
+  title: t(28, 34, "700", -0.022),
+  h1: t(22, 28, "700", -0.018),
+  h2: t(17, 22, "600", -0.012),
+  row: t(16, 21, "600"),
+  body: t(17, 22, "400"),
+  small: t(15, 20, "400"),
+  caption: t(13, 18, "500"),
+  label: t(12, 16, "600", 0.06),
+  statXl: t(40, 44, "700", -0.035),
+  stat: t(26, 30, "700", -0.025),
+  btn: t(17, 22, "600"),
+  btnSm: t(15, 20, "600"),
+  chip: t(15, 20, "600"),
+  mono: t(13, 18, "500", -0.01),
+  nav: t(10.5, 13, "600"),
+} as const;
+
+const typeAndroid = {
+  display: t(32, 40, "700", -0.02),
+  title: t(28, 34, "700", -0.02),
+  h1: t(22, 28, "700", -0.012),
+  h2: t(17, 22, "600", -0.006),
+  row: t(16, 21, "600"),
+  body: t(16, 22, "400"),
+  small: t(14, 20, "400"),
+  caption: t(13, 18, "500"),
+  label: t(12, 16, "600", 0.06),
+  statXl: t(38, 44, "700", -0.03),
+  stat: t(26, 30, "700", -0.02),
+  btn: t(16, 22, "600"),
+  btnSm: t(14, 20, "600"),
+  chip: t(14, 20, "600"),
+  mono: t(13, 18, "500", -0.01),
+  nav: t(11, 14, "600"),
+} as const;
+
+export type TypeScale = { readonly [K in keyof typeof typeWeb]: TypeStyle };
+
+/** Platform type scale (TOKENS §4): system font on every platform. */
+export const type: TypeScale =
+  Platform.select<TypeScale>({ ios: typeIos, android: typeAndroid, web: typeWeb, default: typeIos }) ?? typeIos;
+
+/** Monospace family per platform, for `type.mono`. */
+export const monoFontFamily: string =
+  Platform.select({ ios: "Menlo", android: "monospace", web: "ui-monospace, SFMono-Regular, Menlo, monospace", default: "Menlo" }) ??
+  "Menlo";
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 20,
+  /** Web card. */
   xl: 24,
+  /** Phone card, dialog (the kit's 2xl). */
   xxl: 28,
-  display: 40,
+  /** Sheet (the kit's 3xl). */
+  xxxl: 34,
   full: 999,
+  // TRANSITIONAL #4420: `display 40` is retired; mapped to the closest new step (3xl 34). Exit: wave 6.
+  display: 34,
 } as const;
 
-// META-ORCH-1148 sub-ORCH 2.0 — venue-suite layout token (Design §8). The
-// desktop two-column master rail width. Named so no raw layout numbers live in
-// VenueSuiteShell.
-//
-// 2.0.1 desktop polish: the rail narrowed 260→220 (the labels are short; 260
-// left a dead band of empty rail) and the whole suite is LEFT-anchored to the
-// Hub chrome's `spacing.md` edge instead of centered in the canvas column —
-// `alignSelf:"center"` floated the rail far right of the left-aligned TopBar /
-// To-Do / sub-nav chrome, opening the dead gutter Seth flagged.
-//
-// ORCH-1184: the former `venueSuiteMaxWidth` (1200) workspace max-width cap was
-// REMOVED — the workspace now fills the full page width (Seth's decision; the
-// cap left dead right-side canvas / a "black bar" on wide monitors).
+/** 4/8 spacing scale, keyed like the kit's `--s-1` … `--s-10`. */
+export const space = {
+  1: 4,
+  2: 8,
+  3: 12,
+  4: 16,
+  5: 20,
+  6: 24,
+  7: 32,
+  8: 40,
+  9: 48,
+  10: 64,
+} as const;
+
+export const size = {
+  btn: { sm: 36, md: 44, lg: 52, xl: 56, phone: 50, phoneLg: 54 },
+  iconBtn: { sm: 36, md: 44, lg: 48 },
+  ember: 48,
+  emberTab: 54,
+  input: 48,
+  handle: { width: 36, height: 5 },
+  rail: 80,
+  sidebar: 248,
+  sidebarCollapsed: 80,
+  bezel: 12,
+  topbar: 64,
+  pageMax: 1680,
+  gutter: 24,
+  sidePanel: 400,
+  modal: 560,
+  dialog: 400,
+  stepList: 280,
+  toast: 380,
+} as const;
+
+export type ShadowToken = {
+  readonly shadowColor: string;
+  readonly shadowOffset: { readonly width: number; readonly height: number };
+  readonly shadowOpacity: number;
+  readonly shadowRadius: number;
+  readonly elevation: number;
+};
+
+/**
+ * The kit's CSS shadows (`x y blur spread colour`) as RN shadow props. RN has
+ * no spread, so a negative spread is folded into the opacity
+ * (`alpha × (1 + spread / blur)`), and the radius is half the CSS blur.
+ * iOS and web only: Android elevation stays 0.
+ */
+const cssShadow = (y: number, blur: number, spread: number, alpha: number): ShadowToken => ({
+  shadowColor: palette.graphite[1000],
+  shadowOffset: { width: 0, height: y },
+  shadowOpacity: Math.round(alpha * Math.max(0.2, 1 + spread / blur) * 100) / 100,
+  shadowRadius: blur / 2,
+  elevation: androidSafeElevation(0),
+});
+
+const NO_SHADOW: ShadowToken = {
+  shadowColor: palette.transparent,
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  elevation: 0,
+};
+
+export const shadow = {
+  none: NO_SHADOW,
+  pane: cssShadow(10, 24, -18, 0.7),
+  paper: cssShadow(1, 2, 0, 0.35),
+  ember: cssShadow(6, 16, -8, 0.7),
+  liquid: cssShadow(10, 30, -12, 0.8),
+  sheet: cssShadow(-12, 40, -12, 0.7),
+  dialog: cssShadow(30, 80, -20, 0.8),
+  toast: cssShadow(14, 34, -14, 0.8),
+  menu: cssShadow(18, 48, -16, 0.8),
+} as const;
+
+export const easings = {
+  out: "cubic-bezier(0.33, 1, 0.68, 1)",
+  in: "cubic-bezier(0.32, 0, 0.67, 0)",
+  inOut: "cubic-bezier(0.65, 0, 0.35, 1)",
+  press: "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+  sine: "cubic-bezier(0.37, 0, 0.63, 1)",
+} as const;
+
+export const durations = {
+  instant: 80,
+  fast: 120,
+  normal: 200,
+  entry: 260,
+  exit: 180,
+  slow: 320,
+  deliberate: 400,
+  slowest: 800,
+} as const;
+
+export const motion = {
+  easings,
+  durations,
+  spring: {
+    /** RN spring for sheets (kit `--spring-sheet`). */
+    sheet: { damping: 26, stiffness: 260, mass: 1 },
+  },
+  pressScale: 0.98,
+} as const;
+
+export const fontWeights = {
+  regular: "400" as const,
+  medium: "500" as const,
+  semibold: "600" as const,
+  bold: "700" as const,
+};
+
+// ===========================================================================
+// Layout tokens (feature-owned measures; unchanged by #4420 wave 1).
+// ===========================================================================
+
 export const venueRailWidth = 220 as const;
 
 /** #2829 W9r — the Website section's two-panel layout (DESIGN_SPEC §2, §5). */
 export const websiteRailWidth = 232 as const;
 export const websitePaneMaxWidth = 760 as const;
 export const websitePreviewWidth = 440 as const;
-export const websiteRailActive = "rgba(255, 255, 255, 0.09)" as const;
 
 // Issue #2737 — reservation calendar geometry. This is deliberately scoped to
 // the operator calendar so responsive density never becomes a second global
@@ -260,126 +833,9 @@ export const namePatternNumBasis = 96 as const;
 export const optionCardMinHeight = 72 as const;
 export const optionCardMinWidth = 240 as const;
 
-export const shadows = {
-  sm: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: androidSafeElevation(2),
-  },
-  md: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: androidSafeElevation(4),
-  },
-  lg: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: androidSafeElevation(8),
-  },
-  xl: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.1,
-    shadowRadius: 25,
-    elevation: androidSafeElevation(12),
-  },
-  glassBadge: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: androidSafeElevation(4),
-  },
-  glassChrome: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    elevation: androidSafeElevation(6),
-  },
-  glassChromeActive: {
-    shadowColor: "#eb7825",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    elevation: androidSafeElevation(8),
-  },
-  glassCardBase: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: androidSafeElevation(6),
-  },
-  glassCardElevated: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.42,
-    shadowRadius: 24,
-    elevation: androidSafeElevation(10),
-  },
-  glassModal: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.48,
-    shadowRadius: 40,
-    elevation: androidSafeElevation(16),
-  },
-};
-
-export const fontWeights = {
-  regular: "400" as const,
-  medium: "500" as const,
-  semibold: "600" as const,
-  bold: "700" as const,
-};
-
-export const colors = {
-  primary: {
-    500: "#f97316",
-    700: "#c2410c",
-  },
-  gray: {
-    200: "#e5e7eb",
-  },
-  background: {
-    primary: "#ffffff",
-    secondary: "#f9fafb",
-  },
-  text: {
-    primary: "#111827",
-    secondary: "#4b5563",
-    tertiary: "#6b7280",
-    inverse: "#ffffff",
-  },
-  accent: "#eb7825",
-} as const;
-
-/** Welcome / auth gradient endpoint (warm off-white) */
-export const backgroundWarmGlow = "#fff9f5" as const;
-
-// ---------------------------------------------------------------------------
-// Cycle 0a additions — design-package token port (additive only).
-// Values match `Mingla_Artifacts/design-package/.../project/tokens.css` verbatim.
-// ---------------------------------------------------------------------------
-
-export const accent = {
-  warm: "#eb7825",
-  glow: "rgba(235, 120, 37, 0.35)",
-  tint: "rgba(235, 120, 37, 0.28)",
-  border: "rgba(235, 120, 37, 0.55)",
-  /**
-   * #4271 door polish — the faint accent wash for something picked or in use
-   * (a ticket row with a quantity, the "Guest is paying" pill).
-   */
-  faint: "rgba(235, 120, 37, 0.08)",
-} as const;
+// ===========================================================================
+// Content palettes (data encodings, not chrome; allow-listed by the #4420 guard)
+// ===========================================================================
 
 // #4037 — one fixed visual language for host traffic/value analytics. These
 // colours are contractual data encodings, not decorative choices: source order
@@ -393,8 +849,7 @@ export const trafficAnalytics = {
   positiveDelta: "#46c98b",
   positiveDeltaTint: "rgba(70, 201, 139, 0.16)",
   // Decision 7 (#4037 comment 6325156309): a decline (or no change) is shown,
-  // never hidden, in the neutral secondary treatment — the same colour as
-  // `text.secondary` — rather than an alarm colour.
+  // never hidden, in the neutral secondary treatment rather than an alarm colour.
   neutralDelta: "rgba(255, 255, 255, 0.72)",
   neutralDeltaTint: "rgba(255, 255, 255, 0.08)",
   selectedPageTint: "rgba(235, 120, 37, 0.08)",
@@ -409,52 +864,29 @@ export const trafficAnalytics = {
   },
 } as const;
 
-export const canvas = {
-  discover: "#0c0e12",
-  profile: "#141113",
-  depth: "#08090c",
-} as const;
-
-// ORCH-0821 — Ari signature palette (rework 2026-05-12).
-//
-// CALMER + REFRESHING. Decoupled from accent.warm (#eb7825 stays the brand
-// action color — punchy on purpose). Ari is its own visual identity: a soft
-// peach-coral gradient that reads "warm, premium, lit from within" without
-// shouting. Tuned to feel like glass with a warm light behind it, not a
-// brand action button.
-//
-// All HSL/hex per the Cycle 7 FX2 RN color rule (no oklch/lab/color-mix —
-// they render transparent on iOS+Android).
+// ORCH-0821 — Ari signature palette (rework 2026-05-12): a soft peach-coral
+// gradient, Ari's own identity, deliberately decoupled from the brand action
+// colour. HSL/hex only (no oklch/lab/color-mix: they render transparent on
+// iOS and Android).
 export const ariPalette = {
-  // Orb gradient stops — soft peach gold → calm warm coral → muted ember.
-  gold: "hsl(35, 88%, 78%)",      // #f7d09a — pale peach highlight
-  flame: "hsl(20, 72%, 64%)",    // #e69869 — calm warm coral (Ari signature)
-  ember: "hsl(10, 55%, 50%)",    // #c66c54 — soft muted ember rim
-  // Secondary touches — calmer than the brand warm for UI accents
-  cursor: "hsl(20, 72%, 64%)",   // same as flame
+  gold: "hsl(35, 88%, 78%)", // #f7d09a — pale peach highlight
+  flame: "hsl(20, 72%, 64%)", // #e69869 — calm warm coral (Ari signature)
+  ember: "hsl(10, 55%, 50%)", // #c66c54 — soft muted ember rim
+  cursor: "hsl(20, 72%, 64%)", // same as flame
   proposalBorder: "hsla(20, 72%, 64%, 0.45)",
   proposalShadow: "hsla(20, 72%, 64%, 0.28)",
-  // Glow color for the orb's halo
   glow: "hsla(22, 75%, 68%, 0.4)",
-  // ORCH-1101 — Ari thread brand accent. Operator decision (2026-06-08): the
-  // send button + user bubble + Confirm button + §5 cards use the canonical
-  // Mingla brand action color from the dev style guide (accent.warm #eb7825),
-  // paired with white text (colors.text.inverse) exactly like every other
-  // brand action button app-wide. This supersedes the earlier Ari-specific
-  // deep ember (#a85a44): brand consistency was chosen over the Ari-only 4.5:1
-  // target; white-on-#eb7825 (~2.9:1) is the established app-wide action pairing.
-  userBubble: accent.warm, // #eb7825 — Mingla brand action color
+  // ORCH-1101 — the Ari user bubble uses the brand action colour.
+  userBubble: color.accent,
 } as const;
 
-// ORCH-1101 — Ari thread density spine. One vertical-rhythm + type + geometry
-// system applied across ChatBubble / MessageList / InputBar / cards. Promotes
-// the proven ORCH-0821 literals to named tokens and tightens 1–2px. Zero magic
-// numbers downstream; every Ari layout value resolves here.
+// ORCH-1101 — Ari thread density spine. Every Ari layout value resolves here.
+// #4420: the colour fields are folded into `color.*` (layout numbers unchanged).
 export const ariThread = {
   // Vertical rhythm
-  gapTurn: 16, // between different-speaker turns
-  gapGroup: 4, // between same-speaker consecutive bubbles (iMessage cluster)
-  orbGap: 16, // orb → bubble gap; 10pt remains beyond the 6pt halo
+  gapTurn: 16,
+  gapGroup: 4,
+  orbGap: 16,
   // Bubble geometry + padding
   bubblePadH: 16,
   bubblePadV: 12,
@@ -489,179 +921,27 @@ export const ariThread = {
   activityMinH: 48,
   websiteAriMinWidth: 420,
   websiteAriMaxWidth: 520,
-  onUserBubble: canvas.depth,
-  actionText: accent.warm,
-  secondaryText: "rgba(255, 255, 255, 0.72)",
-  tertiaryText: "rgba(255, 255, 255, 0.52)",
   // Chips
   chipFont: 13,
   chipLine: 17,
-  // Android opaque-glass equivalent for the Ari bubble fill (composited value).
-  ariBubbleAndroid: "#16181b",
-  // ORCH-1101 REWORK Bug #4 — OPAQUE composer surface. The composer host used
-  // the translucent glass.tint.profileBase (rgba .04), so the empty-state hint
-  // ("Tap + for things to try") and any thread content showed THROUGH the input
-  // field. This is a solid, slightly-elevated fill over the dark discover canvas
-  // (#0c0e12) on EVERY platform (no rgba/hsla → satisfies
-  // ANDROID_GLASS_USES_OPAQUE_FALLBACK; nothing can bleed through).
-  composerSurface: "#191c21",
   // Success / cancelled ribbon padding (matches new bubble density).
   ribbonPadH: 10,
   ribbonPadV: 5,
+  // TRANSITIONAL #4420: colour fields kept as aliases of `color.*` until the
+  // Ari screens read `color` directly. Exit: wave 6.
+  onUserBubble: color.ink,
+  actionText: color.accent,
+  secondaryText: color.text2,
+  tertiaryText: color.text3,
+  /** Opaque Android bubble fill (solid pane). */
+  ariBubbleAndroid: materials.pane.solidFill,
+  /** ORCH-1101 REWORK Bug #4 — OPAQUE composer surface on every platform. */
+  composerSurface: color.card,
 } as const;
 
 /**
- * #1022 A/F-18 — the canonical Android opaque composites for the Theme control
- * row. Android gets opaque fills instead of translucent glass
- * (ANDROID_GLASS_USES_OPAQUE_FALLBACK), and these are the true arithmetic
- * composites over canvas.discover #0c0e12:
- *   fill   0.04*255 + 0.96*(12,14,18) = (21.7, 23.6, 27.5) -> #16181b
- *   border 0.08*255 + 0.92*(12,14,18) = (31.4, 33.3, 37.0) -> #1f2125
- *
- * `rowFill` ALIASES the existing ariThread.ariBubbleAndroid rather than
- * creating a third copy of the same literal (B-27).
- *
- * NOTE: RsvpStep5Setup's #23262b (a ~0.09 composite) is deliberately NOT
- * changed here — it is out of scope (#1028). On Android the Theme row will
- * therefore read very slightly darker than the RSVP Step-5 rows in the same
- * wizard until #1028 lands. That is the correct direction: this row matches
- * the true composite; the RSVP rows are the drifted ones.
- */
-export const androidOpaque = {
-  rowFill: ariThread.ariBubbleAndroid,
-  rowBorder: "#1f2125",
-  /**
-   * #1501 §9 — the SELECTED option-card / chip fill. Android gets an opaque
-   * composite instead of the translucent `rgba(235,120,37,0.14)` accent tint
-   * (ANDROID_GLASS_USES_OPAQUE_FALLBACK), computed over canvas.discover
-   * #0c0e12 exactly like `rowFill`/`rowBorder` above:
-   *   0.14*(235,120,37) + 0.86*(12,14,18) = (43.2, 28.8, 20.7) -> #2b1d15
-   * The translucent value stays the iOS/web truth; only Android composites.
-   */
-  accentFill: "#2b1d15",
-  /**
-   * #2262 — the Android opaque composite of `glass.border.control` (0.34 white)
-   * over canvas.discover, computed the same way as `rowFill`/`rowBorder`:
-   *   0.34*(255,255,255) + 0.66*(12,14,18) = (94.6, 95.9, 97.9) -> #5f6062
-   * Rounded to #5f6063 to match the design's stated value; the ratio is
-   * unchanged at 3.07:1. Android never receives translucent glass on a control
-   * border under ANDROID_GLASS_USES_OPAQUE_FALLBACK.
-   */
-  controlBorder: "#5f6063",
-  // Issue #1008 — semantic chip composites over canvas.discover. Native
-  // Android never receives translucent glass under rounded content.
-  successFill: "#102f20",
-  warningFill: "#362811",
-  errorFill: "#35181b",
-  infoFill: "#14233b",
-} as const;
-
-
-export const glass = {
-  tint: {
-    badge: {
-      idle: "rgba(12, 14, 18, 0.42)",
-      pressed: "rgba(12, 14, 18, 0.52)",
-    },
-    chrome: {
-      idle: "rgba(12, 14, 18, 0.48)",
-      pressed: "rgba(12, 14, 18, 0.58)",
-    },
-    backdrop: "rgba(12, 14, 18, 0.34)",
-    profileBase: "rgba(255, 255, 255, 0.04)",
-    profileElevated: "rgba(255, 255, 255, 0.06)",
-  },
-  border: {
-    badge: "rgba(255, 255, 255, 0.14)",
-    chrome: "rgba(255, 255, 255, 0.14)",
-    profileBase: "rgba(255, 255, 255, 0.08)",
-    profileElevated: "rgba(255, 255, 255, 0.12)",
-    pending: "rgba(255, 255, 255, 0.28)",
-    /**
-     * #2262 — the boundary that IDENTIFIES an outlined control, and therefore
-     * the only glass border that has to clear WCAG 2.2 SC 1.4.11's 3:1.
-     * Composited over `canvas.discover` #0c0e12 every existing border tops out
-     * at 2.46:1 (`pending`); 0.34 composites to #5f6063 = 3.07:1 and is the
-     * LOWEST white alpha that clears the bar. Used ONLY on the commit bar's
-     * outlined controls — not on cards, not on the composer sheet.
-     */
-    control: "rgba(255, 255, 255, 0.34)",
-  },
-  highlight: {
-    badge: "rgba(255, 255, 255, 0.22)",
-    profileBase: "rgba(255, 255, 255, 0.10)",
-    profileElevated: "rgba(255, 255, 255, 0.14)",
-  },
-} as const;
-
-export const semantic = {
-  live: "#ff4d4f",
-  liveGlow: "rgba(255,77,79,0.45)",
-  success: "#22c55e",
-  successTint: "rgba(34, 197, 94, 0.18)",
-  warning: "#f59e0b",
-  warningTint: "rgba(245, 158, 11, 0.18)",
-  error: "#ef4444",
-  /**
-   * issue #3284 — error TEXT on dark surfaces. `error` (#ef4444) measures
-   * 4.37:1 on the Android opaque glass card (#1f1f23), below AA for body text;
-   * #f87171 measures 6.58:1 (iOS glass) / 5.94:1 (Android). Borders and fills
-   * keep `error` (non-text needs only 3:1). Makes the literal already used in
-   * three dark-surface files an official token.
-   */
-  errorText: "#f87171",
-  errorTint: "rgba(239, 68, 68, 0.18)",
-  /**
-   * #4271 door polish — the status ring behind a red X (declined, blocked).
-   * Promotes the literal the Tap to Pay and pay code screens already used.
-   */
-  errorRing: "rgba(239, 68, 68, 0.16)",
-  info: "#3b82f6",
-  infoTint: "rgba(59, 130, 246, 0.18)",
-} as const;
-
-export const text = {
-  primary: "rgba(255, 255, 255, 0.96)",
-  secondary: "rgba(255, 255, 255, 0.72)",
-  tertiary: "rgba(255, 255, 255, 0.52)",
-  /** #2829 W9r — hints on cards, raised for margin (6.2:1 on a card). */
-  tertiaryOnCard: "rgba(255, 255, 255, 0.56)",
-  quaternary: "rgba(255, 255, 255, 0.32)",
-  inverse: "#ffffff",
-} as const;
-
-export const blurIntensity = {
-  badge: 24,
-  chrome: 28,
-  backdrop: 22,
-  cardBase: 30,
-  cardElevated: 34,
-  modal: 40,
-} as const;
-
-export const easings = {
-  out: "cubic-bezier(0.33, 1, 0.68, 1)",
-  in: "cubic-bezier(0.32, 0, 0.67, 0)",
-  inOut: "cubic-bezier(0.65, 0, 0.35, 1)",
-  press: "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-  sine: "cubic-bezier(0.37, 0, 0.63, 1)",
-} as const;
-
-export const durations = {
-  instant: 80,
-  fast: 120,
-  normal: 200,
-  entry: 260,
-  exit: 180,
-  slow: 320,
-  deliberate: 400,
-  slowest: 800,
-} as const;
-
-/**
- * #3040 — Host cover / video upload sheet geometry (Appendix A §13). Every
- * value here is new to this surface; colours not listed reuse `accent`,
- * `semantic`, `glass` and `text` tokens.
+ * #3040 — Host cover / video upload sheet geometry (Appendix A §13).
+ * #4420: colour fields folded into `color.*` / `scrim.*`.
  */
 export const coverUpload = {
   thumb: 56,
@@ -670,16 +950,17 @@ export const coverUpload = {
   previewHeightWide: 260,
   stepperBar: 3,
   trackHeight: 4,
-  frozenFill: "rgba(255,255,255,0.40)",
-  warnBorder: "rgba(245,158,11,0.40)",
-  errorBorder: "rgba(239,68,68,0.45)",
-  scrim: "rgba(8,9,12,0.55)",
   tileRing: 36,
   statusIcon: 28,
   pillHeight: 28,
-  stepDone: "rgba(235,120,37,0.55)",
-  stepTodo: "rgba(255,255,255,0.14)",
-  track: "rgba(255,255,255,0.24)",
+  // TRANSITIONAL #4420: colour aliases. Exit: wave 6.
+  frozenFill: color.status.muted,
+  warnBorder: color.warning,
+  errorBorder: color.errorLine,
+  scrim: scrim.modal,
+  stepDone: color.accentLine,
+  stepTodo: color.lineStrong,
+  track: color.fill.pager,
 } as const;
 
 /** #2796 feature-owned competition-sheet geometry. */
@@ -695,25 +976,201 @@ export const competitorSheet = {
   stickyFooterMinHeight: 76,
 } as const;
 
-/** #2796 opaque competition surfaces (including Android). */
-export const competition = {
-  surface: "#16181b",
-  surfaceRaised: "#191c21",
+// ===========================================================================
+// TRANSITIONAL #4420 — retired pre-Graphite exports.
+//
+// Every export below is retired by the #4420 spec §2. Each is kept ONLY so the
+// app compiles while the screen waves migrate their importers, and each value
+// is mapped to the closest Graphite Glass token (no new literal). Do not add an
+// importer. Exit condition: #4420 wave 6 deletes this whole block and turns the
+// guard's ISSUE_4420_ENFORCE=1 on.
+// ===========================================================================
+
+/** TRANSITIONAL #4420 → `space` (identical values; `xxs 2` is retired). */
+export const spacing = {
+  xxs: 2,
+  xs: space[1],
+  sm: space[2],
+  md: space[4],
+  lg: space[6],
+  xl: space[7],
+  xxl: space[9],
 } as const;
 
+/** TRANSITIONAL #4420 → `color.text1..4`. */
+export const text = {
+  primary: color.text1,
+  secondary: color.text2,
+  tertiary: color.text3,
+  tertiaryOnCard: color.text3,
+  quaternary: color.text4,
+  inverse: color.textStrong,
+} as const;
+
+/** TRANSITIONAL #4420 → `color.*`. `error` as a fill is `color.danger`. */
+export const semantic = {
+  live: color.live,
+  liveGlow: color.errorLine,
+  success: color.success,
+  successTint: color.successTint,
+  warning: color.warning,
+  warningTint: color.warningTint,
+  error: color.danger,
+  errorText: color.errorText,
+  errorTint: color.errorTint,
+  errorRing: color.errorTint,
+  info: color.info,
+  infoTint: color.infoTint,
+} as const;
+
+/** TRANSITIONAL #4420 → `color.accent*`. */
+export const accent = {
+  warm: color.accent,
+  glow: color.accentLine,
+  tint: color.accentLine,
+  border: color.accentLine,
+  faint: color.accentTint,
+} as const;
+
+/** TRANSITIONAL #4420 → `color.canvas` (all three canvases merge). */
+export const canvas = {
+  discover: color.canvas,
+  profile: color.canvas,
+  depth: color.canvas,
+} as const;
+
+/**
+ * TRANSITIONAL #4420 → the light-theme leftovers, mapped onto the paper/ink
+ * set (the only light values Graphite keeps).
+ */
+export const colors = {
+  primary: {
+    500: color.accent,
+    700: color.accent,
+  },
+  gray: {
+    200: color.paperPressed,
+  },
+  background: {
+    primary: color.paper,
+    secondary: color.paperEnd,
+  },
+  text: {
+    primary: color.ink,
+    secondary: color.text4,
+    tertiary: color.text4,
+    inverse: color.paper,
+  },
+  accent: color.accent,
+} as const;
+
+/** TRANSITIONAL #4420 → `color.paper`. */
+export const backgroundWarmGlow = color.paper;
+
+/** TRANSITIONAL #4420 → `color.fill.railOn`. */
+export const websiteRailActive = color.fill.railOn;
+
+/**
+ * TRANSITIONAL #4420 → glass tints, borders and highlights. Washes map to
+ * `color.fill.*`, borders to `color.line*` / edges, dark tints to the
+ * material fills. `border.control` keeps a >= 3:1 boundary (#2262) through the
+ * input-focus ring colour.
+ */
+export const glass = {
+  tint: {
+    badge: {
+      idle: materials.onPhoto.solidFill,
+      pressed: materials.onPhoto.solidFill,
+    },
+    chrome: {
+      idle: materials.chrome.glassFill,
+      pressed: materials.selected.glassFill,
+    },
+    backdrop: scrim.ambient.colors[0],
+    profileBase: color.fill.inset,
+    profileElevated: color.fill.tile,
+  },
+  border: {
+    badge: color.lineStrong,
+    chrome: color.lineStrong,
+    profileBase: color.line,
+    profileElevated: color.lineStrong,
+    pending: color.fill.pager,
+    control: edge.ringInputFocus.borderColor,
+  },
+  highlight: {
+    badge: edge.liquidGlint,
+    profileBase: edge.rimSelected.borderTopColor,
+    profileElevated: edge.rimLiquidOn.borderTopColor,
+  },
+} as const;
+
+/** TRANSITIONAL #4420 → `materials.*.solidFill` and `color.*`. */
+export const androidOpaque = {
+  rowFill: materials.pane.solidFill,
+  rowBorder: color.card2,
+  accentFill: materials.selected.solidFill,
+  controlBorder: edge.ringInputFocus.borderColor,
+  successFill: color.solidTint.success,
+  warningFill: color.solidTint.warning,
+  errorFill: color.solidTint.error,
+  infoFill: color.solidTint.info,
+} as const;
+
+/** TRANSITIONAL #4420 → `materials.pane.solidFill` / `color.card`. */
+export const competition = {
+  surface: materials.pane.solidFill,
+  surfaceRaised: color.card,
+} as const;
+
+/** TRANSITIONAL #4420 → `materials.*.blur.intensity` (iOS). */
+export const blurIntensity = {
+  badge: materials.onPhoto.blur.intensity,
+  chrome: materials.chrome.blur.intensity,
+  backdrop: materials.chrome.blur.intensity,
+  cardBase: materials.pane.blur.intensity,
+  cardElevated: materials.pane.blur.intensity,
+  modal: materials.sheet.blur.intensity,
+} as const;
+
+/** TRANSITIONAL #4420 → `shadow.*` (`sm–xl` and the orange `glassChromeActive` glow are retired). */
+export const shadows = {
+  sm: shadow.paper,
+  md: shadow.pane,
+  lg: shadow.menu,
+  xl: shadow.dialog,
+  glassBadge: shadow.ember,
+  glassChrome: shadow.liquid,
+  glassChromeActive: shadow.liquid,
+  glassCardBase: shadow.pane,
+  glassCardElevated: shadow.menu,
+  glassModal: shadow.dialog,
+};
+
+const pickType = (style: TypeStyle): TypeStyle => ({
+  fontSize: style.fontSize,
+  lineHeight: style.lineHeight,
+  fontWeight: style.fontWeight,
+  letterSpacing: style.letterSpacing,
+});
+
+/**
+ * TRANSITIONAL #4420 → `type.*`, by nearest step: h2 and h3 both land on
+ * `h1`, `bodyLg` on `row`, `micro` (retired) on `label`.
+ */
 export const typography = {
-  display: { fontSize: 32, lineHeight: 48, fontWeight: "700" as const, letterSpacing: -0.4 },
-  h1: { fontSize: 26, lineHeight: 32, fontWeight: "700" as const, letterSpacing: -0.2 },
-  h2: { fontSize: 24, lineHeight: 36, fontWeight: "700" as const, letterSpacing: -0.2 },
-  h3: { fontSize: 20, lineHeight: 32, fontWeight: "600" as const, letterSpacing: 0 },
-  bodyLg: { fontSize: 18, lineHeight: 28, fontWeight: "500" as const, letterSpacing: 0 },
-  body: { fontSize: 16, lineHeight: 24, fontWeight: "400" as const, letterSpacing: 0 },
-  bodySm: { fontSize: 14, lineHeight: 20, fontWeight: "400" as const, letterSpacing: 0 },
-  caption: { fontSize: 12, lineHeight: 16, fontWeight: "500" as const, letterSpacing: 0.2 },
-  micro: { fontSize: 11, lineHeight: 14, fontWeight: "600" as const, letterSpacing: 0.4 },
-  labelCap: { fontSize: 12, lineHeight: 16, fontWeight: "600" as const, letterSpacing: 1.4 },
-  buttonLg: { fontSize: 16, lineHeight: 24, fontWeight: "600" as const, letterSpacing: 0 },
-  buttonMd: { fontSize: 14, lineHeight: 20, fontWeight: "600" as const, letterSpacing: 0.2 },
-  statValue: { fontSize: 26, lineHeight: 32, fontWeight: "700" as const, letterSpacing: -0.4 },
-  monoMd: { fontSize: 14, lineHeight: 20, fontWeight: "500" as const, letterSpacing: 0 },
+  display: pickType(type.display),
+  h1: pickType(type.title),
+  h2: pickType(type.h1),
+  h3: pickType(type.h1),
+  bodyLg: pickType(type.row),
+  body: pickType(type.body),
+  bodySm: pickType(type.small),
+  caption: pickType(type.caption),
+  micro: pickType(type.label),
+  labelCap: pickType(type.label),
+  buttonLg: pickType(type.btn),
+  buttonMd: pickType(type.btnSm),
+  statValue: pickType(type.stat),
+  monoMd: pickType(type.mono),
 } as const;

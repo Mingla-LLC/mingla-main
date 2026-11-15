@@ -73,7 +73,7 @@ describe("#1532 D2 — field proximity is no longer inverted", () => {
   });
 
   it("D2-2 — the shipped scale puts separation well above cohesion", () => {
-    // Cohesion  = caption half-leading (2) + the field wrapper's gap  (8) = 10
+    // Cohesion  = caption half-leading (2.5) + the field wrapper's gap (8) = 10.5
     // Separation = the card CONTENT gap (24) + bodySm half-leading (3)  = 27
     const captionHalfLeading =
       (typography.caption.lineHeight - typography.caption.fontSize) / 2;
@@ -86,9 +86,11 @@ describe("#1532 D2 — field proximity is no longer inverted", () => {
     expect(STAY_FIELD_PROXIMITY.separationPt).toBe(
       STAY_SPACING.fieldToFieldStacked + bodySmHalfLeading,
     );
-    expect(STAY_FIELD_PROXIMITY.cohesionPt).toBe(10);
+    // [TEST-MOD-APPROVED #4420] caption is now 13/18 (half-leading 2.5), so
+    // cohesion is 10.5 and the ratio 2.57 — still above the 2.5 floor.
+    expect(STAY_FIELD_PROXIMITY.cohesionPt).toBe(10.5);
     expect(STAY_FIELD_PROXIMITY.separationPt).toBe(27);
-    expect(Number(STAY_FIELD_PROXIMITY.ratio.toFixed(2))).toBe(2.7);
+    expect(Number(STAY_FIELD_PROXIMITY.ratio.toFixed(2))).toBe(2.57);
     expect(STAY_FIELD_PROXIMITY.ratio).toBeGreaterThanOrEqual(
       STAY_FIELD_PROXIMITY_MIN_RATIO,
     );

@@ -158,8 +158,10 @@ describe("ORCH-1101 · density tokens exist", () => {
     // Operator brand-consistency decision 2026-06-08: the Ari thread accent
     // (send button + user bubble + Confirm + §5 cards) references the dev
     // style-guide brand action color accent.warm, not an Ari-only ember.
-    expect(designSystem).toMatch(/userBubble:\s*accent\.warm/);
-    expect(designSystem).toMatch(/warm:\s*["']#eb7825["']/);
+    // [TEST-MOD-APPROVED #4420] Graphite Glass: the token now resolves through color.accent → palette.orange[500].
+    expect(designSystem).toMatch(/userBubble:\s*color\.accent\b/);
+    expect(designSystem).toMatch(/accent:\s*palette\.orange\[500\]/);
+    expect(designSystem).toMatch(/orange:\s*\{\s*500:\s*["']#eb7825["']/);
   });
 
   it("adds the ariThread density token block with the load-bearing values", () => {

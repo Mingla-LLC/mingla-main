@@ -104,7 +104,9 @@ describe("ORCH-0873 Stage 2 UI — TESTER adversarial regression", () => {
       const designSystem = read("constants/designSystem.ts");
       // The shape we depend on for the lint below.
       expect(designSystem).toMatch(/chrome:\s*\{\s*idle:/);
-      expect(designSystem).toMatch(/pressed:\s*"rgba/);
+      // [TEST-MOD-APPROVED #4420] the values are now token aliases, not rgba
+      // literals; the {idle, pressed} OBJECT shape is what this pin protects.
+      expect(designSystem).toMatch(/chrome:\s*\{\s*idle:[^}]*pressed:[^}]*\}/);
     });
 
     it("PaymentPlanEditor.tsx must NOT use glass.tint.chrome as a backgroundColor (must use .idle or .pressed)", () => {

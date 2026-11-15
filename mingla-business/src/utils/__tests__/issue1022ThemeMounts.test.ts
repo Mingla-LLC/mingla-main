@@ -173,7 +173,9 @@ describe("C-9 / C-10 — geometry: width-agnostic, self-capping", () => {
   test("androidOpaque ALIASES the existing constant — no third copy of the literal", () => {
     // B-27: #16181b already exists as ariThread.ariBubbleAndroid.
     const ds = src("src/constants/designSystem.ts");
-    expect(ds).toMatch(/rowFill:\s*ariThread\.ariBubbleAndroid/);
+    // [TEST-MOD-APPROVED #4420] both now alias the one Graphite solid pane.
+    expect(ds).toMatch(/rowFill:\s*materials\.pane\.solidFill/);
+    expect(ds).toMatch(/ariBubbleAndroid:\s*materials\.pane\.solidFill/);
   });
 
   test("the chip shows the DERIVED palette, never the raw seed", () => {
