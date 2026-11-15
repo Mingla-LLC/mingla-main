@@ -452,15 +452,17 @@ export default function ExperienceEditRoute(): React.ReactElement {
           a draft has no sale to restrict. Web-only by filename resolution (the
           .native.tsx sibling is a typed null renderer), so no native Business
           screen gains a configuration control. */}
-      {isLive && Platform.OS === "web" ? (
-        <View style={styles.accessCardWrap}>
-          <React.Suspense fallback={null}>
-            <EventTicketCheckoutAccessCard eventId={experience.id} />
-          </React.Suspense>
-        </View>
-      ) : null}
+      {/* #4420 — the card now sits at the top of the Identity step's scroll
+          (it used to sit above the wizard header and push the stepper down). */}
       <React.Suspense fallback={<ActivityIndicator />}>
         <LazyExperienceCreatorWizard
+          identityTopSlot={
+            isLive && Platform.OS === "web" ? (
+              <React.Suspense fallback={null}>
+                <EventTicketCheckoutAccessCard eventId={experience.id} />
+              </React.Suspense>
+            ) : null
+          }
           brandId={experience.brandId}
           existingExperienceId={experience.id}
           initialDraft={initialDraft}
@@ -496,12 +498,6 @@ export default function ExperienceEditRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  // issue #2101 — inset for the owner-only Eligible-buyers card above the
-  // creator wizard on a LIVE experience.
-  accessCardWrap: {
-    paddingHorizontal: space[4],
-    paddingTop: space[4],
-  },
   // #2211 — all five early-return branches share this root. It was `flex: 1` +
   // `justifyContent: "center"` with no scroll container, and the
   // ended/cancelled branch carries the only CTA ("Back to experience").

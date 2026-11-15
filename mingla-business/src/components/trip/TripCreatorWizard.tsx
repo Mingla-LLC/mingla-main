@@ -2519,9 +2519,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               testID="trip-wizard-stepper"
             />
           </View>
-          <Text style={styles.stepCounter} testID="trip-wizard-step-counter">
-            {visibleStepNumber}/{visibleStepCount}
-          </Text>
+          {/* #4420 — no separate "n/N" counter: the stepper's own n / N Steps
+              button already shows it (the two read side by side). */}
         </View>
       )}
 
@@ -3018,13 +3017,6 @@ const styles = StyleSheet.create({
   },
   stepperWrap: {
     flex: 1,
-  },
-  stepCounter: {
-    fontSize: 12,
-    color: color.text3,
-    fontVariant: ["tabular-nums"],
-    minWidth: 28,
-    textAlign: "right",
   },
   subtitleRow: {
     paddingHorizontal: space[4],

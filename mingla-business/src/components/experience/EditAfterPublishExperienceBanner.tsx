@@ -49,7 +49,7 @@ export const EditAfterPublishExperienceBanner: React.FC<
   <View style={styles.host}>
     <View style={styles.headerRow}>
       <View style={styles.iconBadge}>
-        <Icon name="flag" size={18} color={color.accent} />
+        <Icon name="flag" size={18} color={color.warning} />
       </View>
       <View style={styles.textCol}>
         <Text style={styles.heading}>You&rsquo;re editing a live experience</Text>
@@ -87,20 +87,21 @@ export const EditAfterPublishExperienceBanner: React.FC<
 );
 
 const styles = StyleSheet.create({
+  // #4420 — a quiet card with a warning mark (as the mockup), not an orange
+  // slab: orange is for primary actions. The wizard's scroll owns the gaps.
   host: {
     padding: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: color.accentLine,
-    borderWidth: 1,
-    borderColor: color.accentLine,
-    marginBottom: space[6],
-    gap: space[2],
+    backgroundColor: color.fill.tile,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    gap: space[3],
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: space[2] + 4,
+    gap: space[3],
   },
   iconBadge: {
     width: 32,
@@ -108,9 +109,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: color.accentTint,
-    borderWidth: 1,
-    borderColor: color.accentLine,
+    backgroundColor: color.warningTint,
     flexShrink: 0,
   },
   textCol: {
@@ -118,14 +117,11 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   heading: {
-    fontSize: 14,
-    fontWeight: "700",
+    ...type.row,
     color: color.text1,
-    letterSpacing: -0.1,
   },
   body: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...type.caption,
     color: color.text2,
   },
   label: {
@@ -137,12 +133,12 @@ const styles = StyleSheet.create({
   },
   input: {
     minHeight: 64,
-    padding: space[2] + 2,
+    padding: space[3],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: color.fill.tile,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: color.accentLine,
+    borderColor: color.line,
     color: color.text1,
     fontSize: type.body.fontSize,
     lineHeight: type.body.lineHeight,

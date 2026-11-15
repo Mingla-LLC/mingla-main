@@ -33,6 +33,7 @@ import {
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useExperienceVenueDefault } from "../../hooks/useExperienceVenueDefault";
 import {
   useExperienceDraftAdapter,
@@ -230,6 +231,12 @@ export interface ExperienceCreatorWizardProps {
    * step 1.
    */
   initialStep?: number;
+  /**
+   * #4420 — a route-owned card shown at the top of the first step's scroll
+   * (the edit route's owner-only "Eligible buyers" card). It used to sit
+   * above the wizard header, pushing the stepper down the screen.
+   */
+  identityTopSlot?: React.ReactNode;
 }
 
 
@@ -386,12 +393,14 @@ export const ExperienceCreatorWizard: React.FC<
   liveExperience,
   liveSoldCount,
   initialStep,
+  identityTopSlot = null,
   liveBuyerNoticeLine,
   savedToastFor,
 }) => {
   const isLiveEdit = liveExperience !== undefined;
   const { user, signOut } = useAuth();
   const brand = useCurrentBrand();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // #3645 PR11c — Organiser Terms before first paid listing publish.
@@ -1819,6 +1828,7 @@ export const ExperienceCreatorWizard: React.FC<
       }}
     >
     <View style={styles.host}>
+      {isWideDesktop ? (
       <View style={styles.header}>
         <Pressable
           onPress={goBack}
@@ -1846,6 +1856,55 @@ export const ExperienceCreatorWizard: React.FC<
           testID="experience-wizard-stepper"
         />
       </View>
+      ) : (
+        // #4420 — the phone chrome every wizard shares (mockup
+        // experience-create__identity): close, the experience's name over the
+        // brand, then the stepper's progress, chips and n / N Steps button.
+        // The inline numbered stepper ran off the right edge on a phone.
+        <View style={styles.mobileChrome}>
+          <View style={styles.chromeRow}>
+            <Pressable
+          onPress={goBack}
+          // #1780 — no stepping back to Invite while Publish re-reads the plan.
+          disabled={(step === 6 && inviteNavigation?.phase !== "ready") || checkingInvitePublish}
+          accessibilityRole="button"
+            accessibilityLabel={
+              step === 1 ? "Cancel experience creation" : "Back"
+            }
+          style={styles.backTouch}
+        >
+            <Icon
+              name={step === 1 ? "close" : "chevL"}
+              size={18}
+              color={color.text2}
+            />
+        </Pressable>
+            <View style={styles.chromeTitleCol}>
+              <Text style={styles.chromeTitle} numberOfLines={1}>
+                {title.trim().length > 0
+                  ? title
+                  : existingExperienceId !== undefined
+                    ? "Untitled experience"
+                    : "New experience"}
+              </Text>
+              {brand?.displayName ? (
+                <Text style={styles.chromeSub} numberOfLines={1}>
+                  {brand.displayName}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          <Stepper
+            layout="chips"
+            steps={steps}
+            currentIndex={step - 1}
+            furthestValidIndex={furthestValidIndex}
+            onStepPress={goToStep}
+            sheetTitle="Steps"
+            testID="experience-wizard-stepper"
+          />
+        </View>
+      )}
       {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
           from the file head to the occurrence it was always meant to cover.
           The old marker sat in the first three lines for a REASON — the gate's
@@ -1863,6 +1922,7 @@ export const ExperienceCreatorWizard: React.FC<
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        {step === 1 && identityTopSlot !== null ? identityTopSlot : null}
         {isLiveEdit ? (
           <EditAfterPublishExperienceBanner
             reason={liveEditReason}
@@ -2290,6 +2350,29 @@ const styles = StyleSheet.create({
     paddingTop: space[6],
     paddingBottom: space[2],
   },
+  mobileChrome: {
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[3],
+    gap: space[3],
+  },
+  chromeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+  },
+  chromeTitleCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  chromeTitle: {
+    ...type.h2,
+    color: color.text1,
+  },
+  chromeSub: {
+    ...type.caption,
+    color: color.text3,
+  },
   backTouch: {
     width: 44,
     height: 44,
@@ -2301,7 +2384,14 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: color.line,
   },
-  scrollContent: { paddingHorizontal: space[6], paddingBottom: space[6] },
+  // #4420 — the 16pt phone gutter, and one gap between the route card, the
+  // live-edit banner and the step body.
+  scrollContent: {
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[6],
+    gap: space[4],
+  },
   // ORCH-1076 Stream B — proactive Stripe banner spacing (inherits the
   // scrollContent horizontal padding; only needs top separation).
   stripeBannerWrap: { marginTop: space[4] },

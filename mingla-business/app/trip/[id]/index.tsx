@@ -529,7 +529,9 @@ export default function TripDashboardRoute(): React.ReactElement {
       return null;
     }
     // issue #3237 — a draft has no public page to open yet.
-    if (tile.key === "public" && !canOpenPublic) return null;
+    if (tile.key === "public" && !canOpenPublic) {
+      return null;
+    }
     configTiles.set(tile.key, {
       key: tile.key,
       icon: tile.key === "brand" ? "home" : tile.icon,
@@ -708,14 +710,12 @@ export default function TripDashboardRoute(): React.ReactElement {
         })()}
         mediaUrl={trip.coverMediaUrl}
         mediaType={coverMediaType}
-        pill={
-          // issue #3237 — a draft is not "Upcoming": nothing is on sale.
-          trip.status === "draft" ? (
-            <Pill variant="draft">Draft</Pill>
-          ) : (
-            <TripDetailHeroStatusPill status={tripLifecycleStatus} />
-          )
-        }
+        // issue #3237 — a draft is not "Upcoming": nothing is on sale.
+        pill={trip.status === "draft" ? (
+          <Pill variant="draft">Draft</Pill>
+        ) : (
+          <TripDetailHeroStatusPill status={tripLifecycleStatus} />
+        )}
         title={trip.title}
         subline={formatTripHeroSubline({
           startAt: trip.businessTrip.startAt,

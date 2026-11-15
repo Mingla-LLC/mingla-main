@@ -1384,59 +1384,57 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
           />
         </View>
       ) : (
-        <View style={styles.chromeRow}>
-          <IconChrome
-            icon="close"
-            size={36}
-            onPress={handleClose}
-            accessibilityLabel="Close wizard"
-          />
-          <View style={styles.stepperWrap}>
-            {/* #4420 B7 — progress segments, tappable step chips and the n / N Steps sheet. */}
-            <Stepper
-              layout="chips"
-              steps={visibleStepperSteps}
-              currentIndex={currentOrdinal}
-              furthestValidIndex={furthestValidOrdinal}
-              onStepPress={handleStepPress}
-              showCaption={false}
-              sheetTitle="Steps"
-              testID="rsvp-wizard-stepper"
+        // #4420 — the phone wizard chrome matches the event wizard and the
+        // mockup: close, the RSVP's name over "Brand · save state", then the
+        // stepper's own progress, chips and n / N Steps button (the separate
+        // "1/7" counter and the "Step 1 of 7" subtitle repeated it).
+        <View style={styles.mobileChrome}>
+          <View style={styles.chromeRow}>
+            <IconChrome
+              icon="close"
+              size={44}
+              onPress={handleClose}
+              accessibilityLabel="Close wizard"
             />
+            <View style={styles.chromeTitleCol}>
+              <Text style={styles.chromeTitle} numberOfLines={1}>
+                {liveDraft.name.trim().length > 0 ? liveDraft.name : "Untitled RSVP"}
+              </Text>
+              <Text
+                style={[
+                  styles.chromeSub,
+                  serverSaveState?.hasError === true ? styles.saveStateError : null,
+                ]}
+                numberOfLines={1}
+              >
+                {brand?.displayName ?? "Brand"}
+                {serverSaveState === undefined
+                  ? ""
+                  : ` · ${
+                      serverSaveState.hasError
+                        ? "Unsaved changes - retrying"
+                        : serverSaveState.isSaving
+                          ? "Saving..."
+                          : serverSaveState.lastSavedAt !== null
+                            ? "Saved"
+                            // issue #3040 — this branch means NOTHING has been
+                            // written to `events` yet, so it never says "Server draft".
+                            : "Not saved yet"
+                    }`}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.stepCounter}>
-            {visibleStepNumber}/{visibleStepDefs.length}
-          </Text>
+          {/* #4420 B7 — progress segments, tappable step chips and the n / N Steps sheet. */}
+          <Stepper
+            layout="chips"
+            steps={visibleStepperSteps}
+            currentIndex={currentOrdinal}
+            furthestValidIndex={furthestValidOrdinal}
+            onStepPress={handleStepPress}
+            sheetTitle="Steps"
+            testID="rsvp-wizard-stepper"
+          />
         </View>
-      )}
-
-      {/* Brand subtitle */}
-      {isWideDesktop ? null : (
-      <View style={styles.subtitleRow}>
-        <Text style={styles.subtitle}>
-              {brand?.displayName ?? "Brand"} · Step {visibleStepNumber} of{" "}
-              {visibleStepDefs.length}
-        </Text>
-        {serverSaveState !== undefined ? (
-          <Text
-            style={[
-              styles.saveState,
-              serverSaveState.hasError ? styles.saveStateError : null,
-            ]}
-          >
-            {serverSaveState.hasError
-              ? "Unsaved changes - retrying"
-              : serverSaveState.isSaving
-                ? "Saving..."
-                : serverSaveState.lastSavedAt !== null
-                  ? "Saved"
-                  // issue #3040 — see EventCreatorWizard: this branch means
-                  // NOTHING has been written to `events` yet, so "Server draft"
-                  // stated the opposite of the truth.
-                  : "Not saved yet"}
-          </Text>
-        ) : null}
-      </View>
       )}
 
       <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
@@ -1745,36 +1743,28 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.tableHead,
     overflow: "hidden",
   },
+  mobileChrome: {
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[3],
+    gap: space[3],
+  },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: space[4],
-    paddingTop: space[2],
-    gap: space[2],
+    gap: space[3],
   },
-  stepperWrap: {
+  chromeTitleCol: {
     flex: 1,
+    minWidth: 0,
   },
-  stepCounter: {
-    fontSize: 12,
+  chromeTitle: {
+    ...type.h2,
+    color: color.text1,
+  },
+  chromeSub: {
+    ...type.caption,
     color: color.text3,
-    fontVariant: ["tabular-nums"],
-    minWidth: 28,
-    textAlign: "right",
-  },
-  subtitleRow: {
-    paddingHorizontal: space[4],
-    paddingTop: space[1],
-    paddingBottom: space[4],
-  },
-  subtitle: {
-    fontSize: type.caption.fontSize,
-    color: color.text3,
-  },
-  saveState: {
-    marginTop: 2,
-    fontSize: type.caption.fontSize,
-    color: color.text4,
   },
   saveStateError: {
     color: color.danger,
