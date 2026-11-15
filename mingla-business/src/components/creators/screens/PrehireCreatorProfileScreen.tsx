@@ -141,6 +141,7 @@ export default function PrehireCreatorProfile(): React.ReactElement {
   return (
     <ProgramScreen
       title="Creator"
+      desktopWidth="detail"
       fallback={
         params.gigId
           ? `/brand/${brandId}/creators/${params.gigId}/interest`

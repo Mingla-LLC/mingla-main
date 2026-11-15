@@ -62,8 +62,15 @@ export function ProgramScreen({
   testID,
   embedded = false,
   onBack,
+  desktopWidth = "form",
 }: {
   onBack?: () => void;
+  /**
+   * #4420 — the desktop column. `form` keeps the 720 form column (T4);
+   * `detail` opens the 1120 detail column so a ProgramColumns 8/4 split has
+   * room and the page is never a small card on an empty canvas.
+   */
+  desktopWidth?: "form" | "detail";
   title: string;
   fallback: string;
   leading?: "back" | "close";
@@ -79,6 +86,8 @@ export function ProgramScreen({
 }): React.ReactElement {
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardIsVisible();
+  const { isWideDesktop } = useResponsiveLayout();
+  const detailWide = !embedded && isWideDesktop && desktopWidth === "detail";
   const chrome = programFormChrome({
     keyboardVisible,
     hasFooter: Boolean(footer),
@@ -92,6 +101,7 @@ export function ProgramScreen({
     <ScrollView
       contentContainerStyle={[
         styles.content,
+        detailWide && styles.contentDetailWide,
         embedded && styles.contentEmbedded,
         embedded ? { paddingBottom: embeddedBottom } : null,
       ]}
@@ -824,6 +834,7 @@ const styles = StyleSheet.create({
     paddingBottom: space[9],
     gap: PROGRAM_BLOCK_GAP,
   },
+  contentDetailWide: { maxWidth: 1120, paddingHorizontal: space[6], paddingTop: space[4] },
   contentEmbedded: {
     maxWidth: "100%",
     paddingTop: space[2],
@@ -968,7 +979,16 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.6 },
   buttonText: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
   rowSubtitle: { color: colorTokens.text2, fontSize: 13, lineHeight: 18 },
-  rowRight: { color: colorTokens.text1, fontSize: 15, fontWeight: "700" },
+  // #4420 round 3 item 17: a long value ("Mon Dec 21, 11:59 PM New York
+  // time") wraps on the right instead of squeezing the row title to "Vide o …".
+  rowRight: {
+    color: colorTokens.text1,
+    fontSize: 15,
+    fontWeight: "700",
+    flexShrink: 1,
+    maxWidth: "58%",
+    textAlign: "right",
+  },
   empty: {
     alignItems: "flex-start",
     gap: space[4],

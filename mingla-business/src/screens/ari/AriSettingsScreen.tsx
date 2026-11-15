@@ -26,6 +26,11 @@ import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useAriKnowledge } from "../../hooks/useAriKnowledge";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { Icon } from "../../components/ui/Icon";
+// #4420 round 3 item 12: a time zone is never shown as a slug
+// ("America/New_York"); the shared picker shows "Eastern Time (New York) ·
+// GMT-5" and still saves the IANA zone.
+import { BrandEditTimezoneField } from "../../components/brand/BrandEditTimezoneField";
 import type {
   AriAgentJob,
   AriMemoryKind,
@@ -239,10 +244,11 @@ export const AriSettingsScreen: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Back to chat"
         >
-          <Text style={styles.backText}>‹ Back</Text>
+          <Icon name="chevL" size={20} color={color.text2} />
+          <Text style={styles.backText}>Back</Text>
         </Pressable>
-        <Text style={styles.title}>Ari Settings</Text>
-        <View style={{ width: 64 }} />
+        <Text style={styles.title} accessibilityRole="header">Ari Settings</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -272,13 +278,10 @@ export const AriSettingsScreen: React.FC = () => {
             />
           </FieldRow>
           <FieldRow label="Preferred timezone">
-            <TextInput
+            <BrandEditTimezoneField
               value={timezone}
-              onChangeText={setTimezone}
-              placeholder="e.g. America/New_York"
-              placeholderTextColor={color.text3}
-              style={styles.input}
-              accessibilityLabel="Preferred timezone for Ari"
+              onChange={setTimezone}
+              testID="ari-settings-timezone"
             />
           </FieldRow>
           <Pressable
@@ -591,49 +594,51 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: space[4],
     paddingVertical: space[2],
-    borderBottomWidth: 1,
-    borderBottomColor: color.line,
   },
   backBtn: {
     height: 44,
-    paddingHorizontal: space[2],
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    width: 64,
+    gap: space[1],
+    width: 88,
   },
   backText: {
-    fontSize: type.body.fontSize,
-    color: color.text1,
+    ...type.body,
+    color: color.text2,
   },
+  headerSpacer: { width: 88 },
   title: {
-    fontSize: type.h1.fontSize,
-    fontWeight: type.h1.fontWeight,
+    ...type.h2,
     color: color.text1,
   },
   pressed: {
     opacity: 0.7,
   },
+  // #4420: one centred settings column (T5) so desktop never stretches the
+  // fields across the canvas; phone keeps the 16 gutter.
   content: {
     padding: space[4],
-    gap: space[6],
+    gap: space[4],
     paddingBottom: space[9],
+    width: "100%",
+    maxWidth: 720,
+    alignSelf: "center",
   },
+  // #4420 kit (ari-settings__form): each section is one card with its label
+  // inside, phone card radius, 20 inner padding.
   section: {
-    gap: space[2],
+    backgroundColor: color.fill.tile,
+    borderWidth: 1,
+    borderColor: color.line,
+    borderRadius: radius.xl,
+    padding: space[5],
+    gap: space[3],
   },
   sectionTitle: {
-    fontSize: type.label.fontSize,
-    fontWeight: type.label.fontWeight,
-    letterSpacing: type.label.letterSpacing,
+    ...type.label,
     color: color.text3,
   },
   sectionInner: {
-    backgroundColor: color.fill.inset,
-    borderWidth: 1,
-    borderColor: color.line,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    padding: space[4],
     gap: space[4],
   },
   row: {
@@ -656,20 +661,21 @@ const styles = StyleSheet.create({
     color: color.text3,
   },
   fieldRow: {
-    gap: 4,
+    gap: space[2],
   },
   fieldLabel: {
-    fontSize: type.caption.fontSize,
-    color: color.text3,
-    letterSpacing: type.caption.letterSpacing,
+    ...type.small,
+    color: color.text2,
   },
   input: {
-    fontSize: type.body.fontSize,
+    ...type.body,
     color: color.text1,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: color.fill.pager,
-    minHeight: 44,
+    paddingHorizontal: space[4],
+    borderWidth: 1,
+    borderColor: color.line,
+    borderRadius: radius.md,
+    backgroundColor: color.fill.input,
+    minHeight: 52,
   },
   kindRow: {
     flexDirection: "row",
@@ -698,8 +704,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   memoryInput: {
-    minHeight: 88,
-    padding: space[2],
+    minHeight: 96,
+    padding: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: color.line,
@@ -707,7 +713,7 @@ const styles = StyleSheet.create({
     fontSize: type.body.fontSize,
     lineHeight: type.body.lineHeight,
     textAlignVertical: "top",
-    backgroundColor: color.canvas,
+    backgroundColor: color.fill.input,
   },
   inlineActions: {
     flexDirection: "row",
@@ -719,7 +725,7 @@ const styles = StyleSheet.create({
   primaryAction: {
     minHeight: 40,
     paddingHorizontal: space[4],
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: ariPalette.userBubble,
@@ -732,7 +738,7 @@ const styles = StyleSheet.create({
   secondaryAction: {
     minHeight: 40,
     paddingHorizontal: space[4],
-    borderRadius: radius.md,
+    borderRadius: radius.full,
     borderWidth: 1,
     borderColor: color.line,
     alignItems: "center",
@@ -813,36 +819,33 @@ const styles = StyleSheet.create({
     color: color.danger,
     fontSize: type.small.fontSize,
   },
+  // #4420 kit: Save is the Paper pill, sized to its label.
   saveBtn: {
-    marginTop: space[2],
-    height: 44,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    backgroundColor: color.fill.tile,
-    borderWidth: 1,
-    borderColor: color.line,
+    alignSelf: "flex-start",
+    minHeight: 44,
+    paddingHorizontal: space[6],
+    borderRadius: radius.full,
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
   },
   saveBtnText: {
-    fontSize: type.body.fontSize,
-    fontWeight: "600",
-    color: color.text1,
+    ...type.btn,
+    color: color.ink,
   },
+  // #4420 kit: the solid danger pill, sized to its label.
   destructiveBtn: {
-    height: 44,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    backgroundColor: color.errorTint,
-    borderWidth: 1,
-    borderColor: color.errorLine,
+    alignSelf: "flex-start",
+    minHeight: 44,
+    paddingHorizontal: space[6],
+    borderRadius: radius.full,
+    backgroundColor: color.danger,
     alignItems: "center",
     justifyContent: "center",
   },
   destructiveText: {
-    fontSize: type.body.fontSize,
-    fontWeight: "600",
-    color: color.danger,
+    ...type.btn,
+    color: color.textStrong,
   },
   about: {
     fontSize: type.small.fontSize,

@@ -98,6 +98,7 @@ export default function CreatorResults({
   return (
     <ProgramScreen
       title="Results"
+      desktopWidth="detail"
       fallback={blastHubHref("creators")}
       embedded={embedded}
       refreshing={false}

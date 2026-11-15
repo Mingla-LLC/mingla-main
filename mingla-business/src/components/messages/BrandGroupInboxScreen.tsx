@@ -50,9 +50,13 @@ function MessagesInboxHeader({ isStaff }: { isStaff: boolean }): React.ReactElem
         </Pressable>
       ) : null}
       {/* #4111 D4 — customer enquiries sit above the Brand groups. */}
-      <React.Suspense fallback={null}>
-        <LazyBrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
-      </React.Suspense>
+      {/* #4420: the enquiries sit on the same 16 gutter as the support row
+          and the group rows (they ran to the pane edge). */}
+      <View style={styles.enquiries}>
+        <React.Suspense fallback={null}>
+          <LazyBrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
+        </React.Suspense>
+      </View>
     </View>
   );
 }
@@ -104,7 +108,9 @@ const styles = StyleSheet.create({
   supportTitle: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "700" },
   supportText: { color: brandGroupChat.textSoft, fontSize: 13 },
   desktop: { flex: 1, flexDirection: "row" },
-  desktopList: { width: 320, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
+  enquiries: { marginHorizontal: space[4] },
+  // #4420 twopane template (T6): the list pane is 340.
+  desktopList: { width: 340, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
   desktopEmptyScroll: { flex: 1 },
   desktopEmpty: { flexGrow: 1, alignItems: "center", justifyContent: "center", gap: space[2], padding: space[7] },
   desktopEmptyTitle: { color: brandGroupChat.textPrimary, fontSize: 18, fontWeight: "700" },

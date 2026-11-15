@@ -184,6 +184,7 @@ export default function GigApplicants(): React.ReactElement {
   return (
     <ProgramScreen
       title={gig ? gig.title_public : "Gig"}
+      desktopWidth="detail"
       fallback={blastHubHref("creators")}
       right={
         canEdit || canClose ? (

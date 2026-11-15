@@ -290,6 +290,7 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
   return (
     <ProgramScreen
       title="Referrals"
+      desktopWidth="detail"
       fallback={fallback}
       embedded={embedded}
       right={

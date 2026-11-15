@@ -57,6 +57,7 @@ import {
   ListGroup,
   ListRow,
   Muted,
+  ProgramColumns,
   ProgramLoading,
   ProgramScreen,
   SectionLabel,
@@ -664,6 +665,7 @@ export default function HostGigContract(): React.ReactElement {
   return (
     <ProgramScreen
       title={workspace ? `${creatorName} · ${gig?.title_public ?? ""}` : "Gig"}
+      desktopWidth="detail"
       fallback={`/brand/${brandId}/creators`}
       refreshing={false}
       onRefresh={() => void refresh()}
@@ -1132,6 +1134,11 @@ export default function HostGigContract(): React.ReactElement {
         </Card>
       ) : null}
       {workspace ? (
+        // #4420 — desktop uses the detail template (8/4): the step and
+        // status cards in the main column, the deal, its actions, posts and
+        // activity beside them. Phone keeps one column in the same order.
+        <ProgramColumns
+          primary={
         <>
           {(() => {
             const card = contractStatusCard({
@@ -1766,6 +1773,10 @@ export default function HostGigContract(): React.ReactElement {
             </Card>
           ) : null}
 
+        </>
+          }
+          support={
+        <>
           {[
             "declined",
             "expired",
@@ -1989,6 +2000,8 @@ export default function HostGigContract(): React.ReactElement {
             </ListGroup>
           ) : null}
         </>
+          }
+        />
       ) : null}
     </ProgramScreen>
   );

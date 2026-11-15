@@ -274,6 +274,7 @@ export default function CreatorRoster({
   return (
     <ProgramScreen
       title="My creators"
+      desktopWidth="detail"
       fallback={blastHubHref("creators")}
       embedded={embedded}
       right={

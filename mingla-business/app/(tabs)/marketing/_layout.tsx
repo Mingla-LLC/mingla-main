@@ -21,6 +21,7 @@ import {
   useMarketingActionRegistrar,
 } from "../../../src/components/marketing/MarketingActionContext";
 import { MarketingActionButton } from "../../../src/components/marketing/MarketingActionButton";
+import { isMarketingDetailRoute } from "../../../src/components/marketing/marketingSubNavTabs";
 import { MarketingBrandSwitcherProvider } from "../../../src/components/people/MarketingBrandSwitcherContext";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { color, space } from "../../../src/constants/designSystem";
@@ -63,9 +64,6 @@ function MarketingSlot({
 export default function MarketingTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  // #4420 B6: on desktop the sidebar lists every Promote / Audience section, so
-  // the nested Blast hub's sub-nav pills go away there. Phone is unchanged.
-  const { isWideDesktop } = useResponsiveLayout();
   /**
    * #2262 [composer-responsive-layout] — THE ONE VIEWPORT PIN, and it is web
    * only.
@@ -105,8 +103,11 @@ export default function MarketingTabLayout(): React.ReactElement {
   // Focused authoring routes hide both action entry points.
   // #4238: the ad builder and the ad detail page have their own primary
   // buttons; the floating "Create an ad" button would cover them.
+  // #4420: a campaign or template detail has its own back header (kit), so
+  // the section pills and the section action step aside there too.
   const hideActions = pathname.includes("/campaigns/compose") ||
-    HOST_AD_SUBPAGE_RE.test(pathname);
+    HOST_AD_SUBPAGE_RE.test(pathname) ||
+    isMarketingDetailRoute(pathname);
 
   return (
     <View
@@ -140,7 +141,9 @@ export default function MarketingTabLayout(): React.ReactElement {
         />
       </View>
       <MarketingActionProvider>
-        {hideActions || isWideDesktop ? null : <MarketingSubNav />}
+        {/* #4420: phone shows the section pills; desktop (sidebar lists the
+            sections) shows the page title and the section action instead. */}
+        {hideActions ? null : <MarketingSubNav />}
         <MarketingSlot openBrandSwitcher={handleOpenSwitcher} />
         <MarketingActionSurfaces hidden={hideActions} />
       </MarketingActionProvider>

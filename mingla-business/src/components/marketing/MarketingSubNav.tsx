@@ -24,6 +24,7 @@ import { useRouter, usePathname } from "expo-router";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import {
+  MARKETING_SECTION_TITLES,
   MARKETING_SUB_NAV_TABS,
   detectMarketingSubNavActive,
   type MarketingSubNavId,
@@ -62,6 +63,23 @@ export const MarketingSubNav: React.FC = () => {
   // pill row while the operator is authoring a campaign.
   if (pathname.includes("/campaigns/compose")) return null;
 
+  // #4420 — desktop: the sidebar already lists every section, so the page
+  // opens with the kit's header row instead: the section title on the left
+  // and the section's one action (full label) on the right.
+  if (isWideDesktop) {
+    return (
+      <View style={styles.deskHeader} testID="marketing-desk-header">
+        <Text style={styles.deskTitle} accessibilityRole="header" numberOfLines={1}>
+          {MARKETING_SECTION_TITLES[active]}
+        </Text>
+        <MarketingActionButton action={action} />
+      </View>
+    );
+  }
+
+  // #4420 — phone: the pills alone. The section action is the shell's
+  // floating button; the compact circle that sat on top of the pill row
+  // duplicated it and covered the last visible pill.
   return (
     <View style={styles.host}>
       <ScrollView
@@ -117,7 +135,6 @@ export const MarketingSubNav: React.FC = () => {
           );
         })}
       </ScrollView>
-      <MarketingActionButton action={action} compact={!isWideDesktop} />
     </View>
   );
 };
@@ -128,10 +145,22 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: space[2],
     paddingTop: space[2],
-    paddingBottom: space[1],
-    paddingRight: space[4],
+    paddingBottom: space[2],
+  },
+  deskHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[4],
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[2],
+  },
+  deskTitle: {
+    ...type.title,
+    color: color.text1,
+    flexShrink: 1,
   },
   scroller: { flex: 1, minWidth: 0 },
   bar: {

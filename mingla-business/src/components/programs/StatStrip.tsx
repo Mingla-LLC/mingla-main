@@ -29,6 +29,17 @@ export type StatStripItem = {
   tone?: "muted";
 };
 
+/**
+ * #4420 round 3 item 17 (no bleed-outs): web ignores `adjustsFontSizeToFit`,
+ * so a long value ("$1,966.50") ellipsized to "$1,…". Step the value size
+ * down by length so every figure shows whole in a third of a phone card.
+ */
+export function stripValueFontSize(value: string, wide: boolean): number | undefined {
+  const length = value.length;
+  if (wide) return length > 9 ? 20 : length > 6 ? 24 : undefined;
+  return length > 9 ? 15 : length > 6 ? 17 : undefined;
+}
+
 export function StatStrip({
   items,
   layout = "compact",
@@ -54,6 +65,9 @@ export function StatStrip({
               styles.stripValue,
               wide && styles.stripValueWide,
               item.tone === "muted" && styles.stripValueMuted,
+              stripValueFontSize(item.value, wide) !== undefined
+                ? { fontSize: stripValueFontSize(item.value, wide), lineHeight: wide ? type.stat.lineHeight : 26 }
+                : null,
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
