@@ -83,7 +83,7 @@
   "leave_group_title": "Opuścić grupę?",
   "leave_group_body": "Przestaniesz otrzymywać wiadomości, a ta grupa nie będzie się pojawiać przy udostępnianiu w Mingla.",
   "remove_chat_title": "Usunąć czat?",
-  "remove_chat_body": "Ten czat zniknie z Twoich list na wszystkich urządzeniach. Jeśli ktoś wyśle nową wiadomość, pojawi się ponownie.",
+  "remove_chat_body": "Usuwa go z twojej listy. Wróci, gdy któreś z was wyśle wiadomość.",
   "chat_removed": "Czat usunięty.",
   "archived_row": "Zarchiwizowane",
   "archived_row_a11y": "Zarchiwizowane czaty: {{count}}",

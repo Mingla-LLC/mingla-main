@@ -83,7 +83,7 @@
   "leave_group_title": "Quitter le groupe ?",
   "leave_group_body": "Vous ne recevrez plus de messages, et ce groupe n'apparaîtra plus quand vous partagez dans Mingla.",
   "remove_chat_title": "Supprimer la discussion ?",
-  "remove_chat_body": "Cette discussion disparaîtra de vos listes sur tous vos appareils. Si quelqu'un envoie un nouveau message, elle réapparaîtra.",
+  "remove_chat_body": "Le retire de ta liste. Il revient dès que l'un de vous envoie un message.",
   "chat_removed": "Discussion supprimée.",
   "archived_row": "Archivées",
   "archived_row_a11y": "Discussions archivées, {{count}}",

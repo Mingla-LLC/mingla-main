@@ -1778,6 +1778,28 @@ function ConnectionsPageRefactored({
     []
   );
 
+  // Issue #4435: Clear chat for me only. The server hides every message up to
+  // now from me; the thread store and its saved copy are emptied so nothing
+  // cleared comes back from the cache, then the server's newest page reloads.
+  const handleClearChat = useCallback(async (conversationId: string): Promise<boolean> => {
+    if (!user?.id) return false;
+    const result = await messagingService.clearConversation(conversationId);
+    if (result.error) {
+      showToast({ message: t('chat:clear_failed'), type: 'error' });
+      return false;
+    }
+    await AsyncStorage.removeItem(getMessagesCacheKey(conversationId))
+      .catch((e) => console.warn('[ConnectionsPage] cleared chat cache removal failed:', e));
+    // The store restarts from an empty merge (nothing cleared survives).
+    setMessagesCache((prev) => ({ ...prev, [conversationId]: mergeMessages(EMPTY_MESSAGES, EMPTY_MESSAGES) }));
+    const { messages: fresh, error } = await messagingService.getMessages(conversationId, user.id);
+    if (!error && fresh) {
+      writeConversationMessages(conversationId, fresh.map((m) => transformMessage(m, user.id)), { snapshot: { complete: true } });
+    }
+    void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
+    return true;
+  }, [queryClient, showToast, t, transformMessage, user?.id, writeConversationMessages]);
+
   // Issue #4114: record whether older history exists after a server read of the newest page.
   const noteNewestPageLoaded = useCallback((conversationId: string, hasMore: boolean) => {
     setOlderPaging((prev) =>
@@ -4317,6 +4339,7 @@ function ConnectionsPageRefactored({
           onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
           onShareSavedCard={handleShareSavedCard}
           onRemoveFriend={handleRemoveFriend}
+          onClearChat={handleClearChat}
           onBlockUser={handleBlockUser}
           onReportUser={handleReportUser}
           accountPreferences={accountPreferences}

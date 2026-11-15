@@ -83,7 +83,7 @@
   "leave_group_title": "Părăsești grupul?",
   "leave_group_body": "Nu vei mai primi mesaje, iar acest grup nu va mai apărea când distribui în Mingla.",
   "remove_chat_title": "Elimini conversația?",
-  "remove_chat_body": "Această conversație va dispărea din listele tale pe toate dispozitivele. Dacă cineva trimite un mesaj nou, va reapărea.",
+  "remove_chat_body": "O scoate din lista ta. Revine când oricare dintre voi trimite un mesaj.",
   "chat_removed": "Conversație eliminată.",
   "archived_row": "Arhivate",
   "archived_row_a11y": "Conversații arhivate, {{count}}",

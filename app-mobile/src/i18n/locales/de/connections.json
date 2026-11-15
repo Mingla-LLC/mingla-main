@@ -83,7 +83,7 @@
   "leave_group_title": "Gruppe verlassen?",
   "leave_group_body": "Du erhältst keine Nachrichten mehr, und diese Gruppe erscheint nicht mehr, wenn du in Mingla teilst.",
   "remove_chat_title": "Chat entfernen?",
-  "remove_chat_body": "Dieser Chat verschwindet auf allen Geräten aus deinen Listen. Wenn jemand eine neue Nachricht sendet, erscheint er wieder.",
+  "remove_chat_body": "Entfernt ihn aus deiner Liste. Er kommt zurück, sobald einer von euch eine Nachricht sendet.",
   "chat_removed": "Chat entfernt.",
   "archived_row": "Archiviert",
   "archived_row_a11y": "Archivierte Chats, {{count}}",

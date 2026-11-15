@@ -46,6 +46,8 @@ interface GroupInfoSheetProps {
   onError: (message: string) => void;
   /** #4187: official program threads may be muted/archived but never left. */
   managed?: boolean;
+  /** Issue #4435: Clear chat for me only (the thread confirms and runs it). */
+  onClearChat?: () => void;
 }
 
 function memberLabel(member: GroupInfoMember): string {
@@ -65,6 +67,7 @@ export function GroupInfoSheet({
   onLeft,
   onError,
   managed = false,
+  onClearChat,
 }: GroupInfoSheetProps): React.ReactElement {
   const { t } = useTranslation(["chat", "common"]);
   const [muted, setMuted] = useState(initiallyMuted);
@@ -225,6 +228,15 @@ export function GroupInfoSheet({
         }) : null}
 
         {!managed ? <View style={styles.divider} /> : null}
+        {!managed && onClearChat ? <TouchableOpacity
+          style={styles.row}
+          onPress={onClearChat}
+          accessibilityRole="button"
+          accessibilityLabel={t("chat:menuClearChat")}
+        >
+          <Icon name="trash-outline" size={20} color={chatTokens.danger} style={styles.rowIcon} />
+          <Text style={[styles.rowText, styles.danger]}>{t("chat:menuClearChat")}</Text>
+        </TouchableOpacity> : null}
         {!managed ? <TouchableOpacity
           style={styles.row}
           onPress={confirmLeave}

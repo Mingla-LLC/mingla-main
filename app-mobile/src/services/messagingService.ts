@@ -1686,6 +1686,40 @@ export class MessagingService {
   }
 
   /**
+   * Issue #4435: Clear chat for me only. Messages created at or before now
+   * are hidden from me (RLS); everyone else keeps them.
+   */
+  async clearConversation(conversationId: string): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase.rpc('set_conversation_lifecycle', {
+        p_conversation_id: conversationId,
+        p_action: 'clear',
+      });
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error clearing conversation:', error);
+      return { error: error.message };
+    }
+  }
+
+  /** Issue #4435: when I last cleared this chat (owner-only RLS), or null. */
+  async getClearedAt(conversationId: string, userId: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('conversation_participant_lifecycle')
+      .select('cleared_at')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) {
+      console.warn('[messagingService] cleared_at read failed:', error.message);
+      return null;
+    }
+    const value = (data as { cleared_at?: unknown } | null)?.cleared_at;
+    return typeof value === 'string' ? value : null;
+  }
+
+  /**
    * Issue #4114: this member's private list state for one chat — pin, unpin,
    * mark unread, mark read. The server refuses a 4th pin with
    * `pin_limit_reached`; that code is returned as the error so the caller can

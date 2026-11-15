@@ -38,6 +38,20 @@ export async function createGroupChat(name: string, friendIds: string[]): Promis
   return { sessionId, conversationId, boardId: str(row.boardId), added: ids(row.added), skipped: ids(row.skipped) };
 }
 
+/** The group chat of a session (board screens know only the session id). */
+export async function resolveSessionConversationId(sessionId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("linked_entity_type", "session")
+    .maybeSingle();
+  if (error) throw new Error(error.message || "not_found");
+  const id = str((data as { id?: unknown } | null)?.id);
+  if (!id) throw new Error("not_found");
+  return id;
+}
+
 /** remove_group_member: an admin removes someone (never the creator). */
 export async function removeGroupMember(conversationId: string, userId: string): Promise<void> {
   const { error } = await supabase.rpc("remove_group_member", {

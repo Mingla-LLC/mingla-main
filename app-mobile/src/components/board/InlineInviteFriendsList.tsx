@@ -28,7 +28,8 @@ import { getDisplayName } from "../../utils/getDisplayName";
 import { supabase } from "../../services/supabase";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store/appStore";
-import { addFriendsToSessions } from "../../services/sessionMembershipService";
+import { addGroupMembers } from "../../services/groupLinkService";
+import { resolveSessionConversationId } from "../../services/groupChatService";
 
 interface FriendItem {
   id: string;
@@ -148,16 +149,11 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
     // service emits Mixpanel + AppsFlyer telemetry single-owner.
     setSending(true);
     try {
-      let successCount = 0;
-
-      for (const friend of selectedFriends) {
-        const { results } = await addFriendsToSessions({
-          sessionIds: [sessionId],
-          friendUserId: friend.id,
-          sessionNames: { [sessionId]: sessionName },
-        });
-        if (results[0]?.outcome === "invited") successCount++;
-      }
+      // Issue #4435: one server call adds every picked friend directly (any
+      // accepted member; all or nothing against the 15 cap).
+      const groupConversationId = await resolveSessionConversationId(sessionId);
+      const { added } = await addGroupMembers(groupConversationId, selectedFriends.map((friend) => friend.id));
+      const successCount = added.length;
 
       if (successCount > 0) {
         Alert.alert(

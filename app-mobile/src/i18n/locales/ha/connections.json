@@ -83,7 +83,7 @@
   "leave_group_title": "Leave group?",
   "leave_group_body": "You'll stop receiving messages, and this group won't appear when you share in Mingla.",
   "remove_chat_title": "Remove chat?",
-  "remove_chat_body": "This chat will disappear from your lists on every device. If another person sends a new message, it will reappear.",
+  "remove_chat_body": "Yana cire shi daga jerinka. Zai dawo idan ɗayanku ya aika saƙo.",
   "chat_removed": "Chat removed.",
   "archived_row": "Archived",
   "archived_row_a11y": "Archived chats, {{count}}",

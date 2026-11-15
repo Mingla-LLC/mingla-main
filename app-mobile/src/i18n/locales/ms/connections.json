@@ -83,7 +83,7 @@
   "leave_group_title": "Keluar daripada kumpulan?",
   "leave_group_body": "Anda tidak akan menerima mesej lagi, dan kumpulan ini tidak akan muncul apabila anda berkongsi dalam Mingla.",
   "remove_chat_title": "Alih keluar sembang?",
-  "remove_chat_body": "Sembang ini akan hilang daripada senarai anda pada semua peranti. Jika orang lain menghantar mesej baharu, ia akan muncul semula.",
+  "remove_chat_body": "Membuangnya daripada senarai anda. Ia kembali apabila salah seorang daripada anda menghantar mesej.",
   "chat_removed": "Sembang dialih keluar.",
   "archived_row": "Diarkibkan",
   "archived_row_a11y": "Sembang diarkibkan, {{count}}",

@@ -46,11 +46,14 @@ Deno.test("R10 a pending creator collab opens the pending sheet", () => {
   assert(page.includes("PendingCollabChatSheet"), "the sheet is rendered");
 });
 
-Deno.test("R23 remove and promote are direct table writes on the board screen", () => {
+Deno.test("R23 [#4435 W3] remove and promote on the board screen go through the server functions", () => {
   const dropdown = read("src/components/board/BoardSettingsDropdown.tsx");
-  assert(/from\("session_participants"\)\s*\.update\(\{ is_admin: true \}\)/.test(dropdown), "promote is a direct write");
-  assert(/from\("session_participants"\)\s*\.update\(\{ is_admin: false \}\)/.test(dropdown), "demote is a direct write");
-  assert(!dropdown.includes("remove_group_member") && !dropdown.includes("set_group_admin"), "no server functions today");
+  assert(!/update\(\{ is_admin: (true|false) \}\)/.test(dropdown), "no direct admin write");
+  assert(/await setGroupAdmin\(groupConversationId, memberUserId, true\)/.test(dropdown), "promote via set_group_admin");
+  assert(/await setGroupAdmin\(groupConversationId, memberUserId, false\)/.test(dropdown), "demote via set_group_admin");
+  assert(/await removeGroupMember\(groupConversationId, memberUserId\)/.test(dropdown), "remove via remove_group_member");
+  const inline = read("src/components/board/InlineInviteFriendsList.tsx");
+  assert(/addGroupMembers\(groupConversationId, selectedFriends\.map/.test(inline), "one add_group_members call");
 });
 
 Deno.test("R24-filter [#4435 W3] the session list keeps groups with 1+ member", () => {

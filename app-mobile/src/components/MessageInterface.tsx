@@ -99,6 +99,7 @@ import {
 import { openViewOnceMedia, peekChatMediaUrl, resolveChatMediaUrl } from "../services/chatMediaUploadService";
 import { SavedCardPicker } from "./chat/SavedCardPicker";
 import { buildFriendMenu, type FriendMenuItemId } from "../utils/chatMenuModel";
+import { useShareGroupLink } from "../hooks/useGroupLink";
 import {
   getCollabChatHeaderActions,
   type CollabChatHeaderActionId,
@@ -444,6 +445,8 @@ interface MessageInterfaceProps {
    * reported" toast fires only on `true`, never before the confirm.
    */
   onRemoveFriend?: (friend: any, onSettled?: (removed: boolean) => void) => void;
+  /** Issue #4435: Clear chat for me only; resolves true when the server cleared it. */
+  onClearChat?: (conversationId: string) => Promise<boolean>;
   onBlockUser?: (friend: any, onSettled?: (blocked: boolean) => void) => void;
   onReportUser?: (friend: any, onSettled?: (reported: boolean) => void) => void;
   /** Issue #4114 Wave 3: 1:1 mute (per person). Resolves true once saved. */
@@ -547,6 +550,7 @@ function MessageInterfaceInner({
   onOpenAddToBoardModal,
   onShareSavedCard,
   onRemoveFriend,
+  onClearChat,
   onBlockUser,
   onReportUser,
   accountPreferences,
@@ -2052,6 +2056,47 @@ function MessageInterfaceInner({
 
   // Present-after-dismiss: iOS shows one RN Modal at a time, so a row that
   // opens another sheet or an alert waits for the menu to finish leaving.
+  // Issue #4435: the deck's group-of-one state shares the group link.
+  const { share: shareGroupLinkFromDeck } = useShareGroupLink(isGroupChat ? conversationId : null, headerTitle);
+
+  // ── Issue #4435: Clear chat (for me only) ──────────────────────────────
+  const [isClearingChat, setIsClearingChat] = useState(false);
+  const [clearedAt, setClearedAt] = useState<string | null>(null);
+  useEffect(() => {
+    setClearedAt(null);
+    if (!conversationId || !currentUserId) return;
+    let live = true;
+    void messagingService.getClearedAt(conversationId, currentUserId).then((value) => {
+      if (live) setClearedAt(value);
+    });
+    return () => {
+      live = false;
+    };
+  }, [conversationId, currentUserId]);
+  const handleClearChat = () => {
+    if (!conversationId || !onClearChat || isClearingChat) return;
+    const otherName = cleanName(friend.name).split(" ")[0] || cleanName(friend.name);
+    Alert.alert(
+      t("chat:clear_confirm_title"),
+      isGroupChat ? t("chat:clear_confirm_body_group") : t("chat:clear_confirm_body_dm", { name: otherName }),
+      [
+        { text: t("common:cancel"), style: "cancel" },
+        {
+          text: t("chat:clear_action"),
+          style: "destructive",
+          onPress: () => {
+            setIsClearingChat(true);
+            void onClearChat(conversationId)
+              .then((cleared) => {
+                if (cleared) setClearedAt(new Date().toISOString());
+              })
+              .finally(() => setIsClearingChat(false));
+          },
+        },
+      ],
+    );
+  };
+
   const afterMenuCloses = (run: () => void) => {
     setShowMoreOptionsMenu(false);
     setTimeout(run, MENU_PRESENT_AFTER_DISMISS_MS);
@@ -2096,6 +2141,9 @@ function MessageInterfaceInner({
         return;
       case "endCollab":
         afterMenuCloses(handleEndDmCollab);
+        return;
+      case "clearChat":
+        afterMenuCloses(handleClearChat);
         return;
       case "sendPair":
       case "pairPending":
@@ -3376,6 +3424,15 @@ function MessageInterfaceInner({
               >
                 <ActivityIndicator size="small" color={colors.gray400} />
               </View>
+            ) : isClearingChat ? (
+              <View style={styles.clearedNotice} accessibilityRole="progressbar" accessibilityLabel={t("chat:clearing")}>
+                <ActivityIndicator size="small" color={colors.gray400} />
+                <Text style={styles.clearedNoticeText}>{t("chat:clearing")}</Text>
+              </View>
+            ) : clearedAt && !hasOlderMessages ? (
+              <View style={styles.clearedNotice} accessibilityRole="text">
+                <Text style={styles.clearedNoticeText}>{t("chat:cleared_notice")}</Text>
+              </View>
             ) : null
           }
           style={styles.messagesContainer}
@@ -4021,6 +4078,8 @@ function MessageInterfaceInner({
           onAddToCalendar={onAddToCalendar}
           onPurchaseComplete={onPurchaseComplete}
           onOpenPreferences={onOpenPreferences}
+          onShareGroupLink={conversationId ? () => { void shareGroupLinkFromDeck(); } : undefined}
+          onAddGroupPeople={friend.sessionId ? () => { setShowCollabDeckSheet(false); setTimeout(() => setShowMoreOptionsMenu(true), MENU_PRESENT_AFTER_DISMISS_MS); } : undefined}
         />
       ) : null}
 
@@ -4141,6 +4200,7 @@ function MessageInterfaceInner({
         onLeft={() => onGroupConversationLeft?.()}
         onError={(message) => showNotification(message, "", "error")}
         managed={isProgramChat}
+        onClearChat={onClearChat && conversationId ? () => { setShowGroupInfo(false); setTimeout(handleClearChat, MENU_PRESENT_AFTER_DISMISS_MS); } : undefined}
       />
 
       <ChatMediaSheet
@@ -4220,6 +4280,17 @@ const styles = StyleSheet.create({
     backgroundColor: chatTokens.surfaceRaised,
   },
   neutralBannerText: {
+    color: chatTokens.textSecondary,
+  },
+  clearedNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+  },
+  clearedNoticeText: {
+    fontSize: 12,
     color: chatTokens.textSecondary,
   },
   groupTyping: {
