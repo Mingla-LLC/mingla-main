@@ -171,6 +171,10 @@
       "readyBank": "{{country}}的银行账户",
       "readyBankAny": "你所在国家的银行账户",
       "readyTax": "税号（仅限注册公司）"
+    },
+    "stepper": {
+      "saved": "已保存",
+      "steps": "步骤"
     }
   },
   "doorMode": {
