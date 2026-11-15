@@ -128,8 +128,10 @@ for (const rel of [
   const code = stripComments(readMaybe(path.join(businessRoot, rel)));
   const hostBlock = (code.match(/host:\s*\{[\s\S]*?\n\s{2,4}\},/) || [""])[0];
   check(
-    `A-02 business ${rel} host Android fill is opaque rgba(20, 22, 26, 0.92)`,
-    /android:\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/.test(hostBlock),
+    `A-02 business ${rel} host Android fill is opaque rgba(20, 22, 26, 0.92) or a Graphite solid material`,
+    // #4420 — the opaque Android fill may be the Graphite solid material token
+    // (materials.<kind>.solidFill is an opaque #rrggbb by construction).
+    /android:\s*(?:["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']|materials\.\w+\.solidFill)/.test(hostBlock),
     "The Android host fill must be the >=0.92 kit-consistent opaque value.",
   );
   // No <0.92 rgba allowed as the Android branch of the host fill.
@@ -185,7 +187,10 @@ for (const rel of [
   check(
     `A-04 business ${rel} tabActive Android elevation is Platform-gated to 0`,
     /elevation:\s*Platform\.select\(\{[^}]*android:\s*0/.test(code) ||
-      /elevation:\s*androidSafeElevation\(/.test(code),
+      /elevation:\s*androidSafeElevation\(/.test(code) ||
+      // #4420 — the tab glow is retired on every platform: shadow.none
+      // (elevation 0) spread into tabActive.
+      /tabActive:\s*\{[^}]*\.\.\.shadow\.none/.test(code),
     "Both S5 trip files must zero Android elevation (skip-one failure mode).",
   );
   check(
