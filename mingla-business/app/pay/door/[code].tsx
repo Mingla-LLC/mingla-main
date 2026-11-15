@@ -25,7 +25,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Linking,
   Platform,
   Pressable,
@@ -37,20 +36,16 @@ import {
 import { useLocalSearchParams } from "expo-router";
 
 import { Button } from "../../../src/components/ui/Button";
+import { DESKTOP_TEMPLATE_MAX_WIDTH } from "../../../src/components/ui/DesktopCanvas";
+import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { Input } from "../../../src/components/ui/Input";
+import { KeyValue, type KeyValueItem } from "../../../src/components/ui/KeyValue";
 import { PhoneField, usePhoneEntry } from "../../../src/components/ui/PhoneField";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
-import {
-  accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../src/constants/designSystem";
+import { Spinner } from "../../../src/components/ui/Spinner";
+import { color, radius, space, type } from "../../../src/constants/designSystem";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import {
   PURCHASE_PRIVACY_URL,
   PURCHASE_TERMS_DISCLOSURE_TEXT,
@@ -168,6 +163,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
   const lastView = useRef<DoorPayCodeView | null>(null);
   // "Check again" on a returning guest polls again, never the plain load.
   const [pollRound, setPollRound] = useState<number>(0);
+  const { isWideDesktop } = useResponsiveLayout();
 
   const load = useCallback(async (): Promise<void> => {
     setPage({ kind: "loading" });
@@ -289,21 +285,72 @@ export default function DoorPayGuestPage(): React.ReactElement {
     }
   }
 
+  // #4420 Public status template (spec §3.6): on wide web the status sits left
+  // and the locked basket sits in a 380 summary on the right, inside a 1040
+  // column. On a phone the basket stays on top of the form only.
+  const summaryView: DoorPayCodeView | null =
+    page.kind === "ready" || page.kind === "paid" ? page.view : page.kind === "pending" ? page.view : null;
+
   return (
     <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.wordmark}>
-          <Text style={styles.wordmarkText}>Mingla</Text>
-        </View>
-        {content}
-      </ScrollView>
+      <GuestLayoutContext.Provider value={isWideDesktop}>
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={isWideDesktop ? styles.contentWide : styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={isWideDesktop ? styles.pageWide : styles.page} testID="door-pay-guest-page">
+            <View style={isWideDesktop ? styles.wordmarkWide : styles.wordmark}>
+              <Text style={styles.wordmarkText}>Mingla</Text>
+            </View>
+            {isWideDesktop ? (
+              <View style={styles.statusGrid} testID="door-pay-guest-status-template">
+                <View style={styles.statusMain}>{content}</View>
+                {summaryView !== null ? (
+                  <View style={styles.statusAside}>
+                    <BasketSummary view={summaryView} />
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              content
+            )}
+          </View>
+        </ScrollView>
+      </GuestLayoutContext.Provider>
     </SafeScreen>
   );
 }
+
+/** True on wide web (>= 1024): the Public status template's two columns. */
+const GuestLayoutContext = React.createContext<boolean>(false);
+const useWideGuestLayout = (): boolean => React.useContext(GuestLayoutContext);
+
+const basketItems = (view: DoorPayCodeView): KeyValueItem[] => [
+  ...view.lines.map((line) => ({
+    key: line.ticketTypeId,
+    label: `${line.quantity}× ${line.name}`,
+    value: money(line.unitCents * line.quantity, view.currency),
+  })),
+  ...(view.feeCents > 0 ? [{ key: "fees", label: "Fees", value: money(view.feeCents, view.currency) }] : []),
+  { key: "total", label: "Total", value: money(view.totalCents, view.currency), total: true },
+];
+
+/** The locked basket (wide web): the template's 380 summary column. */
+const BasketSummary: React.FC<{ view: DoorPayCodeView }> = ({ view }) => {
+  const eventName = typeof view.eventName === "string" ? view.eventName.trim() : "";
+  return (
+    <GlassCard padding={space[6]} contentStyle={styles.summaryContent} testID="door-pay-guest-summary">
+      <View style={styles.summaryHead}>
+        <Text style={styles.eyebrow} accessibilityRole="header">
+          {doorPayGuestEyebrow(null)}
+        </Text>
+        {eventName.length > 0 ? <Text style={styles.summaryTitle}>{eventName}</Text> : null}
+      </View>
+      <KeyValue items={basketItems(view)} />
+    </GlassCard>
+  );
+};
 
 // ---- B2: the locked basket + buyer details --------------------------------
 
@@ -402,31 +449,7 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
   }
 
   return (
-    <View style={styles.card} testID="door-pay-form">
-      <Text style={styles.eyebrow} accessibilityRole="header">
-        {doorPayGuestEyebrow(view.eventName)}
-      </Text>
-      <View style={styles.basket}>
-        {view.lines.map((line) => (
-          <View key={line.ticketTypeId} style={styles.kv}>
-            <Text style={styles.kvKey}>
-              {line.quantity}× {line.name}
-            </Text>
-            <Text style={styles.kvValue}>{money(line.unitCents * line.quantity, view.currency)}</Text>
-          </View>
-        ))}
-        {view.feeCents > 0 ? (
-          <View style={styles.kv}>
-            <Text style={styles.kvKey}>Fees</Text>
-            <Text style={styles.kvValue}>{money(view.feeCents, view.currency)}</Text>
-          </View>
-        ) : null}
-        <View style={styles.kv}>
-          <Text style={styles.kvStrong}>Total</Text>
-          <Text style={styles.kvStrong}>{money(view.totalCents, view.currency)}</Text>
-        </View>
-      </View>
-
+    <PayFormFrame view={view}>
       <Text style={styles.faint}>All three are needed for your ticket.</Text>
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Full name</Text>
@@ -475,7 +498,7 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
         style={styles.checkboxRow}
       >
         <View style={[styles.checkboxBox, termsAccepted && styles.checkboxBoxChecked]}>
-          {termsAccepted ? <Icon name="check" size={14} color={textTokens.primary} /> : null}
+          {termsAccepted ? <Icon name="check" size={14} color={color.ink} /> : null}
         </View>
         <Text style={styles.checkboxLabel}>
           {PURCHASE_TERMS_LABEL_PREFIX}
@@ -505,6 +528,33 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
         disabled={submitting}
         testID="door-pay-continue"
       />
+    </PayFormFrame>
+  );
+};
+
+/**
+ * #4420 — the form's frame. Wide web: one pane holding the fields (the basket
+ * is the template's summary column). Phone: the basket pane on top, the
+ * fields on the canvas under it.
+ */
+const PayFormFrame: React.FC<{ view: DoorPayCodeView; children: React.ReactNode }> = ({ view, children }) => {
+  const wide = useWideGuestLayout();
+  if (wide) {
+    return (
+      <GlassCard padding={space[6]} contentStyle={styles.formContent} testID="door-pay-form">
+        {children}
+      </GlassCard>
+    );
+  }
+  return (
+    <View style={styles.phoneStack} testID="door-pay-form">
+      <GlassCard padding={space[5]} contentStyle={styles.summaryContent} testID="door-pay-guest-basket">
+        <Text style={styles.eyebrow} accessibilityRole="header">
+          {doorPayGuestEyebrow(view.eventName)}
+        </Text>
+        <KeyValue items={basketItems(view)} />
+      </GlassCard>
+      <View style={styles.formContent}>{children}</View>
     </View>
   );
 };
@@ -512,23 +562,24 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
 // ---- B4: paid (no QR; the door has them checked in) ----------------------
 
 const PaidCard: React.FC<{ view: DoorPayCodeView; contact: StoredContact | null }> = ({ view, contact }) => {
+  const wide = useWideGuestLayout();
   const count = view.lines.reduce((sum, line) => sum + line.quantity, 0);
   return (
-    <View style={styles.card} testID="door-pay-youre-in">
-      <View style={styles.okRing}>
-        <Icon name="check" size={30} color={semantic.success} />
+    <StatusPane testID="door-pay-youre-in">
+      <GuestToneTile tone="ok" />
+      <View style={[styles.statusText, wide ? styles.statusTextWide : null]}>
+        <Text style={[styles.title, wide ? styles.titleWide : null]}>You're in</Text>
+        <Text style={[styles.body, wide ? styles.bodyWide : null]}>
+          Paid {money(view.totalCents, view.currency)} · {count} ticket{count === 1 ? "" : "s"} · {view.eventName}
+        </Text>
       </View>
-      <Text style={styles.title}>You're in</Text>
-      <Text style={styles.body}>
-        Paid {money(view.totalCents, view.currency)} · {count} ticket{count === 1 ? "" : "s"} · {view.eventName}
-      </Text>
       <View style={styles.note}>
-        <Text style={styles.body}>
+        <Text style={styles.noteText}>
           <Text style={styles.bold}>Walk straight in.</Text> The door has you checked in.
         </Text>
       </View>
       <View style={styles.note}>
-        <Text style={styles.body}>
+        <Text style={styles.noteText}>
           {contact !== null
             ? `Your tickets and receipt are in Mingla Explorer. Sign in with ${contact.email} or ${contact.phone}.`
             : "Your tickets and receipt are in Mingla Explorer. Sign in with the email or number you paid with."}
@@ -542,11 +593,34 @@ const PaidCard: React.FC<{ view: DoorPayCodeView; contact: StoredContact | null 
         fullWidth
         accessibilityRole="link"
       />
-    </View>
+    </StatusPane>
   );
 };
 
 // ---- Shared state card -----------------------------------------------------
+
+/**
+ * #4420 Public status card. Wide web: a 380-tall pane, content left and
+ * vertically centred (kit `.tpl-status .status-card.left`). Phone: the pane
+ * with its content centred.
+ */
+const StatusPane: React.FC<{ children: React.ReactNode; testID?: string; summary?: boolean }> = ({
+  children,
+  testID,
+  summary = false,
+}) => {
+  const wide = useWideGuestLayout();
+  return (
+    <View accessibilityRole={summary ? "summary" : undefined} style={styles.statusPaneHost} testID={testID}>
+      <GlassCard
+        padding={wide ? space[8] : space[6]}
+        contentStyle={wide ? styles.statusContentWide : styles.statusContent}
+      >
+        {children}
+      </GlassCard>
+    </View>
+  );
+};
 
 interface StateCardProps {
   title: string;
@@ -558,111 +632,132 @@ interface StateCardProps {
   tone?: DoorPayGuestTone;
 }
 
-const StateCard: React.FC<StateCardProps> = ({ title, body, action, onAction, busy, tone }) => (
-  <View style={styles.card} accessibilityRole="summary">
-    {busy ? <ActivityIndicator color={accent.warm} /> : null}
-    {tone !== undefined ? <GuestToneRing tone={tone} /> : null}
-    <Text style={styles.title}>{title}</Text>
-    {body.length > 0 ? <Text style={styles.body}>{body}</Text> : null}
-    {action && onAction ? (
-      <Button label={action} onPress={onAction} fullWidth size="md" accessibilityLabel={action} />
-    ) : null}
-  </View>
-);
+const StateCard: React.FC<StateCardProps> = ({ title, body, action, onAction, busy, tone }) => {
+  const wide = useWideGuestLayout();
+  return (
+    <StatusPane summary>
+      {busy ? <Spinner size={36} /> : null}
+      {tone !== undefined ? <GuestToneTile tone={tone} /> : null}
+      <View style={[styles.statusText, wide ? styles.statusTextWide : null]}>
+        <Text style={[styles.title, wide ? styles.titleWide : null]}>{title}</Text>
+        {body.length > 0 ? <Text style={[styles.body, wide ? styles.bodyWide : null]}>{body}</Text> : null}
+      </View>
+      {action && onAction ? (
+        <Button
+          label={action}
+          onPress={onAction}
+          fullWidth
+          size="md"
+          accessibilityLabel={action}
+        />
+      ) : null}
+    </StatusPane>
+  );
+};
 
-const GuestToneRing: React.FC<{ tone: DoorPayGuestTone }> = ({ tone }) => {
+/** The end-state icon tile in the door tones (paid green, closed grey, failed red). */
+const GuestToneTile: React.FC<{ tone: DoorPayGuestTone }> = ({ tone }) => {
   const style = DOOR_PAY_GUEST_TONE_STYLES[tone];
   return (
     <View
       style={[
-        styles.toneRing,
+        styles.toneTile,
         { backgroundColor: style.ringFill },
         style.ringBorder !== null ? { borderWidth: 1, borderColor: style.ringBorder } : null,
       ]}
       testID={`door-pay-guest-tone-${tone}`}
     >
-      <Icon name={style.defaultIcon} size={style.iconSize} color={style.iconColor} />
+      <Icon name={style.defaultIcon} size={style.iconSize - 6} color={style.iconColor} />
     </View>
   );
 };
 
+/** Kit `.tpl-status .status-card { min-height: 380px }`. */
+const STATUS_CARD_MIN_HEIGHT = 380;
+/** Kit `.tpl-status` summary column. */
+const STATUS_SUMMARY_WIDTH = 380;
+/** Phone column: one readable measure, centred. */
+const PHONE_COLUMN_MAX = 480;
+const TONE_TILE = 56;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.discover },
+  screen: { flex: 1, backgroundColor: color.canvas },
   content: {
     flexGrow: 1,
     alignItems: "center",
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[8],
+  },
+  contentWide: {
+    flexGrow: 1,
+    alignItems: "center",
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    paddingBottom: space[9],
+  },
+  page: { width: "100%", maxWidth: PHONE_COLUMN_MAX },
+  pageWide: { width: "100%", maxWidth: DESKTOP_TEMPLATE_MAX_WIDTH.status },
+  wordmark: { alignItems: "center", paddingVertical: space[3], marginBottom: space[4] },
+  wordmarkWide: { alignItems: "flex-start", marginBottom: space[7] },
+  wordmarkText: { ...type.h1, color: color.text1 },
+  statusGrid: { flexDirection: "row", alignItems: "flex-start", gap: space[6] },
+  statusMain: { flex: 1, minWidth: 0 },
+  statusAside: { width: STATUS_SUMMARY_WIDTH, flexShrink: 0 },
+  summaryContent: { gap: space[4] },
+  summaryHead: { gap: space[1] },
+  summaryTitle: { ...type.h2, color: color.text1 },
+  phoneStack: { gap: space[6] },
+  formContent: { gap: space[4] },
+  statusPaneHost: { width: "100%" },
+  statusContent: { alignItems: "center", gap: space[4] },
+  statusContentWide: {
+    minHeight: STATUS_CARD_MIN_HEIGHT,
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xl,
+    alignItems: "flex-start",
+    gap: space[4],
   },
-  wordmark: { marginBottom: spacing.lg },
-  wordmarkText: { ...typography.h2, color: textTokens.primary },
-  card: {
-    width: "100%",
-    maxWidth: 480,
-    padding: spacing.lg,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: canvas.profile,
-    borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    gap: spacing.md,
-  },
-  title: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
-  body: { ...typography.body, color: textTokens.secondary, textAlign: "center" },
-  bold: { fontWeight: "700", color: textTokens.primary },
-  eyebrow: { fontSize: 11, fontWeight: "700", letterSpacing: 1.2, color: textTokens.tertiary },
-  faint: { fontSize: 12, lineHeight: 17, color: textTokens.tertiary },
-  basket: {
-    padding: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    gap: spacing.xs,
-  },
-  kv: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  kvKey: { fontSize: 14, color: textTokens.secondary, flexShrink: 1 },
-  kvValue: { fontSize: 14, color: textTokens.primary, fontVariant: ["tabular-nums"] },
-  kvStrong: { fontSize: 15, fontWeight: "700", color: textTokens.primary, fontVariant: ["tabular-nums"] },
-  field: { gap: 6 },
-  fieldLabel: { fontSize: 13, fontWeight: "600", color: textTokens.secondary },
-  errorText: { fontSize: 13, lineHeight: 18, color: semantic.errorText },
-  checkboxRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, minHeight: 44 },
+  statusText: { alignSelf: "stretch", gap: space[2] },
+  statusTextWide: { maxWidth: 520 },
+  title: { ...type.h1, color: color.text1, textAlign: "center" },
+  titleWide: { textAlign: "left" },
+  body: { ...type.body, color: color.text2, textAlign: "center" },
+  bodyWide: { ...type.small, textAlign: "left" },
+  bold: { fontWeight: type.row.fontWeight, color: color.text1 },
+  eyebrow: { ...type.label, textTransform: "uppercase", color: color.text3 },
+  faint: { ...type.caption, color: color.text3 },
+  field: { gap: space[2] },
+  fieldLabel: { ...type.caption, color: color.text2 },
+  errorText: { ...type.caption, color: color.errorText },
+  checkboxRow: { flexDirection: "row", alignItems: "flex-start", gap: space[3], minHeight: 44 },
   checkboxBox: {
     width: 22,
     height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: textTokens.tertiary,
+    borderRadius: radius.xs,
+    borderWidth: 1.5,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.input,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 1,
   },
-  checkboxBoxChecked: { backgroundColor: accent.warm, borderColor: accent.warm },
-  checkboxLabel: { flex: 1, fontSize: 13, lineHeight: 19, color: textTokens.secondary },
-  link: { textDecorationLine: "underline", color: textTokens.primary },
+  checkboxBoxChecked: { backgroundColor: color.paper, borderColor: color.paper },
+  checkboxLabel: { ...type.small, flex: 1, color: color.text2 },
+  link: { textDecorationLine: "underline", color: color.text1 },
   note: {
-    padding: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    alignSelf: "stretch",
+    padding: space[4],
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  toneRing: {
-    width: 64,
-    height: 64,
-    borderRadius: 999,
-    alignSelf: "center",
+  noteText: { ...type.small, color: color.text2 },
+  toneTile: {
+    width: TONE_TILE,
+    height: TONE_TILE,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-  },
-  okRing: {
-    width: 64,
-    height: 64,
-    borderRadius: 999,
-    alignSelf: "center",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: semantic.successTint,
   },
 });
