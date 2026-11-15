@@ -51,6 +51,8 @@ import {
   OfferingHomeHeader,
   useOfferingPromote,
 } from "../../../src/components/offering/OfferingHome";
+import { DesktopColumns } from "../../../src/components/ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal, offeringShareability } from "../../../src/components/ui/ShareModal";
@@ -187,6 +189,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
     setLifecycleDialog(null);
     setToast({ visible: true, message });
   }, []);
+  const { isWideDesktop } = useResponsiveLayout();
   // #4420 (TILE_MATRIX P10) — the Promote tile, gated like the event home's.
   const promote = useOfferingPromote(
     brand?.id ?? null,
@@ -360,6 +363,22 @@ export default function RsvpDetailScreen(): React.ReactElement {
   const isManualApproval = event.rsvpApprovalMode === "manual";
   const guestsSub = isManualApproval ? "Approve / deny" : goingLabel;
 
+  // Headcount card — replaces the ticketed revenue card.
+  const goingCard = (
+        <GlassCard variant="base" radius="md" padding={space[4]}>
+          <Text style={styles.goingLabel}>
+            {goingCount === 0 && status !== "past"
+              ? "No one's responded yet"
+              : goingLabel}
+          </Text>
+          <Text style={styles.goingSub}>
+            {goingCount === 0 && status !== "past"
+              ? "0 going"
+              : "confirmed attending"}
+          </Text>
+        </GlassCard>
+  );
+
   return (
     <View style={styles.host}>
       {/* Header */}
@@ -396,6 +415,11 @@ export default function RsvpDetailScreen(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* #4420 — desktop uses the 8/4 template (as the event home): the RSVP
+            and its tiles in the main column, the headcount in the aside. */}
+        <DesktopColumns
+          main={
+            <View style={styles.colStack}>
         {/* issue #3237 — publish confirmation. Share and View public page are
             this screen's own handlers. A private RSVP has no page the public
             can open and its Share is refused, so it gets the confirmation with
@@ -432,20 +456,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
           }`}
         />
 
-        {/* Headcount card — replaces the ticketed revenue card */}
-        <GlassCard variant="base" radius="md" padding={space[4]}>
-          <Text style={styles.goingLabel}>
-            {goingCount === 0 && status !== "past"
-              ? "No one's responded yet"
-              : goingLabel}
-          </Text>
-          <Text style={styles.goingSub}>
-            {goingCount === 0 && status !== "past"
-              ? "0 going"
-              : "confirmed attending"}
-          </Text>
-        </GlassCard>
-
+        {isWideDesktop ? null : goingCard}
         {/* #4420 (TILE_MATRIX P10) — the shared tile page, in rows of three
             equal cells. Founder-locked RSVP door order inside it: Scan guests
             → Guests → Scanners. RSVPs are free: no Orders or Reconcile. */}
@@ -547,6 +558,11 @@ export default function RsvpDetailScreen(): React.ReactElement {
             <View style={styles.tilePad} />
           </View>
         </View>
+
+            </View>
+          }
+          aside={isWideDesktop ? <View style={styles.colStack}>{goingCard}</View> : undefined}
+        />
 
         {/* #3645 — same two controls, in the same place, as the experience
             dashboard. Return to draft is offered before the RSVP starts;
@@ -667,6 +683,9 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.text3,
     marginTop: 2,
+  },
+  colStack: {
+    gap: space[4],
   },
   tileRows: {
     gap: space[3],
