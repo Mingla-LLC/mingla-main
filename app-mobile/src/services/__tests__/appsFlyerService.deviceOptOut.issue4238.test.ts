@@ -7,9 +7,10 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { flush, loadWithFakes } from "./appsFlyerHarness.issue4238.ts";
 
-function makeWorld(optOut: boolean) {
+function makeWorld(optOut: boolean, serverHasOptOutColumn = true) {
   const world = {
     optOut,
+    serverHasOptOutColumn,
     initOk: null as null | ((r: unknown) => void),
     listeners: [] as Array<(s: unknown, p: unknown) => void>,
     upserts: [] as Array<Record<string, unknown>>,
@@ -52,7 +53,14 @@ function makeWorld(optOut: boolean) {
           return {
             upsert: (row: Record<string, unknown>) => {
               world.upserts.push(row);
-              return { then: (f: (r: unknown) => void) => f({ error: null }) };
+              // #4238 P2-R1: a server older than M-2 rejects the unknown column.
+              const error = !world.serverHasOptOutColumn && "tracking_opt_out" in row
+                ? {
+                  code: "PGRST204",
+                  message: "Could not find the 'tracking_opt_out' column of 'appsflyer_devices' in the schema cache",
+                }
+                : null;
+              return { then: (f: (r: unknown) => void) => f({ error }) };
             },
             update: (values: Record<string, unknown>) => {
               const filters: Record<string, unknown> = {};
@@ -111,7 +119,7 @@ Deno.test("#4238 P1-4 the device row carries the switch at registration", async 
   }
 });
 
-Deno.test("#4238 P1-4 switching off (and back on) updates this person's Explorer device rows", async () => {
+Deno.test("#4238 P1-4 / P3-R2 switching off (and back on) updates only this install's Explorer device row", async () => {
   const { world, fakes, setOptOut } = makeWorld(false);
   const svc = await loadWithFakes("src/services/appsFlyerService.ts", fakes);
   svc.initializeAppsFlyer();
@@ -122,7 +130,11 @@ Deno.test("#4238 P1-4 switching off (and back on) updates this person's Explorer
   await flush();
   assertEquals(world.updates.length, 1, "the opt-out never reached the server");
   assertEquals(world.updates[0].values, { app: "consumer", tracking_opt_out: true });
-  assertEquals(world.updates[0].filters, { user_id: "u-1", app: "consumer" });
+  assertEquals(world.updates[0].filters, {
+    user_id: "u-1",
+    app: "consumer",
+    appsflyer_uid: "af-uid-explorer",
+  });
   setOptOut(false);
   await flush();
   assertEquals(world.updates.at(-1).values, { app: "consumer", tracking_opt_out: false });
@@ -155,4 +167,19 @@ Deno.test("#4238 P1-4 the native checkout create carries ad_tracking_opt_out onl
     create.slice(0, create.indexOf("lines:")).includes("...checkoutAdTrackingFields(),"),
     "ticket-checkout-create body no longer carries the opt-out",
   );
+});
+
+Deno.test("#4238 P2-R1 a server without tracking_opt_out still gets the device row (retried without the column)", async () => {
+  const { world, fakes } = makeWorld(true, false);
+  const svc = await loadWithFakes("src/services/appsFlyerService.ts", fakes);
+  svc.initializeAppsFlyer();
+  world.initOk?.({});
+  svc.setAppsFlyerUserId("u-1");
+  svc.registerAppsFlyerDevice("u-1");
+  await flush();
+  assertEquals(world.upserts.length, 2, "the device was never registered on an older server");
+  assertEquals(world.upserts[0].tracking_opt_out, true);
+  assert(!("tracking_opt_out" in world.upserts[1]));
+  assertEquals(world.upserts[1].app, "consumer");
+  assertEquals(world.upserts[1].appsflyer_uid, "af-uid-explorer");
 });

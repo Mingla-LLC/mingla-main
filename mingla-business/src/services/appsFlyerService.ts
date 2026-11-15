@@ -156,6 +156,8 @@ let _lastUninstallToken: string | null = null;
 let _pendingUninstallToken: string | null = null;
 let _emailSetForUserId: string | null = null;
 let _signedInUserId: string | null = null;
+/** #4238 P3-R2: this install's AppsFlyer id, once the SDK has returned it. */
+let _installUid: string | null = null;
 
 /**
  * AppsFlyer `emailsCryptType` 3 is SHA-256 (the SDK hashes the plain email).
@@ -225,13 +227,48 @@ function applyPrivacyChoice(): void {
 }
 
 /**
- * #4238 P2-4 (I-4238-AF-SERVER-RESPECTS-OPT-OUT): tell the server this host's
- * Host app installs changed their Analytics choice, so the first-sale, payout
- * and dispute AppsFlyer posts skip an opted-out install. Logged, never thrown.
+ * #4238 P2-R1: until M-2 adds `appsflyer_devices.tracking_opt_out`, PostgREST
+ * rejects a write that names it (PGRST204 on insert/update, 42703 on select).
+ */
+function isMissingOptOutColumn(
+  error: { code?: string; message?: string } | null | undefined,
+): boolean {
+  if (!error) return false;
+  if (error.code === "PGRST204" || error.code === "42703") return true;
+  return /tracking_opt_out/.test(error.message ?? "");
+}
+
+/** #4238 P3-R2: this install's AppsFlyer id (cached after the first read). */
+function withInstallUid(use: (uid: string) => void): void {
+  if (_installUid) {
+    use(_installUid);
+    return;
+  }
+  if (!_initialized || !appsFlyer) return;
+  try {
+    appsFlyer.getAppsFlyerUID((err: unknown, uid: string) => {
+      if (err || !uid) return;
+      _installUid = uid;
+      use(uid);
+    });
+  } catch (e) {
+    console.warn("[AppsFlyer] getAppsFlyerUID failed:", e);
+  }
+}
+
+/**
+ * #4238 P2-4 (I-4238-AF-SERVER-RESPECTS-OPT-OUT): tell the server this Host
+ * app install changed its Analytics choice, so the first-sale, payout and
+ * dispute AppsFlyer posts skip it. Only this install's row (#4238 P3-R2: the
+ * host's other devices keep their own choice). Logged, never thrown.
  */
 function syncDeviceOptOut(): void {
   const userId = _signedInUserId;
   if (!userId) return;
+  withInstallUid((uid) => updateDeviceOptOut(userId, uid));
+}
+
+function updateDeviceOptOut(userId: string, uid: string): void {
   try {
     void Promise.resolve(
       supabase
@@ -239,7 +276,8 @@ function syncDeviceOptOut(): void {
         // I-MUTATION-ROWCOUNT-WAIVER: #4238 zero rows is valid (no install registered yet; registration carries the value)
         .update({ app: "business", tracking_opt_out: isAnalyticsOptedOut() })
         .eq("user_id", userId)
-        .eq("app", "business"),
+        .eq("app", "business")
+        .eq("appsflyer_uid", uid),
     ).then(
       (res: { error?: { message?: string } | null } | undefined) => {
         if (res?.error) {
@@ -987,39 +1025,50 @@ export function registerAppsFlyerDevice(userId: string): void {
         return;
       }
 
+      _installUid = uid;
       const platform = Platform.OS as "ios" | "android";
       const appId = platform === "ios" ? AF_IOS_APP_ID : AF_ANDROID_APP_ID;
       const deviceKey = `${userId}:${uid}`;
       if (registeredDeviceKeys.has(deviceKey)) return;
 
-      supabase
-        .from("appsflyer_devices")
-        .upsert(
-          {
-            user_id: userId,
-            appsflyer_uid: uid,
-            platform,
-            app_id: appId,
-            app: "business",
+      const row = {
+        user_id: userId,
+        appsflyer_uid: uid,
+        platform,
+        app_id: appId,
+        app: "business",
+        updated_at: new Date().toISOString(),
+      };
+      const upsertDevice = (withOptOut: boolean): void => {
+        supabase
+          .from("appsflyer_devices")
+          .upsert(
             // #4238 P2-4: the server skips AppsFlyer posts for an opted-out install.
-            tracking_opt_out: isAnalyticsOptedOut(),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,app,appsflyer_uid" },
-        )
-        .then(({ error }) => {
-          if (error) {
-            console.warn(
-              "[AppsFlyer] Device registration failed:",
-              error.message,
-            );
-          } else {
-            registeredDeviceKeys.add(deviceKey);
-            if (__DEV__) {
-              console.log(`[AppsFlyer] Device registered: ${platform}/${uid}`);
+            withOptOut ? { ...row, tracking_opt_out: isAnalyticsOptedOut() } : row,
+            { onConflict: "user_id,app,appsflyer_uid" },
+          )
+          .then(({ error }) => {
+            if (error && withOptOut && isMissingOptOutColumn(error)) {
+              // #4238 P2-R1: the server is older than M-2. Register the
+              // device anyway (no opt-out can be stored there yet).
+              console.warn(
+                "[AppsFlyer] tracking_opt_out not on the server yet; registering without it",
+              );
+              upsertDevice(false);
+            } else if (error) {
+              console.warn(
+                "[AppsFlyer] Device registration failed:",
+                error.message,
+              );
+            } else {
+              registeredDeviceKeys.add(deviceKey);
+              if (__DEV__) {
+                console.log(`[AppsFlyer] Device registered: ${platform}/${uid}`);
+              }
             }
-          }
-        });
+          });
+      };
+      upsertDevice(true);
     });
   } catch (e) {
     console.warn("[AppsFlyer] registerAppsFlyerDevice failed:", e);
