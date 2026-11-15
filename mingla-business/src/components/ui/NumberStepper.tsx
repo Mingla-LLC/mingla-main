@@ -50,19 +50,19 @@ import {
 } from "react-native";
 
 import {
-  glass,
+  color,
+  materials,
   radius as radiusTokens,
   spacing,
-  text as textTokens,
   typography,
 } from "../../constants/designSystem";
 
 // Same row fill as the RSVP step it came from — Android gets the opaque
 // fallback (ANDROID_GLASS_USES_OPAQUE_FALLBACK; #1028 tracks the composite).
 const ROW_BG = Platform.select({
-  ios: glass.tint.profileBase,
-  android: "#23262b",
-  default: glass.tint.profileBase,
+  ios: color.fill.inset,
+  android: materials.control.solidFill,
+  default: color.fill.inset,
 });
 
 /** Long-press delay before a held − / + starts repeating (ms). */
@@ -339,14 +339,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: ROW_BG,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     marginBottom: spacing.sm,
   },
   labelCol: { flex: 1, marginRight: spacing.sm },
   label: {
     fontSize: typography.bodySm.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   controls: {
     flexDirection: "row",
@@ -359,13 +359,13 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   btnDisabled: { opacity: 0.4 },
   btnText: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   field: {
     minWidth: 64,
@@ -374,12 +374,12 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
     textAlign: "center",
     fontSize: typography.bodyLg.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
 });

@@ -40,12 +40,9 @@ import {
 } from "@mingla/phone-input/phoneNumber";
 
 import {
-  accent,
-  canvas,
-  glass,
-  semantic,
+  color,
+  edge,
   spacing,
-  text as textTokens,
   typography,
 } from "../../constants/designSystem";
 import { devicePhoneRegion } from "../../utils/devicePhoneRegion";
@@ -167,19 +164,19 @@ export const phoneFieldError = (
 
 /** The dark Business sheet palette (matches the People "Add a person" field). */
 export const BUSINESS_SHEET_PHONE_THEME: PhoneInputTheme = {
-  backgroundPrimary: canvas.depth,
-  textPrimary: textTokens.primary,
-  textTertiary: textTokens.tertiary,
-  borderDefault: glass.border.profileElevated,
-  borderFocused: accent.warm,
-  borderError: semantic.error,
-  searchBackground: canvas.profile,
-  rowPressedBackground: glass.tint.profileBase,
-  divider: glass.border.profileBase,
-  accessoryBackground: canvas.depth,
-  accessoryBorder: glass.border.profileElevated,
-  accent: accent.warm,
-  errorText: semantic.error,
+  backgroundPrimary: color.canvas,
+  textPrimary: color.text1,
+  textTertiary: color.text3,
+  borderDefault: color.lineStrong,
+  borderFocused: edge.ringInputFocus.borderColor,
+  borderError: color.errorText,
+  searchBackground: color.canvas,
+  rowPressedBackground: color.fill.inset,
+  divider: color.line,
+  accessoryBackground: color.canvas,
+  accessoryBorder: color.lineStrong,
+  accent: color.text1,
+  errorText: color.errorText,
 };
 
 const iconRenderer = (
@@ -279,7 +276,7 @@ export function PhoneField({
           style={styles.switch}
           testID={testID ? `${testID}-switch-country` : undefined}
         >
-          <Text style={[styles.switchText, { color: actionColor ?? theme.accent ?? accent.warm }]}>
+          <Text style={[styles.switchText, { color: actionColor ?? theme.accent ?? color.text1 }]}>
             {`Switch to ${suggestedCountry.flag} ${suggestedCountry.name} (${suggestedCountry.dialCode})`}
           </Text>
         </Pressable>

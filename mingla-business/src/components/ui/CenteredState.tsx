@@ -12,9 +12,8 @@ import { StyleSheet, Text, View } from "react-native";
 import type { AccessibilityRole, StyleProp, ViewStyle } from "react-native";
 
 import {
-  semantic,
+  color,
   spacing,
-  text as textTokens,
   typography,
 } from "../../constants/designSystem";
 
@@ -88,21 +87,21 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: CENTERED_STATE_LAYOUT.textAlign,
   },
   titleCompact: {
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: CENTERED_STATE_LAYOUT.textAlign,
   },
-  titleError: { color: semantic.error },
+  titleError: { color: color.errorText },
   body: {
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: CENTERED_STATE_LAYOUT.textAlign,
   },
   actions: {

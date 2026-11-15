@@ -5,7 +5,7 @@
  * Complete defaults so callers don't have to remember the right combo per
  * field type. `search` variant injects a leading magnifying-glass icon.
  *
- * Border animates from idle 1px to focus 1.5px `accent.warm` over 120ms.
+ * Border animates from idle 1px to the 1.5px input focus ring (#4420) over 120ms.
  *
  * # Phone variant (ORCH-BIZ-0a-E2)
  * Renders a country chip on the left (flag + dial code + chevron-down).
@@ -45,13 +45,12 @@ type TextInputFocusHandler = NonNullable<TextInputProps["onFocus"]>;
 type TextInputFocusEvent = Parameters<TextInputFocusHandler>[0];
 
 import {
-  accent,
+  color,
   durations,
-  glass,
+  edge,
   radius as radiusTokens,
-  semantic,
   spacing,
-  text as textTokens,
+  type,
   typography,
 } from "../../constants/designSystem";
 
@@ -441,8 +440,8 @@ export interface InputProps
 const HEIGHT = 48;
 const PADDING_X = 14;
 const ICON_SIZE = 18;
-const IDLE_BORDER = "rgba(255, 255, 255, 0.12)";
-const BACKGROUND = "rgba(255, 255, 255, 0.04)";
+const IDLE_BORDER = color.lineStrong;
+const BACKGROUND = color.fill.input;
 const COUNTRY_CHIP_GAP = 8;
 
 // ---------------------------------------------------------------------------
@@ -470,19 +469,19 @@ const PickerSearchInput: React.FC<PickerSearchInputProps> = ({
       style={[
         styles.container,
         {
-          borderColor: focused ? accent.warm : IDLE_BORDER,
+          borderColor: focused ? edge.ringInputFocus.borderColor : IDLE_BORDER,
           borderWidth: focused ? 1.5 : 1,
         },
       ]}
     >
       <View style={styles.leadingIcon}>
-        <Icon name="search" size={ICON_SIZE} color={textTokens.tertiary} />
+        <Icon name="search" size={ICON_SIZE} color={color.text3} />
       </View>
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder="Search country or dial code"
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         autoCapitalize="none"
         autoCorrect={false}
         underlineColorAndroid="transparent"
@@ -492,7 +491,7 @@ const PickerSearchInput: React.FC<PickerSearchInputProps> = ({
         style={[
           styles.input,
           {
-            color: textTokens.primary,
+            color: color.text1,
             fontSize: typography.body.fontSize,
             fontWeight: typography.body.fontWeight,
             paddingLeft: 0,
@@ -642,16 +641,16 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           styles.container,
           {
             borderColor: hasError
-              ? semantic.error
+              ? edge.ringError.borderColor
               : focused
-                ? accent.warm
+                ? edge.ringInputFocus.borderColor
                 : IDLE_BORDER,
             borderWidth: focused ? 1.5 : 1,
             opacity: disabled ? 0.5 : 1,
           },
           Platform.OS === "web" && focused
             ? ({
-                outlineColor: accent.warm,
+                outlineColor: edge.ringFocus.ring,
                 outlineOffset: 2,
                 outlineStyle: "solid",
                 outlineWidth: 2,
@@ -679,7 +678,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             ) : (
               <Text style={styles.countryFlag}>{country.flag}</Text>
             )}
-            <Icon name="chevD" size={14} color={textTokens.tertiary} />
+            <Icon name="chevD" size={14} color={color.text3} />
           </Pressable>
         ) : null}
 
@@ -688,7 +687,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             <Icon
               name={resolvedLeadingIcon}
               size={ICON_SIZE}
-              color={textTokens.tertiary}
+              color={color.text3}
             />
           </View>
         ) : null}
@@ -698,7 +697,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={textTokens.quaternary}
+          placeholderTextColor={color.text4}
           editable={!disabled}
           onFocus={handleFocus}
           onBlur={handleBlur}
@@ -710,7 +709,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           style={[
             styles.input,
             {
-              color: textTokens.primary,
+              color: color.text1,
               fontSize: typography.body.fontSize,
               fontWeight: typography.body.fontWeight,
               // No `lineHeight` — TextInput on iOS treats lineHeight as
@@ -729,7 +728,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
               ? ({
                   outlineWidth: 0,
                   outlineStyle: "none",
-                  caretColor: accent.warm,
+                  caretColor: color.paper,
                 } as unknown as TextStyle)
               : null,
           ]}
@@ -751,7 +750,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             <Icon
               name="eye"
               size={ICON_SIZE}
-              color={secureRevealed ? textTokens.tertiary : textTokens.primary}
+              color={secureRevealed ? color.text3 : color.text1}
             />
           </Pressable>
         ) : null}
@@ -764,7 +763,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             style={styles.trailingButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Icon name="close" size={ICON_SIZE} color={textTokens.tertiary} />
+            <Icon name="close" size={ICON_SIZE} color={color.text3} />
           </Pressable>
         ) : null}
       </View>
@@ -830,7 +829,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
                       <Text style={styles.pickerDialCode}>{c.dialCode}</Text>
                     </View>
                     {isSelected ? (
-                      <Icon name="check" size={ICON_SIZE} color={accent.warm} />
+                      <Icon name="check" size={ICON_SIZE} color={color.text1} />
                     ) : null}
                   </Pressable>
                 );
@@ -883,7 +882,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.bodySm,
-    color: semantic.error,
+    color: color.errorText,
     fontWeight: "600",
     marginTop: spacing.xs,
   },
@@ -901,14 +900,14 @@ const styles = StyleSheet.create({
     paddingRight: COUNTRY_CHIP_GAP,
     gap: 6,
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: glass.border.profileBase,
+    borderRightColor: color.line,
   },
   countryFlag: {
     fontSize: 18,
   },
   countryPlaceholder: {
     ...typography.bodySm,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   pickerColumn: {
     // Explicit flex-column wrapper inside the Sheet — gives the ScrollView
@@ -925,7 +924,7 @@ const styles = StyleSheet.create({
   },
   pickerEmpty: {
     fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
     paddingVertical: spacing.lg,
   },
@@ -941,11 +940,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
     gap: spacing.md,
   },
   pickerRowPressed: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   pickerFlag: {
     fontSize: 22,
@@ -958,12 +957,12 @@ const styles = StyleSheet.create({
   },
   pickerName: {
     fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    color: color.text1,
     flex: 1,
   },
   pickerDialCode: {
     fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginLeft: spacing.sm,
   },
 });

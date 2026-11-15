@@ -14,9 +14,11 @@ describe("#3655 Button variants", () => {
   test("declares step and destructiveOutline variants", () => {
     expect(buttonSrc).toContain('| "step"');
     expect(buttonSrc).toContain('| "destructiveOutline"');
-    expect(buttonSrc).toContain('step: {');
-    expect(buttonSrc).toContain('destructiveOutline: {');
-    expect(buttonSrc).toContain("#F5F5F6");
+    // [TEST-MOD-APPROVED #4420] both looks map onto shared Graphite token sets.
+    expect(buttonSrc).toContain("destructiveOutline: DANGER_TEXT");
+    // [TEST-MOD-APPROVED #4420] the step look is the Graphite Paper primary
+    // (color.paper) instead of a hard-coded #F5F5F6; same "moves you on" intent.
+    expect(buttonSrc).toContain("step: PAPER");
   });
 
   test("ConfirmDialog leave variant stacks Save / Discard / Keep editing", () => {

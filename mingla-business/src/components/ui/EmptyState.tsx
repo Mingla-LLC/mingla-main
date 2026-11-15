@@ -13,8 +13,8 @@ import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import {
+  color,
   spacing,
-  text as textTokens,
   typography,
 } from "../../constants/designSystem";
 
@@ -78,7 +78,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             <Icon
               name={illustration}
               size={ILLUSTRATION_SIZE}
-              color={textTokens.quaternary}
+              color={color.text4}
             />
           ) : (
             illustration
@@ -119,14 +119,14 @@ const styles = StyleSheet.create({
     lineHeight: typography.h3.lineHeight,
     fontWeight: typography.h3.fontWeight,
     letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   description: {
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   ctaWrap: {

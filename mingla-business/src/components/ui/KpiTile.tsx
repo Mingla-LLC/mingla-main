@@ -14,10 +14,9 @@ import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import {
+  color,
   radius,
-  semantic,
   spacing,
-  text as textTokens,
   typography,
 } from "../../constants/designSystem";
 
@@ -49,10 +48,10 @@ export const KpiTile: React.FC<KpiTileProps> = ({
 }) => {
   const deltaColor =
     deltaUp === true
-      ? semantic.success
+      ? color.success
       : deltaUp === false
-        ? semantic.error
-        : textTokens.tertiary;
+        ? color.errorText
+        : color.text3;
 
   return (
     <GlassCard variant="base" testID={testID} style={style}>
@@ -96,21 +95,21 @@ const styles = StyleSheet.create({
     lineHeight: typography.labelCap.lineHeight,
     fontWeight: typography.labelCap.fontWeight,
     letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   value: {
     fontSize: typography.statValue.fontSize,
     lineHeight: typography.statValue.lineHeight,
     fontWeight: typography.statValue.fontWeight,
     letterSpacing: typography.statValue.letterSpacing,
-    color: textTokens.primary,
+    color: color.text1,
     marginTop: spacing.xxs,
   },
   valueSkeleton: {
     width: 72,
     height: 24,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
     marginTop: spacing.xxs,
   },
   delta: {
@@ -124,7 +123,7 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: spacing.xs,
   },
 });
