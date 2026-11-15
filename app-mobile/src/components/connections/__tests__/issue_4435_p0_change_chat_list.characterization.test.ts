@@ -20,18 +20,19 @@ function between(source: string, from: string, to: string): string {
 
 const page = read("src/components/ConnectionsPage.tsx");
 
-Deno.test("F3-no-insert a send to a chat missing from the list refreshes nothing (only a brand-new chat refetches)", () => {
-  const incoming = between(page, "const addIncomingMessageToUI = useCallback(", "[transformMessage, writeConversationMessages]");
-  assert(!incoming.includes("refreshChatListAfterConversationChange"), "an incoming message never refreshes the list");
+Deno.test("F3-no-insert [#4435 W3] a message in a chat missing from the list refetches the list (no hand-built row)", () => {
+  const incoming = between(page, "const addIncomingMessageToUI = useCallback(", "[transformMessage, writeConversationMessages, refreshListIfMissing]");
+  assert(incoming.includes("refreshListIfMissing(conversationId);"), "an incoming message into an unlisted chat refetches");
   assert(/prev\.map\(\(conv\)/.test(incoming), "the list is only mapped, never inserted into");
-  assert(!page.includes("refreshChatListAfterConversationChange"), "ConnectionsPage never calls the list refresh after a send");
-  assert(/if \(isNewChat\) fetchConversations\(user\.id\);/.test(page), "only a brand-new chat refetches");
+  assert(/if \(isNewChat\) fetchConversations\(user\.id\);\s*else refreshListIfMissing\(conversationId\);/.test(page), "a send to an unlisted chat refetches");
+  assert(/if \(!listedConversationIdsRef\.current\.has\(conversationId\)\) refreshChatListAfterConversationChange\(\);/.test(page), "only when missing from the list");
 });
 
-Deno.test("F4-listener useSocialRealtime binds messages on a receiver_id filter", () => {
+Deno.test("F4-listener [#4435 W3] useSocialRealtime listens to my lifecycle rows, not messages.receiver_id", () => {
   const hook = read("src/hooks/useSocialRealtime.ts");
-  assert(/table: "messages",\s*filter: `receiver_id=eq\.\$\{userId\}`/.test(hook), "messages bound on receiver_id");
-  assert(!hook.includes("conversation_participant_lifecycle"), "no lifecycle listener today");
+  assert(!/table: "messages"/.test(hook), "no messages binding");
+  assert(/table: "conversation_participant_lifecycle",\s*filter: `user_id=eq\.\$\{userId\}`/.test(hook), "lifecycle rows filtered to me");
+  assert(/invalidateQueries\(\{ queryKey: chatListKeys\.all \}\)/.test(hook), "the Chats list refetches");
 });
 
 Deno.test("R10 a creator-only pending session row is a pending creator collab", () => {

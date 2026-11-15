@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../services/supabase";
 import { pairingKeys } from "./usePairings";
+import { chatListKeys } from "./queryKeys";
 import { DeviceCalendarService } from "../services/deviceCalendarService";
 import { CalendarService } from "../services/calendarService";
 
@@ -14,7 +15,7 @@ let nextSocialRealtimeOwner = 0;
  * Tables subscribed (all server-side filtered):
  *   - friend_requests (receiver_id = userId)
  *   - pending_invites (inviter_id = userId)
- *   - messages (receiver_id = userId)
+ *   - conversation_participant_lifecycle (user_id = userId, UPDATE: a removed chat coming back)
  *   - conversation_participants (user_id = userId)
  *   - friends (user_id = userId)
  *   - calendar_entries (user_id = userId)
@@ -26,7 +27,6 @@ export function useSocialRealtime(
   userId: string | undefined,
   callbacks?: {
     onFriendRequestChange?: () => void;
-    onNewMessage?: () => void;
     onFriendListChange?: () => void;
     onPairRequestChange?: () => void;
   }
@@ -71,18 +71,21 @@ export function useSocialRealtime(
           queryClient.invalidateQueries({ queryKey: ["friends"] });
         }
       )
-      // messages — filtered to receiver only (sender already has the message)
+      // Issue #4435: my own chat-list state. When a removed chat comes back
+      // (anyone writes in it) the server clears hidden_at on my row; the
+      // Chats list refetches so the row returns live. Owner-only RLS limits
+      // this to my rows. (messages has no receiver_id, so the old binding
+      // here could never match a row.)
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "UPDATE",
           schema: "public",
-          table: "messages",
-          filter: `receiver_id=eq.${userId}`,
+          table: "conversation_participant_lifecycle",
+          filter: `user_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["messages"] });
-          callbacksRef.current?.onNewMessage?.();
+          void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
         }
       )
       // conversation_participants

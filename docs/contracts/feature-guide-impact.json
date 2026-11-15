@@ -507,7 +507,13 @@
         "supabase/migrations/20280708046436_issue_4436_invited_self_join_and_own_prefs.sql",
         "app-mobile/src/services/boardInviteService.ts",
         "supabase/migrations/20280708054435_issue_4435_group_lifecycle.sql",
-        "supabase/migrations/20280708064435_issue_4435_chat_reopen_and_clear.sql"
+        "supabase/migrations/20280708064435_issue_4435_chat_reopen_and_clear.sql",
+        "app-mobile/app/index.tsx",
+        "app-mobile/src/components/SessionViewModal.tsx",
+        "app-mobile/src/hooks/useSocialRealtime.ts",
+        "app-mobile/src/services/groupChatService.ts",
+        "app-mobile/src/utils/groupChatModel.ts",
+        "app-mobile/src/utils/sharedSessionCleanup.ts"
       ]
     },
     {

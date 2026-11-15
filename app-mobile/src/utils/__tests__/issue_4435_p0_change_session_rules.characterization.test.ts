@@ -11,28 +11,33 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-Deno.test("R2 leaving from SessionViewModal deletes the others and the session at 2 or fewer", () => {
+Deno.test("R2 [#4435 W3] leaving from SessionViewModal deletes only my own row", () => {
   const modal = read("src/components/SessionViewModal.tsx");
-  assert(/const willAutoDelete = participantCount !== null && participantCount <= 2;/.test(modal), "auto-delete at <= 2");
-  assert(/\.neq\('user_id', currentUserId\);/.test(modal), "the others are deleted");
-  assert(/from\('collaboration_sessions'\)\s*\.delete\(\)\s*\.eq\('id', currentSessionId\)/.test(modal), "the session is deleted");
+  assert(!/willAutoDelete/.test(modal), "no client auto-delete");
+  assert(!/\.neq\('user_id', currentUserId\);/.test(modal), "the others are never deleted");
+  assert(!/from\('collaboration_sessions'\)\s*\.delete\(\)\s*\.eq\('id', currentSessionId\)/.test(modal), "the session is never deleted by the client");
+  assert(/from\("session_participants"\)\s*\.delete\(\)\s*\.eq\("session_id", currentSessionId\)\s*\.eq\("user_id", currentUserId\)/.test(modal), "my row is deleted");
 });
 
-Deno.test("R4-group unfriend/block cleanup deletes any session with 2 or fewer members", () => {
+Deno.test("R4-group [#4435 W3] unfriend/block cleanup touches only 1:1 collab sessions", () => {
   const cleanup = read("src/utils/sharedSessionCleanup.ts");
-  assert(/if \(count !== null && count <= 2\) \{/.test(cleanup), "count <= 2 deletes, groups included");
-  assert(!cleanup.includes("conversation_id"), "no 1:1-collab filter today");
+  assert(/\.not\("conversation_id", "is", null\)/.test(cleanup), "only sessions started in a 1:1 chat");
+  const page = read("src/components/ConnectionsPage.tsx");
+  assert(!/if \(count !== null && count <= 2\) \{/.test(page), "no second inline copy in ConnectionsPage");
+  assert(page.includes("cleanupSharedSessionsShared(user.id, otherUserId)"), "ConnectionsPage uses the shared cleanup");
 });
 
-Deno.test("R6-new handleCreateGroupChat inserts a pending session and loops per friend", () => {
+Deno.test("R6-new [#4435 W3] handleCreateGroupChat makes one create_group_chat call", () => {
   const index = read("app/index.tsx");
   const start = index.indexOf("logger.action('Create session pressed'");
   assert(start >= 0, "create handler");
-  const body = index.slice(start, start + 9000);
-  assert(/from\('collaboration_sessions'\)\s*\.insert\(/.test(body), "client inserts the session");
-  assert(/status: 'pending'/.test(body), "status pending");
-  assert(/for \(const friendUserId of/.test(body) || /for \(const friend/.test(body), "per-friend loop");
-  assert(!body.includes("create_group_chat"), "no server create today");
+  const body = index.slice(start, index.indexOf("const handleAcceptInvite", start));
+  assert(/createGroupChat\(sessionName, selectedFriends\.map\(\(friend\) => friend\.id\)\)/.test(body), "one server call with every friend");
+  assert(!/from\('collaboration_sessions'\)\s*\.insert\(/.test(body), "no client session insert");
+  assert(!/for \(const friend/.test(body), "no per-friend loop");
+  assert(/createPendingSessionInvite\(createdSessionId/.test(body), "phone invitees still tie to the new session");
+  const service = read("src/services/groupChatService.ts");
+  assert(/supabase\.rpc\("create_group_chat"/.test(service), "the service calls create_group_chat");
 });
 
 Deno.test("R10 a pending creator collab opens the pending sheet", () => {
@@ -48,16 +53,19 @@ Deno.test("R23 remove and promote are direct table writes on the board screen", 
   assert(!dropdown.includes("remove_group_member") && !dropdown.includes("set_group_admin"), "no server functions today");
 });
 
-Deno.test("R24-filter the session list hides sessions with fewer than 2 members", () => {
+Deno.test("R24-filter [#4435 W3] the session list keeps groups with 1+ member", () => {
   const hook = read("src/hooks/useSessionManagement.ts");
-  assert(/if \(totalMembers < 2\) \{\s*return false;/.test(hook), "< 2 hidden");
+  assert(/if \(totalMembers < 1\) \{\s*return false;/.test(hook), "< 1 hidden only");
+  assert(!/if \(totalMembers < 2\)/.test(hook), "a group of one is listed");
 });
 
-Deno.test("R24-limbo creating a session deletes same-name limbo or ghost sessions", () => {
+Deno.test("R24-limbo [#4435 W3] creating never deletes a same-name or ghost session", () => {
   const hook = read("src/hooks/useSessionManagement.ts");
-  assert(/Limbo session \(creator only/.test(hook) && /\.from\('collaboration_sessions'\)\s*\.delete\(\)\s*\.eq\('id', match\.session_id\)/.test(hook), "useSessionManagement limbo delete");
+  assert(!/Limbo session \(creator only/.test(hook), "no limbo branch");
+  assert(!/\.delete\(\)\s*\.eq\('id', match\.session_id\)/.test(hook), "no same-name delete");
+  assert(/if \(matchingParticipations\.length > 0\) \{\s*throw new Error\('A collaboration session already exists with that name\.'\);/.test(hook), "a same-name group is a duplicate error");
   const index = read("app/index.tsx");
-  assert(/ghostSessions/.test(index), "app/index ghost delete");
+  assert(!/ghostSessions/.test(index), "no ghost delete in app/index");
 });
 
 Deno.test("R30 the create sheet needs a name and at least one friend", () => {

@@ -2196,172 +2196,16 @@ function AppContent() {
     logger.action('Create session pressed', { name: sessionName, friendCount: selectedFriends.length });
     setIsCreatingSession(true);
     let createdSessionId: string | null = null;
-    let successfulParticipantAdds = 0;
-    let successfulInvites = 0;
     try {
-      // Check for real duplicate: any session where user is an accepted participant with this name
-      const { data: participations } = await supabase
-        .from('session_participants')
-        .select('session_id, collaboration_sessions!inner(id, name)')
-        .eq('user_id', user.id)
-        .eq('has_accepted', true);
-
-      const hasDuplicate = (participations || []).some((p: any) => {
-        const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
-        return s?.name?.toLowerCase() === sessionName.trim().toLowerCase();
-      });
-
-      if (hasDuplicate) {
-        toastManager.error('A collaboration session already exists with that name.');
-        throw new Error('A collaboration session already exists with that name.');
-      }
-
-      // Clean up any ghost sessions with this name (created by user but no participant record)
-      // These accumulate from previous failed creation attempts
-      const { data: ghostSessions } = await supabase
-        .from('collaboration_sessions')
-        .select('id')
-        .eq('created_by', user.id)
-        .ilike('name', sessionName.trim());
-
-      if (ghostSessions && ghostSessions.length > 0) {
-        await supabase
-          .from('collaboration_sessions')
-          .delete()
-          .in('id', ghostSessions.map((s: any) => s.id));
-      }
-
-      // Create the collaboration session (matching CreateTab.tsx pattern)
-      // Status starts as 'pending' until participants accept
-      const { data: session, error: sessionError } = await supabase
-        .from('collaboration_sessions')
-        .insert({
-          name: sessionName,
-          created_by: user.id,
-          status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (sessionError) throw sessionError;
-      createdSessionId = session.id;
-
-      // Add creator as participant (auto-accepted)
-      const { error: participantError } = await supabase
-        .from('session_participants')
-        .insert({
-          session_id: session.id,
-          user_id: user.id,
-          has_accepted: true,
-          joined_at: new Date().toISOString(),
-        });
-
-      if (participantError) throw participantError;
-
-      // ORCH-0446B: Write creator's solo prefs to session JSONB
-      try {
-        const { data: soloPrefs } = await supabase
-          .from('preferences')
-          .select('*')
-          .eq('profile_id', user.id)
-          .maybeSingle();
-
-        const { error: rpcError } = await supabase.rpc('upsert_participant_prefs', {
-          p_session_id: session.id,
-          p_user_id: user.id,
-          p_prefs: {
-            categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
-            intents: soloPrefs?.intents ?? [],
-            travel_mode: soloPrefs?.travel_mode ?? 'walking',
-            travel_constraint_type: 'time',
-            travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
-            date_option: soloPrefs?.date_option ?? null,
-            datetime_pref: soloPrefs?.datetime_pref ?? null,
-            selected_dates: soloPrefs?.selected_dates ?? null,
-            use_gps_location: soloPrefs?.use_gps_location ?? true,
-            custom_location: soloPrefs?.custom_location ?? null,
-            custom_lat: soloPrefs?.custom_lat ?? null,
-            custom_lng: soloPrefs?.custom_lng ?? null,
-            intent_toggle: soloPrefs?.intent_toggle ?? true,
-            category_toggle: soloPrefs?.category_toggle ?? true,
-          },
-        });
-        if (rpcError) console.error('[index] Creator pref RPC error:', rpcError.message);
-      } catch (err) {
-        console.error('[index] Creator pref write failed:', err);
-      }
-
-      // Add selected friends as participants and send invites
-      for (const friend of selectedFriends) {
-        const friendUserId = friend.id;
-
-        // Get friend's email from their profile
-        const { data: friendProfile } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('id', friendUserId)
-          .single();
-
-        const friendEmail = friendProfile?.email;
-
-        // Add as participant (not accepted yet)
-        const { error: friendParticipantError } = await supabase
-          .from('session_participants')
-          .insert({
-            session_id: session.id,
-            user_id: friendUserId,
-            has_accepted: false,
-          });
-
-        if (friendParticipantError) {
-          console.error(`Error adding friend ${friend.name} as participant:`, friendParticipantError);
-          continue;
-        }
-        successfulParticipantAdds += 1;
-
-        // Create invite for the friend
-        const { data: inviteData, error: inviteError } = await supabase
-          .from('collaboration_invites')
-          .insert({
-            session_id: session.id,
-            inviter_id: user.id,
-            invited_user_id: friendUserId,
-            status: 'pending',
-          })
-          .select('id')
-          .single();
-
-        if (inviteError) {
-          console.error(`Error creating invite for ${friend.name}:`, inviteError);
-          continue;
-        }
-        successfulInvites += 1;
-
-        // Send email and push notification via Edge Function
-        if (friendEmail && inviteData) {
-          try {
-            await supabase.functions.invoke('send-collaboration-invite', {
-              body: {
-                inviterId: user.id,
-                invitedUserId: friendUserId,
-                invitedUserEmail: friendEmail,
-                sessionId: session.id,
-                sessionName: sessionName,
-                inviteId: inviteData.id,
-              },
-            });
-          } catch (emailErr) {
-            console.error(`Failed to send invite email to ${friend.name}:`, emailErr);
-            // Don't fail the whole process if email fails
-          }
-        }
-      }
-
-      // If user selected friends but none were actually added/invited,
-      // fail fast instead of showing a misleading success toast.
-      if (selectedFriends.length > 0 && successfulParticipantAdds === 0 && successfulInvites === 0) {
-        throw new Error('No collaborators could be added to the session.');
-      }
+      // Issue #4435: one server call creates a live group with its board, the
+      // creator and every picked friend as accepted members (15 cap, friends
+      // only, blocks skipped). No client inserts, no duplicate-name refusal and
+      // no ghost cleanup: the server writes all of it or nothing.
+      const { createGroupChat } = await import('../src/services/groupChatService');
+      const created = await createGroupChat(sessionName, selectedFriends.map((friend) => friend.id));
+      createdSessionId = created.sessionId;
+      const session = { id: created.sessionId };
+      const successfulInvites = created.added.length;
 
       // Process phone invitees — tie pending invites to this session
       if (createdSessionId && phoneInvitees && phoneInvitees.length > 0) {
@@ -2379,17 +2223,13 @@ function AppContent() {
       // Refresh all sessions (active + pending)
       await refreshAllSessions({ showLoading: true });
 
-      const { conversation, error: conversationError } =
-        await messagingService.getOrCreateGroupConversationForSession(session.id);
-      if (conversationError || !conversation?.id) {
-        throw new Error(conversationError || 'Group chat was created but the conversation was not found.');
-      }
+      const conversation = { id: created.conversationId };
 
       // Show success toast
       const friendCount = selectedFriends.length;
-      const message = friendCount > 0 
-        ? `Session "${sessionName}" created! Invites sent to ${successfulInvites} friend${successfulInvites > 1 ? 's' : ''}.`
-        : `Session "${sessionName}" created successfully!`;
+      const message = friendCount > 0
+        ? `"${sessionName}" is live. ${successfulInvites} friend${successfulInvites === 1 ? ' is' : 's are'} in.`
+        : `"${sessionName}" is live.`;
       toastManager.success(message);
       captureExplorerSearchOutcome("plan_created", {
         audience: "explorer",
@@ -2401,13 +2241,10 @@ function AppContent() {
       return { conversationId: conversation.id, sessionId: session.id };
     } catch (error) {
       console.error('Error creating session:', error);
-      // Roll back the ghost session if it was inserted before the failure
-      if (createdSessionId) {
-        supabase.from('collaboration_sessions').delete().eq('id', createdSessionId).then(({ error: deleteError }) => {
-          if (deleteError) console.error('Error cleaning up failed session:', deleteError);
-        });
-      }
-      toastManager.error('Failed to create session. Please try again.');
+      const code = error instanceof Error ? error.message : '';
+      toastManager.error(code === 'conflict_group_full'
+        ? 'A group holds up to 15 people. Pick fewer friends.'
+        : "Couldn't create the group. Nothing was created. Try again.");
       throw error;
     } finally {
       setIsCreatingSession(false);

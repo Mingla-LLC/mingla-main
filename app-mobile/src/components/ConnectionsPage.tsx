@@ -192,6 +192,8 @@ import {
 } from "./connections/chatPeerState";
 import { useChatList } from "../hooks/useChatList";
 import { chatListKeys } from "../hooks/queryKeys";
+import { cleanupSharedSessions as cleanupSharedSessionsShared } from "../utils/sharedSessionCleanup";
+import { refreshChatListAfterConversationChange } from "../services/chatListRefresh";
 import type { PlanQuoteSnapshot } from "../types/chatPlans";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 import { useSessionCreationGate } from "../hooks/useSessionCreationGate";
@@ -736,6 +738,16 @@ function ConnectionsPageRefactored({
   const setConversations = useCallback((updater: (current: Conversation[]) => Conversation[]) => {
     updateChatListConversations<Conversation>(queryClient, chatListKeyRef.current, updater);
   }, [queryClient]);
+  // Issue #4435: a removed chat comes back on the server when anyone writes in
+  // it. The list never hand-builds a row for it: when a message lands in a
+  // chat that is not in the list, the list refetches and the server's row
+  // returns at the top.
+  const listedConversationIds = useMemo(() => new Set(conversations.map((conversation) => conversation.id)), [conversations]);
+  const listedConversationIdsRef = useRef<ReadonlySet<string>>(listedConversationIds);
+  listedConversationIdsRef.current = listedConversationIds;
+  const refreshListIfMissing = useCallback((conversationId: string) => {
+    if (!listedConversationIdsRef.current.has(conversationId)) refreshChatListAfterConversationChange();
+  }, []);
   // Issue #4114: brands this user is on the team of. Explorer is the guest
   // app: their event and trip chats are host chats, run in the Host app, and
   // hidden here everywhere; every other brand's event and trip chats fold into
@@ -2743,12 +2755,14 @@ function ConnectionsPageRefactored({
         })
       );
 
+      refreshListIfMissing(conversationId);
+
       // Auto-mark as read ALWAYS runs (chat is open by precondition)
       if (newMessage.sender_id !== userId) {
         messagingService.markAsRead([newMessage.id], userId).catch(console.error);
       }
     },
-    [transformMessage, writeConversationMessages]
+    [transformMessage, writeConversationMessages, refreshListIfMissing]
   );
 
   // ORCH-0664: callback passed to MessageInterface as `onBroadcastReceive`.
@@ -3490,6 +3504,7 @@ function ConnectionsPageRefactored({
     postOptimisticMessage(conversationId, optimisticMsg);
     await deliverMessage(conversationId, optimisticMsg);
     if (isNewChat) fetchConversations(user.id);
+    else refreshListIfMissing(conversationId);
   };
 
   // ── Issue #4114 Wave 4: send photos, videos and files from the attach sheet ──
@@ -3583,6 +3598,7 @@ function ConnectionsPageRefactored({
       await deliverMessage(conversationId, message);
     }
     if (isNewChat) fetchConversations(user.id);
+    else refreshListIfMissing(conversationId);
   };
 
   // ── Issue #4114 Wave 4: cancel a media send while it uploads ──
@@ -3595,39 +3611,10 @@ function ConnectionsPageRefactored({
   };
 
   // ── Collaboration session cleanup ────────────────────────
-  const cleanupSharedSessions = async (otherUserId: string) => {
-    try {
-      if (!user) return;
-      const { data: otherUserSessions, error: fetchError } = await supabase
-        .from("session_participants")
-        .select("session_id")
-        .eq("user_id", otherUserId);
-      if (fetchError || !otherUserSessions?.length) return;
-
-      const sessionIds = otherUserSessions.map((s: any) => s.session_id);
-      const { data: mySharedSessions, error: myError } = await supabase
-        .from("session_participants")
-        .select("session_id")
-        .eq("user_id", user.id)
-        .in("session_id", sessionIds);
-      if (myError || !mySharedSessions?.length) return;
-
-      const sharedSessionIds = mySharedSessions.map((s: any) => s.session_id);
-      for (const sessionId of sharedSessionIds) {
-        const { count, error: countError } = await supabase
-          .from("session_participants")
-          .select("id", { count: "exact", head: true })
-          .eq("session_id", sessionId);
-        if (countError) continue;
-        if (count !== null && count <= 2) {
-          await supabase.from("collaboration_invites").delete().eq("session_id", sessionId);
-          await supabase.from("collaboration_sessions").delete().eq("id", sessionId);
-        }
-      }
-    } catch (e) {
-      console.error("Error cleaning up shared sessions:", e);
-    }
-  };
+  // Issue #4435: one owner (utils/sharedSessionCleanup). Removing or blocking
+  // a friend ends a shared 1:1 collab only; group chats are never deleted here.
+  const cleanupSharedSessions = (otherUserId: string): Promise<void> =>
+    user?.id ? cleanupSharedSessionsShared(user.id, otherUserId) : Promise.resolve();
 
   // ── MessageInterface callback handlers ───────────────────
   // ORCH-0666: handleSendCollabInvite + handleAddToBoardConfirm DELETED.
