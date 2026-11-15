@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { localProgramService } from '../../src/services/localProgramService';
+import { localKeys, localProgramService } from '../../src/services/localProgramService';
 import { chooseAndUploadCreatorMedia, creatorMediaStatus, isPickerCancel } from '../../src/services/creatorMediaService';
 import { programErrorMessage, programErrorText, toProgramError } from '../../src/services/programResult';
 import { isAllowedSocialPostUrl } from '../../src/components/local/localReviewRules';
-import { parseDay, persistedDayString } from '../../src/utils/programFormat';
+import { formatShortDate, parseDay, persistedDayString } from '../../src/utils/programFormat';
 import { SPEND_BANDS } from '../../src/components/local/localWords';
-import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
+import { draftToFormState, reviewReadEnabled } from '../../src/components/local/localReviewDraft';
+import { placeNamesQueryEnabled } from '../../src/components/local/localRefresh';
+import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { CheckRow, Chip, DateField, StarsInput } from '../../src/components/programs/ProgramPickers';
 import { Icon } from '../../src/components/ui/Icon';
 import { playOwnVideo } from '../../src/components/programs/VideoTile';
@@ -28,9 +30,13 @@ export default function LocalReviewScreen(): React.ReactElement {
   const { month: monthId } = useLocalSearchParams<{ month: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const home = useQuery({ queryKey: ['local', 'home'], queryFn: () => localProgramService.home() });
+  const home = useQuery({ queryKey: localKeys.home, queryFn: () => localProgramService.home() });
   const month = home.data?.months.find((m) => m.id === monthId) ?? (home.data?.current_month?.id === monthId ? home.data.current_month : null);
-  const names = useQuery({ queryKey: ['local', 'place-name', month?.place_id], queryFn: () => localProgramService.placeNames([month!.place_id!]), enabled: Boolean(month?.place_id) });
+  const placeIds = [month?.place_id];
+  const names = useQuery({ queryKey: localKeys.placeNames(placeIds), queryFn: () => localProgramService.placeNames([month!.place_id!]), enabled: placeNamesQueryEnabled(placeIds) });
+  // #4430 L-3: an update opens with what was sent, and Mingla's request on top.
+  const resubmit = month?.status === 'changes_requested';
+  const draft = useQuery({ queryKey: localKeys.review(monthId), queryFn: () => localProgramService.myReview(monthId), enabled: Boolean(month) && reviewReadEnabled(month?.status) });
   const visitedDefault = persistedDayString(month?.visited_at);
   const [visitedOn, setVisitedOn] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
@@ -48,6 +54,18 @@ export default function LocalReviewScreen(): React.ReactElement {
   // #4430 L-1: the link is checked against the hosts the server accepts.
   const [linkTouched, setLinkTouched] = useState(false);
   const [linkRefused, setLinkRefused] = useState(false);
+
+  // Filled once, when the saved review first arrives: a later read must never overwrite what is being typed.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || !draft.data || !resubmit) return;
+    seeded.current = true;
+    const start = draftToFormState(draft.data);
+    setRating(start.rating); setTitle(start.title); setBody(start.body); setSpend(start.spend);
+    setVisitedOn(start.visitedOn); setLink(start.link); setClips(start.clips);
+    void checkClips(start.clips);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.data, resubmit]);
 
   const day = visitedOn ?? visitedDefault;
   const ready = clips.filter((c) => c.status === 'ready');
@@ -67,8 +85,8 @@ export default function LocalReviewScreen(): React.ReactElement {
       setClips((c) => [...c, { jobId: result.jobId, status: 'processing' }]);
     } catch (e) { if (!isPickerCancel(e)) setError(programErrorText(e)); } finally { setUploading(0); }
   };
-  const checkClips = async (): Promise<void> => {
-    const next = await Promise.all(clips.map(async (c) => c.status === 'ready' ? c : { ...c, status: (await creatorMediaStatus(c.jobId).catch(() => ({ status: c.status }))).status }));
+  const checkClips = async (list: Clip[] = clips): Promise<void> => {
+    const next = await Promise.all(list.map(async (c) => c.status === 'ready' ? c : { ...c, status: (await creatorMediaStatus(c.jobId).catch(() => ({ status: c.status }))).status }));
     setClips(next);
   };
 
@@ -78,7 +96,7 @@ export default function LocalReviewScreen(): React.ReactElement {
     setBusy(true); setError(null);
     try {
       await localProgramService.submitReview({ monthId: month.id, rating, title, body, visitedOn: day, spendBand: spend, mediaJobIds: ready.map((c) => c.jobId), socialPostUrl: link });
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
+      await queryClient.invalidateQueries({ queryKey: localKeys.all });
       router.back();
     } catch (e) {
       const refused = toProgramError(e);
@@ -88,11 +106,20 @@ export default function LocalReviewScreen(): React.ReactElement {
   };
 
   if (home.isLoading) return <ProgramScreen title="Your review"><ProgramLoading /></ProgramScreen>;
+  if (resubmit && draft.isLoading) return <ProgramScreen title="Your review"><ProgramLoading /></ProgramScreen>;
+  if (resubmit && draft.isError) return <ProgramScreen title="Your review"><ProgramLoadError text={programErrorText(draft.error)} onRetry={() => void draft.refetch()} /></ProgramScreen>;
   if (!month) return <ProgramScreen title="Your review"><ProgramEmpty title="This month isn’t open for a review" text="Go back to Mingla Local to see where you are." /></ProgramScreen>;
   const place = month.place_name ?? (month.place_id ? names.data?.[month.place_id] : null) ?? 'your place';
   const processing = clips.some((c) => c.status !== 'ready' && c.status !== 'failed');
 
-  return <ProgramScreen title={`Your review · ${place}`} footer={<ProgramButton label="Send for review" busy={busy} disabled={!valid} onPress={() => void submit()} />}>
+  const requests = (draft.data?.changes_requested ?? []).filter((r) => r.trim());
+  return <ProgramScreen title={`Your review · ${place}`} footer={<ProgramButton label={resubmit ? 'Send update' : 'Send for review'} busy={busy} disabled={!valid} onPress={() => void submit()} />}>
+    {resubmit ? <ProgramCard tone="warning">
+      <Text style={s.accentText}>Mingla asked for changes</Text>
+      <Text style={s.title}>{month.changes_due_at ? `Send your update by ${formatShortDate(month.changes_due_at)}` : 'Send your update'}</Text>
+      {requests.map((r, i) => <Text key={`${i}-${r}`} style={s.copy}>{`\u2022 ${r}`}</Text>)}
+      <Text style={s.small}>Everything you sent is filled in below. Change what Mingla asked for, then send it again. You can update it once.</Text>
+    </ProgramCard> : null}
     <ProgramCard tone="highlight">
       <Text style={s.title}>Your video format · 30–60 seconds, vertical</Text>
       <Text style={s.copy}>Use one finished video in this order so it works on the place card and in Mingla marketing.</Text>

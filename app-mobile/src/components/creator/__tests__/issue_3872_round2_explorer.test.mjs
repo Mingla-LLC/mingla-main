@@ -181,11 +181,13 @@ test("W2.2 ProgramScreen pads the top inset itself and the scroll view adds none
   assert.match(screen, /contentInsetAdjustmentBehavior="never"/);
 });
 
-test("keyboard rule: focused field scrolls above the keyboard and the footer hides while typing", () => {
+test("keyboard rule: focused field scrolls above the keyboard and the footer hides (stays mounted) while typing", () => {
+  // #4430 item 6: the library's native scroll view follows the field; the footer is hidden, never unmounted.
   const ui = read("src/components/programs/ProgramUi.tsx");
   const screen = ui.slice(ui.indexOf("export function ProgramScreen"), ui.indexOf("// ── Cards"));
-  assert.match(screen, /<KeyboardAwareScrollView\b/);
-  assert.match(screen, /const showFooter = Boolean\(footer\) && !typing/);
+  assert.match(screen, /<SmartScrollView\b/);
+  assert.match(screen, /typing && styles\.footerHidden/);
+  assert.doesNotMatch(screen, /showFooter/);
 });
 
 test("W5.1 program sheets stop below the top safe area and keep search fixed above the list", () => {

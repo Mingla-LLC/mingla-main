@@ -164,7 +164,8 @@ test('W3: "Visited on" is never in the future and never before the pick (or the 
 
 test('W1: a successful pick waits for the Local queries to be read again, so the screen moves on by itself', () => {
   const screen = fs.readFileSync(new URL('../../../app/local/index.tsx', import.meta.url), 'utf8');
-  assert.match(screen, /const refresh = \(\): Promise<void> => queryClient\.refetchQueries\(\{ queryKey: \['local'\] \}/);
+  // #4430 L-2: the refresh reads only the queries on screen (refreshLocal), so a restored orphan can't fail it.
+  assert.match(screen, /const refresh = \(\): Promise<void> => refreshLocal\(queryClient\)/);
   assert.match(screen, /await localProgramService\.pickPlace\(id, false\); await onPicked\(\);/);
   assert.match(screen, /maximumDate=\{bounds\.max\}/);
 });

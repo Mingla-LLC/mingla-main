@@ -48,6 +48,15 @@ export type PublicLocalPlaceReview = { local_month_id: string; local_user_id: st
 
 export { localCityRate } from '../utils/programFormat';
 
+/** #4430: what the Local sent for a month, read back so an update opens filled in. */
+export type LocalReviewDraft = {
+  rating: number; title: string; body: string; visited_on: string; spend_band: string | null;
+  media_job_ids: string[]; social_post_url: string; changes_requested: string[];
+};
+
+/** #4430 (rule 4): the one source for every `['local', …]` key (pure file, so suites can import it). */
+export { localKeys } from '../components/local/localKeys';
+
 export const localProgramService = {
   landing: () => programRead<LocalLanding>('local_landing'),
   apply: async (cityId: string, handles: Record<string, string>, sampleLinks: string[], why: string) => {
@@ -73,6 +82,17 @@ export const localProgramService = {
     const { data, error } = await supabase.from('place_pool').select('id,name').in('id', unique);
     if (error) throw toProgramError(error);
     return Object.fromEntries(((data ?? []) as { id: string; name: string }[]).map((row) => [row.id, row.name]));
+  },
+  /**
+   * The Local's own submitted review for a month (RLS `local_reviews_owner_read`), or null before one exists.
+   * Read straight from the table, like `placeNames`, so no second RPC owns the row.
+   */
+  myReview: async (monthId: string): Promise<LocalReviewDraft | null> => {
+    const { data, error } = await supabase.from('local_reviews')
+      .select('rating,title,body,visited_on,spend_band,media_job_ids,social_post_url,changes_requested')
+      .eq('local_month_id', monthId).maybeSingle();
+    if (error) throw toProgramError(error);
+    return (data as LocalReviewDraft | null) ?? null;
   },
   pickPlace: async (placeId: string, personalTie = false) => {
     const result = await programWrite('local_pick_place', { p_place_id: placeId, p_personal_tie: personalTie });
