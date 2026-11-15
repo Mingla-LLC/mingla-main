@@ -11,6 +11,7 @@ import { SETUP_STATUS_KEY, goToNextStep, stepTitle } from '../../../src/componen
 import { HomeCityField } from '../../../src/components/creator/HomeCityField';
 import { ProgramButton, ProgramField, ProgramLoading, ProgramNotice, ProgramScreen, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { Chip } from '../../../src/components/programs/ProgramPickers';
+import { nichesErrorVisible } from '../../../src/components/creator/profileErrors';
 
 export default function CreatorProfileStep(): React.ReactElement {
   const router = useRouter();
@@ -27,6 +28,9 @@ export default function CreatorProfileStep(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ProgramActionError | null>(null);
   const [touched, setTouched] = useState(false);
+  // #4445: the name's blur must not light up the chip error; that waits for a Save tap or a chip tap.
+  const [attempted, setAttempted] = useState(false);
+  const [nichesTouched, setNichesTouched] = useState(false);
 
   useEffect(() => {
     if (loaded || own.isLoading || status.isLoading) return;
@@ -44,7 +48,7 @@ export default function CreatorProfileStep(): React.ReactElement {
   const valid = name.trim().length >= 2 && name.trim().length <= 40 && bio.length <= 160 && niches.length > 0 && languages.length > 0;
 
   const save = async (): Promise<void> => {
-    setTouched(true);
+    setTouched(true); setAttempted(true);
     if (!valid) return;
     setBusy(true); setError(null);
     try {
@@ -67,7 +71,7 @@ export default function CreatorProfileStep(): React.ReactElement {
 
   return <ProgramScreen title={stepTitle('profile')} footer={<>
     {saveError ? <ProgramNotice tone="error" text={saveError} /> : null}
-    <ProgramButton label="Save and continue" busy={busy} disabled={!valid} onPress={() => void save()} />
+    <ProgramButton label="Save and continue" busy={busy} onPress={() => void save()} />
   </>}>
     <ProgramField label="Name hosts see" value={name} onChangeText={setName} onBlur={() => setTouched(true)} placeholder="e.g. Ada Films" maxLength={40}
       error={error?.field === 'display_name' ? error.message : nameError} autoCorrect={false} returnKeyType="next" />
@@ -75,8 +79,9 @@ export default function CreatorProfileStep(): React.ReactElement {
     <HomeCityField value={city} onChange={(next) => { setCity(next); setCityTouched(true); }} error={error?.field === 'home_city' || error?.code === 'city_required' ? error.message : null} />
     <View style={{ gap: 8 }}>
       <Text style={s.fieldLabel}>What you make · up to 5</Text>
-      <View style={s.wrap}>{CREATOR_NICHES.map((n) => <Chip key={n} label={nicheLabel(n)} selected={niches.includes(n)} onPress={() => setNiches((v) => toggle(v, n, 5))} />)}</View>
-      {touched && niches.length === 0 ? <Text style={s.fieldErrorText}>Pick at least one.</Text> : null}
+      <View style={s.wrap}>{CREATOR_NICHES.map((n) => <Chip key={n} label={nicheLabel(n)} selected={niches.includes(n)} onPress={() => { setNichesTouched(true); setNiches((v) => toggle(v, n, 5)); }} />)}</View>
+      {/* Reserved row: the error appearing never moves what is below. */}
+      <View style={{ minHeight: 18 }}>{nichesErrorVisible(attempted, nichesTouched, niches.length) ? <Text style={s.fieldErrorText} accessibilityLiveRegion="polite">Pick at least one.</Text> : null}</View>
     </View>
     <View style={{ gap: 8 }}>
       <Text style={s.fieldLabel}>Languages you create in</Text>

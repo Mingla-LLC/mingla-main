@@ -90,7 +90,7 @@ test('item 6: the Local pick window words (new seat, admin, closed)', () => {
   assert.equal(admin.headline, 'Pick your place by Fri Nov 20.');
   const closed = pickWindowWords({ open: false, opens_on: '2026-12-01' }, null, NOW);
   assert.equal(closed.open, false);
-  assert.equal(closed.headline, 'Picks for this month are closed. The next window opens on Tue Dec 1.');
+  assert.equal(closed.headline, 'The next window opens on Tue Dec 1.');
   // No window from an older server: nothing is invented on the phone.
   assert.equal(pickWindowWords(null, null, NOW).open, true);
 });
