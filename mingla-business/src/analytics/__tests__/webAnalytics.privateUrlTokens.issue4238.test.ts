@@ -253,6 +253,13 @@ test("P1-5: GA4 gets a sanitized page_location / page_referrer as the tag defaul
     page_referrer: "https://host.usemingla.com/checkout/e1/buyer",
   });
   expect(JSON.stringify(layer)).not.toMatch(/tok-secret|sess-1|cs_test_1/);
+
+  // A document without private keys keeps GA4's own defaults (#3176 config).
+  const clean = loadHarness("https://host.usemingla.com/e/wise/party?utm_source=meta");
+  await clean.wa.initWebAnalytics("/e/wise/party");
+  const cleanLayer = clean.dataLayer();
+  expect(cleanLayer.find((args) => args[0] === "config")?.[2]).toEqual({ send_page_view: false });
+  expect(cleanLayer.some((args) => args[0] === "set")).toBe(false);
 });
 
 test("P1-5: PostHog before_send strips the keys from every URL-bearing property, replay meta included", async () => {

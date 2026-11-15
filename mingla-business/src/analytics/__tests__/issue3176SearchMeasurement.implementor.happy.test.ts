@@ -167,10 +167,17 @@ describe("#3176 Host public search measurement", () => {
         before_send: expect.any(Function),
       }),
     );
+    // #4238 P1-5: this fixture's address carries `?token=`, a private key, so
+    // the config also carries the sanitized page_location (no token, no
+    // fragment) instead of leaving GA4 to read the raw address.
     expect(dataLayerCommands(accepted.win)).toContainEqual([
       "config",
       "G-TEST",
-      { send_page_view: false },
+      {
+        send_page_view: false,
+        page_location: "https://business.usemingla.com/private",
+        page_referrer: "https://search.example/results?q=private",
+      },
     ]);
     expect(
       accepted.scripts.filter((script) => script.src.includes("googletagmanager")),

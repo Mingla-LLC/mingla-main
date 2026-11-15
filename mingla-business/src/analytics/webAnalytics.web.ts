@@ -337,23 +337,29 @@ function sanitizedHref(): string {
 
 /**
  * #4238 P1-5: GA4 reads the address and referrer itself for every hit,
- * including automatic (enhanced measurement) events. The sanitized values are
- * set as the tag-wide defaults so every later hit carries them instead.
+ * including automatic (enhanced measurement) events. In a document whose
+ * address or referrer carried a buyer return page's private keys, sanitized
+ * values are set as the tag-wide defaults (and kept current on every route,
+ * so a later page is never reported under the stale one). Any other document
+ * is left to GA4's own defaults (#3176 config unchanged).
  */
 function gaPageFields(): Record<string, string> {
-  const fields: Record<string, string> = {};
-  const location = sanitizedHref();
-  if (location) fields.page_location = location;
   const referrer =
     typeof window.document?.referrer === "string" ? window.document.referrer : "";
+  if (!privateTokenDocument() && !hasPrivateUrlToken(referrer)) return {};
+  const fields: Record<string, string> = {};
+  const location = sanitizedHref().split("#", 1)[0] ?? "";
+  if (location) fields.page_location = location;
   if (referrer) fields.page_referrer = stripPrivateUrlParams(referrer);
   return fields;
 }
 
 function refreshGaPageFields(): void {
   if (!hasWindow() || typeof window.gtag !== "function") return;
+  const fields = gaPageFields();
+  if (Object.keys(fields).length === 0) return;
   try {
-    window.gtag("set", gaPageFields());
+    window.gtag("set", fields);
   } catch (err) {
     console.warn("[webAnalytics] GA4 page fields failed (non-fatal):", err);
   }
@@ -594,7 +600,7 @@ function loadGa4(measurementId: string): void {
   // #4238 P1-5: sanitized page_location / page_referrer for every hit,
   // automatic ones included (a buyer return page's address carries tokens).
   const pageFields = gaPageFields();
-  window.gtag("set", pageFields);
+  if (Object.keys(pageFields).length > 0) window.gtag("set", pageFields);
   window.gtag("config", measurementId, { send_page_view: false, ...pageFields });
 
   // Load the gtag script AFTER the consent default + config are queued on
