@@ -29,14 +29,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { Icon } from "../../../src/components/ui/Icon";
-import { Pill } from "../../../src/components/ui/Pill";
+import { Chip } from "../../../src/components/ui/Pill";
+import { Banner } from "../../../src/components/ui/Banner";
+import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { Table } from "../../../src/components/ui/Table";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { Spinner } from "../../../src/components/ui/Spinner";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import {
-  accent,
   color,
   radius,
   space,
+  type,
 } from "../../../src/constants/designSystem";
 import {
   useAuditLog,
@@ -58,6 +62,9 @@ interface DisplayRow {
   detail?: string;
   iconName: ReturnType<typeof resolveAuditActionLabel>["iconHint"];
   metadataSummary: string;
+  /** #4420 desktop table columns. */
+  relativeTime: string;
+  actorTarget: string;
 }
 
 const toDisplayRow = (row: AuditLogRow): DisplayRow => {
@@ -75,6 +82,8 @@ const toDisplayRow = (row: AuditLogRow): DisplayRow => {
     detail: label.detail,
     iconName: label.iconHint,
     metadataSummary: `${relativeTime} · ${actorSummary} · ${targetSummary}`,
+    relativeTime,
+    actorTarget: `${actorSummary} · ${targetSummary}`,
   };
 };
 
@@ -86,6 +95,7 @@ const FILTER_OPTIONS: readonly { id: AuditCategoryFilter; label: string }[] = [
 export default function AuditLogRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brandIdResolved =
@@ -131,7 +141,7 @@ export default function AuditLogRoute(): React.ReactElement {
       />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, isWideDesktop && styles.scrollContentDesktop]}
         showsVerticalScrollIndicator={false}
       >
         {!canView && !roleLoading ? (
@@ -144,18 +154,14 @@ export default function AuditLogRoute(): React.ReactElement {
           </View>
         ) : (
           <>
-            <View style={styles.banner}>
-              <Text style={styles.bannerText}>
-                You see audit events tied to your account on this brand.
-              </Text>
-            </View>
+            <Banner
+              tone="info"
+              title="You see audit events tied to your account on this brand."
+              style={styles.banner}
+            />
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRow}
-              accessibilityRole="tablist"
-            >
+            {/* #4420 — the filter chips wrap (no bleed past the screen). */}
+            <View style={styles.filterRow} accessibilityRole="tablist">
               {FILTER_OPTIONS.map((opt) => {
                 const isActive = opt.id === categoryFilter;
                 return (
@@ -167,13 +173,11 @@ export default function AuditLogRoute(): React.ReactElement {
                     accessibilityState={{ selected: isActive }}
                     style={styles.filterChipPressable}
                   >
-                    <Pill variant={isActive ? "accent" : "draft"}>
-                      {opt.label}
-                    </Pill>
+                    <Chip label={opt.label} selected={isActive} />
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </View>
 
             {isLoading ? (
               <View style={styles.spinnerHost}>
@@ -205,25 +209,50 @@ export default function AuditLogRoute(): React.ReactElement {
               </View>
             ) : (
               <>
-                {displayRows.map((r) => (
-                  <View key={r.id} style={styles.row}>
-                    <View style={styles.iconCol}>
-                      <Icon name={r.iconName} size={18} color={color.text1} />
-                    </View>
-                    <View style={styles.rowText}>
-                      <Text style={styles.rowTitle}>{r.title}</Text>
-                      {r.detail !== undefined ? (
-                        <Text style={styles.rowDetail}>{r.detail}</Text>
-                      ) : null}
-                      <Text
-                        style={styles.rowMeta}
-                        accessibilityLabel={r.metadataSummary}
-                      >
-                        {r.metadataSummary}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
+                {isWideDesktop ? (
+                  // #4420 — desktop (T2): Action / Detail / When.
+                  <Table<DisplayRow>
+                    rows={displayRows}
+                    rowKey={(r) => r.id}
+                    columns={[
+                      { key: "action", title: "Action", flex: 2, render: (r) => (
+                        <Text style={styles.rowTitle} numberOfLines={2}>{r.title}</Text>
+                      ) },
+                      { key: "detail", title: "Detail", flex: 3, render: (r) => (
+                        <View>
+                          {r.detail !== undefined ? (
+                            <Text style={styles.rowDetail}>{r.detail}</Text>
+                          ) : null}
+                          <Text style={styles.rowMeta} numberOfLines={1}>{r.actorTarget}</Text>
+                        </View>
+                      ) },
+                      { key: "when", title: "When", flex: 1, align: "right", render: (r) => r.relativeTime },
+                    ]}
+                  />
+                ) : (
+                  // #4420 — phone: one grouped pane, icon tiles, hairlines.
+                  <GlassCard variant="base" padding={0}>
+                    {displayRows.map((r, index) => (
+                      <View key={r.id} style={[styles.row, index > 0 && styles.rowDivider]}>
+                        <View style={styles.iconCol}>
+                          <Icon name={r.iconName} size={18} color={color.text1} />
+                        </View>
+                        <View style={styles.rowText}>
+                          <Text style={styles.rowTitle}>{r.title}</Text>
+                          {r.detail !== undefined ? (
+                            <Text style={styles.rowDetail}>{r.detail}</Text>
+                          ) : null}
+                          <Text
+                            style={styles.rowMeta}
+                            accessibilityLabel={r.metadataSummary}
+                          >
+                            {r.metadataSummary}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </GlassCard>
+                )}
                 {hasMore ? (
                   <View style={styles.loadMoreHost}>
                     <Button
@@ -250,26 +279,21 @@ const styles = StyleSheet.create({
     backgroundColor: color.canvas,
   },
   scrollContent: {
-    paddingHorizontal: space[6],
+    paddingHorizontal: space[4],
     paddingBottom: space[7],
+  },
+  scrollContentDesktop: {
+    paddingHorizontal: space[6],
   },
   banner: {
     marginTop: space[2],
     marginBottom: space[4],
-    padding: space[2] + 2,
-    borderRadius: radius.sm,
-    backgroundColor: color.infoTint,
-    borderWidth: 1,
-    borderColor: color.line,
-  },
-  bannerText: {
-    fontSize: 12,
-    color: color.text2,
-    lineHeight: 18,
   },
   filterRow: {
-    gap: space[1],
-    paddingBottom: space[2],
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space[2],
+    paddingBottom: space[4],
   },
   filterChipPressable: {
     marginRight: 0,
@@ -284,38 +308,39 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
-    gap: space[2],
-    paddingVertical: space[2] + 2,
+    gap: space[3],
+    paddingVertical: space[3],
     paddingHorizontal: space[4],
-    borderRadius: radius.sm,
-    backgroundColor: color.fill.inset,
-    borderWidth: 1,
-    borderColor: color.line,
-    marginBottom: space[1] + 2,
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
   },
   iconCol: {
-    width: 26,
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tile,
     alignItems: "center",
-    paddingTop: 2,
+    justifyContent: "center",
   },
   rowText: {
     flex: 1,
     minWidth: 0,
   },
   rowTitle: {
-    fontSize: 14,
+    ...type.row,
     fontWeight: "600",
     color: color.text1,
     marginBottom: 2,
   },
   rowDetail: {
-    fontSize: 12,
+    ...type.small,
     color: color.text2,
-    lineHeight: 16,
     marginBottom: 2,
   },
   rowMeta: {
-    fontSize: 11,
+    ...type.caption,
     color: color.text3,
   },
   loadMoreHost: {

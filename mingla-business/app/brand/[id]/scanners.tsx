@@ -23,8 +23,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   color,
-  radius,
   space,
+  type,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
@@ -43,6 +43,9 @@ import { Sheet } from "../../../src/components/ui/Sheet";
 import { Toast } from "../../../src/components/ui/Toast";
 import { Avatar } from "../../../src/components/ui/Avatar";
 import { Button } from "../../../src/components/ui/Button";
+import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { Table } from "../../../src/components/ui/Table";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useBrand } from "../../../src/hooks/useBrands";
@@ -76,6 +79,7 @@ const invitationStatusPill = (
 
 export default function BrandScannersListRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string | string[] }>();
@@ -208,23 +212,40 @@ export default function BrandScannersListRoute(): React.ReactElement {
         { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
+      {/* #4420 — back chevron + title; desktop names the invite action. */}
       <View style={styles.chromeRow}>
         <IconChrome
-          icon="close"
-          size={36}
+          icon="chevL"
           onPress={handleBack}
           accessibilityLabel="Back"
         />
-        <Text style={styles.chromeTitle}>Brand scanners</Text>
+        <Text
+          style={[styles.chromeTitle, isWideDesktop && styles.chromeTitleDesktop]}
+          numberOfLines={1}
+          accessibilityRole="header"
+        >
+          Brand scanners
+        </Text>
         <View style={styles.chromeRight}>
           {canManageScanners ? (
-            <IconChrome
-              icon="plus"
-              size={36}
-              onPress={() => setInviteSheetOpen(true)}
-              accessibilityLabel="Invite brand scanner"
-            />
-          ) : null}
+            isWideDesktop ? (
+              <Button
+                label="Invite brand scanner"
+                variant="primary"
+                size="sm"
+                onPress={() => setInviteSheetOpen(true)}
+                accessibilityLabel="Invite brand scanner"
+              />
+            ) : (
+              <IconChrome
+                icon="plus"
+                onPress={() => setInviteSheetOpen(true)}
+                accessibilityLabel="Invite brand scanner"
+              />
+            )
+          ) : (
+            <View style={styles.chromeRightSlot} />
+          )}
         </View>
       </View>
 
@@ -232,6 +253,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
+          isWideDesktop && styles.scrollContentDesktop,
           { paddingBottom: insets.bottom + 120 },
         ]}
         showsVerticalScrollIndicator={false}
@@ -269,35 +291,85 @@ export default function BrandScannersListRoute(): React.ReactElement {
             />
           </View>
         ) : (
-          <View style={styles.list}>
-            {invitations.map((inv) => {
-              const displayName = inv.invitee_name ?? inv.email;
-              const pill = invitationStatusPill(inv.status);
-              return (
-                <Pressable
-                  key={inv.id}
-                  onPress={() => setActionSheetForId(inv.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Brand scanner ${displayName}, ${pill.label}`}
-                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                >
-                  <Avatar name={displayName} size="row" />
-                  <View style={styles.rowBody}>
-                    <Text style={styles.rowName} numberOfLines={1}>
-                      {displayName}
-                    </Text>
-                    <Text style={styles.rowSubline} numberOfLines={1}>
-                      {inv.email}
-                    </Text>
+          isWideDesktop ? (
+            // #4420 — desktop (T2): Scanner / Status / Scope.
+            <Table<ScannerInvitationRow>
+              rows={invitations}
+              rowKey={(inv) => inv.id}
+              onRowPress={(inv) => setActionSheetForId(inv.id)}
+              columns={[
+                {
+                  key: "scanner",
+                  title: "Scanner",
+                  flex: 3,
+                  render: (inv) => (
+                    <View style={styles.tableMember}>
+                      <Avatar name={inv.invitee_name ?? inv.email} size="row" />
+                      <View style={styles.rowBody}>
+                        <Text style={styles.rowName} numberOfLines={1}>
+                          {inv.invitee_name ?? inv.email}
+                        </Text>
+                        <Text style={styles.rowSubline} numberOfLines={1}>
+                          {inv.email}
+                        </Text>
+                      </View>
+                    </View>
+                  ),
+                },
+                {
+                  key: "status",
+                  title: "Status",
+                  flex: 2,
+                  render: (inv) => {
+                    const pill = invitationStatusPill(inv.status);
+                    return <Pill variant={pill.variant}>{pill.label}</Pill>;
+                  },
+                },
+                {
+                  key: "scope",
+                  title: "Scope",
+                  flex: 1,
+                  align: "right",
+                  render: () => <Pill variant="draft">Brand-wide</Pill>,
+                },
+              ]}
+            />
+          ) : (
+            // #4420 — phone: one grouped pane, status and scope on the right.
+            <GlassCard variant="base" padding={0}>
+              {invitations.map((inv, index) => {
+                const displayName = inv.invitee_name ?? inv.email;
+                const pill = invitationStatusPill(inv.status);
+                return (
+                  <Pressable
+                    key={inv.id}
+                    onPress={() => setActionSheetForId(inv.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Brand scanner ${displayName}, ${pill.label}`}
+                    style={({ pressed }) => [
+                      styles.row,
+                      index > 0 && styles.rowDivider,
+                      pressed && styles.rowPressed,
+                    ]}
+                  >
+                    <Avatar name={displayName} size="row" />
+                    <View style={styles.rowBody}>
+                      <Text style={styles.rowName} numberOfLines={2}>
+                        {displayName}
+                      </Text>
+                      <Text style={styles.rowSubline} numberOfLines={1}>
+                        {inv.email}
+                      </Text>
+                    </View>
                     <View style={styles.rowPills}>
                       <Pill variant={pill.variant}>{pill.label}</Pill>
-                      <Pill variant="info">BRAND-WIDE</Pill>
+                      <Pill variant="draft">Brand-wide</Pill>
                     </View>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+                  </Pressable>
+                );
+              })}
+            </GlassCard>
+          )
         )}
       </ScrollView>
 
@@ -333,7 +405,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
               >
                 {invitationStatusPill(activeActionInvitation.status).label}
               </Pill>
-              <Pill variant="info">BRAND-WIDE</Pill>
+              <Pill variant="draft">Brand-wide</Pill>
             </View>
             <View style={styles.actionSpacer} />
             {activeActionInvitation.status === "pending" ? (
@@ -393,31 +465,30 @@ const styles = StyleSheet.create({
   },
   chromeTitle: {
     flex: 1,
-    fontSize: 17,
-    fontWeight: "600",
+    minWidth: 0,
+    ...type.h2,
     color: color.text1,
-    letterSpacing: -0.2,
     textAlign: "center",
   },
+  chromeTitleDesktop: {
+    ...type.h1,
+    textAlign: "left",
+  },
   chromeRight: { flexDirection: "row", gap: space[1] },
-  chromeRightSlot: { width: 36 },
+  chromeRightSlot: { width: 44 },
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: space[4],
     paddingTop: space[2],
   },
+  scrollContentDesktop: { paddingHorizontal: space[6] },
   lede: {
-    padding: space[2] + 2,
-    borderRadius: radius.sm,
-    backgroundColor: color.fill.inset,
-    borderWidth: 1,
-    borderColor: color.line,
     marginBottom: space[4],
+    paddingHorizontal: space[1],
   },
   ledeText: {
-    fontSize: 13,
+    ...type.small,
     color: color.text2,
-    lineHeight: 19,
   },
   emptyHost: { paddingTop: space[7] },
   emptyLoadingText: {
@@ -425,31 +496,28 @@ const styles = StyleSheet.create({
     color: color.text2,
     textAlign: "center",
   },
-  list: { gap: space[2] },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: space[2] + 2,
-    padding: space[4] - 2,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: color.fill.inset,
+    gap: space[3],
+    minHeight: 64,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
   },
-  rowPressed: { backgroundColor: color.fill.inset },
+  rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  rowPressed: { backgroundColor: color.fill.rowHover },
   rowBody: { flex: 1, minWidth: 0 },
-  rowName: { fontSize: 14, fontWeight: "600", color: color.text1 },
-  rowSubline: {
-    fontSize: 12,
-    color: color.text3,
-    marginTop: 2,
-  },
+  rowName: { ...type.row, fontWeight: "600", color: color.text1 },
+  rowSubline: { ...type.caption, color: color.text3, marginTop: 2 },
   rowPills: {
     flexDirection: "row",
-    gap: 6,
-    marginTop: 6,
     flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: space[1] + 2,
+    flexShrink: 0,
+    maxWidth: "50%",
   },
+  tableMember: { flexDirection: "row", alignItems: "center", gap: space[3], alignSelf: "stretch" },
   actionSheet: {
     paddingHorizontal: space[6],
     paddingTop: space[4],
