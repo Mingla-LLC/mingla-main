@@ -6,7 +6,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { localCityRate, localKeys, localProgramService, type LocalHome, type LocalLanding, type LocalMonth } from '../../src/services/localProgramService';
 import { payoutService } from '../../src/services/payoutService';
 import { programErrorText } from '../../src/services/programResult';
-import { formatMoney, formatMonth, formatShortDate, pickWindowWords, toDayString, visitedOnBounds, visitedOnError } from '../../src/utils/programFormat';
+import { isMonthAlreadyPicked } from '../../src/components/local/localPick';
+import { formatInZone, formatMoney, formatMonth, formatShortDate, pickWindowWords, toDayString, visitedOnBounds, visitedOnError } from '../../src/utils/programFormat';
 import { changesCardWords, reviewReadEnabled } from '../../src/components/local/localReviewDraft';
 import { placeNamesQueryEnabled, refreshLocal } from '../../src/components/local/localRefresh';
 import { APPLICATION_COPY, LOCAL_STEPS, localMoneyWord, localMonthWords, localStepIndex } from '../../src/components/local/localWords';
@@ -261,7 +262,7 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
 
 /** #4430 L-3: what Mingla asked for, by when, and the way back into the review. */
 function ChangesCard({ month, requests, now, onUpdate }: { month: LocalMonth; requests: string[] | undefined; now: Date; onUpdate: () => void }): React.ReactElement {
-  const words = changesCardWords(month, requests, now);
+  const words = changesCardWords(month, requests, now, (value, at) => formatInZone(value, null, at));
   return <ProgramCard tone="warning">
     <Text style={s.title}>Mingla asked for changes</Text>
     <Text style={s.copy}>{words.line}</Text>
@@ -279,13 +280,14 @@ function PickPlace({ city, onPicked }: { city: string; onPicked: () => void | Pr
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { const t = setTimeout(() => setTerm(query), 350); return () => clearTimeout(t); }, [query]);
   const places = useQuery({ queryKey: localKeys.places(term), queryFn: () => localProgramService.places(term) });
+  const anyBusy = busyId !== null;
   const pick = (id: string, name: string): void => {
     if (tie) { setError('You can’t review a place where you know the owners or staff. Pick another place.'); return; }
     Alert.alert(`Pick ${name}?`, 'This is your place for the month. Visit as a normal customer.', [
       { text: 'Not yet', style: 'cancel' },
       { text: 'Pick it', onPress: () => void (async () => {
         setBusyId(id); setError(null);
-        try { await localProgramService.pickPlace(id, false); await onPicked(); } catch (e) { setError(programErrorText(e)); } finally { setBusyId(null); }
+        try { await localProgramService.pickPlace(id, false); await onPicked(); } catch (e) { if (isMonthAlreadyPicked(e)) await onPicked(); else setError(programErrorText(e)); } finally { setBusyId(null); }
       })() },
     ]);
   };
@@ -297,7 +299,7 @@ function PickPlace({ city, onPicked }: { city: string; onPicked: () => void | Pr
       : <ProgramCard>{list.map((p, i) => <ProgramRow key={p.id} title={p.name}
         subtitle={p.eligible ? [p.primary_type, p.address].filter(Boolean).join(' · ') || null : p.reason ?? 'Not eligible this month'}
         subtitleTone={p.eligible ? 'muted' : 'danger'} disabled={!p.eligible}
-        right={p.eligible ? <ProgramButton label="Pick" variant="secondary" busy={busyId === p.id} onPress={() => pick(p.id, p.name)} style={styles.pick} /> : <ProgramPill label="Not eligible" />}
+        right={p.eligible ? <ProgramButton label="Pick" variant="secondary" busy={busyId === p.id} disabled={anyBusy} onPress={() => pick(p.id, p.name)} style={styles.pick} /> : <ProgramPill label="Not eligible" />}
         chevron={false} isLast={i === list.length - 1} />)}</ProgramCard>}
     <ToggleRow value={tie} onToggle={() => { setTie((v) => !v); setError(null); }} label="I know the owners or staff personally" hint="Then pick a different place. Locals review only places they have no ties to." />
     {error ? <ProgramNotice tone="error" text={error} /> : null}
