@@ -766,6 +766,7 @@ async function bootAnalytics(): Promise<void> {
         sampleRate: SESSION_REPLAY_SAMPLE_RATE,
       },
     });
+    scrubPostHogInitialPersonInfo(posthog);
     if (!isAnalyticsOn()) {
       posthogClient = posthog;
       posthogOptedOut = false;
@@ -780,6 +781,29 @@ async function bootAnalytics(): Promise<void> {
     posthogOptedOut = false;
   } catch (err) {
     console.warn("[webAnalytics] PostHog init failed (non-fatal):", err);
+  }
+}
+
+/**
+ * #4238 P1-5: PostHog stores the first page's address once
+ * (`$initial_person_info`) and sends it as person properties with every flags
+ * request, which never passes through before_send. Rewrite the stored copy
+ * without a buyer return page's private keys, right after init (before the
+ * first flags request) and for a copy persisted on an earlier visit.
+ */
+const POSTHOG_INITIAL_PERSON_INFO = "$initial_person_info";
+
+function scrubPostHogInitialPersonInfo(posthog: PostHog): void {
+  try {
+    const persistence = posthog.persistence;
+    const info = persistence?.props?.[POSTHOG_INITIAL_PERSON_INFO];
+    if (persistence === undefined || info === null || typeof info !== "object") return;
+    const record = info as Record<string, unknown>;
+    const next = stripPrivateUrlProperties(record);
+    if (next.u === record.u && next.r === record.r) return;
+    persistence.register({ [POSTHOG_INITIAL_PERSON_INFO]: next });
+  } catch (err) {
+    console.warn("[webAnalytics] PostHog initial URL scrub failed (non-fatal):", err);
   }
 }
 

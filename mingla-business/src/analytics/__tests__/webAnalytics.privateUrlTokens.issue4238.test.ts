@@ -123,7 +123,17 @@ function loadHarness(href: string, referrer = "") {
     __esModule: true,
     default: { expoConfig: { extra: EXTRA } },
   }));
+  const persistenceProps: Record<string, unknown> = {
+    // posthog.init stores the first page's address once (register_once).
+    $initial_person_info: { r: "$direct", u: href },
+  };
   const posthog = {
+    persistence: {
+      props: persistenceProps,
+      register: jest.fn((props: Record<string, unknown>) => {
+        Object.assign(persistenceProps, props);
+      }),
+    },
     init: jest.fn(),
     opt_in_capturing: jest.fn(),
     opt_out_capturing: jest.fn(),
@@ -297,6 +307,21 @@ test("P1-5: PostHog before_send strips the keys from every URL-bearing property,
   expect((pageview?.properties as Record<string, unknown>).$current_url).toBe(
     "https://host.usemingla.com",
   );
+});
+
+test("P1-5: PostHog's stored first-page address (sent with every flags request) loses the keys right after init", async () => {
+  const h = loadHarness(
+    "https://host.usemingla.com/checkout/e1/confirm?cs=cs_test_1&csi=sess-1&bst=tok-secret&utm_source=meta",
+  );
+  await h.wa.initWebAnalytics("/checkout/e1/confirm");
+  expect(h.posthog.persistence.props.$initial_person_info).toEqual({
+    r: "$direct",
+    u: "https://host.usemingla.com/checkout/e1/confirm?utm_source=meta",
+  });
+  // A clean first page is left alone.
+  const clean = loadHarness("https://host.usemingla.com/e/wise/party?utm_source=meta");
+  await clean.wa.initWebAnalytics("/e/wise/party");
+  expect(clean.posthog.persistence.register).not.toHaveBeenCalled();
 });
 
 test("P1-5: stripPrivateUrlParams removes only the private keys", () => {
