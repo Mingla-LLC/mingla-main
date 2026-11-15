@@ -30,6 +30,16 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     band: "command",
     summary: "Your venue listing, AI scores, gallery, and guest feedback.",
   },
+  // #4420 (round-3 item 19) — Mingla Local reviews, their own module. Not in
+  // `deriveVenueModules` (whose branches stay pinned): the shell adds it right
+  // after Overview only when the page has a reviews panel to show (a verified
+  // venue with a place), so the module is never an empty page.
+  reviews: {
+    id: "reviews",
+    label: "Reviews",
+    band: "command",
+    summary: "Read and reply to Mingla Local reviews of this place.",
+  },
   tables: {
     id: "tables",
     label: "Tables",
@@ -128,6 +138,25 @@ export const VENUE_BOOKING_MODULES: readonly VenueModule[] = [
  *
  * Pure; unit-tested (mirrors `deriveHubVisibleTabs`).
  */
+/**
+ * #4420 (round-3 item 19) — add the Reviews module right after Overview when
+ * the page has a reviews panel. Overview must already be visible (scoped venue
+ * staff never had the Overview reviews panel, so they do not get the module).
+ */
+export function withVenueReviewsModule(
+  modules: readonly VenueModule[],
+  hasReviews: boolean,
+): readonly VenueModule[] {
+  if (!hasReviews || modules.includes("reviews")) return modules;
+  const overviewIndex = modules.indexOf("overview");
+  if (overviewIndex < 0) return modules;
+  return [
+    ...modules.slice(0, overviewIndex + 1),
+    "reviews",
+    ...modules.slice(overviewIndex + 1),
+  ];
+}
+
 export function deriveVenueModules(
   reservationsEnabled: boolean,
 ): readonly VenueModule[] {

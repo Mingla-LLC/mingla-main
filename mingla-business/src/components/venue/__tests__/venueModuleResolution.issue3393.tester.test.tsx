@@ -43,10 +43,13 @@ const { useVenueSuiteStore } = require("../../../store/venueSuiteStore") as type
 const { parseVenueModuleParam, VENUE_MODULES } = require("../venueModules") as typeof import("../venueModules");
 const Renderer = require("react-test-renderer");
 const mounted: Array<{ unmount: () => void }> = [];
-const element = (module: VenueModule) => <VenueSuiteShell brandId="brand-3393" venueId="venue-3393" initialModule={module} />;
-async function mount(module: VenueModule) {
+// [TEST-MOD-APPROVED #4420] round-3 item 19: Reviews is its own module, shown only when the page
+// passes its reviews panel (a verified venue with a place). The panel is a leaf host here.
+const reviewsLeaf = React.createElement("reviews", { venueId: "venue-3393" });
+const element = (module: VenueModule, withReviews = true) => <VenueSuiteShell brandId="brand-3393" venueId="venue-3393" initialModule={module} reviewsPanel={withReviews ? reviewsLeaf : null} />;
+async function mount(module: VenueModule, withReviews = true) {
   let tree: any;
-  await Renderer.act(async () => { tree = Renderer.create(element(module)); });
+  await Renderer.act(async () => { tree = Renderer.create(element(module, withReviews)); });
   mounted.push(tree); return tree;
 }
 beforeEach(() => { mockSettings = { data: undefined, isError: false }; useVenueSuiteStore.getState().deactivate(); });
@@ -56,6 +59,18 @@ test.each(Object.keys(VENUE_MODULES) as VenueModule[])("%s accepted link renders
   const tree = await mount(parseVenueModuleParam(module)!);
   expect(useVenueSuiteStore.getState().activeModule).toBe(module);
   expect(tree.root.findByType(module).props.venueId).toBe("venue-3393");
+});
+test("a reviews link to a venue with no reviews panel lands on Overview, never an empty module", async () => {
+  mockSettings = { data: { reservationsEnabled: true }, isError: false };
+  const tree = await mount("reviews", false);
+  expect(useVenueSuiteStore.getState().activeModule).toBe("overview");
+  expect(useVenueSuiteStore.getState().visibleModules).not.toContain("reviews");
+  expect(tree.root.findByType("overview")).toBeDefined();
+});
+test("Reviews sits right after Overview when the page has a reviews panel", async () => {
+  mockSettings = { data: { reservationsEnabled: false }, isError: false };
+  await mount("overview");
+  expect(useVenueSuiteStore.getState().visibleModules.slice(0, 2)).toEqual(["overview", "reviews"]);
 });
 test.each(["__proto__", "constructor", "TABLES", "", "menu?redirect=elsewhere"])("unknown link %s renders Overview", async raw => {
   const tree = await mount(parseVenueModuleParam(raw) ?? "overview");

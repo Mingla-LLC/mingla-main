@@ -100,6 +100,7 @@ import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueModules,
   shouldLeaveBookingModule,
+  withVenueReviewsModule,
 } from "./venueModules";
 
 export { deriveVenueRailModules } from "./venueRail";
@@ -155,6 +156,12 @@ export interface VenueSuiteShellProps {
    * (the page's Local reviews panel). Never pinned above the scroll.
    */
   overviewHeader?: React.ReactNode;
+  /**
+   * #4420 (round-3 item 19) — the page's Mingla Local reviews panel, shown as
+   * its own Reviews module (right after Overview). `null` (no verified place)
+   * hides the module.
+   */
+  reviewsPanel?: React.ReactNode;
 }
 
 export function VenueSuiteShell({
@@ -163,6 +170,7 @@ export function VenueSuiteShell({
   focus,
   initialModule = "overview",
   overviewHeader = null,
+  reviewsPanel = null,
 }: VenueSuiteShellProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -186,15 +194,20 @@ export function VenueSuiteShell({
   const venueAccessQuery = useMyVenueAccess(venueId);
   const venueAccess = venueAccessQuery.data ?? PENDING_VENUE_ACCESS;
 
+  const hasReviews = reviewsPanel !== null && reviewsPanel !== undefined;
   const visibleModules = useMemo(
-    () => filterVenueModulesForCapabilities(
-      deriveVenueModules(
-        venueAccess.scoped && !settingsResolved ? true : reservationsEnabled,
+    () => withVenueReviewsModule(
+      filterVenueModulesForCapabilities(
+        deriveVenueModules(
+          venueAccess.scoped && !settingsResolved ? true : reservationsEnabled,
+        ),
+        venueAccess.scoped,
+        venueAccess.capabilities,
       ),
-      venueAccess.scoped,
-      venueAccess.capabilities,
+      hasReviews,
     ),
     [
+      hasReviews,
       reservationsEnabled,
       settingsResolved,
       venueAccess.scoped,
@@ -437,6 +450,12 @@ export function VenueSuiteShell({
     }
   }, [activeModule, reservationsEnabled, settingsResolved, selectModule]);
 
+  // #4420 — a `?module=reviews` link to a venue with no reviews panel (not
+  // verified, or no place) lands on Overview instead of an empty module.
+  useEffect(() => {
+    if (activeModule === "reviews" && !hasReviews) setActiveModule("overview");
+  }, [activeModule, hasReviews]);
+
   useEffect(() => {
     if (
       !venueAccess.scoped ||
@@ -505,7 +524,12 @@ export function VenueSuiteShell({
       const header = (
         <>
           {!reservationsEnabled ? (
-            <GlassCard variant="base" padding={space[4]} style={styles.invitationCard}>
+            <GlassCard
+              variant="base"
+              padding={space[4]}
+              style={styles.invitationCard}
+              contentStyle={styles.invitationStack}
+            >
               <View style={styles.invitationCopy}>
                 <Text style={styles.invitationTitle}>
                   Take table reservations on Mingla
@@ -515,6 +539,8 @@ export function VenueSuiteShell({
                   place.
                 </Text>
               </View>
+              {/* #4420 (round-3 items 12 and 14) — a compact action sized to
+                  its label, not a full-width bar under the copy. */}
               <Button
                 label="Turn on Reservations"
                 onPress={handleTurnOnReservations}
@@ -536,6 +562,12 @@ export function VenueSuiteShell({
           <VenueIntelligenceModule brandId={brandId} venueId={venueId} header={header} />
         </View>
       );
+    }
+    // #4420 (round-3 item 19) — Mingla Local reviews, their own module. The
+    // panel renders inside the shell's ScrollView
+    // (moduleSelfScrolls("reviews") === false), like Menu.
+    if (activeModule === "reviews") {
+      return <View style={styles.reviewsWrap}>{reviewsPanel}</View>;
     }
     if (activeModule === "settings") {
       return (
@@ -722,6 +754,10 @@ const styles = StyleSheet.create({
   phoneScroll: {
     // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.
   },
+  reviewsWrap: {
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+  },
   // overview + invitation
   overviewWrap: {
     flex: 1,
@@ -729,9 +765,13 @@ const styles = StyleSheet.create({
   invitationCard: {
     marginBottom: space[4],
   },
+  invitationStack: {
+    alignItems: "flex-start",
+    gap: space[3],
+  },
   invitationCopy: {
+    alignSelf: "stretch",
     gap: space[1],
-    marginBottom: space[3],
   },
   invitationTitle: {
     ...type.row,

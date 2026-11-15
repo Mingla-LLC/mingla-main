@@ -220,11 +220,13 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
   describe("app/trip/[id]/index.tsx — detail dashboard", () => {
     const SRC = readApp("trip/[id]/index.tsx");
 
-    it("SC-12: hero section with cover + gradient overlay + 24pt title + subline", () => {
-      expect(SRC).toMatch(/<EventCoverMedia[\s\S]*height=\{?200/);
-      // [TEST-MOD-APPROVED #4420] the hero veil reads the ambient scrim token.
-      expect(SRC).toMatch(/heroOverlay:[^}]*backgroundColor:\s*scrim\.ambient\.colors\[0\]/s);
-      expect(SRC).toMatch(/heroTitle:[^}]*fontSize:\s*24[^}]*fontWeight:\s*"700"/s);
+    it("SC-12: compact identity card with cover + status + title + subline", () => {
+      // [TEST-MOD-APPROVED #4420] TILE_MATRIX P10: the 200pt photo hero became the
+      // compact identity card shared with the event home (OfferingHomeHeader).
+      expect(SRC).toMatch(/<OfferingHomeHeader[\s\S]*mediaUrl=\{trip\.coverMediaUrl\}/);
+      expect(SRC).toMatch(/<OfferingHomeHeader[\s\S]*title=\{trip\.title\}/);
+      expect(SRC).toMatch(/sublineTestID="orch-0950-trip-dashboard-hero-subline"/);
+      expect(SRC).toMatch(/<TripDetailHeroStatusPill status=\{tripLifecycleStatus\}/);
     });
 
     it("SC-13: action grid is config-driven with the inline primary Edit tile (ORCH-0867 fold)", () => {
@@ -236,9 +238,11 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       // :462-465). Assert the config grid + the inline primary Edit tile.
       expect(SRC).toMatch(/buildOfferingDashboardTiles\("trip"\)/);
       expect(SRC).toMatch(/dashboardTiles\.map\(/);
-      // [TEST-MOD-APPROVED #4420] round-3 item 10: one "Edit" label in every status.
-      expect(SRC).toMatch(/<ActionTile[\s\S]*?label="Edit"/);
-      expect(SRC).toMatch(/<ActionTile[\s\S]*?primary/);
+      // [TEST-MOD-APPROVED #4420] round-3 item 10 / TILE_MATRIX P10: one "Edit" tile in
+      // every status, first on the shared tile page (no orange lead tile any more).
+      expect(SRC).toMatch(/key:\s*"edit",[\s\S]*?label:\s*"Edit"/);
+      expect(SRC).toMatch(/<OfferingTilePage[\s\S]*?core=\{tripCoreTiles\}/);
+      expect(SRC).toMatch(/const tripCoreTiles[^=]*=\s*\[\s*editTile,/);
     });
 
     it("SC-14: header right slot has share + moreH IconChromes; inline Edit Pressable removed", () => {

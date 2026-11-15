@@ -30,10 +30,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  radius as radiusTokens,
   color,
   space,
-  scrim,
+  type,
 } from "../../../src/constants/designSystem";
 import {
   useLiveEventStore,
@@ -48,7 +47,10 @@ import { formatRsvpGoingLabel } from "../../../src/utils/rsvpHubMetrics";
 
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
-import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
+import {
+  OfferingHomeHeader,
+  useOfferingPromote,
+} from "../../../src/components/offering/OfferingHome";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal, offeringShareability } from "../../../src/components/ui/ShareModal";
@@ -185,6 +187,12 @@ export default function RsvpDetailScreen(): React.ReactElement {
     setLifecycleDialog(null);
     setToast({ visible: true, message });
   }, []);
+  // #4420 (TILE_MATRIX P10) — the Promote tile, gated like the event home's.
+  const promote = useOfferingPromote(
+    brand?.id ?? null,
+    resolvedLiveEvent?.serverEventId ?? resolvedLiveEvent?.id ?? null,
+    currentBrandRole.rank,
+  );
   const canManageLifecycle = canPerformAction(
     currentBrandRole.rank,
     "EDIT_EVENT",
@@ -403,36 +411,26 @@ export default function RsvpDetailScreen(): React.ReactElement {
             testID="rsvp-published-banner"
           />
         ) : null}
-        {/* Hero — cover band + status pill + name + date+venue */}
-        <View style={styles.hero}>
-          <View style={styles.heroCoverWrap}>
-            <EventCoverMedia
-              hue={event.coverHue}
-              mediaUrl={event.coverMediaUrl}
-              mediaType={event.coverMediaType}
-              radius={24}
-              label=""
-              height={200}
+        {/* #4420 (TILE_MATRIX P10) — the compact identity card (thumb, status,
+            name, date + venue) that replaced the 200pt photo hero, the same
+            as the event home. */}
+        <OfferingHomeHeader
+          hue={event.coverHue}
+          mediaUrl={event.coverMediaUrl}
+          mediaType={event.coverMediaType}
+          pill={
+            <EventDetailHeroStatusPill
+              status={status}
+              cancelled={event.status === "cancelled"}
             />
-          </View>
-          <View style={styles.heroOverlay} pointerEvents="none">
-            <View style={styles.heroPillRow}>
-              <EventDetailHeroStatusPill
-                status={status}
-                cancelled={event.status === "cancelled"}
-              />
-            </View>
-            <Text style={styles.heroTitle} numberOfLines={2}>
-              {event.name.trim().length > 0 ? event.name : "Untitled RSVP"}
-            </Text>
-            <Text style={styles.heroSubline} numberOfLines={1}>
-              {dateLine}
-              {event.venueName !== null && event.venueName.length > 0
-                ? ` · ${event.venueName}`
-                : ""}
-            </Text>
-          </View>
-        </View>
+          }
+          title={event.name.trim().length > 0 ? event.name : "Untitled RSVP"}
+          subline={`${dateLine}${
+            event.venueName !== null && event.venueName.length > 0
+              ? ` · ${event.venueName}`
+              : ""
+          }`}
+        />
 
         {/* Headcount card — replaces the ticketed revenue card */}
         <GlassCard variant="base" radius="md" padding={space[4]}>
@@ -448,64 +446,106 @@ export default function RsvpDetailScreen(): React.ReactElement {
           </Text>
         </GlassCard>
 
-        {/* Founder-locked RSVP door order: Scan guests → Guests → Scanners. */}
-        <View style={styles.actionGrid}>
-          <ActionTile
-            icon="qr"
-            label="Scan guests"
-            primary
-            onPress={handleScanGuests}
-          />
-          <ActionTile
-            icon="users"
-            label="Guests"
-            sub={guestsSub}
-            onPress={handleGuests}
-          />
-          <ActionTile
-            icon="users"
-            label="Scanners"
-            onPress={handleScanners}
-          />
-          {canShowListingInsights ? (
+        {/* #4420 (TILE_MATRIX P10) — the shared tile page, in rows of three
+            equal cells. Founder-locked RSVP door order inside it: Scan guests
+            → Guests → Scanners. RSVPs are free: no Orders or Reconcile. */}
+        <View style={styles.tileRows}>
+          <View style={styles.tileRow}>
+            <ActionTile fill icon="edit" label="Edit" onPress={handleEdit} />
             <ActionTile
-              icon="chart"
-              label="Insights"
-              sub="Visits, actions and bookings"
-              accessibilityLabel={`Open Insights for ${event.name}`}
-              onPress={() =>
-                router.push(`/insights/${event.id}?entry=detail_action` as never)
-              }
+              fill
+              icon="qr"
+              label="Scan guests"
+              onPress={handleScanGuests}
             />
-          ) : null}
-          <ActionTile icon="edit" label="Edit" onPress={handleEdit} />
-          {/* ORCH-1150 (D-8) — Group chat + Blasts are comms (not money):
-              re-added after D-4 dropped them. They reuse the event-scoped
-              comms screens (see handleGroupChat / handleBlasts). */}
-          <ActionTile
-            icon="send"
-            label="Blasts"
-            sub="Message going guests"
-            onPress={handleBlasts}
-          />
-          <ActionTile
-            icon="chat"
-            label="Group chat"
-            sub="Read + reply + moderate"
-            onPress={handleGroupChat}
-          />
-          <ActionTile
-            icon="eye"
-            label="Public page"
-            onPress={handleViewPublic}
-          />
-          {brand !== null ? (
             <ActionTile
+              fill
               icon="user"
-              label="Brand page"
-              onPress={handleBrandPage}
+              label="Guests"
+              sub={guestsSub}
+              onPress={handleGuests}
             />
+          </View>
+          <View style={styles.tileRow}>
+            <ActionTile
+              fill
+              icon="users"
+              label="Scanners"
+              onPress={handleScanners}
+            />
+            {/* ORCH-1150 (D-8) — Group chat + Blasts are comms (not money):
+                re-added after D-4 dropped them. They reuse the event-scoped
+                comms screens (see handleGroupChat / handleBlasts). */}
+            <ActionTile
+              fill
+              icon="chat"
+              label="Group chat"
+              onPress={handleGroupChat}
+            />
+            <ActionTile
+              fill
+              icon="send"
+              label="Blast"
+              accessibilityLabel="Message going guests"
+              onPress={handleBlasts}
+            />
+          </View>
+          {promote.enabled || canShowListingInsights ? (
+          <View style={styles.tileRow}>
+            {promote.enabled ? (
+              <ActionTile
+                fill
+                icon="megaphone"
+                label="Promote"
+                sub={promote.status}
+                accessibilityLabel={`Promote ${event.name}`}
+                onPress={promote.open}
+                testID="rsvp-tile-promote"
+              />
+            ) : null}
+            {canShowListingInsights ? (
+              <ActionTile
+                fill
+                icon="chart"
+                label="Insights"
+                sub="Visits, actions and bookings"
+                accessibilityLabel={`Open Insights for ${event.name}`}
+                onPress={() =>
+                  router.push(`/insights/${event.id}?entry=detail_action` as never)
+                }
+              />
+            ) : null}
+            {Array.from(
+              {
+                length:
+                  3 - (promote.enabled ? 1 : 0) - (canShowListingInsights ? 1 : 0),
+              },
+              (_, pad) => (
+                <View key={`pad-${pad}`} style={styles.tilePad} />
+              ),
+            )}
+          </View>
           ) : null}
+          <Text style={styles.sectionLabel}>MORE FOR THIS RSVP</Text>
+          <View style={styles.tileRow}>
+            <ActionTile
+              fill
+              icon="eye"
+              label="Public page"
+              onPress={handleViewPublic}
+            />
+            {brand !== null ? (
+              <ActionTile
+                fill
+                icon="home"
+                label="Brand page"
+                onPress={handleBrandPage}
+              />
+            ) : (
+              <View style={styles.tilePad} />
+            )}
+            <View style={styles.tilePad} />
+          </View>
         </View>
 
         {/* #3645 — same two controls, in the same place, as the experience
@@ -619,61 +659,31 @@ const styles = StyleSheet.create({
     color: color.text3,
     textAlign: "center",
   },
-  hero: {
-    position: "relative",
-    height: 200,
-    borderRadius: radiusTokens.xl,
-    overflow: "hidden",
-  },
-  heroCoverWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  heroOverlay: {
-    position: "absolute",
-    left: space[4],
-    right: space[4],
-    bottom: space[4],
-  },
-  heroPillRow: {
-    flexDirection: "row",
-    marginBottom: space[2],
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    color: color.text1,
-    ...(Platform.OS === "web"
-      ? { textShadow: `0 2px 12px ${scrim.modal}` }
-      : {
-          textShadowColor: scrim.modal,
-          textShadowOffset: { width: 0, height: 2 },
-          textShadowRadius: 12,
-        }),
-    marginBottom: 4,
-  },
-  heroSubline: {
-    fontSize: 13,
-    color: color.text2,
-  },
   goingLabel: {
-    fontSize: 20,
-    fontWeight: "700",
+    ...type.h1,
     color: color.text1,
   },
   goingSub: {
-    fontSize: 12,
+    ...type.caption,
     color: color.text3,
     marginTop: 2,
   },
-  actionGrid: {
+  tileRows: {
+    gap: space[3],
+  },
+  tileRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    gap: space[3],
+  },
+  tilePad: {
+    flexBasis: 0,
+    flexGrow: 1,
+  },
+  sectionLabel: {
+    ...type.label,
+    textTransform: "uppercase",
+    color: color.text3,
+    marginTop: space[2],
   },
   lifecycleCtaWrap: {
     marginTop: space[1],

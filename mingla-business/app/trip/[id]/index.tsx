@@ -28,10 +28,8 @@ import {
   color,
   space,
   type,
-  scrim,
 } from "../../../src/constants/designSystem";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
-import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
@@ -40,7 +38,6 @@ import { TopBar } from "../../../src/components/ui/TopBar";
 import { Toast } from "../../../src/components/ui/Toast";
 // ORCH-0874 [Trip surfaces visual parity with Events]: hero + action grid +
 // header right-slot share/moreH + manage menu + cancel-trip CTA.
-import { ActionTile } from "../../../src/components/event/ActionTile";
 import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
 import {
   EventDetailActivityRow,
@@ -64,6 +61,14 @@ import {
 } from "../../../src/components/trip/TripDetailHeroStatusPill";
 import { TripDetailKpiCard } from "../../../src/components/trip/TripDetailKpiCard";
 import { Pill } from "../../../src/components/ui/Pill";
+import { DesktopColumns } from "../../../src/components/ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
+import {
+  OfferingHomeHeader,
+  OfferingTilePage,
+  useOfferingPromote,
+  type OfferingTile,
+} from "../../../src/components/offering/OfferingHome";
 // issue #3237 — the one-shot "Published. It's live." banner after a publish,
 // and the rule that keeps a draft from offering links that open "not found".
 import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
@@ -369,6 +374,13 @@ export default function TripDashboardRoute(): React.ReactElement {
     () => withListingInsights(buildOfferingDashboardTiles("trip")),
     [],
   );
+  const { isWideDesktop } = useResponsiveLayout();
+  // #4420 (TILE_MATRIX P10) — the Promote tile, gated like the event home's.
+  const promote = useOfferingPromote(
+    brandId,
+    tripQuery.data?.id ?? null,
+    currentBrandRole.rank,
+  );
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -479,6 +491,130 @@ export default function TripDashboardRoute(): React.ReactElement {
     setCancelDialogVisible(true);
   };
 
+  const moneyCards = (
+    <>
+      <EventDetailKpiCard
+        revenueGbp={moneySummary.onlineRevenue}
+        payoutGbp={moneySummary.onlineNetMajor}
+        paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
+        onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
+        onOpenPayouts={() => trip.brandId != null && router.push(`/brand/${trip.brandId}/payments` as never)}
+        currency={displayCurrency}
+        readStatus={recordOrdersQuery.status}
+        onRetry={() => void recordOrdersQuery.refetch()}
+      />
+    </>
+  );
+  // Revenue + spots: below the tiles on phone, in the aside on desktop.
+  const tripKpiCard = (
+    <TripDetailKpiCard
+      revenueLabel={
+        primaryCurrency ? formatCurrency(totalRevenue, primaryCurrency) : "—"
+      }
+      spotsLabel={spotsLabel}
+      spotsValueTestID="orch-0950-trip-dashboard-spots-value"
+    />
+  );
+
+  // #4420 (TILE_MATRIX P10) — the trip's tiles from the per-kind config
+  // (dashboardTiles.map keeps each tile's route, label and gate), in the
+  // shared order. Edit, Group chat, Promote and Payments are trip extras.
+  const configTiles = new Map<string, OfferingTile>();
+  dashboardTiles.map((tile) => {
+    if (tile.key === "insights" && !canShowListingInsights) return null;
+    if (
+      tile.requiresPublicPage &&
+      (trip.brandSlug === null || trip.brandSlug.length === 0)
+    ) {
+      return null;
+    }
+    // issue #3237 — a draft has no public page to open yet.
+    if (tile.key === "public" && !canOpenPublic) return null;
+    configTiles.set(tile.key, {
+      key: tile.key,
+      icon: tile.key === "brand" ? "home" : tile.icon,
+      label:
+        tile.key === "reconciliation"
+          ? "Reconcile"
+          : tile.key === "blasts"
+            ? "Blast"
+            : tile.label,
+      accessibilityLabel:
+        tile.key === "insights"
+          ? `Open Insights for ${trip.title}`
+          : tile.accessibilityLabel,
+      sub:
+        tile.key === "guests"
+          ? `${ticketsSold} ${ticketsSold === 1 ? "traveler" : "travelers"}`
+          : tile.key === "orders"
+            ? `${ticketsSold} sold`
+            : tile.key === "blasts"
+              ? undefined
+              : tile.sub,
+      onPress: () =>
+        router.push(
+          tile.route({
+            id: trip.id,
+            brandSlug: trip.brandSlug,
+            slug: trip.slug,
+          }) as never,
+        ),
+    });
+    return null;
+  });
+  const pick = (keys: readonly string[]): OfferingTile[] =>
+    keys
+      .map((key) => configTiles.get(key))
+      .filter((tile): tile is OfferingTile => tile !== undefined);
+  const editTile: OfferingTile = {
+    key: "edit",
+    icon: "edit",
+    // #4420 (round-3 item 10) — one Edit tile, the same label in every status, on every home.
+    label: "Edit",
+    accessibilityLabel: `Edit ${trip.title}`,
+    onPress: () => router.push(`/trip/${trip.id}/edit` as never),
+  };
+  const groupChatTile: OfferingTile = {
+    key: "groupChat",
+    icon: "chat",
+    label: "Group chat",
+    onPress: () => router.push(`/event/${trip.id}/group-chat` as never),
+  };
+  const promoteTile: OfferingTile | null = promote.enabled
+    ? {
+        key: "promote",
+        icon: "megaphone",
+        label: "Promote",
+        sub: promote.status,
+        accessibilityLabel: `Promote ${trip.title}`,
+        testID: "trip-tile-promote",
+        onPress: promote.open,
+      }
+    : null;
+  const paymentsTile: OfferingTile = {
+    key: "payments",
+    icon: "receipt",
+    label: "Payments",
+    sub:
+      (moneyData?.atRiskOrderCount ?? 0) > 0
+        ? `${moneyData?.atRiskOrderCount} at risk`
+        : undefined,
+    onPress: () => router.push(`/trip/${trip.id}/money` as never),
+  };
+  const tripCoreTiles: OfferingTile[] = [
+    editTile,
+    ...pick(["scan", "scanners"]),
+    groupChatTile,
+    ...pick(["blasts"]),
+    ...(promoteTile !== null ? [promoteTile] : []),
+    ...pick(["guests", "orders", "insights"]),
+  ];
+  const tripMoreTiles: OfferingTile[] = [
+    ...pick(["reconciliation"]),
+    paymentsTile,
+    ...pick(["public", "brand"]),
+  ];
+
   return (
     <SafeScreen
       style={styles.host}
@@ -498,7 +634,9 @@ export default function TripDashboardRoute(): React.ReactElement {
         <TopBar
           leftKind="back"
           onBack={() => router.back()}
-          title={trip.title}
+          // #4420 — the kind is the bar title (as on the event home); the
+          // trip's name is on the identity card below.
+          title="Trip"
           rightSlot={
             <View style={styles.headerRightSlot}>
               {trip.brandSlug !== null && trip.brandSlug.length > 0 && canOpenPublic ? (
@@ -542,154 +680,72 @@ export default function TripDashboardRoute(): React.ReactElement {
       {/* issue #3237 — publish confirmation. Share and View public page are
           this screen's own handlers, so they open exactly what the header
           Share and the Public page tile open. */}
+      {/* #4420 — desktop uses the 8/4 template (as the event home): the trip
+          and its tiles in the main column; money, tiers and activity in the
+          aside. Phone keeps one column with the money above the tiles. */}
+      <DesktopColumns
+        main={
+          <View style={styles.colStack}>
       {publishedArrival.justPublished ? (
         <LazyPublishedBanner
           kind="trip"
           onShare={canOpenPublic ? handleShareOpen : undefined}
           onViewPublic={canOpenPublic ? handleViewPublic : undefined}
           onDismiss={publishedArrival.dismiss}
+          onGetSeen={promote.enabled ? promote.open : undefined}
           testID="trip-published-banner"
         />
       ) : null}
-      {/* ORCH-0874: hero — full-width cover + gradient overlay + status pill
-          + 24pt title overlay + 13pt date/destination subline. EventCoverMedia
-          is content-agnostic; coverHue derived from trip.id when no media. */}
-      <View style={styles.hero}>
-        <EventCoverMedia
-          hue={(function () {
-            let h = 0;
-            for (let i = 0; i < trip.id.length; i += 1) {
-              h = (h * 31 + trip.id.charCodeAt(i)) | 0;
-            }
-            return Math.abs(h) % 360;
-          })()}
-          mediaUrl={trip.coverMediaUrl}
-          mediaType={coverMediaType}
-          radius={24}
-          label=""
-          height={200}
-        />
-        <View style={styles.heroOverlay} pointerEvents="none" />
-        <View style={styles.heroContent} pointerEvents="none">
-          {/* issue #3237 — a draft is not "Upcoming": nothing is on sale. */}
-          {trip.status === "draft" ? (
+      {/* #4420 (TILE_MATRIX P10) — the compact identity card (it replaced the
+          ORCH-0874 200pt photo hero), the same as the event home. */}
+      <OfferingHomeHeader
+        hue={(function () {
+          let h = 0;
+          for (let i = 0; i < trip.id.length; i += 1) {
+            h = (h * 31 + trip.id.charCodeAt(i)) | 0;
+          }
+          return Math.abs(h) % 360;
+        })()}
+        mediaUrl={trip.coverMediaUrl}
+        mediaType={coverMediaType}
+        pill={
+          // issue #3237 — a draft is not "Upcoming": nothing is on sale.
+          trip.status === "draft" ? (
             <Pill variant="draft">Draft</Pill>
           ) : (
             <TripDetailHeroStatusPill status={tripLifecycleStatus} />
-          )}
-          <Text style={styles.heroTitle} numberOfLines={2}>
-            {trip.title}
-          </Text>
-          <Text
-            style={styles.heroSubline}
-            numberOfLines={1}
-            testID="orch-0950-trip-dashboard-hero-subline"
-          >
-            {formatTripHeroSubline({
-              startAt: trip.businessTrip.startAt,
-              endAt: trip.businessTrip.endAt,
-              destinationLocationText: trip.businessTrip.destinationLocationText,
-            })}
-          </Text>
-        </View>
-      </View>
-
-      {/* META-ORCH-1059 Pass 2 — event-grade tile grid built from the per-kind
-          config so trips get the full operator set: Scan · Scanners · Orders ·
-          Travelers (Guests lens → /trip/{id}/travelers) · Blasts · Public ·
-          Brand · Reconciliation. Edit (primary) + Payments + Group chat are
-          trip-specific extras kept alongside. */}
-      <View style={styles.actionGrid}>
-        {/* [ORCH-0913 deliberate divergence from event] Edit remains primary. */}
-        <ActionTile
-          icon="edit"
-          // #4420 (round-3 item 10) — one Edit tile, the same label in every status, on every home.
-          label="Edit"
-          accessibilityLabel={`Edit ${trip.title}`}
-          primary
-          onPress={() => router.push(`/trip/${trip.id}/edit` as never)}
-        />
-        {dashboardTiles.map((tile) => {
-          if (tile.key === "insights" && !canShowListingInsights) {
-            return null;
-          }
-          if (
-            tile.requiresPublicPage &&
-            (trip.brandSlug === null || trip.brandSlug.length === 0)
-          ) {
-            return null;
-          }
-          // issue #3237 — a draft has no public page to open yet.
-          if (tile.key === "public" && !canOpenPublic) {
-            return null;
-          }
-          return (
-            <ActionTile
-              key={tile.key}
-              icon={tile.icon}
-              label={tile.label}
-              accessibilityLabel={
-                tile.key === "insights"
-                  ? `Open Insights for ${trip.title}`
-                  : tile.accessibilityLabel
-              }
-              sub={
-                tile.key === "guests"
-                  ? `${ticketsSold} ${ticketsSold === 1 ? "traveler" : "travelers"}`
-                  : tile.key === "orders"
-                    ? `${ticketsSold} sold`
-                    : tile.sub
-              }
-              onPress={() =>
-                router.push(
-                  tile.route({
-                    id: trip.id,
-                    brandSlug: trip.brandSlug,
-                    slug: trip.slug,
-                  }) as never,
-                )
-              }
-            />
-          );
+          )
+        }
+        title={trip.title}
+        subline={formatTripHeroSubline({
+          startAt: trip.businessTrip.startAt,
+          endAt: trip.businessTrip.endAt,
+          destinationLocationText: trip.businessTrip.destinationLocationText,
         })}
-        <ActionTile
-          icon="receipt"
-          label="Payments"
-          sub={
-            (moneyData?.atRiskOrderCount ?? 0) > 0
-              ? `${moneyData?.atRiskOrderCount} at risk`
-              : undefined
-          }
-          onPress={() => router.push(`/trip/${trip.id}/money` as never)}
-        />
-        <ActionTile
-          icon="chat"
-          label="Group chat"
-          sub="Read + reply + moderate"
-          onPress={() => router.push(`/event/${trip.id}/group-chat` as never)}
-        />
-      </View>
+        sublineTestID="orch-0950-trip-dashboard-hero-subline"
+      />
 
-        {/* Pass 2 — single revenue-left / payout-right summary (mirrors the
-            event dashboard). Real money from orders read by event_id. */}
-        <EventDetailKpiCard
-          revenueGbp={moneySummary.onlineRevenue}
-          payoutGbp={moneySummary.onlineNetMajor}
-          paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
-          onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
-          onOpenPayouts={() => trip.brandId != null && router.push(`/brand/${trip.brandId}/payments` as never)}
-          currency={displayCurrency}
-          readStatus={recordOrdersQuery.status}
-          onRetry={() => void recordOrdersQuery.refetch()}
-        />
+      {/* Pass 2 — single revenue-left / payout-right summary (mirrors the
+          event dashboard). Real money from orders read by event_id. Phone
+          shows it above the tiles; desktop moves it to the aside. */}
+      {isWideDesktop ? null : moneyCards}
 
-        <TripDetailKpiCard
-          revenueLabel={
-            primaryCurrency ? formatCurrency(totalRevenue, primaryCurrency) : "—"
-          }
-          spotsLabel={spotsLabel}
-          spotsValueTestID="orch-0950-trip-dashboard-spots-value"
-        />
+      {/* #4420 (TILE_MATRIX P10) — the shared tile page: Edit, Scan, Scanners,
+          Group chat, Blast, Promote, Travelers, Orders, Insights, then
+          "More for this trip". The per-kind config (META-ORCH-1059 Pass 2)
+          still owns each tile's route and label. */}
+      <OfferingTilePage
+        core={tripCoreTiles}
+        more={tripMoreTiles}
+        moreLabel="More for this trip"
+        testID="trip-dashboard-tiles"
+      />
+          </View>
+        }
+        aside={
+          <View style={styles.colStack}>
+        {isWideDesktop ? moneyCards : null}
+        {tripKpiCard}
 
         <Text style={styles.sectionLabel}>PRICING TIERS</Text>
         {trip.pricingTiers.length === 0 ? (
@@ -728,6 +784,9 @@ export default function TripDashboardRoute(): React.ReactElement {
             </View>
           )}
         </GlassCard>
+          </View>
+        }
+      />
 
         {/* ORCH-0913: Cancel trip CTA remains last in ScrollView. Only shown for trips
             that are still active (not already ended or cancelled). Mirrors
@@ -906,56 +965,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  hero: {
-    borderRadius: 24,
-    overflow: "hidden",
-    position: "relative",
-  },
-  heroOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: scrim.ambient.colors[0],
-  },
-  heroContent: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: space[4],
-    gap: 4,
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    color: color.textStrong,
-    ...(Platform.OS === "web"
-      ? { textShadow: `0 1px 4px ${scrim.modal}` }
-      : {
-          textShadowColor: scrim.modal,
-          textShadowOffset: { width: 0, height: 1 },
-          textShadowRadius: 4,
-        }),
-    marginTop: space[1],
-  },
-  heroSubline: {
-    fontSize: 13,
-    color: color.text2,
-    ...(Platform.OS === "web"
-      ? { textShadow: `0 1px 3px ${scrim.modal}` }
-      : {
-          textShadowColor: scrim.modal,
-          textShadowOffset: { width: 0, height: 1 },
-          textShadowRadius: 3,
-        }),
-  },
-  actionGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+  colStack: {
+    gap: space[4],
   },
   sectionLabel: {
     fontSize: 11,

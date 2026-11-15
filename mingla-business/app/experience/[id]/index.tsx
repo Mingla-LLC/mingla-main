@@ -30,17 +30,22 @@ import {
   color,
   space,
   type,
-  scrim,
 } from "../../../src/constants/designSystem";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
-import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { Toast } from "../../../src/components/ui/Toast";
-import { ActionTile } from "../../../src/components/event/ActionTile";
+import { DesktopColumns } from "../../../src/components/ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
+import {
+  OfferingHomeHeader,
+  OfferingTilePage,
+  useOfferingPromote,
+  type OfferingTile,
+} from "../../../src/components/offering/OfferingHome";
 import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
 import {
   EventDetailActivityRow,
@@ -254,6 +259,13 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     () => withListingInsights(buildOfferingDashboardTiles("experience")),
     [],
   );
+  const { isWideDesktop } = useResponsiveLayout();
+  // #4420 (TILE_MATRIX P10) — the Promote tile, gated like the event home's.
+  const promote = useOfferingPromote(
+    experience?.brandId ?? null,
+    experience?.id ?? null,
+    currentBrandRole.rank,
+  );
   // #3645 — what the cancel dialog may truthfully say. "Nothing to refund"
   // only when the orders read has completed and no order is paid; a count
   // only when it is known.
@@ -385,6 +397,102 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         ? "Unlimited"
         : `${ticket.quantityTotal} spots`;
 
+  // #4420 (TILE_MATRIX P10) — the experience's tiles from the per-kind
+  // config (tiles.map keeps each tile's route, label and gate), in the shared
+  // order. Edit, Group chat and Promote are added here.
+  const configTiles = new Map<string, OfferingTile>();
+  tiles.map((tile) => {
+    if (tile.key === "insights" && !canShowListingInsights) {
+      return null;
+    }
+    if (tile.requiresPublicPage && !hasPublicPage) return null;
+    // issue #3237 — a draft has no public page to open yet.
+    if (tile.key === "public" && !canOpenPublic) return null;
+    configTiles.set(tile.key, {
+      key: tile.key,
+      icon: tile.key === "brand" ? "home" : tile.icon,
+      label:
+        tile.key === "reconciliation"
+          ? "Reconcile"
+          : tile.key === "blasts"
+            ? "Blast"
+            : tile.label,
+      accessibilityLabel:
+        tile.key === "insights"
+          ? `Open Insights for ${experience.title}`
+          : tile.accessibilityLabel,
+      sub:
+        tile.key === "orders"
+          ? soldCount === null
+            ? ordersQuery.status === "loading" ||
+              ordersQuery.status === "disabled"
+              ? "Loading…"
+              : "Unable to load"
+            : `${soldCount} sold`
+          : tile.key === "blasts"
+            ? undefined
+            : tile.sub,
+      onPress: () =>
+        router.push(
+          tile.route({
+            id: experience.id,
+            brandSlug: experience.brandSlug,
+            slug: experience.slug,
+          }) as never,
+        ),
+    });
+    return null;
+  });
+  const pick = (keys: readonly string[]): OfferingTile[] =>
+    keys
+      .map((key) => configTiles.get(key))
+      .filter((tile): tile is OfferingTile => tile !== undefined);
+  const experienceCoreTiles: OfferingTile[] = [
+    {
+      key: "edit",
+      icon: "edit",
+      // #4420 (round-3 item 10) — one Edit tile, the same label in every status, on every home.
+      label: "Edit",
+      accessibilityLabel: `Edit ${experience.title}`,
+      onPress: () => router.push(`/experience/${experience.id}/edit` as never),
+    },
+    ...pick(["scan", "scanners"]),
+    {
+      key: "groupChat",
+      icon: "chat",
+      label: "Group chat",
+      onPress: () => router.push(`/event/${experience.id}/group-chat` as never),
+    },
+    ...pick(["blasts"]),
+    ...(promote.enabled
+      ? [
+          {
+            key: "promote",
+            icon: "megaphone",
+            label: "Promote",
+            sub: promote.status,
+            accessibilityLabel: `Promote ${experience.title}`,
+            testID: "experience-tile-promote",
+            onPress: promote.open,
+          } satisfies OfferingTile,
+        ]
+      : []),
+    ...pick(["guests", "orders", "insights"]),
+  ];
+  const experienceMoreTiles = pick(["reconciliation", "public", "brand"]);
+  const moneyCard = (
+    <EventDetailKpiCard
+      revenueGbp={moneySummary.onlineRevenue}
+      payoutGbp={moneySummary.onlineNetMajor}
+      paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
+      onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
+      onOpenPayouts={() => experience.brandId != null && router.push(`/brand/${experience.brandId}/payments` as never)}
+      currency={experience.currency}
+      readStatus={ordersQuery.status}
+      onRetry={() => void ordersQuery.refetch()}
+    />
+  );
+
   return (
     <SafeScreen style={styles.host}>
       {/* ORCH-1136 F-1: web-only additive breathing gap (insets.top === 0 on
@@ -398,7 +506,9 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         <TopBar
           leftKind="back"
           onBack={() => router.back()}
-          title={experience.title}
+          // #4420 — the kind is the bar title (as on the event home); the
+          // experience's name is on the identity card below.
+          title="Experience"
           rightSlot={
             <View style={styles.headerRightSlot}>
               {canOpenPublic ? (
@@ -433,105 +543,51 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         {/* issue #3237 — publish confirmation. Share and View public page are
             this screen's own handlers, so they open exactly what the header
             Share and the Public page tile open. */}
+        {/* #4420 — desktop uses the 8/4 template (as the event home): the
+            experience and its tiles in the main column; money, pricing,
+            stops and activity in the aside. */}
+        <DesktopColumns
+          main={
+            <View style={styles.colStack}>
         {publishedArrival.justPublished ? (
           <LazyPublishedBanner
             kind="experience"
             onShare={canOpenPublic ? handleShareOpen : undefined}
             onViewPublic={canOpenPublic ? handleViewPublic : undefined}
             onDismiss={publishedArrival.dismiss}
+            onGetSeen={promote.enabled ? promote.open : undefined}
             testID="experience-published-banner"
           />
         ) : null}
-        <View style={styles.hero}>
-          <EventCoverMedia
-            hue={hueFromId(experience.id)}
-            mediaUrl={experience.coverMediaUrl}
-            mediaType={experience.coverMediaType}
-            radius={24}
-            label=""
-            height={200}
-          />
-          <View style={styles.heroOverlay} pointerEvents="none" />
-          <View style={styles.heroContent} pointerEvents="none">
-            <HeroStatusPill status={lifecycleStatus} />
-            <Text style={styles.heroTitle} numberOfLines={2}>
-              {experience.title}
-            </Text>
-            <Text style={styles.heroSubline} numberOfLines={1}>
-              {subline}
-            </Text>
-          </View>
-        </View>
-
-        {/* Pass 2 — event-grade tile grid, built from the per-kind config so
-            labels read through the experience lens (e.g. "Spots" not
-            "Guests"). Edit stays the primary tile (drafts say "Continue
-            editing"). Public/Brand tiles only render when a public page
-            exists, so there are no dead taps. */}
-        <View style={styles.actionGrid}>
-          <ActionTile
-            icon="edit"
-            // #4420 (round-3 item 10) — one Edit tile, the same label in every status, on every home.
-            label="Edit"
-            accessibilityLabel={`Edit ${experience.title}`}
-            primary
-            onPress={() =>
-              router.push(`/experience/${experience.id}/edit` as never)
-            }
-          />
-          {tiles.map((tile) => {
-            if (tile.key === "insights" && !canShowListingInsights) {
-              return null;
-            }
-            if (tile.requiresPublicPage && !hasPublicPage) return null;
-            // issue #3237 — a draft has no public page to open yet.
-            if (tile.key === "public" && !canOpenPublic) return null;
-            return (
-              <ActionTile
-                key={tile.key}
-                icon={tile.icon}
-                label={tile.label}
-                accessibilityLabel={
-                  tile.key === "insights"
-                    ? `Open Insights for ${experience.title}`
-                    : tile.accessibilityLabel
-                }
-                sub={
-                  tile.key === "orders"
-                    ? soldCount === null
-                      ? ordersQuery.status === "loading" ||
-                        ordersQuery.status === "disabled"
-                        ? "Loading…"
-                        : "Unable to load"
-                      : `${soldCount} sold`
-                    : tile.sub
-                }
-                onPress={() =>
-                  router.push(
-                    tile.route({
-                      id: experience.id,
-                      brandSlug: experience.brandSlug,
-                      slug: experience.slug,
-                    }) as never,
-                  )
-                }
-              />
-            );
-          })}
-        </View>
+        {/* #4420 (TILE_MATRIX P10) — the compact identity card that replaced
+            the 200pt photo hero, the same as the event home. */}
+        <OfferingHomeHeader
+          hue={hueFromId(experience.id)}
+          mediaUrl={experience.coverMediaUrl}
+          mediaType={experience.coverMediaType}
+          pill={<HeroStatusPill status={lifecycleStatus} />}
+          title={experience.title}
+          subline={subline}
+        />
 
         {/* Pass 2 — revenue-left / payout-right summary (mirrors the event
-            dashboard). Real money from orders read by event_id. */}
-        <EventDetailKpiCard
-          revenueGbp={moneySummary.onlineRevenue}
-          payoutGbp={moneySummary.onlineNetMajor}
-          paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
-          onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
-          onOpenPayouts={() => experience.brandId != null && router.push(`/brand/${experience.brandId}/payments` as never)}
-          currency={experience.currency}
-          readStatus={ordersQuery.status}
-          onRetry={() => void ordersQuery.refetch()}
+            dashboard). Phone: above the tiles; desktop: the aside. */}
+        {isWideDesktop ? null : moneyCard}
+
+        {/* #4420 (TILE_MATRIX P10) — the shared tile page, labels through the
+            experience lens ("Spots" not "Guests"). Public/Brand tiles only
+            render when a public page exists, so there are no dead taps. */}
+        <OfferingTilePage
+          core={experienceCoreTiles}
+          more={experienceMoreTiles}
+          moreLabel="More for this experience"
+          testID="experience-dashboard-tiles"
         />
+            </View>
+          }
+          aside={
+            <View style={styles.colStack}>
+        {isWideDesktop ? moneyCard : null}
 
         {/* Pricing summary (price + capacity) — kept below the money card. */}
         <Text style={styles.sectionLabel}>PRICING</Text>
@@ -582,6 +638,10 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
             </View>
           )}
         </GlassCard>
+
+            </View>
+          }
+        />
 
         {experience.status === "scheduled" ? (
           <View style={styles.cancelWrap}>
@@ -782,49 +842,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  hero: { borderRadius: 24, overflow: "hidden", position: "relative" },
-  heroOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: scrim.ambient.colors[0],
-  },
-  heroContent: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: space[4],
-    gap: 4,
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    color: color.textStrong,
-    ...(Platform.OS === "web"
-      ? { textShadow: `0 1px 4px ${scrim.modal}` }
-      : {
-          textShadowColor: scrim.modal,
-          textShadowOffset: { width: 0, height: 1 },
-          textShadowRadius: 4,
-        }),
-    marginTop: space[1],
-  },
-  heroSubline: {
-    fontSize: 13,
-    color: color.text2,
-    ...(Platform.OS === "web"
-      ? { textShadow: `0 1px 3px ${scrim.modal}` }
-      : {
-          textShadowColor: scrim.modal,
-          textShadowOffset: { width: 0, height: 1 },
-          textShadowRadius: 3,
-        }),
-  },
-  actionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  colStack: { gap: space[4] },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "700",

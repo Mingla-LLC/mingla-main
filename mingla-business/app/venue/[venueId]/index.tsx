@@ -471,7 +471,9 @@ export default function VenueManagementPage(): React.ReactElement {
           // shell's store sync propagates it to the pill row/rail. Stays never
           // reach this branch (Insights does not exist for stays in v1 — G-21).
           initialModule={initialModule ?? "overview"}
-          overviewHeader={localReviewsPanel}
+          // #4420 (round-3 item 19) — Local reviews are their own Reviews
+          // module now, not a panel at the top of Overview.
+          reviewsPanel={localReviewsPanel}
         />
       )}
 
