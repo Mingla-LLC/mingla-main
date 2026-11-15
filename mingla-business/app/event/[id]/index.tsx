@@ -1191,7 +1191,7 @@ export default function EventDetailScreen(): React.ReactElement {
                   </>
                 );
               })()}
-            </>
+            </View>
           }
           aside={
             <View style={styles.colStack}>
@@ -1286,7 +1286,7 @@ export default function EventDetailScreen(): React.ReactElement {
                   />
                 </View>
               ) : null}
-            </>
+            </View>
           }
         />
       </ScrollView>
