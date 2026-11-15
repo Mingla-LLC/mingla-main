@@ -40,10 +40,13 @@ Deno.test("R6-new [#4435 W3] handleCreateGroupChat makes one create_group_chat c
   assert(/supabase\.rpc\("create_group_chat"/.test(service), "the service calls create_group_chat");
 });
 
-Deno.test("R10 a pending creator collab opens the pending sheet", () => {
+Deno.test("R10 [#4435 W3c] the pending collab sheet is gone; a new group opens live", () => {
   const page = read("src/components/ConnectionsPage.tsx");
-  assert(page.includes("setPendingCollabChat(conversationMeta.__pendingCollabChat)"), "pending sheet route");
-  assert(page.includes("PendingCollabChatSheet"), "the sheet is rendered");
+  assert(!page.includes("setPendingCollabChat"), "no pending sheet route");
+  assert(!page.includes("PendingCollabChatSheet"), "the sheet is not rendered");
+  let sheetExists = true;
+  try { read("src/components/connections/PendingCollabChatSheet.tsx"); } catch { sheetExists = false; }
+  assert(!sheetExists, "the sheet file is deleted");
 });
 
 Deno.test("R23 [#4435 W3] remove and promote on the board screen go through the server functions", () => {
@@ -71,7 +74,9 @@ Deno.test("R24-limbo [#4435 W3] creating never deletes a same-name or ghost sess
   assert(!/ghostSessions/.test(index), "no ghost delete in app/index");
 });
 
-Deno.test("R30 the create sheet needs a name and at least one friend", () => {
+Deno.test("R30 [#4435 W3c] the create sheet needs neither a name nor a friend", () => {
   const sheet = read("src/components/connections/CreateGroupChatSheet.tsx");
-  assert(sheet.includes("const canSubmit = name.trim().length > 0 && selectedIds.size > 0 && !isCreating;"), "name + 1 friend");
+  assert(!sheet.includes("const canSubmit = name.trim().length > 0 && selectedIds.size > 0 && !isCreating;"), "no name + 1 friend gate");
+  assert(sheet.includes("resolvedGroupName(name, fallbackName)"), "a blank name uses the default");
+  assert(sheet.includes('t("chat:group_create_just_me")'), "nobody picked: Just me for now");
 });

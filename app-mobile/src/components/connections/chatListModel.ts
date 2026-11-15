@@ -56,7 +56,6 @@ export interface ChatListConversationLike {
   live_session_id?: string | null;
   live_session_status?: string | null;
   __pendingInvite?: unknown;
-  __pendingCollabChat?: unknown;
   /** Issue #4114 Wave 6: a folded brand channel row (brandChannelModel). */
   __brandChannel?: unknown;
   /** #4111 enquiry threads (D11): a private row of their own, never folded. */

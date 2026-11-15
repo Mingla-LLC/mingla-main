@@ -168,12 +168,6 @@ import {
   PendingSessionInviteRow,
   type PendingSessionInvite,
 } from "./connections/PendingSessionInviteRow";
-import {
-  PendingCollabChatSheet,
-  type PendingCollabChatDetails,
-  type PendingCollabChatPerson,
-} from "./connections/PendingCollabChatSheet";
-import { isPendingCollabReadyChange } from "./connections/pendingCollabChatUtils";
 import MessageInterface from "./MessageInterface";
 import { startupTeamBrandIds, teamBrandCacheKey } from "./connections/teamBrandCache";
 import {
@@ -473,12 +467,6 @@ function isPendingInviteConversation(
   conversation: Conversation,
 ): conversation is Conversation & { __pendingInvite: PendingSessionInvite } {
   return Boolean((conversation as any).__pendingInvite);
-}
-
-function isPendingCreatorCollabConversation(
-  conversation: Conversation,
-): conversation is Conversation & { __pendingCollabChat: PendingCollabChatDetails } {
-  return Boolean((conversation as any).__pendingCollabChat);
 }
 
 interface ConnectionsPageProps {
@@ -977,12 +965,7 @@ function ConnectionsPageRefactored({
   // Group-chat create path opens it as 'session_creation'; pairing paths as 'pairing'.
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('session_creation');
   const [processingInviteIds, setProcessingInviteIds] = useState<Set<string>>(new Set());
-  const [pendingCollabChat, setPendingCollabChat] = useState<PendingCollabChatDetails | null>(null);
-  const [pendingCollabWorking, setPendingCollabWorking] = useState(false);
   const [showIncomingPairRequest, setShowIncomingPairRequest] = useState<PairRequest | null>(null);
-  const pendingCollabChatRef = useRef<PendingCollabChatDetails | null>(null);
-  const readyPendingCollabToastSessionIdsRef = useRef(new Set<string>());
-  pendingCollabChatRef.current = pendingCollabChat;
 
   // META-ORCH-0991 Wave C — §13 one-sheet-at-a-time gate for the friends modal.
   // Every child surface the friends modal can open is itself an RN-Modal-backed
@@ -1004,7 +987,6 @@ function ConnectionsPageRefactored({
     showBlockModal ||
     showAddToBoardModal ||
     showPaywall ||
-    !!pendingCollabChat ||
     !!showIncomingPairRequest;
   const handleFriendsModalClose = useCallback(() => {
     if (anyFriendsChildOpen) return;
@@ -1271,12 +1253,6 @@ function ConnectionsPageRefactored({
       if (isPendingInviteConversation(conv)) {
         return normalizeSearchText(conv.__pendingInvite.inviterDisplayName).includes(q);
       }
-      if (isPendingCreatorCollabConversation(conv)) {
-        const pendingNames = conv.__pendingCollabChat.people
-          .map((person) => person.name)
-          .join(" ");
-        return normalizeSearchText(`${conv.__pendingCollabChat.sessionName} ${pendingNames}`).includes(q);
-      }
 
       const otherParticipants = conv.participants.filter((p) => p.id !== user?.id);
       const searchableParticipants =
@@ -1321,19 +1297,6 @@ function ConnectionsPageRefactored({
     [enquiryRows.conversations, listConversations],
   );
 
-  const pendingCreatorCollabSessionIds = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          conversations
-            .filter(isPendingCreatorCollabConversation)
-            .map((conversation) => conversation.session_id)
-            .filter((sessionId): sessionId is string => Boolean(sessionId)),
-        ),
-      ).sort(),
-    [conversations],
-  );
-  const pendingCreatorCollabSessionKey = pendingCreatorCollabSessionIds.join("|");
 
   // ── Issue #4265: refresh the one chat list query ──────────
   // The list itself is the React Query entry chatListKeys.list(userId)
@@ -1503,103 +1466,6 @@ function ConnectionsPageRefactored({
   // (`handleRefresh`), the error-state "Try again" button, `onRequestSent`, and every
   // accept / decline / remove / block / unblock / cancel mutation in useFriends.ts.
 
-  useEffect(() => {
-    if (!user?.id || pendingCreatorCollabSessionIds.length === 0) return;
-
-    let disposed = false;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    const pendingSessionIds = new Set(pendingCreatorCollabSessionIds);
-
-    const refreshPendingCreatorChats = (row: Record<string, any> | null | undefined) => {
-      if (disposed || !isPendingCollabReadyChange(row, pendingSessionIds, user.id)) {
-        return;
-      }
-
-      const changedSessionId = row?.session_id;
-      if (
-        pendingCollabChatRef.current?.sessionId === changedSessionId &&
-        !readyPendingCollabToastSessionIdsRef.current.has(changedSessionId)
-      ) {
-        readyPendingCollabToastSessionIdsRef.current.add(changedSessionId);
-        setPendingCollabChat(null);
-        showToast({ message: "Someone accepted. The chat is ready.", type: "info" });
-      }
-
-      if (refreshTimer) clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => {
-        if (disposed) return;
-        void fetchConversations(user.id);
-        void onRefreshSessions?.({ showLoading: false });
-      }, 120);
-    };
-
-    void (async () => {
-      const { data } = await supabase.auth.getSession();
-      const accessToken = data.session?.access_token;
-      if (!accessToken || disposed) return;
-
-      await supabase.realtime.setAuth(accessToken);
-      if (disposed) return;
-
-      channel = supabase.channel(
-        `connections_pending_collab:${user.id}:${pendingCreatorCollabSessionKey}`,
-      );
-
-      for (const sessionId of pendingCreatorCollabSessionIds) {
-        channel
-          .on(
-            "postgres_changes",
-            {
-              event: "INSERT",
-              schema: "public",
-              table: "session_participants",
-              filter: `session_id=eq.${sessionId}`,
-            },
-            (payload) => refreshPendingCreatorChats(payload.new),
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              schema: "public",
-              table: "session_participants",
-              filter: `session_id=eq.${sessionId}`,
-            },
-            (payload) => refreshPendingCreatorChats(payload.new),
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              schema: "public",
-              table: "collaboration_invites",
-              filter: `session_id=eq.${sessionId}`,
-            },
-            (payload) => refreshPendingCreatorChats(payload.new),
-          );
-      }
-
-      channel.subscribe();
-    })().catch((realtimeError) => {
-      console.warn("[ConnectionsPage] pending collab realtime subscribe failed:", realtimeError);
-    });
-
-    return () => {
-      disposed = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
-    };
-  }, [
-    fetchConversations,
-    onRefreshSessions,
-    pendingCreatorCollabSessionIds,
-    pendingCreatorCollabSessionKey,
-    showToast,
-    user?.id,
-  ]);
 
   // ── Unread count reporting ───────────────────────────────
   useEffect(() => {
@@ -1994,15 +1860,8 @@ function ConnectionsPageRefactored({
       eventPublicUrl?: string | null;
       eventPublicCard?: BusinessEventCard | null;
       is_broadcast_only?: boolean;
-      isPendingCreatorCollab?: boolean;
-      __pendingCollabChat?: PendingCollabChatDetails;
     };
     const isGroupConversation = conversationMeta.type === 'group';
-    if (conversationMeta.isPendingCreatorCollab && conversationMeta.__pendingCollabChat) {
-      HapticFeedback.light();
-      setPendingCollabChat(conversationMeta.__pendingCollabChat);
-      return;
-    }
     const otherParticipant = conversation.participants.find((p) => p.id !== user.id);
     let rawName = isGroupConversation
       ? conversationMeta.name?.trim() || ''
@@ -2912,124 +2771,7 @@ function ConnectionsPageRefactored({
     },
   });
 
-  const handleCancelPendingCollabChat = useCallback(async () => {
-    if (!user?.id || !pendingCollabChat) return;
-    Alert.alert(
-      "Cancel chat?",
-      `Cancel "${pendingCollabChat.sessionName}" and remove all pending invites?`,
-      [
-        { text: "Keep waiting", style: "cancel" },
-        {
-          text: "Cancel chat",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              setPendingCollabWorking(true);
-              try {
-                await supabase
-                  .from("collaboration_invites")
-                  .delete()
-                  .eq("session_id", pendingCollabChat.sessionId);
 
-                const { error: pendingPhoneInviteCancelError } = await supabase
-                  .from("pending_session_invites")
-                  .update({ status: "cancelled" })
-                  .eq("session_id", pendingCollabChat.sessionId)
-                  .eq("status", "pending");
-                if (pendingPhoneInviteCancelError) throw pendingPhoneInviteCancelError;
-
-                await supabase
-                  .from("session_participants")
-                  .delete()
-                  .eq("session_id", pendingCollabChat.sessionId)
-                  .neq("user_id", user.id);
-
-                const { error: sessionDeleteError } = await supabase
-                  .from("collaboration_sessions")
-                  .delete()
-                  .eq("id", pendingCollabChat.sessionId);
-                if (sessionDeleteError) throw sessionDeleteError;
-
-                await supabase
-                  .from("conversations")
-                  .delete()
-                  .eq("id", pendingCollabChat.conversationId);
-
-                setConversations((prev) =>
-                  prev.filter((conversation) => conversation.id !== pendingCollabChat.conversationId),
-                );
-                setPendingCollabChat(null);
-                showToast({ message: "Chat canceled.", type: "info" });
-                await onRefreshSessions?.({ showLoading: false });
-                await fetchConversations(user.id);
-              } catch (error) {
-                console.error("[ConnectionsPage] Failed to cancel pending collab chat:", error);
-                showToast({ message: "Could not cancel the chat. Please try again.", type: "error" });
-              } finally {
-                setPendingCollabWorking(false);
-              }
-            })();
-          },
-        },
-      ],
-    );
-  }, [fetchConversations, onRefreshSessions, pendingCollabChat, showToast, user?.id]);
-
-  const handleRevokePendingCollabInvite = useCallback(async (person: PendingCollabChatPerson) => {
-    if (!user?.id || !pendingCollabChat || person.status !== "pending") return;
-    setPendingCollabWorking(true);
-    try {
-      if (person.inviteKind === "cold") {
-        if (!person.inviteId) throw new Error("Missing phone invite id");
-        const { error } = await supabase
-          .from("pending_session_invites")
-          .update({ status: "cancelled" })
-          .eq("id", person.inviteId)
-          .eq("session_id", pendingCollabChat.sessionId);
-        if (error) throw error;
-      } else {
-        if (person.inviteId) {
-          const { error: inviteError } = await supabase
-            .from("collaboration_invites")
-            .delete()
-            .eq("id", person.inviteId)
-            .eq("session_id", pendingCollabChat.sessionId);
-          if (inviteError) throw inviteError;
-        } else {
-          const { error: inviteError } = await supabase
-            .from("collaboration_invites")
-            .delete()
-            .eq("session_id", pendingCollabChat.sessionId)
-            .eq("invited_user_id", person.id)
-            .eq("status", "pending");
-          if (inviteError) throw inviteError;
-        }
-
-        const { error: participantError } = await supabase
-          .from("session_participants")
-          .delete()
-          .eq("session_id", pendingCollabChat.sessionId)
-          .eq("user_id", person.id)
-          .eq("has_accepted", false);
-        if (participantError) throw participantError;
-      }
-
-      setPendingCollabChat((prev) =>
-        prev?.sessionId === pendingCollabChat.sessionId
-          ? { ...prev, people: prev.people.filter((candidate) => candidate.id !== person.id) }
-          : prev,
-      );
-      showToast({ message: "Invite revoked.", type: "info" });
-      await onRefreshSessions?.({ showLoading: false });
-      await fetchConversations(user.id);
-    } catch (error) {
-      console.error("[ConnectionsPage] Failed to revoke pending collab invite:", error);
-      showToast({ message: "Could not revoke that invite. Please try again.", type: "error" });
-      throw error;
-    } finally {
-      setPendingCollabWorking(false);
-    }
-  }, [fetchConversations, onRefreshSessions, pendingCollabChat, showToast, user?.id]);
 
   // ── Back from MessageInterface ───────────────────────────
   const handleBackFromMessage = useCallback(() => {
@@ -4833,24 +4575,6 @@ function ConnectionsPageRefactored({
         groupName={liveGroup?.name ?? ""}
         friendFirstNames={liveGroup?.friendFirstNames ?? []}
         onClose={() => setLiveGroup(null)}
-      />
-
-      <PendingCollabChatSheet
-        visible={Boolean(pendingCollabChat)}
-        details={pendingCollabChat}
-        currentUserId={user?.id || null}
-        isWorking={pendingCollabWorking}
-        onClose={() => {
-          if (!pendingCollabWorking) setPendingCollabChat(null);
-        }}
-        onCancelChat={handleCancelPendingCollabChat}
-        onRevokeInvite={handleRevokePendingCollabInvite}
-        onPhoneInviteSettled={async () => {
-          await loadFriendRequests();
-          await onRefreshSessions?.({ showLoading: false });
-          if (user?.id) await fetchConversations(user.id);
-        }}
-        onAddFriendRequest={addFriend}
       />
 
       {user?.id ? (

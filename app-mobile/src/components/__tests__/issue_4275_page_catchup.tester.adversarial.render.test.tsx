@@ -100,7 +100,8 @@ jest.mock("../connections/FriendsManagementList", () => mockModule());
 jest.mock("../connections/BlockedUsersView", () => mockModule());
 jest.mock("../connections/CreateGroupChatSheet", () => mockModule());
 jest.mock("../connections/PendingSessionInviteRow", () => mockModule());
-jest.mock("../connections/PendingCollabChatSheet", () => mockModule());
+// #4435: the pending collab sheet is gone; a new group opens live with the link sheet.
+jest.mock("../chat/GroupLiveSheet", () => mockModule());
 jest.mock("../MessageInterface", () => mockModule());
 jest.mock("../CustomPaywallScreen", () => mockModule());
 jest.mock("../../hooks/useSessionCreationGate", () => mockModule());

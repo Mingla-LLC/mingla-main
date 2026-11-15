@@ -35,9 +35,9 @@ Deno.test("F4-listener [#4435 W3] useSocialRealtime listens to my lifecycle rows
   assert(/invalidateQueries\(\{ queryKey: chatListKeys\.all \}\)/.test(hook), "the Chats list refetches");
 });
 
-Deno.test("R10 a creator-only pending session row is a pending creator collab", () => {
+Deno.test("R10 [#4435 W3c] no pending-creator gate: a creator-only group row opens as a live chat", () => {
   const load = read("src/components/connections/chatListLoad.ts");
-  assert(/const isPendingCreatorCollab =\s*conv\.type === "group" &&/.test(load), "isPendingCreatorCollab is derived");
-  assert(/sessionMeta\?\.created_by === userId &&\s*!hasAcceptedCollaborator/.test(load), "creator with no accepted collaborator");
-  assert(/conversationMeta\.isPendingCreatorCollab && conversationMeta\.__pendingCollabChat/.test(page), "the row opens the pending sheet");
+  assert(!/isPendingCreatorCollab/.test(load), "no pending-creator flag on list rows");
+  assert(!/__pendingCollabChat/.test(load), "no pending sheet payload");
+  assert(!/isPendingCreatorCollab|__pendingCollabChat|PendingCollabChatSheet/.test(page), "the row never routes to a pending sheet");
 });

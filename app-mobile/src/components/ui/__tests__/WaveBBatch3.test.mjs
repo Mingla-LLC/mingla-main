@@ -87,7 +87,8 @@ const ADD_BOARD = "app-mobile/src/components/AddToBoardModal.tsx";
 const BOARD_MEMBER = "app-mobile/src/components/BoardMemberManagementModal.tsx";
 const FRIEND_ACTIONS = "app-mobile/src/components/friends/FriendActionsSheet.tsx";
 const CHOOSER = "app-mobile/src/components/connections/FriendsActionChooserSheet.tsx";
-const PENDING = "app-mobile/src/components/connections/PendingCollabChatSheet.tsx";
+// #4435: PendingCollabChatSheet was deleted (groups are live at once); its T-9
+// and T-A1 pins went with it.
 
 function run() {
   const share = read(SHARE);
@@ -95,7 +96,6 @@ function run() {
   const boardMember = read(BOARD_MEMBER);
   const friendActions = read(FRIEND_ACTIONS);
   const chooser = read(CHOOSER);
-  const pending = read(PENDING);
 
   const ALL = [
     ["ShareModal", share],
@@ -103,7 +103,6 @@ function run() {
     ["BoardMemberManagementModal", boardMember],
     ["FriendActionsSheet", friendActions],
     ["FriendsActionChooserSheet", chooser],
-    ["PendingCollabChatSheet", pending],
   ];
 
   // ── T-1: all 6 consume BaseBottomSheet, none imports gorhom directly ───────
@@ -185,22 +184,6 @@ function run() {
   );
   assert.doesNotMatch(code(chooser), /enableDynamicSizing/, "T-8 Chooser must NOT use enableDynamicSizing (off-screen in RN-Modal wrap)");
 
-  // ── T-9: PendingCollabChatSheet — dark, ['88%'], dark bg, gorhom inner list ─
-  assert.match(code(pending), /theme=["']dark["']/, "T-9 Pending is the dark surface");
-  assert.match(code(pending), /snapPoints=\{PENDING_COLLAB_SNAP_POINTS\}/, "T-9 Pending passes its snap");
-  assert.match(
-    code(pending),
-    /PENDING_COLLAB_SNAP_POINTS\s*=\s*\[\s*['"]88%['"]\s*\]/,
-    "T-9 Pending snap is ['88%'] (preserves prior maxHeight 88%)",
-  );
-  assert.match(code(pending), /backgroundStyle=\{SHEET_BACKGROUND_STYLE\}/, "T-9 Pending keeps its dark canvas via backgroundStyle override");
-  assert.match(code(pending), /<BottomSheetScrollView\b/, "T-9 Pending inner people list uses BottomSheetScrollView");
-  assert.doesNotMatch(
-    code(pending),
-    /<ScrollView\b/,
-    "T-9 Pending must NOT keep a raw RN <ScrollView> inside the sheet (fights the pan gesture)",
-  );
-
   // ── T-10: none of the 6 is a center-dialog (none is a pure destructive confirm) ─
   for (const [name, src] of ALL) {
     assert.doesNotMatch(
@@ -222,14 +205,12 @@ function run() {
   assert.doesNotMatch(code(friendActions), /handle:\s*\{/, "T-A1 FriendActions cosmetic `handle` removed (replaced by gorhom handle)");
   assert.doesNotMatch(code(chooser), /backdrop:\s*\{/, "T-A1 Chooser old `backdrop` scrim style removed");
   assert.doesNotMatch(code(chooser), /handle:\s*\{/, "T-A1 Chooser cosmetic `handle` removed (replaced by gorhom handle)");
-  assert.doesNotMatch(code(pending), /backdrop:\s*\{/, "T-A1 Pending old `backdrop` scrim style removed");
-  assert.doesNotMatch(code(pending), /handle:\s*\{/, "T-A1 Pending cosmetic `handle` removed (replaced by gorhom handle)");
 }
 
 try {
   run();
   console.log(
-    "PASS META-ORCH-0991 Wave B Batch-3 regression suite (Share + AddToBoard + BoardMember + FriendActions + Chooser + PendingCollab → BaseBottomSheet)",
+    "PASS META-ORCH-0991 Wave B Batch-3 regression suite (Share + AddToBoard + BoardMember + FriendActions + Chooser → BaseBottomSheet)",
   );
 } catch (error) {
   console.error(error);
