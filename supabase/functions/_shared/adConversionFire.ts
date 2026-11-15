@@ -53,7 +53,7 @@ import {
   type AppsFlyerApp,
   appsFlyerDeviceOptedOut,
   type AppsFlyerDeviceRow,
-  fetchAppsFlyerDevice,
+  lookupAppsFlyerDevice,
   formatEventTime,
   hostMoneyEventValues,
 } from "./appsFlyerDevice.ts";
@@ -1667,9 +1667,11 @@ async function fireNativePurchase(
   input: NativePurchaseInput,
 ): Promise<FireAdConversionResult> {
   const { key, ctx, existingRow } = input;
-  const device: AppsFlyerDeviceRow | null = ctx.buyerUserId
-    ? await fetchAppsFlyerDevice(supabase, ctx.buyerUserId, "consumer")
-    : null;
+  // #4238 P2-R1: a failed read is retryable, never "no device".
+  const lookup = ctx.buyerUserId
+    ? await lookupAppsFlyerDevice(supabase, ctx.buyerUserId, "consumer")
+    : { device: null, lookupFailed: false };
+  const device: AppsFlyerDeviceRow | null = lookup.device;
   // The row's surface is the buyer's Explorer device platform (iOS when the
   // device is unknown: the spec's default).
   const surface: Surface = device?.platform ?? "ios";
@@ -1731,6 +1733,10 @@ async function fireNativePurchase(
       // "share usage data" switch (appsflyer_devices.tracking_opt_out).
       afStatus = "skipped";
       afReason = "tracking_opt_out";
+    } else if (lookup.lookupFailed) {
+      // #4238 P2-R1: left pending; the hourly ad-conversion-retry reads again.
+      afStatus = "skipped";
+      afReason = "device_lookup_failed";
     } else if (!device || !ctx.buyerUserId) {
       afStatus = "skipped";
       afReason = "no_appsflyer_device";
@@ -1761,7 +1767,11 @@ async function fireNativePurchase(
       afStatus = ok ? "sent" : "failed";
       afReason = ok ? null : "appsflyer_post_failed";
     }
-    if (afReason !== "claimed_elsewhere" && afReason !== "deferred_to_retry") {
+    if (
+      afReason !== "claimed_elsewhere" &&
+      afReason !== "deferred_to_retry" &&
+      afReason !== "device_lookup_failed"
+    ) {
       statusUpdate.appsflyer_status = afStatus;
       providerResponse.appsflyer = {
         status: afStatus,
@@ -1824,12 +1834,16 @@ async function postHostFirstSaleAppsFlyer(
     let status: SendStatus | null = null;
     let reason: string | null = null;
     // #4238 P2-4: the Host app install's Analytics switch.
-    const hostDevice = owner
-      ? await fetchAppsFlyerDevice(supabase, owner, "business")
-      : null;
+    const hostLookup = owner
+      ? await lookupAppsFlyerDevice(supabase, owner, "business")
+      : { device: null, lookupFailed: false };
+    const hostDevice = hostLookup.device;
     if (!owner) {
       status = "skipped";
       reason = "no_owner";
+    } else if (hostLookup.lookupFailed) {
+      // #4238 P2-R1: left pending for the hourly retry.
+      status = null;
     } else if (appsFlyerDeviceOptedOut(hostDevice)) {
       status = "skipped";
       reason = "tracking_opt_out";

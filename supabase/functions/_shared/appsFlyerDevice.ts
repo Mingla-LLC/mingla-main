@@ -41,33 +41,81 @@ export const EXPLORER_APPSFLYER_APP_IDS = {
   android: "com.mingla.app.v2",
 } as const;
 
+/** One device lookup: the row (or null), and whether the read itself failed. */
+export interface AppsFlyerDeviceLookup {
+  device: AppsFlyerDeviceRow | null;
+  /** True when the database read failed (retryable), not "no device". */
+  lookupFailed: boolean;
+}
+
+/**
+ * #4238 P2-R1: `tracking_opt_out` is added by M-2. Until M-2 is applied, the
+ * select names a column that does not exist (PostgREST 42703). That is not a
+ * missing device: the lookup is retried without the column.
+ */
+function isMissingOptOutColumn(error: unknown): boolean {
+  const record = (error ?? {}) as { code?: unknown; message?: unknown };
+  if (record.code === "42703") return true;
+  const message = typeof record.message === "string" ? record.message : "";
+  return /tracking_opt_out/.test(message) &&
+    /does not exist|could not find|schema cache/i.test(message);
+}
+
 /**
  * Look up the most-recent AppsFlyer device row of one app for a Supabase user.
- * Returns null if the user has never signed into that app on a device, or if
- * the row was not registered (env missing during install). `app` defaults to
- * `business`, so every pre-#4238 caller is unchanged.
+ * `device` is null if the user has never signed into that app on a device, or
+ * if the row was not registered (env missing during install). `app` defaults
+ * to `business`, so every pre-#4238 caller is unchanged.
+ *
+ * #4238 P2-R1 (I-4238-AF-DEVICE-FAILS-OPEN-BEFORE-M2): before M-2 adds
+ * `tracking_opt_out`, the row is read without it and the install counts as
+ * not opted out. That is safe: an opt-out can only be stored in that column,
+ * so none can exist yet. Any other read error is `lookupFailed` (retryable).
  */
-export async function fetchAppsFlyerDevice(
+export async function lookupAppsFlyerDevice(
   supabase: SupabaseClient,
   userId: string,
   app: AppsFlyerApp = "business",
-): Promise<AppsFlyerDeviceRow | null> {
-  const { data, error } = await supabase
-    .from("appsflyer_devices")
-    .select("appsflyer_uid, platform, tracking_opt_out")
-    .eq("user_id", userId)
-    .eq("app", app)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+): Promise<AppsFlyerDeviceLookup> {
+  const read = (columns: string) =>
+    supabase
+      .from("appsflyer_devices")
+      .select(columns)
+      .eq("user_id", userId)
+      .eq("app", app)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+  let { data, error } = await read("appsflyer_uid, platform, tracking_opt_out");
+  if (error && isMissingOptOutColumn(error)) {
+    console.error(
+      "[AppsFlyerS2S] appsflyer_devices.tracking_opt_out is missing (apply M-2); reading the device without it",
+    );
+    ({ data, error } = await read("appsflyer_uid, platform"));
+    if (!error && data) {
+      data = { ...(data as AppsFlyerDeviceRow), tracking_opt_out: false };
+    }
+  }
   if (error) {
     console.warn(
       "[AppsFlyerS2S] device lookup failed:",
       error.message ?? String(error),
     );
-    return null;
+    return { device: null, lookupFailed: true };
   }
-  return data as AppsFlyerDeviceRow | null;
+  return {
+    device: (data as AppsFlyerDeviceRow | null) ?? null,
+    lookupFailed: false,
+  };
+}
+
+/** The device row, or null (no device, or the read failed). */
+export async function fetchAppsFlyerDevice(
+  supabase: SupabaseClient,
+  userId: string,
+  app: AppsFlyerApp = "business",
+): Promise<AppsFlyerDeviceRow | null> {
+  return (await lookupAppsFlyerDevice(supabase, userId, app)).device;
 }
 
 export function formatEventTime(d: Date): string {
@@ -102,7 +150,9 @@ export function hostMoneyEventValues(
   currency: string,
 ): Record<string, string | number> {
   const minor = Number.isFinite(amountMinor) ? Math.round(amountMinor) : 0;
-  const code = typeof currency === "string" ? currency.trim().toUpperCase() : "";
+  const code = typeof currency === "string"
+    ? currency.trim().toUpperCase()
+    : "";
   return {
     [`${prefix}_minor`]: minor,
     [prefix]: majorFromMinor(minor, code),
