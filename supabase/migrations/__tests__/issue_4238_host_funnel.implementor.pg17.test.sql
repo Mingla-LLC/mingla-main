@@ -359,4 +359,73 @@ BEGIN
 END
 $f10$;
 
+-- Tester retest 1 (#4238, I-4238-HOST-FIRST-PUBLISH-TRUE-FIRST): T1 an earlier publish on a
+-- soft-deleted second brand (brand and event deleted_at set) suppresses the first-publish row;
+-- T2 an unverified (pending_review) venue listing never suppresses a true first publish.
+INSERT INTO auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+VALUES
+  ('00000000-4238-4700-8000-000000000001', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'ta1-4238rt@example.test', now(), now()),
+  ('00000000-4238-4700-8000-000000000002', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'ta2-4238rt@example.test', now(), now());
+
+-- T1 (tester retest 1) ---------------------------------------------------------------------------
+SET LOCAL session_replication_role = replica;
+INSERT INTO public.creator_accounts (id, email, created_at)
+VALUES ('00000000-4238-4700-8000-000000000001', 'ta1-4238rt@example.test', now() - interval '200 days');
+INSERT INTO public.brands (id, account_id, name, slug, default_currency, deleted_at)
+VALUES ('00000000-4238-4700-8000-000000000011', '00000000-4238-4700-8000-000000000001',
+        'Issue 4238 RT Closed Brand', 'issue-4238-rt-closed-brand', 'USD', now() - interval '20 days');
+INSERT INTO public.events (brand_id, title, slug, published_at, deleted_at)
+VALUES ('00000000-4238-4700-8000-000000000011', 'Long-gone night', 'issue-4238-rt-gone-night',
+        now() - interval '150 days', now() - interval '20 days');
+SET LOCAL session_replication_role = origin;
+
+INSERT INTO public.brands (id, account_id, name, slug, default_currency)
+VALUES ('00000000-4238-4700-8000-000000000012', '00000000-4238-4700-8000-000000000001',
+        'Issue 4238 RT Fresh Brand', 'issue-4238-rt-fresh-brand', 'USD');
+
+DO $a1$
+DECLARE
+  v_event uuid;
+BEGIN
+  INSERT INTO public.events (brand_id, title, slug)
+  VALUES ('00000000-4238-4700-8000-000000000012', 'Comeback night', 'issue-4238-rt-comeback')
+  RETURNING id INTO v_event;
+  UPDATE public.events SET published_at = now() WHERE id = v_event;
+  PERFORM pg_temp.hf_assert(
+    NOT EXISTS (SELECT 1 FROM public.ad_conversions
+      WHERE event_id = 'host_publish:00000000-4238-4700-8000-000000000001'),
+    'T1 an earlier publish on a soft-deleted second brand suppresses the first-publish row'
+  );
+END
+$a1$;
+
+-- T2 (tester retest 1) ---------------------------------------------------------------------------
+INSERT INTO public.creator_accounts (id, email, created_at)
+VALUES ('00000000-4238-4700-8000-000000000002', 'ta2-4238rt@example.test', now());
+INSERT INTO public.brands (id, account_id, name, slug, default_currency)
+VALUES ('00000000-4238-4700-8000-000000000021', '00000000-4238-4700-8000-000000000002',
+        'Issue 4238 RT Venue Pending Brand', 'issue-4238-rt-venue-pending', 'USD');
+INSERT INTO public.venue_listings (brand_id, slug, name, lat, lng, venue_category, claim_status)
+VALUES ('00000000-4238-4700-8000-000000000021', 'issue4238rtpending', 'Issue 4238 RT Pending Venue',
+        51.5, -0.12, 'restaurant', 'pending_review');
+
+DO $a2$
+DECLARE
+  v_event uuid;
+BEGIN
+  INSERT INTO public.events (brand_id, title, slug)
+  VALUES ('00000000-4238-4700-8000-000000000021', 'Real debut', 'issue-4238-rt-real-debut')
+  RETURNING id INTO v_event;
+  UPDATE public.events SET published_at = now() WHERE id = v_event;
+  PERFORM pg_temp.hf_assert(
+    (SELECT count(*) FROM public.ad_conversions
+      WHERE event_id = 'host_publish:00000000-4238-4700-8000-000000000002'
+        AND mingla_event_id = v_event) = 1,
+    'T2 an unverified venue listing never suppresses a true first publish'
+  );
+END
+$a2$;
+
 ROLLBACK;
