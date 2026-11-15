@@ -86,6 +86,8 @@ import { brandStatStripItems } from "./brandStatStrip";
 import { OfferingListCard } from "../offering/OfferingListCard";
 import { liveEventToOfferingModel } from "../offering/offeringCardModels";
 import { TopBar } from "../ui/TopBar";
+import { DesktopColumns } from "../ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { brandPhoneTelHref } from "@mingla/brand-rendering/brandPhoneHref";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
@@ -346,6 +348,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { width: windowWidth } = useWindowDimensions();
+  const { isWideDesktop } = useResponsiveLayout();
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const reduceMotion = useReducedMotion();
   // Issue #1835 — signed-in operator, for the owner-only delete gate below.
@@ -769,6 +772,100 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const eventsSettledEmpty =
     !eventsLoading && !eventsError && brandEvents.length === 0;
 
+
+  // SECTION E lives in the main column on desktop and after the Run list on
+  // phones (#4420), so it is built once here.
+  const recentEventsSection = (
+    <>
+        {/* SECTION E — Recent Events (ORCH-1121).
+            ORCH-1121 (Constitution #9 / I-PROPOSED-1121-RECENT-EVENTS-LIVE-QUERY):
+            this empty card is gated on a SETTLED, non-error, zero-length live
+            query. Never make it unconditional again — see
+            BrandProfileView.orch_1121.test.tsx (T-1). */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Recent events</Text>
+          {totalEventCount > 5 ? (
+            <Pressable
+              onPress={onSeeAllEvents}
+              accessibilityRole="button"
+              accessibilityLabel="See all events"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.seeAllRow,
+                pressed && styles.seeAllRowPressed,
+              ]}
+            >
+              <Text style={styles.seeAllText}>See all</Text>
+              <Icon name="chevR" size={14} color={color.text1} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        {eventsError ? (
+          <GlassCard variant="base" padding={space[6]}>
+            <Text style={styles.emptyEventsTitle}>
+              Couldn{"’"}t load your events.
+            </Text>
+            <Text style={styles.emptyEventsBody}>
+              Something went wrong fetching your events.
+            </Text>
+            <View style={styles.emptyEventsBtnRow}>
+              <Button
+                label="Tap to retry"
+                onPress={() => {
+                  void refetchEvents();
+                }}
+                variant="secondary"
+                size="md"
+                leadingIcon="swap"
+              />
+            </View>
+          </GlassCard>
+        ) : recentEvents.length > 0 ? (
+          <View style={styles.recentEventsList}>
+            {recentEvents.map(({ event, status }) => (
+              <OfferingListCard
+                key={event.id}
+                kind="event"
+                model={liveEventToOfferingModel(event, status)}
+                onOpen={() =>
+                  onOpenEvent(event.id, event.event_type, event.status)
+                }
+                // onManageOpen OMITTED → hides the 3-dot manage trigger; the
+                // brand profile is a glanceable summary (management is in the Hub).
+              />
+            ))}
+          </View>
+        ) : eventsSettledEmpty ? (
+          <GlassCard variant="base" padding={space[6]}>
+            <Text style={styles.emptyEventsTitle}>No events yet</Text>
+            <Text style={styles.emptyEventsBody}>
+              Events you create will show here.
+            </Text>
+            <View style={styles.emptyEventsBtnRow}>
+              <Button
+                label="Create your first event"
+                onPress={handleCreateEvent}
+                variant="primary"
+                size="md"
+                leadingIcon="plus"
+              />
+            </View>
+          </GlassCard>
+        ) : (
+          // Loading (query fetching, no cached rows yet): render nothing until
+          // the query settles. staleTime 30s makes cached loads instant, so the
+          // false-empty flash is impossible — we never show the empty card mid-
+          // load (the exact bug this ORCH kills).
+          <View style={styles.recentEventsLoading} pointerEvents="none">
+            <View style={styles.recentEventsSkeletonRow} />
+            <View style={styles.recentEventsSkeletonRow} />
+          </View>
+        )}
+
+    </>
+  );
+
   return (
     <View style={styles.host}>
       <View style={styles.barWrap}>
@@ -776,17 +873,52 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           leftKind="back"
           title={brand.displayName}
           onBack={onBack}
-          rightSlot={<View />}
+          rightSlot={
+            isWideDesktop ? (
+              // #4420 — desktop puts the shelf's two actions in the header.
+              <View style={styles.headerActions}>
+                <Button
+                  label="View public page"
+                  onPress={handleViewPublic}
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon="eye"
+                />
+                <Button
+                  label="Edit brand"
+                  onPress={handleEdit}
+                  variant="primary"
+                  size="sm"
+                  leadingIcon="edit"
+                />
+              </View>
+            ) : (
+              <View />
+            )
+          }
         />
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: SHELF_CLEARANCE + Math.max(insets.bottom, space[4]) }]}
+        contentContainerStyle={[
+          styles.scroll,
+          {
+            paddingBottom: isWideDesktop
+              ? space[8]
+              : SHELF_CLEARANCE + Math.max(insets.bottom, space[4]),
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
         }
       >
+        {/* #4420 — desktop (T3 8/4): the hero and recent events in the main
+            column; numbers, Promote, payouts, the Run list and the danger
+            zone in the side column. Phone keeps the single column. */}
+        <DesktopColumns
+          main={
+            <View style={styles.colStack}>
         {/* SECTION A — Direction-1 full-bleed hero (ORCH-1121).
             16:9 cover (EventCoverMedia: image/GIF/video, motion-gated) with a
             required bottom scrim, a 96px page-color ring avatar half-overlapping
@@ -970,6 +1102,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           </View>
         </GlassCard>
 
+              {isWideDesktop ? recentEventsSection : null}
+            </View>
+          }
+          aside={
+            <View style={styles.colStack}>
         {/* SECTION B — Stats Strip */}
         {/* #3872 round 2 — one compact strip of three numbers (Attendees ·
             Sales · Followers), no hint text, like the program screens'
@@ -1074,92 +1211,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           })}
         </GlassCard>
 
-        {/* SECTION E — Recent Events (ORCH-1121).
-            ORCH-1121 (Constitution #9 / I-PROPOSED-1121-RECENT-EVENTS-LIVE-QUERY):
-            this empty card is gated on a SETTLED, non-error, zero-length live
-            query. Never make it unconditional again — see
-            BrandProfileView.orch_1121.test.tsx (T-1). */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Recent events</Text>
-          {totalEventCount > 5 ? (
-            <Pressable
-              onPress={onSeeAllEvents}
-              accessibilityRole="button"
-              accessibilityLabel="See all events"
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.seeAllRow,
-                pressed && styles.seeAllRowPressed,
-              ]}
-            >
-              <Text style={styles.seeAllText}>See all</Text>
-              <Icon name="chevR" size={14} color={color.text1} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        {eventsError ? (
-          <GlassCard variant="base" padding={space[6]}>
-            <Text style={styles.emptyEventsTitle}>
-              Couldn{"’"}t load your events.
-            </Text>
-            <Text style={styles.emptyEventsBody}>
-              Something went wrong fetching your events.
-            </Text>
-            <View style={styles.emptyEventsBtnRow}>
-              <Button
-                label="Tap to retry"
-                onPress={() => {
-                  void refetchEvents();
-                }}
-                variant="secondary"
-                size="md"
-                leadingIcon="swap"
-              />
-            </View>
-          </GlassCard>
-        ) : recentEvents.length > 0 ? (
-          <View style={styles.recentEventsList}>
-            {recentEvents.map(({ event, status }) => (
-              <OfferingListCard
-                key={event.id}
-                kind="event"
-                model={liveEventToOfferingModel(event, status)}
-                onOpen={() =>
-                  onOpenEvent(event.id, event.event_type, event.status)
-                }
-                // onManageOpen OMITTED → hides the 3-dot manage trigger; the
-                // brand profile is a glanceable summary (management is in the Hub).
-              />
-            ))}
-          </View>
-        ) : eventsSettledEmpty ? (
-          <GlassCard variant="base" padding={space[6]}>
-            <Text style={styles.emptyEventsTitle}>No events yet</Text>
-            <Text style={styles.emptyEventsBody}>
-              Events you create will show here.
-            </Text>
-            <View style={styles.emptyEventsBtnRow}>
-              <Button
-                label="Create your first event"
-                onPress={handleCreateEvent}
-                variant="primary"
-                size="md"
-                leadingIcon="plus"
-              />
-            </View>
-          </GlassCard>
-        ) : (
-          // Loading (query fetching, no cached rows yet): render nothing until
-          // the query settles. staleTime 30s makes cached loads instant, so the
-          // false-empty flash is impossible — we never show the empty card mid-
-          // load (the exact bug this ORCH kills).
-          <View style={styles.recentEventsLoading} pointerEvents="none">
-            <View style={styles.recentEventsSkeletonRow} />
-            <View style={styles.recentEventsSkeletonRow} />
-          </View>
-        )}
-
+              {isWideDesktop ? null : recentEventsSection}
         {/* Cycle 17e-A — Danger zone (delete brand).
             Issue #1835 — owner-only: hidden for admins, whose delete the
             `brands` RLS policy refuses. */}
@@ -1182,9 +1234,13 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             </View>
           </View>
         ) : null}
+            </View>
+          }
+        />
       </ScrollView>
 
-      {/* SECTION F — Sticky Bottom Shelf */}
+      {/* SECTION F — Sticky Bottom Shelf (phone; desktop has it in the header) */}
+      {isWideDesktop ? null : (
       <View
         style={[
           styles.shelfWrap,
@@ -1215,6 +1271,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           </View>
         </View>
       </View>
+      )}
     </View>
   );
 };
@@ -1235,6 +1292,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     paddingTop: space[2],
     gap: space[4],
+  },
+  colStack: {
+    gap: space[4],
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
   },
 
   // Loading state (ORCH-1100 Wave 3) -------------------------------------

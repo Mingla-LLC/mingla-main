@@ -60,8 +60,8 @@ import {
   durations,
   glass,
   radius,
+  materials,
   semantic,
-  shadow,
   space,
   spacing,
   type,
@@ -128,7 +128,9 @@ const FAMILY_STYLE: Record<NotificationFamily, FamilyStyle> = {
 const ICON_CIRCLE = 40;
 const UNREAD_RAIL_WIDTH = 3;
 const UNREAD_DOT = 8;
-const WEB_MAX_WIDTH = 640;
+/** #4420 — the desktop list column (the route header shares it). */
+export const NOTIFICATIONS_COLUMN_MAX = 720;
+const WEB_MAX_WIDTH = NOTIFICATIONS_COLUMN_MAX;
 
 // ORCH-1142 deliberate sub-grid accents (DESIGN §5), declared alongside the
 // existing ICON_CIRCLE/UNREAD_RAIL_WIDTH/UNREAD_DOT.
@@ -389,24 +391,14 @@ const NotificationRowInner: React.FC<RowProps> = ({
       onAccessibilityAction={(e): void => {
         if (e.nativeEvent.actionName === "delete") onDelete(notification);
       }}
+      // #4420 — a flat row inside its section's grouped pane (the mockup):
+      // unread reads from the rail and the dot, not a tinted card.
       style={({ pressed }) => [
         styles.card,
-        {
-          backgroundColor: unread ? fam.unreadFill : color.fill.inset,
-          borderColor: unread ? fam.unreadBorder : color.line,
-        },
-        !isWeb && !unread ? shadow.pane : null,
         pressed ? styles.cardPressed : null,
       ]}
     >
-      {/* unread rail */}
-      {unread ? (
-        <View
-          style={[styles.rail, { backgroundColor: fam.rail }]}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        />
-      ) : null}
+      {/* #4420 — unread is the trailing dot (the mockup); no side rail. */}
 
       {/* icon circle */}
       <View style={[styles.iconCircle, { backgroundColor: fam.tint }]}>
@@ -457,11 +449,8 @@ const NotificationRowInner: React.FC<RowProps> = ({
       </View>
 
       {/* trailing affordance + unread dot */}
-      {!blockingRisk ? (
-        <Reanimated.View style={[styles.chev, chevronStyle]}>
-          <Icon name="chevR" size={16} color={color.text4} />
-        </Reanimated.View>
-      ) : null}
+      {/* #4420 — no trailing chevron (the mockup): a tap still expands the
+          row and shows Open; the width goes to the title. */}
       {/* Web delete fallback: always-visible trailing trash (DESIGN §2.6). */}
       {isWeb ? <WebTrashButton onPress={handleWebDelete} /> : null}
       {unread ? (
@@ -824,16 +813,19 @@ export function BusinessNotificationsScreen({
           >
             {section.label.toUpperCase()}
           </Text>
-          {section.rows.map((n) => (
-            <NotificationRow
-              key={n.id}
-              notification={n}
-              onPress={handlePress}
-              onOpenDeepLink={handleOpen}
-              onDelete={handleDelete}
-              expanded={expandedIds.has(n.id)}
-            />
-          ))}
+          <View style={styles.sectionPane}>
+            {section.rows.map((n, rIdx) => (
+              <View key={n.id} style={rIdx > 0 ? styles.rowDivider : null}>
+                <NotificationRow
+                  notification={n}
+                  onPress={handlePress}
+                  onOpenDeepLink={handleOpen}
+                  onDelete={handleDelete}
+                  expanded={expandedIds.has(n.id)}
+                />
+              </View>
+            ))}
+          </View>
         </View>
       ))}
     </ScrollView>
@@ -880,10 +872,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: space[4],
     paddingVertical: space[4],
-    paddingLeft: space[4] + UNREAD_RAIL_WIDTH,
+    paddingLeft: space[4],
     paddingRight: space[4],
-    borderRadius: radius.md,
-    borderWidth: 1,
+    backgroundColor: color.transparent,
     // overflow:'hidden' is load-bearing TWICE (ORCH-1142 §4.1): (a) Android
     // glass clip (existing, SUB-C_DESIGN §7) and (b) clipping the swipe red
     // panel to the rounded corners. Keep on BOTH the card and the wrapper.
@@ -894,12 +885,22 @@ const styles = StyleSheet.create({
   // layout + clips the red action panel to the rounded corners. marginBottom
   // preserves the exact list rhythm the collapsed row had.
   rowWrapper: {
-    borderRadius: radius.md,
     overflow: "hidden",
-    marginBottom: space[2],
   },
   cardPressed: {
-    opacity: 0.85,
+    backgroundColor: color.fill.rowHover,
+  },
+  // #4420 — one grouped pane per day section; rows split by a hairline.
+  sectionPane: {
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    backgroundColor: materials.pane.solidFill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
   },
   rail: {
     position: "absolute",
@@ -912,7 +913,7 @@ const styles = StyleSheet.create({
   iconCircle: {
     width: ICON_CIRCLE,
     height: ICON_CIRCLE,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
   },

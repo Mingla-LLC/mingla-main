@@ -15,12 +15,12 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 
-import { Icon } from "../src/components/ui/Icon";
+import { Button } from "../src/components/ui/Button";
 import { IconChrome } from "../src/components/ui/IconChrome";
 import { ConfirmDialog } from "../src/components/ui/ConfirmDialog";
 import { BusinessNotificationsScreen } from "../src/components/notifications/BusinessNotificationsScreen";
@@ -33,9 +33,12 @@ import {
 import { HapticFeedback } from "../src/utils/hapticFeedback";
 import type { BusinessNotification } from "../src/hooks/useBusinessNotifications";
 
-import { color, space } from "../src/constants/designSystem";
+import { color, space, type } from "../src/constants/designSystem";
+import { useResponsiveLayout } from "../src/hooks/useResponsiveLayout";
+import { NOTIFICATIONS_COLUMN_MAX } from "../src/components/notifications/BusinessNotificationsScreen";
 export default function NotificationsRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const { user } = useAuth();
   const userId = user?.id ?? null;
@@ -102,56 +105,65 @@ export default function NotificationsRoute(): React.ReactElement {
         { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
-      <View style={styles.chromeRow}>
+      <View style={[styles.chromeRow, isWideDesktop && styles.chromeRowDesktop]}>
         <IconChrome
           icon={Platform.OS === "web" ? "close" : "chevL"}
-          size={36}
           onPress={handleBack}
           accessibilityLabel="Back"
         />
-        <Text style={styles.chromeTitle}>Notifications</Text>
+        <Text
+          style={[styles.chromeTitle, isWideDesktop && styles.chromeTitleDesktop]}
+          numberOfLines={1}
+          accessibilityRole="header"
+        >
+          Notifications
+        </Text>
         {/* ORCH-1142 four-state header cluster (DESIGN §3.2): "Mark all read"
             shows when unreadCount>0; "Clear read" shows when hasRead; both may
             co-exist (Mark all read first, Clear read rightmost); when neither,
             the 36pt spacer keeps the title centered. */}
+        {/* #4420 — phone: two icon buttons (the mockup); desktop: the same
+            actions as labelled quiet buttons. Both keep their a11y labels. */}
         {unreadCount > 0 || hasRead ? (
           <View style={styles.headerActions}>
             {unreadCount > 0 ? (
-              <Pressable
-                onPress={handleMarkAll}
-                accessibilityRole="button"
-                accessibilityLabel="Mark all notifications as read"
-                accessibilityHint="Marks every unread notification as read"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={({ pressed }) => [
-                  styles.markAll,
-                  pressed ? styles.markAllPressed : null,
-                ]}
-              >
-                <Icon name="check" size={16} color={color.text1} />
-                <Text style={styles.markAllLabel}>Mark all read</Text>
-              </Pressable>
+              isWideDesktop ? (
+                <Button
+                  label="Mark all read"
+                  leadingIcon="check"
+                  variant="secondary"
+                  size="sm"
+                  onPress={handleMarkAll}
+                  accessibilityLabel="Mark all notifications as read"
+                />
+              ) : (
+                <IconChrome
+                  icon="check"
+                  onPress={handleMarkAll}
+                  accessibilityLabel="Mark all notifications as read"
+                />
+              )
             ) : null}
             {hasRead ? (
-              <Pressable
-                onPress={handleClearReadPress}
-                accessibilityRole="button"
-                accessibilityLabel="Clear read notifications"
-                accessibilityHint="Removes read notifications from your inbox; unread stay"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={({ pressed }) => [
-                  styles.markAll,
-                  pressed ? styles.markAllPressed : null,
-                ]}
-              >
-                <Icon name="trash" size={16} color={color.text1} />
-                <Text style={styles.markAllLabel}>Clear read</Text>
-              </Pressable>
+              isWideDesktop ? (
+                <Button
+                  label="Clear read"
+                  leadingIcon="trash"
+                  variant="secondary"
+                  size="sm"
+                  onPress={handleClearReadPress}
+                  accessibilityLabel="Clear read notifications"
+                />
+              ) : (
+                <IconChrome
+                  icon="trash"
+                  onPress={handleClearReadPress}
+                  accessibilityLabel="Clear read notifications"
+                />
+              )
             ) : null}
           </View>
-        ) : (
-          <View style={styles.chromeRightSlot} />
-        )}
+        ) : null}
       </View>
 
       <BusinessNotificationsScreen
@@ -184,43 +196,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     paddingTop: space[2],
     paddingBottom: space[2],
-    gap: space[2],
+    gap: space[3],
+  },
+  // #4420 — on desktop the header sits on the same column as the list.
+  chromeRowDesktop: {
+    width: "100%",
+    maxWidth: NOTIFICATIONS_COLUMN_MAX,
+    alignSelf: "center",
   },
   chromeTitle: {
     flex: 1,
-    fontSize: 20,
-    lineHeight: 32,
-    fontWeight: "600",
+    minWidth: 0,
+    ...type.h2,
     color: color.text1,
-    letterSpacing: -0.2,
-    textAlign: "center",
   },
-  chromeRightSlot: {
-    width: 36,
+  chromeTitleDesktop: {
+    ...type.h1,
   },
-  // ORCH-1142 — header action cluster when both "Mark all read" and "Clear
-  // read" are present (DESIGN §3.3). Mark-all first, Clear-read rightmost.
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: space[4],
-  },
-  markAll: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space[1],
-    paddingVertical: space[1],
-    paddingHorizontal: space[1],
-    minWidth: 36,
-    justifyContent: "flex-end",
-  },
-  markAllPressed: {
-    opacity: 0.7,
-  },
-  markAllLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: color.text1,
+    gap: space[2],
   },
 });
