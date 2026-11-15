@@ -113,6 +113,8 @@ const STICKY_PANEL_WIDTH = 360;
 const SEAM = 28;
 // issue #4420 — premium frame metrics (design file: public-pages-design.html).
 const PREMIUM_HEADER_ROW = 56;
+/** issue #4420 — the premium glass header row height (a pinned strip sits under it). */
+export const OFFERING_PREMIUM_HEADER_ROW = PREMIUM_HEADER_ROW;
 const PREMIUM_DESKTOP_SOLID_AT = 40;
 const PREMIUM_FLYER_MAX = 420;
 const PREMIUM_GUTTER = 24;

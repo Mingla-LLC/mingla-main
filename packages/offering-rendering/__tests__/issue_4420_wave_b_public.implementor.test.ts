@@ -115,3 +115,48 @@ Deno.test("R-1 RSVP: confirmed card with a tick that respects reduced motion", (
   // the going node keeps its contract (label + state) inside the card
   assertStringIncludes(d, "accessibilityState={{ disabled: true, selected: true }}");
 });
+
+// ── wave B round 2: stay strip, venue booking controls, native pinned tabs ──
+
+Deno.test("S-1 stay strip: tap check-in then a later day for check-out; earlier tap restarts", async () => {
+  // StayDateStrip.tsx imports react-native; its rules are mirrored here
+  // against the SAME stayDateRules the field uses, and the source is pinned.
+  const rules = await import("../../brand-rendering/stayDateRules.ts");
+  const strip = read("../../brand-rendering/StayDateStrip.tsx");
+  assertStringIncludes(strip, "applyCheckInChange({ checkIn: range.checkIn, checkOut: \"\" }, day)");
+  assertStringIncludes(strip, "applyCheckOutChange(range, day)");
+  assertStringIncludes(strip, "compareStayDates(day, bounds.maxCheckOut) <= 0");
+  assertStringIncludes(strip, "compareStayDates(day, bounds.maxCheckIn) <= 0");
+  assertStringIncludes(strip, "compareStayDates(day, bounds.minCheckIn) < 0");
+  // no fabricated per-night price or "booked" state
+  assert(!strip.includes("Booked"), "no fabricated booked state");
+  assertEquals(rules.applyCheckOutChange({ checkIn: "2030-01-10", checkOut: "" }, "2030-01-13"), {
+    checkIn: "2030-01-10",
+    checkOut: "2030-01-13",
+  });
+  assertEquals(rules.applyCheckInChange({ checkIn: "2030-01-10", checkOut: "" }, "2030-01-08"), {
+    checkIn: "2030-01-08",
+    checkOut: "",
+  });
+  const booking = read("../../brand-rendering/StayGuestBooking.tsx");
+  assert(booking.indexOf("<StayDateStrip") < booking.indexOf("<StayDateRangeField"), "strip sits above the field, which stays");
+});
+
+Deno.test("S-2 venue booking: date strip, stepper, time chips and occasion picks on the same state", () => {
+  const g = read("../../../mingla-business/src/components/venue/GuestVenueReservation.tsx");
+  assertStringIncludes(g, "<OfferingDateStrip");
+  assertStringIncludes(g, 'decrementLabel="Decrease party size"');
+  assertStringIncludes(g, "usePublicVenueAvailability(venueId, date, partySize)");
+  assertStringIncludes(g, "submissionTruthRef.current.selectableSlotUtcValues.includes(");
+  assertStringIncludes(g, "occasion: occasion.trim() || null");
+  assertStringIncludes(g, "setOccasion((current) => (current.trim() === label ? \"\" : label))");
+});
+
+Deno.test("S-3 native pinned tabs select through the in-flow strip", () => {
+  const v = read("../../brand-rendering/PublicVenueScreen.tsx");
+  assertStringIncludes(v, 'Platform.OS !== "web" && tabsPinned ? (');
+  assertStringIncludes(v, "publicVenueTabsRef.current?.selectTab(tab)");
+  const t = read("../../brand-rendering/PublicVenueTabs.tsx");
+  assertStringIncludes(t, "selectRef.current(tab)");
+  assertStringIncludes(t, 'position: "sticky"');
+});

@@ -60,6 +60,16 @@ import { BuyerClaimCard } from "../checkout/DownloadMinglaCta";
 import { mintClaimLinkHandoff } from "../../services/claimLinkService";
 import { accentIcon, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
+// issue #4420 — the shared decide controls (date strip, stepper, chips).
+import {
+  OfferingChipRow,
+  OfferingChoiceChip,
+  OfferingDateStrip,
+  OfferingPanel,
+  OfferingPanelRow,
+  OfferingStepper,
+} from "@mingla/offering-rendering/OfferingDecideParts";
+import { OfferingSubLabel } from "@mingla/offering-rendering/OfferingSectionTitle";
 
 const DiscountReasonText = React.lazy(() =>
   import("@mingla/offering-rendering/DiscountReasonText").then((module) => ({
@@ -134,6 +144,33 @@ const dateOptions = (): { value: string; label: string }[] => {
             }),
     };
   });
+};
+
+/**
+ * issue #4420 — quick picks for the existing free-text occasion field (the
+ * guest can still type any occasion below). Nothing new reaches the server:
+ * the chosen words fill the same `occasion` string.
+ */
+const VENUE_OCCASIONS = ["Birthday", "Date night", "Anniversary", "Business"] as const;
+
+/** issue #4420 — "TODAY / 16 / Nov" tile text for a YYYY-MM-DD date value. */
+export const venueDateTileParts = (
+  value: string,
+  index: number,
+): { top: string; big: string; bottom: string } => {
+  const [y, m, d] = value.split("-").map((part) => Number(part));
+  const date = new Date(y, (m ?? 1) - 1, d ?? 1);
+  const top =
+    index === 0
+      ? "Today"
+      : index === 1
+        ? "Tmrw"
+        : date.toLocaleDateString("en-GB", { weekday: "short" });
+  return {
+    top,
+    big: String(date.getDate()),
+    bottom: date.toLocaleDateString("en-GB", { month: "short" }),
+  };
 };
 
 const phoneCountryKnown = (iso: string): boolean => {
@@ -559,66 +596,57 @@ function GuestVenueReservationBody({
 
   return (
     <View style={styles.host}>
+      {/* issue #4420 — the booking reads date, party size, time, then an
+          optional occasion (design file → venueDef "Book"). Same state, same
+          availability query, same slot guard and analytics; only the
+          controls changed (date strip, stepper, time chips). */}
       <Text style={[styles.title, { color: palette.primaryText }]}>
         Find a table
       </Text>
-      <Text style={[styles.label, { color: palette.tertiaryText }]}>
-        PARTY SIZE
-      </Text>
-      <View style={styles.stepper}>
-        <Button
-          label="−"
-          variant="secondary"
-          size="md"
-          disabled={partySize <= 1}
-          onPress={() => {
-            setPartySize((value) => Math.max(1, value - 1));
-            setSelectedUtc(null);
-          }}
-          accessibilityLabel="Decrease party size"
+      <OfferingSubLabel palette={palette}>Date</OfferingSubLabel>
+      <OfferingDateStrip
+        palette={palette}
+        accessibilityLabel="Choose a date"
+        testID="issue-4420-venue-date-strip"
+        onPress={(value: string) => {
+          setDate(value);
+          setSelectedUtc(null);
+        }}
+        tiles={dates.map((option, index) => {
+          const parts = venueDateTileParts(option.value, index);
+          return {
+            key: option.value,
+            top: parts.top,
+            big: parts.big,
+            bottom: parts.bottom,
+            selected: date === option.value,
+            accessibilityLabel: `Select ${option.label}`,
+          };
+        })}
+      />
+      <OfferingPanel palette={palette} style={styles.partyPanel}>
+        <OfferingPanelRow
+          palette={palette}
+          title="Party size"
+          detail="Up to 12"
+          right={
+            <OfferingStepper
+              palette={palette}
+              value={partySize}
+              min={1}
+              max={12}
+              onChange={(next: number) => {
+                setPartySize(Math.min(12, Math.max(1, next)));
+                setSelectedUtc(null);
+              }}
+              decrementLabel="Decrease party size"
+              incrementLabel="Increase party size"
+              valueLabel={`${partySize} ${partySize === 1 ? "person" : "people"}`}
+            />
+          }
         />
-        <Text style={[styles.party, { color: palette.primaryText }]}>
-          {partySize}
-        </Text>
-        <Button
-          label="+"
-          variant="secondary"
-          size="md"
-          disabled={partySize >= 12}
-          onPress={() => {
-            setPartySize((value) => Math.min(12, value + 1));
-            setSelectedUtc(null);
-          }}
-          accessibilityLabel="Increase party size"
-        />
-      </View>
-      <Text style={[styles.label, { color: palette.tertiaryText }]}>DATE</Text>
-      <View style={styles.chips}>
-        {dates.map((option) => (
-          <Pressable
-            key={option.value}
-            onPress={() => {
-              setDate(option.value);
-              setSelectedUtc(null);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`Select ${option.label}`}
-            accessibilityState={{ selected: date === option.value }}
-            style={[
-              styles.chip,
-              chipTheme.chip,
-              date === option.value && chipTheme.chipSelected,
-            ]}
-          >
-            <Text style={[styles.chipText, { color: palette.primaryText }]}>
-              {option.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={[styles.label, { color: palette.tertiaryText }]}>
-        AVAILABLE TIMES
-      </Text>
+      </OfferingPanel>
+      <OfferingSubLabel palette={palette}>Time</OfferingSubLabel>
       {availability.isLoading || availability.isFetching ? (
         <View style={styles.loading}>
           <ActivityIndicator color={palette.accent} />
@@ -649,11 +677,22 @@ function GuestVenueReservationBody({
           </Text>
         </View>
       ) : (
-        <View style={styles.chips}>
+        <OfferingChipRow accessibilityLabel="Choose a time" testID="issue-4420-venue-times">
           {slots.map((slot) => (
-            <Pressable
+            <OfferingChoiceChip
               key={slot.slotStartUtc}
+              palette={palette}
+              label={slot.slotLocalLabel}
+              note={slot.isFull ? "Full" : null}
               disabled={slot.isFull}
+              selected={
+                !slot.isFull && selectedSlot?.slotStartUtc === slot.slotStartUtc
+              }
+              accessibilityLabel={
+                slot.isFull
+                  ? `${slot.slotLocalLabel}, full`
+                  : `Select ${slot.slotLocalLabel}`
+              }
               onPress={() => {
                 if (
                   !submissionTruthRef.current.selectableSlotUtcValues.includes(
@@ -669,43 +708,25 @@ function GuestVenueReservationBody({
                   venue_id: venueId,
                 });
               }}
-              accessibilityRole="button"
-              accessibilityLabel={
-                slot.isFull
-                  ? `${slot.slotLocalLabel}, full`
-                  : `Select ${slot.slotLocalLabel}`
-              }
-              accessibilityState={{
-                disabled: slot.isFull,
-                selected:
-                  !slot.isFull &&
-                  selectedSlot?.slotStartUtc === slot.slotStartUtc,
-              }}
-              style={[
-                styles.chip,
-                chipTheme.chip,
-                !slot.isFull &&
-                  selectedSlot?.slotStartUtc === slot.slotStartUtc &&
-                  chipTheme.chipSelected,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  {
-                    color: slot.isFull
-                      ? palette.secondaryText
-                      : palette.primaryText,
-                  },
-                ]}
-              >
-                {slot.slotLocalLabel}
-                {slot.isFull ? " · Full" : ""}
-              </Text>
-            </Pressable>
+            />
           ))}
-        </View>
+        </OfferingChipRow>
       )}
+      <OfferingSubLabel palette={palette} style={styles.occasionLabel}>
+        Occasion · optional
+      </OfferingSubLabel>
+      <OfferingChipRow accessibilityLabel="Occasion" testID="issue-4420-venue-occasions">
+        {VENUE_OCCASIONS.map((label) => (
+          <OfferingChoiceChip
+            key={label}
+            palette={palette}
+            label={label}
+            role="button"
+            selected={occasion.trim() === label}
+            onPress={() => setOccasion((current) => (current.trim() === label ? "" : label))}
+          />
+        ))}
+      </OfferingChipRow>
       {selectedSlot !== undefined ? (
         <View style={styles.form}>
           <Text style={[styles.label, { color: palette.tertiaryText }]}>
@@ -1044,6 +1065,8 @@ function GuestVenueReservationBody({
 }
 
 const styles = StyleSheet.create({
+  partyPanel: { marginTop: 18, marginBottom: 18 },
+  occasionLabel: { marginTop: 18 },
   host: { gap: spacing.sm },
   title: { ...typography.h3 },
   body: { ...typography.bodySm },

@@ -66,6 +66,8 @@ export interface PublicVenueTabsProps {
 
 export interface PublicVenueTabsHandle {
   focusTab: (tab: PublicVenueTab) => void;
+  /** issue #4420 — select a tab from the pinned copy of the strip (native). */
+  selectTab: (tab: PublicVenueTab) => void;
 }
 
 interface VenueTabKeyboardEvent {
@@ -267,6 +269,9 @@ export const PublicVenueTabs = forwardRef<
       focusTab: (tab: PublicVenueTab): void => {
         revealAndFocus(tab);
       },
+      selectTab: (tab: PublicVenueTab): void => {
+        selectRef.current(tab);
+      },
     }),
     [],
   );
@@ -318,6 +323,9 @@ export const PublicVenueTabs = forwardRef<
     onTabChange?.(tab);
     onTabViewed?.(tab);
   };
+  // The imperative handle is created once; it reads the latest `select`.
+  const selectRef = useRef(select);
+  selectRef.current = select;
 
   const handleWebKeyDown = (
     event: VenueTabKeyboardEvent,
@@ -542,7 +550,79 @@ export const PublicVenueTabs = forwardRef<
   );
 });
 
+/**
+ * issue #4420 — the pinned copy of the tab pill. Native has no CSS sticky,
+ * so the venue screen shows this copy under the glass header once the
+ * in-flow strip has scrolled under it; a tap selects through the in-flow
+ * strip's own handler (same state, same analytics).
+ */
+export interface PublicVenueTabPillProps {
+  hasMenu: boolean;
+  activeTab: PublicVenueTab;
+  palette: ThemePalette;
+  theme: ResolvedTheme;
+  onSelect: (tab: PublicVenueTab) => void;
+  testID?: string;
+}
+export const PublicVenueTabPill = ({
+  hasMenu,
+  activeTab,
+  palette,
+  theme,
+  onSelect,
+  testID = "issue-4420-venue-tab-pill-pinned",
+}: PublicVenueTabPillProps) => {
+  const tabs: PublicVenueTab[] = hasMenu
+    ? ["overview", "menu", "reservations"]
+    : ["overview", "reservations"];
+  const fill = palette.card.startsWith("#")
+    ? hexToRgba(palette.card, Platform.OS === "android" ? 1 : 0.96)
+    : palette.page;
+  return (
+    <View
+      style={[styles.pillWrap, styles.pinnedShadow, { backgroundColor: fill, borderColor: palette.panelBorder }]}
+      accessibilityRole="tablist"
+      testID={testID}
+    >
+      <OfferingGlassBackdrop radius={999} tint={palette.glassTint} />
+      <View style={styles.tabs}>
+        {tabs.map((tab) => {
+          const active = tab === activeTab;
+          return (
+            <Pressable
+              key={tab}
+              onPress={() => onSelect(tab)}
+              accessibilityRole="tab"
+              accessibilityLabel={LABELS[tab]}
+              accessibilityState={{ selected: active }}
+              style={[styles.chip, active && { backgroundColor: palette.primaryText }]}
+            >
+              <Text
+                style={[
+                  styles.label,
+                  themeBoldFace(theme),
+                  { color: active ? palette.page : palette.secondaryText },
+                ]}
+                numberOfLines={1}
+              >
+                {LABELS[tab]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
+  pinnedShadow: {
+    shadowColor: "#000000",
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
   pillWrap: {
     borderRadius: 999,
     borderWidth: 1,

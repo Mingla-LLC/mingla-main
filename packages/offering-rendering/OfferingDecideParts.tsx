@@ -12,10 +12,8 @@
 //
 // Pure: react-native + this package only.
 
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import {
-  Animated,
-  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,12 +23,8 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import type { ResolvedTheme } from "./designTokens";
-import { Check, Minus, Plus } from "./LucideIcons";
-import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { accentFill, accentOutline, themeFontFace } from "./themeAccentStyle";
 import {
-  boldFontFamily,
   opaqueAccentWashColor,
   type ThemePalette,
 } from "./themePalette";
@@ -90,6 +84,19 @@ export const OfferingPanelRow = ({ palette, title, detail, fontFamily, right, te
 
 // ──────────────────────────────── stepper ──────────────────────────────────
 
+/**
+ * − / + drawn with two bars (no SVG), so every host that mounts a stepper,
+ * including node render suites with no svg module, draws the same glyph.
+ */
+const StepGlyph = ({ color, plus }: { color: string; plus: boolean }) => (
+  <View style={styles.glyph} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View style={[styles.glyphBar, { backgroundColor: color }]} />
+    {plus ? (
+      <View style={[styles.glyphBar, styles.glyphBarVertical, { backgroundColor: color }]} />
+    ) : null}
+  </View>
+);
+
 export interface OfferingStepperProps {
   palette: ThemePalette;
   value: number;
@@ -135,7 +142,7 @@ export const OfferingStepper = ({
         ]}
         testID={testID !== undefined ? `${testID}-dec` : undefined}
       >
-        <Minus size={17} color={palette.primaryText} />
+        <StepGlyph color={palette.primaryText} plus={false} />
       </Pressable>
       <Text
         style={[
@@ -164,7 +171,7 @@ export const OfferingStepper = ({
         ]}
         testID={testID !== undefined ? `${testID}-inc` : undefined}
       >
-        <Plus size={17} color={palette.page} />
+        <StepGlyph color={palette.page} plus />
       </Pressable>
     </View>
   );
@@ -443,126 +450,6 @@ export const OfferingRadioCard = ({
   </Pressable>
 );
 
-// ─────────────────────────────── big choice ────────────────────────────────
-
-/** One of the two big RSVP answers (`.duo .big`): accent-filled when chosen. */
-export interface OfferingBigChoiceProps {
-  palette: ThemePalette;
-  theme?: ResolvedTheme;
-  label: string;
-  sub?: string | null;
-  selected: boolean;
-  disabled?: boolean;
-  onPress: () => void;
-  accessibilityLabel?: string;
-  testID?: string;
-}
-export const OfferingBigChoice = ({
-  palette,
-  theme,
-  label,
-  sub = null,
-  selected,
-  disabled = false,
-  onPress,
-  accessibilityLabel,
-  testID,
-}: OfferingBigChoiceProps) => (
-  <Pressable
-    onPress={disabled ? undefined : onPress}
-    disabled={disabled}
-    accessibilityRole="radio"
-    accessibilityState={{ checked: selected, disabled }}
-    accessibilityLabel={accessibilityLabel ?? (sub !== null ? `${label}, ${sub}` : label)}
-    style={({ pressed }) => [
-      styles.big,
-      selected
-        ? { ...accentFill(palette), borderColor: "transparent" }
-        : { backgroundColor: palette.card, borderColor: palette.panelBorder },
-      disabled ? styles.chipDisabled : null,
-      pressed && !disabled ? styles.pressed : null,
-    ]}
-    testID={testID}
-  >
-    {selected && theme !== undefined ? (
-      <ThemeAccentGradientLayer theme={theme} palette={palette} borderRadius={16} />
-    ) : null}
-    <Text
-      style={[
-        styles.bigLabel,
-        { color: selected ? palette.accentText : palette.primaryText },
-        theme !== undefined ? themeFontFace(boldFontFamily(theme)) : null,
-      ]}
-    >
-      {label}
-    </Text>
-    {sub !== null ? (
-      <Text
-        style={[
-          styles.bigSub,
-          { color: selected ? palette.accentText : palette.secondaryText },
-          selected ? styles.bigSubOnFill : null,
-        ]}
-      >
-        {sub}
-      </Text>
-    ) : null}
-  </Pressable>
-);
-
-// ───────────────────────────── confirmed tick ──────────────────────────────
-
-/**
- * The accent circle with a tick that springs in (`.done .ok`). Reduced
- * motion: drawn at rest, no animation.
- */
-export interface OfferingConfirmTickProps {
-  palette: ThemePalette;
-  theme?: ResolvedTheme;
-  reduceMotion: boolean;
-  size?: number;
-  testID?: string;
-}
-export const OfferingConfirmTick = ({ palette, theme, reduceMotion, size = 54, testID }: OfferingConfirmTickProps) => {
-  const progress = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
-  useEffect(() => {
-    if (reduceMotion) {
-      progress.setValue(1);
-      return undefined;
-    }
-    progress.setValue(0);
-    const anim = Animated.timing(progress, {
-      toValue: 1,
-      duration: 480,
-      delay: 120,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [progress, reduceMotion]);
-  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
-  return (
-    <View
-      style={[
-        styles.tickCircle,
-        { width: size, height: size, borderRadius: size / 2 },
-        accentFill(palette),
-      ]}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      testID={testID}
-    >
-      {theme !== undefined ? (
-        <ThemeAccentGradientLayer theme={theme} palette={palette} borderRadius={size / 2} />
-      ) : null}
-      <Animated.View style={{ opacity: progress, transform: [{ scale }] }}>
-        <Check size={Math.round(size * 0.48)} color={palette.accentText} strokeWidth={2.6} />
-      </Animated.View>
-    </View>
-  );
-};
-
 // ─────────────────────────────── dot list ──────────────────────────────────
 
 /**
@@ -620,6 +507,9 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 16, fontWeight: "700" },
   rowDetail: { fontSize: 13, lineHeight: 19, marginTop: 3 },
   stepper: { flexDirection: "row", alignItems: "center", gap: 6 },
+  glyph: { width: 14, height: 14, alignItems: "center", justifyContent: "center" },
+  glyphBar: { position: "absolute", width: 14, height: 2, borderRadius: 1 },
+  glyphBarVertical: { transform: [{ rotate: "90deg" }] },
   stepBtn: {
     width: 36,
     height: 36,
@@ -687,27 +577,8 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     textAlign: "right",
   },
-  big: {
-    flex: 1,
-    minHeight: 64,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  bigLabel: { fontSize: 16, fontWeight: "700" },
-  bigSub: { fontSize: 12, fontWeight: "500", marginTop: 3 },
-  bigSubOnFill: { opacity: 0.85 },
   dotList: { gap: 8 },
   dotRow: { flexDirection: "row", alignItems: "flex-start", gap: 9 },
   dot: { width: 6, height: 6, borderRadius: 3, marginTop: 7 },
   dotText: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20 },
-  tickCircle: {
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
 });

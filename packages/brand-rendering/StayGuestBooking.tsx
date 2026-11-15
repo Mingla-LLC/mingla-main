@@ -44,6 +44,8 @@ import {
 // bound is venue-local. Metro swaps in StayDateRangeField.native.tsx on
 // iOS/Android; the bare module is the web-only twin.
 import { StayDateRangeField } from "./StayDateRangeField";
+// issue #4420 — the quick-pick check-in / check-out strip above the field.
+import { StayDateStrip } from "./StayDateStrip";
 import {
   addStayDays,
   stayDateBounds,
@@ -497,6 +499,16 @@ export function StayGuestBooking({
             House rules: {detail.houseRules}
           </Text>
         ) : null}
+        <StayDateStrip
+          value={range}
+          bounds={bounds}
+          palette={palette}
+          disabled={submitting}
+          onChange={(next, field) => {
+            setEditedRange(next);
+            onAnalytics?.("stay_search_changed", { field });
+          }}
+        />
         <StayDateRangeField
           value={range}
           bounds={bounds}

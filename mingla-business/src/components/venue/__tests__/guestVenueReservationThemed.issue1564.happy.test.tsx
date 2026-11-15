@@ -203,8 +203,12 @@ describe("#1564 — the form is painted from the page's palette", () => {
     expect(colours.join("|")).not.toContain("12, 14, 18");
   });
 
+  // [TEST-MOD-APPROVED #4420] the redesigned booking controls (date strip,
+  // stepper, time chips) mark the choice in the palette's INK, keeping the
+  // accent for the action; the accent reaches the form once a time is
+  // picked, so these two read the open form. Still the venue's own palette.
   test("the venue's OWN accent reaches the rendered tree", () => {
-    const colours = renderWith(VENUE_GREEN);
+    const colours = renderWith(VENUE_GREEN, true);
     expect(colours).toContain(VENUE_GREEN.accent.toLowerCase());
     // …and the blue brand's accent is nowhere near it, which is the whole
     // point of a venue carrying its own colours.
@@ -212,8 +216,8 @@ describe("#1564 — the form is painted from the page's palette", () => {
   });
 
   test("changing the venue's palette changes what renders", () => {
-    const blue = renderWith(BRAND_BLUE);
-    const green = renderWith(VENUE_GREEN);
+    const blue = renderWith(BRAND_BLUE, true);
+    const green = renderWith(VENUE_GREEN, true);
     expect(blue.join("|")).not.toBe(green.join("|"));
     expect(blue).toContain(BRAND_BLUE.accent.toLowerCase());
     expect(green).toContain(VENUE_GREEN.accent.toLowerCase());

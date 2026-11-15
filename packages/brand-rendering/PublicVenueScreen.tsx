@@ -98,6 +98,7 @@ import {
 } from "@mingla/offering-rendering";
 // issue #4420 — the shared glass bottom bar (no expo-blur).
 import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
+import { OFFERING_PREMIUM_HEADER_ROW } from "@mingla/offering-rendering/ParallaxCoverShell";
 
 import { PublicMenuSections } from "./PublicMenuSections";
 // The package-local React bridge (see PublicVenueTabs.tsx). Files under
@@ -110,6 +111,7 @@ import {
   useBrandRenderingMemo as useMemo,
   useBrandRenderingState as useState,
   PublicVenueTabs,
+  PublicVenueTabPill,
   type BrandRenderingReactElement,
   type BrandRenderingReactNode,
   type PublicVenueTabsHandle,
@@ -2252,6 +2254,34 @@ export const PublicVenueScreen = ({
     overviewSlot === undefined ? null : overviewSlot(themedSlotContext);
   const overviewHasAbout = profile.overview.includes("about");
 
+  // issue #4420 — native has no CSS sticky, so once the in-flow tab strip
+  // scrolls under the glass header a pinned copy shows there (web keeps the
+  // strip's own position: sticky). The strip's content offset is measured
+  // once it lays out; the shell's scroll drives the switch.
+  const pinnedTabsTop = insets.top + 8 + OFFERING_PREMIUM_HEADER_ROW + 4;
+  const scrollYRef = React.useRef(0);
+  const tabsAnchorRef = React.useRef<View | null>(null);
+  const tabsContentYRef = React.useRef<number | null>(null);
+  const [tabsPinned, setTabsPinned] = useState<boolean>(false);
+  const measureTabsAnchor = (): void => {
+    if (Platform.OS === "web") return;
+    const node = tabsAnchorRef.current as unknown as {
+      measureInWindow?: (cb: (x: number, y: number) => void) => void;
+    } | null;
+    node?.measureInWindow?.((_x: number, y: number) => {
+      tabsContentYRef.current = y + scrollYRef.current;
+    });
+  };
+  const handleShellScroll = (event: {
+    nativeEvent: { contentOffset: { y: number } };
+  }): void => {
+    const y = event.nativeEvent.contentOffset.y;
+    scrollYRef.current = y;
+    const top = tabsContentYRef.current;
+    const next = top !== null && y + pinnedTabsTop >= top;
+    if (next !== tabsPinned) setTabsPinned(next);
+  };
+
   const bodyContent = (
     <View style={styles.body}>
       {/* #1561 — the identity + answer block now renders at EVERY width. On
@@ -2300,6 +2330,14 @@ export const PublicVenueScreen = ({
           />
         </View>
       ) : null}
+      {Platform.OS === "web" ? null : (
+        <View
+          ref={tabsAnchorRef}
+          onLayout={measureTabsAnchor}
+          collapsable={false}
+          testID="issue-4420-venue-tabs-anchor"
+        />
+      )}
       <PublicVenueTabs
         ref={publicVenueTabsRef}
         initialTab={initialTab}
@@ -2417,6 +2455,7 @@ export const PublicVenueScreen = ({
         // which is the second of the two places the name appeared and the only
         // place the redundant badge did. Both now live in `identityBlock`.
         stickyPanel={stickyPanel}
+        {...(Platform.OS === "web" ? {} : { onScroll: handleShellScroll })}
         safeAreaTop={insets.top + 8}
         contentBottomInset={contentBottomInset}
         testID="orch-1255-public-venue"
@@ -2428,6 +2467,22 @@ export const PublicVenueScreen = ({
           </React.Fragment>
         ) : null}
       </ParallaxCoverShell>
+      {Platform.OS !== "web" && tabsPinned ? (
+        <View
+          style={[styles.pinnedTabs, { top: pinnedTabsTop }]}
+          pointerEvents="box-none"
+        >
+          <PublicVenueTabPill
+            hasMenu={hasMenu}
+            activeTab={normalizedReservationUiState.activeTab}
+            palette={palette}
+            theme={resolvedTheme}
+            onSelect={(tab: PublicVenueTab) => {
+              publicVenueTabsRef.current?.selectTab(tab);
+            }}
+          />
+        </View>
+      ) : null}
       {/* issue #2729 — web owns the same bar INSIDE ParallaxCoverShell's sole
           scroll ancestry. Native retains the pre-existing absolute sibling
           byte-for-byte, and desktop has no phone bar. */}
@@ -2453,6 +2508,8 @@ export const PublicVenueScreen = ({
 };
 
 const styles = StyleSheet.create({
+  // issue #4420 — the pinned tab pill (native), under the glass header.
+  pinnedTabs: { position: "absolute", left: 16, right: 16, zIndex: 60 },
   // #1595 — NO `backgroundColor` here. The host's colour is themed and is
   // supplied at the call site from `surface.page`. A constant reinstated here
   // would win on any render where the palette resolves light, which is the
