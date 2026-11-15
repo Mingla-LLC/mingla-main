@@ -68,6 +68,12 @@ import type { TurnoutForecastController } from "../../hooks/useTurnoutForecast";
 import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import { shouldTrackGatePublishedAnyway } from "../../utils/turnoutGateAnalytics";
 import { Stepper } from "../ui/Stepper";
+import { GlassCard } from "../ui/GlassCard";
+import {
+  DESKTOP_BEZEL_MARGIN,
+  DESKTOP_WIZARD_FORM_MAX_WIDTH,
+  DESKTOP_WIZARD_RAIL_WIDTH,
+} from "../../constants/desktopLayout";
 import { Toast } from "../ui/Toast";
 // #1780 [bundle budget] — the invite surfaces come from their lazy owner, not
 // from InvitePeopleStep directly. All four wizards are separate lazy route
@@ -1846,15 +1852,22 @@ export const ExperienceCreatorWizard: React.FC<
               color={color.text2}
             />
         </Pressable>
-        {/* #4420 B7 — clickable stepper, reachable up to the first invalid step. */}
-        <Stepper
-          steps={steps}
-          currentIndex={step - 1}
-          furthestValidIndex={furthestValidIndex}
-          onStepPress={goToStep}
-          sheetTitle="Steps"
-          testID="experience-wizard-stepper"
-        />
+        {/* #4420 — desktop: the step list lives in the 280 rail beside the
+            form (T4 wizard template), as on the trip and RSVP wizards. */}
+        <View style={styles.headerTitleCol}>
+          <Text style={styles.chromeTitle} numberOfLines={1}>
+            {title.trim().length > 0
+              ? title
+              : existingExperienceId !== undefined
+                ? "Untitled experience"
+                : "New experience"}
+          </Text>
+          {brand?.displayName ? (
+            <Text style={styles.chromeSub} numberOfLines={1}>
+              {brand.displayName}
+            </Text>
+          ) : null}
+        </View>
       </View>
       ) : (
         // #4420 — the phone chrome every wizard shares (mockup
@@ -1905,6 +1918,29 @@ export const ExperienceCreatorWizard: React.FC<
           />
         </View>
       )}
+      <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
+        {isWideDesktop ? (
+          <GlassCard
+            variant="base"
+            padding={space[4]}
+            radius="lg"
+            style={styles.desktopStepRail}
+          >
+            <Text style={styles.desktopStepEyebrow}>
+              {isLiveEdit ? "Edit experience" : "Create experience"}
+            </Text>
+            {/* #4420 B7 — the 280 clickable step list (done / current / error / todo). */}
+            <Stepper
+              layout="list"
+              steps={steps}
+              currentIndex={step - 1}
+              furthestValidIndex={furthestValidIndex}
+              onStepPress={goToStep}
+              testID="experience-wizard-steps"
+            />
+          </GlassCard>
+        ) : null}
+        <View style={isWideDesktop ? styles.desktopFormPane : styles.mobileShell}>
       {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
           from the file head to the occurrence it was always meant to cover.
           The old marker sat in the first three lines for a REASON — the gate's
@@ -2307,6 +2343,8 @@ export const ExperienceCreatorWizard: React.FC<
           </View>
         )}
       </View>
+        </View>
+      </View>
         <Toast
           visible={toast !== null}
           kind="error"
@@ -2427,6 +2465,38 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   footer: { padding: space[6] },
+  // #4420 — T4 wizard template on desktop: the 280 step rail, then a 720 form
+  // pane holding the step scroll and its footer.
+  mobileShell: { flex: 1 },
+  desktopShell: {
+    flex: 1,
+    flexDirection: "row",
+    gap: space[4],
+    paddingHorizontal: DESKTOP_BEZEL_MARGIN,
+    paddingBottom: DESKTOP_BEZEL_MARGIN,
+  },
+  desktopStepRail: {
+    width: DESKTOP_WIZARD_RAIL_WIDTH,
+    flexShrink: 0,
+    alignSelf: "flex-start",
+  },
+  desktopStepEyebrow: {
+    ...type.label,
+    textTransform: "uppercase",
+    color: color.accent,
+    marginBottom: space[3],
+  },
+  desktopFormPane: {
+    flex: 1,
+    maxWidth: DESKTOP_WIZARD_FORM_MAX_WIDTH,
+    minWidth: 0,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.tableHead,
+    overflow: "hidden",
+  },
+  headerTitleCol: { flex: 1, minWidth: 0 },
   footerRow: { flexDirection: "row", gap: space[2] },
   footerButton: { flex: 1 },
   helperBody: {
