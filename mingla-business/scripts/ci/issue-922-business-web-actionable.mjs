@@ -155,6 +155,13 @@ function validateOwnerPins() {
   }
   invariant(files["scripts/build-invite-critical-entry.mjs"].includes("background:#0f0f11"), "static entry no longer paints the Graphite canvas");
   invariant(!files["scripts/build-invite-critical-entry.mjs"].includes("#0c0e12"), "static entry still paints the retired #0c0e12 canvas");
+  // #4420 — the React owner is a flat centred card with the Paper primary
+  // button (paper fill, ink label); the static shell must paint the same.
+  invariant(files["scripts/build-invite-critical-entry.mjs"].includes(".i922-card{display:flex;flex-direction:column;align-items:center;gap:12px;"), "static entry card no longer matches the flat centred React card");
+  invariant(files["scripts/build-invite-critical-entry.mjs"].includes("border-radius:999px;background:#ffffff;box-shadow:0 1px 1px rgba(0,0,0,.35)}"), "static entry Sign in no longer paints the Paper button");
+  for (const token of ['975: "#0a0a0a", // ink', '50: "#f5f5f7", // text-1', '400: "#a8a8ad", // text-2']) {
+    invariant(files["src/constants/designSystem.ts"].includes(token), `design token owner drift: ${token}`);
+  }
   invariant(files["scripts/inject-mobile-blur-css.mjs"].includes('data-${JS_CACHE_BUST_MARKER}="true"'), "final script-attribute owner drifted");
 }
 
