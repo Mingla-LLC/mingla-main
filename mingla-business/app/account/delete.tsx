@@ -376,7 +376,7 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
     </Text>
     {provider === "apple" ? (
       <View style={styles.appleNote}>
-        <Icon name="flag" size={14} color={color.text1} />
+        <Icon name="flag" size={14} color={color.warningText} />
         <Text style={styles.appleNoteText}>
           If you used Apple's "Hide My Email", you may also need to remove
           Mingla from appleid.apple.com after deletion.
@@ -501,7 +501,7 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
     {/* #3660 active-events block: what happens to them, stated plainly. */}
     {preview.hasActiveOrUpcomingEvents ? (
       <View style={styles.activeEventsWarn}>
-        <Icon name="flag" size={16} color={color.text1} />
+        <Icon name="flag" size={16} color={color.warningText} />
         <Text style={styles.activeEventsWarnText}>
           You have live or upcoming events. Events with no tickets or RSVPs are
           taken down when you delete. Events with tickets or RSVPs must be
@@ -512,7 +512,7 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
 
     {blockersFailed ? (
       <View style={styles.activeEventsWarn}>
-        <Icon name="flag" size={16} color={color.text1} />
+        <Icon name="flag" size={16} color={color.warningText} />
         <Text style={styles.activeEventsWarnText}>
           {"We couldn't check your events right now. You can continue; we'll check again before anything is deleted."}
         </Text>
@@ -564,7 +564,7 @@ const BlockedPanel: React.FC<BlockedPanelProps> = ({
   <View style={styles.blockedHost}>
     <View style={styles.blockedCard} accessibilityRole="alert">
       <View style={styles.blockedTitleRow}>
-        <Icon name="flag" size={16} color={color.text1} />
+        <Icon name="flag" size={16} color={color.warningText} />
         <Text style={styles.blockedTitle}>{ACCOUNT_DELETION_BLOCKED_TITLE}</Text>
       </View>
       {blockers.length === 0 ? (
@@ -707,7 +707,7 @@ const Step4Success: React.FC<Step4SuccessProps> = ({ retained }) => (
     <View style={styles.successIconWrap}>
       {/* #2321 — a retained login is not a green tick. Same check glyph (no new
           asset), recoloured to the warm accent so the affordance is not "done". */}
-      <Icon name="check" size={48} color={retained ? color.text1 : color.success} />
+      <Icon name="check" size={48} color={retained ? color.warning : color.success} />
     </View>
     {retained ? (
       <>
@@ -816,7 +816,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: color.fill.tabOn,
+    backgroundColor: color.warningTint,
     alignItems: "center",
     justifyContent: "center",
     marginTop: space[6],
@@ -843,9 +843,9 @@ const styles = StyleSheet.create({
     gap: space[2],
     padding: space[4] - 2,
     borderRadius: radius.sm,
-    backgroundColor: color.fill.tabOn,
+    backgroundColor: color.warningTint,
     borderWidth: 1,
-    borderColor: color.lineStrong,
+    borderColor: color.line,
     marginTop: space[2],
   },
   appleNoteText: {
@@ -905,9 +905,9 @@ const styles = StyleSheet.create({
     gap: space[2],
     padding: space[4] - 2,
     borderRadius: radius.sm,
-    backgroundColor: color.fill.tabOn,
+    backgroundColor: color.warningTint,
     borderWidth: 1,
-    borderColor: color.lineStrong,
+    borderColor: color.line,
   },
   activeEventsWarnText: {
     flex: 1,
@@ -924,9 +924,9 @@ const styles = StyleSheet.create({
     gap: space[2],
     padding: space[4] - 2,
     borderRadius: radius.sm,
-    backgroundColor: color.fill.tabOn,
+    backgroundColor: color.warningTint,
     borderWidth: 1,
-    borderColor: color.lineStrong,
+    borderColor: color.line,
   },
   blockedTitleRow: {
     flexDirection: "row",
