@@ -1461,9 +1461,10 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.sm,
   },
   sectionLinkButtonPressed: { opacity: 0.65 },
+  // #4420: the focus ring is paper (TOKENS §5), not orange.
   sectionLinkButtonFocused: {
     borderWidth: 2,
-    borderColor: color.lineStrong,
+    borderColor: color.focus,
   },
   recentBannerRow: {
     minHeight: 44,
