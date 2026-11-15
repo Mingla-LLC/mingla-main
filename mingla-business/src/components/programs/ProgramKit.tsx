@@ -706,13 +706,22 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  fill = false,
 }: {
   options: readonly (readonly [T, string])[];
   value: T;
   onChange: (next: T) => void;
+  /**
+   * #4420: a page's tab row hugs its labels on desktop (kit: Gigs / My
+   * creators / Results, Offers / Promoters …); a form choice (Sell tickets /
+   * Get seen) passes `fill` and keeps the full width everywhere.
+   */
+  fill?: boolean;
 }): React.ReactElement {
+  const { isWideDesktop } = useResponsiveLayout();
+  const hug = isWideDesktop && !fill;
   return (
-    <View style={styles.segmented} accessibilityRole="tablist">
+    <View style={[styles.segmented, hug && styles.segmentedHug]} accessibilityRole="tablist">
       {options.map(([key, label]) => {
         const on = key === value;
         return (
@@ -722,7 +731,7 @@ export function Segmented<T extends string>({
             accessibilityRole="tab"
             accessibilityLabel={label}
             accessibilityState={{ selected: on }}
-            style={[styles.segment, on && styles.segmentOn]}
+            style={[styles.segment, hug && styles.segmentHug, on && styles.segmentOn]}
           >
             <Text
               style={[styles.segmentText, on && styles.segmentTextOn]}
@@ -1059,6 +1068,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: radius.full,
   },
+  segmentedHug: { alignSelf: "flex-start" },
+  segmentHug: { flex: 0, paddingHorizontal: space[4] },
   segmentOn: { backgroundColor: colorTokens.fill.tabOn },
   segmentText: { color: colorTokens.text2, fontWeight: "600", fontSize: 14 },
   segmentTextOn: { color: colorTokens.text1 },

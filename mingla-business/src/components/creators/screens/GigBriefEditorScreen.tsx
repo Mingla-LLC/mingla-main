@@ -448,6 +448,7 @@ export default function GigBriefEditor(): React.ReactElement {
             <FieldError message="Open this from Blast › Creators and pick what creators promote." />
           )}
           <Segmented
+            fill
             options={
               [
                 ["sell", "Sell tickets"],
