@@ -24,6 +24,8 @@ export interface ActionTileProps {
   primary?: boolean;
   /** #3872 round 2 — full-width tile. */
   wide?: boolean;
+  /** #4420 — fill an equal-width cell of a row (the event tile page lays rows of 3). */
+  fill?: boolean;
   accessibilityLabel?: string;
   testID?: string;
   onPress: () => void;
@@ -39,6 +41,7 @@ export const ActionTile: React.FC<ActionTileProps> = ({
   label,
   sub,
   wide = false,
+  fill = false,
   accessibilityLabel,
   testID,
   onPress,
@@ -51,15 +54,17 @@ export const ActionTile: React.FC<ActionTileProps> = ({
     style={({ pressed }) => [
       styles.host,
       wide && styles.hostWide,
+      fill && styles.hostFill,
       pressed && styles.hostPressed,
     ]}
   >
-    <GlassCard variant="base" radius="lg" padding={space[4]} fillHeight contentStyle={styles.content}>
+    <GlassCard variant="base" radius="lg" padding={space[3]} fillHeight contentStyle={styles.content}>
       <View style={styles.iconWell}>
         <Icon name={icon} size={20} color={color.text1} />
       </View>
       <View style={styles.copy}>
-        <Text style={styles.label} numberOfLines={1}>
+        {/* Two lines before truncating: no clipped labels on a narrow phone. */}
+        <Text style={styles.label} numberOfLines={2}>
           {label}
         </Text>
         {sub !== undefined ? (
@@ -81,6 +86,11 @@ const styles = StyleSheet.create({
   },
   hostWide: {
     flexBasis: "100%",
+    maxWidth: "100%",
+  },
+  hostFill: {
+    flexBasis: 0,
+    flexGrow: 1,
     maxWidth: "100%",
   },
   hostPressed: {

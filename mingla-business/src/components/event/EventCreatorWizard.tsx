@@ -1322,13 +1322,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         <Text style={styles.desktopStepRailTitle} numberOfLines={2}>
           {liveDraft.name.trim().length > 0 ? liveDraft.name : "Untitled event"}
         </Text>
-        <Text
-          style={[styles.desktopStepRailSub, serverSaveState?.hasError === true ? styles.saveStateError : null]}
-          numberOfLines={1}
-        >
-          {brand?.displayName ?? "Brand"}
-          {saveLabel !== null ? ` · ${saveLabel}` : ""}
-        </Text>
+        {/* COPY_RULES 2: the brand and the save state already sit in the
+            top bar, so the rail does not repeat them. */}
       </View>
       {/* #4420 B7 — the 280 clickable step list (done / current / error / todo). */}
       <Stepper
@@ -1505,7 +1500,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
               />
             </View>
           )}
-          <View style={isWideDesktop ? null : styles.footerCell}>
+          <View style={isWideDesktop ? styles.footerContinueDesktop : styles.footerCell}>
             {isLastStep ? (
               <Button
                 label="Publish event"
@@ -1685,10 +1680,6 @@ const styles = StyleSheet.create({
     ...type.h1,
     color: color.text1,
   },
-  desktopStepRailSub: {
-    ...type.caption,
-    color: color.text3,
-  },
   desktopFormPane: {
     flex: 1,
     maxWidth: DESKTOP_WIZARD_FORM_MAX_WIDTH,
@@ -1765,6 +1756,9 @@ const styles = StyleSheet.create({
   },
   footerCell: {
     flex: 1,
+  },
+  footerContinueDesktop: {
+    marginLeft: "auto",
   },
   toastWrap: {
     position: "absolute",

@@ -1030,6 +1030,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "edit":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="edit"
                           label={status === "past" ? "Details" : "Edit"}
@@ -1041,6 +1042,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "scan":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="qr"
                           label="Scan tickets"
@@ -1050,6 +1052,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "scanners":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="users"
                           label="Scanners"
@@ -1059,6 +1062,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "groupChat":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="chat"
                           label="Group chat"
@@ -1069,6 +1073,7 @@ export default function EventDetailScreen(): React.ReactElement {
                       // Restored on Seth's ask (TILE_MATRIX); #3872 had removed it.
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="send"
                           label="Blast"
@@ -1080,6 +1085,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "promote":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="megaphone"
                           label="Promote"
@@ -1091,6 +1097,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "guests":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="user"
                           label="Guests"
@@ -1101,6 +1108,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "orders":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="ticket"
                           label="Orders"
@@ -1115,6 +1123,7 @@ export default function EventDetailScreen(): React.ReactElement {
                         <React.Fragment key={key}>
                           {canShowListingInsights ? (
                             <ActionTile
+                    fill
                               icon="chart"
                               label="Insights"
                               accessibilityLabel={`Open Insights for ${event.name}`}
@@ -1128,6 +1137,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "dates":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="calendar"
                           label="Dates"
@@ -1137,6 +1147,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "doorSales":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="cash"
                           label="Door sales"
@@ -1152,6 +1163,7 @@ export default function EventDetailScreen(): React.ReactElement {
                       // Permission-gated inside (finance_manager+).
                       return (
                         <ReconciliationCtaTile
+                          fill
                           key={key}
                           brandId={brand?.id ?? null}
                           onPress={handleReconciliation}
@@ -1160,6 +1172,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "publicPage":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="eye"
                           label="Public page"
@@ -1169,6 +1182,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     case "brandPage":
                       return (
                         <ActionTile
+                    fill
                           key={key}
                           icon="home"
                           label="Brand page"
@@ -1179,13 +1193,30 @@ export default function EventDetailScreen(): React.ReactElement {
                       return null;
                   }
                 };
+                // #4420 — rows of three equal cells, so every tile edge lines
+                // up with the header card; a short last row keeps its cells.
+                const renderRows = (keys: EventGridTileKey[]): React.ReactElement => (
+                  <View style={styles.tileRows}>
+                    {Array.from({ length: Math.ceil(keys.length / 3) }, (_, row) => {
+                      const cells = keys.slice(row * 3, row * 3 + 3);
+                      return (
+                        <View key={cells.join("-")} style={styles.actionGrid}>
+                          {cells.map(renderTile)}
+                          {Array.from({ length: 3 - cells.length }, (_, pad) => (
+                            <View key={`pad-${pad}`} style={styles.tilePad} />
+                          ))}
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
                 return (
                   <>
-                    <View style={styles.actionGrid}>{sections.core.map(renderTile)}</View>
+                    {renderRows(sections.core)}
                     {sections.more.length > 0 ? (
                       <>
                         <Text style={styles.sectionLabel}>MORE FOR THIS EVENT</Text>
-                        <View style={styles.actionGrid}>{sections.more.map(renderTile)}</View>
+                        {renderRows(sections.more)}
                       </>
                     ) : null}
                   </>
@@ -1485,10 +1516,16 @@ const styles = StyleSheet.create({
     color: color.text2,
     marginTop: 2,
   },
+  tileRows: {
+    gap: space[3],
+  },
   actionGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: space[3],
+  },
+  tilePad: {
+    flexBasis: 0,
+    flexGrow: 1,
   },
   sectionLabel: {
     fontSize: 11,
