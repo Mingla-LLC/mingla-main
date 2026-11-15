@@ -12,11 +12,14 @@
 // directly here would emit unresolved-peer diagnostics in both apps'
 // isolated typecheck sandboxes. One bridge, reused by every shared renderer.
 import { BrandRenderingReact as React } from "../PublicVenueTabs";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { ThemePalette } from "@mingla/offering-rendering";
 
 import { formatMenuPrice } from "../PublicMenuSections";
-import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
+// issue #4420 — the order bar is the shared glass bar: "2 items" (and the
+// SERVER total once priced, never a guess) on the left, "View order" on the
+// right. Same count, same total rule, same onPress.
+import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
 
 export const VenueOrderingStickyBar: React.FC<{
   count: number;
@@ -32,30 +35,22 @@ export const VenueOrderingStickyBar: React.FC<{
   const label = total === null
     ? `See your order · ${count}`
     : `See your order · ${count} · ${total}`;
+  const items = `${count} item${count === 1 ? "" : "s"}`;
   return (
     <View style={styles.wrap}>
-      <Pressable
+      <OfferingGlassBar
+        palette={palette}
+        title={total === null ? items : `${items} · ${total}`}
+        subtitle={null}
+        ctaLabel="View order"
         onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={[styles.bar, accentFill(palette)]}
-      >
-        <Text style={[styles.label, { color: palette.accentText }]}>
-          {label}
-        </Text>
-      </Pressable>
+        ctaAccessibilityLabel={label}
+        testID="issue-4420-venue-order-bar"
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 16, paddingTop: 8 },
-  bar: {
-    minHeight: 52,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  label: { fontSize: 16, fontWeight: "900" },
+  wrap: { paddingHorizontal: 12, paddingTop: 8 },
 });

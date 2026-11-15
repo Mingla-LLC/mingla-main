@@ -122,11 +122,25 @@ describe("ORCH-1186 — Fix 4 three-step tap-to-advance wizard", () => {
       // [TEST-MOD-APPROVED #3281] Round 2 (#3996) charges per unit: open-daily
       // sends the computed `quantity` plus `partySize: party`, and both paths may
       // add an optional ticketTypeId (price option).
-      expect(src).toMatch(
-        /onConfirm\(\{\s*eventDateId: selectedDate\.\w+,\s*quantity,\s*startAt: bookedIso,\s*partySize: party,/,
+      // [TEST-MOD-APPROVED #4420] the Host sheet's hand-off moved verbatim into
+      // the shared experienceReserveModel (sheet + inline picker), which
+      // returns it; the sheet confirms with that selection.
+      const handoff =
+        label === "business"
+          ? readFileSync(
+              path.join(process.cwd(), "../packages/offering-rendering/experienceReserveModel.ts"),
+              "utf8",
+            )
+          : src;
+      if (label === "business") {
+        expect(src).toMatch(/onConfirm\(reserve\.selection\)/);
+      }
+      const head = label === "business" ? "return \\{\\s*eventDateId: date\\.id," : "onConfirm\\(\\{\\s*eventDateId: selectedDate\\.\\w+,";
+      expect(handoff).toMatch(
+        new RegExp(`${head}\\s*quantity,\\s*startAt: bookedIso,\\s*partySize: party,`),
       );
-      expect(src).toMatch(
-        /onConfirm\(\{\s*eventDateId: selectedDate\.\w+,\s*quantity: 1,\s*\.\.\.\(ticketTypeId !== undefined \? \{ ticketTypeId \} : \{\}\),\s*\}\)/,
+      expect(handoff).toMatch(
+        new RegExp(`${head}\\s*quantity: 1,\\s*\\.\\.\\.\\(ticketTypeId !== undefined \\? \\{ ticketTypeId \\} : \\{\\}\\),\\s*\\}${label === "business" ? ";" : "\\)"}`),
       );
     });
   }

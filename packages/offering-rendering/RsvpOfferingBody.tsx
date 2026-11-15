@@ -387,6 +387,12 @@ export interface RsvpOfferingBodyProps {
    * premium ParallaxCoverShell frame). Absent ⇒ false (Explorer).
    */
   identityOnCover?: boolean;
+  /**
+   * issue #4420 — the "when" fact's Add to calendar action. The surface
+   * passes it ONLY when the public data carries a real start AND end
+   * (offeringCalendarEntry); absent ⇒ no action.
+   */
+  onAddToCalendar?: () => void;
   // ORCH-1291 [rsvp-chip-in] — the surface's payment hand-off for a voluntary
   // gift. Absent → the chip-in panel never renders (feature dark on that
   // surface). Present + config.rsvp_contribution_enabled + a going guest → the
@@ -2328,6 +2334,7 @@ export const RsvpOfferingBody: React.FC<
     staticMapUrl = null,
     hideDecisionBox = false,
     identityOnCover = false,
+    onAddToCalendar,
     testID,
     state,
   } = props;
@@ -2469,6 +2476,10 @@ export const RsvpOfferingBody: React.FC<
             value: event.dateLine.length > 0 ? event.dateLine : null,
             detail: event.dateSubline,
             caption: doorsLine,
+            action:
+              onAddToCalendar !== undefined
+                ? { label: "Add to calendar", onPress: onAddToCalendar }
+                : null,
           },
           event.format === "online"
             ? { key: "where", icon: "globe", value: "Online", detail: "Link shared once you RSVP" }

@@ -98,6 +98,8 @@ const measurePair = (
 };
 
 export interface FoundationRsvpPreviewProps {
+  /** issue #4420 — Add to calendar; passed only with a real start and end. */
+  onAddToCalendar?: () => void;
   event: PublicEventProps;
   brand: PublicBrandProps | null;
   palette: ThemePalette;
@@ -206,6 +208,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     presentedByFollowerCount,
     presentedByFollowerCountLoading = false,
     presentedByFollowerCountLabels,
+    onAddToCalendar,
   } = props;
   const { isDesktop } = useResponsiveLayout();
   const acquisitionClosed =
@@ -447,6 +450,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
           // (PARITY with FoundationEventPreview's hideTicketBox).
           hideDecisionBox={acquisitionClosed}
           identityOnCover
+          onAddToCalendar={onAddToCalendar}
           presentedByFollow={presentedByFollow}
           presentedByFollowerCount={presentedByFollowerCount}
           presentedByFollowerCountLoading={presentedByFollowerCountLoading}

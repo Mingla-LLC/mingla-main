@@ -77,6 +77,10 @@ const BOUNDARY: Record<string, () => unknown> = {
   "./OfferingMomentum": () => ({ OfferingMomentum: leaf("OfferingMomentum") }),
   // issue #4420 — the fact rows (when / where / who's going).
   "./OfferingFactRows": () => ({ OfferingFactRows: leaf("OfferingFactRows") }),
+  // [TEST-MOD-APPROVED #4420] Harness registration only: the wave B
+  // Included / Not included lists (sub-label + dot list).
+  "./OfferingSectionTitle": () => ({ OfferingSubLabel: leaf("OfferingSubLabel") }),
+  "./OfferingDecideParts": () => ({ OfferingDotList: leaf("OfferingDotList") }),
   "./socialProofTypes": () => ({}),
   "./staticMapImage": () => ({ buildStaticMapUrl: () => "https://map.fixture/static.png" }),
   // #4334 F-1 — the shared map renderer (sizes the request to its box).

@@ -21,6 +21,11 @@ export interface OfferingCoverIdentityData {
   presenter?: { name: string; photo?: string | null } | null;
   /** A node under the title (trip route pills). */
   extra?: React.ReactNode;
+  /**
+   * issue #4420 wave B — a live status pill under the title (a venue's
+   * "Open now"). Plain data, so a surface passes only what is true.
+   */
+  live?: string | null;
 }
 
 export interface OfferingCoverIdentityProps extends OfferingCoverIdentityData {
@@ -35,6 +40,7 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
   title,
   presenter = null,
   extra = null,
+  live = null,
   palette,
   theme,
   variant,
@@ -73,6 +79,22 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
         {title}
       </Text>
       {extra !== null ? <View style={styles.extra}>{extra}</View> : null}
+      {live !== null && live.length > 0 ? (
+        <View
+          style={[
+            styles.livePill,
+            onCover
+              ? styles.livePillCover
+              : { backgroundColor: palette.card, borderColor: palette.panelBorder },
+          ]}
+          testID={`${testID}-live`}
+        >
+          <View style={styles.liveDot} />
+          <Text style={[styles.liveText, { color: onCover ? "#FFFFFF" : palette.primaryText }]}>
+            {live}
+          </Text>
+        </View>
+      ) : null}
       {presenter !== null && presenter.name.trim().length > 0 ? (
         <View style={styles.byline} testID={`${testID}-presenter`}>
           <View style={[styles.avatar, accentFill(palette)]}>
@@ -119,6 +141,22 @@ const styles = StyleSheet.create({
     textShadowRadius: 24,
   },
   extra: { marginTop: 2 },
+  livePill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  livePillCover: {
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(20,20,22,0.42)",
+  },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#4ADE80" },
+  liveText: { fontSize: 12.5, fontWeight: "700" },
   byline: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatar: {
     width: 26,

@@ -378,6 +378,8 @@ export const OfferingRadioCard: React.FC<OfferingRadioCardProps> = ({
     disabled={disabled}
     accessibilityRole="radio"
     accessibilityState={{ checked: selected, disabled }}
+    // #3859 — the chosen state also reaches the emitted web markup.
+    aria-checked={selected}
     accessibilityLabel={
       accessibilityLabel ??
       [title, detail, price].filter((p) => p !== null && p !== "").join(", ")
@@ -397,14 +399,18 @@ export const OfferingRadioCard: React.FC<OfferingRadioCardProps> = ({
     testID={testID}
   >
     <View style={styles.radioRow}>
+      {/* Chosen: a filled accent disc (gradient-aware) with a page-tone
+          centre; not chosen: a quiet ring. */}
       <View
         style={[
           styles.radioDot,
-          { borderColor: selected ? palette.accent : palette.secondaryText },
+          selected
+            ? { ...accentFill(palette), borderColor: "transparent" }
+            : { borderColor: palette.secondaryText },
         ]}
       >
         {selected ? (
-          <View style={[styles.radioDotFill, { backgroundColor: palette.accent }]} />
+          <View style={[styles.radioDotFill, { backgroundColor: palette.page }]} />
         ) : null}
       </View>
       <View style={styles.radioText}>
@@ -523,13 +529,13 @@ export const OfferingConfirmTick: React.FC<{
       toValue: 1,
       duration: 480,
       delay: 120,
-      easing: Easing.out(Easing.back(1.6)),
+      easing: Easing.out(Easing.ease),
       useNativeDriver: true,
     });
     anim.start();
     return () => anim.stop();
   }, [progress, reduceMotion]);
-  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
   return (
     <View
       style={[
@@ -570,7 +576,7 @@ export const OfferingDotList: React.FC<{
           style={[
             styles.dot,
             kind === "yes"
-              ? { backgroundColor: palette.accent }
+              ? accentFill(palette)
               : { borderWidth: 1.5, borderColor: palette.secondaryText },
           ]}
         />
@@ -650,11 +656,12 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 1,
   },
-  radioDotFill: { width: 10, height: 10, borderRadius: 5 },
+  radioDotFill: { width: 8, height: 8, borderRadius: 4 },
   radioText: { flex: 1, minWidth: 0 },
   radioPrice: {
     fontSize: 16,

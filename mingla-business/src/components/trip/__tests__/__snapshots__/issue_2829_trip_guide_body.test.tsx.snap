@@ -404,66 +404,47 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
   <View
     ref={null}
     style={
-      {
-        "marginTop": 34,
-      }
+      [
+        {
+          "marginTop": 34,
+        },
+        {
+          "flexDirection": "row",
+          "gap": 18,
+        },
+      ]
     }
-    testID="trip-body-included"
   >
-    <Text
+    <View
       ref={null}
       style={
-        [
-          {
-            "fontSize": 26,
-            "fontWeight": "700",
-            "letterSpacing": -0.3,
-            "marginBottom": 14,
-          },
-          {
-            "color": "#ffffff",
-          },
-          {
-            "fontFamily": "Inter_700Bold",
-          },
-        ]
+        {
+          "flex": 1,
+          "minWidth": 0,
+        }
       }
+      testID="trip-body-included"
     >
-      What’s included
-    </Text>
-    <ChipGroup />
-  </View>
-  <View
-    ref={null}
-    style={
-      {
-        "marginTop": 34,
-      }
-    }
-    testID="trip-body-excluded"
-  >
-    <Text
+      <OfferingSubLabel>
+        Included
+      </OfferingSubLabel>
+      <OfferingDotList />
+    </View>
+    <View
       ref={null}
       style={
-        [
-          {
-            "fontSize": 26,
-            "fontWeight": "700",
-            "letterSpacing": -0.3,
-            "marginBottom": 14,
-          },
-          {
-            "color": "#ffffff",
-          },
-          {
-            "fontFamily": "Inter_700Bold",
-          },
-        ]
+        {
+          "flex": 1,
+          "minWidth": 0,
+        }
       }
+      testID="trip-body-excluded"
     >
-      What’s not included
-    </Text>
-    <ChipGroup />
+      <OfferingSubLabel>
+        Not included
+      </OfferingSubLabel>
+      <OfferingDotList />
+    </View>
   </View>
   <View
     ref={null}
@@ -507,8 +488,8 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
         [
           {
             "borderRadius": 18,
-            "marginTop": 12,
-            "padding": 14,
+            "marginTop": 4,
+            "padding": 18,
           },
           {
             "backgroundColor": "rgba(255,255,255,0.10)",
@@ -1052,66 +1033,47 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
   <View
     ref={null}
     style={
-      {
-        "marginTop": 34,
-      }
+      [
+        {
+          "marginTop": 34,
+        },
+        {
+          "flexDirection": "row",
+          "gap": 18,
+        },
+      ]
     }
-    testID="trip-body-included"
   >
-    <Text
+    <View
       ref={null}
       style={
-        [
-          {
-            "fontSize": 26,
-            "fontWeight": "700",
-            "letterSpacing": -0.3,
-            "marginBottom": 14,
-          },
-          {
-            "color": "#ffffff",
-          },
-          {
-            "fontFamily": "Inter_700Bold",
-          },
-        ]
+        {
+          "flex": 1,
+          "minWidth": 0,
+        }
       }
+      testID="trip-body-included"
     >
-      What’s included
-    </Text>
-    <ChipGroup />
-  </View>
-  <View
-    ref={null}
-    style={
-      {
-        "marginTop": 34,
-      }
-    }
-    testID="trip-body-excluded"
-  >
-    <Text
+      <OfferingSubLabel>
+        Included
+      </OfferingSubLabel>
+      <OfferingDotList />
+    </View>
+    <View
       ref={null}
       style={
-        [
-          {
-            "fontSize": 26,
-            "fontWeight": "700",
-            "letterSpacing": -0.3,
-            "marginBottom": 14,
-          },
-          {
-            "color": "#ffffff",
-          },
-          {
-            "fontFamily": "Inter_700Bold",
-          },
-        ]
+        {
+          "flex": 1,
+          "minWidth": 0,
+        }
       }
+      testID="trip-body-excluded"
     >
-      What’s not included
-    </Text>
-    <ChipGroup />
+      <OfferingSubLabel>
+        Not included
+      </OfferingSubLabel>
+      <OfferingDotList />
+    </View>
   </View>
   <View
     ref={null}
@@ -1155,8 +1117,8 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
         [
           {
             "borderRadius": 18,
-            "marginTop": 12,
-            "padding": 14,
+            "marginTop": 4,
+            "padding": 18,
           },
           {
             "backgroundColor": "rgba(255,255,255,0.10)",

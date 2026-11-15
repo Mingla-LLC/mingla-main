@@ -80,6 +80,9 @@ import {
 } from "@mingla/offering-rendering";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
+// issue #4420 — Add to calendar, only from a real start and end.
+import { offeringCalendarEntry } from "@mingla/offering-rendering/offeringCalendar";
+import { addOfferingToCalendar } from "../../utils/offeringCalendarAction";
 import { recordShareDestination } from "../../analytics/shareDestination";
 import {
   captureOfferingCta,
@@ -1813,6 +1816,43 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [event.masterStartAtUtc, event.masterEndAtUtc, event.timezone],
   );
 
+  // issue #4420 — Add to calendar ONLY from real data: a single-date event
+  // whose public payload carries both its start and its end. The location is
+  // what the page itself shows (never an address it hides until a ticket).
+  const calendarEntry = useMemo(
+    () =>
+      publicEvent.datesList.length > 1 || acquisitionState.kind !== "current"
+        ? null
+        : offeringCalendarEntry({
+            title: event.name,
+            startIso: event.masterStartAtUtc ?? null,
+            endIso: event.masterEndAtUtc ?? null,
+            location: publicEvent.hideAddressUntilTicket
+              ? publicEvent.venueName
+              : publicEvent.address ?? publicEvent.venueName,
+            url:
+              Platform.OS === "web" && typeof window !== "undefined"
+                ? window.location.href.split("?")[0]
+                : null,
+          }),
+    [
+      acquisitionState.kind,
+      event.masterEndAtUtc,
+      event.masterStartAtUtc,
+      event.name,
+      publicEvent.address,
+      publicEvent.datesList.length,
+      publicEvent.hideAddressUntilTicket,
+      publicEvent.venueName,
+    ],
+  );
+  const handleAddToCalendar =
+    calendarEntry === null
+      ? undefined
+      : (): void => {
+          addOfferingToCalendar(calendarEntry, `${event.id}@usemingla.com`);
+        };
+
   if (isRsvp) {
     return (
       <View style={[styles.host, { backgroundColor: palette.page }]}>
@@ -1856,6 +1896,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         ) : null}
 
         <FoundationRsvpPreview
+          onAddToCalendar={handleAddToCalendar}
           event={publicEvent}
           brand={publicBrand}
           palette={palette}
@@ -2261,18 +2302,34 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // glass bar below is the one place to continue.
           hideTicketBox={acquisitionState.kind !== "current"}
           inlineProceed={false}
+          onAddToCalendar={handleAddToCalendar}
           desktopFlyerActions={
-            <Pressable
-              onPress={handleShare}
-              accessibilityRole="button"
-              accessibilityLabel="Share this event"
-              style={[styles.flyerAction, { borderColor: palette.panelBorder }]}
-              testID="issue-4420-flyer-share"
-            >
-              <Text style={[styles.flyerActionText, { color: palette.primaryText }]}>
-                Share
-              </Text>
-            </Pressable>
+            <View style={styles.flyerActionRow}>
+              <Pressable
+                onPress={handleShare}
+                accessibilityRole="button"
+                accessibilityLabel="Share this event"
+                style={[styles.flyerAction, { borderColor: palette.panelBorder }]}
+                testID="issue-4420-flyer-share"
+              >
+                <Text style={[styles.flyerActionText, { color: palette.primaryText }]}>
+                  Share
+                </Text>
+              </Pressable>
+              {handleAddToCalendar !== undefined ? (
+                <Pressable
+                  onPress={handleAddToCalendar}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add this event to your calendar"
+                  style={[styles.flyerAction, { borderColor: palette.panelBorder }]}
+                  testID="issue-4420-flyer-calendar"
+                >
+                  <Text style={[styles.flyerActionText, { color: palette.primaryText }]}>
+                    Add to calendar
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           }
           // issue #2160 §7(a) — the phone inline ticket box. Null on every
           // single-date and free event, so the rendered tree is unchanged there.
@@ -2511,6 +2568,7 @@ const styles = StyleSheet.create({
     maxWidth: "90%",
     zIndex: 6,
   },
+  flyerActionRow: { flexDirection: "row", gap: 8 },
   flyerAction: {
     flex: 1,
     minHeight: 44,

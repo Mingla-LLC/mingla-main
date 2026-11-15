@@ -30,7 +30,10 @@ import {
   reconcileInitialVenueTab,
   type PublicVenueTab,
 } from "./publicVenueTabState";
-import { accentFillWithBorder, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+// issue #4420 — the tab strip is a glass pill that stays under the header.
+import { OfferingGlassBackdrop } from "@mingla/offering-rendering/OfferingGlassContext";
+import { hexToRgba } from "@mingla/offering-rendering/themePalette";
 
 // This package is source-linked into both apps. Their isolated typecheck
 // sandboxes resolve React peers from the app root, while files under packages/
@@ -386,8 +389,33 @@ export const PublicVenueTabs = forwardRef<
     reservations,
   };
 
+  // issue #4420 — the segmented glass pill (design file → .tabs): one
+  // rounded frosted strip, the chosen tab in ink. On web it sticks under the
+  // glass header so moving between Overview, Menu and Reservations never
+  // means scrolling back up; native keeps it in the flow.
+  const pillFill = palette.card.startsWith("#")
+    ? hexToRgba(palette.card, 0.82)
+    : palette.page.startsWith("#")
+      ? hexToRgba(palette.page, Platform.OS === "android" ? 1 : 0.9)
+      : palette.page;
   return (
     <View>
+      <View
+        style={[
+          styles.pillWrap,
+          { backgroundColor: pillFill, borderColor: palette.panelBorder },
+          Platform.OS === "web"
+            ? ({
+                position: "sticky",
+                top: 72,
+                zIndex: 3,
+                backdropFilter: "blur(18px)",
+              } as unknown as ViewStyle)
+            : null,
+        ]}
+        testID="issue-4420-venue-tab-pill"
+      >
+      <OfferingGlassBackdrop radius={999} tint={palette.glassTint} />
       <WebVenueTabList
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -461,9 +489,8 @@ export const PublicVenueTabs = forwardRef<
               {...webTabProps}
               style={[
                 styles.chip,
-                surface.card,
                 active && {
-                  ...accentFillWithBorder(palette),
+                  backgroundColor: palette.primaryText,
                 },
                 focusOutline,
               ]}
@@ -473,9 +500,10 @@ export const PublicVenueTabs = forwardRef<
                   styles.label,
                   themeBoldFace(theme),
                   {
-                    color: active ? palette.accentText : palette.secondaryText,
+                    color: active ? palette.page : palette.secondaryText,
                   },
                 ]}
+                numberOfLines={1}
               >
                 {LABELS[tab]}
               </Text>
@@ -483,6 +511,7 @@ export const PublicVenueTabs = forwardRef<
           );
         })}
       </WebVenueTabList>
+      </View>
       {Platform.OS === "web" ? (
         tabs.map((tab: PublicVenueTab) => {
           const active = tab === activeTab;
@@ -514,25 +543,32 @@ export const PublicVenueTabs = forwardRef<
 });
 
 const styles = StyleSheet.create({
+  pillWrap: {
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 4,
+    overflow: "hidden",
+  },
   tabs: {
+    flexGrow: 1,
     flexDirection: "row",
-    gap: 6,
-    paddingVertical: 2,
-    paddingRight: 6,
+    gap: 4,
   },
   chip: {
-    minHeight: 44,
-    flexGrow: 0,
+    minHeight: 40,
+    flexGrow: 1,
     flexShrink: 0,
+    flexBasis: 0,
+    alignItems: "center",
     justifyContent: "center",
     borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     overflow: "hidden",
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "700",
   },
   pane: {
     marginTop: 20,

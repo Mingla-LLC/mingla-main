@@ -145,6 +145,8 @@ export interface FoundationEventPreviewProps {
   inlineProceed?: boolean;
   /** issue #4420 — actions under the desktop flyer (Share). */
   desktopFlyerActions?: React.ReactNode;
+  /** issue #4420 — Add to calendar; passed only with a real start and end. */
+  onAddToCalendar?: () => void;
   testID?: string;
 }
 
@@ -190,6 +192,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   presentedByFollowerCountLabels,
   inlineProceed = true,
   desktopFlyerActions = null,
+  onAddToCalendar,
   testID,
 }: FoundationEventPreviewProps) => {
   const { isDesktop } = useResponsiveLayout();
@@ -248,6 +251,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       // issue #4420 — the title lives on the cover in the premium frame.
       identityOnCover
       inlineProceed={inlineProceed}
+      onAddToCalendar={onAddToCalendar}
       testID="orch-1167-event-body"
     />
   );

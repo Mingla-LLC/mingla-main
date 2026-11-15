@@ -69,11 +69,14 @@ Deno.test("F-3 the motion covers the whole screen, under the header in every pre
   assertStringIncludes(shell, "export const FLOATING_CTA_MIN_Z = 6;");
 });
 
-Deno.test("F-4 the brand and venue pages keep the classic frame (wave B opts them in)", () => {
+Deno.test("F-4 the venue page opts into the premium frame; the brand page keeps the classic one", () => {
+  // [TEST-MOD-APPROVED #4420] wave B opted the venue page in (the approved
+  // design covers venues and stays; it does not cover the brand page).
   assertStringIncludes(shell, 'frame = "classic"');
-  for (const rel of ["../../brand-rendering/PublicBrandPage.tsx", "../../brand-rendering/PublicVenueScreen.tsx"]) {
-    assert(!read(rel).includes("frame="), rel);
-  }
+  assert(!read("../../brand-rendering/PublicBrandPage.tsx").includes("frame="), "brand page stays classic");
+  const venue = read("../../brand-rendering/PublicVenueScreen.tsx");
+  assertStringIncludes(venue, 'frame="premium"');
+  assertStringIncludes(venue, "coverIdentity={{");
 });
 
 Deno.test("F-5 each body prints its title only when the cover does not", () => {

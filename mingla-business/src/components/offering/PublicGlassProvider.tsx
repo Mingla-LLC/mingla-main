@@ -20,11 +20,13 @@
 import React, { useMemo } from "react";
 import { Platform, StyleSheet } from "react-native";
 
+// Deep specifier on purpose: route render suites mock the package barrel, and
+// a provider that vanished under a mock would blank the whole page.
 import {
   OfferingGlassProvider,
   type OfferingGlassBackdropProps,
   type OfferingGlassMaterial,
-} from "@mingla/offering-rendering";
+} from "@mingla/offering-rendering/OfferingGlassContext";
 
 import { Material, useReduceTransparency } from "../ui/Material";
 

@@ -96,6 +96,8 @@ import {
   type ResolvedTheme,
   type ThemePalette,
 } from "@mingla/offering-rendering";
+// issue #4420 — the shared glass bottom bar (no expo-blur).
+import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
 
 import { PublicMenuSections } from "./PublicMenuSections";
 // The package-local React bridge (see PublicVenueTabs.tsx). Files under
@@ -1588,6 +1590,11 @@ export const PublicVenueScreen = ({
     </View>
   );
 
+  // issue #4420 — the premium frame prints the venue's name on the cover
+  // (phone) and at the top of the reading column (desktop), so the body keeps
+  // the category and place chips (the "what is it / where" answer, #1561),
+  // the brand line and the answer bar, without printing the name twice.
+  const identityOnCover = true;
   const identityBlock = (
     <View style={styles.identityWrap}>
       <View style={styles.chipRow}>
@@ -1615,11 +1622,13 @@ export const PublicVenueScreen = ({
           </View>
         ) : null}
       </View>
+      {identityOnCover ? null : (
       <Text
         style={[styles.venueName, themedBoldFont, { color: palette.primaryText }]}
       >
         {venue.name}
       </Text>
+      )}
       {/* #4111 — with no Message (enquiries off / not loaded / desktop) the
           "By {brand}" line renders exactly as before. */}
       {onMessageBrand !== undefined && !isDesktop ? (
@@ -2007,6 +2016,17 @@ export const PublicVenueScreen = ({
     </Pressable>
   );
 
+  // issue #4420 — the phone reserve bar is the shared glass bar (design
+  // file → venueDef.bar): the venue on the left with what is true right now
+  // (the open-state line, or a Stay's real nightly rate), the category's own
+  // action on the right ("Reserve a table", "Book a visit", "Reserve this
+  // Stay"). Same handler, same display gate, same testID anchors.
+  const reserveBarSubtitle =
+    profile.bookingBody === "stay"
+      ? stayRate !== null
+        ? venueStayRateRangeLine(stayRate)
+        : null
+      : todayLine;
   const reserveBar =
     showPersistentReserveCta && !isDesktop ? (
       <View
@@ -2016,13 +2036,21 @@ export const PublicVenueScreen = ({
           Platform.OS === "web"
             ? webVenueStyle({ position: "sticky", marginTop: 8 })
             : null,
-          {
-            backgroundColor: palette.page,
-            paddingBottom: insets.bottom + 8,
-          },
+          { paddingBottom: insets.bottom + 12 },
         ]}
+        pointerEvents="box-none"
       >
-        {reserveCta}
+        <OfferingGlassBar
+          palette={palette}
+          theme={resolvedTheme}
+          title={venue.name}
+          subtitle={reserveBarSubtitle}
+          ctaLabel={profile.reserveAction}
+          onPress={handleReserve}
+          ctaAccessibilityLabel={profile.reserveAction}
+          testID="issue-4420-venue-glass-bar"
+          actionTestID="issue-2729-reserve-cta"
+        />
       </View>
     ) : null;
 
@@ -2030,7 +2058,7 @@ export const PublicVenueScreen = ({
     showPersistentReserveCta && !isDesktop
       ? Platform.OS === "web"
         ? 0
-        : 52 + 16 + insets.bottom + 8
+        : 68 + 8 + insets.bottom + 12 + 8
       : insets.bottom + 24;
 
   // #4347 wave 4 — a host bar replaces the shared reserve bar at every width.
@@ -2345,6 +2373,20 @@ export const PublicVenueScreen = ({
         onClose={onClose}
         onShare={onShare}
         hideCloseOnWeb
+        // issue #4420 — the premium public frame (design file → venueDef):
+        // the category, place and name on the cover over the scrim, the live
+        // "Open now" pill under them, the glass header with the title once the
+        // cover scrolls away; desktop is the photo column + the content.
+        frame="premium"
+        coverIdentity={{
+          // The category and place read in the body's chips right under the
+          // cover; the cover carries the name and the live pill.
+          eyebrow: [],
+          title: venue.name,
+          // Only when the venue's own clock says it is open right now
+          // (Constitution 9: "unknown" claims nothing, so no pill).
+          live: openState.status === "open" ? "Open now" : null,
+        }}
         directionCIdentity={useDirectionCIdentity ? {
           title: venue.name,
           meta: [profile.noun, venue.city].filter(Boolean).join(" · "),
@@ -2737,7 +2779,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingTop: 8,
     zIndex: 6,
   },

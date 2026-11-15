@@ -489,14 +489,14 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       toValue: 1,
       duration: 480,
       delay: 120,
-      easing: Easing.out(Easing.back(1.6)),
+      easing: Easing.out(Easing.ease),
       useNativeDriver: true,
       isInteraction: false,
     });
     anim.start();
     return () => anim.stop();
   }, [goingResolved, reduceMotion, tickIn]);
-  const tickScale = tickIn.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+  const tickScale = tickIn.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
 
   // ── party-type vibe chips (accent-wash pills; glyph-free, per the mockup) ──
   const chips =

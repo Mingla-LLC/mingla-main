@@ -95,12 +95,15 @@ Deno.test("adversarial: full / waitlist decision branches exclude the Maybe butt
   // Isolate each `else if` decision branch body and assert no MaybeButton inside a
   // full/waitlist branch. We do a coarse-but-load-bearing structural check: the two
   // full-family branches each render exactly {GoingButton} + {NotGoingButton}.
+  // [TEST-MOD-APPROVED #4420] the branches now call the layout helper
+  // (`decisionButtons = withNotGoing(GoingButton);`) instead of an inline row,
+  // so the capture ends at the statement's semicolon. The assertion is the same.
   const fullNoWaitlist =
-    /ctaState === "full" && !waitlistEnabled\)\s*\{[\s\S]*?decisionButtons = \(([\s\S]*?)\);/.exec(
+    /ctaState === "full" && !waitlistEnabled\)\s*\{[\s\S]*?decisionButtons = ([\s\S]*?);\n/.exec(
       COMPONENT,
     );
   const waitlistBranch =
-    /\}\s*else if \(goingIsWaitlist\)\s*\{[\s\S]*?decisionButtons = \(([\s\S]*?)\);/.exec(
+    /\}\s*else if \(goingIsWaitlist\)\s*\{[\s\S]*?decisionButtons = ([\s\S]*?);\n/.exec(
       COMPONENT,
     );
   assert(fullNoWaitlist !== null, "could not locate the hard-full decision branch");
