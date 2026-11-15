@@ -64,8 +64,10 @@ describe("ORCH-1076 — StripeBlockedCard structure (tokens unchanged)", () => {
     expect(src).toContain('variant="base"');
     expect(src).toContain('name="flag"');
     expect(src).toContain('name="chevR"');
-    expect(src).toContain("backgroundColor: accent.tint");
-    expect(src).toContain("color: accent.warm");
-    expect(src).toContain("borderColor: accent.border");
+    // [TEST-MOD-APPROVED #4420] the CTA is the paper primary (ink label) and the
+    // card edge the warning tone; orange is not a button fill on Graphite Glass.
+    expect(src).toContain("backgroundColor: color.paper");
+    expect(src).toContain("color: color.ink");
+    expect(src).toContain("borderColor: color.warning");
   });
 });

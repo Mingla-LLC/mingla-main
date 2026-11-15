@@ -52,7 +52,7 @@ export const StripeBlockedCard: React.FC<StripeBlockedCardProps> = ({
     testID={testID}
   >
     <View style={styles.statusRow}>
-      <Icon name="flag" size={20} color={color.accent} />
+      <Icon name="flag" size={20} color={color.warningText} />
       <View style={styles.statusTextCol}>
         <Text style={styles.statusTitle}>{title}</Text>
         <Text style={styles.statusSub}>{body}</Text>
@@ -65,7 +65,7 @@ export const StripeBlockedCard: React.FC<StripeBlockedCardProps> = ({
       style={styles.connectStripeBtn}
     >
       <Text style={styles.connectStripeLabel}>{ctaLabel}</Text>
-      <Icon name="chevR" size={14} color={color.accent} />
+      <Icon name="chevR" size={14} color={color.ink} />
     </Pressable>
   </GlassCard>
 );
@@ -90,8 +90,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: type.caption.lineHeight * 1.4,
   },
+  // #4420 — a warning, so the warning tone (orange is not a status colour).
   warnCard: {
-    borderColor: color.accentLine,
+    borderColor: color.warning,
     borderWidth: 1,
   },
   connectStripeBtn: {
@@ -102,15 +103,16 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: space[2],
     paddingHorizontal: space[4],
-    borderRadius: radiusTokens.md,
+    borderRadius: radiusTokens.full,
     overflow: "hidden",
-    backgroundColor: color.accentLine,
+    // #4420 — the paper primary: orange is not a button fill.
+    backgroundColor: color.paper,
     borderWidth: 1,
-    borderColor: color.accentLine,
+    borderColor: color.paper,
   },
   connectStripeLabel: {
     fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: color.accent,
+    color: color.ink,
   },
 });

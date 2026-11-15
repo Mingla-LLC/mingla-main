@@ -153,7 +153,7 @@ export const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
       style={[
         styles.badge,
         isApp
-          ? { backgroundColor: color.accentLine, borderColor: color.accentLine }
+          ? { backgroundColor: color.accentTint, borderColor: color.accentLine }
           : { backgroundColor: color.infoTint, borderColor: WEB_BADGE_BORDER },
       ]}
     >
