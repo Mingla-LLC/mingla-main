@@ -242,6 +242,68 @@ export function supportStatusBanner(
   }
 }
 
+/** One label–value line of the desktop Ticket details pane. */
+export interface SupportTicketDetail {
+  key: string;
+  label: string;
+  value: string;
+}
+
+/**
+ * #4420 — the desktop "Ticket" side pane (mockup support-ticket__thread).
+ * Only data the thread already has: number, topic, who it is shared with,
+ * opened / updated dates, status and the promised next update.
+ */
+export function supportTicketDetails(
+  ticket: {
+    ticket_number: number | null;
+    topic: string | null;
+    visibility: "internal" | "person" | "brand" | null;
+    status: string;
+    created_at: string;
+    last_message_at: string;
+    next_update_at?: string | null;
+  },
+  options: { staffMode?: boolean; nowMs?: number } = {},
+): SupportTicketDetail[] {
+  const date = (iso: string): string => {
+    const ms = Date.parse(iso);
+    return Number.isFinite(ms) ? new Date(ms).toLocaleDateString() : "";
+  };
+  const banner = supportStatusBanner(ticket, options.nowMs);
+  const status =
+    banner.kind === "waiting_mingla"
+      ? supportCopy("thread.banner_waiting_mingla")
+      : banner.kind === "waiting_you"
+        ? supportCopy("thread.banner_waiting_you")
+        : banner.kind === "resolved"
+          ? supportCopy("thread.banner_resolved")
+          : supportCopy("details.status_closed");
+  const shared = options.staffMode
+    ? supportCopy(`staff.visibility_${ticket.visibility ?? "person"}`)
+    : ticket.visibility === "brand"
+      ? supportCopy("details.shared_brand")
+      : supportCopy("details.shared_person");
+  const rows: SupportTicketDetail[] = [
+    { key: "ticket", label: supportCopy("details.ticket"), value: formatTicketNumber(ticket.ticket_number) },
+    {
+      key: "topic",
+      label: supportCopy("details.topic"),
+      value: ticket.topic ? supportCopy(`topic.${ticket.topic}`) : "",
+    },
+    { key: "shared", label: supportCopy("details.shared"), value: shared },
+    { key: "opened", label: supportCopy("details.opened"), value: date(ticket.created_at) },
+    { key: "updated", label: supportCopy("details.updated"), value: date(ticket.last_message_at) },
+    { key: "status", label: supportCopy("details.status"), value: status },
+    {
+      key: "next_update",
+      label: supportCopy("details.next_update"),
+      value: banner.nextUpdateAt !== null ? new Date(banner.nextUpdateAt).toLocaleString() : "",
+    },
+  ];
+  return rows.filter((row) => row.value.length > 0);
+}
+
 /**
  * The customer-safe Product stage of a request (from
  * issue_4382_ticket_product_stage). Shipped, told and won't-do have no stage:

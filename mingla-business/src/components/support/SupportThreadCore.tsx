@@ -37,6 +37,7 @@ import {
   color,
   radius,
   space,
+  type,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import { HELP_AND_SUPPORT_ROUTE, SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
@@ -54,8 +55,10 @@ import {
 } from "../../services/supportService";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
+import { KeyValue } from "../ui/KeyValue";
 import { SafeScreen } from "../ui/SafeScreen";
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { SupportImageStrip, SupportImageViewer } from "./SupportMedia";
 import { pickSupportImages, SupportPhotoAccessError } from "./supportImagePicker";
 import {
@@ -67,6 +70,7 @@ import {
   supportProductBannerKeys,
   supportStatusBanner,
   supportSystemLine,
+  supportTicketDetails,
   type SupportPickedImage,
   type SupportProductStage,
 } from "./supportRequestModel";
@@ -128,6 +132,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const queryClient = useQueryClient();
   const threadKey = supportTicketKeys.thread(ticketId);
 
@@ -277,8 +282,13 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
         .join(" · ")
     : "";
 
-  return (
-    <SafeScreen style={styles.screen}>
+  // #4420 — on wide desktop the thread sits in its own pane with the
+  // "Ticket" details pane beside it (mockup support-ticket__thread). Phone
+  // and narrow web keep the single column.
+  const showDetailsPane = isWideDesktop && ticket !== null && !isLoading && !isError;
+  const details = ticket !== null ? supportTicketDetails(ticket, { staffMode }) : [];
+  const threadColumn = (
+    <>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -512,15 +522,77 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
           )}
         </>
       )}
+    </>
+  );
+
+  return (
+    <SafeScreen style={[styles.screen, showDetailsPane && styles.screenDesktop]}>
+      {showDetailsPane ? (
+        <View style={styles.desktopRow}>
+          <View style={styles.threadPane}>{threadColumn}</View>
+          <View
+            style={styles.detailsPane}
+            accessibilityRole="summary"
+            accessibilityLabel={supportCopy("details.title")}
+            testID="support-ticket-details"
+          >
+            <Text style={styles.detailsTitle}>{supportCopy("details.title")}</Text>
+            <KeyValue items={details} style={styles.detailsBody} />
+          </View>
+        </View>
+      ) : (
+        threadColumn
+      )}
       <SupportImageViewer url={viewerUrl} onClose={() => setViewerUrl(null)} />
     </SafeScreen>
   );
 };
 
+const DETAILS_PANE_WIDTH = 340;
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: color.card,
+  },
+  screenDesktop: {
+    backgroundColor: color.canvas,
+  },
+  desktopRow: {
+    flex: 1,
+    flexDirection: "row",
+    gap: space[4],
+    padding: space[4],
+  },
+  threadPane: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+  },
+  detailsPane: {
+    width: DETAILS_PANE_WIDTH,
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    overflow: "hidden",
+  },
+  detailsTitle: {
+    ...type.row,
+    color: color.text1,
+    paddingHorizontal: space[5],
+    paddingVertical: space[4],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.line,
+  },
+  detailsBody: {
+    paddingHorizontal: space[5],
+    paddingVertical: space[4],
+    gap: space[3],
   },
   header: {
     flexDirection: "row",
