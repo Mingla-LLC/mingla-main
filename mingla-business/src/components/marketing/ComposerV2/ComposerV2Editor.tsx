@@ -65,6 +65,7 @@ import {
   radius,
   scrim,
   space,
+  text as textTokens,
   type,
 } from "../../../constants/designSystem";
 import {
@@ -638,8 +639,12 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
               }
               editorStyle={{
                 backgroundColor: "transparent",
-                color: color.text1,
-                placeholderColor: color.text3,
+                // #2267 gate: pell inlines these raw into its WebView <style>, so
+                // they stay on a namespace the gate lists as frozen. `text` is
+                // the TRANSITIONAL #4420 alias of color.text1/text3 (same
+                // values); it moves to `color` once the #2267 gate accepts it.
+                color: textTokens.primary,
+                placeholderColor: textTokens.tertiary,
                 contentCSSText:
                   "font-size: 15px; line-height: 1.55; padding: 8px 16px; min-height: 100%;",
               }}

@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 
-import { color, radius, shadow, space, type } from "../../constants/designSystem";
+import { color, radius, shadow, space, spacing, type } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import type { MarketingAction } from "./MarketingActionContext";
 
@@ -30,7 +30,7 @@ export function MarketingActionButton({
         pressed && styles.pressed,
       ]}
     >
-      <Icon name={action.icon} size={compact ? 20 : 18} color={color.textStrong} />
+      <Icon name={action.icon} size={compact ? 20 : 18} color={color.ink} />
       {compact ? null : (
         <Text style={styles.label}>{floating ? action.label : action.label}</Text>
       )}
@@ -56,7 +56,9 @@ const styles = StyleSheet.create({
   },
   floating: {
     position: "absolute",
-    right: space[4],
+    // `spacing.md` (TRANSITIONAL #4420, = space[4]) is pinned by the
+    // issue-2024 people-page gate as the shell-owned FAB geometry.
+    right: spacing.md,
     minHeight: 48,
     zIndex: 30,
     ...shadow.menu,
