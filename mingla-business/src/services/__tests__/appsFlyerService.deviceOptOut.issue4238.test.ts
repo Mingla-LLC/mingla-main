@@ -118,11 +118,11 @@ describe("#4238 P2-4 Host app opt-out reaches the server", () => {
     setOptOut(true);
     await flush();
     expect(rt.updates).toEqual([
-      { values: { tracking_opt_out: true }, filters: { user_id: "host-1", app: "business" } },
+      { values: { app: "business", tracking_opt_out: true }, filters: { user_id: "host-1", app: "business" } },
     ]);
     setOptOut(false);
     await flush();
-    expect(rt.updates.at(-1)?.values).toEqual({ tracking_opt_out: false });
+    expect(rt.updates.at(-1)?.values).toEqual({ app: "business", tracking_opt_out: false });
     svc.clearAppsFlyerUserId();
     setOptOut(true);
     await flush();

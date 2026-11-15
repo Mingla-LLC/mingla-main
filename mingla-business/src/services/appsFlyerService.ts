@@ -237,7 +237,7 @@ function syncDeviceOptOut(): void {
       supabase
         .from("appsflyer_devices")
         // I-MUTATION-ROWCOUNT-WAIVER: #4238 zero rows is valid (no install registered yet; registration carries the value)
-        .update({ tracking_opt_out: isAnalyticsOptedOut() })
+        .update({ app: "business", tracking_opt_out: isAnalyticsOptedOut() })
         .eq("user_id", userId)
         .eq("app", "business"),
     ).then(

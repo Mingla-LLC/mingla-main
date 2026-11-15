@@ -173,7 +173,7 @@ function syncDeviceOptOut(): void {
     void Promise.resolve(
       supabase
         .from('appsflyer_devices')
-        .update({ tracking_opt_out: isAnalyticsOptedOut() })
+        .update({ app: 'consumer', tracking_opt_out: isAnalyticsOptedOut() })
         .eq('user_id', userId)
         .eq('app', 'consumer'),
     ).then(

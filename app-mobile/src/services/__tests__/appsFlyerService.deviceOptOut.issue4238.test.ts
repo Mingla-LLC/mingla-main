@@ -121,11 +121,11 @@ Deno.test("#4238 P1-4 switching off (and back on) updates this person's Explorer
   setOptOut(true);
   await flush();
   assertEquals(world.updates.length, 1, "the opt-out never reached the server");
-  assertEquals(world.updates[0].values, { tracking_opt_out: true });
+  assertEquals(world.updates[0].values, { app: "consumer", tracking_opt_out: true });
   assertEquals(world.updates[0].filters, { user_id: "u-1", app: "consumer" });
   setOptOut(false);
   await flush();
-  assertEquals(world.updates.at(-1).values, { tracking_opt_out: false });
+  assertEquals(world.updates.at(-1).values, { app: "consumer", tracking_opt_out: false });
   // Signed out: nothing to update (the next registration carries the value).
   svc.clearAppsFlyerUserId();
   setOptOut(true);
