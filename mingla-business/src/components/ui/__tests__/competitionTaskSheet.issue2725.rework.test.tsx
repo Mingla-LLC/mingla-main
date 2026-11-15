@@ -45,7 +45,9 @@ describe("issue 2725 opt-in Competition task Sheet", () => {
       expect(owner).toContain('presentation="competition"');
     for (const owner of [add, brief]) {
       expect(owner).toContain("panelBackground={competition.surface}");
-      expect(owner).toContain("borderColor: glass.border.profileElevated");
+      // [TEST-MOD-APPROVED #4420] the elevated competition rim is the Graphite line token the
+      // transitional `glass.border.profileElevated` alias resolved to (color.lineStrong).
+      expect(owner).toContain("borderColor: color.lineStrong");
       expect(owner).toContain("android: { elevation: 0, shadowOpacity: 0 }");
     }
     expect(add).toContain("shadowOpacity: 0.32");

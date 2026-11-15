@@ -51,7 +51,7 @@ function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props
     const timer = setTimeout(() => closeRef.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, [visible]);
-  return <Sheet visible={visible} onClose={onClose} snapPoint="full" presentation="competition" panelBackground={materials.pane.solidFill} style={styles.sheet} testID="competitor-brief-sheet">
+  return <Sheet visible={visible} onClose={onClose} snapPoint="full" presentation="competition" panelBackground={competition.surface} style={styles.sheet} testID="competitor-brief-sheet">
     <ScrollView ref={scrollRef} contentContainerStyle={[styles.body, insetStyle]}>
       <View style={styles.header}>
         <View style={[styles.headerTop, accessibilityHeader ? styles.headerTopAccessible : null]}><Text maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE} style={styles.eyebrow}>WEEKLY COMPETITOR BRIEF</Text><Button ref={closeRef} label="Close" accessibilityLabel="Close weekly competitor brief" variant="ghost" size="md" onPress={onClose} style={accessibilityHeader ? styles.closeAccessible : undefined} testID="competitor-brief-close" /></View>
@@ -108,7 +108,7 @@ function reportState(freshness: string | undefined, noChange: boolean, hasBrief:
 }
 function formatDateTime(iso: string): string { const date = new Date(iso); return Number.isFinite(date.getTime()) ? date.toLocaleString() : "—"; }
 function formatScheduleTime(iso: string): string { const date = new Date(iso); if (!Number.isFinite(date.getTime())) return "—"; return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`; }
-const competitionCardSurface = Platform.OS === "android" ? materials.pane.solidFill : color.card;
+const competitionCardSurface = Platform.OS === "android" ? materials.pane.solidFill : competition.surfaceRaised;
 const competitionBorder = Platform.OS === "android" ? color.card2 : color.lineStrong;
 const competitionSubtleBorder = Platform.OS === "android" ? color.card2 : color.line;
 const opaque = { backgroundColor: competitionCardSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: competitionBorder, overflow: "hidden" as const, ...Platform.select({ android: { elevation: 0, shadowOpacity: 0 }, default: {} }) };
