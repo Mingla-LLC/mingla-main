@@ -12,6 +12,8 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { Button } from "../../../components/ui/Button";
+import { Stepper, type StepperStep } from "../../../components/ui/Stepper";
+import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 import { DateField } from "../../../components/ui/DateField";
 import { NumberStepper } from "../../../components/ui/NumberStepper";
 import { ProgramSheet } from "../../../components/programs/ProgramSheet";
@@ -149,6 +151,7 @@ export default function GigBriefEditor(): React.ReactElement {
   const [serverErrors, setServerErrors] = useState<BriefErrors>({});
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<BriefStep>(1);
+  const { isWideDesktop } = useResponsiveLayout();
   const [formatOpen, setFormatOpen] = useState(false);
   const today = toIsoDay(new Date());
   const editingGigId = params.gigId ?? null;
@@ -317,12 +320,37 @@ export default function GigBriefEditor(): React.ReactElement {
         .join(" · ")
     : null;
 
+  // #4420 spec 3.5: the brief is a two-step wizard on the clickable Stepper.
+  // It reuses the existing per-step validator (validateBriefStep) and adds no
+  // rule: step 2 is reachable once step 1 validates; pressing it runs next().
+  const stepOneValid = Object.keys(validateBriefStep(1, form, ctx, payMinor)).length === 0 && Boolean(listingId);
+  const firstStepError = touched ? Object.values(errors).find((m): m is string => typeof m === "string" && m.length > 0) : undefined;
+  const briefSteps: StepperStep[] = [
+    { id: "brief", label: "Brief", ...(step === 1 && firstStepError ? { state: "error" as const, firstError: firstStepError } : {}) },
+    { id: "timing", label: "Timing and pay", ...(step === 2 && firstStepError ? { state: "error" as const, firstError: firstStepError } : {}) },
+  ];
+  const onBriefStepPress = (index: number): void => {
+    if (index === 0) setStep(1);
+    else if (step === 1) next();
+  };
+  const briefStepper = (
+    <Stepper
+      layout={isWideDesktop ? "list" : "chips"}
+      steps={briefSteps}
+      currentIndex={step - 1}
+      furthestValidIndex={stepOneValid || step === 2 ? 1 : 0}
+      onStepPress={onBriefStepPress}
+      sheetTitle={editingGigId ? "Edit gig" : "Hire a creator"}
+      testID="gig-brief-steps"
+    />
+  );
+
   return (
     <ProgramScreen
+      desktopWidth="detail"
       title={editingGigId ? "Edit gig" : "Hire a creator"}
       leading={step === 1 ? "close" : "back"}
       onBack={step === 2 ? () => setStep(1) : undefined}
-      right={<Text style={styles.stepCount}>{`${step}/2`}</Text>}
       fallback={blastHubHref("creators")}
       footer={
         ready ? (
@@ -399,6 +427,13 @@ export default function GigBriefEditor(): React.ReactElement {
         </ProgramSheet>
       }
     >
+      {/* #4420 wizard template: desktop is the 280 step list beside the
+          720 form; the phone has the step chips above the form. */}
+      <View style={isWideDesktop ? styles.wizardWide : styles.wizardStack}>
+      {ready ? (
+        <View style={isWideDesktop ? styles.wizardRail : null}>{briefStepper}</View>
+      ) : null}
+      <View style={isWideDesktop ? styles.wizardForm : styles.wizardStack}>
       {!ready ? (
         <ProgramLoading />
       ) : step === 1 ? (
@@ -679,11 +714,17 @@ export default function GigBriefEditor(): React.ReactElement {
           </ListGroup>
         </>
       )}
+      </View>
+      </View>
     </ProgramScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  wizardStack: { gap: 12 },
+  wizardWide: { flexDirection: "row", alignItems: "flex-start", gap: 24 },
+  wizardRail: { width: 280, flexShrink: 0 },
+  wizardForm: { flex: 1, minWidth: 0, maxWidth: 720, gap: 12 },
   footer: { gap: space[1] },
   spendRow: {
     flexDirection: "row",
