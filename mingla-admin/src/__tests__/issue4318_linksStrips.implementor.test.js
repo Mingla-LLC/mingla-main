@@ -38,6 +38,7 @@ describe("L-1 strips are not by city", () => {
 const valid = {
   id: null, showsOn: "2026-11-12", title: "Free Host Night: sell out your first event",
   label: "From Mingla", opens: "web", url: "https://usemingla.com/host", blogPostId: "",
+  timeZone: "Africa/Lagos", // #4339: every strip names its zone
 };
 
 describe("L-2 save validation", () => {
@@ -77,13 +78,14 @@ describe("L-3 save arguments", () => {
     assert.deepEqual(stripSaveArgs({ ...valid, blogPostId: "p1" }), {
       p_id: null, p_shows_on: "2026-11-12", p_title: valid.title,
       p_label: "From Mingla", p_opens: "web", p_url: "usemingla.com/host", p_blog_post_id: null, p_shows_until: null,
+      p_time_zone: "Africa/Lagos",
     });
     assert.equal(normalizeStripUrl("  HTTPS://usemingla.com/x "), "usemingla.com/x");
   });
 
   it("sends no city at all, and drops a stale URL", () => {
     const args = stripSaveArgs({ ...valid, id: "s1", citySlug: "lagos", opens: "blog", blogPostId: "p1", title: "  Hi  " });
-    assert.deepEqual(Object.keys(args).sort(), ["p_blog_post_id", "p_id", "p_label", "p_opens", "p_shows_on", "p_shows_until", "p_title", "p_url"]);
+    assert.deepEqual(Object.keys(args).sort(), ["p_blog_post_id", "p_id", "p_label", "p_opens", "p_shows_on", "p_shows_until", "p_time_zone", "p_title", "p_url"]);
     assert.equal(args.p_id, "s1");
     assert.equal(args.p_url, null);
     assert.equal(args.p_blog_post_id, "p1");

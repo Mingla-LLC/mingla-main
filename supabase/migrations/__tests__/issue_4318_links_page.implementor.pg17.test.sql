@@ -17,6 +17,20 @@
 -- Runs after the full migration replay; every fixture rolls back.
 BEGIN;
 
+-- #4339 (20280708004339): every strip now names a time zone and is public only
+-- inside its window in that zone. This #4318 suite predates it, so inside its
+-- rolled-back transaction its direct inserts default to UTC and its saves go
+-- through pg_temp.links_save (the same save, in UTC). The window rules are
+-- proven in issue_4339_links_strip_time_zone.implementor.pg17.test.sql.
+ALTER TABLE public.links_strips ALTER COLUMN time_zone SET DEFAULT 'UTC';
+CREATE FUNCTION pg_temp.links_save(
+  p_id uuid, p_shows_on date, p_title text, p_label text,
+  p_opens text, p_url text, p_blog_post_id uuid, p_shows_until date DEFAULT NULL
+) RETURNS public.links_strips LANGUAGE sql AS $function$
+  SELECT public.admin_links_strip_save(p_id, p_shows_on, p_title, p_label, p_opens, p_url, p_blog_post_id, p_shows_until, 'UTC');
+$function$;
+GRANT EXECUTE ON FUNCTION pg_temp.links_save(uuid, date, text, text, text, text, uuid, date) TO anon, authenticated;
+
 CREATE FUNCTION pg_temp.issue_4318_act(p_user uuid) RETURNS void LANGUAGE sql AS $function$
   SELECT set_config('request.jwt.claim.sub', COALESCE(p_user::text, ''), true),
          set_config(
@@ -146,13 +160,15 @@ UPDATE public.blog_posts SET draft_version_id = '43180000-0000-4000-b100-0000000
   WHERE id = '43180000-0000-4000-b000-000000000002';
 
 -- ── Strips written directly (as the owner) for the read proofs ────────────
-INSERT INTO public.links_strips (id, shows_on, title, label, opens, url, blog_post_id, position, is_published) VALUES
-  ('43180000-0000-4000-9000-000000000001', (now() AT TIME ZONE 'utc')::date + 2, 'Every city strip', 'From Mingla', 'explorer', NULL, NULL, 10, true),
-  ('43180000-0000-4000-9000-000000000002', (now() AT TIME ZONE 'utc')::date - 1, 'Raleigh last day', 'New', 'web', 'usemingla.com/raleigh', NULL, 20, true),
-  ('43180000-0000-4000-9000-000000000003', (now() AT TIME ZONE 'utc')::date - 2, 'Expired strip', 'New', 'host', NULL, NULL, 5, true),
-  ('43180000-0000-4000-9000-000000000004', (now() AT TIME ZONE 'utc')::date + 1, 'Unpublished strip', 'Featured', 'host', NULL, NULL, 6, false),
-  ('43180000-0000-4000-9000-000000000005', (now() AT TIME ZONE 'utc')::date + 1, 'Public blog strip', 'Featured', 'blog', NULL, '43180000-0000-4000-b000-000000000001', 30, true),
-  ('43180000-0000-4000-9000-000000000006', (now() AT TIME ZONE 'utc')::date + 1, 'Draft blog strip', 'Featured', 'blog', NULL, '43180000-0000-4000-b000-000000000002', 7, true);
+-- #4339: the visible ones are dated inside their UTC window now (a future
+-- strip is no longer public from creation).
+INSERT INTO public.links_strips (id, shows_on, shows_until, title, label, opens, url, blog_post_id, position, is_published) VALUES
+  ('43180000-0000-4000-9000-000000000001', (now() AT TIME ZONE 'utc')::date, (now() AT TIME ZONE 'utc')::date + 2, 'Every city strip', 'From Mingla', 'explorer', NULL, NULL, 10, true),
+  ('43180000-0000-4000-9000-000000000002', (now() AT TIME ZONE 'utc')::date - 1, (now() AT TIME ZONE 'utc')::date, 'Raleigh last day', 'New', 'web', 'usemingla.com/raleigh', NULL, 20, true),
+  ('43180000-0000-4000-9000-000000000003', (now() AT TIME ZONE 'utc')::date - 2, NULL, 'Expired strip', 'New', 'host', NULL, NULL, 5, true),
+  ('43180000-0000-4000-9000-000000000004', (now() AT TIME ZONE 'utc')::date, NULL, 'Unpublished strip', 'Featured', 'host', NULL, NULL, 6, false),
+  ('43180000-0000-4000-9000-000000000005', (now() AT TIME ZONE 'utc')::date, NULL, 'Public blog strip', 'Featured', 'blog', NULL, '43180000-0000-4000-b000-000000000001', 30, true),
+  ('43180000-0000-4000-9000-000000000006', (now() AT TIME ZONE 'utc')::date, NULL, 'Draft blog strip', 'Featured', 'blog', NULL, '43180000-0000-4000-b000-000000000002', 7, true);
 
 -- ═══ W: links_page_week ═══════════════════════════════════════════════════
 SET LOCAL ROLE anon;
@@ -261,7 +277,7 @@ BEGIN
     'UPDATE public.links_strips SET title = ''hacked''',
     'DELETE FROM public.links_strips',
     'SELECT public.admin_links_strips_list()',
-    'SELECT public.admin_links_strip_save(NULL, current_date, ''x'', ''New'', ''host'', NULL, NULL)',
+    'SELECT pg_temp.links_save(NULL, current_date, ''x'', ''New'', ''host'', NULL, NULL)',
     'SELECT public.admin_links_strip_delete(''43180000-0000-4000-9000-000000000001'')',
     'SELECT public.admin_links_strips_reorder(ARRAY[]::uuid[])'
   ] LOOP
@@ -287,7 +303,7 @@ DECLARE
 BEGIN
   FOREACH v_probe IN ARRAY ARRAY[
     'SELECT public.admin_links_strips_list()',
-    'SELECT public.admin_links_strip_save(NULL, current_date, ''x'', ''New'', ''host'', NULL, NULL)',
+    'SELECT pg_temp.links_save(NULL, current_date, ''x'', ''New'', ''host'', NULL, NULL)',
     'SELECT public.admin_links_strip_delete(''43180000-0000-4000-9000-000000000001'')',
     'SELECT public.admin_links_strips_reorder(ARRAY[''43180000-0000-4000-9000-000000000001'']::uuid[])'
   ] LOOP
@@ -339,7 +355,7 @@ BEGIN
   ) AS c(shows_on, title, label, opens, url, blog, expected) LOOP
     v_message := NULL;
     BEGIN
-      PERFORM public.admin_links_strip_save(NULL, v_case.shows_on, v_case.title, v_case.label,
+      PERFORM pg_temp.links_save(NULL, v_case.shows_on, v_case.title, v_case.label,
                                             v_case.opens, v_case.url, v_case.blog);
     EXCEPTION WHEN raise_exception THEN
       v_message := SQLERRM;
@@ -350,7 +366,7 @@ BEGIN
   END LOOP;
 
   -- A web strip: scheme stripped, title trimmed, on top.
-  v_row := public.admin_links_strip_save(NULL, v_today, '  Opening night  ', 'Giveaway', 'web',
+  v_row := pg_temp.links_save(NULL, v_today, '  Opening night  ', 'Giveaway', 'web',
                                          ' HTTPS://usemingla.com/blog/opening?ref=links ', NULL);
   IF v_row.url <> 'usemingla.com/blog/opening?ref=links' OR v_row.title <> 'Opening night'
      OR v_row.created_by <> '43180000-0000-4000-a000-000000000002' THEN
@@ -364,14 +380,14 @@ BEGIN
   END IF;
 
   -- A second new strip goes above the first.
-  v_again := public.admin_links_strip_save(NULL, v_today, 'Get the app', 'From Mingla', 'explorer',
+  v_again := pg_temp.links_save(NULL, v_today, 'Get the app', 'From Mingla', 'explorer',
                                            'usemingla.com/ignored', '43180000-0000-4000-b000-000000000001');
   IF v_again.position >= v_row.position OR v_again.url IS NOT NULL OR v_again.blog_post_id IS NOT NULL THEN
     RAISE EXCEPTION 'V: explorer strip wrong: %', to_jsonb(v_again);
   END IF;
 
   -- A blog strip on a public post; the list carries its title.
-  v_again := public.admin_links_strip_save(NULL, v_today, 'Read this', 'Featured', 'blog', NULL,
+  v_again := pg_temp.links_save(NULL, v_today, 'Read this', 'Featured', 'blog', NULL,
                                            '43180000-0000-4000-b000-000000000001');
   IF (SELECT strip.blog_title FROM public.admin_links_strips_list() strip WHERE strip.id = v_again.id)
      IS DISTINCT FROM 'Issue 4318 Public Post' THEN
@@ -379,13 +395,13 @@ BEGIN
   END IF;
 
   -- An update keeps the position and rewrites the fields.
-  v_again := public.admin_links_strip_save(v_row.id, v_today + 1, 'Opening week', 'New', 'host', NULL, NULL);
+  v_again := pg_temp.links_save(v_row.id, v_today + 1, 'Opening week', 'New', 'host', NULL, NULL);
   IF v_again.position <> v_row.position OR v_again.title <> 'Opening week' OR v_again.url IS NOT NULL THEN
     RAISE EXCEPTION 'V: update wrong: %', to_jsonb(v_again);
   END IF;
   v_message := NULL;
   BEGIN
-    PERFORM public.admin_links_strip_save(gen_random_uuid(), v_today, 'Ghost', 'New', 'host', NULL, NULL);
+    PERFORM pg_temp.links_save(gen_random_uuid(), v_today, 'Ghost', 'New', 'host', NULL, NULL);
   EXCEPTION WHEN raise_exception THEN v_message := SQLERRM;
   END;
   IF v_message IS DISTINCT FROM 'links_strip_not_found' THEN RAISE EXCEPTION 'V: updating a missing strip: %', v_message; END IF;
@@ -531,7 +547,7 @@ BEGIN
     RAISE EXCEPTION 'catalog: links_page_strips must be SECURITY INVOKER';
   END IF;
   IF has_function_privilege('anon', 'public.admin_links_strips_list()', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date,text)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strip_delete(uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strips_reorder(uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'catalog: anon may call an admin RPC';

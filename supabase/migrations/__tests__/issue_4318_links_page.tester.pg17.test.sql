@@ -27,6 +27,20 @@
 -- Runs after the full migration replay; every fixture rolls back.
 BEGIN;
 
+-- #4339 (20280708004339): every strip now names a time zone and is public only
+-- inside its window in that zone. This #4318 suite predates it, so inside its
+-- rolled-back transaction its direct inserts default to UTC and its saves go
+-- through pg_temp.links_save (the same save, in UTC). The window rules are
+-- proven in issue_4339_links_strip_time_zone.implementor.pg17.test.sql.
+ALTER TABLE public.links_strips ALTER COLUMN time_zone SET DEFAULT 'UTC';
+CREATE FUNCTION pg_temp.links_save(
+  p_id uuid, p_shows_on date, p_title text, p_label text,
+  p_opens text, p_url text, p_blog_post_id uuid, p_shows_until date DEFAULT NULL
+) RETURNS public.links_strips LANGUAGE sql AS $function$
+  SELECT public.admin_links_strip_save(p_id, p_shows_on, p_title, p_label, p_opens, p_url, p_blog_post_id, p_shows_until, 'UTC');
+$function$;
+GRANT EXECUTE ON FUNCTION pg_temp.links_save(uuid, date, text, text, text, text, uuid, date) TO anon, authenticated;
+
 CREATE FUNCTION pg_temp.t4318_act(p_user uuid) RETURNS void LANGUAGE sql AS $function$
   SELECT set_config('request.jwt.claim.sub', COALESCE(p_user::text, ''), true),
          set_config(
@@ -93,14 +107,16 @@ UPDATE public.blog_posts SET take_down_mode = 'at', take_down_at = now() - inter
 
 -- ── Strips written as the owner, for the read attacks ────────────────────
 -- Other suites' rows are irrelevant: everything below filters on these ids.
+-- #4339: the blog strips are dated today (inside their UTC window); a future
+-- strip is no longer public from creation.
 INSERT INTO public.links_strips (id, shows_on, title, label, opens, url, blog_post_id, position, is_published, created_by) VALUES
   ('4318a000-0000-4000-9000-000000000001', (now() AT TIME ZONE 'utc')::date, 'T live', 'New', 'host', NULL, NULL, 1, true, '4318a000-0000-4000-a000-000000000002'),
   ('4318a000-0000-4000-9000-000000000002', (now() AT TIME ZONE 'utc')::date + 3, 'T unpublished', 'New', 'host', NULL, NULL, 2, false, '4318a000-0000-4000-a000-000000000002'),
   ('4318a000-0000-4000-9000-000000000003', (now() AT TIME ZONE 'utc')::date - 30, 'T long expired', 'New', 'explorer', NULL, NULL, 3, true, '4318a000-0000-4000-a000-000000000002'),
-  ('4318a000-0000-4000-9000-000000000004', (now() AT TIME ZONE 'utc')::date + 1, 'T deleted post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000003', 4, true, NULL),
-  ('4318a000-0000-4000-9000-000000000005', (now() AT TIME ZONE 'utc')::date + 1, 'T scheduled post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000004', 5, true, NULL),
-  ('4318a000-0000-4000-9000-000000000006', (now() AT TIME ZONE 'utc')::date + 1, 'T taken-down post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000005', 6, true, NULL),
-  ('4318a000-0000-4000-9000-000000000007', (now() AT TIME ZONE 'utc')::date + 1, 'T public post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000001', 7, true, NULL);
+  ('4318a000-0000-4000-9000-000000000004', (now() AT TIME ZONE 'utc')::date, 'T deleted post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000003', 4, true, NULL),
+  ('4318a000-0000-4000-9000-000000000005', (now() AT TIME ZONE 'utc')::date, 'T scheduled post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000004', 5, true, NULL),
+  ('4318a000-0000-4000-9000-000000000006', (now() AT TIME ZONE 'utc')::date, 'T taken-down post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000005', 6, true, NULL),
+  ('4318a000-0000-4000-9000-000000000007', (now() AT TIME ZONE 'utc')::date, 'T public post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000001', 7, true, NULL);
 
 -- ═══ D: nobody writes the table directly ═════════════════════════════════
 SET LOCAL ROLE anon;
@@ -145,7 +161,7 @@ SET LOCAL ROLE authenticated;
 DO $test$
 BEGIN
   IF pg_temp.t4318_expect('SELECT public.admin_links_strips_list()', '42501') <> 'links_forbidden'
-     OR pg_temp.t4318_expect($$SELECT public.admin_links_strip_save(NULL, current_date, 'x', 'New', 'host', NULL, NULL)$$, '42501') <> 'links_forbidden'
+     OR pg_temp.t4318_expect($$SELECT pg_temp.links_save(NULL, current_date, 'x', 'New', 'host', NULL, NULL)$$, '42501') <> 'links_forbidden'
      OR pg_temp.t4318_expect($$SELECT public.admin_links_strip_delete('4318a000-0000-4000-9000-000000000001')$$, '42501') <> 'links_forbidden' THEN
     RAISE EXCEPTION 'D: a disabled Support member got past the guard';
   END IF;
@@ -209,7 +225,7 @@ BEGIN
     '4318a000-0000-4000-b000-000000000004', '4318a000-0000-4000-b000-000000000005',
     '4318a000-0000-4000-b000-0000000000ff', NULL]::uuid[] LOOP
     IF pg_temp.t4318_expect(format(
-         $$SELECT public.admin_links_strip_save(NULL, current_date, 'Read this', 'New', 'blog', NULL, %L)$$, v_post),
+         $$SELECT pg_temp.links_save(NULL, current_date, 'Read this', 'New', 'blog', NULL, %L)$$, v_post),
          'P0001') <> 'links_blog_post_invalid' THEN
       RAISE EXCEPTION 'B: a blog strip was saved on post %', v_post;
     END IF;
@@ -217,13 +233,13 @@ BEGIN
 
   -- Editing a strip so it points at a hidden post is refused too.
   IF pg_temp.t4318_expect(
-       $$SELECT public.admin_links_strip_save('4318a000-0000-4000-9000-000000000007', current_date, 'Read this', 'New', 'blog', NULL, '4318a000-0000-4000-b000-000000000004')$$,
+       $$SELECT pg_temp.links_save('4318a000-0000-4000-9000-000000000007', current_date, 'Read this', 'New', 'blog', NULL, '4318a000-0000-4000-b000-000000000004')$$,
        'P0001') <> 'links_blog_post_invalid' THEN
     RAISE EXCEPTION 'B: a strip was re-pointed at a scheduled post';
   END IF;
 
   -- A real post: saved, then the post is hard-deleted below.
-  v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Doomed post', 'New', 'blog',
+  v_row := pg_temp.links_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Doomed post', 'New', 'blog',
                                          'usemingla.com/ignored', '4318a000-0000-4000-b000-000000000006');
   IF v_row.url IS NOT NULL OR v_row.blog_post_id <> '4318a000-0000-4000-b000-000000000006' THEN
     RAISE EXCEPTION 'B: a blog strip kept a URL or lost its post: %', to_jsonb(v_row);
@@ -281,7 +297,7 @@ BEGIN
     'usemingla.com@evil.example.com', 'usemingla.com\@evil.example.com', '   ', ''
   ] LOOP
     IF pg_temp.t4318_expect(format(
-         $$SELECT public.admin_links_strip_save(NULL, current_date, 'Web', 'New', 'web', %L, NULL)$$, v_bad),
+         $$SELECT pg_temp.links_save(NULL, current_date, 'Web', 'New', 'web', %L, NULL)$$, v_bad),
          'P0001') <> 'links_url_invalid' THEN
       RAISE EXCEPTION 'U: % was accepted', v_bad;
     END IF;
@@ -293,14 +309,14 @@ BEGIN
     ('usemingla.com/links?src=bio#top', 'usemingla.com/links?src=bio#top'),
     ('blog.usemingla.com/a-b_c/%20', 'blog.usemingla.com/a-b_c/%20')
   ) AS t(given, stored) LOOP
-    v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Web', 'New', 'web', v_case.given, NULL);
+    v_row := pg_temp.links_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Web', 'New', 'web', v_case.given, NULL);
     IF v_row.url IS DISTINCT FROM v_case.stored THEN
       RAISE EXCEPTION 'U: % stored as %, want %', v_case.given, v_row.url, v_case.stored;
     END IF;
   END LOOP;
 
   -- An app strip never stores a URL, whatever is sent.
-  v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'App', 'New', 'explorer', 'javascript:alert(1)', '4318a000-0000-4000-b000-000000000001');
+  v_row := pg_temp.links_save(NULL, (now() AT TIME ZONE 'utc')::date, 'App', 'New', 'explorer', 'javascript:alert(1)', '4318a000-0000-4000-b000-000000000001');
   IF v_row.url IS NOT NULL OR v_row.blog_post_id IS NOT NULL THEN
     RAISE EXCEPTION 'U: an app strip kept a URL or post: %', to_jsonb(v_row);
   END IF;
@@ -341,15 +357,15 @@ BEGIN
     E'\t', E'\n\n', E' \r\n ', E'\u00a0', E'\u3000', E'\t\u00a0 '
   ] LOOP
     IF pg_temp.t4318_expect(format(
-         $$SELECT public.admin_links_strip_save(NULL, current_date, %L, 'New', 'host', NULL, NULL)$$, v_bad),
+         $$SELECT pg_temp.links_save(NULL, current_date, %L, 'New', 'host', NULL, NULL)$$, v_bad),
          'P0001') <> 'links_title_invalid' THEN
       RAISE EXCEPTION 'T: title % was accepted', to_jsonb(v_bad);
     END IF;
   END LOOP;
-  PERFORM pg_temp.t4318_expect($$SELECT public.admin_links_strip_save(NULL, current_date, NULL, 'New', 'host', NULL, NULL)$$, 'P0001');
+  PERFORM pg_temp.t4318_expect($$SELECT pg_temp.links_save(NULL, current_date, NULL, 'New', 'host', NULL, NULL)$$, 'P0001');
 
   -- Exactly 60 characters, counted as characters not bytes, after trimming.
-  v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, '   ' || repeat('é', 60) || '   ', 'New', 'host', NULL, NULL);
+  v_row := pg_temp.links_save(NULL, (now() AT TIME ZONE 'utc')::date, '   ' || repeat('é', 60) || '   ', 'New', 'host', NULL, NULL);
   IF v_row.title <> repeat('é', 60) THEN
     RAISE EXCEPTION 'T: a 60-character title was not stored trimmed: %', v_row.title;
   END IF;
@@ -400,7 +416,7 @@ BEGIN
   END IF;
 
   -- A new strip goes above position 1, so the page and the list agree.
-  PERFORM public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Newest', 'New', 'host', NULL, NULL);
+  PERFORM pg_temp.links_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Newest', 'New', 'host', NULL, NULL);
   IF (SELECT strip.title FROM public.admin_links_strips_list() strip ORDER BY strip.position, strip.created_at, strip.id LIMIT 1) <> 'Newest' THEN
     RAISE EXCEPTION 'O: a strip saved after a reorder is not on top';
   END IF;
@@ -417,7 +433,7 @@ DO $test$
 DECLARE
   v_row public.links_strips;
 BEGIN
-  v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'First ever', 'New', 'host', NULL, NULL);
+  v_row := pg_temp.links_save(NULL, (now() AT TIME ZONE 'utc')::date, 'First ever', 'New', 'host', NULL, NULL);
   IF v_row.position <> 0 THEN RAISE EXCEPTION 'O: the first strip on an empty page got position %', v_row.position; END IF;
 END
 $test$;
@@ -433,7 +449,7 @@ DECLARE
   v_src text;
 BEGIN
   FOREACH v_fn IN ARRAY ARRAY[
-    'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)',
+    'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date,text)',
     'public.admin_links_strip_delete(uuid)',
     'public.admin_links_strips_reorder(uuid[])'] LOOP
     SELECT prosrc INTO v_src FROM pg_proc WHERE oid = v_fn::regprocedure;
@@ -627,7 +643,8 @@ BEGIN
     RAISE EXCEPTION 'W: links_page_week result drifted: %', pg_get_function_result('public.links_page_week()'::regprocedure);
   END IF;
   IF pg_get_function_result('public.links_page_strips()'::regprocedure) <>
-     'TABLE(id uuid, shows_on date, shows_until date, title text, label text, opens text, url text, blog_slug text, "position" integer)' THEN
+     -- #4339 added time_zone and the window (starts_at, ends_at).
+     'TABLE(id uuid, shows_on date, shows_until date, title text, label text, opens text, url text, blog_slug text, "position" integer, time_zone text, starts_at timestamp with time zone, ends_at timestamp with time zone)' THEN
     RAISE EXCEPTION 'P: links_page_strips result drifted: %', pg_get_function_result('public.links_page_strips()'::regprocedure);
   END IF;
   IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_week()'::regprocedure)

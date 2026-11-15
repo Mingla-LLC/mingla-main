@@ -24,6 +24,10 @@
 //       empty sends null; save, delete and reorder each refresh /links
 //       (admin-blog revalidate_links); a 502, 503, 403 or thrown refresh is
 //       still a save, and only {ok:true} counts as refreshed
+//   A-8 #4339 time zones (implementor, rendered): the Time zone combobox
+//       starts on this computer's zone, filters as you type, picks with the
+//       keyboard, saves p_time_zone, maps links_time_zone_invalid to the
+//       field, and the list shows the server's status pill and the zone
 //
 // It needs the admin app's packages (react, react-dom, esbuild, lucide-react):
 // run `npm ci` in mingla-admin first. Without them it FAILS; it never skips.
@@ -766,4 +770,87 @@ describe("A-7 Show until and the /links refresh", () => {
     assert.equal(toast.description, FALLBACK);
   });
 
+});
+
+// ── A-8 #4339 time zones (implementor, rendered) ───────────────────────────
+describe("A-8 #4339: each strip has a searchable time zone that is saved and shown", () => {
+  const zoneInput = (container) => container.querySelector('[id="links-strip-zone"]');
+  const options = (container) => container.querySelectorAll('[role="option"]');
+  async function key(input, name) {
+    await settle(() => { input.dispatchEvent(makeEvent("keydown", { key: name })); });
+  }
+  async function fill(container) {
+    await typeInto(container.querySelector('[id="links-strip-title"]'), "Lagos night");
+    await typeInto(container.querySelector('[id="links-strip-url"]'), "usemingla.com/host");
+  }
+
+  it("is an ARIA combobox that opens on typing, filters by city, picks with the keyboard and saves the zone", async () => {
+    server.handlers.admin_links_strip_save = (args) => Promise.resolve({ data: { id: "new", ...args }, error: null });
+    const container = await mountPanel();
+    const input = zoneInput(container);
+    assert.equal(input.getAttribute("role"), "combobox");
+    assert.equal(input.getAttribute("aria-expanded"), "false");
+    assert.equal(options(container).length, 0, "no options are rendered while closed");
+    await fill(container);
+
+    await typeInto(input, "lagos");
+    assert.equal(input.getAttribute("aria-expanded"), "true");
+    const found = options(container);
+    assert.deepEqual(found.map((o) => o.getAttribute("data-zone")), ["Africa/Lagos"]);
+    assert.match(found[0].textContent, /Nigeria/);
+    assert.match(found[0].textContent, /now \d{2}:\d{2}/);
+    assert.match(found[0].textContent, /GMT\+1/);
+    assert.equal(found[0].querySelectorAll("mark")[0].textContent, "Lagos", "the match is highlighted");
+
+    await key(input, "ArrowDown");
+    assert.equal(input.getAttribute("aria-activedescendant"), found[0].getAttribute("id"));
+    await key(input, "Enter");
+    assert.equal(input.getAttribute("aria-expanded"), "false");
+    assert.equal(input.value, `Lagos — Africa/Lagos (GMT+1)`);
+    assert.match(container.querySelector("[data-links-window]").textContent, /Lagos time \(GMT\+1\)/);
+
+    await submit(container);
+    const saves = calls("admin_links_strip_save");
+    assert.equal(saves.length, 1);
+    assert.equal(saves[0].args.p_time_zone, "Africa/Lagos");
+  });
+
+  it("Escape closes without changing the zone, and a search with no match says so", async () => {
+    const container = await mountPanel();
+    const input = zoneInput(container);
+    const before = input.value;
+    await typeInto(input, "zzzz-nowhere");
+    assert.equal(options(container).length, 0);
+    assert.match(container.querySelector('[role="listbox"]').textContent, /No time zone matches/);
+    await key(input, "Escape");
+    assert.equal(input.getAttribute("aria-expanded"), "false");
+    assert.equal(input.value, before, "the chosen zone is shown again");
+  });
+
+  it("a links_time_zone_invalid refusal is explained on the field", async () => {
+    server.handlers.admin_links_strip_save = () => Promise.resolve({ data: null, error: { message: "links_time_zone_invalid", code: "P0001" } });
+    const container = await mountPanel();
+    await fill(container);
+    await submit(container);
+    assert.equal(errorText(container), "Pick a time zone from the list.");
+    assert.equal(zoneInput(container).getAttribute("aria-invalid"), "true");
+  });
+
+  it("the list shows the server's Scheduled / Live / Ended pill and each strip's zone", async () => {
+    server.strips = [
+      strip("a", 1, { status: "live", time_zone: "Africa/Lagos", starts_at: "2026-11-08T23:00:00Z", ends_at: "2026-11-09T23:00:00Z" }),
+      strip("b", 2, { status: "scheduled", time_zone: "America/New_York", starts_at: "2026-11-16T05:00:00Z", ends_at: "2026-11-17T05:00:00Z" }),
+      strip("c", 3, { status: "ended", time_zone: "America/New_York", starts_at: "2026-11-09T05:00:00Z", ends_at: "2026-11-10T05:00:00Z" }),
+    ];
+    const container = await mountPanel();
+    const pills = container.querySelectorAll("[data-strip-status]");
+    assert.deepEqual(pills.map((p) => p.textContent), ["Live", "Scheduled", "Ended"]);
+    const rows = container.querySelectorAll("li").filter((li) => li.querySelector("[data-strip-status]"));
+    assert.match(rows[0].textContent, /Lagos GMT\+1/);
+    assert.match(rows[1].textContent, /New York GMT-5/);
+    assert.match(rows[1].textContent, /starts .* your time/);
+    // Editing a strip shows its saved zone.
+    await settle(() => buttonByLabel(container, "Edit: Strip b").click());
+    assert.match(zoneInput(container).value, /^New York — America\/New_York \(GMT-[45]\)$/);
+  });
 });

@@ -36,8 +36,10 @@ export interface LinksWeekRow {
 }
 
 /**
- * One row of `public.links_page_strips()` (published, unexpired). Admin strips
- * are not by city (Seth, 8 Nov 2026): every strip shows first in every city.
+ * One row of `public.links_page_strips()` (published and inside its window).
+ * Admin strips are not by city (Seth, 8 Nov 2026): every strip shows first in
+ * every city. #4339: the database owns the window (links_strip_window, in the
+ * strip's own time zone) and sends it as starts_at / ends_at.
  */
 export interface LinksStripRow {
   id: string
@@ -50,6 +52,12 @@ export interface LinksStripRow {
   url: string | null
   blog_slug: string | null
   position: number
+  /** #4339: the IANA zone the strip's days are read in. */
+  time_zone?: string | null
+  /** #4339: 00:00 on shows_on in time_zone (the window's start, an instant). */
+  starts_at?: string | null
+  /** #4339: 00:00 the day after the last day in time_zone (the window's end, exclusive). */
+  ends_at?: string | null
 }
 
 export interface LinksPoint {
@@ -123,6 +131,10 @@ export interface LinksPin {
   /** blog only. */
   blogSlug: string | null
   position: number
+  /** #4339: when the strip starts showing (server instant, ISO); null when the server sent none. */
+  startsAt: string | null
+  /** #4339: when it stops showing (exclusive, server instant, ISO); null when the server sent none. */
+  endsAt: string | null
 }
 
 /** The reach of every city without an override (LINKS_CITY_REACH_KM). */
@@ -403,6 +415,12 @@ export function pinWebHref(stored: string | null): string | null {
 }
 
 /** Strip rows → valid admin strips in the admin's order. */
+function instantOrNull(value: string | null | undefined): number | null {
+  if (typeof value !== 'string' || value === '') return null
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? ms : null
+}
+
 export function normalisePins(rows: readonly LinksStripRow[]): LinksPin[] {
   const out: LinksPin[] = []
   for (const row of rows) {
@@ -412,6 +430,8 @@ export function normalisePins(rows: readonly LinksStripRow[]): LinksPin[] {
     if (row.opens === 'web' && pinWebHref(row.url) === null) continue
     if (row.opens === 'blog' && (!row.blog_slug || !SLUG.test(row.blog_slug))) continue
     const until = row.shows_until ?? null
+    const startsAt = instantOrNull(row.starts_at)
+    const endsAt = instantOrNull(row.ends_at)
     out.push({
       id: row.id,
       showsOn: row.shows_on,
@@ -422,6 +442,8 @@ export function normalisePins(rows: readonly LinksStripRow[]): LinksPin[] {
       url: row.opens === 'web' ? row.url : null,
       blogSlug: row.opens === 'blog' ? row.blog_slug : null,
       position: Number.isFinite(row.position) ? row.position : 0,
+      startsAt: startsAt !== null && endsAt !== null && startsAt < endsAt ? new Date(startsAt).toISOString() : null,
+      endsAt: startsAt !== null && endsAt !== null && startsAt < endsAt ? new Date(endsAt).toISOString() : null,
     })
   }
   return out.sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
@@ -528,23 +550,20 @@ export function planWhen(plan: LinksPlan, today: string): { tonight: boolean; te
   return { tonight: false, text: `${kind} · ${span}` }
 }
 
-/**
- * The zone whose calendar is furthest behind (UTC-12). Admin dates are typed
- * in the admin's own day, which can be a day behind a viewer's city (a strip
- * posted on a US evening is already "yesterday" in Lagos), so a strip stays
- * up until its last day has ended everywhere, never cut early in a city that
- * is ahead. Same idea as the database cut-off in `links_page_strips()`.
- */
-const LATEST_ZONE = 'Etc/GMT+12'
-
 /** The strip's last day: "Show until" when set, else its one day. */
 export function pinLastDay(pin: LinksPin): string {
   return pin.showsUntil ?? pin.showsOn
 }
 
-/** True while the strip's last day has not ended in every time zone. */
+/**
+ * #4339 I-4339-LINKS-STRIP-WINDOW: true while now is inside the window the
+ * database sent (startsAt <= now < endsAt, in the strip's own time zone).
+ * The page never recomputes the window; a strip without one is not shown.
+ */
 export function pinLive(pin: LinksPin, nowIso: string): boolean {
-  return pinLastDay(pin) >= localDateKey(nowIso, LATEST_ZONE)
+  if (pin.startsAt === null || pin.endsAt === null) return false
+  const now = Date.parse(nowIso)
+  return Number.isFinite(now) && Date.parse(pin.startsAt) <= now && now < Date.parse(pin.endsAt)
 }
 
 /**
