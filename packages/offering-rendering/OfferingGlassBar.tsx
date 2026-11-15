@@ -234,7 +234,9 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12, fontWeight: "600", marginTop: 2 },
   button: {
     flexShrink: 0,
-    minHeight: 48,
+    // 52 fills the 68 bar inside its 8px padding and keeps the public
+    // reserve CTA at the #2729 52px touch height.
+    minHeight: 52,
     maxWidth: "62%",
     paddingHorizontal: 20,
     borderRadius: 999,
