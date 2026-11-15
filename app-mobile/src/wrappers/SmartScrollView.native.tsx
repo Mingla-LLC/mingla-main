@@ -5,15 +5,12 @@
 //
 // bottomOffset keeps the focused field clear of the Done bar: the same
 // clearance + toolbar height the rest of the app budgets (keyboardConstants.ts).
-import React, { forwardRef } from 'react';
+import React from 'react';
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewProps } from 'react-native-keyboard-controller';
-import type { ScrollView as RNScrollView } from 'react-native';
 import { KEYBOARD_SCROLL_BOTTOM_OFFSET } from './keyboardConstants';
 
 export type ScrollViewProps = KeyboardAwareScrollViewProps;
 
-export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
-  function SmartScrollView({ bottomOffset = KEYBOARD_SCROLL_BOTTOM_OFFSET, ...rest }, ref) {
-    return <KeyboardAwareScrollView ref={ref} bottomOffset={bottomOffset} {...rest} />;
-  },
-);
+export function ScrollView({ bottomOffset = KEYBOARD_SCROLL_BOTTOM_OFFSET, ...rest }: ScrollViewProps): React.ReactElement {
+  return <KeyboardAwareScrollView bottomOffset={bottomOffset} {...rest} />;
+}

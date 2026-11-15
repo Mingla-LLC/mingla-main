@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4430_local_review_owner_read.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4430-local-review-owner-read-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "postgres", "reset": "suite-owned" }
+}
