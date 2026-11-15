@@ -38,10 +38,11 @@ const OfferingGlassContext = React.createContext<OfferingGlassMaterial | null>(
   null,
 );
 
-export const OfferingGlassProvider: React.FC<{
+export interface OfferingGlassProviderProps {
   value: OfferingGlassMaterial | null;
   children?: React.ReactNode;
-}> = ({ value, children }) => (
+}
+export const OfferingGlassProvider = ({ value, children }: OfferingGlassProviderProps) => (
   <OfferingGlassContext.Provider value={value}>
     {children}
   </OfferingGlassContext.Provider>
@@ -71,17 +72,17 @@ export const glassFillAlpha = (args: {
 }): number => {
   if (args.platform === "android") return 1;
   if (args.blurred) return 0.72;
-  // No blur behind it: near-opaque, so text scrolling under the bar never
-  // reads through it (phone web, native without an injected material).
-  if (args.platform === "web") return args.desktopWeb ? 0.82 : 0.97;
-  return 0.97;
+  // No blur behind it (phone web, native without an injected material):
+  // opaque, so text scrolling under the bar never ghosts through it.
+  if (args.platform === "web" && args.desktopWeb) return 0.82;
+  return 1;
 };
 
 /** Renders the injected blur behind a glass surface, or nothing. */
-export const OfferingGlassBackdrop: React.FC<OfferingGlassBackdropProps> = ({
+export const OfferingGlassBackdrop = ({
   radius,
   tint,
-}) => {
+}: OfferingGlassBackdropProps) => {
   const material = useOfferingGlass();
   if (!glassBlurActive(material, tint) || material === null) return null;
   const { Backdrop } = material;

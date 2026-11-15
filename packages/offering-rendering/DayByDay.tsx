@@ -61,7 +61,7 @@ export const DayByDay: React.FC<DayByDayProps> = ({
         LayoutAnimation.create(200, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
       );
     }
-    setOpenIds((prev) => {
+    setOpenIds((prev: ReadonlySet<string>) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);

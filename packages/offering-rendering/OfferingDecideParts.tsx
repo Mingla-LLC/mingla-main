@@ -38,12 +38,13 @@ import {
 // ─────────────────────────────── panel card ────────────────────────────────
 
 /** The rounded surface card a decide block sits in (`.card`). */
-export const OfferingPanel: React.FC<{
+export interface OfferingPanelProps {
   palette: ThemePalette;
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   testID?: string;
-}> = ({ palette, children, style, testID }) => (
+}
+export const OfferingPanel = ({ palette, children, style, testID }: OfferingPanelProps) => (
   <View
     style={[
       styles.panel,
@@ -57,14 +58,15 @@ export const OfferingPanel: React.FC<{
 );
 
 /** A card row with a label column and a control on the right (`.row`). */
-export const OfferingPanelRow: React.FC<{
+export interface OfferingPanelRowProps {
   palette: ThemePalette;
   title: string;
   detail?: string | null;
   fontFamily?: string;
   right?: React.ReactNode;
   testID?: string;
-}> = ({ palette, title, detail, fontFamily, right, testID }) => (
+}
+export const OfferingPanelRow = ({ palette, title, detail, fontFamily, right, testID }: OfferingPanelRowProps) => (
   <View style={styles.panelRow} testID={testID}>
     <View style={styles.panelRowText}>
       <Text
@@ -103,7 +105,7 @@ export interface OfferingStepperProps {
 }
 
 /** − n + (`.stepper`): outlined minus, ink-filled plus, tabular count. */
-export const OfferingStepper: React.FC<OfferingStepperProps> = ({
+export const OfferingStepper = ({
   palette,
   value,
   min,
@@ -114,7 +116,7 @@ export const OfferingStepper: React.FC<OfferingStepperProps> = ({
   valueLabel,
   fontFamily,
   testID,
-}) => {
+}: OfferingStepperProps) => {
   const canDec = value > min;
   const canInc = value < max;
   return (
@@ -185,7 +187,7 @@ export interface OfferingChoiceChipProps {
 }
 
 /** A pill choice (`.chip`): ink when chosen, struck through when not offered. */
-export const OfferingChoiceChip: React.FC<OfferingChoiceChipProps> = ({
+export const OfferingChoiceChip = ({
   palette,
   label,
   note = null,
@@ -195,7 +197,7 @@ export const OfferingChoiceChip: React.FC<OfferingChoiceChipProps> = ({
   accessibilityLabel,
   role = "radio",
   testID,
-}) => (
+}: OfferingChoiceChipProps) => (
   <Pressable
     onPress={disabled ? undefined : onPress}
     disabled={disabled}
@@ -237,11 +239,12 @@ export const OfferingChoiceChip: React.FC<OfferingChoiceChipProps> = ({
 );
 
 /** A wrapping row of chips (`.chips`). */
-export const OfferingChipRow: React.FC<{
+export interface OfferingChipRowProps {
   children?: React.ReactNode;
   accessibilityLabel?: string;
   testID?: string;
-}> = ({ children, accessibilityLabel, testID }) => (
+}
+export const OfferingChipRow = ({ children, accessibilityLabel, testID }: OfferingChipRowProps) => (
   <View
     style={styles.chipRow}
     accessibilityRole="radiogroup"
@@ -270,14 +273,15 @@ export interface OfferingDateTile {
 }
 
 /** The horizontal day strip (`.strip` of `.pick` tiles). */
-export const OfferingDateStrip: React.FC<{
+export interface OfferingDateStripProps {
   palette: ThemePalette;
   tiles: readonly OfferingDateTile[];
   onPress: (key: string) => void;
   fontFamily?: string;
   accessibilityLabel?: string;
   testID?: string;
-}> = ({ palette, tiles, onPress, fontFamily, accessibilityLabel, testID }) => (
+}
+export const OfferingDateStrip = ({ palette, tiles, onPress, fontFamily, accessibilityLabel, testID }: OfferingDateStripProps) => (
   <ScrollView
     horizontal
     showsHorizontalScrollIndicator={false}
@@ -360,7 +364,7 @@ export interface OfferingRadioCardProps {
 }
 
 /** A whole-card radio (`.card.on .radio`): dot, title + detail, price. */
-export const OfferingRadioCard: React.FC<OfferingRadioCardProps> = ({
+export const OfferingRadioCard = ({
   palette,
   title,
   detail = null,
@@ -372,7 +376,7 @@ export const OfferingRadioCard: React.FC<OfferingRadioCardProps> = ({
   children,
   accessibilityLabel,
   testID,
-}) => (
+}: OfferingRadioCardProps) => (
   <Pressable
     onPress={disabled ? undefined : onPress}
     disabled={disabled}
@@ -442,7 +446,7 @@ export const OfferingRadioCard: React.FC<OfferingRadioCardProps> = ({
 // ─────────────────────────────── big choice ────────────────────────────────
 
 /** One of the two big RSVP answers (`.duo .big`): accent-filled when chosen. */
-export const OfferingBigChoice: React.FC<{
+export interface OfferingBigChoiceProps {
   palette: ThemePalette;
   theme?: ResolvedTheme;
   label: string;
@@ -452,7 +456,8 @@ export const OfferingBigChoice: React.FC<{
   onPress: () => void;
   accessibilityLabel?: string;
   testID?: string;
-}> = ({
+}
+export const OfferingBigChoice = ({
   palette,
   theme,
   label,
@@ -462,7 +467,7 @@ export const OfferingBigChoice: React.FC<{
   onPress,
   accessibilityLabel,
   testID,
-}) => (
+}: OfferingBigChoiceProps) => (
   <Pressable
     onPress={disabled ? undefined : onPress}
     disabled={disabled}
@@ -511,13 +516,14 @@ export const OfferingBigChoice: React.FC<{
  * The accent circle with a tick that springs in (`.done .ok`). Reduced
  * motion: drawn at rest, no animation.
  */
-export const OfferingConfirmTick: React.FC<{
+export interface OfferingConfirmTickProps {
   palette: ThemePalette;
   theme?: ResolvedTheme;
   reduceMotion: boolean;
   size?: number;
   testID?: string;
-}> = ({ palette, theme, reduceMotion, size = 54, testID }) => {
+}
+export const OfferingConfirmTick = ({ palette, theme, reduceMotion, size = 54, testID }: OfferingConfirmTickProps) => {
   const progress = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
   useEffect(() => {
     if (reduceMotion) {
@@ -563,25 +569,37 @@ export const OfferingConfirmTick: React.FC<{
  * A quiet bullet list (`.list`): accent dots for what is in, hollow rings for
  * what is not ("Included" / "Not included", house rules).
  */
-export const OfferingDotList: React.FC<{
+export interface OfferingDotListProps {
   palette: ThemePalette;
   items: readonly string[];
   kind: "yes" | "no";
   testID?: string;
-}> = ({ palette, items, kind, testID }) => (
+}
+interface OfferingDotRowProps {
+  /** List key (typed so hosts without React's JSX types accept it). */
+  key?: string;
+  palette: ThemePalette;
+  item: string;
+  kind: "yes" | "no";
+}
+const OfferingDotRow = ({ palette, item, kind }: OfferingDotRowProps) => (
+  <View style={styles.dotRow}>
+    <View
+      style={[
+        styles.dot,
+        kind === "yes"
+          ? accentFill(palette)
+          : { borderWidth: 1.5, borderColor: palette.secondaryText },
+      ]}
+    />
+    <Text style={[styles.dotText, { color: palette.primaryText }]}>{item}</Text>
+  </View>
+);
+
+export const OfferingDotList = ({ palette, items, kind, testID }: OfferingDotListProps) => (
   <View style={styles.dotList} testID={testID}>
     {items.map((item, i) => (
-      <View key={`${i}-${item}`} style={styles.dotRow}>
-        <View
-          style={[
-            styles.dot,
-            kind === "yes"
-              ? accentFill(palette)
-              : { borderWidth: 1.5, borderColor: palette.secondaryText },
-          ]}
-        />
-        <Text style={[styles.dotText, { color: palette.primaryText }]}>{item}</Text>
-      </View>
+      <OfferingDotRow key={`${i}-${item}`} palette={palette} item={item} kind={kind} />
     ))}
   </View>
 );
