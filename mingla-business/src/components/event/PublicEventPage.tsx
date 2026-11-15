@@ -224,7 +224,7 @@ import { useThemeFont } from "../../theme/useThemeFont";
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
 import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
-import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 interface PublicEventPageAdapterProps {
   event: LiveEvent;
@@ -1579,42 +1579,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // EventOfferingFloatingBar (phone only; hidden on desktop). `offeringCta` is kept
   // only for the page-level state banner (one owner, never disagrees).
   void ctaUnavailableLabel; // retained import; legacy callers removed.
-  const stickyPanel =
-    isDesktop && acquisitionState.kind === "current" ? (
-      <View
-        style={[
-          styles.deskPanel,
-          { backgroundColor: palette.card, borderColor: palette.panelBorder },
-        ]}
-      >
-        <View
-          style={[styles.deskAccent, accentFill(palette)]}
-        />
-        <View style={styles.deskInner}>
-          <EventTicketBox
-            event={publicEvent}
-            bookable={bookable}
-            palette={palette}
-            theme={resolvedTheme}
-            variant={pageVariant}
-            ticketQuantities={ticketQuantities}
-            onChangeTicketQuantity={handleChangeTicketQuantity}
-            onProceedToCart={handleProceedToCart}
-            // issue #2101 — the desktop sticky-panel purchase control. This page
-            // renders EventTicketBox directly, so the accessible disabled state
-            // is set from here with no edit to the shared package.
-            submitting={purchaseBlockedByAccess}
-            showHeading
-            pricingNote={ticketPricingNote}
-            leadingPurchaseSection={multiDateDayChooser}
-            priceMultiplier={selectedDayMultiplier}
-            purchaseReady={multiDatePurchaseReady}
-            purchaseBlockedLabel={dayBlockedLabel}
-            testID="orch-1167-event-desktop-ticket-box"
-          />
-        </View>
-      </View>
-    ) : null;
+  // issue #4420 — the premium frame keeps the ticket cards in the content
+  // flow on desktop too (right column, under the facts), and the glass bar is
+  // the one place to continue on every width, so there is no sticky panel.
+  const stickyPanel = null;
 
   // ORCH-1150 — RSVP branch. An event_type='rsvp' row has zero tickets + no
   // checkout; it renders the Going/Not-going RsvpPublicBody and returns early.
@@ -2285,14 +2253,27 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // + its 24px bottom offset + the device safe-area. Desktop hides the bar
           // (the shell's own desktop scroll padding handles clearance), so 0 there.
           contentBottomInset={
-            isDesktop
-              ? 0
-              : acquisitionState.kind === "current"
-                ? FLOATING_BAR_CLEARANCE + insets.bottom
-                : insets.bottom + 24
+            acquisitionState.kind === "current"
+              ? FLOATING_BAR_CLEARANCE + insets.bottom
+              : insets.bottom + 24
           }
-          // ORCH-1167-R2 (change 5) — desktop relocates the box to the sticky panel.
-          hideTicketBox={isDesktop || acquisitionState.kind !== "current"}
+          // issue #4420 — the ticket cards stay inline on every width; the
+          // glass bar below is the one place to continue.
+          hideTicketBox={acquisitionState.kind !== "current"}
+          inlineProceed={false}
+          desktopFlyerActions={
+            <Pressable
+              onPress={handleShare}
+              accessibilityRole="button"
+              accessibilityLabel="Share this event"
+              style={[styles.flyerAction, { borderColor: palette.panelBorder }]}
+              testID="issue-4420-flyer-share"
+            >
+              <Text style={[styles.flyerActionText, { color: palette.primaryText }]}>
+                Share
+              </Text>
+            </Pressable>
+          }
           // issue #2160 §7(a) — the phone inline ticket box. Null on every
           // single-date and free event, so the rendered tree is unchanged there.
           pricingNote={ticketPricingNote}
@@ -2332,9 +2313,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       {pageVariant !== "cancelled" &&
       pageVariant !== "password-gate" &&
       acquisitionState.kind === "current" &&
-      !isDesktop &&
       floatingPillVisible ? (
-        <View style={styles.floatWrap} pointerEvents="box-none">
+        <View
+          style={[
+            isDesktop ? styles.floatWrapDesktop : styles.floatWrap,
+            { bottom: (isDesktop ? 22 : 12) + insets.bottom },
+          ]}
+          pointerEvents="box-none"
+        >
           <EventOfferingFloatingBar
             event={publicEvent}
             variant={pageVariant}
@@ -2364,7 +2350,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       <View
         style={[
           styles.accessNoticeWrap,
-          { bottom: (isDesktop ? 24 : FLOATING_BAR_CLEARANCE) + insets.bottom },
+          { bottom: FLOATING_BAR_CLEARANCE + insets.bottom },
+          isDesktop ? styles.accessNoticeDesktop : null,
         ]}
         pointerEvents="box-none"
       >
@@ -2511,11 +2498,29 @@ const styles = StyleSheet.create({
   // ORCH-1167 — the floating Get-tickets bar wrapper (phone, off-screen-box only).
   floatWrap: {
     position: "absolute",
-    left: 16,
-    right: 16,
+    left: 12,
+    right: 12,
     bottom: 24,
     zIndex: 6,
   },
+  // issue #4420 — on desktop the glass bar sits bottom-right, 440 wide.
+  floatWrapDesktop: {
+    position: "absolute",
+    right: 28,
+    width: 440,
+    maxWidth: "90%",
+    zIndex: 6,
+  },
+  flyerAction: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  flyerActionText: { fontSize: 13.5, fontWeight: "700" },
   // ORCH-1167-R2 (change 5) — the DESKTOP sticky right-panel frame hosting the
   // EventTicketBox (mirrors the trip page's deskPanel pattern).
   deskPanel: {
@@ -2547,6 +2552,8 @@ const styles = StyleSheet.create({
     right: 16,
     zIndex: 7,
   },
+  // issue #4420 — on desktop the notice sits over the bottom-right glass bar.
+  accessNoticeDesktop: { left: undefined, right: 28, width: 440, maxWidth: "90%" },
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 1 post-payment web return banner.
   // Pinned top, above the parallax chrome (zIndex 6 in the shell), dismissible.
   returnBannerWrap: {

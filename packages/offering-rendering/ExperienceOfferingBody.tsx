@@ -90,6 +90,7 @@ import {
 } from "./PresentedByFollowerCount";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
+import { OfferingFactRows } from "./OfferingFactRows";
 import { type SocialProofSummary } from "./socialProofTypes";
 
 /**
@@ -323,6 +324,11 @@ export interface ExperienceOfferingBodyProps {
    * optional for exactly this reason.
    */
   rightNow?: RightNowFacts | null;
+  /**
+   * issue #4420 — true when the surface prints the title on its cover (the
+   * premium ParallaxCoverShell frame). Absent ⇒ false (Explorer).
+   */
+  identityOnCover?: boolean;
   testID?: string;
 }
 
@@ -350,6 +356,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   // pre-existing shape in this file), so a bare `= null` default infers the
   // parameter as `null` and every field read narrows to `never`.
   rightNow = null as RightNowFacts | null,
+  identityOnCover = false,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -428,7 +435,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   return (
     <View testID={testID}>
       {/* (2) N-stop eyebrow + title — phone only (desktop renders them in the hero). */}
-      {!isDesktop ? (
+      {!isDesktop && !identityOnCover ? (
         <View style={styles.leadBlock} testID="experience-body-title">
           {stopEyebrow !== null ? (
             <Text style={[styles.eyebrowLead, { color: themeTextAccent(palette) }]}>
@@ -449,61 +456,22 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         <View testID="experience-body-title" />
       )}
 
-      {/* (3) Meta chips — location · seats (rule 9). The dates + start-time chips
-          were retired in ORCH-1186 Fix 1; that info now lives in the adaptive
-          availability banner below (one source, all cases, every surface). */}
-      {data.cityCountry !== null || data.seatsLabel !== null ? (
-        <View style={styles.metaRow} testID="experience-body-meta">
-          {data.cityCountry !== null ? (
-            <MetaChip
-              palette={palette}
-              surface={surface}
-              font={boldFamily}
-              icon="location"
-            >
-              {data.cityCountry}
-            </MetaChip>
-          ) : null}
-          {data.seatsLabel !== null ? (
-            <MetaChip
-              palette={palette}
-              surface={surface}
-              font={boldFamily}
-              icon="users"
-            >
-              {data.seatsLabel}
-            </MetaChip>
-          ) : null}
-        </View>
-      ) : null}
-
-      {/* (4) Vibe chips — canonical curated intents only (rule 9). */}
-      {vibeLabels.length > 0 ? (
-        <View style={styles.vibesRow} testID="experience-body-vibes">
-          {vibeLabels.map((label) => (
-            <View
-              key={label}
-              style={[
-                styles.vibeChip,
-                {
-                  backgroundColor: palette.accentWash,
-                  borderColor: palette.panelBorder,
-                },
-              ]}
-            >
-              <Sparkles size={13} {...accentIconProps} />
-              {/* ORCH-1186 Fix 2 — label uses primaryText (icon stays accent) to
-                  byte-match the standard trip/event MetaPill (no brown-on-brown). */}
-              <Text
-                style={[
-                  styles.vibeChipText,
-                  { color: palette.primaryText, ...boldFace },
-                ]}
-              >
-                {label}
-              </Text>
-            </View>
-          ))}
+      {/* (3)+(4) issue #4420 — the fact rows (where you meet · group size)
+          and the quiet vibe tag line replace the meta and vibe chips. The
+          dates and times live in the availability banner below (ORCH-1186). */}
+      {data.cityCountry !== null || data.seatsLabel !== null || vibeLabels.length > 0 ? (
+        <View testID="experience-body-meta">
+          <OfferingFactRows
+            palette={palette}
+            theme={theme}
+            testID="experience-body-facts"
+            facts={[
+              { key: "where", icon: "pin", value: data.cityCountry },
+              { key: "who", icon: "people", value: data.seatsLabel },
+            ]}
+            tags={vibeLabels}
+          />
+          {vibeLabels.length > 0 ? <View testID="experience-body-vibes" /> : null}
         </View>
       ) : null}
 
@@ -1023,14 +991,16 @@ const styles = StyleSheet.create({
   availabilityWhen: { fontSize: 15, fontWeight: "800" },
   availabilitySub: { fontSize: 12, marginTop: 2 },
   // ---- sections ----
-  section: { marginTop: 24 },
+  // issue #4420 — the premium rhythm: sections 34pt apart, headings in the
+  // host's display face at 26pt (OfferingSectionTitle's metrics).
+  section: { marginTop: 34 },
   secTitle: {
-    fontSize: 20,
-    fontWeight: "900",
+    fontSize: 26,
+    fontWeight: "700",
     letterSpacing: -0.3,
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  about: { fontSize: 16, lineHeight: 23 },
+  about: { fontSize: 15.5, lineHeight: 25 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // ---- brand ----

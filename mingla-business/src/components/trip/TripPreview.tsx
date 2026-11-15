@@ -515,8 +515,23 @@ const FoundationTripPreview: React.FC<{
     </View>
   ) : null;
 
+  // issue #4420 — the cover identity: dates · length · departure eyebrow, the
+  // title in the host font, and "Presented by <brand>".
+  const coverIdentity = {
+    eyebrow: [
+      data.dateRangeLabel,
+      duration,
+      data.departureCityCountry !== null ? `From ${data.departureCityCountry}` : null,
+    ],
+    title: trip.title,
+    presenter: brand.name.trim().length > 0 ? { name: brand.name, photo: null } : null,
+  };
+
   return (
     <ParallaxCoverShell
+      // issue #4420 — the Seth-approved premium public-page frame.
+      frame="premium"
+      coverIdentity={coverIdentity}
       palette={palette}
       theme={theme}
       coverMediaUrl={trip.coverMediaUrl}
@@ -562,6 +577,7 @@ const FoundationTripPreview: React.FC<{
         planChoiceByTier={planChoiceByTier}
         onChangePlanChoice={onChangePlanChoice}
         dockedReserve={!isDesktop ? dockedReserve : undefined}
+        identityOnCover
         // ORCH-1339 — cross-entity social proof (route-fetched, props-only).
         socialProof={socialProof}
         // ORCH-1342 — web-only "See who's going" → install gate (route-wired).

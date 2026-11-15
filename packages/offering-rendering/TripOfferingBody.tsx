@@ -67,6 +67,7 @@ import {
 } from "./LazyOfferingRefundLadder";
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
+import { OfferingFactRows } from "./OfferingFactRows";
 import {
   BadgeCheck,
   Calendar,
@@ -180,6 +181,11 @@ export interface TripOfferingBodyProps {
    * cluster, no dead tap (ORCH-1341/1342 wire the per-surface handlers).
    */
   onSeeWhosGoing?: () => void;
+  /**
+   * issue #4420 — true when the surface prints the eyebrow + title on its
+   * cover (the premium ParallaxCoverShell frame). Absent ⇒ false (Explorer).
+   */
+  identityOnCover?: boolean;
   testID?: string;
 }
 
@@ -205,6 +211,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   reduceMotion = false,
   socialProof = null,
   onSeeWhosGoing,
+  identityOnCover = false,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -340,8 +347,9 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   return (
     <View testID={testID}>
       {/* (2) Event name — phone shows eyebrow + title; desktop renders them in the
-          surface hero, so the body title is phone-only. */}
-      {!isDesktop ? (
+          surface hero, so the body title is phone-only. issue #4420 — in the
+          premium frame the cover prints them (identityOnCover). */}
+      {!isDesktop && !identityOnCover ? (
         <View style={styles.leadBlock} testID="trip-body-title">
           {eyebrow !== null && eyebrow.length > 0 ? (
             <Text style={[styles.eyebrowLead, surface.primaryText]}>
@@ -362,89 +370,67 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
         <View testID="trip-body-title" />
       )}
 
-      {/* (3) Travel dates · From→To route — FULL-WIDTH PILLS (Seth device fix,
-          Leg A.3 bug #2): the travel-dates is its own full-width pill, and
-          departure→destination is ONE continuous full-width pill (NOT two
-          separate blocks) reading "From {departure} → {destination}". */}
+      {/* (3)+(4) issue #4420 — the fact rows (when / where / who's going)
+          replace the date + route pills and the meta chips; the route reads as
+          pills under them, with the live booking countdown. */}
       <View testID="trip-body-route-pills">
-        {data.dateRangeLabel.length > 0 ? (
-          <View
-            style={[
-              styles.fullPill,
-              {
-                backgroundColor: palette.accentWash,
-                borderColor: palette.panelBorder,
-              },
-            ]}
-          >
-            <Calendar size={17} {...accentIconProps} />
-            <Text
-              style={[
-                styles.fullPillText,
-                { color: palette.primaryText, ...boldFace },
-              ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {data.dateRangeLabel}
-            </Text>
-          </View>
-        ) : null}
-        {routeLabel !== null ? (
-          <View
-            style={[
-              styles.fullPill,
-              {
-                backgroundColor: palette.accentWash,
-                borderColor: palette.panelBorder,
-              },
-            ]}
-            testID="trip-body-route-pill"
-          >
-            <Plane size={17} {...accentIconProps} />
-            <Text
-              style={[
-                styles.fullPillText,
-                { color: palette.primaryText, ...boldFace },
-              ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {routeLabel}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      {/* (4) Pills row — days&nights · spots-left · animated live countdown.
-          Leg A.4: the days&nights + seats-left pills are now COMPACT (tighter
-          padding/font + a lucide icon) so they sit side-by-side on ONE line
-          instead of stacking; the live countdown wraps after them as before. */}
-      <View style={styles.pillsRow} testID="trip-body-meta-pills">
-        {data.durationLabel !== null ? (
-          <MetaPill
-            palette={palette}
-            font={boldFamily}
-            icon={<Moon size={13} {...accentIconProps} />}
-            label={data.durationLabel}
-          />
-        ) : null}
-        {data.spotsLabel !== null ? (
-          <MetaPill
-            palette={palette}
-            font={boldFamily}
-            icon={<Users size={13} {...accentIconProps} />}
-            label={data.spotsLabel}
-          />
-        ) : null}
-        {data.bookingDeadlineIso !== null && !data.bookingsClosed ? (
-          <TripCountdownPill
-            deadlineIso={data.bookingDeadlineIso}
-            palette={palette}
-            fontFamily={boldFamily}
-            testID="trip-body-countdown-pill"
-          />
-        ) : null}
+        <OfferingFactRows
+          palette={palette}
+          theme={theme}
+          testID="trip-body-facts"
+          facts={[
+            {
+              key: "when",
+              icon: "calendar",
+              value: data.dateRangeLabel.length > 0 ? data.dateRangeLabel : null,
+              detail: data.durationLabel,
+            },
+            {
+              key: "where",
+              icon: "pin",
+              value:
+                data.departureCityCountry !== null
+                  ? `Leaves from ${data.departureCityCountry}`
+                  : data.destinationCityCountry,
+              detail:
+                data.departureCityCountry !== null ? data.destinationCityCountry : null,
+            },
+            {
+              key: "who",
+              icon: "people",
+              value: data.spotsLabel,
+            },
+          ]}
+          tagsNode={
+            routeLabel !== null ||
+            (data.bookingDeadlineIso !== null && !data.bookingsClosed) ? (
+              <View style={styles.pillsRow} testID="trip-body-meta-pills">
+                {data.departureCityCountry !== null ? (
+                  <RoutePill palette={palette} label={data.departureCityCountry} />
+                ) : null}
+                {data.departureCityCountry !== null &&
+                data.destinationCityCountry !== null ? (
+                  <View style={[styles.routeDash, { backgroundColor: palette.tertiaryText }]} />
+                ) : null}
+                {data.destinationCityCountry !== null ? (
+                  <View testID="trip-body-route-pill">
+                    <RoutePill palette={palette} label={data.destinationCityCountry} />
+                  </View>
+                ) : null}
+                {data.bookingDeadlineIso !== null && !data.bookingsClosed ? (
+                  <TripCountdownPill
+                    deadlineIso={data.bookingDeadlineIso}
+                    palette={palette}
+                    fontFamily={boldFamily}
+                    testID="trip-body-countdown-pill"
+                  />
+                ) : null}
+              </View>
+            ) : (
+              <View testID="trip-body-meta-pills" />
+            )
+          }
+        />
       </View>
 
       {/* ORCH-1339 — cross-entity social proof; gates are SERVER-authoritative
@@ -1226,7 +1212,36 @@ const MetaPill: React.FC<{
   </View>
 );
 
+// issue #4420 — a city on the trip route ("Lagos — Accra"), quiet pill.
+const RoutePill: React.FC<{ palette: ThemePalette; label: string }> = ({
+  palette,
+  label,
+}: {
+  palette: ThemePalette;
+  label: string;
+}) => (
+  <View
+    style={[
+      styles.routePill,
+      { backgroundColor: palette.card, borderColor: palette.panelBorder },
+    ]}
+  >
+    <Text style={[styles.routePillText, { color: palette.primaryText }]} numberOfLines={1}>
+      {label}
+    </Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
+  // issue #4420 — route pills under the fact rows.
+  routePill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  routePillText: { fontSize: 13.5, fontWeight: "700" },
+  routeDash: { width: 14, height: 1, alignSelf: "center" },
   leadBlock: { marginBottom: 4 },
   eyebrowLead: {
     fontSize: 11,
@@ -1271,14 +1286,16 @@ const styles = StyleSheet.create({
   },
   pillText: { fontSize: 12, fontWeight: "700" },
   // ---- sections ----
-  section: { marginTop: 24 },
+  // issue #4420 — the premium rhythm: sections 34pt apart, headings in the
+  // host's display face at 26pt (OfferingSectionTitle's metrics).
+  section: { marginTop: 34 },
   secTitle: {
-    fontSize: 20,
-    fontWeight: "900",
+    fontSize: 26,
+    fontWeight: "700",
     letterSpacing: -0.3,
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  about: { fontSize: 16, lineHeight: 23 },
+  about: { fontSize: 15.5, lineHeight: 25 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // Issue #2829 W4 — trip guide.

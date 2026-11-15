@@ -46,6 +46,7 @@ import {
 } from "@mingla/offering-rendering";
 import {
   EventOfferingBody,
+  normalizeCityCountry,
   ParallaxCoverShell,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
@@ -136,6 +137,14 @@ export interface FoundationEventPreviewProps {
   presentedByFollowerCount?: number | null;
   presentedByFollowerCountLoading?: boolean;
   presentedByFollowerCountLabels?: FollowerCountLabels;
+  /**
+   * issue #4420 — false when the page pins the glass bottom bar (the public
+   * route): the bar is then the one place to continue. Absent ⇒ true (the
+   * Host app's own preview keeps the in-box Proceed).
+   */
+  inlineProceed?: boolean;
+  /** issue #4420 — actions under the desktop flyer (Share). */
+  desktopFlyerActions?: React.ReactNode;
   testID?: string;
 }
 
@@ -179,8 +188,10 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   presentedByFollowerCount,
   presentedByFollowerCountLoading = false,
   presentedByFollowerCountLabels,
+  inlineProceed = true,
+  desktopFlyerActions = null,
   testID,
-}) => {
+}: FoundationEventPreviewProps) => {
   const { isDesktop } = useResponsiveLayout();
   void isDesktop; // ParallaxCoverShell owns the responsive two-column shell.
 
@@ -234,12 +245,35 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       presentedByFollowerCount={presentedByFollowerCount}
       presentedByFollowerCountLoading={presentedByFollowerCountLoading}
       presentedByFollowerCountLabels={presentedByFollowerCountLabels}
+      // issue #4420 — the title lives on the cover in the premium frame.
+      identityOnCover
+      inlineProceed={inlineProceed}
       testID="orch-1167-event-body"
     />
   );
 
+  // issue #4420 — the cover identity: date · city eyebrow, the title in the
+  // host font, and "Presented by <brand>".
+  const city =
+    normalizeCityCountry(event.venueName) ?? normalizeCityCountry(event.address);
+  const coverIdentity = {
+    eyebrow: [
+      event.dateLine,
+      event.format === "online" ? "Online" : city,
+    ],
+    title: event.name.length > 0 ? event.name : "Untitled event",
+    presenter:
+      brand !== null && (brand.displayName ?? "").trim().length > 0
+        ? { name: brand.displayName ?? "", photo: brand.photo ?? null }
+        : null,
+  };
+
   return (
     <ParallaxCoverShell
+      // issue #4420 — the Seth-approved premium public-page frame.
+      frame="premium"
+      coverIdentity={coverIdentity}
+      desktopFlyerActions={desktopFlyerActions}
       palette={palette}
       // issue #1023 (Seth, 7 Nov): the theme motion plays in every lifecycle
       // state; #1902's closed-state animation suppression is lifted.

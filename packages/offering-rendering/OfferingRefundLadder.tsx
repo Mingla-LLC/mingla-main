@@ -44,6 +44,7 @@
 // where they are destructured instead; the rendered output is unchanged.
 import { StyleSheet, Text, View } from "react-native";
 
+import { themeTextAccent } from "./themePalette";
 import type { OfferingSurfaceStyles, ThemePalette } from "./themePalette";
 import type { OfferingRefundPolicy, OfferingRefundTier } from "./offeringRefundPolicy";
 
@@ -195,27 +196,38 @@ export const OfferingRefundLadder = ({
         </View>
       ) : null}
       {tiers.length > 0 && !allSalesFinal ? (
-        <View style={styles.refundLadder}>
+        // issue #4420 — the windows read as a vertical timeline: a thin rail,
+        // one ring per window, the refund in bold and the window under it.
+        <View
+          style={[styles.refundLadder, { borderLeftColor: palette.panelBorder }]}
+          testID={testID !== undefined ? `${testID}-timeline` : undefined}
+        >
           {tiers.map((tier, index) => {
             const isZero = tier.refund_pct === 0;
             const label = refundTierLabel(tier, index, tiers, offeringType);
+            const pctLabel = isZero
+              ? "No refund"
+              : tier.refund_pct === 100
+                ? "Full refund"
+                : `${tier.refund_pct}% refund`;
             return (
               <View
                 key={`rl-${index}`}
                 accessible
-                style={[
-                  styles.rlRow,
-                  index > 0
-                    ? { borderTopWidth: 1, borderTopColor: palette.panelBorder }
-                    : null,
-                ]}
+                style={[styles.rlRow, index === tiers.length - 1 ? styles.rlRowLast : null]}
                 accessibilityLabel={`${label}: ${
                   isZero ? "no refund" : `${tier.refund_pct}% refund`
                 }`}
               >
-                <Text style={[styles.rlLabel, surface.secondaryText]}>
-                  {label}
-                </Text>
+                <View
+                  style={[
+                    styles.rlDot,
+                    {
+                      backgroundColor: palette.page,
+                      borderColor: isZero ? palette.tertiaryText : themeTextAccent(palette),
+                    },
+                  ]}
+                />
                 <Text
                   style={[
                     styles.rlPct,
@@ -224,7 +236,10 @@ export const OfferingRefundLadder = ({
                     },
                   ]}
                 >
-                  {isZero ? "No refund" : `${tier.refund_pct}% refund`}
+                  {pctLabel}
+                </Text>
+                <Text style={[styles.rlLabel, surface.secondaryText]}>
+                  {label}
                 </Text>
               </View>
             );
@@ -249,12 +264,13 @@ export const OfferingRefundLadder = ({
 };
 
 const styles = StyleSheet.create({
-  section: { marginTop: 24 },
+  // issue #4420 — premium section rhythm (OfferingSectionTitle metrics).
+  section: { marginTop: 34 },
   secTitle: {
-    fontSize: 20,
-    fontWeight: "900",
+    fontSize: 26,
+    fontWeight: "700",
     letterSpacing: -0.3,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   strip: {
     flexDirection: "row",
@@ -267,16 +283,28 @@ const styles = StyleSheet.create({
   },
   stripGlyph: { fontSize: 15, fontWeight: "900", marginTop: 1 },
   stripText: { flex: 1, fontSize: 13, lineHeight: 18 },
-  refundLadder: { marginTop: 8 },
-  rlRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 7,
+  refundLadder: {
+    marginTop: 8,
+    marginLeft: 6,
+    borderLeftWidth: 1,
   },
-  rlLabel: { flexShrink: 1, fontSize: 13 },
-  rlPct: { fontSize: 13, fontWeight: "800" },
+  rlRow: {
+    position: "relative",
+    paddingLeft: 20,
+    paddingBottom: 18,
+  },
+  rlRowLast: { paddingBottom: 0 },
+  rlDot: {
+    position: "absolute",
+    left: -5,
+    top: 5,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
+  },
+  rlLabel: { fontSize: 13.5, lineHeight: 19, marginTop: 3 },
+  rlPct: { fontSize: 15.5, fontWeight: "700" },
   closingNote: { fontSize: 13, lineHeight: 18, marginTop: 12 },
 });
 

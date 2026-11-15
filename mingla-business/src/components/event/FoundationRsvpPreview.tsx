@@ -35,9 +35,9 @@ import {
 } from "react-native";
 
 import {
+  normalizeCityCountry,
   ParallaxCoverShell,
   RsvpOfferingBody,
-  RsvpDecisionBox,
   RsvpOfferingFloatingBar,
   useResponsiveLayout,
   useRsvpOfferingState,
@@ -61,7 +61,6 @@ import {
 } from "@mingla/offering-rendering/rsvpFloatingDecision";
 import type { RsvpGuestSnapshot } from "@mingla/offering-rendering/rsvpGuestSnapshot";
 import { useOwnProfilePhoneOnFile } from "../../hooks/useOwnProfilePhoneOnFile";
-import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 /** How often the inline-decision visibility is re-measured between scroll events. */
 const VISIBILITY_POLL_MS = 400;
@@ -374,31 +373,22 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
           ? "image"
           : null;
 
-  // ORCH-1163-R2 [floating-parity] — desktop hosts the SINGLE-OWNER inline decision
-  // box (RsvpDecisionBox) in the STICKY right panel (PARITY with the event page's
-  // EventTicketBox in deskPanel). The phone keeps the inline box in the body and
-  // pins the separate floating bar below.
-  const stickyPanel =
-    isDesktop && !acquisitionClosed ? (
-      <View
-        style={[
-          styles.deskPanel,
-          { backgroundColor: palette.card, borderColor: palette.panelBorder },
-        ]}
-      >
-        <View
-          style={[styles.deskAccent, accentFill(palette)]}
-        />
-        <View style={styles.deskInner}>
-          <RsvpDecisionBox
-            palette={palette}
-            theme={theme}
-            config={config}
-            state={state}
-          />
-        </View>
-      </View>
-    ) : undefined;
+  // issue #4420 — the premium frame keeps the single-owner decision box in the
+  // content flow on every width (desktop: the right column, under the facts),
+  // replacing ORCH-1163-R2's desktop sticky panel.
+
+  // issue #4420 — the cover identity: date · city eyebrow, the title in the
+  // host font, and "Presented by <brand>".
+  const coverCity =
+    normalizeCityCountry(event.venueName) ?? normalizeCityCountry(event.address);
+  const coverIdentity = {
+    eyebrow: [event.dateLine, event.format === "online" ? "Online" : coverCity],
+    title: event.name.length > 0 ? event.name : "Untitled event",
+    presenter:
+      brand !== null && brand.displayName.trim().length > 0
+        ? { name: brand.displayName, photo: brand.photo ?? null }
+        : null,
+  };
 
   return (
     <View
@@ -406,6 +396,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
       ref={hostRef}
     >
       <ParallaxCoverShell
+        // issue #4420 — the Seth-approved premium public-page frame.
+        frame="premium"
+        coverIdentity={coverIdentity}
         palette={palette}
         // issue #1023 (Seth, 7 Nov): the theme motion plays in every lifecycle
         // state; #1902's closed-state animation suppression is lifted.
@@ -425,7 +418,6 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
         onShare={onShare}
         hideCloseOnWeb
         stateBanner={stateBanner}
-        stickyPanel={stickyPanel}
         contentBottomInset={resolvedBottomInset}
         safeAreaTop={safeAreaTop}
         onScroll={onScroll}
@@ -453,7 +445,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
           renderClaimBody={renderClaimBody}
           // ORCH-1163-R2 — desktop relocates the inline box to the sticky panel
           // (PARITY with FoundationEventPreview's hideTicketBox).
-          hideDecisionBox={isDesktop || acquisitionClosed}
+          hideDecisionBox={acquisitionClosed}
+          identityOnCover
           presentedByFollow={presentedByFollow}
           presentedByFollowerCount={presentedByFollowerCount}
           presentedByFollowerCountLoading={presentedByFollowerCountLoading}
@@ -504,19 +497,6 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 24,
     zIndex: 6,
-  },
-  // ORCH-1163-R2 — the DESKTOP sticky right-panel frame hosting the single-owner
-  // RsvpDecisionBox (mirrors the event page's deskPanel hosting EventTicketBox).
-  deskPanel: {
-    borderRadius: 22,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  deskAccent: {
-    height: 4,
-  },
-  deskInner: {
-    padding: 20,
   },
 });
 
