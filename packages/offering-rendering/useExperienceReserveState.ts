@@ -260,7 +260,9 @@ export function useExperienceReserveState(
     isBlock: shape.isBlock,
     isGroup: shape.isGroup,
     blocks: selectedBlocks,
-    party,
+    // issue #4420 — a slot pick hands checkout ONE unit, so its total is one
+    // unit too (before, the sheet's label multiplied by the unused party of 2).
+    party: mode === "slots" ? 1 : party,
   });
 
   const selection = useMemo(

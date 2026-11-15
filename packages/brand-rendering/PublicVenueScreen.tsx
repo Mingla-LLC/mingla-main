@@ -1662,7 +1662,8 @@ export const PublicVenueScreen = ({
             </Text>
           </Pressable>
         </View>
-      ) : (
+      ) : isDesktop && identityOnCover ? null : (
+        // issue #4420 — on desktop the panel above carries "By {brand}".
         <Pressable
           onPress={onOpenBrand}
           accessibilityRole="link"
@@ -2021,12 +2022,19 @@ export const PublicVenueScreen = ({
   // (the open-state line, or a Stay's real nightly rate), the category's own
   // action on the right ("Reserve a table", "Book a visit", "Reserve this
   // Stay"). Same handler, same display gate, same testID anchors.
+  const venueKindLine = [categoryChip, placeChip]
+    .filter((p): p is string => typeof p === "string" && p.length > 0)
+    .join(" · ");
+  const reserveBarTitle =
+    profile.bookingBody === "stay" && stayRate !== null
+      ? venueStayRateRangeLine(stayRate)
+      : todayLine ?? (venueKindLine.length > 0 ? venueKindLine : venue.name);
   const reserveBarSubtitle =
-    profile.bookingBody === "stay"
-      ? stayRate !== null
-        ? venueStayRateRangeLine(stayRate)
-        : null
-      : todayLine;
+    reserveBarTitle === venueKindLine || reserveBarTitle === venue.name
+      ? null
+      : venueKindLine.length > 0
+        ? venueKindLine
+        : null;
   const reserveBar =
     showPersistentReserveCta && !isDesktop ? (
       <View
@@ -2043,7 +2051,7 @@ export const PublicVenueScreen = ({
         <OfferingGlassBar
           palette={palette}
           theme={resolvedTheme}
-          title={venue.name}
+          title={reserveBarTitle}
           subtitle={reserveBarSubtitle}
           ctaLabel={profile.reserveAction}
           onPress={handleReserve}
@@ -2084,11 +2092,14 @@ export const PublicVenueScreen = ({
     <View style={[styles.deskPanel, surface.cardStrong]}>
       <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
-        <Text
-          style={[styles.deskName, themedBoldFont, { color: palette.primaryText }]}
-        >
-          {venue.name}
-        </Text>
+        {/* issue #4420 — the premium frame prints the name above this panel. */}
+        {identityOnCover ? null : (
+          <Text
+            style={[styles.deskName, themedBoldFont, { color: palette.primaryText }]}
+          >
+            {venue.name}
+          </Text>
+        )}
         {venue.address !== null ? (
           <Text style={[styles.addrLine, { color: palette.tertiaryText }]}>
             {venue.address}

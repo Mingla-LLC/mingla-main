@@ -233,3 +233,8 @@ Deno.test("W-2 the public route drives the inline picker and the bar from one st
   assert(!picker.includes("supabase"), "the package picker never reaches a data client");
   assert(!picker.includes("useState<number | null>(null)"), "no private minute state in the inline picker");
 });
+
+Deno.test("T-2 a slot pick totals one unit (it hands checkout quantity 1)", () => {
+  const hook = read("../useExperienceReserveState.ts");
+  assertStringIncludes(hook, 'party: mode === "slots" ? 1 : party,');
+});

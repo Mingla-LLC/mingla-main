@@ -648,6 +648,9 @@ goingIsWaitlist || waitlistedResolved ? (
     </Pressable>
   );
 
+  const maybeGlyph = (
+    <MaybeGlyph {...(maybeDisabled ? { color: palette.tertiaryText } : accentIcon(palette))} />
+  );
   const MaybeButton = (
     <Pressable
       onPress={onMaybe}
@@ -669,7 +672,9 @@ goingIsWaitlist || waitlistedResolved ? (
       ]}
       testID={maybeTestID ?? "orch-1157-rsvp-maybe"}
     >
-      <MaybeGlyph {...(maybeDisabled ? { color: palette.tertiaryText } : accentIcon(palette))} />
+      {roomy ? null : maybeGlyph}
+      <View style={roomy ? styles.bigLabelRow : styles.compactLabel}>
+      {roomy ? maybeGlyph : null}
       <Text
         style={[
           roomy ? styles.bigText : styles.dbtnText,
@@ -679,6 +684,7 @@ goingIsWaitlist || waitlistedResolved ? (
       >
         Maybe
       </Text>
+      </View>
       {roomy && !maybeResolved ? (
         <Text style={[styles.bigSub, { color: palette.secondaryText }]} numberOfLines={1}>
           Remind me

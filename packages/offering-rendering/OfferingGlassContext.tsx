@@ -71,8 +71,10 @@ export const glassFillAlpha = (args: {
 }): number => {
   if (args.platform === "android") return 1;
   if (args.blurred) return 0.72;
-  if (args.platform === "web") return args.desktopWeb ? 0.82 : 0.9;
-  return 0.94;
+  // No blur behind it: near-opaque, so text scrolling under the bar never
+  // reads through it (phone web, native without an injected material).
+  if (args.platform === "web") return args.desktopWeb ? 0.82 : 0.97;
+  return 0.97;
 };
 
 /** Renders the injected blur behind a glass surface, or nothing. */
