@@ -1126,6 +1126,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     fill
                               icon="chart"
                               label="Insights"
+                              sub="Visits, actions and bookings"
                               accessibilityLabel={`Open Insights for ${event.name}`}
                               onPress={() =>
                                 router.push(`/insights/${event.id}?entry=detail_action` as never)
