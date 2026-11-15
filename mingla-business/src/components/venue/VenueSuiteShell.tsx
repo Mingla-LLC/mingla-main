@@ -162,6 +162,12 @@ export interface VenueSuiteShellProps {
    * hides the module.
    */
   reviewsPanel?: React.ReactNode;
+  /**
+   * #4420 (R8 P19) — the one-line Reviews summary at the top of Overview; the
+   * shell hands it the handler that opens the Reviews module. Shown only when
+   * the Reviews module is.
+   */
+  renderReviewsSummary?: (openReviews: () => void) => React.ReactNode;
 }
 
 export function VenueSuiteShell({
@@ -171,6 +177,7 @@ export function VenueSuiteShell({
   initialModule = "overview",
   overviewHeader = null,
   reviewsPanel = null,
+  renderReviewsSummary,
 }: VenueSuiteShellProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -551,6 +558,9 @@ export function VenueSuiteShell({
               />
             </GlassCard>
           ) : null}
+          {hasReviews && renderReviewsSummary !== undefined
+            ? renderReviewsSummary(() => selectModule("reviews"))
+            : null}
           {overviewHeader}
         </>
       );

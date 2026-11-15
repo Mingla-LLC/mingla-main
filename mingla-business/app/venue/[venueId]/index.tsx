@@ -91,11 +91,19 @@ import { listingStatusView } from "../../../src/utils/listingStatus";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { OptionalFeatureBoundary } from "../../../src/components/brandContact/OptionalFeatureBoundary";
 
+
 // #3872 — Local reviews belong to the Creator and Referral program, so they
 // load through its one lazy owner and stay out of the eager web chunk.
 const LocalReviewsManager = React.lazy(async () => {
   const mod = await import("../../../src/components/programs/creatorProgramOwner");
   return { default: mod.LocalReviewsManager };
+});
+
+// #4420 (R8 P19) — the Overview Reviews summary row loads with the reviews
+// themselves (lazily), never on the venue page's first paint.
+const VenueReviewsSummaryRow = React.lazy(async () => {
+  const mod = await import("../../../src/components/venue/VenueReviewsSummaryRow");
+  return { default: mod.VenueReviewsSummaryRow };
 });
 
 function paramValue(value: string | string[] | undefined): string | null {
@@ -474,6 +482,21 @@ export default function VenueManagementPage(): React.ReactElement {
           // #4420 (round-3 item 19) — Local reviews are their own Reviews
           // module now, not a panel at the top of Overview.
           reviewsPanel={localReviewsPanel}
+          renderReviewsSummary={
+            localReviewsPanel !== null && brandId !== null && venue.placePoolId !== null
+              ? (openReviews) => (
+                  <OptionalFeatureBoundary name="venue-reviews-summary">
+                    <Suspense fallback={null}>
+                      <VenueReviewsSummaryRow
+                        brandId={brandId}
+                        placePoolId={venue.placePoolId as string}
+                        onOpen={openReviews}
+                      />
+                    </Suspense>
+                  </OptionalFeatureBoundary>
+                )
+              : undefined
+          }
         />
       )}
 
