@@ -62,6 +62,7 @@ export interface AppsFlyerS2SEventValues {
 // functions that hold no AppsFlyer secret.
 import {
   type AppsFlyerApp,
+  appsFlyerDeviceOptedOut,
   type AppsFlyerDeviceRow,
   claimBrandMilestone,
   EXPLORER_APPSFLYER_APP_IDS,
@@ -72,6 +73,7 @@ import {
 } from "./appsFlyerDevice.ts";
 export {
   type AppsFlyerApp,
+  appsFlyerDeviceOptedOut,
   type AppsFlyerDeviceRow,
   claimBrandMilestone,
   EXPLORER_APPSFLYER_APP_IDS,
@@ -135,6 +137,14 @@ export async function postAppsFlyerS2SEvent(
         `[AppsFlyerS2S] no ${app} device for user ${input.userId} — skip ${input.eventName}`,
       );
     }
+    return false;
+  }
+  // #4238 P1-4 / P2-4 (I-4238-AF-RESPECTS-OPT-OUT): the person switched
+  // analytics off in this app; no server post for this install, ever.
+  if (appsFlyerDeviceOptedOut(device)) {
+    console.log(
+      `[AppsFlyerS2S] ${app} install opted out of analytics — skip ${input.eventName}`,
+    );
     return false;
   }
 

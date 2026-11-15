@@ -18,6 +18,8 @@
 --       queues nothing on their first event publish.
 --   F9  (P1-3) a brand-new host publishing on insert queues exactly one row,
 --       and their next publish on a second brand adds none.
+--   F10 (P1-4/P2-4) appsflyer_devices.tracking_opt_out exists, defaults to
+--       false, and a signed-in user can switch it on their own row only.
 
 CREATE OR REPLACE FUNCTION pg_temp.hf_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $a$
@@ -324,5 +326,37 @@ BEGIN
   );
 END
 $f9$;
+
+-- F10 --------------------------------------------------------------------------
+SELECT pg_temp.hf_assert(
+  (SELECT is_nullable = 'NO' AND column_default = 'false'
+     FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'appsflyer_devices'
+      AND column_name = 'tracking_opt_out'),
+  'F10 appsflyer_devices.tracking_opt_out is NOT NULL DEFAULT false'
+);
+INSERT INTO public.appsflyer_devices (user_id, appsflyer_uid, platform, app_id, app)
+VALUES
+  ('00000000-4238-4300-8000-000000000001', 'af-4238-own', 'ios', 'id1', 'business'),
+  ('00000000-4238-4300-8000-000000000002', 'af-4238-other', 'ios', 'id1', 'business');
+SELECT pg_temp.hf_assert(
+  (SELECT tracking_opt_out = false FROM public.appsflyer_devices WHERE appsflyer_uid = 'af-4238-own'),
+  'F10 an app that never sends the column keeps false'
+);
+DO $f10$
+BEGIN
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"00000000-4238-4300-8000-000000000001","role":"authenticated"}', true);
+  PERFORM set_config('request.jwt.claim.sub', '00000000-4238-4300-8000-000000000001', true);
+  UPDATE public.appsflyer_devices SET tracking_opt_out = true WHERE app = 'business';
+  RESET ROLE;
+  PERFORM pg_temp.hf_assert(
+    (SELECT tracking_opt_out FROM public.appsflyer_devices WHERE appsflyer_uid = 'af-4238-own')
+    AND NOT (SELECT tracking_opt_out FROM public.appsflyer_devices WHERE appsflyer_uid = 'af-4238-other'),
+    'F10 a user switches their own install only'
+  );
+END
+$f10$;
 
 ROLLBACK;

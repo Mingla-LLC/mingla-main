@@ -129,13 +129,42 @@ function applyPrivacyChoice(): void {
   }
 }
 
+/**
+ * #4238 P1-4 (I-4238-AF-SERVER-RESPECTS-OPT-OUT): tell the server this
+ * person's installs changed their "share usage data" choice, so server posts
+ * (af_purchase, referrals) skip an opted-out install. Logged, never thrown.
+ */
+function syncDeviceOptOut(): void {
+  const userId = _signedInUserId
+  if (!userId) return
+  try {
+    void Promise.resolve(
+      supabase
+        .from('appsflyer_devices')
+        .update({ tracking_opt_out: isAnalyticsOptedOut() })
+        .eq('user_id', userId)
+        .eq('app', 'consumer'),
+    ).then(
+      (res: { error?: { message?: string } | null } | undefined) => {
+        if (res?.error) console.warn('[AppsFlyer] device opt-out sync failed:', res.error.message)
+      },
+      (e: unknown) => console.warn('[AppsFlyer] device opt-out sync failed:', e),
+    )
+  } catch (e) {
+    console.warn('[AppsFlyer] device opt-out sync unavailable:', e)
+  }
+}
+
 function subscribePrivacyChoice(): void {
   if (_privacySubscribed) return
   const store = analyticsStore()
   if (!store || typeof store.subscribe !== 'function') return
   try {
     store.subscribe((state, prev) => {
-      if (state.analyticsOptOut !== prev.analyticsOptOut) applyPrivacyChoice()
+      if (state.analyticsOptOut !== prev.analyticsOptOut) {
+        applyPrivacyChoice()
+        syncDeviceOptOut()
+      }
     })
     _privacySubscribed = true
   } catch (e) {
@@ -594,6 +623,8 @@ export function registerAppsFlyerDevice(userId: string): void {
             platform,
             app_id: appId,
             app: 'consumer', // ORCH-0808 — discriminator added so business app rows for the same user don't collide.
+            // #4238 P1-4: the server skips AppsFlyer posts for an opted-out install.
+            tracking_opt_out: isAnalyticsOptedOut(),
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'user_id,app,appsflyer_uid' },

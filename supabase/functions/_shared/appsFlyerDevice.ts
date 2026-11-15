@@ -13,6 +13,19 @@ type SupabaseClient = any;
 export interface AppsFlyerDeviceRow {
   appsflyer_uid: string;
   platform: "ios" | "android";
+  /**
+   * #4238 P1-4 / P2-4 (I-4238-AF-RESPECTS-OPT-OUT): the app's "share usage
+   * data" / Analytics switch, written by the app on registration and on every
+   * change. True means no server-to-server AppsFlyer post for this install.
+   */
+  tracking_opt_out?: boolean;
+}
+
+/** #4238 P1-4 / P2-4: the install's analytics switch is off. */
+export function appsFlyerDeviceOptedOut(
+  device: AppsFlyerDeviceRow | null | undefined,
+): boolean {
+  return device?.tracking_opt_out === true;
 }
 
 /** Which Mingla app an S2S event belongs to (appsflyer_devices.app). */
@@ -41,7 +54,7 @@ export async function fetchAppsFlyerDevice(
 ): Promise<AppsFlyerDeviceRow | null> {
   const { data, error } = await supabase
     .from("appsflyer_devices")
-    .select("appsflyer_uid, platform")
+    .select("appsflyer_uid, platform, tracking_opt_out")
     .eq("user_id", userId)
     .eq("app", app)
     .order("updated_at", { ascending: false })

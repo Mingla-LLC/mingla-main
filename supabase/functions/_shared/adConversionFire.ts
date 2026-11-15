@@ -51,6 +51,7 @@ import {
 // (stripe-webhook, ad-conversion-retry), never imported here.
 import {
   type AppsFlyerApp,
+  appsFlyerDeviceOptedOut,
   type AppsFlyerDeviceRow,
   fetchAppsFlyerDevice,
   formatEventTime,
@@ -1725,7 +1726,9 @@ async function fireNativePurchase(
     if (!isPaid) {
       afStatus = "skipped";
       afReason = "not_a_purchase";
-    } else if (ctx.trackingOptOut) {
+    } else if (ctx.trackingOptOut || appsFlyerDeviceOptedOut(device)) {
+      // #4238 P1-4: the checkout's own choice, or the Explorer install's
+      // "share usage data" switch (appsflyer_devices.tracking_opt_out).
       afStatus = "skipped";
       afReason = "tracking_opt_out";
     } else if (!device || !ctx.buyerUserId) {
@@ -1820,9 +1823,16 @@ async function postHostFirstSaleAppsFlyer(
     const owner = input.subjectId;
     let status: SendStatus | null = null;
     let reason: string | null = null;
+    // #4238 P2-4: the Host app install's Analytics switch.
+    const hostDevice = owner
+      ? await fetchAppsFlyerDevice(supabase, owner, "business")
+      : null;
     if (!owner) {
       status = "skipped";
       reason = "no_owner";
+    } else if (appsFlyerDeviceOptedOut(hostDevice)) {
+      status = "skipped";
+      reason = "tracking_opt_out";
     } else if (input.postAppsFlyer === null) {
       // This caller holds no AppsFlyer secret: the hourly retry posts it.
       status = null;
@@ -1833,6 +1843,7 @@ async function postHostFirstSaleAppsFlyer(
         supabase,
         userId: owner,
         app: "business",
+        device: hostDevice,
         eventName: "mingla_host_first_sale",
         eventTime: formatEventTime(new Date(input.eventTimeMs)),
         eventValues: {

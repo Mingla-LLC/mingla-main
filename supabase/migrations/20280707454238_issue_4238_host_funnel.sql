@@ -183,4 +183,17 @@ CREATE TRIGGER trg_issue_4238_host_first_publish_conversion
   AFTER INSERT OR UPDATE OF published_at ON public.events
   FOR EACH ROW EXECUTE FUNCTION public.tg_issue_4238_host_first_publish_conversion();
 
+-- 4. app analytics opt-out on the AppsFlyer install row (#4238 P1-4 / P2-4) --------
+-- The Explorer "share usage data" switch and the Host app Analytics switch are
+-- written here by each app (registration and every change; the existing
+-- update-own RLS policy covers it). Server-to-server AppsFlyer posts
+-- (af_purchase, host first sale, payouts) skip an install that is opted out.
+-- Metadata-only on PostgreSQL 11+ (constant default); older app versions that
+-- never send the column keep false, which is today's behaviour.
+ALTER TABLE public.appsflyer_devices
+  ADD COLUMN IF NOT EXISTS tracking_opt_out boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.appsflyer_devices.tracking_opt_out IS
+  'issue #4238: the app''s analytics switch is off for this install; no AppsFlyer S2S post (I-4238-AF-SERVER-RESPECTS-OPT-OUT).';
+
 COMMIT;
