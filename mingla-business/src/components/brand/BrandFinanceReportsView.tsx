@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -11,8 +11,11 @@ import { exportCsvText } from "../../utils/guestCsvExport";
 import type { PayoutScreenReleaseDTO } from "../../utils/payoutScreen";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
+import { IconChrome } from "../ui/IconChrome";
+import { Segmented } from "../ui/Pill";
+import { DesktopColumns } from "../ui/DesktopCanvas";
 import { TopBar } from "../ui/TopBar";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 import {
   color,
@@ -46,6 +49,7 @@ export interface BrandFinanceReportsViewProps { brand: Brand | null; onBack: () 
 
 export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = ({ brand, onBack }) => {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const [period, setPeriod] = useState<TimeRange>("30d");
   const query = useBrandPayoutScreen(brand?.id ?? null);
   const releases = useMemo(() => {
@@ -80,58 +84,99 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
     return <View style={styles.host}><TopBar leftKind="back" title="Finance" onBack={onBack} rightSlot={<View />} /><View style={styles.scroll}><GlassCard variant="base" padding={space[6]}><Text style={styles.title}>Brand not found</Text><Text style={styles.body}>Go back and choose another brand.</Text></GlassCard></View></View>;
   }
 
+  const heroCard = (
+    <GlassCard variant="elevated" padding={space[6]}>
+      <Text style={styles.eyebrow}>YOU GET · {PERIOD_LABEL[period].toUpperCase()}</Text>
+      <Text style={styles.hero}>{money(summary.host)}</Text>
+      <Text style={styles.body}>From the payout ledger in {currency?.toUpperCase()}.</Text>
+    </GlassCard>
+  );
+  const breakdown = (
+    <GlassCard variant="base" padding={space[4]}>
+      <MoneyLine label="Buyers paid" value={money(summary.gross)} />
+      {summary.refunds > 0 ? <MoneyLine label="Refunds" value={`−${money(summary.refunds)}`} /> : null}
+      {summary.disputes > 0 ? <MoneyLine label="Disputes" value={`−${money(summary.disputes)}`} /> : null}
+      {summary.debt > 0 ? <MoneyLine label="Refund after an earlier payout" value={`−${money(summary.debt)}`} /> : null}
+      <MoneyLine label="Mingla fee" value={`−${money(summary.fee)}`} />
+      {summary.recredit > 0 ? <MoneyLine label="Returned from an earlier hold" value={`+${money(summary.recredit)}`} /> : null}
+      <MoneyLine label="Card processing" value="Mingla pays" />
+      {hasStripe ? <MoneyLine label="Stripe automatic-tax fee (~0.5%)" value="Paid by you" /> : null}
+      <MoneyLine label="You get" value={money(summary.host)} total />
+      {summary.bankFee > 0 ? <MoneyLine label="Bank transfer fee" value={`−${money(summary.bankFee)}`} /> : null}
+      {summary.stampDuty > 0 ? <MoneyLine label="Stamp duty" value={`−${money(summary.stampDuty)}`} /> : null}
+      <MoneyLine label="Paid to bank" value={money(summary.paid)} />
+      {summary.creditsOwed > 0 ? <MoneyLine label="Mingla owes back" value={money(summary.creditsOwed)} /> : null}
+    </GlassCard>
+  );
+  const payouts = (
+    <>
+      <Text style={styles.eyebrow}>PAYOUTS</Text>
+      <GlassCard variant="base" padding={0}>
+        {releases.map((row, index) => <View key={row.id} style={[styles.reportRow, index > 0 ? styles.rowDivider : null]}><View style={styles.reportText}><Text style={styles.reportTitle}>{row.offeringName}</Text><Text style={styles.body}>{row.salesCount} {row.salesCount === 1 ? "sale" : "sales"} · {row.hostState.replaceAll("_", " ")}</Text></View><Text style={styles.reportAmount}>{money(row.netReleaseCents)}</Text></View>)}
+      </GlassCard>
+    </>
+  );
+  const exportsCard = (
+    <>
+      <Text style={styles.eyebrow}>EXPORTS</Text>
+      <GlassCard variant="base" padding={space[4]}>
+        <Button label="Payouts CSV" onPress={() => void exportRows()} variant="secondary" size="md" fullWidth leadingIcon="download" />
+      </GlassCard>
+    </>
+  );
+  const hasRows = releases.length > 0;
+
   return (
     <View style={styles.host}>
-      <TopBar leftKind="back" title="Finance" onBack={onBack} rightSlot={<Icon name="download" size={20} color={color.text1} />} />
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: space[7] + insets.bottom }]}>
-        <View style={styles.periods}>
-          {PERIODS.map((value) => <Pressable key={value} onPress={() => setPeriod(value)} accessibilityRole="button" accessibilityLabel={`Show ${PERIOD_LABEL[value]} finance report`} accessibilityState={{ selected: period === value }} style={[styles.period, period === value ? styles.periodSelected : null]}><Text style={styles.periodText}>{PERIOD_LABEL[value]}</Text></Pressable>)}
-        </View>
+      {/* #4420 — the header download was a dead icon; it now exports (the
+          same CSV as the Exports card). Desktop names it, like the mockup. */}
+      <TopBar
+        leftKind="back"
+        title="Finance"
+        onBack={onBack}
+        rightSlot={
+          isWideDesktop ? (
+            <Button label="Payouts CSV" onPress={() => void exportRows()} variant="secondary" size="sm" leadingIcon="download" />
+          ) : (
+            <IconChrome icon="download" onPress={() => void exportRows()} accessibilityLabel="Export payouts CSV" />
+          )
+        }
+      />
+      <ScrollView contentContainerStyle={[styles.scroll, isWideDesktop ? styles.scrollDesktop : null, { paddingBottom: space[7] + insets.bottom }]}>
+        <Segmented<TimeRange>
+          options={PERIODS.map((value) => ({ key: value, label: PERIOD_LABEL[value] }))}
+          value={period}
+          onChange={setPeriod}
+          full={!isWideDesktop}
+          accessibilityLabel="Finance report period"
+          style={isWideDesktop ? styles.periodsDesktop : null}
+        />
 
         {query.isLoading ? <GlassCard variant="base" padding={space[6]}><Text style={styles.title}>Loading finance data…</Text></GlassCard> : null}
         {query.isError ? <GlassCard variant="base" padding={space[6]}><Text style={styles.title}>Couldn’t load finance data</Text><Text style={styles.body}>No totals are shown until the payout ledger answers.</Text><View style={styles.action}><Button label="Try again" onPress={() => void query.refetch()} variant="secondary" size="md" /></View></GlassCard> : null}
-        {!query.isLoading && !query.isError && releases.length === 0 ? <GlassCard variant="base" padding={space[6]}><Text style={styles.title}>No payout data in this period</Text><Text style={styles.body}>Choose another period or check back after a sale.</Text></GlassCard> : null}
+        {!query.isLoading && !query.isError && !hasRows ? <GlassCard variant="base" padding={space[6]}><Text style={styles.title}>No payout data in this period</Text><Text style={styles.body}>Choose another period or check back after a sale.</Text></GlassCard> : null}
 
-        {releases.length > 0 ? <>
-          <GlassCard variant="elevated" padding={space[6]}>
-            <Text style={styles.eyebrow}>YOU GET · {PERIOD_LABEL[period].toUpperCase()}</Text>
-            <Text style={styles.hero}>{money(summary.host)}</Text>
-            <Text style={styles.body}>From the payout ledger in {currency?.toUpperCase()}.</Text>
-          </GlassCard>
-          <GlassCard variant="base" padding={space[4]}>
-            <MoneyLine label="Buyers paid" value={money(summary.gross)} />
-            {summary.refunds > 0 ? <MoneyLine label="Refunds" value={`−${money(summary.refunds)}`} /> : null}
-            {summary.disputes > 0 ? <MoneyLine label="Disputes" value={`−${money(summary.disputes)}`} /> : null}
-            {summary.debt > 0 ? <MoneyLine label="Refund after an earlier payout" value={`−${money(summary.debt)}`} /> : null}
-            <MoneyLine label="Mingla fee" value={`−${money(summary.fee)}`} />
-            {summary.recredit > 0 ? <MoneyLine label="Returned from an earlier hold" value={`+${money(summary.recredit)}`} /> : null}
-            <MoneyLine label="Card processing" value="Mingla pays" />
-            {hasStripe ? <MoneyLine label="Stripe automatic-tax fee (~0.5%)" value="Paid by you" /> : null}
-            <MoneyLine label="You get" value={money(summary.host)} total />
-            {summary.bankFee > 0 ? <MoneyLine label="Bank transfer fee" value={`−${money(summary.bankFee)}`} /> : null}
-            {summary.stampDuty > 0 ? <MoneyLine label="Stamp duty" value={`−${money(summary.stampDuty)}`} /> : null}
-            <MoneyLine label="Paid to bank" value={money(summary.paid)} />
-            {summary.creditsOwed > 0 ? <MoneyLine label="Mingla owes back" value={money(summary.creditsOwed)} /> : null}
-          </GlassCard>
-          <Text style={styles.eyebrow}>PAYOUTS</Text>
-          <GlassCard variant="base" padding={0}>
-            {releases.map((row, index) => <View key={row.id} style={[styles.reportRow, index > 0 ? styles.rowDivider : null]}><View style={styles.reportText}><Text style={styles.reportTitle}>{row.offeringName}</Text><Text style={styles.body}>{row.salesCount} {row.salesCount === 1 ? "sale" : "sales"} · {row.hostState.replaceAll("_", " ")}</Text></View><Text style={styles.reportAmount}>{money(row.netReleaseCents)}</Text></View>)}
-          </GlassCard>
-        </> : null}
-
-        <Text style={styles.eyebrow}>EXPORTS</Text>
-        <GlassCard variant="base" padding={space[4]}>
-          <Button label="Payouts CSV" onPress={() => void exportRows()} variant="secondary" size="md" fullWidth leadingIcon="download" />
-        </GlassCard>
+        {/* #4420 — desktop (T3 8/4): total and payouts left, the money
+            breakdown and exports right. Phone keeps the single column. */}
+        {isWideDesktop ? (
+          <DesktopColumns
+            main={<View style={styles.col}>{hasRows ? <>{heroCard}{payouts}</> : null}</View>}
+            aside={<View style={styles.col}>{hasRows ? breakdown : null}{exportsCard}</View>}
+          />
+        ) : (
+          <>
+            {hasRows ? <>{heroCard}{breakdown}{payouts}</> : null}
+            {exportsCard}
+          </>
+        )}
       </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  host: { flex: 1 }, scroll: { padding: space[4], gap: space[4] }, periods: { flexDirection: "row", gap: 6 },
-  period: { flex: 1, minHeight: 38, borderRadius: 999, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset },
-  periodSelected: { borderColor: color.lineStrong, backgroundColor: color.fill.tabOn }, periodText: { fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, fontWeight: "700", color: color.text1 },
+  host: { flex: 1 }, scroll: { padding: space[4], gap: space[4] }, scrollDesktop: { paddingHorizontal: space[6] },
+  periodsDesktop: { alignSelf: "flex-start" }, col: { gap: space[4] },
   title: { fontSize: type.h1.fontSize, lineHeight: type.h1.lineHeight, fontWeight: type.h1.fontWeight, color: color.text1 }, body: { marginTop: space[1], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 }, action: { marginTop: space[4], alignSelf: "flex-start" },
   eyebrow: { fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, fontWeight: "700", letterSpacing: 1.2, color: color.text3 }, hero: { marginTop: space[1], fontSize: 34, lineHeight: 40, fontWeight: "800", color: color.text1 },
   moneyLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: space[4], paddingVertical: space[2] }, moneyLabel: { flex: 1, fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 }, moneyValue: { fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text1, textAlign: "right" },

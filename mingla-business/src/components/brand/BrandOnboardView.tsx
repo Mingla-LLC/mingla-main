@@ -78,6 +78,7 @@ import * as Haptics from "expo-haptics";
 
 import {
   color,
+  size,
   space,
   type,
 } from "../../constants/designSystem";
@@ -2002,6 +2003,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     justifyContent: "center",
     gap: space[7],
+    // #4420 — on desktop the setup task reads as one 560 column (the
+    // kit's modal width), not a strip across the whole page. No-op on phones.
+    width: "100%",
+    maxWidth: size.modal + space[4] * 2,
+    alignSelf: "center",
   },
   stateBlock: {
     alignItems: "center",
