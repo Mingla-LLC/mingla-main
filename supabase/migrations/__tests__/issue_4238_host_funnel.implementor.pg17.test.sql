@@ -12,6 +12,12 @@
 --   F4  a failing conversion insert never fails the publish (catch-all).
 --   F5  the event_type CHECK accepts the host kinds and refuses unknown ones.
 --   F6  authenticated cannot read or write ad_match_contexts.
+--   F7  (P1-3) an EXISTING host, who published before M-2 (triggers off, as
+--       production is today), publishing again queues nothing.
+--   F8  (P1-3) an existing host whose only listing is a verified venue
+--       queues nothing on their first event publish.
+--   F9  (P1-3) a brand-new host publishing on insert queues exactly one row,
+--       and their next publish on a second brand adds none.
 
 CREATE OR REPLACE FUNCTION pg_temp.hf_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $a$
@@ -214,5 +220,109 @@ SELECT pg_temp.hf_assert(
     WHERE subject_type = 'host_user' AND subject_id = '00000000-4238-4300-8000-000000000001') = 1,
   'F6 the service-side row is intact'
 );
+
+-- F7 ---------------------------------------------------------------------------
+INSERT INTO auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+VALUES
+  ('00000000-4238-4300-8000-000000000003', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'host3-4238w3@example.test', now(), now()),
+  ('00000000-4238-4300-8000-000000000004', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'host4-4238w3@example.test', now(), now()),
+  ('00000000-4238-4300-8000-000000000005', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'host5-4238w3@example.test', now(), now());
+
+-- Legacy rows written with every trigger off, exactly what exists in
+-- production before M-2: the host, their brand and an already-published event.
+SET LOCAL session_replication_role = replica;
+INSERT INTO public.creator_accounts (id, email, created_at)
+VALUES ('00000000-4238-4300-8000-000000000003', 'host3-4238w3@example.test', now() - interval '90 days');
+INSERT INTO public.brands (id, account_id, name, slug, default_currency)
+VALUES ('00000000-4238-4300-8000-000000000013', '00000000-4238-4300-8000-000000000003',
+        'Issue 4238 Legacy Host Brand', 'issue-4238-legacy-host-brand', 'USD');
+INSERT INTO public.events (brand_id, title, slug, published_at)
+VALUES ('00000000-4238-4300-8000-000000000013', 'Old night', 'issue-4238-old-night',
+        now() - interval '60 days');
+SET LOCAL session_replication_role = origin;
+
+DO $f7$
+DECLARE
+  v_event uuid;
+BEGIN
+  INSERT INTO public.events (brand_id, title, slug)
+  VALUES ('00000000-4238-4300-8000-000000000013', 'New night', 'issue-4238-new-night')
+  RETURNING id INTO v_event;
+  UPDATE public.events SET published_at = now() WHERE id = v_event;
+  INSERT INTO public.events (brand_id, title, slug, published_at)
+  VALUES ('00000000-4238-4300-8000-000000000013', 'Insert night', 'issue-4238-insert-night', now());
+  PERFORM pg_temp.hf_assert(
+    NOT EXISTS (SELECT 1 FROM public.ad_conversions
+      WHERE event_id = 'host_publish:00000000-4238-4300-8000-000000000003'),
+    'F7 an existing host who published before M-2 queues no first-publish row'
+  );
+END
+$f7$;
+
+-- F8 ---------------------------------------------------------------------------
+SET LOCAL session_replication_role = replica;
+INSERT INTO public.creator_accounts (id, email, created_at)
+VALUES ('00000000-4238-4300-8000-000000000004', 'host4-4238w3@example.test', now() - interval '30 days');
+INSERT INTO public.brands (id, account_id, name, slug, default_currency)
+VALUES ('00000000-4238-4300-8000-000000000014', '00000000-4238-4300-8000-000000000004',
+        'Issue 4238 Venue Host Brand', 'issue-4238-venue-host-brand', 'USD');
+INSERT INTO public.venue_listings (brand_id, slug, name, lat, lng, venue_category, claim_status)
+VALUES ('00000000-4238-4300-8000-000000000014', 'issue4238venue', 'Issue 4238 Venue',
+        51.5, -0.12, 'restaurant', 'verified');
+SET LOCAL session_replication_role = origin;
+
+DO $f8$
+DECLARE
+  v_event uuid;
+BEGIN
+  INSERT INTO public.events (brand_id, title, slug)
+  VALUES ('00000000-4238-4300-8000-000000000014', 'Venue night', 'issue-4238-venue-night')
+  RETURNING id INTO v_event;
+  UPDATE public.events SET published_at = now() WHERE id = v_event;
+  PERFORM pg_temp.hf_assert(
+    NOT EXISTS (SELECT 1 FROM public.ad_conversions
+      WHERE event_id = 'host_publish:00000000-4238-4300-8000-000000000004'),
+    'F8 a host with a verified venue listing queues no first-publish row'
+  );
+END
+$f8$;
+
+-- F9 ---------------------------------------------------------------------------
+INSERT INTO public.creator_accounts (id, email, created_at)
+VALUES ('00000000-4238-4300-8000-000000000005', 'host5-4238w3@example.test', now());
+INSERT INTO public.brands (id, account_id, name, slug, default_currency)
+VALUES
+  ('00000000-4238-4300-8000-000000000015', '00000000-4238-4300-8000-000000000005',
+   'Issue 4238 New Host Brand', 'issue-4238-new-host-brand', 'USD'),
+  ('00000000-4238-4300-8000-000000000016', '00000000-4238-4300-8000-000000000005',
+   'Issue 4238 New Host Brand Two', 'issue-4238-new-host-brand-two', 'USD');
+
+DO $f9$
+DECLARE
+  v_event uuid;
+BEGIN
+  INSERT INTO public.events (brand_id, title, slug, published_at)
+  VALUES ('00000000-4238-4300-8000-000000000015', 'Debut night', 'issue-4238-debut-night', now())
+  RETURNING id INTO v_event;
+  PERFORM pg_temp.hf_assert(
+    (SELECT count(*) FROM public.ad_conversions
+      WHERE event_id = 'host_publish:00000000-4238-4300-8000-000000000005'
+        AND mingla_event_id = v_event) = 1,
+    'F9 a brand-new host publishing on insert queues exactly one row'
+  );
+  INSERT INTO public.events (brand_id, title, slug, published_at)
+  VALUES ('00000000-4238-4300-8000-000000000016', 'Other brand night', 'issue-4238-other-brand-night', now());
+  PERFORM pg_temp.hf_assert(
+    (SELECT count(*) FROM public.ad_conversions
+      WHERE event_id = 'host_publish:00000000-4238-4300-8000-000000000005') = 1
+    AND (SELECT mingla_event_id FROM public.ad_conversions
+      WHERE event_id = 'host_publish:00000000-4238-4300-8000-000000000005') = v_event,
+    'F9 the new host publishing on a second brand adds no row'
+  );
+END
+$f9$;
 
 ROLLBACK;

@@ -136,6 +136,27 @@ BEGIN
     IF v_owner IS NULL THEN
       RETURN NEW;
     END IF;
+    -- #4238 P1-3: a TRUE first publish only. An owner who already has any
+    -- other published listing (an event, trip or experience in public.events,
+    -- on any of their brands, deleted or not) or a verified (public) venue
+    -- listing is an existing host: nothing is queued, so a host who published
+    -- before this migration is never reported as a "first" publish.
+    IF EXISTS (
+      SELECT 1
+      FROM public.events e
+      JOIN public.brands ob ON ob.id = e.brand_id
+      WHERE ob.account_id = v_owner
+        AND e.id <> NEW.id
+        AND e.published_at IS NOT NULL
+    ) OR EXISTS (
+      SELECT 1
+      FROM public.venue_listings vl
+      JOIN public.brands ob ON ob.id = vl.brand_id
+      WHERE ob.account_id = v_owner
+        AND vl.claim_status = 'verified'
+    ) THEN
+      RETURN NEW;
+    END IF;
     INSERT INTO public.ad_conversions (
       event_id, event_type, event_name, surface, lane, brand_id, mingla_event_id
     ) VALUES (
