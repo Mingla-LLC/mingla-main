@@ -220,12 +220,14 @@ describe("ORCH-1101 REWORK · #4 — composer is OPAQUE, nothing bleeds through"
       inputBar.indexOf("host: {"),
       inputBar.indexOf("input: {"),
     );
-    expect(hostBlock).toMatch(/backgroundColor:\s*ariThread\.composerSurface/);
+    // [TEST-MOD-APPROVED #4420] the floating field is filled with the OPAQUE solid sheet
+    // material (alpha 1 on every platform), never a translucent wash.
+    expect(hostBlock).toMatch(/backgroundColor:\s*materials\.sheet\.solidFill/);
     expect(hostBlock).not.toMatch(
       /backgroundColor:\s*glass\.tint\.profileBase/,
     );
     // Border + radius preserved (still reads as a glass-edged field).
-    expect(hostBlock).toMatch(/borderColor:\s*glass\.border\.profileBase/);
+    expect(hostBlock).toMatch(/borderColor:\s*color\.lineStrong/); // [TEST-MOD-APPROVED #4420]
     expect(hostBlock).toMatch(/borderRadius:\s*radius\.xl/);
   });
 

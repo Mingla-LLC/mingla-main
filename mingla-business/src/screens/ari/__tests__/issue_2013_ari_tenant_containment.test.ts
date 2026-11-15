@@ -8,6 +8,9 @@ const mockQueryClient = {
   invalidateQueries: jest.fn(),
 };
 
+// [TEST-MOD-APPROVED #4420] ConversationDrawer shows the Ari orb (not a sparkle)
+// while Ari names a chat; the orb pulls in reanimated, so stub it like the others.
+jest.mock("../../../components/ari/AriOrb", () => ({ AriOrb: () => null }));
 jest.mock("../../../services/supabase", () => ({
   supabase: {
     functions: { invoke: (...args: unknown[]) => mockInvoke(...args) },

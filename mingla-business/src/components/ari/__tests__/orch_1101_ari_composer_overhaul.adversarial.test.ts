@@ -144,7 +144,8 @@ describe("ORCH-1101 ADV-3 · web paddingBottom short-circuits BEFORE the 80px na
     const expr = screenCode.slice(pbIdx, pbIdx + 500);
     const webBranchPos = expr.indexOf('Platform.OS === "web"');
     const navMathPos = expr.indexOf("BOTTOM_NAV_CLEARANCE_PX");
-    const webResultPos = expr.indexOf("spacing.sm");
+    // [TEST-MOD-APPROVED #4420] spacing.sm → space[2] (same 8pt).
+    const webResultPos = expr.indexOf("space[2]");
     expect(webBranchPos).toBeGreaterThan(-1);
     expect(navMathPos).toBeGreaterThan(-1);
     expect(webResultPos).toBeGreaterThan(-1);
@@ -190,7 +191,8 @@ describe("ORCH-1101 ADV-5 · no send/primary fill is translucent (Android opaque
       inputBarCode.indexOf("sendBtn:"),
       inputBarCode.indexOf("attachBtn:"),
     );
-    expect(sendBtnBlock).toMatch(/backgroundColor:\s*ariPalette\.userBubble/);
+    // [TEST-MOD-APPROVED #4420] the send disc is the opaque Paper token now.
+    expect(sendBtnBlock).toMatch(/backgroundColor:\s*color\.paper/);
     expect(sendBtnBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/i);
     // No opacity on the FILL itself (disabled-state opacity lives on a separate
     // style and is fine; the base disc must be solid).

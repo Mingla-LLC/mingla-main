@@ -178,7 +178,9 @@ describe("ORCH-1101 REWORK ADV-R3 · composerSurface has ZERO alpha transparency
       inputBar.indexOf("host: {"),
       inputBar.indexOf("input: {"),
     );
-    expect(hostBlock).toMatch(/backgroundColor:\s*ariThread\.composerSurface/);
+    // [TEST-MOD-APPROVED #4420] the floating field is filled with the OPAQUE solid sheet
+    // material (alpha 1 on every platform), never a translucent wash.
+    expect(hostBlock).toMatch(/backgroundColor:\s*materials\.sheet\.solidFill/);
     // No rgba/hsla literal and no glass.tint.* fill leaked into the composer host.
     expect(hostBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/i);
     expect(hostBlock).not.toMatch(/backgroundColor:\s*glass\.tint\./);

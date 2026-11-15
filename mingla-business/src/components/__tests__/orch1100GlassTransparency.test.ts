@@ -101,6 +101,8 @@ describe("ORCH-1100 RC-2 — shared helper exists + breakpoint", () => {
 (WIDTH_AWARE_SURFACES.length > 0 ? describe.each(WIDTH_AWARE_SURFACES.map((f) => [f])) : describe.skip.each([["(none)"]]))(
   "ORCH-1100 RC-2 — %s is width-aware",
   (rel) => {
+    // [TEST-MOD-APPROVED #4420] no feature surface owns its own blur any more.
+    if (rel === "(none)") return;
     const code = stripComments(read(rel));
 
     test("imports shouldUseRealBlur from the shared glassBlur helper", () => {
