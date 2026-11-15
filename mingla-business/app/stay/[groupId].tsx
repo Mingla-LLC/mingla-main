@@ -29,6 +29,7 @@ import { StayStripePayment } from "../../src/components/stay/StayStripePayment";
 import { useStayReservationGroup } from "../../src/hooks/useStayGuest";
 import { stayGuestService } from "../../src/services/stayGuestService";
 
+import { color } from "../../src/constants/designSystem";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -238,7 +239,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
-  invalidTitle: { color: "#ffffff", fontSize: 20, fontWeight: "800" },
+  invalidTitle: { color: color.textStrong, fontSize: 20, fontWeight: "800" },
 });

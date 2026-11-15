@@ -699,7 +699,7 @@ const styles = StyleSheet.create({
   summaryDivider: {
     marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   // issue #3284 — the refund-terms caption (design §4.9: caption / tertiary). The
   // card above keeps its own bottom margin, so the caption pulls up under it.

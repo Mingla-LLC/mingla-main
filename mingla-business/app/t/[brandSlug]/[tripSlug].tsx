@@ -695,8 +695,8 @@ const ResolvedTripPage: React.FC<{
 
   // ORCH-1138 — state banner (sold out / closed / deadline) rendered above body.
   const stateBanner = isClosed ? (
-    <View style={[styles.banner, { backgroundColor: "rgba(239,68,68,0.14)" }]}>
-      <Text style={[styles.bannerText, { color: "#ef4444" }]}>
+    <View style={[styles.banner, { backgroundColor: color.errorTint }]}>
+      <Text style={[styles.bannerText, { color: color.errorText }]}>
         Bookings are closed for this trip
       </Text>
     </View>
@@ -974,7 +974,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: space[7],
     gap: space[4],
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   stateTitle: {
     fontSize: type.h1.fontSize,

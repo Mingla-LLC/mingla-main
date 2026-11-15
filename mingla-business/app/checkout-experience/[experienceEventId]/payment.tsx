@@ -39,7 +39,7 @@ import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { space, color } from "../../../src/constants/designSystem";
+import { space, color, materials } from "../../../src/constants/designSystem";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import {
@@ -767,7 +767,7 @@ function CheckoutExperiencePaymentScreenContent({
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
   summary: { marginBottom: space[6] },
@@ -800,7 +800,7 @@ const styles = StyleSheet.create({
   summaryDivider: {
     marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   // ORCH-1147 — combined "Fees & tax" line.
   summaryFeesTaxRow: {
@@ -844,7 +844,7 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: space[2],
     fontSize: 12,
-    color: "#ef4444",
+    color: color.errorText,
     fontWeight: "500",
   },
   bottomBar: {
@@ -854,9 +854,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingTop: space[4],
     paddingHorizontal: space[6],
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    backgroundColor: materials.chrome.glassFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
   // #1841 — `bottomBarHidden` deleted with the keyboard plumbing that was its
   // only consumer. A style whose sole purpose was hiding the bar behind a

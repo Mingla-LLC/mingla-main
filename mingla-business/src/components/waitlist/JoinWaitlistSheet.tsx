@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.accent,
   },
   checkmark: {
-    color: "#0c0e12",
+    color: color.ink,
     fontSize: 14,
     fontWeight: "800",
   },

@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.inset,
   },
   hostPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   avatar: {
     width: 40,

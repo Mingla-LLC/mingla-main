@@ -256,7 +256,7 @@ function hasStoredSupabaseWebSession(): boolean {
 function AuthResolvingScreen(): React.ReactElement {
   return (
     <View style={authRoutingStyles.host}>
-      <ActivityIndicator size="large" color="#eb7825" />
+      <ActivityIndicator size="large" color={color.accentText} />
     </View>
   );
 }

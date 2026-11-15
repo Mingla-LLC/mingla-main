@@ -25,6 +25,7 @@ import {
   color,
   space,
   type,
+  scrim,
 } from "../../constants/designSystem";
 import { buildStaticMapUrl, StaticMapImage } from "../../utils/staticMapImage";
 import { Icon } from "../ui/Icon";
@@ -114,7 +115,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[2],
     paddingVertical: 4,
     borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: scrim.modal,
   },
   approxBadgeText: {
     fontSize: type.caption.fontSize,

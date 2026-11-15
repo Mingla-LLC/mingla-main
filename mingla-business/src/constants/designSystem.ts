@@ -133,6 +133,11 @@ const palette = {
     // Hairline on a paper (white) surface: light embedded pages (Stripe,
     // email previews) and paper cards. Black at 10% on #fff ≈ #e6e6e6.
     line: "rgba(10, 10, 10, 0.10)",
+    // Ink washes on the orange (sent chat bubble): secondary text, mention
+    // and quote chips.
+    a66: "rgba(10, 10, 10, 0.66)",
+    a16: "rgba(10, 10, 10, 0.16)",
+    a12: "rgba(10, 10, 10, 0.12)",
   },
   red: {
     500: "#ff3b30", // badges, dots
@@ -147,6 +152,34 @@ const palette = {
   blue: { 500: "#3b82f6", 300: "#8fb3ff", a14: "rgba(59, 130, 246, 0.14)" },
   amber: { 500: "#f59e0b", 300: "#fbbf24", a14: "rgba(245, 158, 11, 0.14)" },
   transparent: "transparent",
+  // Status colours that read on a paper (light) surface: receipts, light
+  // share sheets, light host-theme pages, the light keyboard toolbar.
+  paperStatus: {
+    success: "#17623a",
+    successSoft: "#28724a",
+    danger: "#b91c1c",
+    dangerSoft: "#f87171",
+    accent: "#9a470a",
+    text2: "#6b7280",
+    warningFill: "#fff8ed",
+    warningLine: "#f3c98b",
+    warningTitle: "#6d3908",
+    warningText: "#6d4b2a",
+    warningAction: "#7a3a11",
+    noticeFill: "#fef3c7",
+    noticeText: "#1f2937",
+    selectedFill: "#e5eefc",
+    link: "#1d4ed8",
+  },
+  // react-native-keyboard-controller toolbar (system appearance).
+  keyboardToolbar: {
+    lightDisabled: "#b0bec5",
+    lightBackground: "#f3f3f4",
+    lightRipple: "#bcbcbcbc",
+    darkDisabled: "#707070",
+    darkBackground: "#2c2c2e",
+    darkRipple: "#f8f8f888",
+  },
   // Opaque composites of the status tints over the canvas #0f0f11, for Android
   // and Reduce Transparency (ANDROID_GLASS_USES_OPAQUE_FALLBACK):
   //   success a12 → (17.3, 36.8, 26.2)  warning a14 → (47.2, 35.0, 16.2)
@@ -192,6 +225,11 @@ export const color = {
   accent: palette.orange[500],
   accentText: palette.orange[300],
   onAccent: palette.graphite[975],
+  /** Secondary text on the orange (sent chat bubble meta, quoted text). */
+  onAccent2: palette.ink.a66,
+  /** Chips on the orange (mention, quote). */
+  onAccentTint: palette.ink.a16,
+  onAccentTint2: palette.ink.a12,
   accentTint: palette.orange.a14,
   accentLine: palette.orange.a40,
   focus: palette.white,
@@ -214,6 +252,10 @@ export const color = {
   errorText: palette.red[300],
   errorTint: palette.red.a14,
   errorLine: palette.red.a45,
+  /** Text and status colours for a paper (light) surface. */
+  onPaper: palette.paperStatus,
+  /** The native keyboard toolbar's own light / dark surfaces. */
+  keyboardToolbar: palette.keyboardToolbar,
   /** Opaque status tints (Android, Reduce Transparency): the tint pre-composited over the canvas. */
   solidTint: palette.solidTint,
   skeleton: palette.w["06"],
@@ -887,6 +929,12 @@ export const ariPalette = {
   orbCore: "#ffb07c",
   // ORCH-1101 — the Ari user bubble uses the brand action colour.
   userBubble: color.accent,
+} as const;
+
+// #4420 — third-party marks drawn in their owners' required colours (Google
+// sign-in "G" per Google's brand guidelines). Content, not chrome.
+export const brandMarks = {
+  google: { blue: "#4285F4", green: "#34A853", yellow: "#FBBC04", red: "#EA4335" },
 } as const;
 
 // ORCH-1101 — Ari thread density spine. Every Ari layout value resolves here.

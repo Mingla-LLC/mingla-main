@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   // #2211 — `host` no longer centres or pads: it is only the SafeScreen frame.
   // The centring moved to `scrollContent`, where `flexGrow: 1` reproduces it
   // exactly while there is room and yields to scrolling once there is not.
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1, overflow: "hidden" },
   // #2211 — `flexGrow: 1` is EXPLICIT. A ScrollView's content container
   // defaults to `flexGrow: 0`; omitting it is the silent footgun recorded in

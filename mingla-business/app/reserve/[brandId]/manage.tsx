@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
     gap: space[1],
     padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   cardTitle: { ...type.row, color: color.text1 },
   error: { ...type.small, color: color.errorText },

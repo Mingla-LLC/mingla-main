@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: space[6],
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   stateTitle: {
     color: color.text1,

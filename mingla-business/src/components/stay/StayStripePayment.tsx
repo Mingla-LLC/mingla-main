@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import type { StayPaymentSession } from "@mingla/brand-rendering/stayGuest";
 
+import { color } from "../../constants/designSystem";
 // Native fallback. Metro resolves StayStripePayment.web.tsx for buyer web.
 export function StayStripePayment(_props: {
   session: Extract<StayPaymentSession, { provider: "stripe" }>;
@@ -22,5 +23,5 @@ export function StayStripePayment(_props: {
 
 const styles = StyleSheet.create({
   host: { padding: 16 },
-  text: { color: "#ffffff", fontSize: 14, lineHeight: 20 },
+  text: { color: color.textStrong, fontSize: 14, lineHeight: 20 },
 });

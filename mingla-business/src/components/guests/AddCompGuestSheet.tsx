@@ -1138,7 +1138,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.accent,
   },
   checkboxMark: {
-    color: "#FFFFFF",
+    color: color.textStrong,
     fontSize: 14,
     fontWeight: "700",
   },
@@ -1172,11 +1172,11 @@ const styles = StyleSheet.create({
   },
   bannerError: {
     borderColor: color.danger,
-    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    backgroundColor: color.errorTint,
   },
   bannerWarn: {
     borderColor: color.accent,
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+    backgroundColor: color.accentTint,
   },
   bannerText: {
     fontSize: 13,

@@ -7,6 +7,7 @@ import { useAuth } from "../src/context/AuthContext";
 import BusinessWelcomeScreen from "../src/components/auth/BusinessWelcomeScreen";
 import { AUTH_UI_GATE_EXPIRY_MS } from "../src/utils/coldLoadAuthGates";
 
+import { color } from "../src/constants/designSystem";
 // ORCH-1102 Wave 2 — REMOUNT-IMMUNE boot-loading deadline anchor (mirrors the
 // _layout backstop). A deadlock can remount this route faster than the ceiling,
 // resetting a per-mount timer forever; a module-level timestamp survives
@@ -79,7 +80,7 @@ export default function Index() {
   if (loading && !bootDeadlineExpired) {
     return (
       <View style={styles.boot}>
-        <ActivityIndicator size="large" color="#eb7825" />
+        <ActivityIndicator size="large" color={color.accentText} />
       </View>
     );
   }
@@ -107,6 +108,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#fff9f5",
+    backgroundColor: color.canvas,
   },
 });

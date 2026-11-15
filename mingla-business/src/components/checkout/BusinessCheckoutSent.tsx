@@ -69,7 +69,7 @@ export function BusinessCheckoutSent({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: space[7],
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.fill.pressed,
     marginBottom: space[6],
   },
   title: {
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   },
   buttonLabel: {
     ...type.btn,
-    color: "#0c0e12",
+    color: color.ink,
   },
 });
 

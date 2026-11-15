@@ -130,7 +130,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
               accessibilityLabel="Ticket QR code"
             />
           ) : (
-            <View style={{ width: qrSize, height: qrSize, backgroundColor: "#ffffff" }} />
+            <View style={{ width: qrSize, height: qrSize, backgroundColor: color.paper }} />
           )}
         </View>
         <Text style={styles.caption}>Show this at the door</Text>
@@ -176,7 +176,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
                   accessibilityLabel={`Ticket ${p.index + 1} of ${total} QR code`}
                 />
               ) : (
-                <View style={{ width: qrSize, height: qrSize, backgroundColor: "#ffffff" }} />
+                <View style={{ width: qrSize, height: qrSize, backgroundColor: color.paper }} />
               )}
             </View>
             <Text style={styles.label} numberOfLines={2}>
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   },
   qrInner: {
     padding: space[2],
-    backgroundColor: "#ffffff",
+    backgroundColor: color.paper,
     borderRadius: radiusTokens.md,
   },
   caption: {
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    backgroundColor: color.fill.step,
   },
   dotActive: {
     backgroundColor: color.accent,

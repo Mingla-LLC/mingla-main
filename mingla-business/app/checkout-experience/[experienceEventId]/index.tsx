@@ -489,7 +489,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: space[6],

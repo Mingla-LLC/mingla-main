@@ -327,8 +327,8 @@ export const CheckoutDiscountCodeField: React.FC<
 // #4304 — dark field for the dark checkout bar / summary (no hard-coded
 // white): raised surface, 10% white hairline, orange focus ring, green
 // applied chip.
-const SURFACE = "#1a1e24";
-const HAIRLINE = "rgba(255, 255, 255, 0.10)";
+const SURFACE = color.card;
+const HAIRLINE = color.lineStrong;
 
 const styles = StyleSheet.create({
   wrap: {
@@ -385,15 +385,15 @@ const styles = StyleSheet.create({
     gap: space[2] + space[1],
     borderRadius: radius.sm + 2,
     borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.35)",
+    borderColor: color.success,
     paddingVertical: space[2] + 2,
     paddingHorizontal: space[2] + space[1],
     backgroundColor: color.successTint,
   },
   appliedCopy: { flex: 1, gap: 2 },
-  appliedTitle: { color: "#86efac", fontWeight: "700" },
-  appliedSaving: { color: "#bbf7d0", fontSize: 13 },
-  replacedText: { color: "#bbf7d0", fontSize: 13 },
+  appliedTitle: { color: color.successText, fontWeight: "700" },
+  appliedSaving: { color: color.successText, fontSize: 13 },
+  replacedText: { color: color.successText, fontSize: 13 },
   removeText: { color: color.text2, fontWeight: "700" },
   errorText: { color: color.errorText, fontSize: 13 },
   noticeText: { color: color.warning, fontSize: 13 },

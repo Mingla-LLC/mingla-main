@@ -203,7 +203,7 @@ export function MinglaToSAcceptanceGate({
           ]}
         >
           {acceptMutation.isPending ? (
-            <Spinner size={24} color={"#ffffff"} />
+            <Spinner size={24} color={color.textStrong} />
           ) : (
             <Text style={styles.ctaText}>Accept and continue</Text>
           )}
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
     borderColor: color.accent,
   },
   checkboxMark: {
-    color: "#ffffff",
+    color: color.textStrong,
     fontWeight: "700",
     fontSize: 16,
   },
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     fontSize: type.body.fontSize,
-    color: "#ffffff",
+    color: color.textStrong,
     fontWeight: "700",
     letterSpacing: 0.4,
   },

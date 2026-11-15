@@ -42,6 +42,7 @@ import { PINNED_BAR_IN_FLOW, PinnedBottomBar } from "./PinnedBottomBar";
 import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
+import { color } from "../../constants/designSystem";
 const REPLY_MAX = 2000;
 const COMPOSER_SPACE = 92;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -243,7 +244,7 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
                   autoCapitalize="none"
                   autoCorrect={false}
                   testID="guest-thread-link-email"
-                  style={[styles.input, { color: palette.primaryText, borderColor: linkError !== null ? "#ef4444" : palette.panelBorder, backgroundColor: palette.page }]}
+                  style={[styles.input, { color: palette.primaryText, borderColor: linkError !== null ? color.danger : palette.panelBorder, backgroundColor: palette.page }]}
                 />
                 {linkError !== null ? <Text style={styles.errorText}>{linkError}</Text> : null}
                 {linkState === "error" ? (
@@ -434,7 +435,7 @@ const styles = StyleSheet.create({
   stateBody: { fontSize: 15, lineHeight: 22 },
   linkForm: { gap: 10 },
   input: { borderWidth: 1, borderRadius: 12, minHeight: 48, paddingHorizontal: 14, fontSize: 16 },
-  errorText: { color: "#ef4444", fontSize: 13, lineHeight: 18 },
+  errorText: { color: color.errorText, fontSize: 13, lineHeight: 18 },
   header: { borderBottomWidth: StyleSheet.hairlineWidth, paddingBottom: 12 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 2 },

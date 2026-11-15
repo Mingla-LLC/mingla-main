@@ -19,19 +19,15 @@
  *       shadowColor` (`transparent` is not a colour choice and is allowed);
  *   C2. no `expo-blur` import or require.
  *
- * ALLOWLIST (exact paths, relative to mingla-business/):
- *   C1: src/constants/designSystem.ts (the token file itself, including the
- *       `trafficAnalytics` and `ariPalette` content palettes),
- *       src/components/ui/Material.tsx (the glass owner),
- *       src/components/theme/** (host theme presets: content, not chrome),
- *       src/services/offeringTheme.ts (host offering themes: content),
- *       src/utils/buttonAccentContrast.ts (contrast maths on host colours).
- *   C2: src/components/ui/Material.tsx only.
+ * ALLOWLIST: `COLOUR_ALLOWLIST` below, one reviewed entry per path (relative
+ * to mingla-business/; a trailing `/` covers a folder), each with the reason
+ * its colours are CONTENT rather than chrome. An entry whose path no longer
+ * exists fails the plain run, so the list cannot rot. C2 (expo-blur) is
+ * allowed in src/components/ui/Material.tsx only.
  *
- * MODES. The screen waves of #4420 migrate the offenders, so this gate ships
- * in REPORT mode: a plain run prints the offender count by folder and exits 0.
- * `ISSUE_4420_ENFORCE=1` (set by #4420 wave 6, once the transitional exports
- * are gone) makes any offender a failure. `--json` prints the report as JSON.
+ * MODES. Since #4420 wave 6 the gate ENFORCES by default: any offender exits
+ * 1. `ISSUE_4420_REPORT=1` prints the same report and exits 0 (local triage
+ * only; CI never sets it). `--json` prints the report as JSON.
  *
  * DOES NOT CATCH, stated rather than implied: a colour built at runtime from
  * numbers (`\`rgb${...}\`` assembled piecewise), a colour imported from a
@@ -50,13 +46,26 @@ const ROOT = process.cwd().endsWith("mingla-business") ? path.resolve(process.cw
 const BUSINESS = "mingla-business";
 const SCAN_DIRS = ["app", "src"];
 
-export const COLOUR_ALLOWLIST = [
-  "src/constants/designSystem.ts",
-  "src/components/ui/Material.tsx",
-  "src/components/theme/",
-  "src/services/offeringTheme.ts",
-  "src/utils/buttonAccentContrast.ts",
+/** Reviewed content-colour allowlist (#4420 wave 6). Every entry says why. */
+export const COLOUR_ALLOWLIST_ENTRIES = [
+  { path: "src/constants/designSystem.ts", reason: "the token file itself (palette, plus the trafficAnalytics, ariPalette and brandMarks content palettes)" },
+  { path: "src/components/ui/Material.tsx", reason: "the one glass owner; reads materials, no literals of its own beyond the recipe" },
+  { path: "src/components/theme/", reason: "host theme presets and the theme editor: the host's own colours are content" },
+  { path: "src/services/offeringTheme.ts", reason: "host offering themes: content" },
+  { path: "src/utils/buttonAccentContrast.ts", reason: "contrast maths on host-chosen colours" },
+  { path: "src/components/marketing/ComposerV2/composerChipHtml.ts", reason: "email-body HTML: inline CSS that ships inside the sent email, where design tokens do not exist" },
+  { path: "src/components/marketing/EmailPreviewPane.tsx", reason: "renders the email body exactly as a recipient's mail client paints it (white mail canvas)" },
+  { path: "src/components/marketing/ComposerV2/ComposerV2Editor.tsx", reason: "the <hr> it inserts is email-body HTML (inline CSS sent to recipients)" },
+  { path: "src/components/auth/BusinessWelcomeScreen.tsx", reason: "the welcome video veil, Apple button and caption shadows are pinned by the #2052 welcome-video contract" },
+  { path: "src/components/brand/BrandProfileView.tsx", reason: "the cover gradient is built from the brand's own coverHue (data)" },
+  { path: "src/components/sites/website/sections/DesignSection.tsx", reason: "an example colour code inside host-facing copy (\"Try something like #89cff0\")" },
+  { path: "src/components/event/useBusinessRsvpPhoneField.tsx", reason: "the field error colour is chosen against the host theme's foreground (host-theme content)" },
+  { path: "src/components/orders/OrderListCard.tsx", reason: "the buyer avatar tile hue is generated from the buyer's name (data)" },
+  { path: "src/utils/brandGroupThreadModel.ts", reason: "the brand tile hues are generated from the brand id (data)" },
+  { path: "src/analytics/ConsentBanner.web.tsx", reason: "the analytics/privacy bar is out of #4420 scope by rule, and its CSS is a verbatim mirror of server/publicPrivacyRuntime.js pinned by #922/#4318" },
+  { path: "src/screens/ari/AriRenditionGalleryScreen.tsx", reason: "local dev rendition review tool (production redirect), excluded from the redesign" },
 ];
+export const COLOUR_ALLOWLIST = COLOUR_ALLOWLIST_ENTRIES.map((entry) => entry.path);
 export const BLUR_ALLOWLIST = ["src/components/ui/Material.tsx"];
 
 // ---- pure core ----------------------------------------------------------
@@ -127,8 +136,10 @@ const countHex = (code) => {
   let n = 0;
   for (const m of code.matchAll(HEX)) {
     if (/^#\d+$/.test(m[0])) {
+      // #4420 wave 6: "(#4238 W6-5)" in prose is an issue ref, so `(` no
+      // longer counts as a colour position for an all-decimal match.
       const before = code.slice(Math.max(0, m.index - 2), m.index);
-      if (!/(?:["'`(,:]|[(,:] )$/.test(before)) continue;
+      if (!/(?:["'`,:]|[,:] )$/.test(before)) continue;
     }
     n += 1;
   }
@@ -195,6 +206,11 @@ export function scan(files) {
   };
 }
 
+/** Enforce unless ISSUE_4420_REPORT=1 (wave 6: enforcing is the default). */
+export function enforceFromEnv(env) {
+  return env.ISSUE_4420_REPORT !== "1";
+}
+
 /** Exit status for a report: 0 in report mode, 1 when enforcing and anything offends. */
 export function exitCode(report, enforce) {
   return enforce && (report.colours > 0 || report.blur > 0) ? 1 : 0;
@@ -222,6 +238,10 @@ if (process.argv.includes("--self-test")) {
   expectCheck("an issue number in a comment is not a colour", screen, "// toward #4420 and #fff\n/* rgba(0,0,0,1) */ const a = 1;", { colours: 0, blur: 0 });
   expectCheck("an HTML entity is not a colour", screen, 'const s = "&#123;";', { colours: 0, blur: 0 });
   expectCheck("an issue ref in a string is not a colour", screen, 'console.warn("[#4304] retry"); const s = "see #4420 now";', { colours: 0, blur: 0 });
+  expectCheck("a parenthesised issue ref in a string is not a colour", screen, 'const s = "measurement is OFF (#4238 W6-5).";', { colours: 0, blur: 0 });
+  expectCheck("a hex after ( still fires", screen, 'const s = mix("#ff0000", 1);', { colours: 1, blur: 0 });
+  expectCheck("an email-body HTML file is allow-listed", "src/components/marketing/ComposerV2/composerChipHtml.ts", 'const css = "color:#111";', { colours: 0, blur: 0 });
+  expectCheck("a non-allow-listed sibling still fires", "src/components/marketing/ComposerV2/Other.tsx", 'const css = "color:#111";', { colours: 1, blur: 0 });
   expectCheck("a digit-only hex in a colour position fires", screen, 'const s = { color: "#000", c: `color: #111;` };', { colours: 2, blur: 0 });
   expectCheck("a JSX comment after an apostrophe is still a comment", screen, "<Text>Don't go</Text>{/* #4238 — rgba(0,0,0,1) */}\n  // can't #fff", { colours: 0, blur: 0 });
   expectCheck("designSystem.ts is allow-listed", "src/constants/designSystem.ts", 'const p = "#0f0f11"; const q = "rgba(0,0,0,.5)";', { colours: 0, blur: 0 });
@@ -243,6 +263,12 @@ if (process.argv.includes("--self-test")) {
   if (report.byFolder["src/components/event"]?.colours !== 1 || report.byFolder["app/event"]?.colours !== 1) {
     failures.push(`folder grouping wrong: ${JSON.stringify(report.byFolder)}`);
   }
+  for (const entry of COLOUR_ALLOWLIST_ENTRIES) {
+    if (typeof entry.reason !== "string" || entry.reason.trim().length < 12) failures.push(`allowlist entry ${entry.path} has no reviewed reason`);
+  }
+  if (new Set(COLOUR_ALLOWLIST).size !== COLOUR_ALLOWLIST.length) failures.push("allowlist has a duplicate path");
+  if (enforceFromEnv({}) !== true) failures.push("the gate must enforce by default (no env)");
+  if (enforceFromEnv({ ISSUE_4420_REPORT: "1" }) !== false) failures.push("ISSUE_4420_REPORT=1 must switch to report mode");
   if (exitCode(report, false) !== 0) failures.push("report mode must exit 0 even with offenders");
   if (exitCode(report, true) !== 1) failures.push("enforce mode must exit 1 with offenders");
   if (exitCode(scan([]), true) !== 0) failures.push("enforce mode must exit 0 when clean");
@@ -255,7 +281,7 @@ if (process.argv.includes("--self-test")) {
     for (const failure of failures) console.error("  - " + failure);
     process.exit(1);
   }
-  console.log("#4420 host-chrome-tokens-only self-test PASS (27 cases)");
+  console.log("#4420 host-chrome-tokens-only self-test PASS (35 cases)");
   process.exit(0);
 }
 
@@ -278,7 +304,12 @@ if (files.length === 0) {
   process.exit(1);
 }
 const report = scan(files);
-const enforce = process.env.ISSUE_4420_ENFORCE === "1";
+const enforce = enforceFromEnv(process.env);
+const staleAllowlist = COLOUR_ALLOWLIST.filter((entry) => !fs.existsSync(path.join(ROOT, BUSINESS, entry)));
+if (staleAllowlist.length > 0) {
+  console.error(`#4420 host-chrome-tokens-only FAIL: allowlist entries no longer exist: ${staleAllowlist.join(", ")}`);
+  process.exit(1);
+}
 
 if (process.argv.includes("--json")) {
   console.log(JSON.stringify({ enforce, scanned: files.length, ...report }, null, 2));
@@ -290,7 +321,7 @@ const lines = folders.map(([folder, v]) => `    ${String(v.colours).padStart(5)}
 const summary = `${report.colours} colour literal(s) and ${report.blur} expo-blur import(s) in ${report.files} of ${files.length} scanned files`;
 
 if (exitCode(report, enforce) !== 0) {
-  console.error(`#4420 host-chrome-tokens-only FAIL (ISSUE_4420_ENFORCE=1): ${summary}`);
+  console.error(`#4420 host-chrome-tokens-only FAIL: ${summary}`);
   console.error("  Use color/edge/scrim tokens from constants/designSystem.ts and <Material> for any blur.");
   for (const line of lines) console.error(line);
   process.exit(1);
@@ -298,6 +329,6 @@ if (exitCode(report, enforce) !== 0) {
 if (report.files === 0) {
   console.log(`#4420 host-chrome-tokens-only PASS: 0 offenders in ${files.length} scanned files${enforce ? " (enforcing)" : ""}`);
 } else {
-  console.log(`#4420 host-chrome-tokens-only REPORT (not enforced until #4420 wave 6 sets ISSUE_4420_ENFORCE=1): ${summary}`);
+  console.log(`#4420 host-chrome-tokens-only REPORT (ISSUE_4420_REPORT=1, not enforced): ${summary}`);
   for (const line of lines) console.log(line);
 }

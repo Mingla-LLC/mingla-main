@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   // Solid white behind the code: near-black-on-white is a scanner hardware
   // requirement, not a style choice.
   qrCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: color.paper,
     padding: space[2],
     borderRadius: 16,
     alignItems: "center",

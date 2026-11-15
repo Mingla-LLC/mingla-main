@@ -66,7 +66,7 @@ function ViewerPage({ item, request, progress, stage, active, renderThumbnail }:
   if (item.kind === "video") return <ActiveVideo source={request} label={item.name} style={boxStyle} />;
   if (item.mime === "application/pdf") {
     if (Platform.OS === "web") {
-      return React.createElement("iframe", { src: request.uri, title: item.name, style: { border: 0, background: "#fff", ...boxStyle } });
+      return React.createElement("iframe", { src: request.uri, title: item.name, style: { border: 0, background: color.paper, ...boxStyle } });
     }
     return <WebView source={request} style={[boxStyle, styles.pdf]} javaScriptEnabled={false} sharedCookiesEnabled={false} />;
   }
@@ -230,8 +230,8 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
     );
   }
 
-  const closeButton = <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.close_a11y")} onPress={onClose} style={styles.circle}><Icon name="close" size={20} color="#fff" /></Pressable>;
-  const deliverButton = <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === "web" ? t("viewer.download") : Platform.OS === "ios" ? t("viewer.share") : t("viewer.save")} onPress={() => void deliverFile()} style={Platform.OS === "web" ? styles.action : styles.circle}>{Platform.OS === "web" ? <Text style={styles.actionText}>{t("viewer.download")}</Text> : <Icon name={Platform.OS === "ios" ? "share" : "download"} size={20} color="#fff" />}</Pressable>;
+  const closeButton = <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.close_a11y")} onPress={onClose} style={styles.circle}><Icon name="close" size={20} color={color.textStrong} /></Pressable>;
+  const deliverButton = <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === "web" ? t("viewer.download") : Platform.OS === "ios" ? t("viewer.share") : t("viewer.save")} onPress={() => void deliverFile()} style={Platform.OS === "web" ? styles.action : styles.circle}>{Platform.OS === "web" ? <Text style={styles.actionText}>{t("viewer.download")}</Text> : <Icon name={Platform.OS === "ios" ? "share" : "download"} size={20} color={color.textStrong} />}</Pressable>;
   const showInChatButton = current?.messageId ? <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.show_in_chat")} onPress={() => { const id = current.messageId; onClose(); onShowInChat(id); }} style={styles.action}><Text style={styles.actionText}>{t("viewer.show_in_chat")}</Text></Pressable> : null;
   const topBar = current ? (
     <View style={[styles.topRow, usesLargeTextLayout && styles.topRowLargeText]}>
@@ -258,9 +258,9 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
       {(stage) => (
         <WebSafeGestureDetector gesture={verticalDismiss}>
           <Animated.View style={[styles.stageLine, dismissStyle]}>
-            {Platform.OS === "web" && index > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.previous_a11y")} onPress={() => move(-1)} style={styles.arrow}><Icon name="arrowL" size={22} color="#fff" /></Pressable> : null}
+            {Platform.OS === "web" && index > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.previous_a11y")} onPress={() => move(-1)} style={styles.arrow}><Icon name="arrowL" size={22} color={color.textStrong} /></Pressable> : null}
             {renderStage(stage)}
-            {Platform.OS === "web" && index < items.length - 1 ? <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.next_a11y")} onPress={() => move(1)} style={styles.arrow}><View style={styles.arrowRight}><Icon name="arrowL" size={22} color="#fff" /></View></Pressable> : null}
+            {Platform.OS === "web" && index < items.length - 1 ? <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.next_a11y")} onPress={() => move(1)} style={styles.arrow}><View style={styles.arrowRight}><Icon name="arrowL" size={22} color={color.textStrong} /></View></Pressable> : null}
           </Animated.View>
         </WebSafeGestureDetector>
       )}
@@ -273,22 +273,22 @@ const styles = StyleSheet.create({
   page: { alignItems: "center", justifyContent: "center" },
   topRow: { minHeight: 56, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingVertical: 6 },
   topRowLargeText: { minHeight: 84, paddingVertical: 10 },
-  circle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.14)" },
+  circle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.step },
   topCopy: { flex: 1, minWidth: 0 },
-  itemTitle: { color: "#fff", fontSize: 14, fontWeight: "800", textAlign: "center" },
-  meta: { color: "rgba(255,255,255,0.6)", fontSize: 11, marginTop: 2 },
-  action: { minHeight: 44, justifyContent: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.12)" },
-  actionText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  arrow: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.12)" },
+  itemTitle: { color: color.textStrong, fontSize: 14, fontWeight: "800", textAlign: "center" },
+  meta: { color: color.text3, fontSize: 11, marginTop: 2 },
+  action: { minHeight: 44, justifyContent: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 22, backgroundColor: color.fill.step },
+  actionText: { color: color.textStrong, fontSize: 13, fontWeight: "700" },
+  arrow: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.step },
   arrowRight: { transform: [{ rotate: "180deg" }] },
   bottom: { minHeight: 72, alignItems: "center", gap: 4, paddingBottom: 4 },
   strip: { gap: 6, paddingHorizontal: space[4] },
   stripItem: { width: 44, minHeight: 44, borderRadius: 8, padding: 4, opacity: 0.55 },
   stripItemActive: { borderWidth: 2, borderColor: color.accent, opacity: 1 },
   stripThumb: { width: 36, height: 36, borderRadius: 5 },
-  hint: { color: "rgba(255,255,255,0.45)", fontSize: 11 },
-  feedbackError: { color: "#ff9b9b" },
+  hint: { color: color.text3, fontSize: 11 },
+  feedbackError: { color: color.errorText },
   state: { alignItems: "center", justifyContent: "center", gap: space[4], padding: space[7] },
   stateText: { color: color.text2, textAlign: "center", lineHeight: 20, maxWidth: 480 },
-  pdf: { backgroundColor: "#fff" },
+  pdf: { backgroundColor: color.paper },
 });

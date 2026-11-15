@@ -32,7 +32,7 @@ export const IntelProgress: React.FC = () => {
       {STAGES.map((label, index) => (
         <View key={label} style={styles.row}>
           {index < stage ? (
-            <Icon name="check" size={16} color="#22c55e" />
+            <Icon name="check" size={16} color={color.successText} />
           ) : index === stage ? (
             <ActivityIndicator size="small" color={color.accent} />
           ) : (
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: color.fill.step,
     marginHorizontal: 3,
   },
   line: { ...type.small, color: color.text2 },

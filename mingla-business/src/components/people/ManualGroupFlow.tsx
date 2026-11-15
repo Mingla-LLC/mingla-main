@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
   host: { flex: 1, backgroundColor: color.canvas, paddingHorizontal: space[4], paddingBottom: space[4], gap: space[4] },
   flex: { flex: 1, gap: space[2] }, body: { gap: space[4] }, header: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[2] },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" }, headerCopy: { flex: 1 }, title: { ...type.h1, color: color.text1 }, step: { ...type.caption, color: color.text3 },
-  helper: { ...type.small, color: color.text2 }, error: { ...type.small, color: "#ff8e96" }, warning: { ...type.small, color: color.warning },
+  helper: { ...type.small, color: color.text2 }, error: { ...type.small, color: color.errorText }, warning: { ...type.small, color: color.warning },
   inputLabel: { ...type.caption, fontWeight: "600", color: color.text2 },
   sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] }, sourceCard: { flex: 1, flexBasis: 142, minHeight: 142, padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.inset, gap: space[2] },
   sourceTitle: { ...type.body, fontWeight: "600", color: color.text1 }, selection: { ...type.small, color: color.text1 }, skeletons: { gap: space[2] },

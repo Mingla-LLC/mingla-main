@@ -164,7 +164,7 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
 
 const styles = StyleSheet.create({
   // #2211 — `host` keeps only the frame; centring moved to `scrollContent`.
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1, overflow: "hidden" },
   scrollContent: {
     // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).

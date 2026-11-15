@@ -20,15 +20,20 @@
 import React from "react";
 import { StyleSheet, Text, View, type ViewStyle } from "react-native";
 
-import { radius, space, color } from "../../constants/designSystem";
+import {
+  radius,
+  space,
+  color,
+  materials,
+} from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatCurrency } from "../../utils/currency";
 import { useCart } from "./CartContext";
 
 const SUMMARY_WIDTH = 380;
 const CONTENT_MAX_WIDTH = 1180;
-const SURFACE = "#14171c";
-const HAIRLINE = "rgba(255, 255, 255, 0.10)";
+const SURFACE = color.card;
+const HAIRLINE = color.lineStrong;
 
 /** True when the checkout uses the two-column desktop layout. */
 export function useCheckoutWideLayout(): boolean {
@@ -169,9 +174,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingTop: space[4],
     paddingHorizontal: space[6],
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    backgroundColor: materials.chrome.glassFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
   summary: {
     width: SUMMARY_WIDTH,

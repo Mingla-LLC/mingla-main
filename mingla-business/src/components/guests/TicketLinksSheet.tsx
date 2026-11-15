@@ -3,7 +3,12 @@ import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
-import { radius, space, color } from "../../constants/designSystem";
+import {
+  radius,
+  space,
+  color,
+  materials,
+} from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
 import type { TicketLinkRecord } from "../../services/ticketLinksService";
 import { copyPublicUrl, sharePublicUrl } from "../../utils/sharePublicUrl";
@@ -551,7 +556,7 @@ const styles = StyleSheet.create({
   smallActions: { flexDirection: "row", gap: space[6] },
   actionText: { color: color.accent, fontSize: 13, fontWeight: "700" },
   destructive: { color: color.danger, fontSize: 13, fontWeight: "700" },
-  pending: { marginHorizontal: space[4], marginBottom: space[2], padding: space[4], borderRadius: radius.md, backgroundColor: "rgba(250, 180, 40, 0.12)", flexDirection: "row", alignItems: "center", gap: space[2] },
+  pending: { marginHorizontal: space[4], marginBottom: space[2], padding: space[4], borderRadius: radius.md, backgroundColor: color.warningTint, flexDirection: "row", alignItems: "center", gap: space[2] },
   pendingText: { flex: 1, color: color.text1, fontWeight: "600", fontSize: 13 },
   center: { alignItems: "center", paddingVertical: space[7], gap: space[4] },
   emptyTitle: { color: color.text1, fontSize: 17, fontWeight: "700" },
@@ -562,7 +567,7 @@ const styles = StyleSheet.create({
   choice: { padding: space[4], borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset },
   expiryChoice: { flex: 1 },
   expiryNative: { gap: space[2] },
-  choiceActive: { borderColor: color.accent, backgroundColor: "rgba(235,120,37,0.14)" },
+  choiceActive: { borderColor: color.accent, backgroundColor: color.accentTint },
   choiceText: { color: color.text1, fontSize: 14, fontWeight: "600" },
   chip: { paddingHorizontal: space[4], paddingVertical: space[2], borderRadius: 999, borderWidth: 1, borderColor: color.line },
   helper: { color: color.text3, fontSize: 12, lineHeight: 17 },
@@ -573,7 +578,7 @@ const styles = StyleSheet.create({
   noTypesTitle: { color: color.text1, fontSize: 15, fontWeight: "700", lineHeight: 21 },
   noTypesActions: { gap: space[2], marginTop: space[1] },
   url: { color: color.text1, fontFamily: "monospace", backgroundColor: color.fill.inset, padding: space[4], borderRadius: radius.md },
-  toast: { color: color.text1, backgroundColor: "rgba(20,20,20,0.94)", padding: space[4], margin: space[4], borderRadius: radius.md, textAlign: "center" },
+  toast: { color: color.text1, backgroundColor: materials.chrome.glassFill, padding: space[4], margin: space[4], borderRadius: radius.md, textAlign: "center" },
 });
 
 export default TicketLinksSheet;

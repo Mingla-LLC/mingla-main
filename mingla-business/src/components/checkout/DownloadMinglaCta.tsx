@@ -791,7 +791,7 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     padding: 0,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: color.paper,
   },
   claimScanInstruction: {
     fontSize: 14,

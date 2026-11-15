@@ -1036,7 +1036,7 @@ const s = StyleSheet.create({
   },
   bandWarn: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(245, 158, 11, 0.45)",
+    borderBottomColor: color.warning,
   },
   bandRow: { flexDirection: "row", alignItems: "center", gap: space[1] + 2 },
   bandLabel: { ...type.label, color: color.warning, flexShrink: 1 },
@@ -1149,7 +1149,7 @@ const s = StyleSheet.create({
     paddingVertical: space[2] + space[1],
     marginBottom: space[2],
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(245, 158, 11, 0.45)",
+    borderColor: color.warning,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",

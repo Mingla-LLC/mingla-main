@@ -44,7 +44,7 @@ const MultiDateDayChooser = React.lazy(() => import("../event/MultiDateDayChoose
 
 // The link page's own dark surface, expressed as the chooser's palette.
 const LINK_PALETTE: ThemePalette = {
-  page: "#0c0e12",
+  page: color.canvas,
   accent: color.accent,
   accentText: color.accent,
   primaryText: color.text1,
@@ -57,7 +57,7 @@ const LINK_PALETTE: ThemePalette = {
   cutoutBorder: color.line,
   glass: color.fill.inset,
   glassTint: "dark",
-  accentWash: "rgba(235,120,37,0.10)",
+  accentWash: color.accentTint,
 };
 
 type PersonDraft = { id: string; name: string; email: string; phone: string };
@@ -512,8 +512,8 @@ function Legal(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: color.canvas },
   content: { width: "100%", maxWidth: 640, alignSelf: "center", padding: space[6], paddingBottom: 64, gap: space[4] },
   eventCard: { overflow: "hidden", borderRadius: radius.lg, backgroundColor: color.fill.inset, borderWidth: 1, borderColor: color.line },
   eventText: { padding: space[6], gap: 4 },
@@ -532,7 +532,7 @@ const styles = StyleSheet.create({
   error: { color: color.danger, fontSize: 13, lineHeight: 18 },
   legal: { color: color.text3, textAlign: "center", fontSize: 12, lineHeight: 18, marginTop: space[2] },
   link: { color: color.text2, textDecorationLine: "underline" },
-  stateIcon: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,122,69,0.12)", marginBottom: space[4] },
+  stateIcon: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: color.accentTint, marginBottom: space[4] },
   stateTitle: { color: color.text1, fontSize: 25, fontWeight: "800", textAlign: "center" },
   stateBody: { color: color.text2, fontSize: 15, lineHeight: 22, textAlign: "center", marginTop: space[2], maxWidth: 420 },
 });

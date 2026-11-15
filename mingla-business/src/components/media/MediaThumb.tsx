@@ -7,7 +7,7 @@ import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { formatMediaDuration } from "../../utils/formatMediaDuration";
 import { Icon } from "../ui/Icon";
-import { color } from "../../constants/designSystem";
+import { color, scrim } from "../../constants/designSystem";
 import { useBrandGroupLocalPreview } from "../messages/brandGroupLocalPreviews";
 import { BrandGroupCachedImage } from "./BrandGroupCachedImage";
 import { requestThumbnailForState, thumbnailResolutionPlan } from "./thumbnailResolution";
@@ -139,7 +139,7 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
           {item.thumbState === "pending" ? <Text style={styles.preparing} numberOfLines={2}>{t("media.preparing")}</Text> : null}
         </View>
       )}
-      {item.kind === "video" ? <View style={[styles.play, bubble && styles.playBubble]}><Icon name="play" size={bubble ? 18 : 14} color="#fff" /></View> : null}
+      {item.kind === "video" ? <View style={[styles.play, bubble && styles.playBubble]}><Icon name="play" size={bubble ? 18 : 14} color={color.textStrong} /></View> : null}
       {duration ? <Text style={styles.duration}>{duration}</Text> : null}
     </View>
   );
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   root: { overflow: "hidden", backgroundColor: color.fill.tile },
   placeholder: { flex: 1, minHeight: 60, alignItems: "center", justifyContent: "center", gap: 4 },
   preparing: { color: color.text3, fontSize: 10, textAlign: "center", paddingHorizontal: 4 },
-  play: { position: "absolute", left: 8, top: 8, width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.55)" },
+  play: { position: "absolute", left: 8, top: 8, width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: scrim.modal },
   playBubble: { left: "50%", top: "50%", width: 40, height: 40, marginLeft: -20, marginTop: -20, borderRadius: 20 },
-  duration: { position: "absolute", right: 6, bottom: 5, color: "#fff", fontSize: 10, fontWeight: "700", textShadowColor: "#000", textShadowRadius: 3 },
+  duration: { position: "absolute", right: 6, bottom: 5, color: color.textStrong, fontSize: 10, fontWeight: "700", textShadowColor: color.mask, textShadowRadius: 3 },
 });

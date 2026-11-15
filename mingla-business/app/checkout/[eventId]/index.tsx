@@ -917,7 +917,7 @@ const styles = StyleSheet.create({
   },
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   scroll: {
     flex: 1,

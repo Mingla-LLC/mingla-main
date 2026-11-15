@@ -40,15 +40,15 @@ type KeyboardToolbarTheme = NonNullable<KeyboardToolbarProps["theme"]>;
 export const MINGLA_KEYBOARD_TOOLBAR_THEME: KeyboardToolbarTheme = {
   light: {
     primary: color.accent, // AA on the light toolbar background
-    disabled: "#B0BEC5",
-    background: "#f3f3f4",
-    ripple: "#bcbcbcbc",
+    disabled: color.keyboardToolbar.lightDisabled,
+    background: color.keyboardToolbar.lightBackground,
+    ripple: color.keyboardToolbar.lightRipple,
   },
   dark: {
     primary: color.accent, // #eb7825 — Done text, brand action color
-    disabled: "#707070",
-    background: "#2C2C2E",
-    ripple: "#F8F8F888",
+    disabled: color.keyboardToolbar.darkDisabled,
+    background: color.keyboardToolbar.darkBackground,
+    ripple: color.keyboardToolbar.darkRipple,
   },
 };
 
@@ -116,7 +116,7 @@ const AvailabilityToolbarButton = ({
       accessibilityState={{ disabled: effectiveDisabled }}
       android_ripple={
         Platform.OS === "android"
-          ? { color: "#F8F8F888", radius: 22 }
+          ? { color: color.keyboardToolbar.darkRipple, radius: 22 }
           : undefined
       }
       disabled={effectiveDisabled}

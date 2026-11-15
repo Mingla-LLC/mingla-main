@@ -14,20 +14,21 @@ import type {
 
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 
+import { color } from "../../constants/designSystem";
 const brandPhoneTheme = (palette: EnquiryPhoneFieldArgs["palette"]): PhoneInputTheme => ({
   backgroundPrimary: palette.card,
   textPrimary: palette.primaryText,
   textTertiary: palette.tertiaryText,
   borderDefault: palette.panelBorder,
   borderFocused: palette.accent,
-  borderError: "#ef4444",
+  borderError: color.danger,
   searchBackground: palette.page,
   rowPressedBackground: palette.accentWash,
   divider: palette.panelBorder,
   accessoryBackground: palette.card,
   accessoryBorder: palette.panelBorder,
   accent: palette.accent,
-  errorText: "#ef4444",
+  errorText: color.errorText,
 });
 
 export interface EnquiryPhoneFieldProps extends EnquiryPhoneFieldArgs {

@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { SourceRefundSummary } from "../../types/venueReservation";
 
+import { color } from "../../constants/designSystem";
 const COPY = {
   queued: "Queued",
   provider_pending: "Processing",
@@ -32,6 +33,6 @@ export function SourceRefundStatusChip({
   );
 }
 const styles = StyleSheet.create({
-  chip: { alignSelf: "flex-start", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#fef3c7" },
-  text: { color: "#1f2937", fontWeight: "600", fontSize: 12 },
+  chip: { alignSelf: "flex-start", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: color.onPaper.noticeFill },
+  text: { color: color.onPaper.noticeText, fontWeight: "600", fontSize: 12 },
 });

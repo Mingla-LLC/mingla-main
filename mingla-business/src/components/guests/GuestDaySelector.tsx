@@ -102,7 +102,7 @@ export const GuestDaySelector: React.FC<GuestDaySelectorProps> = ({
           >
             <Text
               style={{
-                color: safeIndex <= 0 ? "rgba(255,255,255,0.35)" : color.accent,
+                color: safeIndex <= 0 ? color.text4 : color.accent,
               }}
             >
               ‹
@@ -122,7 +122,7 @@ export const GuestDaySelector: React.FC<GuestDaySelectorProps> = ({
               style={{
                 color:
                   safeIndex >= months.length - 1
-                    ? "rgba(255,255,255,0.35)"
+                    ? color.text4
                     : color.accent,
               }}
             >
@@ -200,18 +200,18 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.16)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
     alignSelf: "flex-start",
   },
   chipActive: {
     borderColor: color.accent,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
+    backgroundColor: color.accentTint,
   },
   chipLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "rgba(255, 255, 255, 0.72)",
+    color: color.text2,
   },
-  chipLabelActive: { color: "rgba(255, 255, 255, 0.98)" },
+  chipLabelActive: { color: color.text1 },
 });

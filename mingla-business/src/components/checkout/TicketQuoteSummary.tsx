@@ -12,6 +12,7 @@ import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import type { BuyerDiscountSurface } from "./DiscountCodeField";
 import { formatQuoteMoney } from "./quoteMoney";
 
+import { color } from "../../constants/designSystem";
 export interface TicketQuoteSummaryProps {
   quote: TicketQuote;
   compact?: boolean;
@@ -179,25 +180,25 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
-  label: { flex: 1, color: "#5f6572", fontSize: 14 },
-  value: { color: "#252936", fontSize: 14, fontVariant: ["tabular-nums"] },
+  label: { flex: 1, color: color.text3, fontSize: 14 },
+  value: { color: color.card3, fontSize: 14, fontVariant: ["tabular-nums"] },
   moneyPair: { flexDirection: "row", alignItems: "center", gap: 8 },
   struckMoney: {
-    color: "#8a909d",
+    color: color.text2,
     textDecorationLine: "line-through",
     fontVariant: ["tabular-nums"],
   },
-  discountLabel: { flex: 1, color: "#28724a", fontSize: 14 },
-  discountValue: { color: "#28724a", fontSize: 14, fontWeight: "600" },
+  discountLabel: { flex: 1, color: color.onPaper.successSoft, fontSize: 14 },
+  discountValue: { color: color.onPaper.successSoft, fontSize: 14, fontWeight: "600" },
   totalRow: {
     marginTop: 4,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#dfe2e8",
+    borderTopColor: color.text2,
   },
-  totalLabel: { color: "#15181f", fontSize: 16, fontWeight: "700" },
+  totalLabel: { color: color.card, fontSize: 16, fontWeight: "700" },
   totalValue: {
-    color: "#15181f",
+    color: color.card,
     fontSize: 17,
     fontWeight: "800",
     fontVariant: ["tabular-nums"],
@@ -206,27 +207,27 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 18,
     borderRadius: 14,
-    backgroundColor: "#fff8ed",
+    backgroundColor: color.onPaper.warningFill,
     borderWidth: 1,
-    borderColor: "#f3c98b",
+    borderColor: color.onPaper.warningLine,
   },
-  reviewTitle: { color: "#6d3908", fontSize: 21, fontWeight: "800" },
+  reviewTitle: { color: color.onPaper.warningTitle, fontSize: 21, fontWeight: "800" },
   reviewTotals: { flexDirection: "row", alignItems: "baseline", gap: 10 },
-  reviewNewTotal: { color: "#15181f", fontSize: 24, fontWeight: "800" },
-  reviewReason: { color: "#6d4b2a", lineHeight: 20 },
+  reviewNewTotal: { color: color.card, fontSize: 24, fontWeight: "800" },
+  reviewReason: { color: color.onPaper.warningText, lineHeight: 20 },
   primaryButton: {
     minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 12,
-    backgroundColor: "#eb7825",
+    backgroundColor: color.accent,
   },
-  primaryButtonText: { color: "#ffffff", fontSize: 16, fontWeight: "800" },
+  primaryButtonText: { color: color.textStrong, fontSize: 16, fontWeight: "800" },
   secondaryButton: {
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-  secondaryButtonText: { color: "#7a3a11", fontWeight: "700" },
+  secondaryButtonText: { color: color.onPaper.warningAction, fontWeight: "700" },
   buttonDisabled: { opacity: 0.55 },
 });

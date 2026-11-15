@@ -67,7 +67,7 @@ export default function CheckoutWaitlistScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
     paddingHorizontal: space[6],
     gap: space[4],
   },

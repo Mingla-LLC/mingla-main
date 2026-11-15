@@ -57,10 +57,10 @@ const MINGLA_BUSINESS_THEME: QuantityRowTheme = {
   stepperBorder: color.lineStrong,
   semanticWarning: color.warning,
   semanticError: color.danger,
-  saleBannerBg: "rgba(245, 158, 11, 0.12)",
-  saleBannerBorder: "rgba(245, 158, 11, 0.32)",
-  soldOutBg: "rgba(239, 68, 68, 0.16)",
-  soldOutBorder: "rgba(239, 68, 68, 0.32)",
+  saleBannerBg: color.warningTint,
+  saleBannerBorder: color.warning,
+  soldOutBg: color.errorTint,
+  soldOutBorder: color.errorLine,
 };
 
 interface BusinessCardWrapProps {

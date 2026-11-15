@@ -63,7 +63,7 @@ export default function VenueReservationCancelledRoute(): React.ReactElement {
 
 const styles = StyleSheet.create({
   // #2211 — `host` keeps only the frame; centring moved to `scrollContent`.
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1, overflow: "hidden" },
   hostBarWrap: { paddingHorizontal: space[4], paddingTop: space[2] },
   scrollContent: {

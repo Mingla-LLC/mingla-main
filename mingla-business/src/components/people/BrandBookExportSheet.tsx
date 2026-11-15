@@ -23,6 +23,7 @@ import {
   color as dsColor,
   space,
   type as dsType,
+  materials,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -382,7 +383,7 @@ export function BrandBookExportSheet({
       snapPoint={0.8}
       testID="brand-book-export-sheet"
       style={styles.sheet}
-      panelBackground={Platform.OS === "android" ? "#16181b" : undefined}
+      panelBackground={Platform.OS === "android" ? materials.sheet.solidFill : undefined}
     >
       <View
         ref={dialogRef}

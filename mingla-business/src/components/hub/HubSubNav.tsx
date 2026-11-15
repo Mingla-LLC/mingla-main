@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   pillLabelActive: {
-    color: "#0c0e12",
+    color: color.ink,
   },
   pillLabelInactive: {
     color: color.text2,

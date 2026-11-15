@@ -12,6 +12,7 @@ import React, { Suspense } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
+import { color } from "../../src/constants/designSystem";
 const GuestThreadScreen = React.lazy(
   () => import("../../src/components/brandContact/GuestThreadScreen"),
 );
@@ -23,7 +24,7 @@ export default function GuestThreadRoute(): React.ReactElement {
     <Suspense
       fallback={
         <View style={styles.loading}>
-          <ActivityIndicator color="#ff7a45" />
+          <ActivityIndicator color={color.accentText} />
         </View>
       }
     >
@@ -37,6 +38,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
 });

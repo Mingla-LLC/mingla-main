@@ -1153,7 +1153,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: space[7],
     gap: space[4],
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   stateTitle: {
     fontSize: type.h1.fontSize,

@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   host: {
     paddingHorizontal: space[4],
     paddingBottom: space[2],
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
     ...(Platform.OS === "web"
       ? {
           position: "sticky" as unknown as "absolute",
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   divider: {
     marginTop: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
 });
 
