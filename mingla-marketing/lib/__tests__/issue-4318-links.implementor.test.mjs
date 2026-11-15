@@ -132,11 +132,12 @@ test('the week is today through today+6 in the city zone, grouped by day, with a
   const listings = week.bucketListings(rows, CITIES)
   const pins = week.normalisePins([
     // Admin strips are not by city (#4318 addendum 2): no city_slug at all.
-    { id: 'p1', shows_on: '2026-11-12', title: 'Giveaway strip', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 2 },
-    { id: 'p2', shows_on: '2026-11-09', title: 'Event link strip', label: 'From Mingla', opens: 'web', url: 'host.usemingla.com/e/apexmanager/beach-unwind-2-0?ref=bio', blog_slug: null, position: 1 },
-    { id: 'p3', shows_on: '2026-11-09', title: 'Host strip', label: 'New', opens: 'host', url: null, blog_slug: null, position: 0 },
-    { id: 'p4', shows_on: '2026-11-06', title: 'Expired', label: 'New', opens: 'host', url: null, blog_slug: null, position: -1 },
-    { id: 'p5', shows_on: '2026-11-09', title: 'Bad web link', label: 'New', opens: 'web', url: 'not a url', blog_slug: null, position: 3 },
+    // #4339: each carries the window links_page_strips() sends (New York time).
+    { id: 'p1', shows_on: '2026-11-07', shows_until: '2026-11-12', title: 'Giveaway strip', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 2, time_zone: 'America/New_York', starts_at: '2026-11-07T05:00:00Z', ends_at: '2026-11-13T05:00:00Z' },
+    { id: 'p2', shows_on: '2026-11-07', title: 'Event link strip', label: 'From Mingla', opens: 'web', url: 'host.usemingla.com/e/apexmanager/beach-unwind-2-0?ref=bio', blog_slug: null, position: 1, time_zone: 'America/New_York', starts_at: '2026-11-07T05:00:00Z', ends_at: '2026-11-08T05:00:00Z' },
+    { id: 'p3', shows_on: '2026-11-07', title: 'Host strip', label: 'New', opens: 'host', url: null, blog_slug: null, position: 0, time_zone: 'America/New_York', starts_at: '2026-11-07T05:00:00Z', ends_at: '2026-11-08T05:00:00Z' },
+    { id: 'p4', shows_on: '2026-11-06', title: 'Expired', label: 'New', opens: 'host', url: null, blog_slug: null, position: -1, time_zone: 'America/New_York', starts_at: '2026-11-06T05:00:00Z', ends_at: '2026-11-07T05:00:00Z' },
+    { id: 'p5', shows_on: '2026-11-07', title: 'Bad web link', label: 'New', opens: 'web', url: 'not a url', blog_slug: null, position: 3, time_zone: 'America/New_York', starts_at: '2026-11-07T05:00:00Z', ends_at: '2026-11-08T05:00:00Z' },
   ])
   const w = week.cityWeek(city('raleigh-nc'), listings, pins, NOW)
   assert.equal(w.today, '2026-11-07')
@@ -149,7 +150,9 @@ test('the week is today through today+6 in the city zone, grouped by day, with a
   // Labels: Tonight for today from 5 PM, else kind and day; admin strips show label and day only.
   assert.deepEqual(week.listingWhen(w.listings[0], w.today), { tonight: true, text: 'Tonight' })
   assert.deepEqual(week.listingWhen(w.listings[1], w.today), { tonight: false, text: 'Experience · Sun 8' })
-  assert.equal(week.pinWhen(w.pins[2], w.today), 'Giveaway · Thu 12')
+  assert.equal(week.pinWhen(w.pins[2], w.today), 'Giveaway · Today')
+  // A later first day still reads as its day (only shown once its window opens, #4339).
+  assert.equal(week.pinWhen({ ...w.pins[2], showsOn: '2026-11-12' }, w.today), 'Giveaway · Thu 12')
   assert.equal(week.timeLabel(w.listings[0].startsAt, w.listings[0].tz), '6:30 PM')
   // Strips never make a city live; only listings do.
   assert.deepEqual(week.liveCities(CITIES, listings, pins, NOW).map((l) => l.city.slug), ['raleigh-nc'])
@@ -446,43 +449,48 @@ test('the white wordmark in the orange bar goes Home, with a 44px target and a v
   assert.match(css, /\.lk-home:focus-visible \{\s*outline: 2px solid #fff/)
 })
 
-test('an admin strip shows in every city until its day has ended everywhere, and "Show until" keeps it up to its last day', () => {
-  // Live check 8 Nov 2026: an admin in Cary posted "Today, Sunday 8 November"
-  // at 23:04 ET; Lagos was already on Monday and hid it. Admin dates are the
-  // admin's own day, so no city ahead of it may cut the strip early.
+test('an admin strip shows in every city only inside the window the database sent (#4339), and "Show until" keeps it up to its last day', () => {
+  // #4339 replaced the #4318 "until the day has ended everywhere (UTC-12)"
+  // rule: links_page_strips() sends each strip's window (00:00 on shows_on to
+  // 00:00 after the last day, in the strip's own zone) and the page only
+  // checks startsAt <= now < endsAt. A city's own midnight never cuts it.
   const pins = week.normalisePins([
-    { id: 'today', shows_on: '2026-11-08', title: 'Posted Sunday evening', label: 'From Mingla', opens: 'host', url: null, blog_slug: null, position: 0 },
-    { id: 'range', shows_on: '2026-11-08', shows_until: '2026-11-15', title: 'Runs all week', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 1 },
-    { id: 'later', shows_on: '2026-11-12', title: 'Starts Thursday', label: 'New', opens: 'host', url: null, blog_slug: null, position: 2 },
-    { id: 'bad-until', shows_on: '2026-11-08', shows_until: '2026-11-01', title: 'Until before start', label: 'New', opens: 'host', url: null, blog_slug: null, position: 3 },
-    { id: 'junk-until', shows_on: '2026-11-08', shows_until: 'soon', title: 'Junk until', label: 'New', opens: 'host', url: null, blog_slug: null, position: 4 },
+    { id: 'today', shows_on: '2026-11-08', title: 'Posted Sunday evening', label: 'From Mingla', opens: 'host', url: null, blog_slug: null, position: 0,
+      time_zone: 'America/New_York', starts_at: '2026-11-08T05:00:00Z', ends_at: '2026-11-09T05:00:00Z' },
+    { id: 'range', shows_on: '2026-11-08', shows_until: '2026-11-15', title: 'Runs all week', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 1,
+      time_zone: 'Africa/Lagos', starts_at: '2026-11-07T23:00:00Z', ends_at: '2026-11-15T23:00:00Z' },
+    { id: 'later', shows_on: '2026-11-12', title: 'Starts Thursday', label: 'New', opens: 'host', url: null, blog_slug: null, position: 2,
+      time_zone: 'Europe/London', starts_at: '2026-11-12T00:00:00Z', ends_at: '2026-11-13T00:00:00Z' },
+    { id: 'bad-until', shows_on: '2026-11-08', shows_until: '2026-11-01', title: 'Until before start', label: 'New', opens: 'host', url: null, blog_slug: null, position: 3,
+      time_zone: 'America/New_York', starts_at: '2026-11-08T05:00:00Z', ends_at: '2026-11-09T05:00:00Z' },
+    { id: 'junk-until', shows_on: '2026-11-08', shows_until: 'soon', title: 'Junk until', label: 'New', opens: 'host', url: null, blog_slug: null, position: 4,
+      time_zone: 'America/New_York', starts_at: '2026-11-08T05:00:00Z', ends_at: '2026-11-09T05:00:00Z' },
   ])
   assert.deepEqual(pins.map((p) => [p.id, p.showsUntil]), [['today', null], ['range', '2026-11-15'], ['later', null], ['bad-until', null], ['junk-until', null]])
   const shown = (slug, now) => week.cityWeek(city(slug), [], pins, now).pins.map((p) => p.id)
 
-  // Sun 8 Nov 23:04 in Cary = Mon 9 Nov 05:04 in Lagos: the strip shows in both.
+  // Sun 8 Nov 23:04 in Cary = Mon 9 Nov 05:04 in Lagos: a New York strip for Sunday shows in both.
   const posted = '2026-11-09T04:04:00.000Z'
-  const all = ['today', 'range', 'later', 'bad-until', 'junk-until']
-  assert.deepEqual(shown('cary-nc', posted), all)
-  assert.deepEqual(shown('lagos', posted), all)
+  const sunday = ['today', 'range', 'bad-until', 'junk-until']
+  assert.deepEqual(shown('cary-nc', posted), sunday)
+  assert.deepEqual(shown('lagos', posted), sunday)
   const lagos = week.cityWeek(city('lagos'), [], pins, posted)
   assert.equal(lagos.today, '2026-11-09')
   assert.equal(week.pinWhen(lagos.pins[0], lagos.today), 'From Mingla · Today')
-  assert.equal(week.pinWhen(lagos.pins[2], lagos.today), 'New · Thu 12')
 
-  // Once Sunday has ended in the last time zone (UTC-12), the one-day strips go everywhere.
-  const gone = '2026-11-09T12:00:01.000Z'
-  assert.deepEqual(shown('cary-nc', gone), ['range', 'later'])
-  assert.deepEqual(shown('lagos', gone), ['range', 'later'])
-  // Just before that, it still shows in Cary (Monday 7 AM there).
-  assert.deepEqual(shown('cary-nc', '2026-11-09T11:59:59.000Z'), all)
+  // 00:00 Monday in New York (05:00 UTC) ends the Sunday strips everywhere; one millisecond before, they show.
+  assert.deepEqual(shown('cary-nc', '2026-11-09T04:59:59.999Z'), sunday)
+  assert.deepEqual(shown('cary-nc', '2026-11-09T05:00:00.000Z'), ['range'])
+  assert.deepEqual(shown('lagos', '2026-11-09T05:00:00.000Z'), ['range'])
 
-  // "Show until" keeps the strip up through its last day: Thursday 12 it is running ("Today").
+  // A strip dated in the future is not live before its first minute.
+  assert.deepEqual(shown('london', '2026-11-11T23:59:59.999Z'), ['range'])
   const thu = week.cityWeek(city('london'), [], pins, '2026-11-12T12:00:00.000Z')
   assert.deepEqual(thu.pins.map((p) => p.id), ['range', 'later'])
   assert.equal(week.pinWhen(thu.pins[0], thu.today), 'Giveaway · Today')
   assert.equal(week.pinDaysLabel(thu.pins[0]), 'Sunday 8 November – Sunday 15 November')
   assert.equal(week.pinDaysLabel(thu.pins[1]), 'Thursday 12 November')
-  assert.deepEqual(shown('lagos', '2026-11-16T11:59:59.000Z'), ['range'])
-  assert.deepEqual(shown('lagos', '2026-11-16T12:00:01.000Z'), [])
+  // "Show until" in Lagos time: up to 23:59 Sun 15 Nov there (22:59 UTC), gone at 00:00 Monday.
+  assert.deepEqual(shown('lagos', '2026-11-15T22:59:59.999Z'), ['range'])
+  assert.deepEqual(shown('lagos', '2026-11-15T23:00:00.000Z'), [])
 })

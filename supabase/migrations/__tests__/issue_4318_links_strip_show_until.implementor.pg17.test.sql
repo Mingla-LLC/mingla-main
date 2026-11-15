@@ -11,6 +11,20 @@
 -- Runs after the full migration replay; every fixture rolls back.
 BEGIN;
 
+-- #4339 (20280708004339): every strip now names a time zone and is public only
+-- inside its window in that zone. This #4318 suite predates it, so inside its
+-- rolled-back transaction its direct inserts default to UTC and its saves go
+-- through pg_temp.links_save (the same save, in UTC). The window rules are
+-- proven in issue_4339_links_strip_time_zone.implementor.pg17.test.sql.
+ALTER TABLE public.links_strips ALTER COLUMN time_zone SET DEFAULT 'UTC';
+CREATE FUNCTION pg_temp.links_save(
+  p_id uuid, p_shows_on date, p_title text, p_label text,
+  p_opens text, p_url text, p_blog_post_id uuid, p_shows_until date DEFAULT NULL
+) RETURNS public.links_strips LANGUAGE sql AS $function$
+  SELECT public.admin_links_strip_save(p_id, p_shows_on, p_title, p_label, p_opens, p_url, p_blog_post_id, p_shows_until, 'UTC');
+$function$;
+GRANT EXECUTE ON FUNCTION pg_temp.links_save(uuid, date, text, text, text, text, uuid, date) TO anon, authenticated;
+
 CREATE FUNCTION pg_temp.su_act(p_user uuid) RETURNS void LANGUAGE sql AS $function$
   SELECT set_config('request.jwt.claim.sub', COALESCE(p_user::text, ''), true),
          set_config('request.jwt.claims',
@@ -30,9 +44,10 @@ INSERT INTO public.support_staff (user_id, enabled, available, role) VALUES
 INSERT INTO public.links_strips (id, shows_on, shows_until, title, label, opens, position, is_published) VALUES
   ('4318c000-0000-4000-9000-000000000001', (now() AT TIME ZONE 'utc')::date - 5, (now() AT TIME ZONE 'utc')::date + 2, 'Running all week', 'New', 'host', 1, true),
   ('4318c000-0000-4000-9000-000000000002', (now() AT TIME ZONE 'utc')::date - 5, (now() AT TIME ZONE 'utc')::date - 2, 'Run is over', 'New', 'host', 2, true),
-  ('4318c000-0000-4000-9000-000000000003', (now() AT TIME ZONE 'utc')::date - 1, NULL, 'One day, last day', 'New', 'host', 3, true),
+  -- #4339: no UTC-1 grace any more; "last day" means today in the strip's zone (UTC here).
+  ('4318c000-0000-4000-9000-000000000003', (now() AT TIME ZONE 'utc')::date, NULL, 'One day, last day', 'New', 'host', 3, true),
   ('4318c000-0000-4000-9000-000000000004', (now() AT TIME ZONE 'utc')::date - 2, NULL, 'One day, gone', 'New', 'host', 4, true),
-  ('4318c000-0000-4000-9000-000000000005', (now() AT TIME ZONE 'utc')::date - 1, (now() AT TIME ZONE 'utc')::date - 1, 'Ends yesterday (UTC)', 'New', 'host', 5, true);
+  ('4318c000-0000-4000-9000-000000000005', (now() AT TIME ZONE 'utc')::date - 1, (now() AT TIME ZONE 'utc')::date, 'Ends today (UTC)', 'New', 'host', 5, true);
 
 -- ═══ R: what anon sees ════════════════════════════════════════════════════
 SET LOCAL ROLE anon;
@@ -96,7 +111,7 @@ BEGIN
   ) AS c(shows_on, shows_until, expected) LOOP
     v_message := NULL;
     BEGIN
-      PERFORM public.admin_links_strip_save(NULL, v_case.shows_on, 'Run', 'New', 'host', NULL, NULL, v_case.shows_until);
+      PERFORM pg_temp.links_save(NULL, v_case.shows_on, 'Run', 'New', 'host', NULL, NULL, v_case.shows_until);
     EXCEPTION WHEN raise_exception THEN v_message := SQLERRM;
     END;
     IF v_message IS DISTINCT FROM v_case.expected THEN
@@ -105,29 +120,30 @@ BEGIN
   END LOOP;
 
   -- A run that started last week and ends next week is valid and stored.
-  v_row := public.admin_links_strip_save(NULL, v_today - 5, 'Festival week', 'Featured', 'explorer', NULL, NULL, v_today + 4);
+  v_row := pg_temp.links_save(NULL, v_today - 5, 'Festival week', 'Featured', 'explorer', NULL, NULL, v_today + 4);
   IF v_row.shows_on <> v_today - 5 OR v_row.shows_until IS DISTINCT FROM v_today + 4 THEN
     RAISE EXCEPTION 'S: run stored wrong: %', to_jsonb(v_row);
   END IF;
   -- Same start and end is a one-day run.
-  v_again := public.admin_links_strip_save(NULL, v_today, 'Today only', 'New', 'host', NULL, NULL, v_today);
+  v_again := pg_temp.links_save(NULL, v_today, 'Today only', 'New', 'host', NULL, NULL, v_today);
   IF v_again.shows_until IS DISTINCT FROM v_today THEN RAISE EXCEPTION 'S: same-day end refused'; END IF;
 
-  -- The 7-argument call (every existing caller) still works and stores NULL.
-  v_again := public.admin_links_strip_save(NULL, v_today, 'Old caller', 'New', 'host', NULL, NULL);
+  -- The 7-argument call (no end date) stores NULL. #4339: the public save now
+  -- also needs a zone; pg_temp.links_save passes UTC.
+  v_again := pg_temp.links_save(NULL, v_today, 'Old caller', 'New', 'host', NULL, NULL);
   IF v_again.shows_until IS NOT NULL THEN RAISE EXCEPTION 'S: the 7-argument call stored an end date'; END IF;
   -- Named arguments without p_shows_until (how PostgREST calls it) too.
-  v_again := public.admin_links_strip_save(p_id => NULL, p_shows_on => v_today, p_title => 'Named caller',
+  v_again := pg_temp.links_save(p_id => NULL, p_shows_on => v_today, p_title => 'Named caller',
     p_label => 'New', p_opens => 'host', p_url => NULL, p_blog_post_id => NULL);
   IF v_again.shows_until IS NOT NULL THEN RAISE EXCEPTION 'S: the named call stored an end date'; END IF;
 
   -- An update can clear the end date; the strip then runs on shows_on only.
-  v_again := public.admin_links_strip_save(v_row.id, v_today, 'Festival week', 'Featured', 'explorer', NULL, NULL, NULL);
+  v_again := pg_temp.links_save(v_row.id, v_today, 'Festival week', 'Featured', 'explorer', NULL, NULL, NULL);
   IF v_again.shows_until IS NOT NULL OR v_again.position <> v_row.position THEN
     RAISE EXCEPTION 'S: clearing the end date failed: %', to_jsonb(v_again);
   END IF;
   -- And set it again on update.
-  v_again := public.admin_links_strip_save(v_row.id, v_today, 'Festival week', 'Featured', 'explorer', NULL, NULL, v_today + 6);
+  v_again := pg_temp.links_save(v_row.id, v_today, 'Festival week', 'Featured', 'explorer', NULL, NULL, v_today + 6);
   IF v_again.shows_until IS DISTINCT FROM v_today + 6 THEN RAISE EXCEPTION 'S: setting the end date on update failed'; END IF;
 
   -- L: the list carries shows_until and expiry follows the later day.
@@ -147,19 +163,19 @@ RESET ROLE;
 -- ═══ G: one overload, grants unchanged ════════════════════════════════════
 DO $test$
 BEGIN
-  IF to_regprocedure('public.admin_links_strip_save(uuid,date,text,text,text,text,uuid)') IS NOT NULL THEN
+  IF to_regprocedure('public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)') IS NOT NULL THEN
     RAISE EXCEPTION 'G: the old 7-argument signature still exists beside the new one';
   END IF;
   IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public' AND p.proname = 'admin_links_strip_save') <> 1 THEN
     RAISE EXCEPTION 'G: more than one admin_links_strip_save overload';
   END IF;
-  IF has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)', 'EXECUTE')
-     OR NOT has_function_privilege('authenticated', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)', 'EXECUTE')
+  IF has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date,text)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date,text)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strips_list()', 'EXECUTE')
      OR NOT has_function_privilege('anon', 'public.links_page_strips()', 'EXECUTE')
      OR (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_strips()'::regprocedure)
-     OR NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)'::regprocedure) THEN
+     OR NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date,text)'::regprocedure) THEN
     RAISE EXCEPTION 'G: grants or security mode drifted';
   END IF;
   IF NOT has_column_privilege('anon', 'public.links_strips', 'shows_until', 'SELECT')

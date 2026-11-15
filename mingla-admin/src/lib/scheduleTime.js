@@ -6,7 +6,8 @@
 
 import { SERVER_TIME_ZONES } from "./serverTimeZones.js";
 
-const SERVER_ZONES = new Set(SERVER_TIME_ZONES);
+/** Every zone the database knows (pg_timezone_names), as a Set. */
+export const SERVER_ZONES = new Set(SERVER_TIME_ZONES);
 
 /**
  * The browser's own zone when the server accepts it, else UTC (a browser can
@@ -21,7 +22,8 @@ export function browserTimeZone() {
   }
 }
 
-const COMMON_ZONES = ["Africa/Lagos", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Helsinki", "Europe/Dublin", "UTC"];
+/** Mingla cities and common zones, shown first in every zone picker (#4383, #4339). */
+export const COMMON_ZONES = Object.freeze(["Africa/Lagos", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Helsinki", "Europe/Dublin", "UTC"]);
 
 /** Every zone both the browser and the server know (common ones first), plus `extra` when valid. */
 export function timeZoneOptions(extra = []) {

@@ -2771,8 +2771,10 @@
       "capability_key": "staff-community-support",
       "paths": [
         "mingla-admin/src/components/links/LinksPagePanel.jsx",
+        "mingla-admin/src/components/ui/TimeZoneCombobox.jsx",
         "mingla-admin/src/lib/linksStrips.js",
         "mingla-admin/src/lib/supportCommunityTabs.js",
+        "mingla-admin/src/lib/timeZoneSearch.js",
         "mingla-admin/src/services/linksStripsService.js"
       ]
     },
