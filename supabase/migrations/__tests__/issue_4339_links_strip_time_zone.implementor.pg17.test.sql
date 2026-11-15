@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
 -- #4339: a /links strip shows only within its dates, in its own time zone.
 -- Executable PostgreSQL 17 proof for 20280708004339_issue_4339_links_strip_time_zone.sql.
+-- MINGLA-INVARIANT: I-4339-LINKS-STRIP-WINDOW | issue #4339 | A published /links strip is public only while now() is inside [shows_on 00:00, (COALESCE(shows_until, shows_on) + 1) 00:00) in the strip's own time_zone; public.links_strip_window() is the only owner, and the read policy, links_page_strips() and admin_links_strips_list() all answer from it.
 --
 -- I-4339-LINKS-STRIP-WINDOW (enforced here): a published strip is public only
 -- while now() is in [shows_on 00:00, (COALESCE(shows_until, shows_on) + 1)
