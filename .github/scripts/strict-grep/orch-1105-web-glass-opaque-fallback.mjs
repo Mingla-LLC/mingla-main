@@ -16,8 +16,8 @@
  *   2. each glass surface fixed by ORCH-1100 imports `shouldUseRealBlur` from
  *      the shared `glassBlur` module AND calls it (so the blur decision is
  *      width-aware, with an opaque fallback below the threshold). The gated
- *      surfaces are: TopSheet, GlassChrome, Toast, BlastCustomersCta,
- *      AiDisclosureModal, SheetMobile.
+ *      surfaces are: Material (#4420), TopSheet, GlassChrome, Toast,
+ *      BlastCustomersCta, AiDisclosureModal, SheetMobile.
  *
  * A surface that renders `BlurView` glass WITHOUT routing through
  * `shouldUseRealBlur` would paint a see-through panel on phone web — exactly the
@@ -40,7 +40,12 @@ const root = process.cwd().endsWith("mingla-business")
 const GLASS_HELPER_REL = "mingla-business/src/utils/glassBlur.ts";
 
 // Glass surfaces fixed in ORCH-1100 (relative to mingla-business/src).
+// #4420: `components/ui/Material.tsx` is the one glass owner going forward and
+// must route its web decision through the helper. The ORCH-1100 surfaces stay
+// listed until #4420 wave 2 moves each of them onto <Material>; at that point
+// each one leaves this list as it stops importing expo-blur.
 const GATED_SURFACES = [
+  "components/ui/Material.tsx",
   "components/ui/TopSheet.tsx",
   "components/ui/GlassChrome.tsx",
   "components/ui/Toast.tsx",
