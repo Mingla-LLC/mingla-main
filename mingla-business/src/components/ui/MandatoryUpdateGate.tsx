@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   accent,
   backgroundWarmGlow,
+  color,
   colors,
   spacing,
 } from "../../constants/designSystem";
@@ -297,7 +298,7 @@ const styles = StyleSheet.create({
     borderRadius: 29,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+    backgroundColor: color.accentTint,
     marginBottom: spacing.lg,
   },
   title: {
@@ -319,7 +320,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     fontSize: 14,
     lineHeight: 20,
-    color: "#b91c1c",
+    color: color.errorText,
   },
   button: {
     width: "100%",

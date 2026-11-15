@@ -82,10 +82,13 @@ import {
   ariThread,
   bpRegular,
   canvas,
+  color,
   coverUpload,
   glass,
   radius as radiusTokens,
+  scrim,
   semantic,
+  size,
   spacing,
   text as textTokens,
   typography,
@@ -3932,11 +3935,11 @@ const styles = StyleSheet.create({
     bottom: spacing.sm,
     padding: spacing.sm,
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(12, 14, 18, 0.62)",
+    backgroundColor: scrim.modal,
     gap: spacing.xs,
   },
   videoProgressText: {
-    color: "#FFFFFF",
+    color: color.textOnPhoto,
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     fontWeight: "700",
@@ -3980,7 +3983,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   uploadThumbGone: {
-    backgroundColor: "#1b1e24",
+    backgroundColor: color.card,
   },
   uploadCardHeaderText: {
     flex: 1,
@@ -4139,7 +4142,7 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
+    color: color.textOnPhoto2,
   },
   previewErrorOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -4379,7 +4382,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: scrim.modal,
   },
   galleryTileFailed: {
     opacity: 0.5,
@@ -4405,7 +4408,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
   },
   galleryMenu: {
     marginTop: spacing.xs,

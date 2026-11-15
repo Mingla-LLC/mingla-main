@@ -1,71 +1,57 @@
 /**
- * BottomNav.web — ORCH-0885-A Tier 1 web variant.
+ * BottomNav.web — the web navigation (#4420 Graphite Glass, spec §3.4 / B6).
  *
- * Metro resolves `BottomNav` to this file on web (`Platform.OS === 'web'`)
- * and to the canonical mobile capsule `BottomNav.tsx` on iOS/Android. The
- * native bundle never includes this file. Precedent: `StripeProviderWrapper`
- * + `.native.tsx` at `app/_layout.tsx:40` (ORCH-0849).
+ * Metro resolves `BottomNav` to this file on web and to the native capsule
+ * (`BottomNav.tsx`) on iOS / Android.
  *
- * # Runtime behaviour
- * - On `isWideDesktop === false` → renders `MobileWebCapsule`, a
- *   non-reanimated mobile-web capsule (tablet portrait, mobile browser, dev
- *   resize ≤1023px). See the ORCH-1098 note on that component for why the
- *   canonical reanimated capsule (`BottomNav.tsx`) is NOT used on web.
- * - On `isWideDesktop === true` → renders the **left vertical rail**: a
- *   `position: 'fixed'` 80px-wide column anchored to the left edge of the
- *   viewport, with the brand-mark badge at the top, the 5 tabs stacked
- *   vertically (Home / Hub / Ari / Blast at the top; Account pinned to the
- *   bottom via flex spacer), and no glass-capsule chrome.
+ * - `isWideDesktop === false` → `MobileWebCapsule`: the same tab bar as the
+ *   phone (Home, Hub, [Create], Ari, Blast) with a STATIC active highlight and
+ *   no reanimated (ORCH-1098: the reanimated capsule OOM-crashed phone
+ *   browsers). Solid liquid fill (phone web is blur-killed).
+ * - `isWideDesktop === true` → `DesktopSidebar`: the grouped 248 sidebar
+ *     (Home, Hub, Ari) · Promote (Overview, Campaigns, Ads, Creators,
+ *     Referrals) · Audience (People, Templates) · Account pinned at the bottom.
+ *   Groups collapse; a collapsed group holding the current page shows an
+ *   orange dot. The whole sidebar collapses to the 80 icon rail (remembered in
+ *   localStorage, try/catch) and is always the rail on wizard / full-screen
+ *   routes. The rail has no Blast item. The nested Blast hub is un-nested on
+ *   desktop: its sections are sidebar items. The rank gate applies: groups and
+ *   items appear only for tabs the shell passed in (already rank-filtered).
+ *   Analytics stays out of the sidebar (BUILD_DECISIONS 11-14: one bottom bar
+ *   on Home only).
  *
- * # Active-state tokens (SPEC §7 + /ui-ux-pro-max pre-flight decision)
- * Active tab background: translucent white glass with a restrained warm
- * border. The selected state uses a small, low-opacity warm shadow instead
- * of the old large orange halo, so the rail reads as sleek chrome rather
- * than a fuzzy glow. Icon stroke + label color: `accent.warm` (#eb7825).
- * Inactive icons: `#b9b9c2`. Inactive labels: `#a1a1aa`.
- *
- * /ui-ux-pro-max iteration (2026-05-19): the temporary "M" gradient badge
- * was replaced with the official Mingla Host logo asset, and the active
- * tab was tightened after operator feedback that the glow looked too
- * heavy/AI-generated.
- *
- * # Invariants honoured
- * - I-DESKTOP-GATE-VIA-HOOK — gates exclusively via `useResponsiveLayout()`.
- * - I-NO-BOTTOMNAV-OUTSIDE-LAYOUT — file is only ever imported by
- *   `app/(tabs)/_layout.tsx` (via the bare `./BottomNav` specifier; Metro
- *   picks this file on web). Enforced by strict-grep
- *   `orch-0885-a-no-bottomnav-on-wide-desktop`.
- * - I-RN-COLOR-FORMATS — every colour is hex or rgba.
- * - No haptic feedback on web (mirrors `Platform.OS !== 'web'` gate in
- *   the mobile file's `handlePress`).
- *
- * Per SPEC_ORCH-0885-A §4.
+ * Invariants: I-DESKTOP-GATE-VIA-HOOK (gates only via useResponsiveLayout),
+ * I-NO-BOTTOMNAV-OUTSIDE-LAYOUT (only `(tabs)/_layout.tsx` imports it),
+ * I-PRIVACY-BAR-NEVER-OCCLUDES (the fixed sidebar ends above the privacy bar).
  */
 
 import React, { useCallback } from "react";
 import {
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
+  type PressableStateCallbackType,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { usePathname, useRouter } from "expo-router";
 
-import {
-  accent,
-  spacing,
-  typography,
-} from "../../constants/designSystem";
-import { DESKTOP_RAIL_WIDTH } from "../../constants/desktopLayout";
+import { color, materials, radius, space, type } from "../../constants/designSystem";
+import { DESKTOP_RAIL_WIDTH, DESKTOP_SIDEBAR_WIDTH } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import {
+  MARKETING_SUB_NAV_TABS,
+  detectMarketingSubNavActive,
+} from "../marketing/marketingSubNavTabs";
 
+import { BOTTOM_NAV_CAPSULE_HEIGHT, BOTTOM_NAV_EMBER_SIZE } from "./bottomNavMetrics";
+import { isRailRoute, useDesktopSidebarStore } from "./desktopSidebarState";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
-// ISSUE-1001 — the official business lockup now imports from the canonical
-// master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
-// the app-local copy is deleted.
+// ISSUE-1001 — the official business lockup from @mingla/brand-assets.
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 
 export interface BottomNavTab {
@@ -78,91 +64,59 @@ export interface BottomNavProps {
   tabs: BottomNavTab[];
   active: string;
   onChange: (id: string) => void;
+  /** #4420: the Create ember was pressed. */
+  onCreate?: () => void;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
 
-// Rail geometry constants — mock 01 lines 68 + 70.
-const TAB_SIZE = 48;
-const TAB_RADIUS = 16;
-const ICON_SIZE = 20;
-const BRAND_MARK_SIZE = 40;
+export const CREATE_TAB_ID = "create";
 
-// Active / inactive colour tokens — see file header for /ui-ux-pro-max
-// pre-flight rationale and verbatim mock-01 sourcing.
-const ACTIVE_BG = "rgba(255, 255, 255, 0.055)";
-const ACTIVE_BORDER = "rgba(235, 120, 37, 0.45)";
-const INACTIVE_ICON = "#b9b9c2";
-const INACTIVE_LABEL = "#a1a1aa";
-const RAIL_RIGHT_BORDER = "rgba(255, 255, 255, 0.05)";
-
-export const BottomNav: React.FC<BottomNavProps> = ({
-  tabs,
-  active,
-  onChange,
-  testID,
-  style,
-}) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ tabs, active, onChange, onCreate, testID, style }) => {
   const { isWideDesktop } = useResponsiveLayout();
-
-  // Narrow web viewport (tablet portrait, mobile browser, <1024px desktop).
-  //
-  // ORCH-1098 root-cause fix (device-proven, Samsung SM-A725F Chrome): the
-  // canonical mobile capsule (`BottomNav.tsx`) mounts react-native-reanimated
-  // (useSharedValue / useAnimatedStyle / useReducedMotion + an
-  // onLayout→withSpring spotlight). On a phone browser that machinery drives an
-  // unbounded re-render / fiber-allocation loop the instant it mounts (no resize
-  // event needed) that climbs the V8 heap ~200 MB/s to ~1 GB and SIGSEGVs the
-  // renderer ("Aw, Snap"). Because the capsule lives in the tabs layout, this
-  // crashed EVERY signed-in tab route — it is THE reason the real Expo Business
-  // app could not boot on a phone browser. `MobileWebCapsule` below is the same
-  // layout / tokens with a STATIC active highlight (no Animated.View spotlight,
-  // no onLayout measurement, no reanimated hooks) and boots at a flat ~10 MB.
-  // This file is web-only (Metro picks `.web.tsx`), so iOS/Android keep the full
-  // reanimated capsule in `BottomNav.tsx` — native is byte-unchanged.
   if (!isWideDesktop) {
-    return (
-      <MobileWebCapsule
-        tabs={tabs}
-        active={active}
-        onChange={onChange}
-        testID={testID}
-        style={style}
-      />
-    );
+    return <MobileWebCapsule tabs={tabs} active={active} onChange={onChange} onCreate={onCreate} testID={testID} style={style} />;
   }
-
-  return <DesktopRail tabs={tabs} active={active} onChange={onChange} testID={testID} />;
+  return <DesktopSidebar tabs={tabs} active={active} onChange={onChange} testID={testID} />;
 };
 
-// ORCH-1098 root-cause fix — non-reanimated mobile-web capsule. Mirrors the
-// canonical capsule's layout / tokens but uses a STATIC per-tab highlight (no
-// spotlight Animated.View, no onLayout measurement, no reanimated hooks) so the
-// phone renderer never enters the OOM feedback loop. Native + wide-desktop are
-// unaffected (native uses BottomNav.tsx; desktop uses the rail below).
-const CAPSULE_HEIGHT = 64;
-const CAPSULE_PAD = 8;
-const MOBILE_INACTIVE_ICON = "rgba(255, 255, 255, 0.55)";
+// ORCH-1098 root-cause fix — non-reanimated mobile-web capsule: a STATIC
+// per-tab highlight (no spotlight Animated.View, no onLayout measurement, no
+// reanimated hooks) so the phone renderer never enters the OOM feedback loop.
+const CAPSULE_HEIGHT = BOTTOM_NAV_CAPSULE_HEIGHT;
+const CAPSULE_PAD = space[2];
 
-const MobileWebCapsule: React.FC<BottomNavProps> = ({
-  tabs,
-  active,
-  onChange,
-  testID,
-  style,
-}) => {
+const MobileWebCapsule: React.FC<BottomNavProps> = ({ tabs, active, onChange, onCreate, testID, style }) => {
   const handlePress = useCallback(
     (id: string) => (): void => {
-      // No haptics on web — mirror Platform.OS !== 'web' gate in mobile file.
+      if (id === CREATE_TAB_ID) {
+        onCreate?.();
+        return;
+      }
       onChange(id);
     },
-    [onChange],
+    [onChange, onCreate],
   );
   return (
     <View testID={testID} style={[mwStyles.host, style]}>
       <View style={mwStyles.bar}>
         <View style={mwStyles.row}>
           {tabs.map((tab) => {
+            if (tab.id === CREATE_TAB_ID) {
+              return (
+                <View key={tab.id} style={mwStyles.tab}>
+                  <Pressable
+                    onPress={handlePress(tab.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={tab.label}
+                    testID="bottom-nav-create"
+                    style={mwStyles.ember}
+                  >
+                    <Icon name="plus" size={24} color={color.onAccent} />
+                  </Pressable>
+                </View>
+              );
+            }
             const isActive = tab.id === active;
             return (
               <Pressable
@@ -173,19 +127,9 @@ const MobileWebCapsule: React.FC<BottomNavProps> = ({
                 accessibilityLabel={tab.label}
                 style={[mwStyles.tab, isActive ? mwStyles.tabActive : null]}
               >
-                <Icon
-                  name={tab.icon}
-                  size={22}
-                  color={isActive ? "#ffffff" : MOBILE_INACTIVE_ICON}
-                />
+                <Icon name={tab.icon} size={22} color={isActive ? color.accent : color.text3} />
                 <Text
-                  style={[
-                    mwStyles.label,
-                    {
-                      color: isActive ? "#ffffff" : MOBILE_INACTIVE_ICON,
-                      fontWeight: isActive ? "600" : "500",
-                    },
-                  ]}
+                  style={[mwStyles.label, { color: isActive ? color.text1 : color.text3, fontWeight: isActive ? "600" : "500" }]}
                   numberOfLines={1}
                 >
                   {tab.label}
@@ -200,13 +144,15 @@ const MobileWebCapsule: React.FC<BottomNavProps> = ({
 };
 
 const mwStyles = StyleSheet.create({
-  host: { paddingHorizontal: spacing.md },
+  host: { paddingHorizontal: space[4] },
   bar: {
     height: CAPSULE_HEIGHT,
     borderRadius: CAPSULE_HEIGHT / 2,
-    backgroundColor: "rgba(12, 14, 18, 0.92)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: materials.liquid.solidFill,
+    borderWidth: materials.liquid.rim.edgeWidth,
+    borderColor: materials.liquid.rim.edge,
+    borderTopWidth: 1,
+    borderTopColor: materials.liquid.rim.top ?? materials.liquid.rim.edge,
     overflow: "hidden",
   },
   row: {
@@ -223,165 +169,257 @@ const mwStyles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
     borderRadius: (CAPSULE_HEIGHT - CAPSULE_PAD * 2) / 2,
-    borderWidth: 1,
-    borderColor: "transparent",
   },
-  tabActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+  tabActive: { backgroundColor: color.fill.tabOn },
+  ember: {
+    width: BOTTOM_NAV_EMBER_SIZE,
+    height: BOTTOM_NAV_EMBER_SIZE - 8,
+    borderRadius: (BOTTOM_NAV_EMBER_SIZE - 8) / 2,
+    backgroundColor: color.accent,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  label: {
-    fontSize: 9,
-    lineHeight: 11,
-    letterSpacing: typography.micro.letterSpacing,
-  },
+  label: { fontSize: type.nav.fontSize, lineHeight: type.nav.lineHeight, letterSpacing: type.nav.letterSpacing },
 });
 
-interface DesktopRailProps {
+// ---------------------------------------------------------------------------
+// Desktop sidebar
+// ---------------------------------------------------------------------------
+
+export interface SidebarItem {
+  key: string;
+  label: string;
+  icon: IconName;
+  path: string;
+}
+
+export interface SidebarGroup {
+  key: string;
+  /** null = the untitled top group. */
+  title: string | null;
+  items: SidebarItem[];
+}
+
+const MARKETING_ICONS: Record<string, IconName> = {
+  overview: "megaphone",
+  campaigns: "send",
+  ads: "target",
+  creators: "users",
+  referrals: "gift",
+  people: "user",
+  templates: "template",
+};
+
+const AUDIENCE_IDS = new Set(["people", "templates"]);
+
+/**
+ * The grouped IA for the tabs the shell passed in (already rank-gated).
+ * Pure, so the sidebar's rank filter is unit-tested.
+ */
+export const buildSidebarGroups = (tabs: readonly BottomNavTab[]): { groups: SidebarGroup[]; account: SidebarItem | null } => {
+  const has = (id: string): boolean => tabs.some((t) => t.id === id);
+  const top: SidebarItem[] = [];
+  for (const tab of tabs) {
+    if (tab.id === "home" || tab.id === "hub" || tab.id === "ari") {
+      top.push({ key: tab.id, label: tab.label, icon: tab.icon, path: `/(tabs)/${tab.id}` });
+    }
+  }
+  const groups: SidebarGroup[] = [{ key: "main", title: null, items: top }];
+  if (has("marketing")) {
+    const promote: SidebarItem[] = [];
+    const audience: SidebarItem[] = [];
+    for (const sub of MARKETING_SUB_NAV_TABS) {
+      const item = { key: sub.id, label: sub.label, icon: MARKETING_ICONS[sub.id] ?? "send", path: sub.path };
+      (AUDIENCE_IDS.has(sub.id) ? audience : promote).push(item);
+    }
+    groups.push({ key: "promote", title: "Promote", items: promote });
+    if (audience.length > 0) groups.push({ key: "audience", title: "Audience", items: audience });
+  }
+  return {
+    groups: groups.filter((g) => g.items.length > 0),
+    account: { key: "account", label: "Account", icon: "user", path: "/(tabs)/account" },
+  };
+};
+
+/** Which sidebar item the pathname belongs to. */
+export const activeSidebarKey = (pathname: string): string => {
+  const lower = pathname.toLowerCase();
+  if (lower === "/marketing" || lower.startsWith("/marketing/")) return detectMarketingSubNavActive(pathname);
+  const first = lower.split("/").filter(Boolean)[0];
+  return first ?? "home";
+};
+
+interface DesktopSidebarProps {
   tabs: BottomNavTab[];
   active: string;
   onChange: (id: string) => void;
   testID?: string;
 }
 
-const DesktopRail: React.FC<DesktopRailProps> = ({ tabs, active, onChange, testID }) => {
-  const handlePress = useCallback(
-    (id: string) => (): void => {
-      // No haptics on web — mirror Platform.OS !== 'web' gate in mobile file.
-      onChange(id);
-    },
-    [onChange],
-  );
+const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, testID }) => {
+  const router = useRouter();
+  const pathname = usePathname() ?? "";
+  const collapsedPref = useDesktopSidebarStore((s) => s.collapsed);
+  const closedGroups = useDesktopSidebarStore((s) => s.closedGroups);
+  const toggleCollapsed = useDesktopSidebarStore((s) => s.toggleCollapsed);
+  const toggleGroup = useDesktopSidebarStore((s) => s.toggleGroup);
+  const forcedRail = isRailRoute(pathname);
+  const rail = collapsedPref || forcedRail;
+  const { groups, account } = buildSidebarGroups(tabs);
+  const activeKey = activeSidebarKey(pathname);
+  const go = (path: string) => (): void => router.push(path as never);
 
-  // On-the-fly UI iteration (2026-05-19): Account moved from the rail's
-  // bottom-pinned slot to the TopBar's right cluster (after the bell icon)
-  // on web ≥1024px. Source of truth for desktop nav: rail = primary tabs
-  // only (Home / Hub / Ari / Blast); identity/settings = TopBar. The
-  // mobile capsule (narrow web + native) is unaffected — this file's
-  // capsule branch upstream still renders ALL 5 tabs including Account.
-  // Therefore `accountTab` is intentionally NOT rendered in the rail.
-  const primaryTabs = tabs.filter((tab) => tab.id !== "account");
+  if (rail) {
+    // The 80 icon rail: the top group, then one icon per remaining group (its
+    // first item), Account at the bottom. No Blast item.
+    const railItems: SidebarItem[] = [
+      ...(groups[0]?.title === null ? groups[0].items : []),
+      ...groups.filter((g) => g.title !== null).map((g) => ({ ...g.items[0], key: `${g.key}:${g.items[0].key}`, label: g.title ?? g.items[0].label })),
+    ];
+    return (
+      <View testID={testID} style={[styles.sidebar, styles.rail]} accessibilityRole="tablist">
+        <View style={styles.railLogo}>
+          <Image source={MINGLA_BUSINESS_LOGO} style={styles.logoMark} resizeMode="contain" accessibilityIgnoresInvertColors />
+        </View>
+        {railItems.map((item) => {
+          const group = groups.find((g) => item.key.startsWith(`${g.key}:`));
+          const on = group !== undefined ? group.items.some((i) => i.key === activeKey) : item.key === activeKey;
+          return (
+            <Pressable
+              key={item.key}
+              onPress={go(item.path)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={item.label}
+              style={(state: PressableStateCallbackType & { hovered?: boolean }) => [
+                styles.railItem,
+                on ? styles.itemOn : state.hovered ? styles.itemHover : null,
+              ]}
+            >
+              <Icon name={item.icon} size={20} color={on ? color.accent : color.text2} />
+            </Pressable>
+          );
+        })}
+        <View style={styles.spacer} />
+        {!forcedRail ? (
+          <Pressable onPress={toggleCollapsed} accessibilityRole="button" accessibilityLabel="Expand sidebar" style={styles.railItem}>
+            <Icon name="chevR" size={18} color={color.text3} />
+          </Pressable>
+        ) : null}
+        {account !== null ? (
+          <Pressable
+            onPress={go(account.path)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeKey === "account" }}
+            accessibilityLabel={account.label}
+            style={[styles.railItem, activeKey === "account" ? styles.itemOn : null]}
+          >
+            <Icon name={account.icon} size={20} color={activeKey === "account" ? color.accent : color.text2} />
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
-    <View
-      testID={testID}
-      style={styles.rail}
-      accessibilityRole="tablist"
-    >
-      <View style={styles.brandMark}>
-        <Image
-          source={MINGLA_BUSINESS_LOGO}
-          style={styles.brandLogo}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
-        />
+    <View testID={testID} style={[styles.sidebar, styles.expanded]} accessibilityRole="tablist">
+      <View style={styles.brandRow}>
+        <Image source={MINGLA_BUSINESS_LOGO} style={styles.logoMark} resizeMode="contain" accessibilityIgnoresInvertColors />
+        <View style={styles.spacer} />
+        <Pressable onPress={toggleCollapsed} accessibilityRole="button" accessibilityLabel="Collapse sidebar" hitSlop={8} style={styles.collapseButton}>
+          <Icon name="chevL" size={16} color={color.text3} />
+        </Pressable>
       </View>
-
-      {/* Primary tabs (Home / Hub / Ari / Blast / any future non-account tab). */}
-      {primaryTabs.map((tab) => (
-        <RailTab
-          key={tab.id}
-          tab={tab}
-          isActive={tab.id === active}
-          onPress={handlePress(tab.id)}
-        />
-      ))}
-
-      {/* Flex spacer fills the remaining rail height. Account used to be
-          pinned below this spacer; per the 2026-05-19 on-the-fly UI
-          iteration, Account now lives in the TopBar right cluster. The
-          spacer stays so primary tabs stay anchored to the top. */}
-      <View style={styles.spacer} />
+      <ScrollView style={styles.groups} contentContainerStyle={styles.groupsContent} showsVerticalScrollIndicator={false}>
+        {groups.map((group) => {
+          const closed = group.title !== null && closedGroups.includes(group.key);
+          const holdsActive = group.items.some((i) => i.key === activeKey);
+          return (
+            <View key={group.key} style={styles.group}>
+              {group.title !== null ? (
+                <Pressable
+                  onPress={() => toggleGroup(group.key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: !closed }}
+                  accessibilityLabel={group.title}
+                  style={styles.groupHead}
+                  testID={`sidebar-group-${group.key}`}
+                >
+                  <Text style={styles.groupTitle}>{group.title}</Text>
+                  {closed && holdsActive ? <View style={styles.activeDot} testID={`sidebar-group-${group.key}-dot`} /> : null}
+                  <View style={styles.spacer} />
+                  <Icon name={closed ? "chevR" : "chevD"} size={14} color={color.text3} />
+                </Pressable>
+              ) : null}
+              {closed
+                ? null
+                : group.items.map((item) => (
+                    <SidebarRow key={item.key} item={item} on={item.key === activeKey} onPress={go(item.path)} />
+                  ))}
+            </View>
+          );
+        })}
+      </ScrollView>
+      {account !== null ? (
+        <View style={styles.footer}>
+          <SidebarRow item={account} on={activeKey === "account"} onPress={go(account.path)} />
+        </View>
+      ) : null}
     </View>
   );
 };
 
-interface RailTabProps {
-  tab: BottomNavTab;
-  isActive: boolean;
-  onPress: () => void;
-}
-
-const RailTab: React.FC<RailTabProps> = ({ tab, isActive, onPress }) => {
-  const iconColor = isActive ? accent.warm : INACTIVE_ICON;
-  const labelColor = isActive ? accent.warm : INACTIVE_LABEL;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="tab"
-      accessibilityState={{ selected: isActive }}
-      accessibilityLabel={tab.label}
-      style={[styles.tab, isActive ? styles.tabActive : null]}
-    >
-      <Icon name={tab.icon} size={ICON_SIZE} color={iconColor} />
-      <Text style={[styles.tabLabel, { color: labelColor }]} numberOfLines={1}>
-        {tab.label}
-      </Text>
-    </Pressable>
-  );
-};
+const SidebarRow: React.FC<{ item: SidebarItem; on: boolean; onPress: () => void }> = ({ item, on, onPress }) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="tab"
+    accessibilityState={{ selected: on }}
+    accessibilityLabel={item.label}
+    testID={`sidebar-item-${item.key}`}
+    style={(state: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.row,
+      on ? styles.itemOn : state.hovered ? styles.itemHover : null,
+    ]}
+  >
+    <Icon name={item.icon} size={18} color={on ? color.accent : color.text2} />
+    <Text style={[styles.rowLabel, on ? styles.rowLabelOn : null]} numberOfLines={1}>
+      {item.label}
+    </Text>
+  </Pressable>
+);
 
 const styles = StyleSheet.create({
-  rail: {
-    // RN-web maps `position: 'fixed'` to CSS `position: fixed`. Type cast
-    // is at the View style assignment above.
+  sidebar: {
     position: "fixed" as unknown as "absolute",
     top: 0,
     left: 0,
-    // #2331 — fixed to the viewport, so it ends above the privacy bar
-    // (I-PRIVACY-BAR-NEVER-OCCLUDES).
+    // #2331 — ends above the privacy bar (I-PRIVACY-BAR-NEVER-OCCLUDES).
     bottom: "var(--mingla-privacy-inset, 0px)" as unknown as number,
-    width: DESKTOP_RAIL_WIDTH,
-    flexDirection: "column",
-    alignItems: "center",
-    paddingVertical: spacing.lg,
-    gap: spacing.sm,
+    backgroundColor: materials.chrome.solidFill,
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: RAIL_RIGHT_BORDER,
-    // Higher than typical content but below modal overlay (Sheet uses
-    // RN Modal which portals to root). 50 fits the documented z-index
-    // scale (10/20/30/50) — rail is chrome, not modal.
+    borderRightColor: color.line,
     zIndex: 50,
   },
-  brandMark: {
-    width: BRAND_MARK_SIZE,
-    height: BRAND_MARK_SIZE,
-    marginBottom: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  brandLogo: {
-    width: BRAND_MARK_SIZE,
-    height: BRAND_MARK_SIZE,
-  },
-  tab: {
-    width: TAB_SIZE,
-    height: TAB_SIZE,
-    borderRadius: TAB_RADIUS,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  tabActive: {
-    backgroundColor: ACTIVE_BG,
-    borderColor: ACTIVE_BORDER,
-    shadowColor: accent.warm,
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  tabLabel: {
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
-  },
-  spacer: {
-    flex: 1,
-  },
+  expanded: { width: DESKTOP_SIDEBAR_WIDTH, paddingVertical: space[4] },
+  rail: { width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: space[5], gap: space[2] },
+  railLogo: { width: 40, height: 40, marginBottom: space[3], alignItems: "center", justifyContent: "center" },
+  logoMark: { width: 36, height: 36 },
+  brandRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: space[5], paddingBottom: space[4] },
+  collapseButton: { width: 28, height: 28, borderRadius: radius.xs, alignItems: "center", justifyContent: "center" },
+  groups: { flex: 1 },
+  groupsContent: { paddingHorizontal: space[3], gap: space[4] },
+  group: { gap: 2 },
+  groupHead: { flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 28, paddingHorizontal: space[3] },
+  groupTitle: { ...type.label, textTransform: "uppercase", color: color.text3 },
+  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.accent },
+  row: { flexDirection: "row", alignItems: "center", gap: space[3], minHeight: 40, paddingHorizontal: space[3], borderRadius: radius.sm },
+  rowLabel: { ...type.small, fontWeight: "500", color: color.text2, flex: 1 },
+  rowLabelOn: { color: color.text1, fontWeight: "600" },
+  itemOn: { backgroundColor: color.fill.railOn },
+  itemHover: { backgroundColor: color.fill.rowHover },
+  railItem: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  footer: { paddingHorizontal: space[3], paddingTop: space[3], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  spacer: { flex: 1 },
 });
 
 export default BottomNav;

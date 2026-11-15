@@ -35,12 +35,15 @@ import React from "react";
 import { Switch } from "react-native";
 import type { SwitchProps } from "react-native";
 
-import { accent } from "../../constants/designSystem";
+import {
+  accent,
+  color,
+} from "../../constants/designSystem";
 
 /** Neutral OFF-state track (translucent on dark glass). */
-const OFF_TRACK = "rgba(255,255,255,0.16)";
+const OFF_TRACK = color.fill.step;
 /** White handle in BOTH states (native + web). */
-const THUMB = "#ffffff";
+const THUMB = color.paper;
 
 // react-native-web-only props — web paints the ON-state thumb/track from these.
 // They are NOT in RN's native `SwitchProps`, so type the web fields separately.

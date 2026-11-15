@@ -47,16 +47,21 @@ describe("F-2 — the 52pt dismiss band must not cover interactive sheet content
     expect(band).not.toBeNull();
     const bandHeight = Number(band?.[1]);
 
-    // `handleWrap` is the ONLY chrome the band is meant to sit over:
-    //   paddingVertical: spacing.sm + 2  (= 10)  x2   + handle height (4)
-    const pad = /handleWrap:\s*\{[^}]*paddingVertical:\s*spacing\.sm\s*\+\s*(\d+)/.exec(s);
-    const handleH = /handle:\s*\{[^}]*height:\s*(\d+)/.exec(s);
-    expect(pad).not.toBeNull();
+    // `handleWrap` is the ONLY chrome the band is meant to sit over.
+    // [TEST-MOD-APPROVED #4420] the handle grew to the kit's 36×5 and its wrap
+    // pads top 10 / bottom 9 (HANDLE_PAD_TOP / HANDLE_PAD_BOTTOM), still a
+    // 24pt region; read those constants and the handle height token.
+    const padTop = /HANDLE_PAD_TOP\s*=\s*spacing\.sm\s*\+\s*(\d+)/.exec(s);
+    const padBottom = /HANDLE_PAD_BOTTOM\s*=\s*spacing\.sm\s*\+\s*(\d+)/.exec(s);
+    const handleH = /HANDLE_HEIGHT\s*=\s*size\.handle\.height/.test(s) ? ["", "5"] : null;
+    expect(padTop).not.toBeNull();
+    expect(padBottom).not.toBeNull();
     expect(handleH).not.toBeNull();
+    expect(s).toMatch(/handleWrap:\s*\{[^}]*paddingTop:\s*HANDLE_PAD_TOP,\s*paddingBottom:\s*HANDLE_PAD_BOTTOM/);
 
     const SPACING_SM = 8;
     const handleRegion =
-      2 * (SPACING_SM + Number(pad?.[1])) + Number(handleH?.[1]);
+      SPACING_SM + Number(padTop?.[1]) + SPACING_SM + Number(padBottom?.[1]) + Number(handleH?.[1]);
 
     // `nativeDragCatch` is position:absolute, top:0, rendered AFTER the panel
     // inner, with no `pointerEvents` escape hatch — so every pixel by which it

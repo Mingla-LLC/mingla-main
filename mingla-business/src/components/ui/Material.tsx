@@ -117,6 +117,14 @@ export const useReduceTransparency = (): boolean => {
       return () => query.removeEventListener?.("change", onChange);
     }
     if (Platform.OS !== "ios") return undefined;
+    // A host without the accessibility API (a test double, an old runtime)
+    // keeps glass, the default iOS look, rather than crashing the screen.
+    if (
+      typeof AccessibilityInfo?.isReduceTransparencyEnabled !== "function" ||
+      typeof AccessibilityInfo?.addEventListener !== "function"
+    ) {
+      return undefined;
+    }
     let alive = true;
     AccessibilityInfo.isReduceTransparencyEnabled()
       .then((enabled) => {
@@ -131,7 +139,7 @@ export const useReduceTransparency = (): boolean => {
     });
     return () => {
       alive = false;
-      subscription.remove();
+      subscription?.remove?.();
     };
   }, []);
 

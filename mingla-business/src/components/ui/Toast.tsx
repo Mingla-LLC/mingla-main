@@ -31,7 +31,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -47,6 +47,7 @@ import Animated, {
 import { Gesture } from "react-native-gesture-handler";
 
 import { color, radius, shadow, size, space, type } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
@@ -400,10 +401,7 @@ export const useToastTopOffset = (): number => {
 };
 
 /** True when toasts stack bottom-right (web desktop). */
-export const useToastStacked = (): boolean => {
-  const { width } = useWindowDimensions();
-  return Platform.OS === "web" && width >= 1024;
-};
+export const useToastStacked = (): boolean => useResponsiveLayout().isWideDesktop;
 
 const styles = StyleSheet.create({
   inlineRoot: {

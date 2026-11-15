@@ -32,8 +32,10 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
+  color,
   durations,
   radius as radiusTokens,
+  scrim,
   semantic,
   spacing,
   text as textTokens,
@@ -65,7 +67,7 @@ const STATE_TOKENS: Record<
   edited: {
     label: "Edited",
     color: textTokens.secondary,
-    bg: "rgba(255,255,255,0.10)",
+    bg: color.fill.tabOn,
   },
   new: { label: "New", color: semantic.info, bg: semantic.infoTint },
 };
@@ -156,7 +158,7 @@ const styles = StyleSheet.create({
   // worst-case white photo (DESIGN §3 — ≥4.5:1 via the scrim).
   scrim: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
     borderRadius: radiusTokens.full,
   },
   pill: {

@@ -34,6 +34,7 @@ import {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
   ariPalette,
+  color,
   radius as radiusTokens,
   spacing,
   text as textTokens,
@@ -508,7 +509,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    backgroundColor: color.fill.step,
   },
   confirmThumbVideo: {
     alignItems: "center",

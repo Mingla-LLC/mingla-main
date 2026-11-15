@@ -23,7 +23,7 @@ import {
 import { MarketingActionButton } from "../../../src/components/marketing/MarketingActionButton";
 import { MarketingBrandSwitcherProvider } from "../../../src/components/people/MarketingBrandSwitcherContext";
 import { TopBar } from "../../../src/components/ui/TopBar";
-import { canvas, spacing } from "../../../src/constants/designSystem";
+import { color, space } from "../../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useStickyFooterOffset } from "../../../src/hooks/useStickyFooterOffset";
 
@@ -63,6 +63,9 @@ function MarketingSlot({
 export default function MarketingTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
+  // #4420 B6: on desktop the sidebar lists every Promote / Audience section, so
+  // the nested Blast hub's sub-nav pills go away there. Phone is unchanged.
+  const { isWideDesktop } = useResponsiveLayout();
   /**
    * #2262 [composer-responsive-layout] — THE ONE VIEWPORT PIN, and it is web
    * only.
@@ -137,7 +140,7 @@ export default function MarketingTabLayout(): React.ReactElement {
         />
       </View>
       <MarketingActionProvider>
-        {hideActions ? null : <MarketingSubNav />}
+        {hideActions || isWideDesktop ? null : <MarketingSubNav />}
         <MarketingSlot openBrandSwitcher={handleOpenSwitcher} />
         <MarketingActionSurfaces hidden={hideActions} />
       </MarketingActionProvider>
@@ -156,10 +159,10 @@ export default function MarketingTabLayout(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
 });

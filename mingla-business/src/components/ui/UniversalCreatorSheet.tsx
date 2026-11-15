@@ -66,6 +66,7 @@ import { useRouter } from "expo-router";
 
 import {
   glass,
+  materials,
   radius as radiusTokens,
   spacing,
   text as textTokens,
@@ -435,17 +436,17 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
 // by the experience-step rows (lifted from the retired ExperienceCreateChooser).
 const ROW_BG = Platform.select({
   ios: glass.tint.profileBase,
-  android: "#23262b",
+  android: materials.control.solidFill,
   default: glass.tint.profileBase,
 });
 const ROW_BG_PRESSED = Platform.select({
   ios: glass.tint.profileElevated,
-  android: "#2c2f35",
+  android: materials.selected.solidFill,
   default: glass.tint.profileElevated,
 });
 const ROW_ICON_BG = Platform.select({
   ios: glass.tint.profileElevated,
-  android: "#2c2f35",
+  android: materials.selected.solidFill,
   default: glass.tint.profileElevated,
 });
 

@@ -26,7 +26,12 @@ import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { isTabVisible } from "../../src/config/featureFlags";
 import { tabsNavigatorSettings } from "../../src/config/tabsNavigatorSettings";
 import { rememberAriHostScreen } from "../../src/config/routes";
-import { accent, canvas, spacing } from "../../src/constants/designSystem";
+import { color, space } from "../../src/constants/designSystem";
+import {
+  BOTTOM_NAV_WRAP_MIN_PADDING_BOTTOM,
+  BOTTOM_NAV_WRAP_PADDING_TOP,
+} from "../../src/components/ui/bottomNavMetrics";
+import { useHubCreatorStore } from "../../src/store/hubCreatorStore";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-aware tab filtering. The TABS
 // array below is the registered superset; the actual visible set is
@@ -42,7 +47,7 @@ import {
   useCurrentBrandStore,
   useCurrentBrandHasHydrated,
 } from "../../src/store/currentBrandStore";
-import { visibleTabsForRank } from "../../src/utils/navTabGate";
+import { shouldShowTabBar, visibleTabsForRank } from "../../src/utils/navTabGate";
 // #4304 part 3 — First Home with Ari: until a host has made something, the
 // nav is Ari + Account and Ari is the landing tab.
 import { useFirstRunStage } from "../../src/hooks/useFirstRunStage";
@@ -58,27 +63,25 @@ import {
 import { CommandPaletteHost } from "../../src/components/ui/CommandPaletteHost";
 import { GlobalSearchSheetHost } from "../../src/components/ui/GlobalSearchSheetHost";
 
+// ORCH-0826: tab id `events` became `hub` (Events, Experiences, Trips).
+// `marketing` keeps its id so every `/(tabs)/marketing/*` route resolves; its
+// label is "Blast".
+// #4420 B5: Account left the tab bar (it is the top-bar profile button; the
+// /(tabs)/account route stays, so deep links keep working). Create sits in the
+// centre and opens the UniversalCreatorSheet; it is gated at event_manager
+// (40) in navTabGate, like every create.
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
-  // ORCH-0826 (Mingla Host 1.2 M0): tab id `events` renamed to `hub`,
-  // label "Events" → "Hub". Hub houses three sub-routes: Events
-  // (relocated, today's content unchanged), Experiences (placeholder for
-  // Ve5+), Trips (placeholder for Tr2+). The `calendar` icon is preserved
-  // since Events is the default sub-route.
   { id: "hub", icon: "calendar", label: "Hub" },
-  // Ari sits in the middle slot — AI assistant as the visual/thumb center
-  // of the capsule, with creation (Events) on its left and broadcast
-  // (Blast) on its right. Account stays rightmost (thumb-edge = settings,
-  // muscle memory).
+  { id: "create", icon: "plus", label: "Create" },
   { id: "ari", icon: "sparkle", label: "Ari" },
-  // Marketing Hub. Tab id stays `marketing` (so every `/(tabs)/marketing/*`
-  // route resolves correctly), label is the shorter "Blast" — mirrors the
-  // verb used in every primary CTA ("Blast these N buyers"). `send` icon
-  // (paper-plane) is the closest semantic match for broadcast/campaign in
-  // the existing icon set.
   { id: "marketing", icon: "send", label: "Blast" },
-  { id: "account", icon: "user", label: "Account" },
 ];
+
+const LazyUniversalCreatorSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/ui/UniversalCreatorSheet");
+  return { default: mod.UniversalCreatorSheet };
+});
 
 const DEFAULT_TAB_ID = "home";
 // #4304 — while first-run is locked the highlighted default is Ari. Routing
@@ -181,14 +184,25 @@ export default function TabsLayout(): React.ReactElement {
   // Focused authoring surfaces hide the mobile bottom capsule so the route's
   // own sticky footer is not covered. Desktop web keeps the left rail visible
   // as persistent app chrome.
+  // #4420 B5: the phone tab bar hides when fewer than 2 destinations remain
+  // (a scanner, a first-run host); Account is then the profile button.
   const hideBottomNav =
-    (pathname.includes("/campaigns/compose") || pathname === "/analytics") &&
-    !isWideDesktop;
+    ((pathname.includes("/campaigns/compose") || pathname === "/analytics") && !isWideDesktop) ||
+    (!isWideDesktop && !shouldShowTabBar(visibleTabs));
 
   const handleChange = (id: string): void => {
     // Expo Router resolves /(tabs)/<id> to /<id> at runtime.
     router.push(`/(tabs)/${id}` as never);
   };
+
+  // #4420 B5: Create goes through hubCreatorStore. On a Hub route the Hub
+  // layout consumes the request (it owns its sheet); anywhere else the shell
+  // mounts the same UniversalCreatorSheet.
+  const creatorRequested = useHubCreatorStore((s) => s.isOpen);
+  const openCreator = useHubCreatorStore((s) => s.open);
+  const closeCreator = useHubCreatorStore((s) => s.close);
+  const lowerPath = pathname.toLowerCase();
+  const onHubRoute = lowerPath === "/hub" || lowerPath.startsWith("/hub/");
 
   return (
     <FirstRunStageContext.Provider value={firstRunContext}>
@@ -220,7 +234,7 @@ export default function TabsLayout(): React.ReactElement {
             accessibilityLabel="Loading"
             testID="first-run-hold"
           >
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.text1} />
           </View>
         ) : (
           <Slot />
@@ -232,14 +246,19 @@ export default function TabsLayout(): React.ReactElement {
           style={[
             styles.navWrap,
             {
-              paddingBottom: Math.max(insets.bottom, spacing.sm),
-              paddingTop: spacing.sm,
+              paddingBottom: Math.max(insets.bottom, BOTTOM_NAV_WRAP_MIN_PADDING_BOTTOM),
+              paddingTop: BOTTOM_NAV_WRAP_PADDING_TOP,
             },
           ]}
         >
-          <BottomNav tabs={visibleTabs} active={activeId} onChange={handleChange} />
+          <BottomNav tabs={visibleTabs} active={activeId} onChange={handleChange} onCreate={openCreator} />
         </View>
       )}
+      {creatorRequested && !onHubRoute ? (
+        <Suspense fallback={null}>
+          <LazyUniversalCreatorSheet visible onClose={closeCreator} />
+        </Suspense>
+      ) : null}
       {/* ORCH-1093: keep desktop command UI out of phone route entry. */}
       {Platform.OS === "web" && isWideDesktop ? <CommandPaletteHost /> : null}
       {/* META-ORCH-1073 Sub-A: the global search sheet — single mount,
@@ -260,7 +279,7 @@ const styles = StyleSheet.create({
     // App canvas — shows through the safe-area zone behind the floating nav
     // so the home-indicator area blends seamlessly with the dark theme. The
     // BottomNav is a floating capsule positioned absolute on top.
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   firstRunHold: {
     flex: 1,
@@ -272,6 +291,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
 });

@@ -36,7 +36,8 @@ import {
   color,
 } from "../../constants/designSystem";
 
-export type AvatarSize = "row" | "hero";
+/** #4420 adds `sm` (36, the top-bar profile button) and `md` (44). */
+export type AvatarSize = "sm" | "md" | "row" | "hero";
 
 export interface AvatarProps {
   /**
@@ -66,6 +67,8 @@ interface SizeTokens {
 }
 
 const SIZE_TOKENS: Record<AvatarSize, SizeTokens> = {
+  sm: { width: 36, height: 36, borderRadius: 999, fontSize: 15 },
+  md: { width: 44, height: 44, borderRadius: 999, fontSize: 18 },
   row: {
     width: 40,
     height: 40,
@@ -128,7 +131,7 @@ export const Avatar: React.FC<AvatarProps> = ({
 const styles = StyleSheet.create({
   wrap: {
     backgroundColor: color.fill.tile,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
