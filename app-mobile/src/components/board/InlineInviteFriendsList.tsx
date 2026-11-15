@@ -30,6 +30,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store/appStore";
 import { addGroupMembers } from "../../services/groupLinkService";
 import { resolveSessionConversationId } from "../../services/groupChatService";
+import { notifyAddedToGroup } from "../../services/boardNotificationService";
 
 interface FriendItem {
   id: string;
@@ -56,7 +57,7 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
 }) => {
   const st = theme === "dark" ? darkStyles : styles;
   const pal = theme === "dark" ? DARK_PALETTE : LIGHT_PALETTE;
-  const { user } = useAppStore();
+  const { user, profile } = useAppStore();
   const { t } = useTranslation(["board", "common"]);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -154,13 +155,21 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
       const groupConversationId = await resolveSessionConversationId(sessionId);
       const { added } = await addGroupMembers(groupConversationId, selectedFriends.map((friend) => friend.id));
       const successCount = added.length;
+      // Issue #4435 (Q3): the friends actually added get one push.
+      notifyAddedToGroup({
+        sessionId,
+        sessionName,
+        actorId: user.id,
+        actorFirstName: profile?.first_name || profile?.display_name || "",
+        addedUserIds: added,
+      });
 
       if (successCount > 0) {
+        // Issue #4435: they are in straight away (no invite to accept).
         Alert.alert(
-          t("board:inlineInviteFriendsList.invitesSent"),
-          t("board:inlineInviteFriendsList.invitesSentMsg", {
+          t("board:inlineInviteFriendsList.peopleAdded"),
+          t("board:inlineInviteFriendsList.peopleAddedMsg", {
             count: successCount,
-            plural: successCount > 1 ? "s" : "",
             name: sessionName,
           })
         );
@@ -169,19 +178,21 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
       } else {
         Alert.alert(
           t("board:inlineInviteFriendsList.error"),
-          t("board:inlineInviteFriendsList.errorSendInvites")
+          t("board:inlineInviteFriendsList.noneAdded")
         );
       }
     } catch (err) {
       console.error("[InlineInviteFriendsList] Error sending invites:", err);
       Alert.alert(
         t("board:inlineInviteFriendsList.error"),
-        t("board:inlineInviteFriendsList.errorSendInvites")
+        err instanceof Error && err.message === "conflict_group_full"
+          ? t("board:inlineInviteFriendsList.groupFull")
+          : t("board:inlineInviteFriendsList.errorSendInvites")
       );
     } finally {
       setSending(false);
     }
-  }, [user?.id, sessionId, sessionName, selectedFriends, onInvitesSent, t]);
+  }, [user?.id, profile?.first_name, profile?.display_name, sessionId, sessionName, selectedFriends, onInvitesSent, t]);
 
   const getInitials = (name: string): string => {
     return name
@@ -287,15 +298,15 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
           onPress={handleSendInvites}
           disabled={sending}
           accessibilityRole="button"
-          accessibilityLabel={t("board:inlineInviteFriendsList.sendInvites", { count: selectedFriends.length })}
+          accessibilityLabel={t("board:inlineInviteFriendsList.addPeople", { count: selectedFriends.length })}
         >
           {sending ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
             <>
-              <Icon name="send" size={16} color="white" />
+              <Icon name="person-add-outline" size={16} color="white" />
               <Text style={st.sendButtonText}>
-                {t("board:inlineInviteFriendsList.sendInvites", { count: selectedFriends.length })}
+                {t("board:inlineInviteFriendsList.addPeople", { count: selectedFriends.length })}
               </Text>
             </>
           )}
