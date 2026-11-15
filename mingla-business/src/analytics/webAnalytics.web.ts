@@ -49,6 +49,11 @@ import {
   type SearchMeasurementProperties,
 } from "@mingla/search-measurement";
 import { isAdPixelRoute, isSignInRoute } from "../utils/coldLoadAuthGates";
+import {
+  hasPrivateUrlToken,
+  stripPrivateUrlParams,
+  stripPrivateUrlProperties,
+} from "../utils/privateUrlTokens";
 
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
 // literal here so the strict-grep gate sees it at the init site.
@@ -90,7 +95,26 @@ export interface PrivacySnapshot {
 function sanitizeLegacyPageview(
   event: CaptureResult | null,
 ): CaptureResult | null {
-  if (event === null || event.event !== LEGACY_PAGEVIEW_EVENT) return event;
+  if (event === null) return null;
+  // #4238 P1-5: no PostHog event (custom, autocapture, exception, replay)
+  // carries a buyer return page's private keys in any URL-bearing property.
+  event = {
+    ...event,
+    properties: stripPrivateUrlProperties(
+      (event.properties ?? {}) as Record<string, unknown>,
+    ) as CaptureResult["properties"],
+    ...(event.$set
+      ? { $set: stripPrivateUrlProperties(event.$set as Record<string, unknown>) }
+      : {}),
+    ...(event.$set_once
+      ? {
+          $set_once: stripPrivateUrlProperties(
+            event.$set_once as Record<string, unknown>,
+          ),
+        }
+      : {}),
+  };
+  if (event.event !== LEGACY_PAGEVIEW_EVENT) return event;
   const properties = { ...(event.properties ?? {}) } as Record<string, unknown>;
   for (const key of [
     "$current_url",
@@ -274,7 +298,65 @@ function currentPathname(): string | null {
 
 /** #4238 W2-4 (I-4238-NO-BUYER-PIXEL-ON-HOST-ROUTES). */
 function pixelRouteAllowed(pathname: string | null): boolean {
+  if (privateTokenDocument()) return false;
   return pathname === null || isAdPixelRoute(pathname);
+}
+
+/**
+ * #4238 P1-5 (I-4238-NO-PRIVATE-TOKEN-TO-PIXELS): once this document's address
+ * has carried a buyer return page's private keys (`bst`, `csi`, `cs`, …), no
+ * third-party ad pixel boots or fires for the rest of the document. Sticky on
+ * purpose: a vendor's own SPA history tracking (TikTok measures every URL
+ * change by default) would otherwise see the token again on a back
+ * navigation. The confirmation's Purchase still reaches every platform from
+ * the server (CAPI, same event_id = the order id). The address is not
+ * rewritten: the confirm pages read these keys, and a refresh must resume.
+ */
+let privateTokenSeen = false;
+
+function privateTokenDocument(): boolean {
+  if (privateTokenSeen) return true;
+  if (!hasWindow()) return false;
+  const location = (window as unknown as {
+    location?: { search?: unknown; hash?: unknown };
+  }).location;
+  const search = typeof location?.search === "string" ? location.search : "";
+  const hash = typeof location?.hash === "string" ? location.hash : "";
+  if (hasPrivateUrlToken(search) || hasPrivateUrlToken(hash)) {
+    privateTokenSeen = true;
+  }
+  return privateTokenSeen;
+}
+
+/** The live address, without a buyer return page's private keys. */
+function sanitizedHref(): string {
+  const href = (window as unknown as { location?: { href?: unknown } }).location
+    ?.href;
+  return typeof href === "string" ? stripPrivateUrlParams(href) : "";
+}
+
+/**
+ * #4238 P1-5: GA4 reads the address and referrer itself for every hit,
+ * including automatic (enhanced measurement) events. The sanitized values are
+ * set as the tag-wide defaults so every later hit carries them instead.
+ */
+function gaPageFields(): Record<string, string> {
+  const fields: Record<string, string> = {};
+  const location = sanitizedHref();
+  if (location) fields.page_location = location;
+  const referrer =
+    typeof window.document?.referrer === "string" ? window.document.referrer : "";
+  if (referrer) fields.page_referrer = stripPrivateUrlParams(referrer);
+  return fields;
+}
+
+function refreshGaPageFields(): void {
+  if (!hasWindow() || typeof window.gtag !== "function") return;
+  try {
+    window.gtag("set", gaPageFields());
+  } catch (err) {
+    console.warn("[webAnalytics] GA4 page fields failed (non-fatal):", err);
+  }
 }
 
 function isPrivacyChoice(value: unknown): value is PrivacyChoice {
@@ -509,7 +591,11 @@ function loadGa4(measurementId: string): void {
     ad_personalization: isAdsOn() ? "granted" : "denied",
   });
   window.gtag("js", new Date());
-  window.gtag("config", measurementId, { send_page_view: false });
+  // #4238 P1-5: sanitized page_location / page_referrer for every hit,
+  // automatic ones included (a buyer return page's address carries tokens).
+  const pageFields = gaPageFields();
+  window.gtag("set", pageFields);
+  window.gtag("config", measurementId, { send_page_view: false, ...pageFields });
 
   // Load the gtag script AFTER the consent default + config are queued on
   // dataLayer, so order (consent → config) is guaranteed.
@@ -718,10 +804,20 @@ export async function initWebAnalytics(pathname?: string): Promise<void> {
   // #4238 W3-2: a hand-off from usemingla.com or a Mingla Site carries its
   // first-party click id as ?mc_click=; adopt it before anything else runs.
   adoptHandoffClickId();
-  if (isAdsOn() && !pixelRouteAllowed(route)) {
+  if (privateTokenDocument()) {
+    // #4238 P1-5: a tab that reached a token page with pixels already booted
+    // (no current flow does: every token page is a cold provider return)
+    // tears them down rather than let them see the address.
+    if (adPixelsBootstrapped || window.__minglaAdPixelsBootstrapped === true) {
+      stopAdPixels();
+    }
+  } else if (isAdsOn() && !pixelRouteAllowed(route)) {
     if (route !== null && isSignInRoute(route)) await loadAdPixelRuntime();
   } else if (isAdsOn()) await bootstrapAdPixels();
-  if (isAnalyticsOn()) await ensureAnalyticsBoot();
+  if (isAnalyticsOn()) {
+    await ensureAnalyticsBoot();
+    refreshGaPageFields();
+  }
 }
 
 /** Fire a custom PostHog event + (optionally) a GA4 event. No-op if gated. */
@@ -756,6 +852,7 @@ export function captureWeb(
 export function gaEvent(name: string, params?: Record<string, unknown>): void {
   if (isAnalyticsOn() && hasWindow() && window.gtag) {
     try {
+      refreshGaPageFields();
       window.gtag("event", name, params ?? {});
     } catch (err) {
       console.warn(`[webAnalytics] gaEvent("${name}") failed:`, err);
@@ -899,6 +996,7 @@ async function bootstrapAdPixels(
   // A visitor can turn ads off, or an SSR/test browser shim can disappear,
   // while the small runtime chunk is loading.
   if (!hasWindow() || !isAdsOn() || adPixelsBootstrapped) return;
+  if (privateTokenDocument()) return;
   if (window.__minglaAdPixelsBootstrapped === true) {
     runtime.adoptBootedPixels(adPixelIds);
   } else {
@@ -978,6 +1076,8 @@ export function fireAdPurchase(
   props: AdCommerceEventProps,
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  // #4238 P1-5: the confirm pages carry tokens; CAPI sends this Purchase.
+  if (privateTokenDocument()) return;
   adPixelRuntime?.fireAdPurchase(eventId, props);
 }
 
@@ -993,6 +1093,7 @@ export function fireAdReservation(
   props: AdCommerceEventProps = {},
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  if (privateTokenDocument()) return;
   adPixelRuntime?.fireAdReservation(eventId, props);
 }
 
@@ -1002,6 +1103,7 @@ export function fireAdInitiateCheckout(
   props: AdCommerceEventProps = {},
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  if (privateTokenDocument()) return;
   adPixelRuntime?.fireAdInitiateCheckout(eventId, props);
 }
 
@@ -1011,6 +1113,7 @@ export async function identifyAdBuyer(input: {
   phone?: string | null;
 }): Promise<void> {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  if (privateTokenDocument()) return;
   await adPixelRuntime?.identifyAdBuyer(input);
 }
 
@@ -1317,7 +1420,7 @@ export async function fireHostFunnelBrowserEvent(
   try {
     resolveAdPixelIds();
     const runtime = await loadAdPixelRuntime();
-    if (!isAdsOn()) return;
+    if (!isAdsOn() || privateTokenDocument()) return;
     runtime.fireHostFunnelPixel(kind, eventId, adPixelIds);
   } catch (err) {
     console.warn("[webAnalytics] host-funnel pixel failed (non-fatal):", err);
