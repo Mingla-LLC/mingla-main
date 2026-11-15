@@ -1,12 +1,12 @@
 /**
  * #4238 P1-1 — the free-order ad conversion runs through the handler's
- * injectable `scheduleAdWork` seam (EdgeRuntime.waitUntil in production), never
+ * injectable `EdgeRuntime.waitUntil` seam (scheduleAdWorkDefault), never
  * a bare `void` promise that outlives the request. A bare `void` made the
  * #2136 / #2150 / #2337 suites red with "Leaks detected" once the fire did more
  * async work (digests) after the response.
  *
  * I-4238-FREE-AD-WORK-SCHEDULED: the free-order fireAdConversion promise is
- * handed to deps.scheduleAdWork exactly once per non-replayed free finalize,
+ * handed to EdgeRuntime.waitUntil exactly once per non-replayed free finalize,
  * and the default scheduler, with no EdgeRuntime, returns a promise the
  * handler awaits (so no work is left running after the response).
  *
@@ -279,25 +279,29 @@ const freeRequest = (): Request =>
     }),
   });
 
-Deno.test("#4238 P1-1: the free-order ad conversion is handed to scheduleAdWork, once", async () => {
-  const db = new FakeCheckoutDb();
-  const scheduled: Promise<unknown>[] = [];
-  const deps: TicketCheckoutCreateDeps = {
-    ...makeDeps(db),
-    scheduleAdWork: (work) => {
-      scheduled.push(work);
-      return work.then(() => undefined);
-    },
+Deno.test("#4238 P1-1: on the edge runtime the free-order ad conversion is handed to waitUntil", async () => {
+  const g = globalThis as unknown as {
+    EdgeRuntime?: { waitUntil: (w: Promise<unknown>) => void };
   };
-  const res = await createTicketCheckoutCreateHandler(deps)(freeRequest());
-  assertEquals(res.status, 200);
-  const body = await res.json() as Record<string, unknown>;
-  assertEquals(body.kind, "free_completed");
-  assertEquals(
-    scheduled.length,
-    1,
-    "the free-order ad conversion was not handed to the scheduler",
-  );
+  const held: Promise<unknown>[] = [];
+  g.EdgeRuntime = { waitUntil: (w) => held.push(w) };
+  try {
+    const db = new FakeCheckoutDb();
+    const res = await createTicketCheckoutCreateHandler(makeDeps(db))(freeRequest());
+    assertEquals(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assertEquals(body.kind, "free_completed");
+    // Two waitUntil hand-offs: the checkout start (scheduleCheckoutAdStart)
+    // and the free-order conversion. A bare `void` leaves only the first.
+    assertEquals(
+      held.length,
+      2,
+      "the free-order ad conversion was not handed to EdgeRuntime.waitUntil",
+    );
+    await Promise.all(held);
+  } finally {
+    delete g.EdgeRuntime;
+  }
 });
 
 Deno.test("#4238 P1-1: with no EdgeRuntime the default scheduler returns an awaitable promise", async () => {

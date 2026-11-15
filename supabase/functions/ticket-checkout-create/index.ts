@@ -653,13 +653,13 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
 
 /**
  * #4238 P1-1: where post-response ad work runs. On the edge runtime it is
- * handed to `EdgeRuntime.waitUntil`, so the buyer's response is never delayed.
- * With no runtime to hold the work (Deno tests, a local `deno serve`), the
- * returned promise is awaited by the handler, so the work is neither cut off
- * nor left running after the request has been answered.
+ * handed to `EdgeRuntime.waitUntil` (the same injectable global seam as
+ * scheduleCheckoutAdStart), so the buyer's response is never delayed. With no
+ * runtime to hold the work (Deno tests, a local `deno serve`), the returned
+ * promise is awaited by the handler, so the work is neither cut off nor left
+ * running after the request has been answered. Kept off
+ * TicketCheckoutCreateDeps, whose three members the #1929 contract pins.
  */
-export type ScheduleAdWork = (work: Promise<unknown>) => Promise<void> | void;
-
 export function scheduleAdWorkDefault(
   work: Promise<unknown>,
 ): Promise<void> | void {
@@ -677,11 +677,6 @@ export interface TicketCheckoutCreateDeps {
   userIdFromAuthHeader: typeof userIdFromAuthHeader;
   serviceClient: typeof serviceClient;
   paystackInitializeTransaction: typeof paystackInitializeTransaction;
-  /**
-   * #4238 P1-1: optional; absent (production) means `scheduleAdWorkDefault`.
-   * Not listed in defaultDeps, which the #1929 gate pins.
-   */
-  scheduleAdWork?: ScheduleAdWork;
 }
 
 const defaultDeps: TicketCheckoutCreateDeps = {
@@ -3671,8 +3666,7 @@ export const createTicketCheckoutCreateHandler = (
               );
             },
           );
-        const freeAdPending =
-          (deps.scheduleAdWork ?? scheduleAdWorkDefault)(freeAdWork);
+        const freeAdPending = scheduleAdWorkDefault(freeAdWork);
         if (freeAdPending) await freeAdPending;
         // #3682 — free RSVP auto-follow from the persisted session buyer, not
         // the request auth uid (idempotency can reuse another session).
