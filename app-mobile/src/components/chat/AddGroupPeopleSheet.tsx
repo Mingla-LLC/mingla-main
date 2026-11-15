@@ -1,79 +1,148 @@
 /**
- * Issue #4261 Wave B1 — "Add people" for a plain group chat (prototype
- * Main.dc.html, "isAdd"): my accepted friends not already in the chat, each
- * a 52pt row with a round check; "Add {n}" adds them with add_group_members.
- * Session groups keep their existing invite flow (BoardSettingsDropdown).
+ * Issue #4435 (design v4 flow 2): one Add people sheet for every group. The
+ * group link card sits on top (Share, Copy, QR; admins also get Approve new
+ * joiners and Reset), then "Invite by phone number" (session groups), then my
+ * friends with search: people already in show "In group", and once the picks
+ * would reach the cap the rest show "Group full" with a line saying why.
+ * Add calls add_group_members once (all or nothing on the server). Session
+ * groups: the cap is max_participants (15) minus the server's accepted count,
+ * and every friend actually added gets one push (decision Q3). Plain groups
+ * keep the per-call limit of 20 (add_group_members' input bound).
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
-import { ChatAvatar } from "../connections/ChatAvatar";
+import { toastManager } from "../ui/Toast";
+import { GroupLinkCard } from "./GroupLinkCard";
+import { GroupFriendPicker, type PickerFriend } from "./GroupFriendPicker";
+import { GroupPhoneInvite } from "./GroupPhoneInvite";
 import { chatTokens } from "../../constants/chatTokens";
 import { useFriendsList } from "../../hooks/useFriendsQuery";
 import { useAddGroupMembers } from "../../hooks/useGroupLink";
 import { useAppStore } from "../../store/appStore";
 import { getDisplayName } from "../../utils/getDisplayName";
+import { GROUP_CAP, remainingSlots } from "../../utils/groupChatModel";
+import { notifyAddedToGroup } from "../../services/boardNotificationService";
 
-const ADD_PEOPLE_SNAP = ["80%"];
+const ADD_PEOPLE_SNAP = ["88%"];
+/** add_group_members takes 1..20 ids per call (plain groups have no cap). */
 const MAX_ADD = 20;
 
 interface AddGroupPeopleSheetProps {
   visible: boolean;
   conversationId: string;
-  /** Everyone already in the chat (left out of the list). */
+  groupName: string;
+  /** Everyone already in the chat (shown as "In group"). */
   memberIds: readonly string[];
+  /** A session group (collab): the 15 cap and the phone invite apply. */
+  sessionId?: string | null;
+  /** Session groups: accepted members right now (server count). */
+  acceptedCount?: number;
   /** Back to group info (also the swipe-down). */
   onBack: () => void;
-  onShareLink: () => void;
-  sharing: boolean;
+  /** After a successful add (group info refreshes its members). */
+  onAdded?: (addedIds: string[]) => void;
 }
 
 export function AddGroupPeopleSheet({
   visible,
   conversationId,
+  groupName,
   memberIds,
+  sessionId = null,
+  acceptedCount,
   onBack,
-  onShareLink,
-  sharing,
+  onAdded,
 }: AddGroupPeopleSheetProps): React.ReactElement {
   const { t } = useTranslation(["chat", "common"]);
+  const insets = useSafeAreaInsets();
   const userId = useAppStore((s) => s.user?.id);
+  const profile = useAppStore((s) => s.profile);
   const friendsQuery = useFriendsList(userId);
   const addMembers = useAddGroupMembers(conversationId);
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [picked, setPicked] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
+  const isSession = Boolean(sessionId);
+  const inGroup = useMemo(() => new Set(memberIds), [memberIds]);
+  const accepted = acceptedCount ?? memberIds.length;
+  const slots = isSession ? remainingSlots(accepted) : MAX_ADD;
+  const full = isSession && slots === 0;
+  const atCap = !full && picked.length >= slots;
 
-  const candidates = useMemo(() => {
-    const inChat = new Set(memberIds);
-    return (friendsQuery.data ?? [])
-      .filter((f) => f.status === "accepted" && !inChat.has(f.friend_user_id))
-      .map((f) => ({
-        id: f.friend_user_id,
-        name: getDisplayName(f, f.username || "?"),
-        avatarUrl: f.avatar_url ?? null,
-      }));
-  }, [friendsQuery.data, memberIds]);
+  useEffect(() => {
+    if (visible) return;
+    setPicked([]);
+    setSearch("");
+  }, [visible]);
+
+  const friends: PickerFriend[] = useMemo(
+    () =>
+      (friendsQuery.data ?? [])
+        .filter((f) => f.status === "accepted")
+        .map((f) => ({
+          id: f.friend_user_id,
+          name: getDisplayName(f, f.username || "?"),
+          username: f.username ?? null,
+          avatarUrl: f.avatar_url ?? null,
+        })),
+    [friendsQuery.data],
+  );
+  const allIn = friends.length > 0 && friends.every((f) => inGroup.has(f.id));
 
   const toggle = (id: string) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (next.size < MAX_ADD) next.add(id);
-      return next;
-    });
+    setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= slots ? prev : [...prev, id]));
   };
 
-  const count = picked.size;
+  const count = picked.length;
   const confirm = () => {
     if (count === 0 || addMembers.isPending) return;
-    addMembers.mutate([...picked], {
-      onSuccess: () => {
-        setPicked(new Set());
+    addMembers.mutate(picked, {
+      onSuccess: (result) => {
+        const names = friends.filter((f) => result.added.includes(f.id)).map((f) => f.name.split(/\s+/)[0]);
+        if (result.added.length > 0) {
+          toastManager.success(t("chat:group_added_toast", { names: names.join(", ") }));
+        }
+        if (sessionId && userId) {
+          notifyAddedToGroup({
+            sessionId,
+            sessionName: groupName,
+            actorId: userId,
+            actorFirstName: profile?.first_name || profile?.display_name || "",
+            addedUserIds: result.added,
+          });
+        }
+        setPicked([]);
+        onAdded?.(result.added);
         onBack();
       },
     });
   };
+
+  const footer = full ? null : (
+    <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+      <Pressable
+        onPress={confirm}
+        disabled={count === 0 || addMembers.isPending}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: count === 0, busy: addMembers.isPending }}
+        style={({ pressed }) => [styles.primary, count === 0 ? styles.primaryOff : null, pressed ? styles.pressed : null]}
+      >
+        {addMembers.isPending ? (
+          <ActivityIndicator size="small" color={chatTokens.textPrimary} />
+        ) : (
+          <Text style={styles.primaryText}>
+            {count > 0 ? t("chat:group_add_people_cta", { count }) : t("chat:group_add_pick_first")}
+          </Text>
+        )}
+      </Pressable>
+      {isSession ? (
+        <Text style={styles.helper}>{t("chat:group_add_helper", { count: accepted + count, cap: GROUP_CAP })}</Text>
+      ) : null}
+    </View>
+  );
 
   return (
     <BaseBottomSheet
@@ -83,7 +152,12 @@ export function AddGroupPeopleSheet({
       wrapInRNModal
       theme="dark"
       scrollMode="scroll"
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
       accessibilityLabel={t("chat:group_add_people_title")}
+      stickyFooter={footer ?? undefined}
+      scrollProps={{ keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag" }}
       header={
         <View style={styles.header}>
           <Pressable
@@ -92,96 +166,57 @@ export function AddGroupPeopleSheet({
             accessibilityLabel={t("common:back")}
             style={styles.headerSide}
           >
-            <Text style={styles.backText}>{t("common:back")}</Text>
+            <Icon name="chevron-back" size={24} color={chatTokens.textPrimary} />
           </Pressable>
           <Text style={styles.title} numberOfLines={1}>
             {t("chat:group_add_people_title")}
           </Text>
-          <View style={[styles.headerSide, styles.headerRight]}>
-            <Pressable
-              onPress={confirm}
-              disabled={count === 0 || addMembers.isPending}
-              accessibilityRole="button"
-              accessibilityLabel={t("chat:group_add_people_cta", { count })}
-              accessibilityState={{ disabled: count === 0, busy: addMembers.isPending }}
-              style={[styles.addPill, count === 0 ? styles.addPillOff : null]}
-            >
-              {addMembers.isPending ? (
-                <ActivityIndicator size="small" color={chatTokens.textPrimary} />
-              ) : (
-                <Text style={[styles.addPillText, count === 0 ? styles.addPillTextOff : null]}>
-                  {t("chat:group_add_people_cta", { count })}
-                </Text>
-              )}
-            </Pressable>
-          </View>
+          <View style={styles.headerSide} />
         </View>
       }
     >
       <View style={styles.body} testID="add-group-people-sheet">
-        <Text style={styles.heading} accessibilityRole="header">
-          {t("chat:group_add_friends_heading")}
-        </Text>
+        <GroupLinkCard conversationId={conversationId} groupName={groupName} withSettings />
 
-        {friendsQuery.isLoading ? (
-          <ActivityIndicator color={chatTokens.accent} style={styles.loading} />
-        ) : friendsQuery.isError ? (
-          <Pressable
-            onPress={() => void friendsQuery.refetch()}
-            accessibilityRole="button"
-            accessibilityLabel={t("common:retry")}
-            style={styles.row}
-          >
-            <Icon name="refresh-outline" size={20} color={chatTokens.textSecondary} />
-            <Text style={styles.name}>{t("common:retry")}</Text>
-          </Pressable>
-        ) : candidates.length === 0 ? (
-          <Text style={styles.empty}>{t("chat:group_add_all_in")}</Text>
+        {full ? (
+          <View style={styles.banner}>
+            <Text style={styles.bannerTitle}>{t("chat:group_full_title")}</Text>
+            <Text style={styles.bannerSub}>{t("chat:group_full_sub", { cap: GROUP_CAP })}</Text>
+          </View>
         ) : (
-          candidates.map((friend) => {
-            const on = picked.has(friend.id);
-            return (
-              <Pressable
-                key={friend.id}
-                onPress={() => toggle(friend.id)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: on }}
-                accessibilityLabel={friend.name}
-                style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
-              >
-                <ChatAvatar
-                  people={[{ id: friend.id, name: friend.name, avatarUrl: friend.avatarUrl }]}
-                  shape="circle"
-                  label={friend.name}
-                  size={38}
-                />
-                <Text style={styles.name} numberOfLines={1}>
-                  {friend.name}
-                </Text>
-                <View style={[styles.check, on ? styles.checkOn : null]}>
-                  {on ? <Icon name="checkmark" size={14} color={chatTokens.textPrimary} /> : null}
+          <>
+            {isSession && sessionId && userId ? (
+              <GroupPhoneInvite sessionId={sessionId} sessionName={groupName} currentUserId={userId} />
+            ) : null}
+            {allIn && search.trim().length === 0 ? (
+              <Text style={styles.note}>{t("chat:group_add_all_in_link")}</Text>
+            ) : null}
+            {isSession && atCap ? (
+              <View style={styles.banner} accessibilityLiveRegion="polite">
+                <View style={styles.bannerRow}>
+                  <Icon name="alert-circle" size={16} color={chatTokens.warning} />
+                  <Text style={styles.bannerTitle}>{t("chat:group_cap_title", { cap: GROUP_CAP })}</Text>
                 </View>
-              </Pressable>
-            );
-          })
+                <Text style={styles.bannerSub}>
+                  {t("chat:group_cap_sub", { accepted, picked: count, cap: GROUP_CAP })}
+                </Text>
+              </View>
+            ) : null}
+            <GroupFriendPicker
+              friends={friends}
+              selectedIds={picked}
+              onToggle={toggle}
+              inGroupIds={inGroup}
+              slots={slots}
+              search={search}
+              onSearchChange={setSearch}
+              loading={friendsQuery.isLoading}
+              error={friendsQuery.isError}
+              onRetry={() => void friendsQuery.refetch()}
+              disabled={addMembers.isPending}
+            />
+          </>
         )}
-
-        <View style={styles.divider} />
-        <Pressable
-          onPress={onShareLink}
-          disabled={sharing}
-          accessibilityRole="button"
-          accessibilityLabel={t("chat:group_add_share_instead")}
-          accessibilityState={{ busy: sharing }}
-          style={({ pressed }) => [styles.row, pressed || sharing ? styles.pressed : null]}
-        >
-          {sharing ? (
-            <ActivityIndicator size="small" color={chatTokens.tagChat} />
-          ) : (
-            <Icon name="link-outline" size={22} color={chatTokens.tagChat} />
-          )}
-          <Text style={styles.name}>{t("chat:group_add_share_instead")}</Text>
-        </Pressable>
         <Text style={styles.note}>{t("chat:group_add_history_note")}</Text>
       </View>
     </BaseBottomSheet>
@@ -194,21 +229,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 4,
     paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: chatTokens.hairline,
   },
   headerSide: {
-    minWidth: 88,
+    width: 56,
     minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: 12,
-  },
-  headerRight: {
-    alignItems: "flex-end",
-  },
-  backText: {
-    fontSize: 16,
-    color: chatTokens.textSecondary,
   },
   title: {
     flex: 1,
@@ -217,84 +243,68 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: chatTokens.textPrimary,
   },
-  addPill: {
-    minHeight: 36,
-    minWidth: 72,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    backgroundColor: chatTokens.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addPillOff: {
-    backgroundColor: chatTokens.strip,
-  },
-  addPillText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: chatTokens.textPrimary,
-  },
-  addPillTextOff: {
-    color: chatTokens.textMuted,
-  },
   body: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 32,
+    paddingTop: 8,
+    paddingBottom: 24,
+    gap: 12,
+  },
+  banner: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: chatTokens.hairline,
+    backgroundColor: chatTokens.surfaceRaised,
+    padding: 12,
     gap: 4,
   },
-  heading: {
-    paddingVertical: 4,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    color: chatTokens.textSoft,
-  },
-  loading: {
-    paddingVertical: 16,
-  },
-  empty: {
-    paddingVertical: 8,
-    fontSize: 14,
-    color: chatTokens.textSoft,
-  },
-  row: {
-    minHeight: 52,
+  bannerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 6,
-    borderRadius: 12,
+    gap: 6,
   },
-  name: {
-    flex: 1,
-    fontSize: 15,
+  bannerTitle: {
+    fontSize: 14,
+    fontWeight: "700",
     color: chatTokens.textPrimary,
   },
-  check: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: chatTokens.textMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkOn: {
-    borderColor: chatTokens.accent,
-    backgroundColor: chatTokens.accent,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: chatTokens.hairline,
-    marginVertical: 10,
+  bannerSub: {
+    fontSize: 13,
+    color: chatTokens.textSoft,
   },
   note: {
     fontSize: 12,
     lineHeight: 17,
     color: chatTokens.textSoft,
   },
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: chatTokens.hairline,
+    backgroundColor: chatTokens.surface,
+  },
+  primary: {
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: chatTokens.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryOff: {
+    opacity: 0.45,
+  },
+  primaryText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: chatTokens.textPrimary,
+  },
+  helper: {
+    fontSize: 12,
+    color: chatTokens.textSoft,
+    textAlign: "center",
+  },
   pressed: {
-    opacity: 0.6,
+    opacity: 0.7,
   },
 });

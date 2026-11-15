@@ -89,3 +89,17 @@ Deno.test("#4435 member order and the leave heir follow the server's joined_at o
   equals(leaveHeir([m("me", false, true, "1"), m("a", false, true, "2")], "me"), null, "another admin stays: no heir");
   equals(leaveHeir([m("me", false, false, "1"), m("k", false, false, "2")], "me"), null, "a non-admin leaving hands nothing over");
 });
+
+Deno.test("#4435 Add people: link on top, phone invite, In group / Group full, one call, push to the added", () => {
+  const sheet = strip(read("src/components/chat/AddGroupPeopleSheet.tsx"));
+  const link = sheet.indexOf("<GroupLinkCard conversationId={conversationId} groupName={groupName} withSettings />");
+  assert(link > 0 && link < sheet.indexOf("<GroupFriendPicker"), "the link card sits above the friends");
+  assert(/const slots = isSession \? remainingSlots\(accepted\) : MAX_ADD;/.test(sheet), "session cap = 15 minus accepted");
+  assert(/inGroupIds=\{inGroup\}/.test(sheet) && /slots=\{slots\}/.test(sheet), "In group and Group full rows");
+  assert(/<GroupPhoneInvite sessionId=\{sessionId\}/.test(sheet), "invite by phone number");
+  assert(/addMembers\.mutate\(picked,/.test(sheet), "one add_group_members call");
+  assert(/notifyAddedToGroup\(\{[\s\S]*?addedUserIds: result\.added/.test(sheet), "push only to the server's added ids");
+  const phone = strip(read("src/components/chat/GroupPhoneInvite.tsx"));
+  const cold = phone.indexOf('if (outcome.kind === "cold" && !outcome.texted) {');
+  assert(cold > 0 && cold < phone.indexOf("Alert.alert("), "a cold invite not texted never claims it went out");
+});

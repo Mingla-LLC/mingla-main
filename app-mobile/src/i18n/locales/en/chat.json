@@ -541,5 +541,15 @@
   "group_create_failed_sub": "Your picks are saved. Check your connection and try again.",
   "group_live_title": "{{name}} is live",
   "group_live_people": "In the group: {{names}}. Invite anyone else with the group link, even if they're not on Mingla yet.",
-  "group_live_solo": "It's just you for now. Share the link to bring people in, even if they're not on Mingla yet."
+  "group_live_solo": "It's just you for now. Share the link to bring people in, even if they're not on Mingla yet.",
+  "group_add_pick_first": "Pick friends to add",
+  "group_add_helper": "{{count}} of {{cap}} · they join straight away",
+  "group_full_title": "This group is full",
+  "group_full_sub": "Groups hold up to {{cap}} people. Someone has to leave before anyone new can join.",
+  "group_add_all_in_link": "All your friends are already in this chat. Share the link to bring anyone else.",
+  "group_cap_title": "Group full ({{cap}})",
+  "group_cap_sub": "{{accepted}} in the group plus {{picked}} picked is the {{cap}} limit. Untick someone to choose a different friend.",
+  "group_added_toast": "Added {{names}}",
+  "group_invite_phone": "Invite by phone number",
+  "group_invite_phone_sub": "For someone not on Mingla yet"
 }

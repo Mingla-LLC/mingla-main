@@ -253,10 +253,9 @@ export function GroupInfoSheet({
       <AddGroupPeopleSheet
         visible={visible && addingPeople}
         conversationId={conversationId}
+        groupName={name}
         memberIds={members.map((member) => member.id)}
         onBack={() => setAddingPeople(false)}
-        onShareLink={() => void shareGroupLink()}
-        sharing={sharingLink}
       />
     ) : null}
     </>
