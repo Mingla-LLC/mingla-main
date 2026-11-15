@@ -225,6 +225,12 @@ test("P1-5: a public page without private keys still boots every pixel (control)
     "snap",
     "tiktok",
   ]);
+  // #4238 P3-R8: a token-free page keeps the plain #3176 GA4 config, with no
+  // page_location / page_referrer override and no tag-wide set.
+  const layer = h.dataLayer();
+  expect(layer).toContainEqual(["config", "G-TEST4238", { send_page_view: false }]);
+  expect(layer.filter((args) => args[0] === "config")).toHaveLength(1);
+  expect(layer.some((args) => args[0] === "set")).toBe(false);
 });
 
 test("P1-5: GA4 gets a sanitized page_location / page_referrer as the tag default and before every event", async () => {
@@ -350,4 +356,77 @@ test("P1-5: stripPrivateUrlParams removes only the private keys", () => {
     JSON.stringify(stripPrivateUrlProperties({ nested: { deep: ["?bst=t&x=1"] } })),
   ).toBe(JSON.stringify({ nested: { deep: ["?x=1"] } }));
   expect(PRIVATE.test(stripPrivateUrlParams("/o/venue/1?bst=a&cs=b&payment=cancelled"))).toBe(false);
+});
+
+// Tester Retest 2 (adversarial, I-4238-NO-PRIVATE-TOKEN-TO-PIXELS): a FRESH
+// visitor whose first page is a token page. posthog-js writes
+// $initial_person_info inside its first capture() (set_initial_person_info),
+// i.e. AFTER init returns, and sends it with the next /flags request.
+test("P1-5 (tester R2): a fresh visitor's first-capture $initial_person_info never keeps the keys", async () => {
+  const href =
+    "https://host.usemingla.com/o/venue/ord-1?bst=tok-fresh&cs=cs_test_fresh";
+  const h = loadHarness(href);
+  const props = h.posthog.persistence.props as Record<string, unknown>;
+  delete props.$initial_person_info;
+  h.posthog.capture.mockImplementation(() => {
+    if (props.$initial_person_info === undefined) {
+      props.$initial_person_info = { r: "$direct", u: href };
+    }
+  });
+  await h.wa.initWebAnalytics("/o/venue/ord-1");
+  h.wa.captureWeb("tester_probe");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(JSON.stringify(props.$initial_person_info ?? {})).not.toMatch(
+    /tok-fresh|cs_test_fresh/,
+  );
+});
+
+// #4238 P1-R4 (implementor): posthog-js itself masks the private keys when it
+// builds the stored first-page address and the per-session first page, so the
+// /flags request can never carry them, whatever the timing of the first
+// capture. The custom list only applies while mask_personal_data_properties
+// is on (posthog-js 1.438.23 getPersonInfo / getCampaignParams).
+test("P1-R4: posthog.init masks every private key at source, and the per-session first page is scrubbed too", async () => {
+  const href = "https://host.usemingla.com/booking/b1/cancel?token=tok-cancel#csi=sess-hash";
+  const h = loadHarness(href);
+  const props = h.posthog.persistence.props as Record<string, unknown>;
+  delete props.$initial_person_info;
+  h.posthog.capture.mockImplementation(() => {
+    props.$initial_person_info ??= { r: "$direct", u: href };
+    props.$client_session_props ??= { sessionId: "s1", props: { r: "$direct", u: href } };
+  });
+  await h.wa.initWebAnalytics("/booking/b1/cancel");
+  const config = h.posthog.init.mock.calls[0]?.[1] as Record<string, unknown>;
+  expect(config.mask_personal_data_properties).toBe(true);
+  expect([...(config.custom_personal_data_properties as string[])].sort()).toEqual(
+    ["bst", "cs", "csi", "rcs", "reference", "token", "trxref"],
+  );
+  expect(JSON.stringify(props)).not.toMatch(/tok-cancel|sess-hash/);
+  expect(props.$client_session_props).toEqual({
+    sessionId: "s1",
+    props: { r: "$direct", u: "https://host.usemingla.com/booking/b1/cancel" },
+  });
+});
+
+// #4238 P3-R7: a full same-origin navigation away from a token page must not
+// hand the next document (and its pixels) the token through document.referrer.
+// strict-origin sends only the origin, same-origin and cross-origin alike, so
+// Stripe, Paystack and Google see exactly what the browser default
+// (strict-origin-when-cross-origin) already sends them.
+test("P3-R7: every token-bearing buyer route family sends an origin-only referrer", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require("fs") as typeof import("fs");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require("path") as typeof import("path");
+  const vercel = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "..", "..", "vercel.json"), "utf8"),
+  ) as { headers: { source: string; headers: { key: string; value: string }[] }[] };
+  for (const family of ["booking", "checkout", "checkout-experience", "checkout-trip", "o", "reserve"]) {
+    const policies = vercel.headers
+      .filter((rule) => rule.source === `/${family}/:path*`)
+      .flatMap((rule) => rule.headers)
+      .filter((header) => header.key.toLowerCase() === "referrer-policy")
+      .map((header) => header.value);
+    expect([family, policies]).toEqual([family, ["strict-origin"]]);
+  }
 });

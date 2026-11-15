@@ -193,6 +193,42 @@
       ]
     },
     {
+      "source": "/booking/:path*",
+      "headers": [
+        { "key": "Referrer-Policy", "value": "strict-origin" }
+      ]
+    },
+    {
+      "source": "/checkout/:path*",
+      "headers": [
+        { "key": "Referrer-Policy", "value": "strict-origin" }
+      ]
+    },
+    {
+      "source": "/checkout-experience/:path*",
+      "headers": [
+        { "key": "Referrer-Policy", "value": "strict-origin" }
+      ]
+    },
+    {
+      "source": "/checkout-trip/:path*",
+      "headers": [
+        { "key": "Referrer-Policy", "value": "strict-origin" }
+      ]
+    },
+    {
+      "source": "/o/:path*",
+      "headers": [
+        { "key": "Referrer-Policy", "value": "strict-origin" }
+      ]
+    },
+    {
+      "source": "/reserve/:path*",
+      "headers": [
+        { "key": "Referrer-Policy", "value": "strict-origin" }
+      ]
+    },
+    {
       "source": "/home/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
