@@ -252,7 +252,7 @@ type FieldProps = TextInputProps & {
 };
 
 export function ProgramField({ label, error, hint, prefix, suffix, counter, inSheet = false, inputRef, style, multiline, value, ...rest }: FieldProps): React.ReactElement {
-  const Input = (inSheet ? BottomSheetTextInput : TextInput) as unknown as React.ComponentType<TextInputProps>;
+  const Input = (inSheet ? BottomSheetTextInput : TextInput) as unknown as React.ComponentType<TextInputProps & React.RefAttributes<TextInput>>;
   const length = (value ?? '').length;
   const under = counter?.min !== undefined && length < counter.min;
   return <View style={styles.fieldWrap}>
@@ -263,7 +263,7 @@ export function ProgramField({ label, error, hint, prefix, suffix, counter, inSh
     <View style={[styles.field, multiline && styles.fieldMultiline, error ? styles.fieldError : null]}>
       {prefix ? <Text style={styles.affix}>{prefix}</Text> : null}
       <Input
-        ref={inputRef as never}
+        ref={inputRef}
         placeholderTextColor={C.faint}
         selectionColor={C.accent}
         {...rest}
