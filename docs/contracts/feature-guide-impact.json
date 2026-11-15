@@ -1427,7 +1427,8 @@
         "supabase/functions/ticket-checkout-confirm/index.ts",
         "supabase/migrations/20280708014238_issue_4238_click_id_type_and_health.sql",
         "supabase/migrations/20280708024238_issue_4238_checkout_surface.sql",
-        "supabase/migrations/20280708034238_issue_4238_host_funnel.sql"
+        "supabase/migrations/20280708034238_issue_4238_host_funnel.sql",
+        "app-mobile/src/store/appStore.ts"
       ]
     },
     {
