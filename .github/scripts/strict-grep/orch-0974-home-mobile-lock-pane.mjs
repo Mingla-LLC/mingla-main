@@ -246,12 +246,14 @@ if (homeSource.length > 0) {
   // The paddingBottom half is unchanged and still explicitly pinned.
   if (
     sectionHeader === null ||
-    !sectionHeader.includes("paddingBottom: spacing.md") ||
-    !sectionHeader.includes("paddingTop: spacing.sm")
+    // #4420 — the spacing aliases retired: spacing.sm (8) is space[2] and
+    // spacing.md (16) is space[4]; the values are unchanged.
+    !sectionHeader.includes("paddingBottom: space[4]") ||
+    !sectionHeader.includes("paddingTop: space[2]")
   ) {
     fail(
       "C3: spacing-contract-explicit",
-      "styles.mobileSectionHeaderRow must contain paddingTop: spacing.sm and paddingBottom: spacing.md.",
+      "styles.mobileSectionHeaderRow must contain paddingTop: space[2] and paddingBottom: space[4].",
     );
   }
   if (!homeSource.includes("RecentRow")) {
