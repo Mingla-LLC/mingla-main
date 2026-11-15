@@ -1069,7 +1069,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   segmentedHug: { alignSelf: "flex-start" },
-  segmentHug: { flex: 0, paddingHorizontal: space[4] },
+  // flex 0 is `0 0 0%` on web and collapsed the label; size to the label.
+  segmentHug: { flexGrow: 0, flexShrink: 0, flexBasis: "auto", paddingHorizontal: space[4] },
   segmentOn: { backgroundColor: colorTokens.fill.tabOn },
   segmentText: { color: colorTokens.text2, fontWeight: "600", fontSize: 14 },
   segmentTextOn: { color: colorTokens.text1 },
