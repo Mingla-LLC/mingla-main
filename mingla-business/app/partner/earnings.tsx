@@ -74,8 +74,8 @@ import type {
   PartnerSplitStatus,
 } from "../../src/services/partnerSplitsService";
 import {
-  accent,
   canvas,
+  color,
   glass,
   radius,
   semantic,
@@ -299,7 +299,7 @@ export default function PartnerEarningsScreen(): React.ReactElement {
       >
         {statusQuery.isLoading ? (
           <View style={styles.center}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={textTokens.primary} />
           </View>
         ) : statusQuery.error ? (
           <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
@@ -335,7 +335,7 @@ export default function PartnerEarningsScreen(): React.ReactElement {
           // ORCH-1331 — the paystack status joins the screen-level loading
           // gate AFTER the partner gate (non-partners never reach it).
           <View style={styles.center}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={textTokens.primary} />
           </View>
         ) : paystackQuery.error ? (
           // ORCH-1331 — joins the same screen-level error branch (design §4.1).
@@ -548,7 +548,7 @@ function PartnerSplitsSection(): React.ReactElement {
     return (
       <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Splits</Text>
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={textTokens.primary} />
       </GlassCard>
     );
   }
@@ -1046,8 +1046,9 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     marginTop: spacing.xs,
   },
+  // #4420 — links are text, not orange (orange is Create / nav / progress only).
   link: {
-    color: accent.warm,
+    color: textTokens.primary,
     textDecorationLine: "underline",
   },
 
@@ -1152,9 +1153,10 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileElevated,
     backgroundColor: glass.tint.profileBase,
   },
+  // #4420 — the selected chip is the selected material, not an orange fill.
   filterChipActive: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.card3,
+    borderColor: color.lineStrong,
   },
   filterChipText: {
     ...typography.caption,
@@ -1162,7 +1164,7 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     ...typography.caption,
-    color: textTokens.inverse,
+    color: textTokens.primary,
   },
   splitRow: {
     flexDirection: "row",
@@ -1193,7 +1195,7 @@ const styles = StyleSheet.create({
   // ORCH-1081 — Ready-to-earn nudge typography.
   nudgeEyebrow: {
     ...typography.labelCap,
-    color: accent.warm,
+    color: textTokens.tertiary,
     marginBottom: spacing.xs,
   },
   nudgeStep: {
@@ -1206,12 +1208,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   welcomeToast: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.successTint,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.line,
   },
   welcomeToastText: {
     ...typography.body,
