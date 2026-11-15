@@ -14,6 +14,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   radius,
   color,
+  size,
   space,
   type,
 } from "../../constants/designSystem";
@@ -27,7 +28,7 @@ import {
   useVenueWaitlist,
 } from "../../hooks/useVenueWaitlist";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { MessageSquare, X } from "lucide-react-native";
+import { Check, MessageSquare, X } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { WaitlistAddSheet } from "./WaitlistAddSheet";
@@ -148,7 +149,12 @@ export function VenueWaitlistModule({
             if (w.preferredZone != null) parts.push(ZONE_LABEL[w.preferredZone]);
             const notified = w.status === "notified";
             return (
-              <GlassCard key={w.id} variant="base" style={styles.card}>
+              <GlassCard
+                key={w.id}
+                variant="base"
+                style={styles.card}
+                contentStyle={styles.cardContent}
+              >
                 <View style={styles.cardMain}>
                   <Text style={styles.pos}>{i + 1}</Text>
                   <View style={styles.cardText}>
@@ -172,7 +178,7 @@ export function VenueWaitlistModule({
                         style={styles.notifyBtn}
                         testID={`venue-waitlist-notify-${w.id}`}
                       >
-                        <MessageSquare size={15} color={color.ink} />
+                        <MessageSquare size={15} color={color.text1} />
                         <Text style={styles.notifyLabel}>Notify</Text>
                       </Pressable>
                     ) : null}
@@ -183,6 +189,7 @@ export function VenueWaitlistModule({
                       style={styles.seatBtn}
                       testID={`venue-waitlist-seat-${w.id}`}
                     >
+                      <Check size={15} color={color.text1} />
                       <Text style={styles.seatLabel}>Seat</Text>
                     </Pressable>
                     <Pressable
@@ -269,13 +276,15 @@ const styles = StyleSheet.create({
     gap: space[2],
   },
   card: {
-    // ORCH-1190 R2 — full-width queue row on WEB. The row card carried only
-    // flexDirection:row, so its single clipped child shrank to min-content on
-    // the wide shell. Force full width; the row layout stays on this style.
+    // ORCH-1190 R2 — full-width queue row on WEB.
     width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space[2],
+    alignSelf: "stretch",
+  },
+  // #4420 — the content fills the card (it shrank to min-content inside the
+  // glass wrapper): the guest on top, the actions on their own row.
+  cardContent: {
+    alignSelf: "stretch",
+    gap: space[3],
   },
   cardMain: {
     flex: 1,
@@ -310,36 +319,43 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: space[1],
+    gap: space[2],
+    paddingLeft: 22 + space[2],
   },
+  // #4420 — quiet pill buttons (icon + word), 36pt tall, on the space scale.
   notifyBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
-    paddingHorizontal: space[2],
-    paddingVertical: space[1],
+    gap: space[1],
+    height: size.btn.sm,
+    paddingHorizontal: space[3],
     borderRadius: radius.full,
-    backgroundColor: color.accent,
+    borderWidth: 1,
+    borderColor: color.line,
+    backgroundColor: color.fill.tile,
   },
   notifyLabel: {
-    ...type.caption,
-    color: color.ink,
-    fontWeight: "700",
+    ...type.btnSm,
+    color: color.text1,
   },
   seatBtn: {
-    paddingHorizontal: space[2],
-    paddingVertical: space[1],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[1],
+    height: size.btn.sm,
+    paddingHorizontal: space[3],
     borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: color.line,
     backgroundColor: color.fill.tile,
   },
   seatLabel: {
-    ...type.caption,
+    ...type.btnSm,
     color: color.text1,
-    fontWeight: "700",
   },
   lostBtn: {
-    width: 32,
-    height: 32,
+    width: size.btn.sm,
+    height: size.btn.sm,
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",

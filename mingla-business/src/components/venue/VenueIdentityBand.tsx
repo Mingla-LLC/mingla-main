@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: space[4],
+    gap: space[3],
     paddingHorizontal: space[4],
     paddingTop: space[2],
     paddingBottom: space[2] + space[1],
@@ -170,10 +170,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  // #4420 — re-picked: the old h1 grew a step (20 → 22), so the venue name
+  // reads at h2 like the mockup, leaving room for the status chip.
   name: {
-    fontSize: type.h1.fontSize,
-    lineHeight: type.h1.lineHeight,
-    fontWeight: type.h1.fontWeight,
+    fontSize: type.h2.fontSize,
+    lineHeight: type.h2.lineHeight,
+    fontWeight: "700",
     color: color.text1,
   },
   secondary: {

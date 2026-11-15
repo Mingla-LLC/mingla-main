@@ -50,6 +50,8 @@ import {
   type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
+import { Icon } from "../ui/Icon";
+import type { IconName } from "../ui/Icon";
 import { Button } from "../ui/Button";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
@@ -1093,6 +1095,7 @@ export function VenueMenuModule({
               style={[
                 styles.itemRow,
                 stackItemRows && styles.itemRowStacked,
+                itemIndex > 0 && styles.itemRowDivided,
                 !item.isAvailable && styles.itemHidden,
               ]}
               accessibilityLabel={`${item.name}, ${
@@ -1177,7 +1180,12 @@ export function VenueMenuModule({
                             : styles.dotUnavailable,
                         ]}
                       />
-                      <Text style={styles.availabilityLabel}>
+                      <Text
+                        style={[
+                          styles.availabilityLabel,
+                          item.isAvailable && styles.availabilityLabelOn,
+                        ]}
+                      >
                         {item.isAvailable ? "On" : "86'd"}
                       </Text>
                     </Pressable>
@@ -1282,7 +1290,8 @@ export function VenueMenuModule({
               ]}
               testID={`venue-menu-add-item-${menu.id}`}
             >
-              <Text style={styles.addItemLabel}>+ Add item</Text>
+              <Icon name="plus" size={16} color={color.text2} />
+              <Text style={styles.addItemLabel}>Add item</Text>
             </Pressable>
           ) : null}
         </GlassCard>
@@ -1404,10 +1413,18 @@ function ArrowControl({
       ]}
       testID={testID}
     >
-      <Text style={styles.iconGlyph}>{glyph}</Text>
+      {/* #4420 (round-3 item 16) — chevron icons in the 44pt box, not text
+          triangles. */}
+      <Icon
+        name={GLYPH_ICON[glyph] ?? "chevD"}
+        size={18}
+        color={color.text2}
+      />
     </Pressable>
   );
 }
+
+const GLYPH_ICON: Record<string, IconName> = { "▲": "chevU", "▼": "chevD" };
 
 function TextControl({
   label,
@@ -1423,7 +1440,15 @@ function TextControl({
       style={({ pressed }) => [styles.textControl, pressed && styles.pressed]}
       testID={testID}
     >
-      <Text style={styles.textControlLabel}>{glyph}</Text>
+      {/* #4420 (round-3 item 16) — a pencil in a quiet well, not the word
+          "Edit" (its accessibility label still says "Edit <name>"). */}
+      {glyph === "Edit" ? (
+        <View style={styles.editWell}>
+          <Icon name="edit" size={16} color={color.text1} />
+        </View>
+      ) : (
+        <Text style={styles.textControlLabel}>{glyph}</Text>
+      )}
     </Pressable>
   );
 }
@@ -1478,12 +1503,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: space[1],
+    paddingVertical: space[2],
     gap: space[2],
   },
   itemRowStacked: {
     flexDirection: "column",
     alignItems: "stretch",
+    gap: space[1],
+  },
+  // #4420 (round-3 item 16) — a hairline between dishes so each row reads as
+  // one unit (name, price, on/86, order, edit).
+  itemRowDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+    paddingTop: space[2],
   },
   itemHidden: {
     opacity: 0.5,
@@ -1497,7 +1530,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   itemName: {
-    ...type.body,
+    ...type.row,
     color: color.text1,
   },
   itemDesc: {
@@ -1522,8 +1555,7 @@ const styles = StyleSheet.create({
     gap: space[2],
   },
   itemPrice: {
-    ...type.body,
-    fontWeight: "600",
+    ...type.row,
     color: color.text1,
   },
   priceOnRequest: {
@@ -1533,16 +1565,21 @@ const styles = StyleSheet.create({
   spotsEntry: {
     alignSelf: "flex-start",
   },
+  // #4420 (round-3 item 16) — the one-tap 86 reads as a chip; the Pressable
+  // keeps its 44pt height for the touch target.
   availabilityToggle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: space[1],
     minHeight: 44,
     paddingHorizontal: space[1],
   },
   availabilityLabel: {
-    ...type.label,
+    ...type.caption,
     color: color.text3,
+  },
+  availabilityLabelOn: {
+    color: color.text2,
   },
   availabilityDot: {
     width: 8,
@@ -1627,9 +1664,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  iconGlyph: {
-    ...type.body,
-    color: color.text2,
+  editWell: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.fill.tile,
   },
   iconDisabled: {
     opacity: 0.3,
@@ -1650,19 +1691,21 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   // ---- add item ----
+  // #4420 (round-3 item 16) — a quiet "+ Add item" row, not an orange
+  // dashed box.
   addItemRow: {
-    paddingVertical: space[2],
-    borderWidth: 1,
-    borderColor: color.accentLine,
-    borderStyle: "dashed",
-    borderRadius: radius.md,
+    flexDirection: "row",
     alignItems: "center",
+    gap: space[2],
+    minHeight: 44,
+    paddingHorizontal: space[1],
     marginTop: space[1],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
   },
   addItemLabel: {
-    ...type.small,
-    fontWeight: "600",
-    color: color.accent,
+    ...type.btnSm,
+    color: color.text2,
   },
   addCategoryBtn: {
     alignSelf: "stretch",

@@ -29,6 +29,7 @@ import type { LayoutChangeEvent } from "react-native";
 import {
   radius,
   color,
+  materials,
   space,
   type,
 } from "../../constants/designSystem";
@@ -195,8 +196,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    paddingHorizontal: space[6],
-    paddingVertical: space[2],
+    paddingHorizontal: space[4],
+    minHeight: 36,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
   },
@@ -204,12 +205,15 @@ const styles = StyleSheet.create({
     // 6pt dot + 7pt gap ≈ 13pt growth on the right only.
     paddingRight: space[6] + 13,
   },
+  // #4420 — the selected module uses the kit's selected material (as the
+  // shared Chip does), not an orange fill: orange is for primary actions.
   pillActive: {
-    backgroundColor: color.accent,
-    borderColor: color.accent,
+    backgroundColor: materials.selected.solidFill,
+    borderColor: materials.selected.rim.edge,
+    borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
   },
   pillInactive: {
-    backgroundColor: color.fill.inset,
+    backgroundColor: color.fill.tile,
     borderColor: color.line,
   },
   pillLabel: {
@@ -218,7 +222,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   pillLabelActive: {
-    color: color.ink,
+    color: color.textStrong,
   },
   pillLabelInactive: {
     color: color.text2,
@@ -230,7 +234,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.accent,
   },
   dirtyDotOnActive: {
-    backgroundColor: color.canvas,
+    backgroundColor: color.accent,
   },
 });
 
