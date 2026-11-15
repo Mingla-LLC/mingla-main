@@ -3,13 +3,15 @@ import path from "node:path";
 
 const root = path.resolve(__dirname, "..", "..", "..", "..");
 
-// [TEST-MOD-APPROVED #4420] the 80 rail became the grouped 248 sidebar (B6).
+// [TEST-MOD-APPROVED #4420] the 80 rail became the grouped 248 sidebar (B6),
+// which lives in DesktopSidebar.tsx (shared by BottomNav.web and the root
+// HostDesktopShell).
 // The intent is unchanged: the official logo (never a letter mark), and a
 // restrained selected state: a soft `fill.railOn` wash with the orange icon,
 // no glow, no hard-coded colours (Graphite tokens only).
 describe("BottomNav.web desktop rail polish", () => {
   const source = fs.readFileSync(
-    path.join(root, "src/components/ui/BottomNav.web.tsx"),
+    path.join(root, "src/components/ui/DesktopSidebar.tsx"),
     "utf8",
   );
 

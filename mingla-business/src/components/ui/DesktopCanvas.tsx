@@ -24,6 +24,7 @@ import {
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 import { desktopSidebarWidth, useDesktopSidebarStore } from "./desktopSidebarState";
+import { HostShellInsetContext } from "./hostShellContext";
 
 /**
  * #4420 (spec §3.6) desktop page templates, 12-col / 24 gutter / max 1680:
@@ -71,7 +72,9 @@ export {
 const useSidebarInset = (): number => {
   const collapsed = useDesktopSidebarStore((s) => s.collapsed);
   const pathname = usePathname() ?? "";
-  return desktopSidebarWidth(collapsed, pathname);
+  // Outside (tabs) the root HostDesktopShell already reserves the sidebar.
+  const shellReserves = React.useContext(HostShellInsetContext);
+  return shellReserves ? 0 : desktopSidebarWidth(collapsed, pathname);
 };
 
 export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({ children, maxWidth, template }) => {

@@ -236,7 +236,8 @@ export default function SupportRoute(): React.ReactElement {
             <Text style={styles.floatingActionText}>{communityAction.label}</Text>
           </Pressable>
         ) : null}
-        {isWideDesktop ? <SupportDesktopRail locked={firstRunLocked} onChange={(id) => router.push(`/(tabs)/${id}` as never)} /> : null}
+        {/* #4420 B6: the root HostDesktopShell now draws the grouped sidebar on
+            desktop for this route, so the page no longer mounts its own rail. */}
         <View style={styles.toastWrap} pointerEvents="box-none"><Toast visible={toast.visible} kind="info" message={toast.message} onDismiss={() => setToast({ visible: false, message: "" })} /></View>
       </View>
     </DesktopCanvas>

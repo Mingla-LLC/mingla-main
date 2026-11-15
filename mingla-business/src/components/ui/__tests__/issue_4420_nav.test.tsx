@@ -36,7 +36,7 @@ jest.mock("../GlassChrome", () => ({ GlassChrome: ({ children }: { children: Rea
 import { BRAND_ROLE_RANK, NO_MEMBERSHIP_RANK } from "../../../utils/brandRole";
 import { MIN_RANK_FOR_TAB, shouldShowTabBar, visibleTabsForRank } from "../../../utils/navTabGate";
 import { firstRunVisibleTabs } from "../../../utils/firstRunState";
-import { buildSidebarGroups } from "../BottomNav.web";
+import { SIDEBAR_SOURCE_TABS, buildSidebarGroups } from "../DesktopSidebar";
 import { ProfileButton } from "../TopBar";
 
 const TestRenderer = require("react-test-renderer") as {
@@ -101,6 +101,10 @@ describe("#4420 B5 — phone tabs", () => {
 });
 
 describe("#4420 B6 — desktop sidebar", () => {
+  test("the sidebar's source tabs are the (tabs) TABS minus Create", () => {
+    expect(SIDEBAR_SOURCE_TABS.map((t) => t.id)).toEqual(TAB_IDS.filter((id) => id !== "create"));
+  });
+
   test("groups: main, Promote, Audience; Account pinned; no Blast item, no Insights", () => {
     const { groups, account } = buildSidebarGroups(visibleTabsForRank(TABS, BRAND_ROLE_RANK.event_manager));
     expect(groups.map((g) => g.title)).toEqual([null, "Promote", "Audience"]);

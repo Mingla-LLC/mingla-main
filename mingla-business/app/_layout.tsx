@@ -47,6 +47,7 @@ import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 import { ToastHost } from "../src/components/ui/ToastHost";
+import { HostDesktopShell } from "../src/components/ui/HostDesktopShell";
 import { TapToPayAwarenessModal } from "../src/components/door/tap/TapToPayAwarenessModal";
 import { TapToPayTerminalHost } from "../src/components/door/tap/TapToPayTerminalHost";
 // #2107 (U1): the launch guard installs when this file is imported, before
@@ -838,7 +839,12 @@ function RootLayoutInner(): React.ReactElement {
         }
       }}
     >
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* #4420 B6: desktop sidebar + web top bar for signed-in host routes
+          outside (tabs); a passthrough everywhere else (phones, native,
+          public buyer routes, auth, door / scanner). */}
+      <HostDesktopShell>
+        <Stack screenOptions={{ headerShown: false }} />
+      </HostDesktopShell>
       {/* #4271: a SIBLING of the Stack, never a wrapper. Renders nothing unless Tap to Pay is live. */}
       <TapToPayTerminalHost />
       <TapToPayAwarenessModal />
