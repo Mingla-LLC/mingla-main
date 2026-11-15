@@ -14,7 +14,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { color, radius, space } from "../../constants/designSystem";
+import { color, radius, size, space, type } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { teamChatKey } from "../../hooks/useBusinessNotifications";
 import { supabase } from "../../services/supabase";
 import {
@@ -207,6 +208,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
   const back = useBack();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ tab?: string; mention?: string }>();
+  const { isWideDesktop } = useResponsiveLayout();
   const [tab, setTab] = useState<"chats" | "mentions">(params.tab === "mentions" ? "mentions" : "chats");
   const [find, setFind] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -268,38 +270,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
   const counts = workUpdateCounts(updates);
   const shownUpdates = filterWorkUpdates(updates, filter);
 
-  return (
-    <SafeScreen edges={["top", "bottom"]} style={styles.screen} testID="team-home">
-      <TeamHeader
-        title={t("team.title")}
-        onBack={back}
-        right={(
-          <Pressable accessibilityRole="button" accessibilityLabel={t("team.settings")} onPress={() => router.push("/account/notifications" as never)} hitSlop={6} style={styles.iconButton} testID="team-settings">
-            <Icon name="settings" size={19} color={brandGroupChat.textPrimary} />
-          </Pressable>
-        )}
-      />
-      <View style={styles.segment} accessibilityRole="tablist">
-        {(["chats", "mentions"] as const).map((key) => {
-          const n = key === "chats" ? unreadChats : unreadMentions;
-          const label = key === "chats" ? t("team.tab_chats") : t("team.tab_updates");
-          return (
-            <Pressable
-              key={key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === key }}
-              accessibilityLabel={n ? `${label}, ${n}` : label}
-              onPress={() => setTab(key)}
-              style={[styles.segmentButton, tab === key && styles.segmentButtonOn]}
-              testID={`team-tab-${key}`}
-            >
-              <Text style={[styles.segmentText, tab === key && styles.segmentTextOn]}>{n ? `${label} · ${n}` : label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {tab === "chats" ? (
+  const chatsPane = (
         <ScrollView style={styles.flex} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
           <View style={styles.findRow}>
             <TextInput
@@ -355,7 +326,8 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
             </>
           )}
         </ScrollView>
-      ) : (
+  );
+  const updatesPane = (
         <ScrollView style={styles.flex} contentContainerStyle={styles.listContent}>
           {mentions.isPending ? (
             <View style={styles.state}><ActivityIndicator color={color.text2} accessibilityLabel={t("team.loading")} /></View>
@@ -396,6 +368,57 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
 
           <Text style={styles.footnote}>{t("team.mentions_note")}</Text>
         </ScrollView>
+  );
+
+  return (
+    <SafeScreen edges={["top", "bottom"]} style={styles.screen} testID="team-home">
+      <TeamHeader
+        title={t("team.title")}
+        onBack={back}
+        right={(
+          <Pressable accessibilityRole="button" accessibilityLabel={t("team.settings")} onPress={() => router.push("/account/notifications" as never)} hitSlop={6} style={styles.iconButton} testID="team-settings">
+            <Icon name="settings" size={19} color={brandGroupChat.textPrimary} />
+          </Pressable>
+        )}
+      />
+      {/* #4420 kit (team-home, web): desktop shows Chats and Work updates
+          side by side as two panels; the phone keeps the segmented switch. */}
+      {isWideDesktop ? (
+        <View style={styles.deskPanes}>
+          <View style={styles.deskPane}>
+            <Text style={styles.deskPaneTitle} accessibilityRole="header">{t("team.tab_chats")}</Text>
+            {chatsPane}
+          </View>
+          <View style={styles.deskPane}>
+            <Text style={styles.deskPaneTitle} accessibilityRole="header">
+              {unreadMentions ? `${t("team.tab_updates")} · ${unreadMentions}` : t("team.tab_updates")}
+            </Text>
+            {updatesPane}
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={styles.segment} accessibilityRole="tablist">
+          {(["chats", "mentions"] as const).map((key) => {
+            const n = key === "chats" ? unreadChats : unreadMentions;
+            const label = key === "chats" ? t("team.tab_chats") : t("team.tab_updates");
+            return (
+              <Pressable
+                key={key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === key }}
+                accessibilityLabel={n ? `${label}, ${n}` : label}
+                onPress={() => setTab(key)}
+                style={[styles.segmentButton, tab === key && styles.segmentButtonOn]}
+                testID={`team-tab-${key}`}
+              >
+                <Text style={[styles.segmentText, tab === key && styles.segmentTextOn]}>{n ? `${label} · ${n}` : label}</Text>
+              </Pressable>
+            );
+          })}
+          </View>
+          {tab === "chats" ? chatsPane : updatesPane}
+        </>
       )}
       <WorkCardSheet update={sheet} onClose={() => setSheet(null)} onOpenAdmin={(u) => void openAdmin(u)} />
       <View style={styles.toastWrap} pointerEvents="box-none">
@@ -667,6 +690,20 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: brandGroupChat.screenBg },
   flex: { flex: 1 },
+  deskPanes: { flex: 1, minHeight: 0, flexDirection: "row", gap: size.gutter, padding: space[6], paddingTop: space[4] },
+  deskPane: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    paddingTop: space[5],
+    gap: space[3],
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    overflow: "hidden",
+  },
+  deskPaneTitle: { ...type.h2, color: color.text1, paddingHorizontal: space[4] },
   header: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
   headerTitle: { flex: 1, color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700" },
   headerRight: { flexDirection: "row", alignItems: "center", gap: space[1] },

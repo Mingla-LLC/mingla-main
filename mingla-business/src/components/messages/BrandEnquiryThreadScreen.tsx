@@ -24,7 +24,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { color, materials, radius, scrim, size, space } from "../../constants/designSystem";
+import { color, materials, radius, scrim, size, space, type } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { brandEnquiryKeys } from "../../hooks/useBrandEnquiries";
 import {
@@ -40,7 +40,11 @@ import {
   brandEnquiryContextOpen,
   brandEnquiryContextSummary,
   brandEnquiryThreadSubtitle,
+  brandEnquiryChannel,
+  brandEnquiryStatusPill,
 } from "../../utils/brandEnquiryDisplay";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { KeyValue } from "../ui/KeyValue";
 import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
 import { liftedBottomSpacer } from "../../wrappers/keyboardClearance";
@@ -65,6 +69,7 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
+  const { isWideDesktop } = useResponsiveLayout();
   const keyboardHeight = useKeyboardHeight();
   const queryClient = useQueryClient();
   const { user, isAuthReady } = useAuth();
@@ -228,7 +233,10 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
           <Button label="Retry" variant="secondary" onPress={() => void thread.refetch()} />
         </View>
       ) : (
-        <>
+        // #4420 kit (messages-enquiry__open, web): desktop is the conversation
+        // beside an "Enquiry" summary card; the phone keeps one column.
+        <View style={isWideDesktop ? styles.deskBody : styles.fill}>
+        <View style={isWideDesktop ? styles.deskMain : styles.fill}>
           <ScrollView style={styles.messages} contentContainerStyle={styles.messagesContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={styles.contextCard} testID="brand-enquiry-context">
               <View style={styles.contextCopy}>
@@ -346,7 +354,22 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
               </View>
             </KeyboardAvoidingView>
           )}
-        </>
+        </View>
+        {isWideDesktop ? (
+          <View style={styles.deskAside} testID="brand-enquiry-summary">
+            <Text style={styles.asideTitle}>Enquiry</Text>
+            <KeyValue
+              items={[
+                { key: "from", label: "From", value: enquiry.guest.name },
+                { key: "brand", label: "Brand", value: enquiry.brand_name },
+                { key: "source", label: "Source", value: brandEnquiryChannel(enquiry.source, enquiry.channel_label) },
+                { key: "email", label: "Email", value: enquiry.guest.email_confirmed === true ? "Confirmed" : "Not confirmed yet" },
+                { key: "status", label: "Status", value: brandEnquiryStatusPill(enquiry.status).label },
+              ]}
+            />
+          </View>
+        ) : null}
+        </View>
       )}
 
       <ConfirmDialog
@@ -406,6 +429,21 @@ const styles = StyleSheet.create({
   state: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
   stateText: { color: color.text2, textAlign: "center", lineHeight: 20 },
   messages: { flex: 1 },
+  fill: { flex: 1, minHeight: 0 },
+  deskBody: { flex: 1, minHeight: 0, flexDirection: "row", gap: size.gutter, paddingRight: space[4], paddingBottom: space[4] },
+  deskMain: { flex: 1, minWidth: 0, minHeight: 0 },
+  deskAside: {
+    width: 340,
+    alignSelf: "flex-start",
+    marginTop: space[4],
+    padding: space[5],
+    gap: space[4],
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+  },
+  asideTitle: { ...type.h2, color: color.text1 },
   messagesContent: { padding: space[4], gap: space[4], paddingBottom: space[7] },
   contextCard: { flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset },
   spamCard: { flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: color.warning, backgroundColor: color.warningTint },
