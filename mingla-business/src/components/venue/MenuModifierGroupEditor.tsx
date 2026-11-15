@@ -29,12 +29,10 @@ import {
 } from "react-native";
 
 import {
-  androidOpaque,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { isLargeText } from "../../constants/dynamicType";
 import { Button } from "../ui/Button";
@@ -1002,23 +1000,23 @@ function modifierPriceDraftError(
 
 const styles = StyleSheet.create({
   panel: {
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
+    gap: space[1],
+    paddingVertical: space[2],
   },
   title: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   field: {
-    gap: spacing.xxs,
-    marginBottom: spacing.xs,
+    gap: 2,
+    marginBottom: space[1],
   },
   fieldHeader: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   menuTextFieldLabel: {
     flexShrink: 1,
@@ -1029,43 +1027,43 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   fieldError: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     fontWeight: "600",
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   modeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
+    gap: space[1],
+    marginBottom: space[1],
   },
   modeChoiceGroup: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   choiceControl: {
     minHeight: 44,
     justifyContent: "center",
   },
   sectionLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[1],
   },
   optionBlock: {
-    gap: spacing.xxs,
-    marginBottom: spacing.xs,
+    gap: 2,
+    marginBottom: space[1],
   },
   optionControls: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.xs,
+    gap: space[1],
   },
   optionControlsStacked: {
     flexDirection: "column",
@@ -1084,7 +1082,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.xs,
+    gap: space[1],
   },
   optionSecondaryControlsStacked: {
     flex: 0,
@@ -1102,44 +1100,44 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   removeGlyph: {
-    ...typography.h3,
-    color: textTokens.tertiary,
+    ...type.h1,
+    color: color.text3,
   },
   pressed: {
     opacity: 0.6,
   },
   hint: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   addOption: {
     alignSelf: "flex-start",
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   error: {
-    ...typography.bodySm,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    ...type.small,
+    color: color.danger,
+    marginTop: space[1],
   },
   mutationError: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
   },
   saveError: {
-    gap: spacing.xxs,
-    padding: spacing.sm,
+    gap: 2,
+    padding: space[2],
     borderWidth: 1,
     borderRadius: radius.md,
-    borderColor: semantic.error,
+    borderColor: color.danger,
     overflow: "hidden",
     backgroundColor:
-      Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
+      Platform.OS === "android" ? color.solidTint.error : color.errorTint,
   },
   save: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   delete: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     // #3571 — a destructive control sitting directly under an identically wide
     // Cancel must not be below the 44pt target.
     minHeight: 44,

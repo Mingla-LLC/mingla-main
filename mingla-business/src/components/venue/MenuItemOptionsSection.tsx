@@ -72,9 +72,9 @@ import {
 import {
   radius,
   semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -995,26 +995,26 @@ export function MenuItemOptionsSection({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xxs,
-    marginTop: spacing.sm,
+    gap: 2,
+    marginTop: space[2],
   },
   groupLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   helper: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   error: {
-    ...typography.bodySm,
-    // #3284 — `semantic.error` (#ef4444) misses 4.5:1 for TEXT on dark
+    ...type.small,
+    // #3284 — `color.danger` (#ef4444) misses 4.5:1 for TEXT on dark
     // surfaces; `errorText` is the token for error copy a human must read.
-    color: semantic.errorText,
+    color: color.errorText,
   },
   alert: {
-    gap: spacing.xxs,
-    marginBottom: spacing.xxs,
+    gap: 2,
+    marginBottom: 2,
   },
   readRetry: {
     alignSelf: "flex-start",
@@ -1031,24 +1031,24 @@ const styles = StyleSheet.create({
   row: {
     minHeight: 44,
     justifyContent: "center",
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.xs,
+    paddingVertical: space[1],
+    paddingHorizontal: space[1],
     borderRadius: radius.sm,
   },
   rowTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   rowMeta: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   pressed: {
     opacity: 0.6,
   },
   add: {
     alignSelf: "flex-start",
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
 });
 

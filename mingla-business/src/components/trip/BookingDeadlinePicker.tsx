@@ -23,12 +23,9 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 // issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
 // Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
@@ -271,8 +268,8 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
           onValueChange={handleToggle}
           accessibilityLabel="Set a booking deadline"
           accessibilityHint="When on, bookings auto-close at the chosen date and time"
-          trackColor={{ false: glass.border.profileBase, true: accent.tint }}
-          thumbColor={toggleOn ? accent.warm : textTokens.tertiary}
+          trackColor={{ false: color.line, true: color.accentLine }}
+          thumbColor={toggleOn ? color.accent : color.text3}
         />
       </View>
 
@@ -365,7 +362,7 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
               maximumDate={maxDate}
               onChange={handlePickerChange}
               themeVariant="dark"
-              textColor={textTokens.primary}
+              textColor={color.text1}
             />
           ) : androidStep !== null ? (
             <DateTimePicker
@@ -437,33 +434,33 @@ function validatePending(
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   eyebrow: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: accent.warm,
+    color: color.accent,
   },
   helper: {
     fontSize: 13,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    color: color.text3,
+    marginTop: space[1],
   },
   pickButton: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
     alignSelf: "flex-start",
     minHeight: 44,
     justifyContent: "center",
@@ -474,59 +471,59 @@ const styles = StyleSheet.create({
   pickButtonLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   savedChip: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   savedChipPrimary: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   savedChipMeta: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   editLinkRow: {
-    paddingVertical: spacing.xs,
-    marginTop: spacing.xs,
+    paddingVertical: space[1],
+    marginTop: space[1],
   },
   editLinkRowPressed: {
     opacity: 0.7,
   },
   editLinkText: {
     fontSize: 14,
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "500",
   },
   errorText: {
     fontSize: 12,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    color: color.danger,
+    marginTop: space[1],
   },
   pickerWrap: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   pendingPreview: {
     fontSize: 13,
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
     textAlign: "center",
   },
   confirmRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
     justifyContent: "flex-end",
   },
   cancelButton: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
     minHeight: 44,
     minWidth: 88,
@@ -539,15 +536,15 @@ const styles = StyleSheet.create({
   cancelButtonLabel: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   confirmButton: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.warm,
+    borderColor: color.accentLine,
+    backgroundColor: color.accent,
     minHeight: 44,
     minWidth: 120,
     justifyContent: "center",
@@ -559,6 +556,6 @@ const styles = StyleSheet.create({
   confirmButtonLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });

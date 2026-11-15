@@ -24,12 +24,10 @@ import {
 import { useRouter } from "expo-router";
 
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { ChevronDown, ChevronUp, LayoutGrid } from "lucide-react-native";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
@@ -242,7 +240,7 @@ export function VenueCapacityRulesPanel({
   return (
     <GlassCard
       variant="base"
-      padding={spacing.md}
+      padding={space[4]}
       style={styles.host}
       testID={testID ?? "venue-capacity-rules-panel"}
     >
@@ -255,13 +253,13 @@ export function VenueCapacityRulesPanel({
         testID="venue-capacity-rules-toggle"
       >
         <View style={styles.headerLeft}>
-          <LayoutGrid size={16} color={accent.warm} />
+          <LayoutGrid size={16} color={color.accent} />
           <Text style={styles.headerTitle}>Smart capacity rules</Text>
         </View>
         {open ? (
-          <ChevronUp size={18} color={textTokens.secondary} />
+          <ChevronUp size={18} color={color.text2} />
         ) : (
-          <ChevronDown size={18} color={textTokens.secondary} />
+          <ChevronDown size={18} color={color.text2} />
         )}
       </Pressable>
 
@@ -428,7 +426,7 @@ export function VenueCapacityRulesPanel({
 
 const styles = StyleSheet.create({
   host: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   header: {
     flexDirection: "row",
@@ -439,72 +437,72 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   headerTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   bodyOpen: {
-    gap: spacing.md,
-    paddingTop: spacing.md,
+    gap: space[4],
+    paddingTop: space[4],
   },
   rule: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   ruleText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   ruleColumn: {
-    gap: spacing.xxs,
+    gap: 2,
   },
   ruleTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   ruleSummary: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   depositRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   depositInput: {
     flex: 1,
   },
   depositSave: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingVertical: space[2],
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   depositSaveDisabled: {
     opacity: 0.4,
   },
   depositSaveLabel: {
-    ...typography.bodySm,
-    color: "#0c0e12",
+    ...type.small,
+    color: color.ink,
     fontWeight: "700",
   },
   // #3387 — deposit rule field labels + warnings.
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
+    ...type.small,
+    color: color.text2,
+    marginTop: space[2],
   },
   ruleWarn: {
-    ...typography.bodySm,
-    color: semantic.warning,
-    marginTop: spacing.xs,
+    ...type.small,
+    color: color.warning,
+    marginTop: space[1],
   },
 });
 

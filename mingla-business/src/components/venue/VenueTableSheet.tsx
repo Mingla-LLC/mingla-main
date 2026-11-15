@@ -14,11 +14,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
@@ -539,13 +538,13 @@ function ToggleRow({
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   heading: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    ...type.h1,
+    color: color.text1,
+    marginBottom: space[2],
   },
   // ORCH-1193: bound the scroll viewport to the fixed-height panel so the CTA
   // scrolls into view instead of overflowing past the panel's overflow:hidden.
@@ -553,32 +552,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.xs,
+    paddingBottom: space[9],
+    gap: space[1],
   },
   groupLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xxs,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: 2,
   },
   field: {
-    gap: spacing.xxs,
-    marginBottom: spacing.xs,
+    gap: 2,
+    marginBottom: space[1],
   },
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   fieldError: {
-    ...typography.bodySm,
-    color: "#ff6b6b",
-    marginTop: spacing.xxs,
-    marginBottom: spacing.xs,
+    ...type.small,
+    color: color.errorText,
+    marginTop: 2,
+    marginBottom: space[1],
   },
   row3: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   flex1: {
     flex: 1,
@@ -586,42 +585,42 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
   },
   chipActive: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   chipLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
   chipLabelActive: {
-    color: "#0c0e12",
+    color: color.ink,
   },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
+    paddingVertical: space[2],
+    gap: space[4],
   },
   toggleLabel: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     flex: 1,
   },
   saveBtn: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   deleteBtn: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });
 

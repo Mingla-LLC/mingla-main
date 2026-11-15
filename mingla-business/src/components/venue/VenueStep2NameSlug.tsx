@@ -22,11 +22,10 @@ import {
 } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { Input } from "../ui/Input";
@@ -189,7 +188,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
           </Text>
           {checking ? (
             <View style={styles.statusRow}>
-              <ActivityIndicator size="small" color={accent.warm} />
+              <ActivityIndicator size="small" color={color.accent} />
               <Text style={styles.statusMuted}>Checking availability…</Text>
             </View>
           ) : available === true ? (
@@ -229,90 +228,90 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    gap: space[2],
+    paddingHorizontal: space[6],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   statusMuted: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   statusOk: {
-    fontSize: typography.caption.fontSize,
-    color: "#22C55E",
+    fontSize: type.caption.fontSize,
+    color: color.successText,
   },
   statusTaken: {
-    fontSize: typography.caption.fontSize,
-    color: "#EF4444",
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
   },
   suggestWrap: {
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   suggestLabel: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   suggestRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: "rgba(255,138,76,0.5)",
-    backgroundColor: "rgba(255,138,76,0.12)",
+    borderColor: color.accentLine,
+    backgroundColor: color.accentTint,
   },
   chipSelected: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(255,138,76,0.22)",
+    borderColor: color.accent,
+    backgroundColor: color.accentTint,
   },
   chipText: {
-    fontSize: typography.caption.fontSize,
-    color: accent.warm,
+    fontSize: type.caption.fontSize,
+    color: color.accent,
     fontWeight: "600",
   },
   errText: {
-    color: "#EF4444",
-    fontSize: typography.caption.fontSize,
+    color: color.errorText,
+    fontSize: type.caption.fontSize,
   },
   urlPreview: {
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: color.lineStrong,
   },
   urlLabel: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   urlValue: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   urlSlug: {
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "700",
   },
 });

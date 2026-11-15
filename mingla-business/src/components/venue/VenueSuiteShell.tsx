@@ -46,9 +46,9 @@ import { useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
@@ -150,6 +150,11 @@ export interface VenueSuiteShellProps {
   venueId?: string | null;
   focus?: "feedback";
   initialModule?: VenueModule;
+  /**
+   * #4420 B8 — content that scrolls with the Overview dashboard, at its top
+   * (the page's Local reviews panel). Never pinned above the scroll.
+   */
+  overviewHeader?: React.ReactNode;
 }
 
 export function VenueSuiteShell({
@@ -157,6 +162,7 @@ export function VenueSuiteShell({
   venueId = null,
   focus,
   initialModule = "overview",
+  overviewHeader = null,
 }: VenueSuiteShellProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -493,11 +499,14 @@ export function VenueSuiteShell({
       // scroll that broke scrolling on native. (`focus` is the venue-claim
       // feedback deep-link, which followed the recap into Settings — it is no
       // longer consumed at the Overview slot.)
-      return (
-        <View style={styles.overviewWrap}>
+      // #4420 B8 + round-3 item 12 — the invitation and the page's Local
+      // reviews panel now scroll WITH the dashboard (as its header) instead of
+      // being pinned above it, and the invitation is one compact row.
+      const header = (
+        <>
           {!reservationsEnabled ? (
-            <View style={styles.invitationWrap}>
-              <GlassCard variant="elevated" style={styles.invitationCard}>
+            <GlassCard variant="base" padding={space[4]} style={styles.invitationCard}>
+              <View style={styles.invitationCopy}>
                 <Text style={styles.invitationTitle}>
                   Take table reservations on Mingla
                 </Text>
@@ -505,22 +514,26 @@ export function VenueSuiteShell({
                   Free to switch on. Manage tables, hours, and bookings in one
                   place.
                 </Text>
-                <Button
-                  label="Turn on Reservations"
-                  onPress={handleTurnOnReservations}
-                  variant="primary"
-                  size="md"
-                  loading={setEnabled.isPending}
-                  fullWidth
-                  testID="venue-overview-turn-on-reservations"
-                />
-              </GlassCard>
-            </View>
+              </View>
+              <Button
+                label="Turn on Reservations"
+                onPress={handleTurnOnReservations}
+                variant="primary"
+                size="sm"
+                loading={setEnabled.isPending}
+                testID="venue-overview-turn-on-reservations"
+              />
+            </GlassCard>
           ) : null}
+          {overviewHeader}
+        </>
+      );
+      return (
+        <View style={styles.overviewWrap}>
           {/* META-ORCH-1255(C) D-D: venue-scoped so the RPC resolves THIS
               venue's place signals + timezone (the legacy brand place pointer
               is inert for new venues). */}
-          <VenueIntelligenceModule brandId={brandId} venueId={venueId} />
+          <VenueIntelligenceModule brandId={brandId} venueId={venueId} header={header} />
         </View>
       );
     }
@@ -690,11 +703,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.sm,
+    padding: space[7],
+    gap: space[2],
   },
-  accessTitle: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
-  accessBody: { ...typography.bodySm, color: textTokens.secondary, textAlign: "center" },
+  accessTitle: { ...type.h1, color: color.text1, textAlign: "center" },
+  accessBody: { ...type.small, color: color.text2, textAlign: "center" },
   // phone / native
   phoneHost: {
     flex: 1,
@@ -704,7 +717,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.xxl,
+    paddingVertical: space[9],
   },
   phoneScroll: {
     // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.
@@ -713,20 +726,20 @@ const styles = StyleSheet.create({
   overviewWrap: {
     flex: 1,
   },
-  invitationWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
   invitationCard: {
-    gap: spacing.sm,
+    marginBottom: space[4],
+  },
+  invitationCopy: {
+    gap: space[1],
+    marginBottom: space[3],
   },
   invitationTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   invitationBody: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
 });
 

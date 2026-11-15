@@ -69,14 +69,11 @@ import {
 } from "../../utils/paidPublishGuards";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -1651,7 +1648,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   value={editState.title}
                   onChangeText={(v) => updateBasics({ title: v })}
                   placeholder="Trip title"
-                  placeholderTextColor={textTokens.tertiary}
+                  placeholderTextColor={color.text3}
                   style={styles.textInput}
                   accessibilityLabel="Trip title"
                   testID="edit-trip-title"
@@ -1667,7 +1664,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     })
                   }
                   placeholder="Optional — what makes this trip special"
-                  placeholderTextColor={textTokens.tertiary}
+                  placeholderTextColor={color.text3}
                   style={[styles.textInput, styles.textArea]}
                   multiline
                   numberOfLines={4}
@@ -1924,7 +1921,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       });
                     }}
                     placeholder="12"
-                    placeholderTextColor={textTokens.tertiary}
+                    placeholderTextColor={color.text3}
                     keyboardType="number-pad"
                     style={styles.textInput}
                     accessibilityLabel="Trip capacity"
@@ -2175,7 +2172,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -2230,7 +2227,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 <Icon
                   name={isOpen ? "chevU" : "chevD"}
                   size={16}
-                  color={textTokens.tertiary}
+                  color={color.text3}
                 />
               </Pressable>
               {isOpen ? (
@@ -2260,7 +2257,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         <View
           style={[
             styles.dock,
-            { paddingBottom: insets.bottom + spacing.md },
+            { paddingBottom: insets.bottom + space[4] },
           ]}
         >
           <Button
@@ -2325,16 +2322,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[4],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -2345,93 +2342,93 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md + 8,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4] + 8,
+    paddingTop: space[4],
   },
   sectionCard: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     minHeight: 56,
   },
   sectionHeaderPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   sectionHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     flex: 1,
   },
   sectionLabel: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   editedBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radiusTokens.full,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   editedBadgeText: {
     fontSize: 10,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.accent,
     letterSpacing: 1.0,
     textTransform: "uppercase",
   },
   sectionBody: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingTop: 0,
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
   basicsFields: {
-    gap: spacing.md,
-    paddingTop: spacing.sm,
+    gap: space[4],
+    paddingTop: space[2],
   },
   fieldGroup: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   capacityReadOnly: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
   editAddressHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.warning,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.warning,
   },
   textInput: {
     height: 48,
     paddingHorizontal: 14,
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    borderColor: color.lineStrong,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   textArea: {
     height: 100,
@@ -2440,8 +2437,8 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   coverWrap: {
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingTop: space[2],
+    gap: space[2],
   },
   coverPreviewWrap: {
     borderRadius: 12,
@@ -2452,7 +2449,7 @@ const styles = StyleSheet.create({
   // room so planner immediately sees what their buyers will see.
   plannerPlanPreviewWrap: {
     width: "100%",
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   // ORCH-1120 — settingsWrap/settingsHint/settingsField/settingsLabel/
   // settingsValue deleted: the read-only Settings snapshot + dead-end hint is
@@ -2462,11 +2459,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    backgroundColor: materials.pane.solidFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
 });
 

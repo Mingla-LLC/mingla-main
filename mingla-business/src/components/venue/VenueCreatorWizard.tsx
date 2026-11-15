@@ -43,11 +43,10 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  canvas,
   durations,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -233,6 +232,11 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   // On step 0 this means Continue stays greyed until a validated autocomplete
   // address (with lat/lng) is selected. Recomputed from live draft state.
   const stepValid = venueStepError(stepId, draft) === null;
+
+  // #4420 B7 — the clickable stepper: reachable up to the first step the
+  // EXISTING `venueStepError` rejects. No new rule.
+  const firstInvalidStep = baseSteps.findIndex((s) => venueStepError(s.id, draft) !== null);
+  const furthestValidStep = firstInvalidStep === -1 ? TOTAL - 1 : firstInvalidStep;
 
   const goNext = useCallback((): void => {
     const e = venueStepError(stepId, draft);
@@ -683,7 +687,18 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         <View style={{ width: 36 }} />
       </View>
 
-      <Stepper steps={stepperSteps} currentIndex={clampedStep} />
+      <Stepper
+        steps={stepperSteps}
+        currentIndex={clampedStep}
+        furthestValidIndex={furthestValidStep}
+        onStepPress={(index) => {
+          if (submitting || index === clampedStep) return;
+          if (index > Math.max(furthestValidStep, clampedStep)) return;
+          jumpToStep(baseSteps[index].id);
+        }}
+        sheetTitle="Steps"
+        testID="venue-wizard-stepper"
+      />
 
       {isClaim ? (
         <ClaimAdoptionBanner
@@ -701,7 +716,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={{
-          paddingBottom: insets.bottom + spacing.xl,
+          paddingBottom: insets.bottom + space[7],
         }}
         keyboardShouldPersistTaps="handled"
       >
@@ -714,7 +729,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         <View
           style={[
             styles.dock,
-            { paddingBottom: insets.bottom + spacing.md },
+            { paddingBottom: insets.bottom + space[4] },
           ]}
         >
           {coverGateCaption !== null ? (
@@ -757,56 +772,56 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   chrome: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[2],
   },
   chromeMid: {
     flex: 1,
     alignItems: "center",
   },
   chromeTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   chromeSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   poolBanner: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     textAlign: "center",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingBottom: space[2],
   },
   scroll: {
     flex: 1,
   },
   dock: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingTop: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.12)",
+    borderTopColor: color.lineStrong,
   },
   dockCaption: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     textAlign: "center",
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   dockRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
 });
 

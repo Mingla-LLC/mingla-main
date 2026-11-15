@@ -60,10 +60,9 @@ import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import {
   venuePublicPath,
@@ -257,7 +256,7 @@ export default function VenueManagementPage(): React.ReactElement {
 
   if (venueQuery.isLoading) {
     return (
-      <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.root, { paddingTop: insets.top + space[2] }]}>
         <View style={styles.headerWrap}>
           <TopBar
             leftKind="back"
@@ -279,7 +278,7 @@ export default function VenueManagementPage(): React.ReactElement {
 
   if (venue === null || venueId === null) {
     return (
-      <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.root, { paddingTop: insets.top + space[2] }]}>
         <View style={styles.headerWrap}>
           <TopBar
             leftKind="back"
@@ -339,8 +338,24 @@ export default function VenueManagementPage(): React.ReactElement {
   // re-inline this comparison and do NOT quote it anywhere in this file.
   const isStayVenue = venue.venueCategory === "stay";
 
+  // #4420 B8 — the Local reviews panel scrolls WITH the suite's Overview (its
+  // header) instead of sitting in this page's fixed header stack, where a long
+  // list ate the screen and nothing below it could be reached (iOS and short
+  // desktop windows). An optional, lazily-loaded panel: if its chunk fails to
+  // load or it throws, it hides itself and the rest of the venue page stays up.
+  const localReviewsPanel =
+    venue.claimStatus === "verified" &&
+    brandId !== null &&
+    venue.placePoolId !== null ? (
+      <OptionalFeatureBoundary name="venue-local-reviews">
+        <Suspense fallback={null}>
+          <LocalReviewsManager brandId={brandId} placePoolId={venue.placePoolId} />
+        </Suspense>
+      </OptionalFeatureBoundary>
+    ) : null;
+
   return (
-    <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
+    <View style={[styles.root, { paddingTop: insets.top + space[2] }]}>
       {/* #1483 band 1 — the shared TopBar. `rightSlot` on a leftKind="back"
           consumer is the documented canonical replace mechanism (TopBar.tsx:
           66-77); I-37 forbids it only on leftKind="brand". No `moreH` overflow
@@ -414,17 +429,6 @@ export default function VenueManagementPage(): React.ReactElement {
         />
       ) : null}
 
-      {venue.claimStatus === "verified" &&
-      brandId !== null &&
-      venue.placePoolId !== null ? (
-        // An optional, lazily-loaded panel: if its chunk fails to load or it
-        // throws, it hides itself and the rest of the venue page stays up.
-        <OptionalFeatureBoundary name="venue-local-reviews">
-          <Suspense fallback={null}>
-            <LocalReviewsManager brandId={brandId} placePoolId={venue.placePoolId} />
-          </Suspense>
-        </OptionalFeatureBoundary>
-      ) : null}
 
       {!isWideDesktop &&
       venue.venueCategory !== "stay" &&
@@ -456,6 +460,7 @@ export default function VenueManagementPage(): React.ReactElement {
           venueId={venueId}
           venueName={venue.name}
           venueApproved={venue.claimStatus === "verified"}
+          overviewHeader={localReviewsPanel}
         />
       ) : (
         <VenueSuiteShell
@@ -466,6 +471,7 @@ export default function VenueManagementPage(): React.ReactElement {
           // shell's store sync propagates it to the pill row/rail. Stays never
           // reach this branch (Insights does not exist for stays in v1 — G-21).
           initialModule={initialModule ?? "overview"}
+          overviewHeader={localReviewsPanel}
         />
       )}
 
@@ -511,20 +517,20 @@ export default function VenueManagementPage(): React.ReactElement {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   // #1483 — the TopBar host. Matches app/event/[id]/index.tsx:993-995 and
   // app/trip/[id]/index.tsx:741-743 exactly (the bar is inset, not full-bleed).
   headerWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   headerRightRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   bannerHost: {
-    marginBottom: -spacing.sm,
+    marginBottom: -space[2],
   },
   // #2211 — the not-found branch is centred and carries the only
   // 'Back to your venues' Button; the loading branch shares the root.
@@ -537,18 +543,18 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    gap: space[2],
+    paddingHorizontal: space[6],
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     textAlign: "center",
   },
   notFoundTitle: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
 });

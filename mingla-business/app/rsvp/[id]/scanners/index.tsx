@@ -10,7 +10,9 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 
 import { createRetryableLazyErrorBoundary } from "../../../../src/components/ui/RetryableLazyBoundary";
-import { canvas } from "../../../../src/constants/designSystem";
+import {
+  color,
+} from "../../../../src/constants/designSystem";
 
 const LazyEventScannersRoute = createRetryableLazyErrorBoundary<Record<string, never>>(
   async () => ({ default: (await import("../../../event/[id]/scanners/index")).default }),
@@ -26,5 +28,5 @@ export default function RsvpScannersRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.discover },
+  screen: { flex: 1, backgroundColor: color.canvas },
 });

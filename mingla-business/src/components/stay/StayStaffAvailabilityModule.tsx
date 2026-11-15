@@ -2,12 +2,10 @@ import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useStaffStayDetail } from "../../hooks/useStaffStayDetail";
 import { Button } from "../ui/Button";
@@ -21,7 +19,7 @@ export function StayStaffAvailabilityModule({
   if (query.isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.accent} />
         <Text style={styles.helper}>Loading live Stay availability…</Text>
       </View>
     );
@@ -70,14 +68,14 @@ export function StayStaffAvailabilityModule({
 }
 
 const styles = StyleSheet.create({
-  page: { padding: spacing.lg, gap: spacing.sm },
-  center: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
-  title: { ...typography.h2, color: textTokens.primary },
-  helper: { ...typography.bodySm, color: textTokens.secondary, lineHeight: 20 },
-  card: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase, padding: spacing.md, gap: spacing.xs },
-  row: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  page: { padding: space[6], gap: space[2] },
+  center: { padding: space[7], alignItems: "center", gap: space[2] },
+  title: { ...type.h1, color: color.text1 },
+  helper: { ...type.small, color: color.text2, lineHeight: 20 },
+  card: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: color.line, backgroundColor: color.fill.inset, padding: space[4], gap: space[1] },
+  row: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
   flexOne: { flex: 1, minWidth: 0 },
-  offeringName: { fontSize: 15, color: textTokens.primary, fontWeight: "700" },
-  meta: { fontSize: 12, color: textTokens.secondary, lineHeight: 18 },
-  badge: { fontSize: 11, fontWeight: "700", color: accent.warm },
+  offeringName: { fontSize: 15, color: color.text1, fontWeight: "700" },
+  meta: { fontSize: 12, color: color.text2, lineHeight: 18 },
+  badge: { fontSize: 11, fontWeight: "700", color: color.accent },
 });

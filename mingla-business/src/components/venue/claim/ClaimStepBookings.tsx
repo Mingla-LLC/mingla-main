@@ -11,10 +11,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { useDraftVenueStore } from "../../../store/draftVenueStore";
 import { BrandSwitch } from "../../ui/BrandSwitch";
@@ -36,7 +35,7 @@ export const ClaimStepBookings: React.FC = () => {
       <View style={styles.card}>
         {reservableHint && !wantsReservations ? (
           <View style={styles.hintRow}>
-            <Icon name="calendar" size={14} color={semantic.info} />
+            <Icon name="calendar" size={14} color={color.info} />
             <Text style={styles.hintText}>
               Google shows you take reservations — flip this on and Mingla can
               take bookings too.
@@ -65,55 +64,55 @@ export const ClaimStepBookings: React.FC = () => {
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   card: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   hintRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   hintText: {
     flex: 1,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text2,
   },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   textCol: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   label: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   sub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text3,
   },
 });
 

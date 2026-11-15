@@ -30,9 +30,9 @@ import { ThemeSheet } from "../theme/ThemeSheetLazy";
 
 import {
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Trip } from "../../services/tripsService";
 import { StripeBlockedCard } from "../offering/StripeBlockedCard";
@@ -320,45 +320,45 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingBottom: spacing.lg,
+    paddingBottom: space[6],
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    paddingTop: space[2],
+    paddingBottom: space[4],
   },
   errorBanner: {
-    margin: spacing.lg,
-    padding: spacing.md,
+    margin: space[6],
+    padding: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.4)",
+    borderColor: color.errorLine,
   },
   errorBannerTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: "#EF4444",
-    marginBottom: spacing.xs,
+    color: color.errorText,
+    marginBottom: space[1],
   },
   errorBannerText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: "#EF4444",
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.errorText,
   },
   errorBannerStep: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
+    marginTop: space[1],
   },
   stripeBannerWrap: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    marginHorizontal: space[6],
+    marginTop: space[4],
   },
   previewWrap: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
 });
 

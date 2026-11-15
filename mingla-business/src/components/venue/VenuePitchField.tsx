@@ -26,11 +26,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
-  accent,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -207,7 +205,7 @@ export const VenuePitchField: React.FC<VenuePitchFieldProps> = ({
 
       {seededNote ? (
         <View style={styles.noteRow}>
-          <Icon name="sparkle" size={14} color={accent.warm} />
+          <Icon name="sparkle" size={14} color={color.accent} />
           <Text style={styles.noteText}>
             We wrote a starting point from your listing — make it yours.
           </Text>
@@ -245,7 +243,7 @@ export const VenuePitchField: React.FC<VenuePitchFieldProps> = ({
           value={value}
           onChangeText={handleChange}
           placeholder={placeholder}
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           multiline
           editable={!disabled && !saving}
           textAlignVertical="top"
@@ -372,24 +370,24 @@ export const VenuePitchField: React.FC<VenuePitchFieldProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
+    gap: space[4],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   noteRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   noteText: {
     flex: 1,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   labelRow: {
     flexDirection: "row",
@@ -397,59 +395,59 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   labelCap: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
   aiChip: {
     alignSelf: "flex-start",
     borderRadius: 999,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 3,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
   },
   aiChipText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
     letterSpacing: 0.4,
-    color: accent.warm,
+    color: color.accent,
   },
   area: {
     minHeight: 150,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: 12,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(0,0,0,0.18)",
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.input,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   areaDisabled: {
     opacity: 0.6,
   },
   draftingBox: {
     minHeight: 150,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: 12,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(0,0,0,0.18)",
-    gap: spacing.sm,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.input,
+    gap: space[2],
   },
   draftingStatus: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     textAlign: "center",
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   actionRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
     flexWrap: "wrap",
   },
@@ -457,41 +455,41 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   confirmRow: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   confirmText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
   },
   confirmBtns: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
   },
   helper: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     lineHeight: 17,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   warn: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     lineHeight: 17,
-    color: semantic.warning,
+    color: color.warning,
   },
   err: {
-    fontSize: typography.caption.fontSize,
-    color: "#EF4444",
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
   },
   saveBlock: {
-    gap: spacing.xs,
+    gap: space[1],
     alignItems: "flex-start",
   },
   reScore: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
 });
 

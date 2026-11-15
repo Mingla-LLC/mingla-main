@@ -18,11 +18,10 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -48,12 +47,12 @@ export const StripeBlockedCard: React.FC<StripeBlockedCardProps> = ({
 }) => (
   <GlassCard
     variant="base"
-    padding={spacing.md}
+    padding={space[4]}
     style={styles.warnCard}
     testID={testID}
   >
     <View style={styles.statusRow}>
-      <Icon name="flag" size={20} color={accent.warm} />
+      <Icon name="flag" size={20} color={color.accent} />
       <View style={styles.statusTextCol}>
         <Text style={styles.statusTitle}>{title}</Text>
         <Text style={styles.statusSub}>{body}</Text>
@@ -66,7 +65,7 @@ export const StripeBlockedCard: React.FC<StripeBlockedCardProps> = ({
       style={styles.connectStripeBtn}
     >
       <Text style={styles.connectStripeLabel}>{ctaLabel}</Text>
-      <Icon name="chevR" size={14} color={accent.warm} />
+      <Icon name="chevR" size={14} color={color.accent} />
     </Pressable>
   </GlassCard>
 );
@@ -75,43 +74,43 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   statusTextCol: {
     flex: 1,
   },
   statusTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   statusSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     marginTop: 2,
-    lineHeight: typography.caption.lineHeight * 1.4,
+    lineHeight: type.caption.lineHeight * 1.4,
   },
   warnCard: {
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     borderWidth: 1,
   },
   connectStripeBtn: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   connectStripeLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
 });

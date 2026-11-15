@@ -21,9 +21,9 @@ import {
 
 import {
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import type { ExperienceStopRow } from "../../services/experienceDetailService";
@@ -57,7 +57,7 @@ export const ExperienceStopsGalleryTile: React.FC<
 > = ({ stops, currency, showStopPrices }) => {
   if (stops.length === 0) {
     return (
-      <GlassCard variant="base" radius="md" padding={spacing.md}>
+      <GlassCard variant="base" radius="md" padding={space[4]}>
         <Text style={styles.emptyText}>No stops yet.</Text>
       </GlassCard>
     );
@@ -79,7 +79,7 @@ export const ExperienceStopsGalleryTile: React.FC<
             key={stop.id}
             variant="base"
             radius="md"
-            padding={spacing.md}
+            padding={space[4]}
           >
             <View style={styles.headRow}>
               <Text style={styles.name} numberOfLines={2}>
@@ -140,65 +140,65 @@ export const ExperienceStopsGalleryTile: React.FC<
 };
 
 const styles = StyleSheet.create({
-  list: { gap: spacing.xs },
+  list: { gap: space[1] },
   headRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   name: {
     flex: 1,
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
-  metaRow: { flexDirection: "row", gap: spacing.sm },
+  metaRow: { flexDirection: "row", gap: space[2] },
   meta: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   address: {
     marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
   },
   description: {
     marginTop: 4,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   gallery: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   galleryContent: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   galleryImage: {
     width: 132,
     height: 96,
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   galleryEmpty: {
     height: 96,
     borderRadius: radiusTokens.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
   galleryEmptyText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   emptyText: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
 });
 

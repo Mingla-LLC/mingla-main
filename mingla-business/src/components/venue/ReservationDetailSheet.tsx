@@ -13,10 +13,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
 import {
@@ -232,108 +231,108 @@ function ActionButton({
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[1],
   },
   guest: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   when: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
   },
   summary: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.xxs,
+    gap: space[1],
+    marginTop: 2,
   },
   statusLabel: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   statusValue: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   note: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontStyle: "italic",
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   contact: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   terminalNote: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
+    ...type.small,
+    color: color.text3,
+    marginTop: space[4],
   },
   // #3391 — arming Cancel on a paid booking says how much the guest gets back.
   paidCancelNote: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   // #3391 — a seated paid booking is not refunded automatically.
   paidCancelWarning: {
-    ...typography.bodySm,
-    color: semantic.warning,
-    marginTop: spacing.sm,
+    ...type.small,
+    color: color.warning,
+    marginTop: space[2],
   },
   actionError: {
-    ...typography.bodySm,
-    color: semantic.error,
-    marginTop: spacing.sm,
+    ...type.small,
+    color: color.danger,
+    marginTop: space[2],
   },
   actionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   destructiveRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   actionBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
   },
   safeBtn: {
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: color.fill.tile,
   },
   destructiveBtn: {
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
   },
   armedBtn: {
-    backgroundColor: semantic.error,
+    backgroundColor: color.danger,
   },
   disabledBtn: {
     opacity: 0.5,
   },
   actionLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "700",
   },
   safeLabel: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   destructiveLabel: {
-    color: semantic.error,
+    color: color.danger,
   },
 });
 

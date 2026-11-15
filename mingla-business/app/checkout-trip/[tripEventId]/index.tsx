@@ -26,7 +26,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   radius as radiusTokens,
   spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../src/constants/designSystem";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
@@ -622,7 +623,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: wide ? spacing.xl : insets.bottom + 140 },
+            { paddingBottom: wide ? space[7] : insets.bottom + 140 },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -785,45 +786,45 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
   },
   miniCard: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   miniCover: {
     height: 64,
     borderRadius: radiusTokens.md,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   miniTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.3,
   },
   miniSubtitle: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   miniDestination: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.4,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   // Wrap each QuantityRow so spacing between tier rows stays consistent.
   // (ORCH-1130 — the per-tier passive plan card was removed.)
@@ -833,10 +834,10 @@ const styles = StyleSheet.create({
   emptyWrap: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   emptyTitle: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     textAlign: "center",
   },
@@ -844,7 +845,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   // ORCH-1147R2 — quiet combined "Fees & tax" line above the prominent Total
   // (full-total path only; never on the installments deposit branch).
@@ -852,26 +853,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   feesTaxLabel: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   feesTaxValue: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "600",
   },
   subtotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   subtotalValue: {
     fontSize: 20,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },

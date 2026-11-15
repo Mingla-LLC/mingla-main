@@ -51,8 +51,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
   accent,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  materials,
 } from "../../../src/constants/designSystem";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
@@ -812,7 +813,7 @@ function CheckoutTripPaymentScreenContent({
         <GlassCard
           variant="base"
           radius="lg"
-          padding={spacing.md}
+          padding={space[4]}
           style={styles.summary}
         >
           <Text style={styles.summaryLabel}>ORDER SUMMARY</Text>
@@ -924,7 +925,7 @@ function CheckoutTripPaymentScreenContent({
             all-in (incl. tax) is shown above (WYSIWYP); the buyer types no
             address. */}
 
-        <GlassCard variant="base" radius="lg" padding={spacing.md}>
+        <GlassCard variant="base" radius="lg" padding={space[4]}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
             {"You'll be taken to our secure payment page to complete your purchase."}
@@ -945,7 +946,7 @@ function CheckoutTripPaymentScreenContent({
       <View
         style={[
           styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
+          { paddingBottom: insets.bottom + space[4] },
         ]}
       >
         {/* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
@@ -1073,60 +1074,60 @@ function CheckoutTripPaymentScreenContent({
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  summary: { marginBottom: spacing.lg },
+  scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
+  summary: { marginBottom: space[6] },
   summaryLabel: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
   },
   summaryLine: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 4,
-    gap: spacing.sm,
+    gap: space[2],
   },
   summaryQty: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
     minWidth: 28,
   },
   summaryName: {
     flex: 1,
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   summaryTotal: {
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   summaryDivider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   // ORCH-1147 — combined "Fees & tax" line.
   summaryFeesTaxRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   summaryFeesTaxLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   summaryFeesTaxValue: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "600",
   },
   summaryTotalRow: {
@@ -1136,17 +1137,17 @@ const styles = StyleSheet.create({
   },
   summaryTotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   summaryTotalValue: {
     fontSize: 17,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
   // ORCH-1130 Fix #1 — due-today (deposit) rows on the order-summary box +
-  // sticky bar; accent.warm to read as the actionable "charged now" amount
+  // sticky bar; color.accent to read as the actionable "charged now" amount
   // while the full Total above stays the dominant headline.
   summaryDueTodayRow: {
     flexDirection: "row",
@@ -1156,12 +1157,12 @@ const styles = StyleSheet.create({
   },
   summaryDueTodayLabel: {
     fontSize: 13,
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "600",
   },
   summaryDueTodayValue: {
     fontSize: 15,
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
@@ -1169,24 +1170,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
-  dueTodayLabel: { fontSize: 13, color: accent.warm, fontWeight: "600" },
+  dueTodayLabel: { fontSize: 13, color: color.accent, fontWeight: "600" },
   dueTodayValue: {
     fontSize: 16,
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
   paymentCopy: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
   paymentMeta: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 11,
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   // ORCH-1130 — compact qty stepper on the order-summary line. 44×44 hit areas.
   qtyBtn: {
@@ -1194,8 +1195,8 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1206,37 +1207,37 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   errorText: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 12,
-    color: "#ef4444",
+    color: color.errorText,
     fontWeight: "500",
   },
-  // ORCH-0882 — pre-Stripe banner. Subtle accent.warm tint matching the
+  // ORCH-0882 — pre-Stripe banner. Subtle color.accent tint matching the
   // existing trip-buyer accent system. flexGrow:0 + flexShrink:0 to
   // honor `feedback_rn_scrollview_flex_grow_default_one_silent_footgun.md`
   // since it sits inside the sticky bottom bar (a flex parent).
   planBanner: {
     flexGrow: 0,
     flexShrink: 0,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    marginBottom: space[2],
     borderRadius: 12,
-    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    backgroundColor: color.accentTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.45)",
+    borderColor: color.accentLine,
   },
   fullPayBanner: {
-    backgroundColor: "rgba(34, 197, 94, 0.08)",
-    borderColor: "rgba(34, 197, 94, 0.45)",
+    backgroundColor: color.successTint,
+    borderColor: color.successTint,
   },
   planBannerTitle: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#eb7825",
+    color: color.accent,
     letterSpacing: 0.6,
     marginBottom: 4,
     textTransform: "uppercase",
@@ -1244,11 +1245,11 @@ const styles = StyleSheet.create({
   planBannerBody: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "400",
   },
   planBannerStrong: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
   },
   bottomBar: {
@@ -1256,11 +1257,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    backgroundColor: materials.pane.solidFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
   // #1841 — `bottomBarHidden` deleted with the keyboard plumbing that was its
   // only consumer. A style whose sole purpose was hiding the bar behind a
@@ -1270,16 +1271,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   totalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   totalValue: {
     fontSize: 20,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },

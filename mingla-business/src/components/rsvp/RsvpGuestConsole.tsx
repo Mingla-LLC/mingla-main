@@ -34,14 +34,11 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -62,27 +59,19 @@ import { useEventRsvpContributionRefunds } from "../../hooks/useRsvpContribution
 import { requestRsvpContributionRefund } from "../../services/sourceRefundService";
 
 const ROW_BG = Platform.select({
-  ios: glass.tint.profileBase,
-  android: "#23262b",
-  default: glass.tint.profileBase,
+  ios: color.fill.inset,
+  android: materials.control.solidFill,
+  default: color.fill.inset,
 });
 const ROW_BG_PRESSED = Platform.select({
-  ios: glass.tint.profileElevated,
-  android: "#2a2e34",
-  default: glass.tint.profileElevated,
+  ios: color.fill.tile,
+  android: color.card3,
+  default: color.fill.tile,
 });
 
 // ORCH-1334 — avatar helpers copied inline (byte-for-byte from
 // app/event/[id]/guests/index.tsx:88-101 per SPEC §4E-10; NOT refactored into a
 // shared util this ORCH).
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
-};
-
 const getInitials = (name: string): string => {
   const parts = name.trim().split(/\s+/).filter((p) => p.length > 0);
   if (parts.length === 0) return "?";
@@ -92,15 +81,15 @@ const getInitials = (name: string): string => {
 
 // ORCH-1334 — source-badge palette. Both badge texts are AA-safe LIGHTENED tokens
 // on their translucent tinted fills over the dark row (WCAG AA kit I-38/I-39;
-// SPEC §4E-4). The "On Mingla" text uses #ffa94d, NOT the brand accent.warm
+// SPEC §4E-4). The "On Mingla" text uses #ffa94d, NOT the brand color.accent
 // #eb7825 which measures 3.94:1 (iOS) / 3.38:1 (Android) on the composited
-// accent.tint fill — below AA 4.5:1 for 11px/600 normal text; #ffa94d measures
+// color.accentLine fill — below AA 4.5:1 for 11px/600 normal text; #ffa94d measures
 // 6.00:1 (iOS) / 5.15:1 (Android). The web badge uses #7ab0ff — the token #3b82f6
 // measures ~4.28:1 on the info-tint fill, below AA; #7ab0ff measures 6.43:1 (iOS)
 // / 5.45:1 (Android).
-const APP_BADGE_TEXT = "#ffa94d";
-const WEB_BADGE_TEXT = "#7ab0ff";
-const WEB_BADGE_BORDER = "rgba(59, 130, 246, 0.55)";
+const APP_BADGE_TEXT = color.accentText;
+const WEB_BADGE_TEXT = color.infoText;
+const WEB_BADGE_BORDER = color.infoTint;
 
 interface GuestAvatarProps {
   guest: RsvpGuest;
@@ -140,7 +129,6 @@ export const GuestAvatar: React.FC<GuestAvatarProps> = ({ guest, size }) => {
         styles.avatarBase,
         dimensionStyle,
         styles.avatarInitials,
-        { backgroundColor: `hsl(${hashStringToHue(guest.id)}, 60%, 45%)` },
       ]}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
@@ -165,8 +153,8 @@ export const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
       style={[
         styles.badge,
         isApp
-          ? { backgroundColor: accent.tint, borderColor: accent.border }
-          : { backgroundColor: semantic.infoTint, borderColor: WEB_BADGE_BORDER },
+          ? { backgroundColor: color.accentLine, borderColor: color.accentLine }
+          : { backgroundColor: color.infoTint, borderColor: WEB_BADGE_BORDER },
       ]}
     >
       <Text
@@ -473,10 +461,10 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   // ---- States ----
   if (isLoading) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         {renderHeader()}
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={accent.warm} />
+          <ActivityIndicator size="large" color={color.accent} />
         </View>
       </View>
     );
@@ -484,7 +472,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
 
   if (isError) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         {renderHeader()}
         <View style={styles.center}>
           <Text style={styles.emptyTitle}>Couldn&apos;t load guests.</Text>
@@ -495,10 +483,10 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   }
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+    <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
       {renderHeader()}
       <ScrollView
-        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + spacing.xl }]}
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + space[7] }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.checkinFilters} accessible accessibilityLabel="Check-in filters">
@@ -601,7 +589,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
               renderRow(
                 g,
                 <View style={styles.statusIconWrap}>
-                  <Icon name="users" size={18} color={textTokens.tertiary} />
+                  <Icon name="users" size={18} color={color.text3} />
                 </View>,
                 `rsvp-maybe-${g.id}`,
               ),
@@ -617,7 +605,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
               renderRow(
                 g,
                 <View style={styles.statusIconWrap}>
-                  <Icon name="clock" size={18} color={textTokens.tertiary} />
+                  <Icon name="clock" size={18} color={color.text3} />
                 </View>,
               ),
             )}
@@ -682,62 +670,62 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   chromeSpacer: { width: 36 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md },
-  body: { paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.lg },
-  checkinFilters: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4] },
+  body: { paddingHorizontal: space[4], paddingTop: space[4], gap: space[6] },
+  checkinFilters: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
   checkinFilter: {
-    minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.full, borderWidth: 1, borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    minHeight: 44, justifyContent: "center", paddingHorizontal: space[4],
+    borderRadius: radiusTokens.full, borderWidth: 1, borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  checkinFilterActive: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.14)" },
-  checkinFilterText: { color: textTokens.secondary, fontSize: typography.caption.fontSize, fontWeight: "700" },
-  checkinFilterTextActive: { color: accent.warm },
-  section: { gap: spacing.sm },
+  checkinFilterActive: { borderColor: color.accent, backgroundColor: color.accentTint },
+  checkinFilterText: { color: color.text2, fontSize: type.caption.fontSize, fontWeight: "700" },
+  checkinFilterTextActive: { color: color.accent },
+  section: { gap: space[2] },
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   sectionTitle: {
-    fontSize: typography.bodyLg.fontSize,
+    fontSize: type.row.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   bulkBtn: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 6,
     borderRadius: radiusTokens.md,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
-  bulkBtnText: { fontSize: typography.bodySm.fontSize, fontWeight: "700", color: accent.warm },
+  bulkBtnText: { fontSize: type.small.fontSize, fontWeight: "700", color: color.accent },
   guestRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     backgroundColor: ROW_BG,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   refundTrailing: {
     alignItems: "flex-end",
-    gap: spacing.xs,
+    gap: space[1],
   },
   // ORCH-1334 — the tappable body is its OWN press target (Constitution #1: the
   // trailing action cluster is a sibling, never swallowed by the body press).
@@ -746,83 +734,84 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     minWidth: 0,
-    gap: spacing.sm,
-    paddingVertical: spacing.sm + 2,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[2] + 2,
+    paddingLeft: space[4],
+    paddingRight: space[1],
     minHeight: 44,
   },
   avatarBase: {
-    marginRight: spacing.sm,
-    backgroundColor: glass.tint.profileBase,
+    marginRight: space[2],
+    backgroundColor: color.fill.inset,
   },
-  avatarInitials: { alignItems: "center", justifyContent: "center" },
-  avatarInitialsText: { color: "#fff", fontWeight: "700" },
+  // #4420 — one neutral avatar fill (as the event guest list), not a hue per guest.
+  avatarInitials: { alignItems: "center", justifyContent: "center", backgroundColor: color.card3 },
+  avatarInitialsText: { color: color.text1, fontWeight: "700" },
   guestInfo: { flex: 1, minWidth: 0 },
-  guestName: { fontSize: typography.bodySm.fontSize, fontWeight: "600", color: textTokens.primary },
-  plusChip: { fontSize: typography.caption.fontSize, fontWeight: "700", color: accent.warm },
+  guestName: { fontSize: type.small.fontSize, fontWeight: "600", color: color.text1 },
+  plusChip: { fontSize: type.caption.fontSize, fontWeight: "700", color: color.accent },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     marginTop: 2,
   },
   guestContact: {
     flex: 1,
     minWidth: 0,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   checkinTruth: {
     marginTop: 3,
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    color: semantic.success,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    color: color.success,
     fontWeight: "600",
   },
   badge: {
-    paddingHorizontal: spacing.xs + 2,
+    paddingHorizontal: space[1] + 2,
     paddingVertical: 2,
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
   },
   badgeText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
-    letterSpacing: typography.micro.letterSpacing,
+    letterSpacing: type.label.letterSpacing,
   },
-  actionCol: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingRight: spacing.md },
-  statusIconWrap: { paddingRight: spacing.md, paddingLeft: spacing.xs },
+  actionCol: { flexDirection: "row", alignItems: "center", gap: space[1], paddingRight: space[4] },
+  statusIconWrap: { paddingRight: space[4], paddingLeft: space[1] },
   smallBtn: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 8,
     borderRadius: radiusTokens.md,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 44,
   },
-  approveBtn: { backgroundColor: accent.warm },
-  approveBtnText: { fontSize: typography.caption.fontSize, fontWeight: "700", color: "#fff" },
-  ghostBtn: { backgroundColor: glass.tint.profileBase, borderWidth: 1, borderColor: glass.border.profileBase },
-  ghostBtnText: { fontSize: typography.caption.fontSize, fontWeight: "600", color: textTokens.secondary },
-  removeBtn: { backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: semantic.error },
-  removeBtnText: { fontSize: typography.caption.fontSize, fontWeight: "600", color: semantic.error },
-  emptyTitle: { fontSize: typography.bodyLg.fontSize, fontWeight: "600", color: textTokens.primary },
-  emptySub: { fontSize: typography.bodySm.fontSize, color: textTokens.tertiary },
+  approveBtn: { backgroundColor: color.accent },
+  approveBtnText: { fontSize: type.caption.fontSize, fontWeight: "700", color: color.text1 },
+  ghostBtn: { backgroundColor: color.fill.inset, borderWidth: 1, borderColor: color.line },
+  ghostBtnText: { fontSize: type.caption.fontSize, fontWeight: "600", color: color.text2 },
+  removeBtn: { backgroundColor: color.fill.inset, borderWidth: 1, borderColor: color.danger },
+  removeBtnText: { fontSize: type.caption.fontSize, fontWeight: "600", color: color.danger },
+  emptyTitle: { fontSize: type.row.fontSize, fontWeight: "600", color: color.text1 },
+  emptySub: { fontSize: type.small.fontSize, color: color.text3 },
   footerHint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
     top: 0,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingTop: space[6],
+    paddingHorizontal: space[4],
   },
 });
 

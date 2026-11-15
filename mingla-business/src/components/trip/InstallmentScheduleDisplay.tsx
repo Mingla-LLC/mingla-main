@@ -32,9 +32,8 @@ import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { installmentReassuranceText } from "../../copy/installmentReassurance";
@@ -109,7 +108,7 @@ export const InstallmentScheduleDisplay: React.FC<
       accessibilityLabel="Payment plan schedule"
       style={styles.host}
     >
-      <GlassCard variant="elevated" padding={spacing.md} style={styles.card}>
+      <GlassCard variant="elevated" padding={space[4]} style={styles.card}>
         <View
           accessibilityRole="text"
           style={styles.row}
@@ -163,47 +162,47 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   dateLabel: {
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "400",
   },
   amount: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "600",
     textAlign: "right",
   },
   divider: {
     height: 1,
-    backgroundColor: glass.border.profileElevated,
-    marginVertical: spacing.sm,
+    backgroundColor: color.lineStrong,
+    marginVertical: space[2],
   },
   totalLabel: {
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "600",
   },
   totalAmount: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 17,
     fontWeight: "700",
     textAlign: "right",
   },
   cellText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "600",
   },
   reassurance: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
 });

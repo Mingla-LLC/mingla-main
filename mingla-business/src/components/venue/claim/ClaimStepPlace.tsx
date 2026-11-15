@@ -10,10 +10,9 @@ import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { provenanceFor, useDraftVenueStore } from "../../../store/draftVenueStore";
 import { Icon } from "../../ui/Icon";
@@ -73,7 +72,7 @@ export const ClaimStepPlace: React.FC<ClaimStepPlaceProps> = ({
                 {slugLine}
               </Text>
             </View>
-            <Icon name="edit" size={18} color={textTokens.secondary} />
+            <Icon name="edit" size={18} color={color.text2} />
           </View>
         </Pressable>
         {openCard === "name" ? (
@@ -111,7 +110,7 @@ export const ClaimStepPlace: React.FC<ClaimStepPlaceProps> = ({
             <Text style={[styles.value, styles.valueCol]} numberOfLines={2}>
               {draft.formattedAddress}
             </Text>
-            <Icon name="edit" size={18} color={textTokens.secondary} />
+            <Icon name="edit" size={18} color={color.text2} />
           </View>
         </Pressable>
         {openCard === "address" ? (
@@ -126,70 +125,70 @@ export const ClaimStepPlace: React.FC<ClaimStepPlaceProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   card: {
     borderRadius: 12,
-    padding: spacing.md,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    gap: spacing.sm,
+    padding: space[4],
+    backgroundColor: color.fill.tile,
+    gap: space[2],
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0)",
+    borderColor: color.line,
   },
   cardOpen: {
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
   cardHead: {
     minHeight: 64,
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   labelRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   labelCap: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
   valueRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   valueCol: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   value: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   slugLine: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   // The wrapped editors carry the step-host padH themselves — pull it back so
   // they align inside the card.
   editorHost: {
-    marginHorizontal: -spacing.lg,
+    marginHorizontal: -space[6],
   },
 });
 

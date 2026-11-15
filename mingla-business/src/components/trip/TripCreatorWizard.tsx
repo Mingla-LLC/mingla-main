@@ -38,13 +38,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 
 import {
-  accent,
-  canvas,
   glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   DESKTOP_BEZEL_MARGIN,
@@ -2274,12 +2271,71 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     onExit: handleClose,
   });
 
-  const visibleStepperSteps = inviteEnabled
-    ? STEPPER_STEPS
-    : STEPPER_STEPS.filter((item) => item.id !== "step-7");
+  // #4420 B7 — the clickable stepper. A step shows an error only where the
+  // wizard's existing publish check already points (`publishError`); no new
+  // validation rule. Continue never blocks a step on its own (it saves and
+  // moves on), so every visible step is as reachable as Continue makes it.
+  const visibleStepperSteps = useMemo<StepperStep[]>(() => {
+    const base = inviteEnabled
+      ? STEPPER_STEPS
+      : STEPPER_STEPS.filter((item) => item.id !== "step-7");
+    return base.map((item) =>
+      publishError !== null && item.id === `step-${publishError.pointsToStep}`
+        ? { ...item, state: "error" as const, firstError: publishError.message }
+        : item,
+    );
+  }, [inviteEnabled, publishError]);
   const visibleStepNumber = !inviteEnabled && step === 8 ? 7 : step;
   const visibleStepCount = inviteEnabled ? STEP_COUNT : STEP_COUNT - 1;
   const stepIdx = visibleStepNumber - 1;
+  const furthestReachableIdx = visibleStepperSteps.length - 1;
+
+  // #4420 B7 — jump to a step from the stepper. Same rules as Continue/Back:
+  // never while Invite people is still loading (#1780), never a second save
+  // while one is on the wire, a conflict is said not swallowed, and the step
+  // the host is leaving is saved first (#3801). A failed save stays put and
+  // says so; the edits stay in the wizard.
+  const handleStepJump = useCallback(async (ordinal: number): Promise<void> => {
+    const target = Number(visibleStepperSteps[ordinal]?.id.slice(5)) as StepIndex;
+    if (!Number.isFinite(target) || target === step) return;
+    if (submitting || checkingInvitePublish || isDiscarding) return;
+    if (step === 7 && inviteNavigation?.phase !== "ready") return;
+    if (saveQueue.isBusy()) {
+      await waitForSaveInFlight();
+      return;
+    }
+    if (saveQueue.isConflicted()) {
+      surfaceRevisionConflict();
+      return;
+    }
+    try {
+      await autosaveCurrentStep();
+      setPublishError(null);
+      setStep(target);
+    } catch (e) {
+      if (isTripRevisionConflict(e)) {
+        surfaceRevisionConflict();
+        return;
+      }
+      showToast(isTripSaveTimeout(e) ? TRIP_SAVE_TIMEOUT_MESSAGE : TRIP_STEP_SAVE_FAILED_MESSAGE);
+    }
+  }, [
+    visibleStepperSteps,
+    step,
+    submitting,
+    checkingInvitePublish,
+    isDiscarding,
+    inviteNavigation?.phase,
+    saveQueue,
+    waitForSaveInFlight,
+    surfaceRevisionConflict,
+    autosaveCurrentStep,
+    showToast,
+  ]);
+  const handleStepPress = useCallback((ordinal: number): void => {
+    void handleStepJump(ordinal);
+  }, [handleStepJump]);
+
   const stepTitle = STEP_TITLES[step];
   const stepSubtitle = step === 7
     ? "Choose who to invite. Nothing sends until this trip is published."
@@ -2368,7 +2424,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           <Icon
             name={item.icon}
             size={22}
-            color={item.active ? accent.warm : textTokens.tertiary}
+            color={item.active ? color.accent : color.text3}
           />
           <Text
             style={[
@@ -2386,7 +2442,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   const renderDesktopStepRail = (): React.ReactElement => (
     <GlassCard
       variant="base"
-      padding={spacing.md}
+      padding={space[4]}
       radius="lg"
       style={styles.desktopStepRail}
     >
@@ -2396,51 +2452,18 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           {step1Draft.title.trim().length > 0 ? step1Draft.title : "Untitled trip"}
         </Text>
         <Text style={styles.desktopStepRailSub} numberOfLines={1}>
-          {brand.name} · Draft saved
+          {brand.name}{autosaveStateText.length > 0 ? ` · ${autosaveStateText}` : ""}
         </Text>
       </View>
-      <View style={styles.desktopStepList}>
-        {visibleStepperSteps.map((stepDef, index) => {
-          const stepNumber = Number(stepDef.id.slice(5)) as StepIndex;
-          const active = stepNumber === step;
-          return (
-            <View
-              key={stepDef.id}
-              style={[styles.desktopStepItem, active ? styles.desktopStepItemActive : null]}
-            >
-              <View
-                style={[
-                  styles.desktopStepIndex,
-                  active ? styles.desktopStepIndexActive : null,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.desktopStepIndexText,
-                    active ? styles.desktopStepIndexTextActive : null,
-                  ]}
-                >
-                  {index + 1}
-                </Text>
-              </View>
-              <View style={styles.desktopStepCopy}>
-                <Text
-                  style={[
-                    styles.desktopStepTitle,
-                    active ? styles.desktopStepTitleActive : null,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {STEP_TITLES[stepNumber]}
-                </Text>
-                <Text style={styles.desktopStepSub} numberOfLines={1}>
-                  {STEP_SUBTITLES[stepNumber]}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
+      {/* #4420 B7 — the 280 clickable step list (done / current / error / todo). */}
+      <Stepper
+        layout="list"
+        steps={visibleStepperSteps}
+        currentIndex={stepIdx}
+        furthestValidIndex={furthestReachableIdx}
+        onStepPress={handleStepPress}
+        testID="trip-wizard-steps"
+      />
     </GlassCard>
   );
 
@@ -2450,7 +2473,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         styles.host,
         {
           paddingTop: isWideDesktop ? 0 : insets.top,
-          backgroundColor: canvas.discover,
+          backgroundColor: color.canvas,
         },
       ]}
     >
@@ -2484,10 +2507,16 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             accessibilityLabel="Close wizard"
           />
           <View style={styles.stepperWrap}>
+            {/* #4420 B7 — progress segments, tappable step chips and the n / N Steps sheet. */}
             <Stepper
+              layout="chips"
               steps={visibleStepperSteps}
               currentIndex={stepIdx}
+              furthestValidIndex={furthestReachableIdx}
+              onStepPress={handleStepPress}
               showCaption={false}
+              sheetTitle="Steps"
+              testID="trip-wizard-stepper"
             />
           </View>
           <Text style={styles.stepCounter} testID="trip-wizard-step-counter">
@@ -2683,7 +2712,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           variant="elevated"
           padding={0}
           radius="xxl"
-          style={[styles.dock, { marginBottom: insets.bottom + spacing.lg }]}
+          style={[styles.dock, { marginBottom: insets.bottom + space[6] }]}
         >
           {step === 1 ? (
             <Button
@@ -2891,15 +2920,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: DESKTOP_RAIL_WIDTH,
     alignItems: "center",
-    paddingTop: spacing.xl,
-    gap: spacing.sm,
+    paddingTop: space[7],
+    gap: space[2],
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: "rgba(255, 255, 255, 0.06)",
+    borderRightColor: color.line,
   },
   desktopRailBrandMark: {
     width: 42,
     height: 42,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2918,28 +2947,28 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   desktopRailItemActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.055)",
-    borderColor: "rgba(235, 120, 37, 0.45)",
+    backgroundColor: color.fill.tile,
+    borderColor: color.accentLine,
   },
   desktopRailItemText: {
     fontSize: 9,
     lineHeight: 11,
     fontWeight: "700",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   desktopRailItemTextActive: {
-    color: accent.warm,
+    color: color.accent,
   },
   desktopTopBarWrap: {
     paddingTop: DESKTOP_TOP_INSET,
     paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
     paddingRight: DESKTOP_BEZEL_MARGIN,
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   desktopShell: {
     flex: 1,
     flexDirection: "row",
-    gap: spacing.md,
+    gap: space[4],
     paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
     paddingRight: DESKTOP_BEZEL_MARGIN,
     paddingBottom: DESKTOP_BEZEL_MARGIN,
@@ -2949,77 +2978,26 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   desktopStepRailHeader: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   desktopStepEyebrow: {
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: spacing.sm,
+    color: color.accent,
+    marginBottom: space[2],
   },
   desktopStepRailTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   desktopStepRailSub: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-  },
-  desktopStepList: {
-    gap: spacing.sm,
-  },
-  desktopStepItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 12,
-  },
-  desktopStepItemActive: {
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(235, 120, 37, 0.45)",
-  },
-  desktopStepIndex: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
-  },
-  desktopStepIndexActive: {
-    backgroundColor: accent.warm,
-  },
-  desktopStepIndexText: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "800",
-    color: textTokens.tertiary,
-  },
-  desktopStepIndexTextActive: {
-    color: textTokens.inverse,
-  },
-  desktopStepCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  desktopStepTitle: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "700",
-    color: textTokens.tertiary,
-  },
-  desktopStepTitleActive: {
-    color: textTokens.primary,
-  },
-  desktopStepSub: {
-    marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.quaternary,
+    marginTop: space[1],
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   desktopFormPane: {
     flex: 1,
@@ -3027,82 +3005,82 @@ const styles = StyleSheet.create({
     minWidth: 0,
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    backgroundColor: "rgba(255, 255, 255, 0.018)",
+    borderColor: color.line,
+    backgroundColor: color.fill.tableHead,
     overflow: "hidden",
   },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[2],
   },
   stepperWrap: {
     flex: 1,
   },
   stepCounter: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
     minWidth: 28,
     textAlign: "right",
   },
   subtitleRow: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[1],
+    paddingBottom: space[4],
   },
   subtitle: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   mobileStepTitle: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     fontSize: 28,
     lineHeight: 34,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   mobileStepSub: {
     marginTop: 4,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   saveState: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.quaternary,
+    marginTop: space[1],
+    fontSize: type.caption.fontSize,
+    color: color.text4,
   },
   saveStateError: {
-    color: semantic.error,
+    color: color.danger,
   },
   conflictBanner: {
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    gap: spacing.sm,
+    marginBottom: space[4],
+    padding: space[4],
+    gap: space[2],
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
   },
   conflictText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: semantic.errorText,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.errorText,
   },
   body: {
-    paddingHorizontal: spacing.md + 8,
+    paddingHorizontal: space[4] + 8,
     paddingTop: 0,
-    paddingBottom: spacing.xl,
+    paddingBottom: space[7],
   },
   stepBodyWrap: {
     width: "100%",
   },
   dock: {
-    marginHorizontal: spacing.md,
-    // marginBottom is applied inline as insets.bottom + spacing.lg so the
+    marginHorizontal: space[4],
+    // marginBottom is applied inline as insets.bottom + space[6] so the
     // floating dock clears the phone's bottom nav / home-indicator on both
     // Android gesture-nav and iOS (META-ORCH-1059 Sub-A footer-bleed fix).
     paddingVertical: 6,
@@ -3127,12 +3105,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingTop: space[6],
+    paddingHorizontal: space[4],
   },
   // suppress unused
   _unused: {
-    color: glass.tint.profileBase,
+    color: color.fill.inset,
   },
 });
 

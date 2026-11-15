@@ -21,13 +21,10 @@ import React from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -48,14 +45,6 @@ import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 // ORCH-1334 — avatar helpers copied inline (byte-for-byte from
 // app/event/[id]/guests/index.tsx:88-101 per SPEC §4E-10; NOT refactored into a
 // shared util this ORCH — kept local to avoid a console↔sheet circular import).
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
-};
-
 const getInitials = (name: string): string => {
   const parts = name.trim().split(/\s+/).filter((p) => p.length > 0);
   if (parts.length === 0) return "?";
@@ -64,13 +53,13 @@ const getInitials = (name: string): string => {
 };
 
 // AA-safe LIGHTENED badge-text tokens (see RsvpGuestConsole for the full contrast
-// rationale). "On Mingla" uses #ffa94d, NOT the brand accent.warm #eb7825 which
-// misses AA 4.5:1 on the composited accent.tint fill (3.94:1 iOS / 3.38:1 Android);
+// rationale). "On Mingla" uses #ffa94d, NOT the brand color.accent #eb7825 which
+// misses AA 4.5:1 on the composited color.accentLine fill (3.94:1 iOS / 3.38:1 Android);
 // #ffa94d measures 6.00:1 iOS / 5.15:1 Android. The web badge uses #7ab0ff since
 // the token #3b82f6 misses AA on the info-tint fill.
-const APP_BADGE_TEXT = "#ffa94d";
-const WEB_BADGE_TEXT = "#7ab0ff";
-const WEB_BADGE_BORDER = "rgba(59, 130, 246, 0.55)";
+const APP_BADGE_TEXT = color.accentText;
+const WEB_BADGE_TEXT = color.infoText;
+const WEB_BADGE_BORDER = color.infoTint;
 
 const STATUS_LABEL: Record<RsvpStatusValue, string> = {
   going: "Going",
@@ -134,7 +123,6 @@ const AvatarLarge: React.FC<{ guest: RsvpGuest }> = ({ guest }) => {
       style={[
         styles.avatar,
         styles.avatarInitials,
-        { backgroundColor: `hsl(${hashStringToHue(guest.id)}, 60%, 45%)` },
       ]}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
@@ -151,8 +139,8 @@ const SourceBadge: React.FC<{ source: RsvpSourceValue }> = ({ source }) => {
       style={[
         styles.badge,
         isApp
-          ? { backgroundColor: accent.tint, borderColor: accent.border }
-          : { backgroundColor: semantic.infoTint, borderColor: WEB_BADGE_BORDER },
+          ? { backgroundColor: color.accentLine, borderColor: color.accentLine }
+          : { backgroundColor: color.infoTint, borderColor: WEB_BADGE_BORDER },
       ]}
     >
       <Text style={[styles.badgeText, { color: isApp ? APP_BADGE_TEXT : WEB_BADGE_TEXT }]}>
@@ -380,51 +368,52 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  // The Sheet body already pads spacing.md horizontal; add spacing.sm to reach
-  // the §4E-2 spacing.lg (24) inner padding. Vertical block gaps = spacing.lg.
+  // The Sheet body already pads space[4] horizontal; add space[2] to reach
+  // the §4E-2 space[6] (24) inner padding. Vertical block gaps = space[6].
   content: {
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.sm,
-    gap: spacing.lg,
+    paddingHorizontal: space[2],
+    paddingTop: space[2],
+    gap: space[6],
   },
-  identityBlock: { alignItems: "center", gap: spacing.sm },
+  identityBlock: { alignItems: "center", gap: space[2] },
   avatar: {
     width: 64,
     height: 64,
     borderRadius: radiusTokens.full,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
-  avatarInitials: { alignItems: "center", justifyContent: "center" },
-  avatarInitialsText: { color: "#fff", fontWeight: "700", fontSize: 24 },
+  // #4420 — one neutral avatar fill (as the event guest list), not a hue per guest.
+  avatarInitials: { alignItems: "center", justifyContent: "center", backgroundColor: color.card3 },
+  avatarInitialsText: { color: color.text1, fontWeight: "700", fontSize: 24 },
   name: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   username: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   identityBadge: { marginTop: 2 },
-  block: { gap: spacing.sm },
+  block: { gap: space[2] },
   sectionLabel: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
   value: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   meta: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   contactRow: {
     minHeight: 44,
@@ -432,31 +421,31 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   contactLabel: {
-    fontSize: typography.labelCap.fontSize,
-    letterSpacing: typography.labelCap.letterSpacing,
+    fontSize: type.label.fontSize,
+    letterSpacing: type.label.letterSpacing,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   contactValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   badge: {
-    paddingHorizontal: spacing.xs + 2,
+    paddingHorizontal: space[1] + 2,
     paddingVertical: 2,
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
   },
   badgeText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
-    letterSpacing: typography.micro.letterSpacing,
+    letterSpacing: type.label.letterSpacing,
   },
   actionBar: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
 });
 

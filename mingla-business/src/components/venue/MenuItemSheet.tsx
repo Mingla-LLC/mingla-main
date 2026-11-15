@@ -35,12 +35,10 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  androidOpaque,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
@@ -970,13 +968,13 @@ function ToggleRow({
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   heading: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    ...type.h1,
+    color: color.text1,
+    marginBottom: space[2],
   },
   // ORCH-1193: bound the scroll viewport to the fixed-height panel so the CTA
   // scrolls into view instead of overflowing past the panel's overflow:hidden.
@@ -984,25 +982,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.xs,
+    paddingBottom: space[9],
+    gap: space[1],
   },
   groupLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xxs,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: 2,
   },
   field: {
-    gap: spacing.xxs,
-    marginBottom: spacing.xs,
+    gap: 2,
+    marginBottom: space[1],
   },
   fieldHeader: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   menuTextFieldLabel: {
     flexShrink: 1,
@@ -1015,57 +1013,57 @@ const styles = StyleSheet.create({
   stationRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   stationChip: {
     minHeight: 44,
     justifyContent: "center",
   },
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   fieldError: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     fontWeight: "600",
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   helper: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: 2,
   },
   moneyError: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     fontWeight: "600",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   saveError: {
-    gap: spacing.xxs,
-    padding: spacing.sm,
+    gap: 2,
+    padding: space[2],
     borderWidth: 1,
     borderRadius: radius.md,
-    borderColor: semantic.error,
+    borderColor: color.danger,
     overflow: "hidden",
     backgroundColor:
-      Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
+      Platform.OS === "android" ? color.solidTint.error : color.errorTint,
   },
   saveErrorText: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
   },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
+    paddingVertical: space[2],
+    gap: space[4],
   },
   toggleLabel: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     flex: 1,
   },
   /*
@@ -1075,15 +1073,15 @@ const styles = StyleSheet.create({
    * the Save button's own top gap and sits directly against it.
    */
   optionsHoldNote: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: spacing.lg,
+    ...type.small,
+    color: color.text2,
+    marginTop: space[6],
   },
   saveBtn: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   deleteBtn: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });
 

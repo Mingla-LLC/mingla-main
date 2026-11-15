@@ -25,14 +25,11 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius,
-  semantic,
   spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
@@ -914,20 +911,21 @@ export const ExperienceCreatorWizard: React.FC<
     priceOptions,
   ]);
 
-  const canContinue = useMemo(() => {
-    if (step === 1)
+  // #4420 B7 — the existing per-step Continue rule, as a function of the step
+  // so the clickable stepper can ask it for every step. No new rule.
+  const stepIsValid = useCallback((target: StepIndex): boolean => {
+    if (target === 1)
       return (
         title.trim().length > 0 &&
         description.trim().length >= 10 &&
         intents.length > 0
       );
-    if (step === 2) return stopsValid;
-    if (step === 3) return whenAdapter.isValid;
+    if (target === 2) return stopsValid;
+    if (target === 3) return whenAdapter.isValid;
     // issue #3284 — an invalid refund tier blocks Continue like a bad price.
-    if (step === 4) return pricingValid && refundValid;
+    if (target === 4) return pricingValid && refundValid;
     return true;
   }, [
-    step,
     title,
     description,
     intents,
@@ -936,6 +934,14 @@ export const ExperienceCreatorWizard: React.FC<
     pricingValid,
     refundValid,
   ]);
+  const canContinue = useMemo(() => stepIsValid(step), [stepIsValid, step]);
+  // A step is reachable up to the first step the Continue rule rejects.
+  const furthestValidIndex = useMemo((): number => {
+    for (let index = 0; index < steps.length; index += 1) {
+      if (!stepIsValid((index + 1) as StepIndex)) return index;
+    }
+    return steps.length - 1;
+  }, [stepIsValid, steps.length]);
 
   const goBack = useCallback((): void => {
     if (step === 6 && inviteNavigation?.phase !== "ready") return;
@@ -1122,6 +1128,23 @@ export const ExperienceCreatorWizard: React.FC<
     }
     setStep((prev) => Math.min(finalStep, prev + 1) as StepIndex);
   }, [canContinue, ensureDraft, experienceId, finalStep, inviteNavigation, step, whenAdapter]);
+
+  // #4420 B7 — jump to a reachable step from the stepper. Same guards as
+  // Back/Continue: never off Invite people while it is still loading (#1780),
+  // never while Publish re-reads the plan, and leaving Identity makes sure
+  // the server draft exists exactly as Continue does.
+  const goToStep = useCallback((ordinal: number): void => {
+    const target = (ordinal + 1) as StepIndex;
+    if (target === step || target > finalStep) return;
+    if (step === 6 && inviteNavigation?.phase !== "ready") return;
+    if (checkingInvitePublish) return;
+    if (target > step && ordinal > furthestValidIndex) return;
+    setShowStepErrors(false);
+    if (step === 1 && target > 1 && experienceId === null) {
+      void ensureDraft();
+    }
+    setStep(target);
+  }, [checkingInvitePublish, ensureDraft, experienceId, finalStep, furthestValidIndex, inviteNavigation?.phase, step]);
 
   // #3645 — "Connect bank" carries where the host is, so bank setup brings
   // them straight back to this experience on this step (web and native).
@@ -1810,10 +1833,18 @@ export const ExperienceCreatorWizard: React.FC<
             <Icon
               name={step === 1 ? "close" : "chevL"}
               size={18}
-              color={textTokens.secondary}
+              color={color.text2}
             />
         </Pressable>
-        <Stepper steps={steps} currentIndex={step - 1} />
+        {/* #4420 B7 — clickable stepper, reachable up to the first invalid step. */}
+        <Stepper
+          steps={steps}
+          currentIndex={step - 1}
+          furthestValidIndex={furthestValidIndex}
+          onStepPress={goToStep}
+          sheetTitle="Steps"
+          testID="experience-wizard-stepper"
+        />
       </View>
       {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
           from the file head to the occurrence it was always meant to cover.
@@ -1828,7 +1859,7 @@ export const ExperienceCreatorWizard: React.FC<
         contentContainerStyle={[
           styles.scrollContent,
           // ORCH-1165: +42pt clearance for the Done bar while the keyboard is up.
-          keyboardVisible ? { paddingBottom: spacing.lg + 42 } : null,
+          keyboardVisible ? { paddingBottom: space[6] + 42 } : null,
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -1853,7 +1884,7 @@ export const ExperienceCreatorWizard: React.FC<
               value={description}
               onChangeText={(value) => setDescription(value.slice(0, 500))}
               placeholder="10–500 characters."
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               accessibilityLabel="Experience description"
               multiline
               style={styles.textArea}
@@ -1883,7 +1914,7 @@ export const ExperienceCreatorWizard: React.FC<
                     <Icon
                       name={selected ? "check" : opt.icon}
                       size={18}
-                      color={selected ? accent.warm : textTokens.secondary}
+                      color={selected ? color.accent : color.text2}
                     />
                     <View style={styles.intentTextCol}>
                       <Text
@@ -2166,7 +2197,7 @@ export const ExperienceCreatorWizard: React.FC<
         ) : null}
       </ScrollView>
         <View
-          style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}
+          style={[styles.footer, { paddingBottom: insets.bottom + space[6] }]}
         >
         {step < finalStep ? (
             <Button
@@ -2250,14 +2281,14 @@ export const ExperienceCreatorWizard: React.FC<
 };
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: canvas.discover },
+  host: { flex: 1, backgroundColor: color.canvas },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    paddingBottom: space[2],
   },
   backTouch: {
     width: 44,
@@ -2266,57 +2297,57 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
-  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  scrollContent: { paddingHorizontal: space[6], paddingBottom: space[6] },
   // ORCH-1076 Stream B — proactive Stripe banner spacing (inherits the
   // scrollContent horizontal padding; only needs top separation).
-  stripeBannerWrap: { marginTop: spacing.md },
-  stepBody: { gap: spacing.md },
+  stripeBannerWrap: { marginTop: space[4] },
+  stepBody: { gap: space[4] },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   label: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   textArea: {
     minHeight: 120,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlignVertical: "top",
   },
-  footer: { padding: spacing.lg },
-  footerRow: { flexDirection: "row", gap: spacing.sm },
+  footer: { padding: space[6] },
+  footerRow: { flexDirection: "row", gap: space[2] },
   footerButton: { flex: 1 },
   helperBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   intentGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   intentChip: {
     flexBasis: "47%",
@@ -2324,39 +2355,39 @@ const styles = StyleSheet.create({
     minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   intentChipActive: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   intentTextCol: { flex: 1 },
   intentLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
-  intentLabelActive: { color: textTokens.primary },
+  intentLabelActive: { color: color.text1 },
   intentDesc: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 1,
   },
   inlineError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: 2,
   },
-  reviewCard: { borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase, padding: spacing.md, gap: spacing.xs },
-  reviewValue: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
-  intelHighlight: { borderColor: accent.warm, borderWidth: 2 },
+  reviewCard: { borderRadius: radius.md, borderWidth: 1, borderColor: color.line, padding: space[4], gap: space[1] },
+  reviewValue: { ...type.body, color: color.text1, fontWeight: "600" },
+  intelHighlight: { borderColor: color.accent, borderWidth: 2 },
 });
 
 export default ExperienceCreatorWizard;

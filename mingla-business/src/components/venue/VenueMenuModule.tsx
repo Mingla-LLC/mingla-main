@@ -44,14 +44,10 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  androidOpaque,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Button } from "../ui/Button";
@@ -1434,56 +1430,56 @@ function TextControl({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   intro: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    ...type.small,
+    color: color.text2,
+    marginBottom: space[1],
   },
   // ---- category card ----
   categoryCard: {
     // ORCH-1190 R2 — full-width category card on WEB (see emptyCard).
     width: "100%",
-    gap: spacing.sm,
+    gap: space[2],
   },
   categoryHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   categoryHeaderText: {
     flex: 1,
     minWidth: 0,
   },
   categoryName: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   categoryDesc: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   categorySchedule: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    ...type.small,
+    color: color.text3,
+    marginTop: 2,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginVertical: spacing.xs,
+    backgroundColor: color.line,
+    marginVertical: space[1],
   },
   // ---- item row ----
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.xs,
-    gap: spacing.sm,
+    paddingVertical: space[1],
+    gap: space[2],
   },
   itemRowStacked: {
     flexDirection: "column",
@@ -1495,44 +1491,44 @@ const styles = StyleSheet.create({
   itemLeft: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.xxs,
+    gap: 2,
   },
   itemLeftStacked: {
     width: "100%",
   },
   itemName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   itemDesc: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   itemRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   itemRightStacked: {
     width: "100%",
     alignSelf: "stretch",
     justifyContent: "space-between",
     flexWrap: "wrap",
-    rowGap: spacing.xs,
+    rowGap: space[1],
   },
   itemStatusGroup: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   itemPrice: {
-    ...typography.body,
+    ...type.body,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   priceOnRequest: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   spotsEntry: {
     alignSelf: "flex-start",
@@ -1540,13 +1536,13 @@ const styles = StyleSheet.create({
   availabilityToggle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xxs,
+    gap: 2,
     minHeight: 44,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
   availabilityLabel: {
-    ...typography.micro,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   availabilityDot: {
     width: 8,
@@ -1554,31 +1550,31 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   dotAvailable: {
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
   },
   dotUnavailable: {
-    backgroundColor: textTokens.quaternary,
+    backgroundColor: color.text4,
   },
   reorderFeedback: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    gap: spacing.sm,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
+    gap: space[2],
   },
   reorderFeedbackError: {
     minHeight: 48,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
+    gap: space[4],
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderRadius: radius.md,
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
   },
   reorderFeedbackErrorAndroid: {
-    backgroundColor: androidOpaque.errorFill,
+    backgroundColor: color.solidTint.error,
     overflow: "hidden",
     elevation: 0,
   },
@@ -1590,40 +1586,40 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   reorderFeedbackPendingText: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   reorderFeedbackSuccessText: {
-    ...typography.bodySm,
-    color: semantic.success,
+    ...type.small,
+    color: color.success,
   },
   reorderFeedbackErrorText: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     fontWeight: "600",
   },
   reorderRetry: {
     minHeight: 44,
     minWidth: 88,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     alignItems: "center",
     justifyContent: "center",
   },
   reorderRetryText: {
-    ...typography.buttonMd,
-    color: accent.warm,
+    ...type.btnSm,
+    color: color.accent,
   },
   unassignedReorderNotice: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    ...type.caption,
+    color: color.text3,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
   },
   // ---- controls ----
   actionCluster: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   iconControl: {
     width: 44,
@@ -1632,8 +1628,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   iconGlyph: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
   },
   iconDisabled: {
     opacity: 0.3,
@@ -1641,47 +1637,47 @@ const styles = StyleSheet.create({
   textControl: {
     minWidth: 44,
     minHeight: 44,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     alignItems: "center",
     justifyContent: "center",
   },
   textControlLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   pressed: {
     opacity: 0.6,
   },
   // ---- add item ----
   addItemRow: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderWidth: 1,
-    borderColor: "rgba(235,120,37,0.55)",
+    borderColor: color.accentLine,
     borderStyle: "dashed",
     borderRadius: radius.md,
     alignItems: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   addItemLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: "#eb7825",
+    color: color.accent,
   },
   addCategoryBtn: {
     alignSelf: "stretch",
   },
   // ---- read-only ----
   readOnlyNote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     textAlign: "center",
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
   // ---- error ----
   errorNote: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
   },
   // ---- skeleton ----
   // ORCH-1190 R4 — full-width loading skeleton on WEB, matching the proven
@@ -1693,10 +1689,10 @@ const styles = StyleSheet.create({
   skeletonCard: {
     width: "100%",
     alignSelf: "stretch",
-    gap: spacing.sm,
+    gap: space[2],
   },
   skelBar: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderRadius: radius.sm,
   },
   skelHead: {

@@ -73,7 +73,11 @@ test.each(["tables", "availability", "reservations", "waitlist"] as VenueModule[
   mockSettings = { data: { reservationsEnabled: false }, isError: false };
   await Renderer.act(async () => { tree.update(element(module)); });
   expect(useVenueSuiteStore.getState().activeModule).toBe("overview");
-  expect(tree.root.findByType("Button").props.label).toBe("Turn on Reservations");
+  // [TEST-MOD-APPROVED #4420] B8 — the invitation now scrolls with Overview,
+  // handed to the module as its `header`, not pinned above it.
+  const header = tree.root.findByType("overview").props.header as React.ReactElement;
+  const invite = Renderer.create(header).root.findByType("Button");
+  expect(invite.props.label).toBe("Turn on Reservations");
 });
 test("a failed initial settings request is not a confirmed OFF and must preserve the deep link on retry", async () => {
   const tree = await mount("tables");

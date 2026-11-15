@@ -31,8 +31,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  scrim,
 } from "../../../src/constants/designSystem";
 import {
   useLiveEventStore,
@@ -301,7 +302,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
           style={[
             styles.headerWrap,
             {
-              paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+              paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
             },
           ]}
         >
@@ -328,7 +329,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
           style={[
             styles.headerWrap,
             {
-              paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+              paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
             },
           ]}
         >
@@ -358,7 +359,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
         style={[
           styles.headerWrap,
           {
-            paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+            paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
           },
         ]}
       >
@@ -383,7 +384,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -434,7 +435,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
         </View>
 
         {/* Headcount card — replaces the ticketed revenue card */}
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
+        <GlassCard variant="base" radius="md" padding={space[4]}>
           <Text style={styles.goingLabel}>
             {goingCount === 0 && status !== "past"
               ? "No one's responded yet"
@@ -590,32 +591,32 @@ export default function RsvpDetailScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   headerWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   headerRightRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
     alignItems: "center",
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   emptyWrap: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   loadingText: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
   },
   hero: {
@@ -633,23 +634,23 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
-    bottom: spacing.md,
+    left: space[4],
+    right: space[4],
+    bottom: space[4],
   },
   heroPillRow: {
     flexDirection: "row",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   heroTitle: {
     fontSize: 24,
     fontWeight: "700",
     letterSpacing: -0.2,
-    color: "#ffffff",
+    color: color.text1,
     ...(Platform.OS === "web"
-      ? { textShadow: "0 2px 12px rgba(0, 0, 0, 0.4)" }
+      ? { textShadow: `0 2px 12px ${scrim.modal}` }
       : {
-          textShadowColor: "rgba(0, 0, 0, 0.4)",
+          textShadowColor: scrim.modal,
           textShadowOffset: { width: 0, height: 2 },
           textShadowRadius: 12,
         }),
@@ -657,16 +658,16 @@ const styles = StyleSheet.create({
   },
   heroSubline: {
     fontSize: 13,
-    color: "rgba(255, 255, 255, 0.85)",
+    color: color.text2,
   },
   goingLabel: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   goingSub: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   actionGrid: {
@@ -675,7 +676,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   lifecycleCtaWrap: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   toastWrap: {
     position: "absolute",

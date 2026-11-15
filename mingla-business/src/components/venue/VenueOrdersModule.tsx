@@ -42,12 +42,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ClipboardList } from "lucide-react-native";
 
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useQrSpotVenues, useQrSpots } from "../../hooks/useQrSpots";
@@ -415,7 +413,7 @@ export function VenueOrdersModule({
       ) : visible.length === 0 ? (
         <View style={styles.emptyWrap} testID="venue-orders-empty-wrap">
           <GlassCard variant="elevated" style={styles.emptyCard}>
-            <ClipboardList size={26} color={textTokens.primary} />
+            <ClipboardList size={26} color={color.text1} />
             <Text style={styles.emptyTitle}>{VIEW_EMPTY[view]}</Text>
             {view === "new" && !orderingEnabled && venueId !== null ? (
               <Text style={styles.emptyBody}>
@@ -506,102 +504,102 @@ export function VenueOrdersModule({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   headerText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   subtitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   switchCard: {
     width: "100%",
     alignSelf: "stretch",
-    gap: spacing.sm,
+    gap: space[2],
   },
   switchRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   switchText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   switchTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   switchBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   switchNote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   // #3388 — a refused ordering switch says why.
   switchError: {
-    ...typography.caption,
-    color: semantic.error,
+    ...type.caption,
+    color: color.danger,
   },
   segRow: {
     flexDirection: "row",
-    gap: spacing.xs,
-    paddingVertical: spacing.xxs,
+    gap: space[1],
+    paddingVertical: 2,
   },
   seg: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
   },
   segActive: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   segLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
   segLabelActive: {
-    color: "#0c0e12",
+    color: color.ink,
   },
   chip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
   },
   chipActive: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
+    borderColor: color.accent,
+    backgroundColor: color.accentTint,
   },
   chipLabel: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     fontWeight: "600",
   },
   helper: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   emptyWrap: {
     width: "100%",
@@ -611,38 +609,38 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "stretch",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   emptyTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   emptyBody: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   errorCard: {
     width: "100%",
     alignSelf: "stretch",
-    gap: spacing.xs,
+    gap: space[1],
   },
   errorTitle: {
-    ...typography.body,
-    color: semantic.error,
+    ...type.body,
+    color: color.danger,
     fontWeight: "700",
   },
   errorBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   errorNote: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
   },
 });
 

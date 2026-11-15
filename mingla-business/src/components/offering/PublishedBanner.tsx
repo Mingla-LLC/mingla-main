@@ -17,10 +17,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -63,13 +62,13 @@ export const PublishedBanner: React.FC<PublishedBannerProps> = ({
     <GlassCard
       variant="elevated"
       radius="md"
-      padding={spacing.md}
+      padding={space[4]}
       testID={testID}
       contentStyle={styles.content}
     >
       <View style={styles.headerRow}>
         <View style={styles.iconWrap}>
-          <Icon name="check" size={18} color={semantic.success} />
+          <Icon name="check" size={18} color={color.success} />
         </View>
         <View
           style={styles.copy}
@@ -143,12 +142,12 @@ export const PublishedBanner: React.FC<PublishedBannerProps> = ({
 
 const styles = StyleSheet.create({
   content: {
-    gap: spacing.md,
+    gap: space[4],
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   iconWrap: {
     width: 32,
@@ -156,27 +155,27 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: semantic.successTint,
+    backgroundColor: color.successTint,
   },
   copy: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   title: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   line: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   action: {
     flexGrow: 1,
