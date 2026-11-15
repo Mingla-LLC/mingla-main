@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import { useBrandPlan, useBrandPlanWrites } from "../../hooks/useBrandPlan";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { addPlanEnglish } from "../../i18n/brandPlanEnglish";
@@ -177,7 +177,7 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
           <View style={styles.chip}><Text style={styles.chipText}>{stateWords}</Text></View>
           {item.can_edit ? (
             <Pressable accessibilityRole="button" accessibilityLabel={t("plan.menu_a11y", { title: item.title })} hitSlop={4} onPress={() => openMenu(item)} style={styles.menuButton} testID={`brand-plan-menu-${item.id}`}>
-              <Icon name="moreH" size={18} color={textTokens.secondary} />
+              <Icon name="moreH" size={18} color={color.text2} />
             </Pressable>
           ) : null}
         </View>
@@ -213,7 +213,7 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
   );
 
   const timeline = items.length === 0 ? (
-    <View style={styles.state}><Icon name="calendar" size={42} color={textTokens.tertiary} /><Text style={styles.stateText} testID="brand-plan-empty">{t("plan.empty")}</Text></View>
+    <View style={styles.state}><Icon name="calendar" size={42} color={color.text3} /><Text style={styles.stateText} testID="brand-plan-empty">{t("plan.empty")}</Text></View>
   ) : (
     <ScrollView style={styles.scrollFlex} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false} testID="brand-plan-timeline">
       {weeks.map((week) => (
@@ -235,9 +235,9 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
   const calendar = (
     <ScrollView style={styles.scrollFlex} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false} testID="brand-plan-calendar">
       <View style={styles.monthBar}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t("plan.prev_month_a11y")} onPress={() => { setMonth(addMonths(month, -1)); setPickedDay(null); }} style={styles.menuButton}><Icon name="arrowL" size={18} color={textTokens.primary} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={t("plan.prev_month_a11y")} onPress={() => { setMonth(addMonths(month, -1)); setPickedDay(null); }} style={styles.menuButton}><Icon name="arrowL" size={18} color={color.text1} /></Pressable>
         <Text style={styles.monthTitle} accessibilityRole="header">{dayWords(`${month}-15`, { month: "long", year: "numeric" })}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={t("plan.next_month_a11y")} onPress={() => { setMonth(addMonths(month, 1)); setPickedDay(null); }} style={styles.menuButton}><Icon name="chevR" size={18} color={textTokens.primary} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={t("plan.next_month_a11y")} onPress={() => { setMonth(addMonths(month, 1)); setPickedDay(null); }} style={styles.menuButton}><Icon name="chevR" size={18} color={color.text1} /></Pressable>
       </View>
       <View style={styles.gridRow}>
         {grid.slice(0, 7).map((day) => <Text key={day} style={styles.weekday}>{dayWords(day, { weekday: "narrow" })}</Text>)}
@@ -274,7 +274,7 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
   const body = query.isLoading ? (
     <View style={styles.list} accessibilityLabel={t("plan.loading")} testID="brand-plan-loading">
       {Array.from({ length: 4 }, (_, index) => <View key={index} style={styles.skeleton} />)}
-      <ActivityIndicator color={accent.warm} />
+      <ActivityIndicator color={color.text2} />
     </View>
   ) : notAvailable ? (
     <View style={styles.state}><Text style={styles.stateText} testID="brand-plan-not-available">{t("plan.not_available")}</Text></View>
@@ -295,7 +295,7 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
         <>
           {!compact ? (
             <View style={styles.header}>
-              {onBack ? <Pressable accessibilityRole="button" accessibilityLabel={t("plan.back")} onPress={onBack} style={styles.iconButton} testID="brand-plan-back"><Icon name="arrowL" size={18} color={textTokens.primary} /></Pressable> : null}
+              {onBack ? <Pressable accessibilityRole="button" accessibilityLabel={t("plan.back")} onPress={onBack} style={styles.iconButton} testID="brand-plan-back"><Icon name="arrowL" size={18} color={color.text1} /></Pressable> : null}
               <View style={styles.headerCopy}>
                 <Text style={styles.title} accessibilityRole="header">{t("plan.pill")}</Text>
                 {plan?.brand.name ? <Text style={styles.subtitle}>{plan.brand.name}</Text> : null}
@@ -311,8 +311,8 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
           </View>
           {body}
           {canAdd && form === null && menuItem === null ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={t("plan.submit")} onPress={() => openForm({ edit: null, initialDate: addDate })} style={[styles.fab, { bottom: insets.bottom + spacing.md }]} testID="brand-plan-add">
-              <Icon name="plus" size={18} color="#101216" />
+            <Pressable accessibilityRole="button" accessibilityLabel={t("plan.submit")} onPress={() => openForm({ edit: null, initialDate: addDate })} style={[styles.fab, { bottom: insets.bottom + space[4] }]} testID="brand-plan-add">
+              <Icon name="plus" size={18} color={color.ink} />
               <Text style={styles.fabText}>{t("plan.add_fab")}</Text>
             </Pressable>
           ) : null}
@@ -362,53 +362,53 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
 const styles = StyleSheet.create({
   root: { flex: 1, minHeight: 0 },
   scrollFlex: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
-  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
+  header: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingVertical: space[4], borderBottomWidth: 1, borderBottomColor: color.line },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset },
   headerCopy: { flex: 1, minWidth: 0 },
-  title: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
-  subtitle: { color: textTokens.tertiary, fontSize: 12, marginTop: 2 },
-  tabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
+  title: { color: color.text1, fontSize: 18, fontWeight: "800" },
+  subtitle: { color: color.text3, fontSize: 12, marginTop: 2 },
+  tabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: space[2], borderBottomWidth: 1, borderBottomColor: color.line },
   tab: { minHeight: 44, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
-  tabActive: { borderWidth: 1, borderColor: "rgba(235,120,37,0.38)", backgroundColor: "rgba(235,120,37,0.10)" },
-  tabText: { color: textTokens.tertiary, fontSize: 13, fontWeight: "700" },
-  tabTextActive: { color: textTokens.primary, fontWeight: "800" },
-  state: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
-  stateText: { color: textTokens.secondary, textAlign: "center", lineHeight: 20 },
-  list: { padding: spacing.md, gap: spacing.md, paddingBottom: 96 },
-  skeleton: { height: 72, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase },
-  week: { gap: spacing.sm },
-  weekLabel: { color: textTokens.tertiary, fontSize: 12, fontWeight: "800" },
-  row: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated },
-  rowTop: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  tabActive: { borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
+  tabText: { color: color.text3, fontSize: 13, fontWeight: "700" },
+  tabTextActive: { color: color.text1, fontWeight: "800" },
+  state: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
+  stateText: { color: color.text2, textAlign: "center", lineHeight: 20 },
+  list: { padding: space[4], gap: space[4], paddingBottom: 96 },
+  skeleton: { height: 72, borderRadius: radius.lg, backgroundColor: color.fill.inset },
+  week: { gap: space[2] },
+  weekLabel: { color: color.text3, fontSize: 12, fontWeight: "800" },
+  row: { gap: space[1], padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tile },
+  rowTop: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
   rowCopy: { flex: 1, minWidth: 0, gap: 4 },
-  rowTitle: { color: textTokens.primary, fontSize: 15, lineHeight: 20, fontWeight: "700" },
-  rowMeta: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
-  chip: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.full, backgroundColor: "rgba(255,255,255,0.08)" },
-  chipText: { color: textTokens.secondary, fontSize: 11, fontWeight: "700" },
+  rowTitle: { color: color.text1, fontSize: 15, lineHeight: 20, fontWeight: "700" },
+  rowMeta: { color: color.text3, fontSize: 12, lineHeight: 16 },
+  chip: { paddingHorizontal: space[2], paddingVertical: 2, borderRadius: radius.full, backgroundColor: color.fill.pressed },
+  chipText: { color: color.text2, fontSize: 11, fontWeight: "700" },
   menuButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  rowLinks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
-  linkButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.full, backgroundColor: "rgba(235,120,37,0.10)" },
-  linkText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
-  linkEdit: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm },
-  linkEditText: { color: accent.warm, fontSize: 13, fontWeight: "700" },
-  todayLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  todayRule: { flex: 1, height: 1, backgroundColor: accent.warm },
-  todayText: { color: accent.warm, fontSize: 11, fontWeight: "800" },
+  rowLinks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
+  linkButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[4], borderRadius: radius.full, backgroundColor: color.fill.tile },
+  linkText: { color: color.text1, fontSize: 13, fontWeight: "700" },
+  linkEdit: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[2] },
+  linkEditText: { color: color.text1, fontSize: 13, fontWeight: "700" },
+  todayLine: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  todayRule: { flex: 1, height: 1, backgroundColor: color.paper },
+  todayText: { color: color.text1, fontSize: 11, fontWeight: "800" },
   monthBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  monthTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "800" },
+  monthTitle: { color: color.text1, fontSize: 15, fontWeight: "800" },
   gridRow: { flexDirection: "row" },
-  weekday: { flex: 1, textAlign: "center", color: textTokens.tertiary, fontSize: 11, fontWeight: "700" },
+  weekday: { flex: 1, textAlign: "center", color: color.text3, fontSize: 11, fontWeight: "700" },
   grid: { flexDirection: "row", flexWrap: "wrap" },
   dayCell: { width: `${100 / 7}%`, minHeight: 52, alignItems: "center", paddingVertical: 4, gap: 3, borderRadius: radius.md },
-  dayCellPicked: { backgroundColor: "rgba(235,120,37,0.14)" },
-  dayNumber: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
-  dayNumberOther: { color: textTokens.tertiary },
-  dayNumberToday: { color: accent.warm, fontWeight: "800" },
+  dayCellPicked: { backgroundColor: color.fill.tabOn },
+  dayNumber: { color: color.text1, fontSize: 13, fontWeight: "600" },
+  dayNumberOther: { color: color.text3 },
+  dayNumberToday: { color: color.text1, fontWeight: "800" },
   dots: { minHeight: 10, flexDirection: "row", alignItems: "center", gap: 2 },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: accent.warm },
-  dotMore: { color: textTokens.tertiary, fontSize: 9, fontWeight: "700" },
-  fab: { position: "absolute", right: spacing.md, minHeight: 48, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.lg, borderRadius: radius.full, backgroundColor: accent.warm },
-  fabText: { color: "#101216", fontSize: 14, fontWeight: "800" },
-  menu: { padding: spacing.md, gap: spacing.sm },
-  menuTitle: { color: textTokens.primary, fontSize: 16, lineHeight: 22, fontWeight: "800" },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: color.paper },
+  dotMore: { color: color.text3, fontSize: 9, fontWeight: "700" },
+  fab: { position: "absolute", right: space[4], minHeight: 48, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: space[6], borderRadius: radius.full, backgroundColor: color.paper },
+  fabText: { color: color.ink, fontSize: 14, fontWeight: "800" },
+  menu: { padding: space[4], gap: space[2] },
+  menuTitle: { color: color.text1, fontSize: 16, lineHeight: 22, fontWeight: "800" },
 });

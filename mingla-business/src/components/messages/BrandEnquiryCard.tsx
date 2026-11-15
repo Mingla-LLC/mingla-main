@@ -7,7 +7,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 
 export function BrandEnquiryCard({
@@ -39,11 +39,11 @@ export function BrandEnquiryCard({
 }
 
 const styles = StyleSheet.create({
-  card: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileBase },
-  topLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  tag: { borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: "#4a3410" },
-  tagText: { color: "#ffc66b", fontSize: 10, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase" },
-  time: { color: textTokens.tertiary, fontSize: 11 },
-  title: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
+  card: { gap: space[2], padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: color.lineStrong, backgroundColor: color.fill.inset },
+  topLine: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  tag: { borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: color.warningTint },
+  tagText: { color: color.warningText, fontSize: 10, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase" },
+  time: { color: color.text3, fontSize: 11 },
+  title: { color: color.text1, fontSize: 14, fontWeight: "700" },
   action: { alignSelf: "flex-start" },
 });

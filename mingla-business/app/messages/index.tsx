@@ -3,7 +3,7 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 
 import { createRetryableLazyErrorBoundary } from "../../src/components/ui/RetryableLazyBoundary";
-import { canvas } from "../../src/constants/designSystem";
+import { color } from "../../src/constants/designSystem";
 
 /**
  * #4304 — the inbox screen (src/components/messages/BrandGroupInboxScreen.tsx)
@@ -28,5 +28,5 @@ export default function MessagesIndexRoute(): React.ReactElement {
 
 const styles = StyleSheet.create({
   // Same dark canvas as the inbox (brandGroupChat.screenBg) while its chunk loads.
-  screen: { flex: 1, backgroundColor: canvas.discover },
+  screen: { flex: 1, backgroundColor: color.canvas },
 });

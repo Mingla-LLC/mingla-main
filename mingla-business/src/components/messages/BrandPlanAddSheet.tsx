@@ -6,15 +6,13 @@ import React, { useEffect, useRef, useState } from "react";
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View, type TextInput, type ViewStyle } from "react-native";
 
 import {
-  accent,
-  androidOpaque,
-  glass,
+  type as typeTokens,
+  color,
+  materials,
   optionCardMinHeight,
   optionCardMinWidth,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
 } from "../../constants/designSystem";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { addPlanEnglish } from "../../i18n/brandPlanEnglish";
@@ -295,14 +293,14 @@ function PlanForm({ today, titleMax: planTitleMax, initialDate, edit, onClose, o
 
 const styles = StyleSheet.create({
   scrollFlex: { flex: 1 },
-  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
-  title: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
-  field: { gap: spacing.xs },
-  label: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  counter: { color: textTokens.tertiary, fontSize: 12, textAlign: "right" },
-  types: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", paddingTop: spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
-  error: { color: "#ff8b8b", fontSize: 13, lineHeight: 18 },
-  footer: { gap: spacing.sm, paddingTop: spacing.xs },
+  content: { padding: space[4], gap: space[4], paddingBottom: space[7] },
+  title: { color: color.text1, fontSize: 18, fontWeight: "800" },
+  field: { gap: space[1] },
+  label: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  counter: { color: color.text3, fontSize: 12, textAlign: "right" },
+  types: { flexDirection: "row", gap: space[2], flexWrap: "wrap", paddingTop: space[1], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  error: { color: color.errorText, fontSize: 13, lineHeight: 18 },
+  footer: { gap: space[2], paddingTop: space[1] },
 });
 
 // Post or Task. It looks and reads exactly like the shared OptionCard (label,
@@ -334,7 +332,7 @@ function PlanTypeChoice({ label, helper, selected, onPress, disabled, testID }: 
         <Text style={choiceStyles.label} numberOfLines={2}>{label}</Text>
         {selected ? (
           <View style={choiceStyles.checkWrap} testID={`${testID}-check`}>
-            <Icon name="check" size={14} color={accent.warm} />
+            <Icon name="check" size={14} color={color.text1} />
           </View>
         ) : null}
       </View>
@@ -344,13 +342,13 @@ function PlanTypeChoice({ label, helper, selected, onPress, disabled, testID }: 
 }
 
 const CHOICE_IDLE = Platform.select({
-  android: { backgroundColor: androidOpaque.rowFill, borderColor: androidOpaque.rowBorder },
-  default: { backgroundColor: glass.tint.profileBase, borderColor: glass.border.profileBase },
+  android: { backgroundColor: materials.pane.solidFill, borderColor: color.card2 },
+  default: { backgroundColor: color.fill.inset, borderColor: color.line },
 }) as ViewStyle;
 
 const CHOICE_SELECTED = Platform.select({
-  android: { backgroundColor: androidOpaque.accentFill, borderColor: accent.warm },
-  default: { backgroundColor: accent.tint, borderColor: accent.warm },
+  android: { backgroundColor: materials.selected.solidFill, borderColor: color.lineStrong },
+  default: { backgroundColor: color.fill.tile, borderColor: color.lineStrong },
 }) as ViewStyle;
 
 const choiceStyles = StyleSheet.create({
@@ -361,17 +359,17 @@ const choiceStyles = StyleSheet.create({
     flexBasis: 0,
     minWidth: optionCardMinWidth,
     minHeight: optionCardMinHeight,
-    gap: spacing.xxs,
+    gap: space[1],
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
   },
   cardIdle: CHOICE_IDLE,
   cardSelected: { ...CHOICE_SELECTED, borderWidth: 1.5 },
   cardDisabled: { opacity: 0.55 },
-  headRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700", flexShrink: 1 },
+  headRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  label: { ...typeTokens.small, color: color.text1, fontWeight: "700", flexShrink: 1 },
   checkWrap: { marginLeft: "auto" },
-  helper: { ...typography.caption, color: textTokens.secondary },
+  helper: { ...typeTokens.caption, color: color.text2 },
 });

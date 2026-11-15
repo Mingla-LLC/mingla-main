@@ -17,7 +17,7 @@ import { useBrandGroupMediaPages } from "../../hooks/useBrandGroupMedia";
 import { useBusinessMediaTranslation } from "../../i18n";
 import type { BrandGroupMediaKind, BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { formatFileSize } from "../../utils/formatMediaDuration";
-import { accent, glass, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 
 interface Props {
@@ -76,7 +76,7 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
   const header = (
     <>
       <View style={styles.header}>
-        {onBack ? <Pressable accessibilityRole="button" accessibilityLabel={t("media.back_a11y")} onPress={onBack} style={styles.iconButton}><Icon name="arrowL" size={18} color={textTokens.primary} /></Pressable> : null}
+        {onBack ? <Pressable accessibilityRole="button" accessibilityLabel={t("media.back_a11y")} onPress={onBack} style={styles.iconButton}><Icon name="arrowL" size={18} color={color.text1} /></Pressable> : null}
         <View style={styles.headerCopy}><Text style={styles.title}>{t("media.title")}</Text><Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text></View>
       </View>
       <View accessibilityRole="tablist" style={styles.tabs}>
@@ -90,11 +90,11 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
   );
 
   const content = activeQuery.isLoading ? (
-    <View style={styles.state}><ActivityIndicator color={accent.warm} />{kind === "media" ? <View style={styles.skeletonGrid}>{Array.from({ length: 12 }, (_, index) => <View key={index} style={styles.skeleton} />)}</View> : <View style={styles.skeletonFiles}>{Array.from({ length: 6 }, (_, index) => <View key={index} style={styles.skeletonFile} />)}</View>}</View>
+    <View style={styles.state}><ActivityIndicator color={color.text2} />{kind === "media" ? <View style={styles.skeletonGrid}>{Array.from({ length: 12 }, (_, index) => <View key={index} style={styles.skeleton} />)}</View> : <View style={styles.skeletonFiles}>{Array.from({ length: 6 }, (_, index) => <View key={index} style={styles.skeletonFile} />)}</View>}</View>
   ) : activeQuery.isError ? (
     <View style={styles.state}><Text style={styles.stateText}>{t("media.load_error")}</Text><Pressable accessibilityRole="button" accessibilityLabel={t("media.retry")} onPress={refresh} style={styles.retry}><Text style={styles.retryText}>{t("media.retry")}</Text></Pressable></View>
   ) : rows.length === 0 ? (
-    <View style={styles.state}><Icon name={kind === "media" ? "grid" : "notebook"} size={42} color={textTokens.tertiary} /><Text style={styles.emptyTitle}>{kind === "media" ? t("media.empty_media_title") : t("media.empty_files_title")}</Text><Text style={styles.stateText}>{t("media.empty_body")}</Text></View>
+    <View style={styles.state}><Icon name={kind === "media" ? "grid" : "notebook"} size={42} color={color.text3} /><Text style={styles.emptyTitle}>{kind === "media" ? t("media.empty_media_title") : t("media.empty_files_title")}</Text><Text style={styles.stateText}>{t("media.empty_body")}</Text></View>
   ) : kind === "media" ? (
     <SectionList
       sections={sections}
@@ -103,8 +103,8 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
       renderItem={({ item: row }) => <View style={styles.gridRow}>{row.map((item) => <Pressable key={item.fileId} accessibilityRole="button" accessibilityLabel={item.name} onPress={() => onOpenItems(mediaRows, item.fileId)} style={styles.tile}>{renderThumbnail(item, styles.tileThumb)}</Pressable>)}{row.length < 3 ? Array.from({ length: 3 - row.length }, (_, index) => <View key={`empty-${index}`} style={styles.tile} />) : null}</View>}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
-      refreshControl={Platform.OS === "web" ? undefined : <RefreshControl refreshing={activeQuery.isRefetching} onRefresh={refresh} tintColor={accent.warm} />}
-      ListFooterComponent={activeQuery.isFetchingNextPage ? <ActivityIndicator color={accent.warm} style={styles.footer} /> : null}
+      refreshControl={Platform.OS === "web" ? undefined : <RefreshControl refreshing={activeQuery.isRefetching} onRefresh={refresh} tintColor={color.text2} />}
+      ListFooterComponent={activeQuery.isFetchingNextPage ? <ActivityIndicator color={color.text2} style={styles.footer} /> : null}
       contentContainerStyle={styles.listContent}
       stickySectionHeadersEnabled={false}
     />
@@ -115,8 +115,8 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
       renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={item.name} onPress={() => onOpenItems(fileRows, item.fileId)} style={styles.fileRow}><View style={styles.fileIcon}><Text style={styles.extension}>{item.name.split(".").pop()?.slice(0, 4).toUpperCase() || "FILE"}</Text></View><View style={styles.fileCopy}><Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">{item.name}</Text><Text style={styles.fileMeta} numberOfLines={1}>{t("media.file_row_meta", { size: formatFileSize(item.sizeBytes, (key, variables) => t(key, variables)), sender: item.senderDisplayName, date: new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(new Date(item.createdAt)) })}</Text></View></Pressable>}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
-      refreshControl={Platform.OS === "web" ? undefined : <RefreshControl refreshing={activeQuery.isRefetching} onRefresh={refresh} tintColor={accent.warm} />}
-      ListFooterComponent={activeQuery.isFetchingNextPage ? <ActivityIndicator color={accent.warm} style={styles.footer} /> : null}
+      refreshControl={Platform.OS === "web" ? undefined : <RefreshControl refreshing={activeQuery.isRefetching} onRefresh={refresh} tintColor={color.text2} />}
+      ListFooterComponent={activeQuery.isFetchingNextPage ? <ActivityIndicator color={color.text2} style={styles.footer} /> : null}
       contentContainerStyle={styles.listContent}
     />
   );
@@ -130,38 +130,38 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#121113" },
-  rootCompact: { width: 340, borderLeftWidth: 1, borderLeftColor: glass.border.profileBase },
-  header: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
-  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" },
+  root: { flex: 1, backgroundColor: color.canvas },
+  rootCompact: { width: 340, borderLeftWidth: 1, borderLeftColor: color.line },
+  header: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderBottomWidth: 1, borderBottomColor: color.line },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.pressed },
   headerCopy: { flex: 1, minWidth: 0 },
-  title: { color: textTokens.primary, fontSize: 17, fontWeight: "800" },
-  subtitle: { color: textTokens.tertiary, fontSize: 11, marginTop: 2 },
-  tabs: { minHeight: 44, flexDirection: "row", marginHorizontal: 14, marginVertical: 8, padding: 3, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.06)" },
+  title: { color: color.text1, fontSize: 17, fontWeight: "800" },
+  subtitle: { color: color.text3, fontSize: 11, marginTop: 2 },
+  tabs: { minHeight: 44, flexDirection: "row", marginHorizontal: 14, marginVertical: 8, padding: 3, borderRadius: 12, backgroundColor: color.fill.tile },
   tab: { flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 9 },
-  tabActive: { backgroundColor: "rgba(235,120,37,0.28)", borderWidth: 1, borderColor: "rgba(235,120,37,0.55)" },
-  tabText: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  tabTextActive: { color: "#fff" },
+  tabActive: { backgroundColor: color.fill.tabOn, borderWidth: 1, borderColor: color.lineStrong },
+  tabText: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  tabTextActive: { color: color.textStrong },
   body: { flex: 1 },
-  state: { flex: 1, minHeight: 260, alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.lg },
-  stateText: { color: textTokens.secondary, textAlign: "center", lineHeight: 20 },
-  emptyTitle: { color: textTokens.primary, fontSize: 16, fontWeight: "800", textAlign: "center" },
-  retry: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: 22, backgroundColor: accent.warm },
-  retryText: { color: "#111", fontWeight: "800" },
+  state: { flex: 1, minHeight: 260, alignItems: "center", justifyContent: "center", gap: space[2], padding: space[6] },
+  stateText: { color: color.text2, textAlign: "center", lineHeight: 20 },
+  emptyTitle: { color: color.text1, fontSize: 16, fontWeight: "800", textAlign: "center" },
+  retry: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[4], borderRadius: 22, backgroundColor: color.paper },
+  retryText: { color: color.ink, fontWeight: "800" },
   skeletonGrid: { width: "100%", flexDirection: "row", flexWrap: "wrap", gap: 2 },
-  skeleton: { width: "32.7%", aspectRatio: 1, backgroundColor: "rgba(255,255,255,0.07)" },
+  skeleton: { width: "32.7%", aspectRatio: 1, backgroundColor: color.fill.tile },
   skeletonFiles: { width: "100%", gap: 8 },
-  skeletonFile: { width: "100%", height: 56, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.07)" },
-  listContent: { paddingBottom: spacing.xl },
-  month: { color: textTokens.tertiary, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6, backgroundColor: "#121113" },
+  skeletonFile: { width: "100%", height: 56, borderRadius: 10, backgroundColor: color.fill.tile },
+  listContent: { paddingBottom: space[7] },
+  month: { color: color.text3, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6, backgroundColor: color.canvas },
   gridRow: { flexDirection: "row", gap: 2 },
   tile: { flex: 1, aspectRatio: 1 },
   tileThumb: { width: "100%", height: "100%" },
-  fileRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.07)" },
-  fileIcon: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,0.2)" },
-  extension: { color: accent.warm, fontSize: 11, fontWeight: "800" },
+  fileRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: color.line },
+  fileIcon: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile },
+  extension: { color: color.text1, fontSize: 11, fontWeight: "800" },
   fileCopy: { flex: 1, minWidth: 0 },
-  fileName: { color: textTokens.primary, fontSize: 14, fontWeight: "800" },
-  fileMeta: { color: textTokens.tertiary, fontSize: 11, marginTop: 3 },
-  footer: { margin: spacing.md },
+  fileName: { color: color.text1, fontSize: 14, fontWeight: "800" },
+  fileMeta: { color: color.text3, fontSize: 11, marginTop: 3 },
+  footer: { margin: space[4] },
 });
