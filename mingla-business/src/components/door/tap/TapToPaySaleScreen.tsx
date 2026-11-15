@@ -40,6 +40,7 @@ import {
   tapReaderProblemTitle,
 } from "../../../constants/tapToPayCopy";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
+import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 import { doorSaleKeys } from "../../../hooks/useEventDoorSales";
 import {
   currentTapToPayDevice,
@@ -73,6 +74,7 @@ import { consumeDoorTapPress } from "../../../services/terminal/tapTiming";
 import { formatCurrency, majorFromMinor } from "../../../utils/currency";
 import { HapticFeedback } from "../../../utils/hapticFeedback";
 import { randomUuid } from "../../../utils/randomId";
+import { DESKTOP_TEMPLATE_MAX_WIDTH } from "../../ui/DesktopCanvas";
 import { GlassCard } from "../../ui/GlassCard";
 import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
@@ -103,6 +105,10 @@ export const TapToPaySaleScreen = ({
 }: TapToPaySaleScreenProps): React.ReactElement => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // #4420: on wide web the sale sits in the Public status column (status card
+  // left, the sale in a 380 summary on the right) instead of full-bleed buttons.
+  const { isWideDesktop } = useResponsiveLayout();
+  const wideWeb = Platform.OS === "web" && isWideDesktop;
   const queryClient = useQueryClient();
   const route = useManagedEventRoute(eventId);
   const draft = useMemo<TapToPayDraft | null>(
@@ -631,15 +637,54 @@ export const TapToPaySaleScreen = ({
         { paddingTop: insets.top, paddingBottom: insets.bottom + space[4], backgroundColor: color.canvas },
       ]}
     >
-      {chrome}
-      {renderBody()}
-      {payCodeError ? <Text style={styles.inlineError}>{payCodeError}</Text> : null}
+      {wideWeb ? (
+        <View style={styles.wideBody} testID="tap-sale-status-template">
+          <View style={styles.wideColumn}>
+            {chrome}
+            <View style={styles.wideGrid}>
+              <View style={styles.wideMain}>
+                <GlassCard padding={space[8]} contentStyle={styles.wideStatusCard}>
+                  {renderBody()}
+                </GlassCard>
+                {payCodeError ? <Text style={styles.inlineError}>{payCodeError}</Text> : null}
+              </View>
+              {draft !== null ? (
+                <View style={styles.wideAside}>
+                  <GlassCard padding={space[6]} contentStyle={styles.wideSummary} testID="tap-sale-summary">
+                    <Text style={styles.wideSummaryTitle}>{route.event?.name ?? tapToPayName(Platform.OS)}</Text>
+                    {lineSummary.length > 0 ? <Text style={styles.wideSummaryLines}>{lineSummary}</Text> : null}
+                  </GlassCard>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      ) : (
+        <>
+          {chrome}
+          {renderBody()}
+          {payCodeError ? <Text style={styles.inlineError}>{payCodeError}</Text> : null}
+        </>
+      )}
     </View>
   );
 };
 
+/** Kit `.tpl-status`: status card min height and the summary column. */
+const WIDE_STATUS_MIN_HEIGHT = 380;
+const WIDE_SUMMARY_WIDTH = 380;
+
 const styles = StyleSheet.create({
   host: { flex: 1 },
+  wideBody: { flex: 1, alignItems: "center", paddingHorizontal: space[6], paddingBottom: space[9] },
+  wideColumn: { width: "100%", maxWidth: DESKTOP_TEMPLATE_MAX_WIDTH.status, gap: space[4] },
+  wideGrid: { flexDirection: "row", alignItems: "flex-start", gap: space[6] },
+  wideMain: { flex: 1, minWidth: 0, gap: space[2] },
+  wideAside: { width: WIDE_SUMMARY_WIDTH, flexShrink: 0 },
+  wideStatusCard: { minHeight: WIDE_STATUS_MIN_HEIGHT, justifyContent: "center" },
+  wideSummary: { gap: space[2] },
+  wideSummaryTitle: { ...type.h2, color: color.text1 },
+  wideSummaryLines: { ...type.small, color: color.text2 },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
