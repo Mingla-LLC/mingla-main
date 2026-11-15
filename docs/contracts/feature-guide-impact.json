@@ -494,7 +494,8 @@
         "app-mobile/src/hooks/useBroadcastReceiver.ts",
         "app-mobile/src/hooks/useOpenChatRecovery.ts",
         "app-mobile/src/utils/chatChannelRecovery.ts",
-        "app-mobile/src/utils/mergeMessages.ts"
+        "app-mobile/src/utils/mergeMessages.ts",
+        "supabase/migrations/20280708014436_issue_4436_group_permission_guards.sql"
       ]
     },
     {
