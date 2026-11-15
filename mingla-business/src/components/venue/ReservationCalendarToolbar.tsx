@@ -186,7 +186,7 @@ export function ReservationCalendarToolbar({
                   ]}
                   testID={`reservation-calendar-mode-${item.id}`}
                 >
-                  {selected ? <Check size={14} color={color.accent} /> : null}
+                  {selected ? <Check size={14} color={color.textStrong} /> : null}
                   <Text style={[styles.tabText, selected ? styles.tabTextSelected : null]}>
                     {item.label}
                   </Text>
@@ -324,7 +324,7 @@ export function ReservationCalendarToolbar({
               ]}
               testID={`reservation-calendar-scope-${item.id}`}
             >
-              {selected ? <Check size={14} color={color.accent} /> : null}
+              {selected ? <Check size={14} color={color.textStrong} /> : null}
               <Text style={[styles.scopeText, selected ? styles.scopeTextSelected : null]}>
                 {item.label}
               </Text>
@@ -339,8 +339,10 @@ export function ReservationCalendarToolbar({
   );
 }
 
-const selectedFill =
-  Platform.OS === "android" ? materials.selected.solidFill : color.accentLine;
+// #4420 — selected tabs and chips use the kit's selected material (as the
+// shared Chip does); the selected day is the Paper cell from the mockup.
+// Orange stays for primary actions.
+const selectedFill = materials.selected.solidFill;
 
 const styles = StyleSheet.create({
   host: {
@@ -412,7 +414,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.inset,
   },
   tabSelected: {
-    borderColor: color.accentLine,
+    borderColor: materials.selected.rim.edge,
     backgroundColor: selectedFill,
   },
   tabText: {
@@ -420,7 +422,7 @@ const styles = StyleSheet.create({
     color: color.text2,
   },
   tabTextSelected: {
-    color: color.accent,
+    color: color.textStrong,
   },
   dateStrip: {
     flexDirection: "row",
@@ -440,11 +442,11 @@ const styles = StyleSheet.create({
   },
   dateCellToday: {
     borderWidth: 2,
-    borderColor: color.accent,
+    borderColor: color.text3,
   },
   dateCellSelected: {
-    borderColor: color.accent,
-    backgroundColor: color.accent,
+    borderColor: color.paper,
+    backgroundColor: color.paper,
   },
   weekday: {
     ...type.label,
@@ -464,7 +466,7 @@ const styles = StyleSheet.create({
     right: space[1],
   },
   dateSelectedText: {
-    color: color.canvas,
+    color: color.ink,
   },
   scopeList: {
     flexDirection: "row",
@@ -483,7 +485,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.inset,
   },
   scopeChipSelected: {
-    borderColor: color.accentLine,
+    borderColor: materials.selected.rim.edge,
     backgroundColor: selectedFill,
   },
   scopeText: {
@@ -495,7 +497,7 @@ const styles = StyleSheet.create({
     color: color.text3,
   },
   scopeTextSelected: {
-    color: color.accent,
+    color: color.textStrong,
   },
   pressed: {
     opacity: 0.72,

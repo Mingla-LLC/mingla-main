@@ -44,6 +44,16 @@ import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { ReservationCalendarToolbar } from "./ReservationCalendarToolbar";
+import {
+  ReservationListTablesSwitch,
+  ReservationTablesView,
+} from "./ReservationTablesView";
+import {
+  defaultMinuteOfDay,
+  stepMinuteOfDay,
+  tableSlotsAt,
+  venueMinuteOfDay,
+} from "./reservationTableSlots";
 import { ReservationCard } from "./ReservationCard";
 import type { FocusableReservationEntry } from "./ReservationCard";
 import { ReservationCreateSheet } from "./ReservationCreateSheet";
@@ -162,6 +172,10 @@ export function VenueReservationsModule({
   const [desktopMode, setDesktopMode] =
     useState<ReservationCalendarMode>("week");
   const [scope, setScope] = useState<ReservationStatusScope>("active");
+  // #4420 (R8 P15) — List | Tables. Tables shows who holds each table at one
+  // time on the selected day; `tableMinute` null = the opening default.
+  const [listView, setListView] = useState<"list" | "tables">("list");
+  const [tableMinute, setTableMinute] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState<boolean>(false);
   const [selected, setSelected] = useState<Reservation | null>(null);
   // #3391 — why the last lifecycle action was refused, shown in the sheet.
@@ -241,6 +255,34 @@ export function VenueReservationsModule({
           : [];
       }),
     [effectiveSelectedDay, grouped, range.days],
+  );
+  const effectiveTableMinute =
+    tableMinute ??
+    defaultMinuteOfDay(
+      effectiveSelectedDay === todayKey,
+      venueMinuteOfDay(new Date().toISOString(), resolvedZone.timeZone),
+    );
+  const tableZones = useMemo(
+    () =>
+      listView === "tables"
+        ? tableSlotsAt({
+            tables: tablesQuery.data ?? [],
+            reservations,
+            dayKey: effectiveSelectedDay,
+            minuteOfDay: effectiveTableMinute,
+            timeZone: resolvedZone.timeZone,
+            turnTimes: availabilityQuery.data?.turnTimes ?? null,
+          })
+        : [],
+    [
+      availabilityQuery.data?.turnTimes,
+      effectiveSelectedDay,
+      effectiveTableMinute,
+      listView,
+      reservations,
+      resolvedZone.timeZone,
+      tablesQuery.data,
+    ],
   );
   const counts = useMemo(
     () => reservationScopeCounts(reservations, range, resolvedZone.timeZone),
@@ -714,6 +756,12 @@ export function VenueReservationsModule({
         onScopeChange={setScope}
       />
 
+      <ReservationListTablesSwitch
+        value={listView}
+        onChange={setListView}
+        full={!isWideDesktop}
+      />
+
       {timezoneDegraded ? (
         <View
           style={styles.warningBanner}
@@ -743,7 +791,27 @@ export function VenueReservationsModule({
         </View>
       ) : null}
 
-      {!showInitialSkeleton &&
+      {listView === "tables" && !showInitialSkeleton && !hasBlockingError ? (
+        <ScrollView
+          style={styles.scrollBody}
+          contentContainerStyle={[
+            styles.modeScrollContent,
+            { paddingBottom: space[6] + scrollBottomPad },
+          ]}
+          showsVerticalScrollIndicator={false}
+          testID="reservation-tables-scroll"
+        >
+          <ReservationTablesView
+            zones={tableZones}
+            minuteOfDay={effectiveTableMinute}
+            onStepTime={(delta) =>
+              setTableMinute(stepMinuteOfDay(effectiveTableMinute, delta))
+            }
+            timeZone={resolvedZone.timeZone}
+            onSelect={selectReservation}
+          />
+        </ScrollView>
+      ) : !showInitialSkeleton &&
       !hasBlockingError &&
       visible.length > 0 &&
       effectiveMode === "agenda" ? (
