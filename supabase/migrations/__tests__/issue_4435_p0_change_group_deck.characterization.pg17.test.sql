@@ -77,25 +77,29 @@ BEGIN
     (pg_temp.u('a'), pg_temp.u('b'), 'accepted'), (pg_temp.u('b'), pg_temp.u('a'), 'accepted');
 END $fixture$;
 
--- RULE: R1 (R1-two-to-one) an active group of 2 accepted; one leaves -> the session is deleted.
+-- RULE: R1 (R1-two-to-one) [#4435 W2] an active group of 2 accepted; one leaves -> the group stays for
+-- the last person; the last person leaving deletes it.
 DO $r1a$
 DECLARE v_s uuid := pg_temp.mk_group('two', 'active', ARRAY['a','b']);
 BEGIN
   DELETE FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('b');
-  PERFORM pg_temp.ok('R1-two-to-one leaving a 2-person group deletes it',
+  PERFORM pg_temp.ok('R1-two-to-one leaving a 2-person group keeps it for the last person',
+    EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s));
+  DELETE FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('a');
+  PERFORM pg_temp.ok('R1-two-to-one the last person leaving deletes it',
     NOT EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s));
 END $r1a$;
 
--- RULE: R1 (R1-pending-solo) a pending group with only its creator survives an UPDATE (mute).
+-- RULE: R1 (R1-pending-solo) [#4435 W2] an active solo group survives an UPDATE (mute).
 DO $r1b$
-DECLARE v_s uuid := pg_temp.mk_group('solo', 'pending', ARRAY['a']);
+DECLARE v_s uuid := pg_temp.mk_group('solo', 'active', ARRAY['a']);
 BEGIN
   UPDATE public.session_participants SET notifications_muted = true WHERE session_id = v_s AND user_id = pg_temp.u('a');
-  PERFORM pg_temp.ok('R1-pending-solo a pending creator-only group survives a mute',
+  PERFORM pg_temp.ok('R1-pending-solo an active solo group survives a mute',
     EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s));
 END $r1b$;
 
--- RULE: R5 (R5-group) a declined friend request deletes a group left with only its creator.
+-- RULE: R5 (R5-group) [#4435 W2] a declined friend request deletes no group.
 DO $r5$
 DECLARE v_s uuid := pg_temp.mk_group('decline', 'pending', ARRAY['fr1']); v_fr uuid;
 BEGIN
@@ -105,11 +109,11 @@ BEGIN
   INSERT INTO public.collaboration_invites(session_id, inviter_id, invited_user_id, status)
     VALUES (v_s, pg_temp.u('fr1'), pg_temp.u('fr2'), 'pending');
   UPDATE public.friend_requests SET status = 'declined' WHERE id = v_fr;
-  PERFORM pg_temp.ok('R5-group a decline deletes a group left with only its creator',
-    NOT EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s));
+  PERFORM pg_temp.ok('R5-group a decline keeps a group left with only its creator',
+    EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s));
 END $r5$;
 
--- RULE: R8 (R8-pending-caller) a pending participant can invite through add_friend_to_session.
+-- RULE: R8 (R8-pending-caller) [#4435 W2] a pending participant cannot invite through add_friend_to_session.
 DO $r8a$
 DECLARE v_s uuid := pg_temp.mk_group('r8', 'active', ARRAY['a','b']); r jsonb; v_q uuid := pg_temp.u('q');
 BEGIN
@@ -118,10 +122,11 @@ BEGIN
   SET LOCAL ROLE authenticated;
   r := public.add_friend_to_session(v_s, v_q);
   RESET ROLE;
-  PERFORM pg_temp.ok('R8-pending-caller a pending participant invites (outcome invited)', r ->> 'outcome' = 'invited');
+  PERFORM pg_temp.ok('R8-pending-caller a pending participant is refused (not_session_member)',
+    r ->> 'outcome' = 'not_session_member' AND r ->> 'error_code' = 'caller_not_in_session');
 END $r8a$;
 
--- RULE: R8 (R8-no-cap) add_friend_to_session invites at 15 accepted.
+-- RULE: R8 (R8-no-cap) [#4435 W2] add_friend_to_session refuses at 15 accepted.
 DO $r8b$
 DECLARE v_s uuid; r jsonb; i int; v_x uuid := pg_temp.u('m16');
 BEGIN
@@ -133,10 +138,11 @@ BEGIN
   SET LOCAL ROLE authenticated;
   r := public.add_friend_to_session(v_s, v_x);
   RESET ROLE;
-  PERFORM pg_temp.ok('R8-no-cap an invite at 15 accepted still succeeds', r ->> 'outcome' = 'invited');
+  PERFORM pg_temp.ok('R8-no-cap an invite at 15 accepted returns session_invalid / session_full',
+    r ->> 'outcome' = 'session_invalid' AND r ->> 'error_code' = 'session_full');
 END $r8b$;
 
--- RULE: R12 (R12-removed-counts) a removed member's earlier right swipe still counts toward a new match.
+-- RULE: R12 (R12-removed-counts) [#4435 W2] a removed member's earlier right swipe no longer counts toward a new match.
 DO $r12$
 DECLARE v_s uuid := pg_temp.mk_group('r12', 'active', ARRAY['a','b','c']); v_a uuid := pg_temp.u('a'); v_b uuid := pg_temp.u('b');
 BEGIN
@@ -149,11 +155,11 @@ BEGIN
   SET LOCAL ROLE authenticated;
   PERFORM public.rpc_record_swipe_and_check_match(v_s, 'p0c2-x', v_b, '{"title":"X"}'::jsonb, 'right');
   RESET ROLE;
-  PERFORM pg_temp.ok('R12-removed-counts a removed member''s swipe still makes a match',
-    EXISTS (SELECT 1 FROM public.board_saved_cards WHERE session_id = v_s AND experience_id = 'p0c2-x'));
+  PERFORM pg_temp.ok('R12-removed-counts a removed member''s swipe no longer makes a match',
+    NOT EXISTS (SELECT 1 FROM public.board_saved_cards WHERE session_id = v_s AND experience_id = 'p0c2-x'));
 END $r12$;
 
--- RULE: R14 (R14-removed-votes) a removed member's time vote and RSVP still show on a deciding plan.
+-- RULE: R14 (R14-removed-votes) [#4435 W2] a removed member's time vote and RSVP leave a deciding plan.
 DO $r14$
 DECLARE v_s uuid := pg_temp.mk_group('r14', 'active', ARRAY['a','b','r']); v_conv uuid; v_plan uuid; v_opt uuid; r jsonb; v_r uuid := pg_temp.u('r');
 BEGIN
@@ -169,13 +175,13 @@ BEGIN
   SET LOCAL ROLE authenticated;
   r := public.chat_plans_for_conversation(v_conv);
   RESET ROLE;
-  PERFORM pg_temp.ok('R14-removed-votes the removed member''s time vote still shows',
-    (r -> 'plans' -> 0 -> 'options' -> 0 -> 'voterIds') @> to_jsonb(ARRAY[v_r]));
-  PERFORM pg_temp.ok('R14-removed-votes the removed member''s RSVP still shows',
-    (r -> 'plans' -> 0 -> 'rsvps' -> 'going') @> to_jsonb(ARRAY[v_r]));
+  PERFORM pg_temp.ok('R14-removed-votes the removed member''s time vote is gone',
+    NOT (r -> 'plans' -> 0 -> 'options' -> 0 -> 'voterIds') @> to_jsonb(ARRAY[v_r]));
+  PERFORM pg_temp.ok('R14-removed-votes the removed member''s RSVP is gone',
+    NOT (r -> 'plans' -> 0 -> 'rsvps' -> 'going') @> to_jsonb(ARRAY[v_r]));
 END $r14$;
 
--- RULE: R16 (R16-solo-lock) with 1 accepted member, an attending RSVP locks the card.
+-- RULE: R16 (R16-solo-lock) [#4435 W2] with 1 accepted member, an attending RSVP never auto-locks.
 DO $r16a$
 DECLARE v_s uuid := pg_temp.mk_group('r16a', 'pending', ARRAY['a']); v_card uuid;
 BEGIN
@@ -183,11 +189,11 @@ BEGIN
     VALUES (v_s, 'p0c2-solo', '{"title":"Solo"}'::jsonb, pg_temp.u('a')) RETURNING id INTO v_card;
   INSERT INTO public.board_card_rsvps(session_id, saved_card_id, user_id, rsvp_status)
     VALUES (v_s, v_card, pg_temp.u('a'), 'attending');
-  PERFORM pg_temp.ok('R16-solo-lock a group of one auto-locks on one attending RSVP',
-    (SELECT is_locked FROM public.board_saved_cards WHERE id = v_card));
+  PERFORM pg_temp.ok('R16-solo-lock a group of one does not auto-lock',
+    NOT (SELECT is_locked FROM public.board_saved_cards WHERE id = v_card));
 END $r16a$;
 
--- RULE: R16 (R16-removed-rsvp) a removed member's attending RSVP counts toward all-going.
+-- RULE: R16 (R16-removed-rsvp) [#4435 W2] a removed member's attending RSVP no longer counts toward all-going.
 DO $r16b$
 DECLARE v_s uuid := pg_temp.mk_group('r16b', 'active', ARRAY['a','b','c']); v_card uuid;
 BEGIN
@@ -198,12 +204,12 @@ BEGIN
   DELETE FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('b');
   INSERT INTO public.board_card_rsvps(session_id, saved_card_id, user_id, rsvp_status)
     VALUES (v_s, v_card, pg_temp.u('a'), 'attending');
-  PERFORM pg_temp.ok('R16-removed-rsvp the removed member''s RSVP completes all-going',
-    (SELECT is_locked FROM public.board_saved_cards WHERE id = v_card));
+  PERFORM pg_temp.ok('R16-removed-rsvp the removed member''s RSVP does not complete all-going',
+    NOT (SELECT is_locked FROM public.board_saved_cards WHERE id = v_card));
 END $r16b$;
 
--- RULE: R19 (R19-direct) add_group_members has no session branch: the creator cannot add a friend directly.
--- RULE: R20 add_group_members on a session chat raises not_allowed.
+-- RULE: R19 (R19-direct) [#4435 W2] the creator adds a friend directly (accepted, in the chat).
+-- RULE: R20 [#4435 W2] add_group_members on a session chat adds people instead of raising not_allowed.
 DO $r20$
 DECLARE v_s uuid := pg_temp.mk_group('r20', 'active', ARRAY['a','c']); v_conv uuid; v_state text := 'none'; v_b uuid := pg_temp.u('b');
 BEGIN
@@ -216,12 +222,13 @@ BEGIN
     IF SQLERRM = 'not_allowed' THEN v_state := 'not_allowed'; END IF;
   END;
   RESET ROLE;
-  PERFORM pg_temp.ok('R20 add_group_members on a session chat raises not_allowed', v_state = 'not_allowed');
-  PERFORM pg_temp.ok('R19-direct nothing was added',
-    NOT EXISTS (SELECT 1 FROM public.session_participants WHERE session_id = v_s AND user_id = v_b));
+  PERFORM pg_temp.ok('R20 add_group_members on a session chat no longer raises not_allowed', v_state = 'none');
+  PERFORM pg_temp.ok('R19-direct the friend is an accepted member and in the chat',
+    EXISTS (SELECT 1 FROM public.session_participants WHERE session_id = v_s AND user_id = v_b AND has_accepted)
+    AND EXISTS (SELECT 1 FROM public.conversation_participants WHERE conversation_id = v_conv AND user_id = v_b));
 END $r20$;
 
--- RULE: R21 a link join to a session group returns invited and a pending invite.
+-- RULE: R21 [#4435 W2] a link join to a session group returns joined and the joiner is in at once.
 DO $r21$
 DECLARE v_s uuid := pg_temp.mk_group('r21', 'active', ARRAY['a','c']); v_conv uuid; v_link jsonb; r jsonb;
 BEGIN
@@ -235,11 +242,12 @@ BEGIN
   SET LOCAL ROLE authenticated;
   r := public.join_group_by_link(v_link ->> 'token', NULL);
   RESET ROLE;
-  PERFORM pg_temp.ok('R21 a session link join returns invited', r ->> 'status' = 'invited');
-  PERFORM pg_temp.ok('R21 the joiner holds a pending link invite',
-    (SELECT status FROM public.collaboration_invites WHERE session_id = v_s AND invited_user_id = pg_temp.u('j')) = 'pending');
-  PERFORM pg_temp.ok('R21 the joiner is not yet a chat member',
-    NOT EXISTS (SELECT 1 FROM public.conversation_participants WHERE conversation_id = v_conv AND user_id = pg_temp.u('j')));
+  PERFORM pg_temp.ok('R21 a session link join returns joined with the session id',
+    r ->> 'status' = 'joined' AND (r ->> 'sessionId')::uuid = v_s);
+  PERFORM pg_temp.ok('R21 the joiner holds an accepted link invite',
+    (SELECT status FROM public.collaboration_invites WHERE session_id = v_s AND invited_user_id = pg_temp.u('j')) = 'accepted');
+  PERFORM pg_temp.ok('R21 the joiner is a chat member at once',
+    EXISTS (SELECT 1 FROM public.conversation_participants WHERE conversation_id = v_conv AND user_id = pg_temp.u('j')));
 END $r21$;
 
 ROLLBACK;

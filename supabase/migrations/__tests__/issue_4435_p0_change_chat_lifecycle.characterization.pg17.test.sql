@@ -61,13 +61,13 @@ BEGIN
   INSERT INTO k4 VALUES ('dm', v_dm);
 END $fixture$;
 
--- RULE: REOPEN-own-send I hide the chat, then I send: it stays hidden for me.
+-- RULE: REOPEN-own-send [#4435 W2] I hide the chat, then I send: it comes back for me.
 DO $own$
 DECLARE v_dm uuid := pg_temp.u('dm');
 BEGIN
   PERFORM pg_temp.act('me', v_dm, 'hide');
   INSERT INTO public.messages(conversation_id, sender_id, content) VALUES (v_dm, pg_temp.u('me'), 'p0c4 mine');
-  PERFORM pg_temp.ok('REOPEN-own-send my own message keeps it hidden', pg_temp.hidden(v_dm, 'me'));
+  PERFORM pg_temp.ok('REOPEN-own-send my own message brings it back', NOT pg_temp.hidden(v_dm, 'me'));
 END $own$;
 
 -- RULE: REOPEN-peer the peer sends: it comes back (stays true after the build).
@@ -78,14 +78,14 @@ BEGIN
   PERFORM pg_temp.ok('REOPEN-peer the peer''s message brings it back', NOT pg_temp.hidden(v_dm, 'me'));
 END $peer$;
 
--- RULE: REOPEN-archived archived and hidden, the peer sends: it stays hidden.
+-- RULE: REOPEN-archived [#4435 W2] archived and hidden, the peer sends: it comes back to Archived, still archived.
 DO $arch$
 DECLARE v_dm uuid := pg_temp.u('dm');
 BEGIN
   PERFORM pg_temp.act('me', v_dm, 'archive');
   PERFORM pg_temp.act('me', v_dm, 'hide');
   INSERT INTO public.messages(conversation_id, sender_id, content) VALUES (v_dm, pg_temp.u('peer'), 'p0c4 theirs archived');
-  PERFORM pg_temp.ok('REOPEN-archived an archived and removed chat stays hidden', pg_temp.hidden(v_dm, 'me'));
+  PERFORM pg_temp.ok('REOPEN-archived an archived and removed chat comes back', NOT pg_temp.hidden(v_dm, 'me'));
   PERFORM pg_temp.ok('REOPEN-archived archive is untouched',
     (SELECT archived_at IS NOT NULL FROM public.conversation_participant_lifecycle WHERE conversation_id = v_dm AND user_id = pg_temp.u('me')));
 END $arch$;
