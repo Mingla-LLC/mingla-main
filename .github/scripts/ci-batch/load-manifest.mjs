@@ -285,7 +285,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4423 integration 2: merged origin/main ce482c996c; re-sealed.
 // #4339 strip time zones: register 20280708004339 in the #1857, #1931 and #2117 lanes (skipped by exact filename in the #1931 filtered replay, which never creates links_strips) and its PostgreSQL proof in #1931 and #2117; re-sealed.
 // #4339 tester: register issue_4339_links_strip_time_zone.tester.pg17.test.sql (and its .ci-suite.json) beside the implementor proof in #1931 and #2117; re-sealed.
-export const BOOTSTRAP_SHA256 = "bea37948df78d767cb553107dc850b6ff04b09cd1bf54cbf32dbe550dd32efbd";
+// #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): listed the new pg17 suite and its sidecar in the #1931 and #2117 replay inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "e440cc4b9307503e0b0ef85c808eef617c2e35978aa07314c25aee579d2feed1";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

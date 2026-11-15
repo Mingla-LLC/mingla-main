@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/local/__tests__/issue_4430_local_review_prefill.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4430-local-review-prefill-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["net", "read"]
+}
