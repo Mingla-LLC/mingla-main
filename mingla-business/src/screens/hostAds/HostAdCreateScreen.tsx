@@ -2922,7 +2922,6 @@ export default function HostAdCreateRoute(): React.ReactElement {
             testID="host-ad-add-video"
           />
         </View>
-        <Text style={bs.small}>{hb("creative.rotate")}</Text>
         {setup.creatives.some((item) => item.kind === "image") ? (
           <Text style={bs.caption}>{hb("creative.photoNote")}</Text>
         ) : null}

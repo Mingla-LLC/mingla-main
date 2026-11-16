@@ -217,11 +217,11 @@ start on the defaults replayed migrations into that chat's database.
 
 | Piece | Where | Ports |
 |---|---|---|
-| Host ads Core (repo migrations, no CMS) | project id `mingla-host-ads-4238-local`, workdir `~/.mingla-sites-local/host-ads-<hash>/core` | API 56521, DB 56522, shadow 56520, inspector 56583 |
+| Host ads Core (repo migrations, no CMS) | project id `mingla-host-ads-4238-local`, workdir `~/.mingla-sites-local/host-ads-<hash>/core` | API 56521, DB 56522, shadow 56520, inspector 56583, mail catcher 56524 |
 
 ```bash
 cd ~/Desktop/mingla-orchs/4238-host-ads-excellent
-for p in 56521 56522 56520 56583; do lsof -nP -iTCP:$p -sTCP:LISTEN; done   # must print nothing
+for p in 56521 56522 56520 56583 56524; do lsof -nP -iTCP:$p -sTCP:LISTEN; done   # must print nothing
 export DOCKER_HOST=unix://$HOME/.docker/run/docker.sock   # or the colima socket you own
 scripts/sites/local/start-host-ads-stack.sh               # start, prove identity, replay migrations
 node scripts/sites/local/seed-host-ads.mjs                # load the fixture (once per database)
@@ -230,9 +230,26 @@ scripts/sites/local/start-host-ads-stack.sh --stop --wipe # also drop volumes an
 ```
 
 Ports are overridable with `HOST_ADS_STACK_API_PORT`, `HOST_ADS_STACK_DB_PORT`,
-`HOST_ADS_STACK_SHADOW_PORT`, `HOST_ADS_STACK_INSPECTOR_PORT` and the project id
-with `HOST_ADS_STACK_PROJECT_ID`. The seed signs the brand to
-`host-ads-owner@local.invalid` (password in `.state/host-ads-owner.json`).
+`HOST_ADS_STACK_SHADOW_PORT`, `HOST_ADS_STACK_INSPECTOR_PORT`,
+`HOST_ADS_STACK_MAIL_PORT` and the project id with `HOST_ADS_STACK_PROJECT_ID`.
+The seed signs the brand to `host-ads-owner@local.invalid` (password in
+`.state/host-ads-owner.json`; web sign-in only).
+
+Native sign-in (the Host app offers Apple, Google or an email code; no
+password). This stack runs its own mail catcher (Mailpit, web UI
+`http://127.0.0.1:56524`); `common.sh` keeps it off for every other local stack.
+
+```bash
+# point a dev build at http://<this Mac's LAN IP>:56521 with the stack's anon key
+# (.state/host-ads.status.env ANON_KEY), tap "Continue with email", enter
+# host-ads-owner@local.invalid and "Send code", then:
+node scripts/sites/local/host-ads-sign-in-code.mjs --inbox   # the code the stack just mailed
+# or, without the app sending mail (asking in the app again replaces this code):
+node scripts/sites/local/host-ads-sign-in-code.mjs           # admin one-time code (generate_link)
+```
+
+Both print only the 6-digit code and refuse any API that is not this stack's
+loopback port.
 
 Safety rails (I-4238-HOST-ADS-SEED-ISOLATED, `lib/host-ads-stack.mjs`):
 

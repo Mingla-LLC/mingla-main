@@ -311,3 +311,18 @@ describe("P3: Ari, list, slider, country, copy", () => {
     expect(en.manage.detail.changeVideo).toBe("Change the photo or video");
   });
 });
+
+describe("text cut (Seth: no line that restates, duplicates or explains the obvious)", () => {
+  test("the always-on 'apps rotate them' line and the country helper are gone; the actionable hint stays", () => {
+    const dir = path.join(REPO, "mingla-business/src/i18n/locales");
+    for (const lang of fs.readdirSync(dir)) {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, lang, "hostAds.json"), "utf8")).hostAds;
+      expect(j.builder.creative.rotate).toBeUndefined();
+      expect(typeof j.builder.creative.fewHint).toBe("string");
+    }
+    const create = fs.readFileSync(path.join(REPO, "mingla-business/src/screens/hostAds/HostAdCreateScreen.tsx"), "utf8");
+    expect(create).not.toContain('hb("creative.rotate")');
+    const picker = fs.readFileSync(path.join(__dirname, "../HostAdCountryPicker.tsx"), "utf8");
+    expect(picker).not.toContain("People in these countries can see your ad.");
+  });
+});

@@ -118,7 +118,6 @@ export function HostAdCountryPicker({
   return (
     <View style={styles.root}>
       <Text style={styles.label}>Countries</Text>
-      <Text style={styles.helper}>People in these countries can see your ad.</Text>
       <View style={styles.chipRow}>
         {countries.map((code) => (
           <View key={code} style={styles.chip} testID={`host-ad-country-${code}`}>

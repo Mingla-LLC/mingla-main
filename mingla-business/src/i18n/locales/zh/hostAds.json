@@ -172,7 +172,6 @@
         "suggestions_other": "{{count}} 条建议",
         "media": "视频和照片 · 1 到 5 个",
         "picked": "已选 {{count}} 个 · 推荐 3 个",
-        "rotate": "有多个时，应用会轮换并侧重效果好的那个。",
         "add": "添加视频",
         "addShort": "添加",
         "preparing": "你的视频正在处理。你可以继续编辑。",

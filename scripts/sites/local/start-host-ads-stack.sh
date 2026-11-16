@@ -13,6 +13,13 @@
 #   DB         HOST_ADS_STACK_DB_PORT      (default 56522)
 #   shadow     HOST_ADS_STACK_SHADOW_PORT  (default 56520)
 #   inspector  HOST_ADS_STACK_INSPECTOR_PORT (default 56583)
+#   mail       HOST_ADS_STACK_MAIL_PORT    (default 56524; the stack's mail
+#              catcher, so the native app's email-code sign-in works locally)
+# Native sign-in (#4238 rework 3): point the app at http://<this Mac's LAN IP>:56521,
+# ask for a code for host-ads-owner@local.invalid, then read it with
+#   node scripts/sites/local/host-ads-sign-in-code.mjs --inbox   # from the mail catcher
+# or mint one without the app sending mail:
+#   node scripts/sites/local/host-ads-sign-in-code.mjs           # admin one-time code
 # The workdir is per checkout (outside the repo); state goes to
 # scripts/sites/local/.state/host-ads-* (gitignored).
 #
@@ -38,7 +45,7 @@ for arg in "$@"; do
   case "$arg" in
     --stop) stop=true ;;
     --wipe) wipe=true ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
     *) echo "FAIL host-ads-stack: unsupported argument ${arg}" >&2; exit 2 ;;
   esac
 done
@@ -48,6 +55,10 @@ export SITES_LOCAL_CORE_API_PORT="${HOST_ADS_STACK_API_PORT:-56521}"
 export SITES_LOCAL_CORE_DB_PORT="${HOST_ADS_STACK_DB_PORT:-56522}"
 export SITES_LOCAL_CORE_SHADOW_PORT="${HOST_ADS_STACK_SHADOW_PORT:-56520}"
 export SITES_LOCAL_CORE_INSPECTOR_PORT="${HOST_ADS_STACK_INSPECTOR_PORT:-56583}"
+# #4238 rework 3: the mail catcher is ON for this stack only (common.sh keeps
+# it off by default for every other local stack).
+export SITES_LOCAL_CORE_MAIL_ENABLED=true
+export SITES_LOCAL_CORE_MAIL_PORT="${HOST_ADS_STACK_MAIL_PORT:-56524}"
 # A workdir of its own, beside (never inside) the Sites stack's.
 default_stacks_dir="${HOME}/.mingla-sites-local/host-ads-$(printf '%s' "$repo_root" | shasum -a 256 | cut -c1-12)"
 export SITES_LOCAL_STACKS_DIR="${HOST_ADS_STACKS_DIR:-$default_stacks_dir}"
@@ -74,7 +85,7 @@ fi
 
 # (2) dedicated, free ports (the reserved ones are refused before anything else).
 require_tool node
-ports=("$SITES_LOCAL_CORE_API_PORT" "$SITES_LOCAL_CORE_DB_PORT" "$SITES_LOCAL_CORE_SHADOW_PORT" "$SITES_LOCAL_CORE_INSPECTOR_PORT")
+ports=("$SITES_LOCAL_CORE_API_PORT" "$SITES_LOCAL_CORE_DB_PORT" "$SITES_LOCAL_CORE_SHADOW_PORT" "$SITES_LOCAL_CORE_INSPECTOR_PORT" "$SITES_LOCAL_CORE_MAIL_PORT")
 node "${script_dir}/lib/host-ads-stack-cli.mjs" check-ports "${ports[@]}"
 require_tool docker
 require_tool psql
