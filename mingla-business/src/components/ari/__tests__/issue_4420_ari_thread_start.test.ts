@@ -14,7 +14,9 @@ describe("#4420 Ari thread start", () => {
 
   test("restoring the thread selection shows the thread loading state, not a bare bubble", () => {
     expect(screen).toMatch(
-      /\{!conversationSelectionReady \|\|\s*\(chat\.conversationId && chat\.isLoadingMessages\) \? \(\s*<AriThreadLoadingState \/>/,
+      // [TEST-MOD-APPROVED #4420] device round 2: the same opening condition
+      // now also carries the timeout / error state.
+      /!conversationSelectionReady \|\| Boolean\(chat\.conversationId && chat\.isLoadingMessages\)[\s\S]*\{threadOpening \? \(\s*<AriThreadLoadingState/,
     );
     expect(screen).not.toContain("<StreamingText");
   });

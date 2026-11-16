@@ -65,7 +65,9 @@ import {
 } from "../../utils/brandEditReturn";
 import { setupHandoff } from "./setupFlowRoute";
 import { brandSiteKeys } from "../../sites/brandSiteKeys";
-import { AriThreadLoadingState } from "./AriThreadLoadingState";
+import { ARI_THREAD_OPEN_TIMEOUT_MS, AriThreadLoadingState, useStalled } from "./AriThreadLoadingState";
+import { Button } from "../../components/ui/Button";
+import { agentQueryKeys } from "../../hooks/agentQueryKeys";
 import {
   ariRenditionCopyText,
   buildAriRenditionSubmission,
@@ -1170,6 +1172,22 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const conversationSelectionReady =
     conversationScopeKey === null ||
     restoredConversationScope === conversationScopeKey;
+  // #4420 (device round 2): the thread-open state never spins forever. A
+  // failed conversation list (it never restores) or a load that outlasts
+  // ARI_THREAD_OPEN_TIMEOUT_MS shows an error with Try again (Constitution 3).
+  const threadOpening =
+    !conversationSelectionReady || Boolean(chat.conversationId && chat.isLoadingMessages);
+  const [threadRetryKey, setThreadRetryKey] = React.useState(0);
+  const threadStalled = useStalled(threadOpening, ARI_THREAD_OPEN_TIMEOUT_MS, threadRetryKey);
+  const threadOpenFailed =
+    threadOpening && (threadStalled || (!conversationSelectionReady && conversations.isError));
+  const retryThreadOpen = (): void => {
+    setThreadRetryKey((key) => key + 1);
+    void conversations.refetch();
+    if (chat.conversationId) {
+      void queryClient.refetchQueries({ queryKey: agentQueryKeys.messages(chat.conversationId) });
+    }
+  };
   const noMessages =
     conversationSelectionReady &&
     chat.messages.length === 0 &&
@@ -1826,9 +1844,19 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           {/* #4420 (Seth): restoring which thread to open is the same
               moment as opening it: one centred loading state, not a
               gutterless orb beside an empty caret pill. */}
-          {!conversationSelectionReady ||
-          (chat.conversationId && chat.isLoadingMessages) ? (
-            <AriThreadLoadingState />
+          {threadOpening ? (
+            <AriThreadLoadingState
+              failed={threadOpenFailed}
+              retry={
+                <Button
+                  label="Try again"
+                  variant="secondary"
+                  size="md"
+                  onPress={retryThreadOpen}
+                  accessibilityLabel="Try opening the conversation again"
+                />
+              }
+            />
           ) : noMessages && firstRunCopy !== null ? (
             firstRunCentred ? (
               <FirstRunGreeting
