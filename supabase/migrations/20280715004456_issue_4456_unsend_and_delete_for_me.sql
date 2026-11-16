@@ -33,6 +33,12 @@
 --       server, which keeps its own copy for moderation.
 --   U8. The rows unsent before this migration are wiped into the store
 --       ('legacy', 30 days).
+--   U9. A send bumps its chat again. update_conversation_on_message ran with
+--       the sender's rights, and app users cannot update conversations, so the
+--       bump matched no row: last_message_at went stale and the Chats list's
+--       live channel (UPDATE on conversations) never heard a new message or a
+--       new chat. It now runs with the server's rights, and last_message_at is
+--       restored from each chat's newest live message.
 --
 -- Invariants (declared in
 -- supabase/migrations/__tests__/issue_4456_unsend_and_delete_for_me.implementor.pg17.test.sql):
@@ -580,7 +586,8 @@ BEGIN
     RAISE EXCEPTION 'invalid_input' USING ERRCODE = '22023';
   END IF;
   IF v_found < cardinality(v_ids) THEN
-    RAISE EXCEPTION 'not_found' USING ERRCODE = 'P0002';
+    -- PT404: PostgREST answers 404 (P0002 came back as a 500).
+    RAISE EXCEPTION 'not_found' USING ERRCODE = 'PT404';
   END IF;
   IF NOT public.is_message_conversation_participant(v_conversation, v_uid) THEN
     RAISE EXCEPTION 'not_allowed' USING ERRCODE = '42501';
@@ -902,11 +909,14 @@ REVOKE ALL ON FUNCTION public.issue_4114_view_once_media_due(integer, timestampt
 GRANT EXECUTE ON FUNCTION public.issue_4114_view_once_media_due(integer, timestamptz) TO service_role;
 
 -- The sweep calls this after deleting the files: drops the private copies
--- that are due (the ones whose files were listed, plus up to 100 with no
--- files). A copy an open report names stays. Returns how many went.
+-- that are due (the ones whose files were listed, plus up to p_batch with no
+-- files, oldest first, so a backlog drains over successive hourly runs). A
+-- copy an open report names stays. Returns how many went.
+DROP FUNCTION IF EXISTS public.issue_4456_purge_unsent_evidence(uuid[], timestamptz);
 CREATE OR REPLACE FUNCTION public.issue_4456_purge_unsent_evidence(
   p_message_ids uuid[],
-  p_now timestamptz DEFAULT now()
+  p_now timestamptz DEFAULT now(),
+  p_batch integer DEFAULT 500
 )
 RETURNS integer
 LANGUAGE plpgsql
@@ -925,8 +935,9 @@ BEGIN
     SELECT x.message_id FROM (
       SELECT e.message_id FROM public.message_unsend_evidence e
        WHERE e.purge_after < p_now AND e.file_path IS NULL AND e.thumb_path IS NULL
-       ORDER BY e.purge_after
-       LIMIT 100
+         AND NOT public.issue_4456_message_has_open_report(e.message_id)
+       ORDER BY e.purge_after, e.message_id
+       LIMIT GREATEST(1, LEAST(COALESCE(p_batch, 500), 5000))
     ) x
   )
   DELETE FROM public.message_unsend_evidence e
@@ -937,8 +948,8 @@ BEGIN
   RETURN v_count;
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4456_purge_unsent_evidence(uuid[], timestamptz) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_4456_purge_unsent_evidence(uuid[], timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION public.issue_4456_purge_unsent_evidence(uuid[], timestamptz, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4456_purge_unsent_evidence(uuid[], timestamptz, integer) TO service_role;
 
 -- U8. The rows unsent before this migration: wiped into the store, 30 days.
 -- Server statement, so the tombstone trigger stamps kind 'legacy' and keeps
@@ -948,3 +959,36 @@ UPDATE public.messages
  WHERE deleted_at IS NOT NULL
    AND unsent_at IS NULL
    AND public.issue_4456_is_unsendable_type(message_type);
+
+-- U9. The send bump runs with the server's rights. It reads only the row
+-- just inserted (which the insert rules already admitted) and touches only
+-- that row's conversation. Body unchanged from the baseline.
+CREATE OR REPLACE FUNCTION public.update_conversation_on_message()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  UPDATE public.conversations
+  SET updated_at = now(),
+      last_message_at = now()
+  WHERE id = NEW.conversation_id;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.update_conversation_on_message() FROM PUBLIC, anon, authenticated;
+
+-- U9 backfill: each chat's last_message_at from its newest live message, only
+-- where that is later than what is stored (the bump never landed).
+UPDATE public.conversations c
+   SET last_message_at = latest.at
+  FROM (
+    SELECT m.conversation_id, max(m.created_at) AS at
+      FROM public.messages m
+     WHERE m.deleted_at IS NULL
+     GROUP BY m.conversation_id
+  ) latest
+ WHERE latest.conversation_id = c.id
+   AND latest.at IS NOT NULL
+   AND (c.last_message_at IS NULL OR c.last_message_at < latest.at);

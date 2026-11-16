@@ -304,7 +304,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
 // #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
 // #4456: listed migration 20280715004456 (unsend and delete for me) after 20280714004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "bed45bb0adb8038892298f981223d49b0a1f45afc178446dd3950d2927d01b42";
+// #4456 rework: registered the two tester suites (unsend and delete for me, chat-list bump) with their sidecars in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "8a5dc83771a3166551cc44544347ec3b7c248021a19326c2d492cdcce449c810";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

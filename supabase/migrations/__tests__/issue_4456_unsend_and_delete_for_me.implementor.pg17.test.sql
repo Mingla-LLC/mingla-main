@@ -276,7 +276,7 @@ BEGIN
   r := pg_temp.unsend('ana', ARRAY[v_ids[1], v_ids[1]]);
   PERFORM pg_temp.ok('V-INPUT duplicate ids are refused', r LIKE '22023%');
   r := pg_temp.unsend('ana', ARRAY[gen_random_uuid()]);
-  PERFORM pg_temp.ok('V-INPUT an unknown id is not_found (' || r || ')', r LIKE 'P0002%');
+  PERFORM pg_temp.ok('V-INPUT an unknown id is not_found, a 404 (' || r || ')', r LIKE 'PT404%');
 
   v_a := pg_temp.msg('cross-a', 'dm', 'ana', 'one');
   v_b := pg_temp.msg('cross-b', 'crew', 'ana', 'two');
@@ -535,7 +535,8 @@ BEGIN
   PERFORM pg_temp.ok('P-SWEEP after 30 days the photo and thumbnail are listed',
     (SELECT count(*) FROM public.issue_4114_view_once_media_due(1000, now() + interval '31 days') d
       WHERE d.reason = 'unsent_retention' AND d.message_id = v_photo) = 2);
-  n := public.issue_4456_purge_unsent_evidence(ARRAY[v_photo, v_held], now() + interval '31 days');
+  -- The ids are named, so this does not depend on how many other copies are due.
+  n := public.issue_4456_purge_unsent_evidence(ARRAY[v_photo, v_held, v_text], now() + interval '31 days', 1);
   PERFORM pg_temp.ok('P-SWEEP the copy goes after the files', NOT EXISTS (SELECT 1 FROM public.message_unsend_evidence WHERE message_id = v_photo));
   PERFORM pg_temp.ok('P-SWEEP text-only copies go too', NOT EXISTS (SELECT 1 FROM public.message_unsend_evidence WHERE message_id = v_text));
   PERFORM pg_temp.ok('P-HELD an open report keeps the copy', EXISTS (SELECT 1 FROM public.message_unsend_evidence WHERE message_id = v_held));
@@ -543,6 +544,20 @@ BEGIN
   n := public.issue_4456_purge_unsent_evidence(ARRAY[v_held], now() + interval '31 days');
   PERFORM pg_temp.ok('P-HELD once the report closes the copy goes', NOT EXISTS (SELECT 1 FROM public.message_unsend_evidence WHERE message_id = v_held));
   r := pg_temp.unsend('ana', ARRAY[pg_temp.msg('fresh', 'dm', 'ana', 'just now')]);
+  -- A backlog of text-only copies drains over successive runs, oldest first.
+  DELETE FROM public.message_unsend_evidence e WHERE e.purge_after < now() + interval '400 days'
+     AND e.file_path IS NULL AND e.thumb_path IS NULL
+     AND e.message_id NOT IN (pg_temp.u('fresh'));
+  INSERT INTO public.message_unsend_evidence(message_id, conversation_id, unsent_kind, original, purge_after)
+    SELECT gen_random_uuid(), pg_temp.u('dm'), 'legacy', '{}'::jsonb, now() - interval '1 day' - g * interval '1 minute'
+      FROM generate_series(1, 7) g;
+  n := public.issue_4456_purge_unsent_evidence(ARRAY[]::uuid[], now(), 3);
+  PERFORM pg_temp.ok('P-BACKLOG a run takes at most its batch, oldest first (' || n || ')',
+    n = 3 AND (SELECT count(*) FROM public.message_unsend_evidence WHERE purge_after < now() AND file_path IS NULL) = 4);
+  n := public.issue_4456_purge_unsent_evidence(ARRAY[]::uuid[], now(), 3);
+  n := n + public.issue_4456_purge_unsent_evidence(ARRAY[]::uuid[], now(), 3);
+  PERFORM pg_temp.ok('P-BACKLOG later runs drain the rest (' || n || ')',
+    n = 4 AND NOT EXISTS (SELECT 1 FROM public.message_unsend_evidence WHERE purge_after < now() AND file_path IS NULL AND thumb_path IS NULL));
   PERFORM pg_temp.ok('P-SWEEP nothing reaches a copy before its date',
     public.issue_4456_purge_unsent_evidence(ARRAY[pg_temp.u('fresh')], now()) = 0
     AND EXISTS (SELECT 1 FROM public.message_unsend_evidence WHERE message_id = pg_temp.u('fresh')));

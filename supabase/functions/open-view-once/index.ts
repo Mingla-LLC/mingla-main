@@ -109,6 +109,7 @@ serve(createOpenViewOnceHandler({
     const { error } = await admin.rpc("issue_4114_mark_media_expired", { p_message_ids: messageIds });
     return { error: errorText(error) };
   },
+  // #4456: needs migration 20280715004456 applied before this deploys (see handler.ts).
   async purgeUnsentEvidence(messageIds) {
     const { data, error } = await admin.rpc("issue_4456_purge_unsent_evidence", { p_message_ids: messageIds });
     return { data: typeof data === "number" ? data : 0, error: errorText(error) };

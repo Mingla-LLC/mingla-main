@@ -60,6 +60,17 @@ export function useSocialRealtime(
   useEffect(() => {
     if (!userId) return;
     const channelEpoch = ++epochRef.current;
+    // Issue #4456: one debounced Chats-list refetch shared by every listener
+    // below (membership rows change on every read receipt; a burst of sends
+    // or reads refetches once).
+    let chatListTimer: ReturnType<typeof setTimeout> | null = null;
+    const refreshChatListSoon = () => {
+      if (chatListTimer) clearTimeout(chatListTimer);
+      chatListTimer = setTimeout(() => {
+        chatListTimer = null;
+        void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
+      }, CHAT_LIST_LIVE_DEBOUNCE_MS);
+    };
 
     const channel = supabase
       .channel(`social-realtime-${userId}:${ownerRef.current}:${channelEpoch}`)
@@ -73,8 +84,9 @@ export function useSocialRealtime(
           filter: `user_id=eq.${userId}`,
         },
         () => {
-          // Issue #4456: the Chats list (the old ["messages"] key had no query).
-          void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
+          // Issue #4456: the Chats list (the old ["messages"] key had no
+          // query), debounced: last_read_at changes on every read receipt.
+          refreshChatListSoon();
         }
       )
       // friends
@@ -244,7 +256,6 @@ export function useSocialRealtime(
     // message in an existing chat, the preview, the order and the unread dot.
     // No filter: RLS delivers only conversations I am in. Debounced so a burst
     // refetches once. On its own channel (the #4435 trap above).
-    let chatListTimer: ReturnType<typeof setTimeout> | null = null;
     const chatListChannel = supabase
       .channel(`chat-list-live-${userId}:${ownerRef.current}:${channelEpoch}`)
       .on(
@@ -255,11 +266,7 @@ export function useSocialRealtime(
           table: "conversations",
         },
         () => {
-          if (chatListTimer) clearTimeout(chatListTimer);
-          chatListTimer = setTimeout(() => {
-            chatListTimer = null;
-            void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
-          }, CHAT_LIST_LIVE_DEBOUNCE_MS);
+          refreshChatListSoon();
         }
       )
       .subscribe();

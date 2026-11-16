@@ -55,10 +55,12 @@ Deno.test("#4456 the Chats list listens for conversation updates on its own chan
   assertEquals([...body.matchAll(/table:\s*"([a-z_]+)"/g)].map((m) => m[1]), ["conversations"], "binds conversations only");
   assert(/event: "UPDATE"/.test(body), "UPDATE events");
   assert(!/filter:/.test(body), "no filter: RLS scopes it to my chats");
-  assert(/setTimeout\([\s\S]*?invalidateQueries\(\{ queryKey: chatListKeys\.all \}\)[\s\S]*?CHAT_LIST_LIVE_DEBOUNCE_MS/.test(body), "debounced list refetch");
+  assert(/refreshChatListSoon\(\)/.test(body), "debounced list refetch");
+  assert(/const refreshChatListSoon = \(\) => \{\s*if \(chatListTimer\) clearTimeout\(chatListTimer\);\s*chatListTimer = setTimeout\(\(\) => \{\s*chatListTimer = null;\s*void queryClient\.invalidateQueries\(\{ queryKey: chatListKeys\.all \}\);\s*\}, CHAT_LIST_LIVE_DEBOUNCE_MS\);/.test(hook), "one 750 ms debounce");
   assert(/removeChannel\(chatListChannel\)/.test(hook) && /clearTimeout\(chatListTimer\)/.test(hook), "cleaned up");
   const social = hook.slice(hook.indexOf(".channel(`social-realtime-"), hook.indexOf(".subscribe();", hook.indexOf(".channel(`social-realtime-")));
   assert(!/table: "conversations"/.test(social), "not on the shared social channel (#4435 trap)");
-  assert(/table: "conversation_participants"[\s\S]*?queryKey: chatListKeys\.all/.test(social), "membership refreshes the list");
+  // Tester F-3: read receipts change membership rows, so this is debounced too.
+  assert(/table: "conversation_participants"[\s\S]*?refreshChatListSoon\(\);/.test(social), "membership refreshes the list, debounced");
   assert(!/queryKey: \["messages"\]/.test(hook), "the unused messages key is gone");
 });
