@@ -57,6 +57,7 @@ import {
 import { providerDailyMinimumCents } from "../_shared/adHostPlanRules.ts";
 import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 import { notifyHostAdPause } from "../_shared/hostAdNotices.ts";
+import { hostAdCapabilities } from "../_shared/hostAdCapabilities.ts";
 import {
   HOST_AD_CLICK_WINDOW_DAYS,
   HOST_AD_RESULTS_COPY,
@@ -807,8 +808,11 @@ serve(async (req: Request): Promise<Response> => {
         ? lastEdit.created_at
         : null;
     }
+    // #4238 W4b §2: what this teammate can do on this ad, and who to ask.
+    const capabilities = await hostAdCapabilities(supabase, brandId, user.id);
     return json({
       ok: true,
+      capabilities,
       campaign: data,
       plan_id: planId,
       last_live_edit_at: lastLiveEditAt,

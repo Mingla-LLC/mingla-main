@@ -78,6 +78,7 @@ import {
   hostPageIsAllFree,
   validateHostOptimization,
 } from "../_shared/adHostGoal.ts";
+import { hostAdCapabilities } from "../_shared/hostAdCapabilities.ts";
 import {
   cachedSalesReadiness,
   cachedSignupsReadiness,
@@ -2427,8 +2428,12 @@ export async function handleAdPlan(
       brandId,
       hostConnections.map((row) => String(row.platform)),
     );
+    // #4238 W4b §2: what this teammate can do, from the same authority
+    // each action uses, with who to ask when they can't.
+    const capabilities = await hostAdCapabilities(db, brandId, actor.id);
     return json({
       ok: true,
+      capabilities,
       available: hostConnections.length > 0,
       audiences: audiences.ok ? audiences.rows : [],
       ...(audiences.ok ? {} : { audiences_error: "unavailable" }),
