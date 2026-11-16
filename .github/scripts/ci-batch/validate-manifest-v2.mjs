@@ -502,7 +502,8 @@ export function phase3dContractDigest(manifest) {
 // #4238 order after production: renamed the three #4238 migrations (M-1, M-3, M-2) from 20280707*4238 to 20280708014238/20280708024238/20280708034238 (after 20280708004339, already applied in production), same relative order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 integration 3: merged origin/main f512401461 (#4438 #4430 local review owner-read pg17 suite kept beside the #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "92c40870713426a6933ea9d351b58ad222fbe78d02f554e6a74ca23b225b84ec";
+// #4420 experience venue-line privacy and Stay other-contact migrations listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "31081ba28b5fc49e611cc7458b57879fa173c0e9f32129292484dd9ab39204f4";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
