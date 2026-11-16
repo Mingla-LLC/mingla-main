@@ -4512,10 +4512,10 @@ const proposeAdPlan = writeTool(
       .maybeSingle();
     if (
       creativeError || !creative || creative.brand_id !== args.brand_id ||
-      // #4238 W5 (T-9): a photo is allowed where the app takes one (the
-      // server refuses it on an app that doesn't).
-      (creative.kind !== "video" && creative.kind !== "image") ||
-      creative.status !== "active"
+      // #4238 W5 (T-9): an active photo is allowed too, where the app takes
+      // one (the server refuses it on an app that doesn't).
+      ((creative.kind !== "video" || creative.status !== "active") &&
+        !(creative.kind === "image" && creative.status === "active"))
     ) {
       throw new ToolError(
         "INVALID_ARGS",
