@@ -342,6 +342,131 @@ export type HostAutomationContext = {
  *   nudge   (5d data hook): records one pending slow_sales_nudge row; the
  *           notification itself is W4.
  */
+/**
+ * #4238 W4a (5c, D-5): the Host accepted the last-tickets offer. Meta only
+ * (Snapchat and TikTok keep the offer recorded; their creative copy can't be
+ * re-issued through this path yet). Two hourly steps, once per plan per app
+ * (the low_stock_copy once-index):
+ *  1. For every live ad of the campaign, a new creative with the frozen
+ *     last-tickets primary text and a new ACTIVE ad in the same ad set —
+ *     the normal app review path; nothing spends until the app approves it.
+ *  2. Once every new ad is ACTIVE, the old ads are paused (applied). A
+ *     refused new ad is paused and the row marked failed; old ads untouched.
+ * Never throws; a provider error marks the row failed.
+ */
+export function withLastTicketsText(
+  creative: Record<string, unknown>,
+  primary: string,
+): Record<string, unknown> {
+  const out = structuredClone(creative) as Record<string, unknown>;
+  const story = out.object_story_spec as Record<string, unknown> | undefined;
+  for (const key of ["video_data", "link_data", "photo_data"]) {
+    const data = story?.[key] as Record<string, unknown> | undefined;
+    if (data && typeof data === "object") {
+      if (key === "photo_data") data.caption = primary;
+      else data.message = primary;
+    }
+  }
+  const feed = out.asset_feed_spec as Record<string, unknown> | undefined;
+  if (feed && Array.isArray(feed.bodies)) {
+    feed.bodies = [{ text: primary }];
+  }
+  return out;
+}
+
+export async function applyLastTicketsOffer(deps: {
+  db: Db;
+  graph: Graph;
+  adAccountId: string;
+}, input: {
+  row: PromotionRow;
+  campaignId: string;
+  nowIso: string;
+}): Promise<string> {
+  const { db, graph } = deps;
+  const detail = input.row.detail ?? {};
+  const primary = typeof detail.primary === "string" ? detail.primary : "";
+  const fail = async (error: string) => {
+    await db.from("ad_plan_automation_events").update({
+      status: "failed",
+      detail: { ...detail, error },
+    }).eq("id", input.row.id).eq("status", "pending");
+    return `failed:${error}`;
+  };
+  if (!primary) return await fail("last_tickets_copy_missing");
+  try {
+    const made = Array.isArray(detail.new_ad_ids)
+      ? (detail.new_ad_ids as unknown[]).map(String)
+      : [];
+    if (made.length === 0) {
+      const { data: sets } = await db.from("ad_sets")
+        .select("external_adset_id").eq("campaign_id", input.campaignId);
+      const created: string[] = [];
+      const old: string[] = [];
+      for (const set of (sets ?? []) as Record<string, unknown>[]) {
+        const adSetId = String(set.external_adset_id ?? "");
+        if (!adSetId) continue;
+        const ads = await graph("GET", `${adSetId}/ads`, {
+          fields: "id,name,effective_status,creative{id}",
+          limit: 25,
+        });
+        for (const ad of (Array.isArray(ads.data) ? ads.data : []) as Record<string, unknown>[]) {
+          if (String(ad.effective_status ?? "").toUpperCase() !== "ACTIVE") continue;
+          const creativeId = String((ad.creative as Record<string, unknown> | undefined)?.id ?? "");
+          if (!creativeId) continue;
+          const source = await graph("GET", creativeId, {
+            fields: "name,object_story_spec,asset_feed_spec,url_tags",
+          });
+          const body = withLastTicketsText({
+            name: `${String(source.name ?? "Ad")} — last tickets`.slice(0, 200),
+            ...(source.object_story_spec ? { object_story_spec: source.object_story_spec } : {}),
+            ...(source.asset_feed_spec ? { asset_feed_spec: source.asset_feed_spec } : {}),
+            ...(source.url_tags ? { url_tags: source.url_tags } : {}),
+          }, primary);
+          const newCreative = await graph("POST", `act_${deps.adAccountId}/adcreatives`, body);
+          if (typeof newCreative.id !== "string") continue;
+          const newAd = await graph("POST", `act_${deps.adAccountId}/ads`, {
+            name: `${String(ad.name ?? "Ad")} — last tickets`.slice(0, 200),
+            adset_id: adSetId,
+            creative: { creative_id: newCreative.id },
+            status: "ACTIVE",
+          });
+          if (typeof newAd.id === "string") {
+            created.push(newAd.id);
+            old.push(String(ad.id));
+          }
+        }
+      }
+      if (created.length === 0) return await fail("no_live_ads_to_copy");
+      await db.from("ad_plan_automation_events").update({
+        detail: { ...detail, new_ad_ids: created, old_ad_ids: old, started_at: input.nowIso },
+      }).eq("id", input.row.id).eq("status", "pending");
+      return "created";
+    }
+    const statuses: string[] = [];
+    for (const id of made) {
+      const read = await graph("GET", id, { fields: "effective_status" });
+      statuses.push(String(read.effective_status ?? "").toUpperCase());
+    }
+    if (statuses.some((status) => REFUSED.has(status))) {
+      for (const id of made) await graph("POST", id, { status: "PAUSED" });
+      return await fail("new_ad_refused");
+    }
+    if (!statuses.every((status) => READY.has(status))) return "waiting";
+    const oldIds = Array.isArray(detail.old_ad_ids)
+      ? (detail.old_ad_ids as unknown[]).map(String)
+      : [];
+    for (const id of oldIds) await graph("POST", id, { status: "PAUSED" });
+    await db.from("ad_plan_automation_events").update({
+      status: "applied",
+      applied_at: input.nowIso,
+    }).eq("id", input.row.id).eq("status", "pending");
+    return "applied";
+  } catch (error) {
+    return await fail(`provider: ${message(error)}`);
+  }
+}
+
 export async function runHostAdAutomation(deps: {
   db: Db;
   /** Meta Graph for this campaign's connection (null on other apps). */
@@ -451,6 +576,25 @@ export async function runHostAdAutomation(deps: {
     }
   } catch (error) {
     report.ladder_error = message(error);
+  }
+
+  // ── Last tickets: apply an offer the Host accepted (Meta, W4a) ──
+  try {
+    if (ctx.platform === "meta" && deps.graph && deps.adAccountId) {
+      const { data: offer } = await db.from("ad_plan_automation_events")
+        .select("id,status,detail,created_at,applied_at")
+        .eq("plan_id", ctx.planId).eq("platform", "meta")
+        .eq("kind", "low_stock_copy").maybeSingle();
+      const row = offer as PromotionRow | null;
+      if (row?.status === "pending" && typeof row.detail?.accepted_at === "string") {
+        report.last_tickets_apply = await applyLastTicketsOffer(
+          { db, graph: deps.graph, adAccountId: deps.adAccountId },
+          { row, campaignId: ctx.campaignId, nowIso },
+        );
+      }
+    }
+  } catch (error) {
+    report.last_tickets_apply = `error: ${message(error)}`;
   }
 
   // ── Last tickets (offer) and the slow-sales nudge ──

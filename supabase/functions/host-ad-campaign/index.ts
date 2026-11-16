@@ -222,6 +222,10 @@ serve(async (req: Request): Promise<Response> => {
     // #4238: changing a live ad's budget moves money, like funding it.
     : action === "change_live"
     ? "fund"
+    // #4238 W4a (5c): a new last-tickets ad goes through the apps' review,
+    // like a launch.
+    : action === "accept_last_tickets"
+    ? "launch"
     : null;
   if (!requiredPermission) {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
@@ -247,6 +251,10 @@ serve(async (req: Request): Promise<Response> => {
 
   if (action === "change_live") {
     return await changeLive(supabase, user.id, brandId, body);
+  }
+
+  if (action === "accept_last_tickets") {
+    return await acceptLastTickets(supabase, user.id, brandId, body);
   }
 
   if (action === "list") {
@@ -1484,6 +1492,82 @@ serve(async (req: Request): Promise<Response> => {
 
   return json({ error: "validation_error", detail: "action_invalid" }, 400);
 });
+
+/**
+ * #4238 W4a (5c, D-5): the Host accepts the last-tickets offer. Marks the
+ * pending offer(s) accepted; the hourly sweep then adds the new ads with the
+ * frozen last-tickets words through the apps' normal review and pauses the
+ * old ads once the new ones are live. Once per event: a plan for the same
+ * event that already used it is refused.
+ */
+// deno-lint-ignore no-explicit-any
+async function acceptLastTickets(db: any, actorId: string, brandId: string, body: Record<string, unknown>): Promise<Response> {
+  const planId = typeof body.plan_id === "string" ? body.plan_id : "";
+  if (!UUID_REGEX.test(planId)) {
+    return json({ error: "validation_error", detail: "plan_id_invalid" }, 400);
+  }
+  const { data: plan, error: planError } = await db.from("ad_plans")
+    .select("id,brand_id,owner_kind,state,destination_family,destination_key")
+    .eq("id", planId).maybeSingle();
+  if (planError) return json({ error: "plan_lookup_failed" }, 503);
+  if (!plan || plan.owner_kind !== "host" || plan.brand_id !== brandId) {
+    return json({ error: "forbidden", detail: "plan_not_found" }, 403);
+  }
+  const { data: offers, error: offerError } = await db.from("ad_plan_automation_events")
+    .select("id,platform,status,detail").eq("plan_id", planId).eq("kind", "low_stock_copy");
+  if (offerError) return json({ error: "plan_lookup_failed" }, 503);
+  const rows = (offers ?? []) as Record<string, unknown>[];
+  const open = rows.filter((row) =>
+    row.status === "pending" &&
+    typeof (row.detail as Record<string, unknown> | null)?.accepted_at !== "string"
+  );
+  if (open.length === 0) {
+    const used = rows.some((row) =>
+      row.status === "applied" ||
+      typeof (row.detail as Record<string, unknown> | null)?.accepted_at === "string"
+    );
+    return json({
+      error: used ? "host_ad_last_tickets_already_used" : "host_ad_last_tickets_not_offered",
+    }, 409);
+  }
+  // Once per event: another plan for the same page that accepted it wins.
+  const { data: siblings } = await db.from("ad_plans").select("id")
+    .eq("brand_id", brandId).eq("destination_family", plan.destination_family)
+    .eq("destination_key", plan.destination_key).neq("id", planId);
+  const siblingIds = ((siblings ?? []) as Record<string, unknown>[]).map((row) => String(row.id));
+  if (siblingIds.length > 0) {
+    const { data: used } = await db.from("ad_plan_automation_events")
+      .select("id,status,detail").in("plan_id", siblingIds).eq("kind", "low_stock_copy");
+    if (
+      ((used ?? []) as Record<string, unknown>[]).some((row) =>
+        row.status === "applied" ||
+        typeof (row.detail as Record<string, unknown> | null)?.accepted_at === "string"
+      )
+    ) {
+      return json({ error: "host_ad_last_tickets_already_used" }, 409);
+    }
+  }
+  const acceptedAt = new Date().toISOString();
+  for (const row of open) {
+    const { error } = await db.from("ad_plan_automation_events").update({
+      detail: {
+        ...(row.detail as Record<string, unknown> ?? {}),
+        accepted_at: acceptedAt,
+        accepted_by: actorId,
+      },
+    }).eq("id", row.id).eq("status", "pending");
+    if (error) {
+      console.error("[host-ad-campaign] last tickets accept failed:", String(error.message ?? "").slice(0, 300));
+      return json({ error: "host_ad_last_tickets_not_recorded" }, 503);
+    }
+  }
+  return json({
+    ok: true,
+    accepted: open.map((row) => row.platform),
+    // Snapchat and TikTok keep the words for the next ad (applied on Meta).
+    applied_by_sweep: open.map((row) => row.platform).filter((platform) => platform === "meta"),
+  }, 200);
+}
 
 /**
  * #4238 media-buyer, wave D: change a live Host ad's total budget and/or end
