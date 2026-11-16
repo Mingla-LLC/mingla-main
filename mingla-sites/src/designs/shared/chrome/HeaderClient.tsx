@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 /*
  * #4453 v2.1 §1.4 — the header's only JavaScript: the "More" disclosure
@@ -30,7 +31,11 @@ export function MoreMenu({ current, children }: { current: boolean; children: Re
     };
   }, [open]);
   return (
-    <li ref={ref} className="mg-more" data-current={current ? "true" : undefined}>
+    <li ref={ref} className="mg-more" data-current={current ? "true" : undefined}
+      onBlur={(event) => {
+        // #4453 P3 — focus leaving the More menu closes it.
+        if (!ref.current?.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}>
       <button type="button" className="mg-nav__a mg-more__btn" aria-expanded={open} aria-controls="mg-more-list" onClick={() => setOpen((value) => !value)}>
         More<svg viewBox="0 0 24 24" aria-hidden="true" className="mg-ico"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
       </button>
@@ -39,8 +44,20 @@ export function MoreMenu({ current, children }: { current: boolean; children: Re
   );
 }
 
+/*
+ * The dialog is portalled to <body> once mounted: the header is a size
+ * container and its bar may carry a backdrop filter, and either makes it the
+ * containing block for a `position: fixed` child, which would trap the
+ * full-screen menu in the header strip (#4453 tester P1-1). The server
+ * markup keeps it in place (hidden) so hydration matches.
+ */
 export function PhoneMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const button = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -84,7 +101,7 @@ export function PhoneMenu({ children }: { children: ReactNode }) {
         <span className="mg-sr">Menu</span>
         <svg viewBox="0 0 24 24" aria-hidden="true" className="mg-ico"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
       </button>
-      <div ref={dialog} id="mg-phone-menu" className="mg-pmenu" role="dialog" aria-modal="true" aria-label="Menu" hidden={!open}
+      {portal(mounted, <div ref={dialog} id="mg-phone-menu" className="mg-pmenu" role="dialog" aria-modal="true" aria-label="Menu" hidden={!open}
         onClick={(event) => {
           if ((event.target as HTMLElement).closest("a[href]")) setOpen(false);
         }}>
@@ -93,9 +110,13 @@ export function PhoneMenu({ children }: { children: ReactNode }) {
           button.current?.focus();
         }}>{"×"}</button>
         {children}
-      </div>
+      </div>)}
     </>
   );
+}
+
+function portal(mounted: boolean, node: ReactNode): ReactNode {
+  return mounted && typeof document !== "undefined" ? createPortal(node, document.body) : node;
 }
 
 /** Marks the header `data-scrolled` once the page has moved (the glass bar turns solid). */

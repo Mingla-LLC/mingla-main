@@ -70,6 +70,9 @@ function countUp(element: HTMLElement, durationMs: number): void {
  * the page stays exactly as the server drew it.
  */
 export function startMotion(root: HTMLElement, win: Window = window): () => void {
+  const connection = (win.navigator as Navigator & { connection?: Connection }).connection;
+  // Save-Data seen only in the browser: stop the CSS motion too (hero, drift, ticker).
+  if (connection?.saveData) root.setAttribute("data-motion", "none");
   if (!motionAllowed(root, win) || !("IntersectionObserver" in win)) return () => {};
   const stagger = Number.parseFloat(win.getComputedStyle(root).getPropertyValue("--mg-stagger")) || 60;
   const duration = Number.parseFloat(win.getComputedStyle(root).getPropertyValue("--mg-dur")) || 700;
@@ -85,17 +88,23 @@ export function startMotion(root: HTMLElement, win: Window = window): () => void
   const counters = Array.from(root.querySelectorAll<HTMLElement>("[data-mg-count]"));
   // Only now (JS alive, motion allowed) may anything start hidden.
   root.setAttribute("data-mg-motion", "on");
+  // At most 12 elements animate at once (§3.5): past that, an element appears without moving.
+  let animating = 0;
+  const settleAfter = duration + MAX_STAGGER_STEPS * stagger;
   const observer = new IntersectionObserver((entries) => {
-    let started = 0;
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       const element = entry.target as HTMLElement;
       observer.unobserve(element);
-      // Past the per-frame budget, an element simply appears.
-      if (started >= MAX_ANIMATING_AT_ONCE) element.style.setProperty("--mg-d", "0ms");
+      if (animating >= MAX_ANIMATING_AT_ONCE) {
+        element.setAttribute("data-mg-instant", "");
+        element.setAttribute("data-in", "");
+        continue;
+      }
+      animating += 1;
+      win.setTimeout(() => { animating -= 1; }, settleAfter);
       element.setAttribute("data-in", "");
       if (element.hasAttribute("data-mg-count")) countUp(element, duration * 1.6);
-      started += 1;
     }
   }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
   for (const element of [...targets, ...counters]) observer.observe(element);

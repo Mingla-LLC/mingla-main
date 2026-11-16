@@ -57,8 +57,9 @@ export function pageMotion(design: DesignDefinition, preset: MotionPreset): Moti
 }
 
 /** The page wrapper's motion attributes and custom properties. */
-export function motionAttributes(design: DesignDefinition, preset: MotionPreset): { "data-motion": "none" | "on"; "data-mg-profile": string; style: Record<string, string> } {
-  const numbers = pageMotion(design, preset);
+export function motionAttributes(design: DesignDefinition, preset: MotionPreset, saveData = false): { "data-motion": "none" | "on"; "data-mg-profile": string; style: Record<string, string> } {
+  // Save-Data stops ALL motion, exactly like reduced motion (#4453 tester P2-1).
+  const numbers = saveData ? null : pageMotion(design, preset);
   if (!numbers) return { "data-motion": "none", "data-mg-profile": design.motion.profile, style: {} };
   return {
     "data-motion": "on",

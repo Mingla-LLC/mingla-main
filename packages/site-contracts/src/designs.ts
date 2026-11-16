@@ -137,6 +137,19 @@ export const SHARED_LAYOUTS: Readonly<Partial<Record<BlockType, readonly string[
   newsletter_signup: ["photo"],
 };
 
+/**
+ * #4453 — the layouts ARI may choose for a block in a design. The shared
+ * library's layouts render and validate for stored and Studio content from
+ * PR 4, but Ari choosing them belongs to the Ari composition PR (flag
+ * SITES_ARI_DESIGN_PASS), so Ari's declared tools stay byte-identical to
+ * the pre-#4453 declarations (I-ARI-ROLLOUT-OFF-IS-MAIN, #3355).
+ * [TRANSITIONAL] shared layouts hidden from Ari — exit: PR 7 (4453-ari-composer) offers them behind SITES_ARI_DESIGN_PASS.
+ */
+export function ariDesignVariants(design: DesignDefinition, type: BlockType): string[] {
+  const held = SHARED_LAYOUTS[type] ?? [];
+  return design.variants[type].filter((variant) => !held.includes(variant));
+}
+
 export type DesignDefinition = {
   key: DesignKey;
   version: number;

@@ -71,7 +71,7 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
   const headerVariant = artifact.navigation.header_variant;
   const footerVariant = artifact.footer.footer_variant;
   const gallery = Boolean(headerVariant);
-  const motion = motionAttributes(DESIGNS.voyage, artifact.tokens.motion);
+  const motion = motionAttributes(DESIGNS.voyage, artifact.tokens.motion, saveData === true);
   const path = current ? hrefForPage(current) : "/";
   return (
     <div

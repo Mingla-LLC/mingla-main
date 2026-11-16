@@ -387,6 +387,7 @@
     [data-design] .mg-scope[data-motion="on"] [data-mg-hero-bg] { animation: mg-settle var(--mg-hero-settle, 1600ms) cubic-bezier(.2, .8, .2, 1) both; }
     [data-design] .mg-scope[data-mg-motion="on"] [data-mg-rise]:not([data-in]) { opacity: 0; transform: translateY(var(--mg-rise-y, 28px)); }
     [data-design] .mg-scope[data-mg-motion="on"] [data-mg-rise] { transition: opacity var(--mg-dur-ms, 700ms) cubic-bezier(.2, .8, .2, 1) var(--mg-d, 0ms), transform var(--mg-dur-ms, 700ms) cubic-bezier(.2, .8, .2, 1) var(--mg-d, 0ms); }
+    [data-design] .mg-scope[data-mg-motion="on"] [data-mg-rise][data-mg-instant] { transition: none; }
     @supports (animation-timeline: view()) {
       [data-design] .mg-scope[data-motion="on"] .mg-hero-full [data-mg-hero-bg] img, [data-design] .mg-scope[data-motion="on"] .mg-hero-ed [data-mg-hero-bg] img { animation: mg-drift linear both; animation-timeline: scroll(root); animation-range: 0 100vh; }
       [data-design] .mg-scope[data-mg-motion="on"] .mg-wd { animation: mg-word linear both; animation-timeline: view(); animation-range: entry 10% cover 45%; }
