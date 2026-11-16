@@ -17,7 +17,9 @@ import { tokenCssDeclarations } from "../../contracts/generated/tokens.ts";
 function categoryOf(artifact: ArtifactV2, slot: FontSlot): string {
   if (slot.source === "system") return slot.family === "Georgia" || slot.family === "Times New Roman" ? "serif" : "sans-serif";
   const fallback = artifact.font_fallbacks.find((face) => face.family === slot.family);
-  return fallback?.local === "Times New Roman" ? "serif" : "sans-serif";
+  if (fallback) return fallback.local === "Times New Roman" ? "serif" : "sans-serif";
+  // #4453 6a (tester P3-1) — no published metric fallback: a serif face still falls back to a serif, never a sans.
+  return findCatalogFont(slot.family)?.category === "serif" ? "serif" : "sans-serif";
 }
 
 export function tokenStyleCss(artifact: ArtifactV2): string {

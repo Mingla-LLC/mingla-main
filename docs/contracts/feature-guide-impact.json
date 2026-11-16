@@ -1200,7 +1200,21 @@
         "mingla-site-cms/src/contracts/generated/offerings.ts",
         "mingla-sites/src/contracts/artifact.ts",
         "mingla-sites/src/contracts/generated/offerings.ts",
-        "packages/site-contracts/src/offerings.ts"
+        "packages/site-contracts/src/offerings.ts",
+        "mingla-site-cms/src/migrations/20261116_120000_issue_4453_designs_6a.ts",
+        "mingla-sites/public/designs/haven/1.css",
+        "mingla-sites/public/designs/maison/1.css",
+        "mingla-sites/public/designs/nocturne/1.css",
+        "mingla-sites/src/designs/haven/HavenPage.tsx",
+        "mingla-sites/src/designs/maison/MaisonPage.tsx",
+        "mingla-sites/src/designs/maison/blocks/MaisonBlocks.tsx",
+        "mingla-sites/src/designs/nocturne/NocturnePage.tsx",
+        "mingla-sites/src/designs/shared/GalleryPage.tsx",
+        "mingla-sites/src/designs/shared/blocks/Basics.tsx",
+        "mingla-sites/src/designs/shared/galleryDesigns.fixture.ts",
+        "supabase/functions/_shared/agentSystemPrompt.ts",
+        "supabase/functions/_shared/ariFlows/websiteSetup.ts",
+        "supabase/migrations/20280724104453_issue_4453_design_keys_6a.sql"
       ]
     },
     {

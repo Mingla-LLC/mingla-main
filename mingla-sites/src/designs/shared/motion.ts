@@ -89,8 +89,30 @@ export function startMotion(root: HTMLElement, win: Window = window): () => void
   // Only now (JS alive, motion allowed) may anything start hidden.
   root.setAttribute("data-mg-motion", "on");
   // At most 12 elements animate at once (§3.5): past that, an element appears without moving.
-  let animating = 0;
+  // #4453 6a (tester P2-2) — the hero's CSS entrance (its headline lines, its picture settling, a
+  // design's signature reveal on that picture) runs on load and counts against the same 12: those
+  // slots are held until each of its finite animations ends (or the hero settle time, at most).
   const settleAfter = duration + MAX_STAGGER_STEPS * stagger;
+  const hero = root.querySelector("[data-mg-hero]");
+  const heroMovers = hero ? Array.from(hero.querySelectorAll<HTMLElement>(".mg-ln > span, [data-mg-hero-bg]")).slice(0, MAX_ANIMATING_AT_ONCE) : [];
+  let animating = heroMovers.length;
+  const heroSettle = Number.parseFloat(win.getComputedStyle(root).getPropertyValue("--mg-hero-settle")) || 1600;
+  for (const mover of heroMovers) {
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      animating = Math.max(0, animating - 1);
+    };
+    if (typeof mover.getAnimations !== "function") {
+      // No Web Animations API: hold the slot for the longest hero entrance instead.
+      win.setTimeout(release, Math.max(heroSettle, settleAfter) + 1600);
+      continue;
+    }
+    const running = mover.getAnimations().filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
+    // Released when its entrance really ends (a paused or throttled page keeps the slot: rises then appear in place).
+    void Promise.all(running.map((animation) => animation.finished.catch(() => undefined))).then(release);
+  }
   const observer = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;

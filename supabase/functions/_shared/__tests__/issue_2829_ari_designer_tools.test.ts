@@ -35,7 +35,7 @@ import { AGENT_TOOL_AUTHORIZATION, authorizeAgentTool } from "../agentToolAuthor
 import { compileGeminiToolDeclarations } from "../agentGemini.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 import { BLOCK_TYPES } from "../siteContracts/blocks.ts";
-import { ariDesignVariants, DESIGN_KEYS, DESIGNS, SHARED_LAYOUTS } from "../siteContracts/designs.ts";
+import { ARI_DESIGN_KEYS, ariDesignVariants, DESIGNS, SHARED_LAYOUTS } from "../siteContracts/designs.ts";
 import { ARI_EXCLUDED_FIELDS } from "../siteContracts/ariToolSchemas.ts";
 import { MAX_NAV_ITEMS } from "../siteContracts/limits.ts";
 import { RAMP_ROLES, SINGLE_COLOR_ROLES } from "../siteContracts/tokens.ts";
@@ -70,7 +70,12 @@ Deno.test("#2829 W9b composition blocks are generated from the catalogue: every 
     // #4453 — Ari is offered every design's own layouts; the shared layouts
     // (SHARED_LAYOUTS) stay held until Ari may choose them, which keeps the
     // #3355 frozen tool declarations byte-identical.
-    const layouts = new Set(DESIGN_KEYS.flatMap((key) => ariDesignVariants(DESIGNS[key], type)));
+    // #4453 6a — and only the designs Ari may name (ARI_DESIGN_KEYS): the gallery designs
+    // (nocturne, haven, maison) reach Ari in PR 7, so maison's own layouts stay out too.
+    const layouts = new Set(ARI_DESIGN_KEYS.flatMap((key) => ariDesignVariants(DESIGNS[key], type)));
+    for (const own of ["maison-frame", "maison-rows", "maison-plates"]) {
+      assert(!branch.properties.variant.enum.includes(own), `${type} offers the gallery layout ${own} to Ari before PR 7`);
+    }
     assertEquals(new Set(branch.properties.variant.enum), layouts, `${type} layouts drifted`);
     for (const held of SHARED_LAYOUTS[type] ?? []) {
       assert(!branch.properties.variant.enum.includes(held), `${type} offers the held shared layout ${held} to Ari`);

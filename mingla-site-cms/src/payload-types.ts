@@ -239,7 +239,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed') | null;
+            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -333,7 +333,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'split-panel' | 'panel-caption') | null;
+            variant?: ('atelier' | 'split-panel' | 'panel-caption' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -359,7 +359,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'dark-panel-glow') | null;
+            variant?: ('atelier' | 'dark-panel-glow' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -416,7 +416,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'photo-card' | 'poster') | null;
+            variant?: ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -580,7 +580,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'brand-film') | null;
+            variant?: ('atelier' | 'brand-film' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -628,7 +628,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -659,7 +659,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage' | 'mosaic') | null;
+            variant?: ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -746,7 +746,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'quote-wall' | 'rail') | null;
+            variant?: ('atelier' | 'quote-wall' | 'rail' | 'wall' | 'switcher') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -880,7 +880,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -906,7 +906,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -946,7 +946,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -984,7 +984,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'badge-tile') | null;
+            variant?: ('neutral' | 'badge-tile' | 'tiles') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -1078,7 +1078,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'ledger' | 'ledger-count') | null;
+            variant?: ('neutral' | 'ledger' | 'ledger-count' | 'split') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -1202,7 +1202,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'tile-bar' | 'statement') | null;
+            variant?: ('neutral' | 'tile-bar' | 'statement' | 'numbered' | 'tiles') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -1242,7 +1242,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -1261,7 +1261,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -1625,7 +1625,7 @@ export interface SiteSetting {
   /**
    * Switching design keeps all your content.
    */
-  design?: ('atelier' | 'voyage') | null;
+  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison') | null;
   tokens?:
     | {
         [k: string]: unknown;

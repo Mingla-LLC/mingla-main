@@ -16,7 +16,7 @@ import { ActionButton, Arrow, Blk, HeadlineLines, Label, Photo, rows, sectionId,
  * nothing is pre-filled. Only the page's first hero is its h1.
  */
 
-function heroParts(block: SharedBlockProps["block"], index: number, ctx: SharedContext) {
+export function heroParts(block: SharedBlockProps["block"], index: number, ctx: SharedContext) {
   const lines = rows(block.heading_lines).map((row) => text(row.text)).filter(Boolean);
   const ctas = rows(block.ctas)
     .map((cta) => ({ label: text(cta.label), href: cta.href }))
@@ -41,7 +41,7 @@ function heroParts(block: SharedBlockProps["block"], index: number, ctx: SharedC
 }
 
 /** The trip search: where, from and to, blank, submitted to the site's own trips page. */
-function TripSearch({ action, id }: { action: string; id: string }) {
+export function TripSearch({ action, id }: { action: string; id: string }) {
   return (
     <SiteSearchForm action={action} className="mg-bk" aria-label="Search trips" data-mg-in="">
       <label htmlFor={`${id}-where`}><span className="mg-bk__k">Where</span><input id={`${id}-where`} name="where" type="search" maxLength={80} /></label>
@@ -52,7 +52,7 @@ function TripSearch({ action, id }: { action: string; id: string }) {
   );
 }
 
-function Buttons({ ctas }: { ctas: Array<{ label: string; href: unknown }> }) {
+export function HeroButtons({ ctas }: { ctas: Array<{ label: string; href: unknown }> }) {
   if (!ctas.length) return null;
   return (
     <div className="mg-hero__acts" data-mg-in="">
@@ -76,7 +76,7 @@ export function HeroFullbleed({ block, index, ctx }: SharedBlockProps) {
         <div className="mg-hero__row">
           <div className="mg-hero__main">
             {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : null}
-            <Buttons ctas={p.ctas} />
+            <HeroButtons ctas={p.ctas} />
             {p.search ? <TripSearch action={p.search} id={id} /> : null}
           </div>
         </div>
@@ -99,7 +99,7 @@ export function HeroEditorial({ block, index, ctx }: SharedBlockProps) {
         <HeadlineLines lines={p.lines} heading={p.heading} as={p.as} id={id} />
         <div className="mg-hero-ed__foot">
           {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : <span />}
-          <Buttons ctas={p.ctas} />
+          <HeroButtons ctas={p.ctas} />
         </div>
         {p.search ? <div className="mg-hero-ed__bk"><TripSearch action={p.search} id={id} /></div> : null}
       </div>
@@ -120,7 +120,7 @@ export function HeroArch({ block, index, ctx }: SharedBlockProps) {
           </div>
           <div className="mg-hero-arch__side">
             {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : null}
-            <Buttons ctas={p.ctas} />
+            <HeroButtons ctas={p.ctas} />
           </div>
         </div>
         <div className="mg-hero-arch__arch" data-mg-arch="">

@@ -28,8 +28,23 @@ import type { FontSlotKey, FontSlots } from "./fontSlots.ts";
 import type { RampStep } from "./colorRamp.ts";
 import { BLOCK_TYPES, type BlockType } from "./blocks.ts";
 
-export type DesignKey = "atelier" | "voyage";
-export const DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage"];
+export type DesignKey = "atelier" | "voyage" | "nocturne" | "haven" | "maison";
+export const DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage", "nocturne", "haven", "maison"];
+
+/**
+ * #4453 6a — the designs Ari may name (its declared tools, its design list
+ * and its setup cards). The gallery designs render, validate and can be
+ * chosen in Studio and by the owner from 6a; Ari offering them belongs to
+ * the Ari composition PR (flag SITES_ARI_DESIGN_PASS), so Ari's frozen tool
+ * declarations stay byte-identical (I-ARI-ROLLOUT-OFF-IS-MAIN, #3355).
+ * [TRANSITIONAL] gallery designs hidden from Ari — exit: PR 7 (4453-ari-composer) offers them behind SITES_ARI_DESIGN_PASS.
+ */
+export const ARI_DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage"];
+
+/** Whether Ari may name this design (see ARI_DESIGN_KEYS). */
+export function isAriDesignKey(value: unknown): value is DesignKey {
+  return typeof value === "string" && (ARI_DESIGN_KEYS as readonly string[]).includes(value);
+}
 
 /**
  * #2829 A8 — which colour roles and font slots a design actually draws. The
@@ -455,6 +470,382 @@ export const VOYAGE: DesignDefinition = {
   },
 };
 
+/* ---------------- #4453 6a — Nocturne, Haven and Maison ---------------- */
+
+/**
+ * #4453 §3.3 — a gallery design's layouts: for each block type the shared
+ * library draws, the design's pick first (its signature layout before it when
+ * it has one), then the other shared layouts; every other type keeps the
+ * design-neutral layout, drawn by the shared library from the design's tokens.
+ */
+function galleryVariants(
+  picks: Readonly<Partial<Record<BlockType, string>>>,
+  signature: Readonly<Partial<Record<BlockType, string>>> = {},
+): Record<BlockType, readonly string[]> {
+  const variants = {} as Record<BlockType, readonly string[]>;
+  for (const type of BLOCK_TYPES) {
+    const shared = SHARED_LAYOUTS[type] ?? [];
+    const own = signature[type];
+    const pick = picks[type];
+    const ordered = [...(own ? [own] : []), ...(pick ? [pick] : []), ...shared].filter((variant, i, all) => all.indexOf(variant) === i);
+    variants[type] = ordered.length ? ordered : ["neutral"];
+  }
+  return variants;
+}
+
+/** The shared-layout picks the three 6a designs share (their gallery maps differ on the rest). */
+const GALLERY_COMMON_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  marquee: "ticker",
+  rich_text: "manifesto",
+  menu_board: "columns",
+  destination_grid: "tiles",
+  offering_history: "split",
+  hours_location: "split",
+  faq: "split",
+  newsletter_signup: "photo",
+};
+
+const NOCTURNE_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "editorial",
+  offering_grid: "list",
+  feature_cards: "numbered",
+  gallery: "pinned",
+  testimonials: "wall",
+};
+
+/*
+ * #4453 6a — Nocturne: black page, candle gold and oxblood, a huge Bodoni
+ * italic headline over compressed Archivo capitals, a pinned gallery and
+ * words that light up on scroll. Dark only by design. Every default pair
+ * passes AA on the gallery's own hex values (§3.8); the gallery's
+ * translucent muted ink (62% over the page) is baked to #99928a.
+ */
+export const NOCTURNE: DesignDefinition = {
+  key: "nocturne",
+  version: 1,
+  label: "Nocturne",
+  description: "Dark, editorial, after-hours: a huge italic serif over compressed capitals, candle gold on black.",
+  tokens: {
+    colors: {
+      canvas: "#0c0a09",
+      surface: "#120e0c",
+      surface_sunken: "#16110f",
+      surface_deep: "#16110f",
+      surface_inverse: "#efe6d8",
+      ink_strong: "#efe6d8",
+      ink_body: "#efe6d8",
+      ink_prose: "#efe6d8",
+      ink_quiet: "#99928a",
+      ink_on_dark_body: "#efe6d8",
+      ink_on_photo_body: "#efe6d8",
+      ink_on_photo_quiet: "#d8cfc2",
+      accent_ink: "#0c0a09",
+      highlight_on_dark: "#d9a55b",
+      action: "#efe6d8",
+      accent: {
+        seed: "#d9a55b",
+        ramp: {
+          50: "#fbf8f3",
+          100: "#f7efe3",
+          200: "#f0dfc6",
+          300: "#e7c89d",
+          400: "#d9a55b",
+          500: "#d49945",
+          600: "#bc822e",
+          700: "#996b29",
+          800: "#765423",
+          900: "#553d1b",
+          950: "#352713",
+        },
+      },
+      neutral: {
+        seed: "#8c8378",
+        ramp: {
+          50: "#f8f7f7",
+          100: "#eeedec",
+          200: "#dedcd9",
+          300: "#c7c2bd",
+          400: "#ada69f",
+          500: "#958d83",
+          600: "#7e766c",
+          700: "#68625a",
+          800: "#524d47",
+          900: "#3c3834",
+          950: "#262422",
+        },
+      },
+      highlight: {
+        seed: "#d9a55b",
+        ramp: { 50: "#1c1410", 200: "#f0dfc6", 600: "#d9a55b", 700: "#8c2a22" },
+      },
+      paper: {
+        seed: "#efe6d8",
+        ramp: { 50: "#f7f2ea", 100: "#efe6d8", 200: "#ddd0bc", 400: "#a8987f" },
+      },
+      danger: { seed: "#ff9d8a", ramp: { 50: "#2a1210", 600: "#ff9d8a" } },
+      success: { seed: "#7fa07a", ramp: { 50: "#121f12", 600: "#7fa07a" } },
+      scrim_rgb: "12 10 9",
+      shadow_rgb: "0 0 0",
+    },
+    heading_case: "uppercase",
+  },
+  fonts: {
+    display: { family: "Bodoni Moda", source: "google", weights: [400, 500, 800], italic: true },
+    body: { family: "Archivo", source: "google", weights: [400, 600, 800], italic: false },
+    accent: { family: "Bodoni Moda", source: "google", weights: [400, 500], italic: true },
+    label: null,
+  },
+  variants: galleryVariants(NOCTURNE_PICKS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/nocturne/1.css reads.
+  uses: {
+    colors: {
+      single: [
+        "canvas", "surface", "surface_sunken", "surface_deep",
+        "ink_strong", "ink_body", "ink_quiet", "ink_on_dark_body",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
+      ],
+      ramps: { accent: [400], highlight: [600, 700], paper: [100, 200] },
+    },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "cinematic", signature: null },
+  image: { filter: "warm", treatment: "Slightly desaturated, high contrast, radial vignette, film grain" },
+  chrome: { header: ["center", "glass", "pill"], footer: ["giant", "columns"] },
+  picks: NOCTURNE_PICKS,
+};
+
+const HAVEN_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "arch",
+  offering_grid: "cards",
+  feature_cards: "tiles",
+  gallery: "stagger",
+  testimonials: "switcher",
+};
+
+/*
+ * #4453 6a — Haven: sea-mist page, tide-green ink, cedar accent, light
+ * Cormorant display, an arched hero with a clip reveal, a floating pill
+ * header and slow parallax. Light only by design. §3.8 contrast fixes
+ * (pinned on the platform milestone): accent label #a2622f → #955a2b
+ * (accent 700), the accent fill under its ink #b06e3c → #a16537 (accent 400),
+ * muted #587170 → #546c6b.
+ */
+export const HAVEN: DesignDefinition = {
+  key: "haven",
+  version: 1,
+  label: "Haven",
+  description: "Calm, airy, restorative: sea-mist and tide green, light serif capitals and an arched photograph.",
+  tokens: {
+    colors: {
+      canvas: "#eef2f0",
+      surface: "#f8faf9",
+      surface_sunken: "#e2e9e6",
+      surface_deep: "#1d3b3c",
+      surface_inverse: "#1d3b3c",
+      ink_strong: "#1d3b3c",
+      ink_body: "#1d3b3c",
+      ink_prose: "#1d3b3c",
+      ink_quiet: "#546c6b",
+      ink_on_dark_body: "#f8faf9",
+      ink_on_photo_body: "#f8faf9",
+      ink_on_photo_quiet: "#f8faf9",
+      accent_ink: "#f8faf9",
+      highlight_on_dark: "#dcd2c2",
+      action: "#1d3b3c",
+      accent: {
+        seed: "#a16537",
+        ramp: {
+          50: "#fbf7f4",
+          100: "#f5ece5",
+          200: "#ecd9cb",
+          300: "#dfbea5",
+          400: "#a16537",
+          500: "#c58554",
+          600: "#ad6e3d",
+          700: "#955a2b",
+          800: "#6e482b",
+          900: "#4f3522",
+          950: "#312216",
+        },
+      },
+      neutral: {
+        seed: "#587170",
+        ramp: {
+          50: "#f7f8f8",
+          100: "#ebefef",
+          200: "#d7dfdf",
+          300: "#bac9c9",
+          400: "#9bb1b0",
+          500: "#7e9b99",
+          600: "#678382",
+          700: "#546c6b",
+          800: "#445554",
+          900: "#323e3d",
+          950: "#202727",
+        },
+      },
+      highlight: {
+        seed: "#2f5a5a",
+        ramp: { 50: "#eaf1f0", 200: "#c5d6d4", 600: "#2f5a5a", 700: "#234545" },
+      },
+      paper: {
+        seed: "#e2e9e6",
+        ramp: { 50: "#f8faf9", 100: "#e2e9e6", 200: "#cfdad5", 400: "#7f9893" },
+      },
+      danger: { seed: "#b3261e", ramp: { 50: "#fdeceb", 600: "#b3261e" } },
+      success: { seed: "#2f6b55", ramp: { 50: "#e8f2ee", 600: "#2f6b55" } },
+      scrim_rgb: "29 59 60",
+      shadow_rgb: "29 59 60",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    display: { family: "Cormorant", source: "google", weights: [400, 500, 600], italic: true },
+    body: { family: "Manrope", source: "google", weights: [400, 500, 600, 700], italic: false },
+    accent: { family: "Cormorant", source: "google", weights: [400, 500], italic: true },
+    label: null,
+  },
+  variants: galleryVariants(HAVEN_PICKS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/haven/1.css reads.
+  uses: {
+    colors: {
+      single: [
+        "canvas", "surface", "surface_sunken", "surface_deep",
+        "ink_strong", "ink_body", "ink_quiet", "ink_on_dark_body",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
+      ],
+      ramps: { accent: [400, 700], highlight: [600] },
+    },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "calm", signature: "arch-clip" },
+  image: { filter: "none", treatment: "Natural colour, rounded and arched frames, slow parallax" },
+  chrome: { header: ["pill", "glass", "center"], footer: ["columns", "giant"] },
+  picks: HAVEN_PICKS,
+};
+
+const MAISON_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "maison-frame",
+  offering_grid: "maison-rows",
+  feature_cards: "tiles",
+  gallery: "maison-plates",
+  testimonials: "wall",
+};
+
+/** Maison's own layouts (designs/maison/blocks), each first in its type. */
+export const MAISON_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "maison-frame",
+  offering_grid: "maison-rows",
+  gallery: "maison-plates",
+};
+
+/*
+ * #4453 6a — Maison: quiet luxury. Bone page, near-black ink, champagne only
+ * as a hairline and a few italic words; Italiana capitals over Newsreader
+ * with tracked Jost labels (the label slot); vast whitespace, one large
+ * framed picture at a time, slow clip reveals. Light only by design. Every
+ * default pair passes AA on the gallery's own hex values (§3.8).
+ */
+export const MAISON: DesignDefinition = {
+  key: "maison",
+  version: 1,
+  label: "Maison",
+  description: "Quiet luxury, unhurried and exact: bone and near-black, fine capitals, one large framed picture at a time.",
+  tokens: {
+    colors: {
+      canvas: "#f4f0e8",
+      surface: "#f9f7f2",
+      surface_sunken: "#ebe5d9",
+      surface_deep: "#1a1916",
+      surface_inverse: "#1a1916",
+      ink_strong: "#1a1916",
+      ink_body: "#1a1916",
+      ink_prose: "#1a1916",
+      ink_quiet: "#686257",
+      ink_on_dark_body: "#f4f0e8",
+      ink_on_photo_body: "#f4f0e8",
+      ink_on_photo_quiet: "#e8e1d3",
+      accent_ink: "#1a1916",
+      highlight_on_dark: "#cdb385",
+      action: "#1a1916",
+      accent: {
+        seed: "#b39561",
+        ramp: {
+          50: "#faf8f5",
+          100: "#f3efe8",
+          200: "#e7ded0",
+          300: "#d7c7ad",
+          400: "#b39561",
+          500: "#b49764",
+          600: "#9a7d4b",
+          700: "#755d33",
+          800: "#645335",
+          900: "#483c28",
+          950: "#2d261a",
+        },
+      },
+      neutral: {
+        seed: "#686257",
+        ramp: {
+          50: "#f8f8f7",
+          100: "#efeeec",
+          200: "#dedcd8",
+          300: "#c7c3bd",
+          400: "#aea89e",
+          500: "#968f82",
+          600: "#7f786b",
+          700: "#686257",
+          800: "#524e47",
+          900: "#3c3934",
+          950: "#262421",
+        },
+      },
+      highlight: {
+        seed: "#755d33",
+        ramp: { 50: "#f6f1e8", 200: "#e8d6b0", 600: "#755d33", 700: "#4a4337" },
+      },
+      paper: {
+        seed: "#ebe5d9",
+        ramp: { 50: "#f9f7f2", 100: "#ebe5d9", 200: "#ddd4c3", 400: "#9c927f" },
+      },
+      danger: { seed: "#9a2c1f", ramp: { 50: "#f9ece9", 600: "#9a2c1f" } },
+      success: { seed: "#4d6a4a", ramp: { 50: "#ecf1eb", 600: "#4d6a4a" } },
+      scrim_rgb: "26 25 22",
+      shadow_rgb: "26 25 22",
+    },
+    heading_case: "uppercase",
+  },
+  fonts: {
+    display: { family: "Italiana", source: "google", weights: [400], italic: false },
+    body: { family: "Newsreader", source: "google", weights: [300, 400], italic: false },
+    accent: { family: "Newsreader", source: "google", weights: [200, 300], italic: true },
+    label: { family: "Jost", source: "google", weights: [400, 500], italic: false },
+  },
+  variants: galleryVariants(MAISON_PICKS, MAISON_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/maison/1.css reads.
+  uses: {
+    colors: {
+      single: [
+        "canvas", "surface", "surface_sunken", "surface_deep",
+        "ink_strong", "ink_body", "ink_quiet", "ink_on_dark_body",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
+      ],
+      ramps: { accent: [400, 600, 700], highlight: [600, 700] },
+    },
+    font_slots: ["display", "body", "accent", "label"],
+  },
+  motion: { profile: "calm", signature: "frame-open" },
+  image: { filter: "soft", treatment: "Soft, slightly desaturated natural light; large square-cut frames that open slowly from the centre" },
+  chrome: { header: ["center", "glass", "pill"], footer: ["giant", "columns"] },
+  picks: MAISON_PICKS,
+};
+
 /** One of the primary swatches the look editors show (spec §W3), in order. */
 export type PrimarySwatch = { label: string; role: SingleColorRole | RampRole; step?: RampStep };
 
@@ -494,7 +885,7 @@ export function designFontSlots(design: DesignDefinition): FontSlotKey[] {
   return (["display", "body", "accent"] as const).filter((slot) => design.uses.font_slots.includes(slot));
 }
 
-export const DESIGNS: Readonly<Record<DesignKey, DesignDefinition>> = { atelier: ATELIER, voyage: VOYAGE };
+export const DESIGNS: Readonly<Record<DesignKey, DesignDefinition>> = { atelier: ATELIER, voyage: VOYAGE, nocturne: NOCTURNE, haven: HAVEN, maison: MAISON };
 
 export function isDesignKey(value: unknown): value is DesignKey {
   return typeof value === "string" && (DESIGN_KEYS as readonly string[]).includes(value);

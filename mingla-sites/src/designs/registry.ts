@@ -7,6 +7,9 @@ import type { FormsContext } from "../lib/siteForms";
 import type { CollectionEntry } from "../lib/siteCollections";
 import { AtelierPage } from "./atelier/AtelierPage";
 import { VoyagePage } from "./voyage/VoyagePage";
+import { NocturnePage } from "./nocturne/NocturnePage";
+import { HavenPage } from "./haven/HavenPage";
+import { MaisonPage } from "./maison/MaisonPage";
 
 /*
  * #2829 AD-1 — the runtime's design registry: for each design key in
@@ -40,6 +43,10 @@ export const SHARED_STYLESHEET = "/designs/_shared/blocks-1.css";
 export const DESIGN_RENDERERS: Readonly<Record<DesignKey, DesignRenderer>> = {
   atelier: { stylesheet: (version) => `/designs/atelier/${version}.css`, Page: AtelierPage },
   voyage: { stylesheet: (version) => `/designs/voyage/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: VoyagePage, drawsNotFound: true },
+  // #4453 6a — the gallery designs: the shared page, chrome and library, each with its own stylesheet.
+  nocturne: { stylesheet: (version) => `/designs/nocturne/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: NocturnePage },
+  haven: { stylesheet: (version) => `/designs/haven/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: HavenPage },
+  maison: { stylesheet: (version) => `/designs/maison/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: MaisonPage },
 };
 
 /** TEMPORARY(#2829): v1 rollback renderer's stylesheet — remove with RestaurantV1. */
