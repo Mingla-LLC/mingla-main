@@ -27,17 +27,18 @@ import {
   startDateNotReached,
 } from "../adSpendSync.ts";
 
-Deno.test("D1: Meta+TikTok+Snapchat for 7 days = $525 ad budget (Seth example)", () => {
+// [TEST-MOD #4238 D-1] TikTok $20 per ad group, Snapchat $5 per ad squad.
+Deno.test("D1: Meta+TikTok+Snapchat for 7 days = $210 ad budget", () => {
   const result = computeAdMinimum({
     platforms: ["meta", "tiktok", "snapchat"],
     days: 7,
     mode: "lifetime",
     ownerKind: "mingla",
-    metaFloorCents: 500, // $5/day LINK_CLICKS
+    metaFloorCents: 500, // a $5/day Meta floor
   });
-  // Meta $5×7 + TikTok $50×7 + Snap $20×7 = 35 + 350 + 140 = 525
-  assertEquals(result.min_budget_cents, 52500);
-  assertEquals(result.min_pay_cents, 52500);
+  // Meta $5×7 + TikTok $20×7 + Snap $5×7 = 35 + 140 + 35 = 210
+  assertEquals(result.min_budget_cents, 21000);
+  assertEquals(result.min_pay_cents, 21000);
 });
 
 Deno.test("D1: host pay adds 15% fee (ceil)", () => {
@@ -52,8 +53,9 @@ Deno.test("D1: host pay adds 15% fee (ceil)", () => {
 });
 
 Deno.test("D1 table matches contract floors", () => {
-  assertEquals(AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY.tiktok, 5000);
-  assertEquals(AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY.snapchat, 2000);
+  // [TEST-MOD #4238 D-1] per ad group / ad squad, approved by Seth.
+  assertEquals(AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY.tiktok, 2000);
+  assertEquals(AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY.snapchat, 500);
   assertEquals(AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY.reddit, 500);
   assertEquals(AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY.google, 0);
 });

@@ -278,17 +278,18 @@ describe("#3697 budget entry never deadlocks below the provider floor", () => {
     countries: ["NG"],
     allowlist: null,
     connections: {
-      meta: { currency: "USD", extra: { minimum_budgets: { high_freq: 500 } } },
+      meta: { currency: "USD", extra: { minimum_budgets: { imp: 500 } } },
     },
-    metaGoal: "LINK_CLICKS",
   };
 
+  // [TEST-MOD #4238 Fix 1] the Meta floor now follows the billing event
+  // (IMPRESSIONS ⇒ imp); the fixture's imp floor keeps $3 under it.
   it("the first keystroke ($3) is below Meta's floor but the currency stays resolved", () => {
     const floorRows = planChannels({ ...planInput, totalDailyCents: 300 });
     assert.equal(
       floorRows.find((row) => row.platform === "meta").eligible,
       false,
-      "precondition: $3/day is below Meta's $5 floor",
+      "precondition: $3/day is below the fixture's $5 imp floor",
     );
     const platforms = budgetCurrencyPlatforms({
       planInput: { ...planInput, totalDailyCents: 300 },

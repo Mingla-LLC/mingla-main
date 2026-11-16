@@ -1,4 +1,7 @@
-import { metaBudgetCategoryForGoal } from "./adChannelCore.ts";
+import { metaBudgetCategoryForBillingEvent } from "./adChannelCore.ts";
+import { type AdStage, stageBudgetShares } from "./adAudienceStages.ts";
+import { hostAdGoalFields } from "./adHostGoal.ts";
+import { AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY } from "./adMoney.ts";
 
 /**
  * #4238 — Host ad plan rules checked by ad-plan before any money moves.
@@ -85,9 +88,14 @@ export function reachCacheKey(input: unknown): string {
 }
 
 /**
- * #4238 P1: each app's daily minimum in the provider account's currency
- * (USD floors from adMoney; Meta from the connection's own floors). Null
- * when the account bills in a currency the floors are not written in.
+ * #4238 P1: each app's daily minimum for ONE ad set / ad group / ad squad, in
+ * the provider account's currency (USD floors from adMoney; Meta from the
+ * connection's own floors). Null when the account bills in a currency the
+ * floors are not written in.
+ *
+ * #4238 I-4238-META-FLOOR-FOLLOWS-BILLING: Meta's category comes from the
+ * billing event the Host goal really sends (hostAdGoalFields), the same rule
+ * admin-ad-create-campaign checks.
  */
 export function providerDailyMinimumCents(
   platform: string,
@@ -99,21 +107,88 @@ export function providerDailyMinimumCents(
   if (platform === "meta") {
     const floors = (connection.extra as Record<string, unknown> | null)
       ?.minimum_budgets as Record<string, unknown> | undefined;
-    // The same category the create path checks (metaBudgetCategoryForGoal).
-    const category = metaBudgetCategoryForGoal(
-      optimization === "sales" ? "OFFSITE_CONVERSIONS" : "LANDING_PAGE_VIEWS",
-    );
+    const billingEvent = hostAdGoalFields("meta", optimization)?.billing_event;
+    const category = metaBudgetCategoryForBillingEvent(billingEvent ?? "");
     const raw = floors?.[category];
     // Same fallback as perDayFloorCents until the connection floors load.
     return typeof raw === "number" && raw > 0 ? Math.ceil(raw) : 500;
   }
-  const table: Record<string, number> = {
-    tiktok: 5000,
-    snapchat: 2000,
-    reddit: 500,
-    google: 0,
-  };
-  return table[platform] ?? null;
+  if (platform in AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY) {
+    return AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY[
+      platform as keyof typeof AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY
+    ];
+  }
+  return null;
+}
+
+/** The apps whose event ads are built as staged ad sets at create. */
+export const HOST_STAGED_PLATFORMS: readonly string[] = [
+  "meta",
+  "tiktok",
+  "snapchat",
+];
+
+const STAGE_CONFIGURATIONS: readonly Record<AdStage, boolean>[] = (() => {
+  const out: Record<AdStage, boolean>[] = [];
+  for (const prospecting of [true, false]) {
+    for (const retarget of [true, false]) {
+      for (const abandoners of [true, false]) {
+        if (prospecting || retarget || abandoners) {
+          out.push({ prospecting, retarget, abandoners });
+        }
+      }
+    }
+  }
+  return out;
+})();
+
+function everyStageClears(totalCents: number, perStageCents: number): boolean {
+  for (const executable of STAGE_CONFIGURATIONS) {
+    const shares = stageBudgetShares(executable, executable, totalCents);
+    for (const stage of ["prospecting", "retarget", "abandoners"] as const) {
+      if (executable[stage] && shares[stage] < perStageCents) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * #4238 X-1 / SC-9: the smallest daily total from which EVERY total clears
+ * the per-stage floor on EVERY stage, for every stage set the create path can
+ * build (prospecting, retargeting and abandoners each on or folded away by
+ * audience size). The create gate (admin-ad-create-campaign
+ * stage_budget_below_platform_minimum) checks each 70/20/10 share against the
+ * floor, and which stages run is only known at create, so this is the worst
+ * case. The 10% stage gets at least a tenth of the total, so 10 × floor
+ * always clears; below that the rounding is checked total by total.
+ */
+export function stagedDailyMinimumCents(perStageCents: number): number {
+  if (!Number.isSafeInteger(perStageCents) || perStageCents <= 0) {
+    return perStageCents;
+  }
+  const ceiling = perStageCents * 10;
+  for (let total = ceiling; total >= perStageCents; total -= 1) {
+    if (!everyStageClears(total, perStageCents)) return total + 1;
+  }
+  return perStageCents;
+}
+
+/**
+ * #4238 X-1: the daily minimum a Host plan must clear on one app. An event
+ * page on Meta, TikTok or Snapchat becomes staged ad sets at create, so the
+ * minimum is the staged worst case; anything else is one ad set.
+ */
+export function hostDailyMinimumCents(
+  platform: string,
+  connection: { currency?: unknown; extra?: unknown },
+  optimization: "visits" | "sales",
+  options: { staged: boolean },
+): number | null {
+  const perAdSet = providerDailyMinimumCents(platform, connection, optimization);
+  if (perAdSet === null) return null;
+  return options.staged && HOST_STAGED_PLATFORMS.includes(platform)
+    ? stagedDailyMinimumCents(perAdSet)
+    : perAdSet;
 }
 
 /** The first allocation whose provider daily budget is under its app minimum. */

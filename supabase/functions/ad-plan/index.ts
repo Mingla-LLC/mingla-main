@@ -23,7 +23,7 @@ import {
   type CountryAvailabilityRow,
   countriesAppCannotRunIn,
   allocationBelowMinimum,
-  providerDailyMinimumCents,
+  hostDailyMinimumCents,
   reachCacheKey,
   reachMeter,
 } from "../_shared/adHostPlanRules.ts";
@@ -197,6 +197,9 @@ function targetingCityKey(city: Record<string, unknown>): string | null {
  * #4238 P1: each connected app's daily minimum converted to the brand's
  * currency with the active FX rate, rounded up. Visits and sales minimums
  * are both given; an app whose minimum can't be worked out is left out.
+ * #4238 X-1: the page is not chosen yet, so Meta, TikTok and Snapchat show
+ * the staged worst case (an event page becomes staged ad sets at create and
+ * every stage must clear the app's floor).
  */
 async function hostDailyMinimums(
   db: Db,
@@ -210,10 +213,11 @@ async function hostDailyMinimums(
   for (const connection of connections) {
     const row: Record<string, unknown> = { platform: connection.platform };
     for (const goal of ["visits", "sales"] as const) {
-      const provider = providerDailyMinimumCents(
+      const provider = hostDailyMinimumCents(
         connection.platform,
         connection as unknown as Record<string, unknown>,
         goal,
+        { staged: true },
       );
       if (provider === null) continue;
       if (connection.currency === hostCurrency) {
@@ -2444,6 +2448,9 @@ export async function handleAdPlan(
       }
       // #4238 I-4238-APP-MINIMUM-BEFORE-HOLD: every app's daily budget clears
       // its own minimum before any money is set aside.
+      const destinationIsStaged =
+        typeof resolvedDestination.event_id === "string" &&
+        resolvedDestination.event_id.trim() !== "";
       const { data: minimumConnections, error: minimumError } = await db
         .from("ad_connections").select("id,platform,currency,extra")
         .in("id", normalized.rows.map((row) => String(row.connection_id)));
@@ -2457,12 +2464,15 @@ export async function handleAdPlan(
           provider_delivery_budget_cents: Number(
             row.provider_delivery_budget_cents,
           ),
-          minimum_cents: providerDailyMinimumCents(
+          // #4238 X-1: an event page is staged at create, so each stage
+          // must clear the floor; the staged worst case is checked here.
+          minimum_cents: hostDailyMinimumCents(
             String(row.platform),
             connection,
             optimization.map[String(row.platform)] === "sales"
               ? "sales"
               : "visits",
+            { staged: destinationIsStaged },
           ),
         };
       }));

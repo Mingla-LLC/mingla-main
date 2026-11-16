@@ -402,11 +402,19 @@ export const META_PIXEL_GATED_GOALS: readonly string[] = [
   "VALUE",
 ];
 
-// ── Meta per-category budget floors (A4.g / M-9 / PROOF M-P8) ─────────────────
+// ── Meta per-category budget floors (A4.g / M-9 / #4238 Fix 1) ────────────────
 // The four categories returned by GET /act_{id}/minimum_budgets. NEVER hardcode
 // the values — they are fetched at connect and stored in ad_connections.extra
-// .minimum_budgets. This maps an optimization_goal to its floor CATEGORY
-// (LINK_CLICKS is high-frequency ⇒ $5/day floor, not $1 — PROOF M-P8).
+// .minimum_budgets. Meta sets the minimum from what the ad set is CHARGED for
+// (its billing_event), not from what it optimises for: an ad set billed on
+// IMPRESSIONS uses the `imp` floor ($1/day on our account) whatever its goal.
+//
+// @invariant I-4238-META-FLOOR-FOLLOWS-BILLING
+//   owner: supabase/functions/_shared/adChannelCore.ts metaBudgetCategoryForBillingEvent
+//   mirror: mingla-admin/src/lib/adBuilder/budgetRules.js metaBudgetCategoryForBillingEvent
+//   test: supabase/functions/_shared/__tests__/issue_4238_meta_billing_floor.test.ts
+//   rule: the Meta floor category is chosen from billing_event; an unknown or
+//         empty billing event falls to low_freq (never a cheaper floor).
 
 export type MetaBudgetCategory =
   | "imp"
@@ -414,29 +422,25 @@ export type MetaBudgetCategory =
   | "high_freq"
   | "low_freq";
 
-export function metaBudgetCategoryForGoal(goal: string): MetaBudgetCategory {
-  switch (goal) {
+export function metaBudgetCategoryForBillingEvent(
+  billingEvent: string,
+): MetaBudgetCategory {
+  switch (billingEvent) {
     case "IMPRESSIONS":
-    case "REACH":
-    case "AD_RECALL_LIFT":
       return "imp";
     case "THRUPLAY":
     case "VIDEO_VIEWS":
     case "TWO_SECOND_CONTINUOUS_VIDEO_VIEWS":
       return "video_views";
     case "LINK_CLICKS":
-    case "LANDING_PAGE_VIEWS":
-    case "POST_ENGAGEMENT":
+    case "CLICKS":
     case "PAGE_LIKES":
-    case "EVENT_RESPONSES":
-    case "PROFILE_VISIT":
-    case "VISIT_INSTAGRAM_PROFILE":
-    case "REMINDERS_SET":
+    case "POST_ENGAGEMENT":
+    case "LISTING_INTERACTION":
       return "high_freq";
     default:
-      // Conversion-class (low-frequency) events: OFFSITE_CONVERSIONS, VALUE,
-      // LEAD_GENERATION, QUALITY_LEAD, APP_INSTALLS, CONVERSATIONS,
-      // QUALITY_CALL, ... — the most conservative ($40) floor.
+      // APP_INSTALLS, OFFER_CLAIMS, PURCHASE, unknown, empty: the most
+      // conservative (low-frequency) floor, so a new event is never cheaper.
       return "low_freq";
   }
 }

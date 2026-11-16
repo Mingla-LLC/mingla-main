@@ -48,7 +48,7 @@ import {
   type ChannelAdapter,
   centsToPlatformBudget,
   createFullCampaignAtomic,
-  metaBudgetCategoryForGoal,
+  metaBudgetCategoryForBillingEvent,
   type MinglaOffering,
   REDDIT_CTA_MAP,
 } from "../adChannel.ts";
@@ -184,12 +184,13 @@ Deno.test("T-4: 2001-01-01 cutoff — just-before is no-signal, clearly-after is
 
 // ── T-5: floor-category conservatism ──────────────────────────────────────────
 
-Deno.test("T-5: unknown/garbage goals land on low_freq (the $40 floor) — never cheaper", () => {
-  for (const goal of ["", "NOT_A_GOAL", "link_clicks", "REACH ", "💥"]) {
+// [TEST-MOD #4238 Fix 1] the floor category follows the billing event.
+Deno.test("T-5: unknown/garbage billing events land on low_freq (the $40 floor) — never cheaper", () => {
+  for (const event of ["", "NOT_AN_EVENT", "impressions", "IMPRESSIONS ", "💥"]) {
     assertEquals(
-      metaBudgetCategoryForGoal(goal),
+      metaBudgetCategoryForBillingEvent(event),
       "low_freq",
-      `garbage goal "${goal}" must map to the MOST conservative floor`,
+      `garbage billing event "${event}" must map to the MOST conservative floor`,
     );
   }
 });

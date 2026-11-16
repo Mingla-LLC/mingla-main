@@ -8,29 +8,28 @@
  * cents-vs-micro money bug, blueprint §1.4 Discovery 3).
  */
 
-// ── Meta per-category floors (A4.0(4) / PROOF M-P8) ───────────────────────────
+// ── Meta per-category floors (A4.0(4) / #4238 Fix 1) ──────────────────────────
 // NEVER hardcoded: read from ad_connections.extra.minimum_budgets, fetched
-// live at connect (GET /act_{id}/minimum_budgets). This map mirrors the
-// server's metaBudgetCategoryForGoal (supabase/functions/_shared/adChannel.ts)
-// — LINK_CLICKS is HIGH-FREQUENCY (=$5/day floor live-probed), not $1.
-export function metaBudgetCategoryForGoal(goal) {
-  switch (goal) {
+// live at connect (GET /act_{id}/minimum_budgets). Meta sets the minimum from
+// what the ad set is CHARGED for (billing_event), not its optimisation goal.
+//
+// @invariant I-4238-META-FLOOR-FOLLOWS-BILLING (mirror)
+//   owner: supabase/functions/_shared/adChannelCore.ts metaBudgetCategoryForBillingEvent
+//   test: src/__tests__/issue864_campaign_builder_happy.test.js
+//   rule: same switch as the server; unknown or empty ⇒ low_freq.
+export function metaBudgetCategoryForBillingEvent(billingEvent) {
+  switch (billingEvent) {
     case "IMPRESSIONS":
-    case "REACH":
-    case "AD_RECALL_LIFT":
       return "imp";
     case "THRUPLAY":
     case "VIDEO_VIEWS":
     case "TWO_SECOND_CONTINUOUS_VIDEO_VIEWS":
       return "video_views";
     case "LINK_CLICKS":
-    case "LANDING_PAGE_VIEWS":
-    case "POST_ENGAGEMENT":
+    case "CLICKS":
     case "PAGE_LIKES":
-    case "EVENT_RESPONSES":
-    case "PROFILE_VISIT":
-    case "VISIT_INSTAGRAM_PROFILE":
-    case "REMINDERS_SET":
+    case "POST_ENGAGEMENT":
+    case "LISTING_INTERACTION":
       return "high_freq";
     default:
       return "low_freq";
@@ -38,36 +37,46 @@ export function metaBudgetCategoryForGoal(goal) {
 }
 
 /**
- * Meta's floor for the chosen goal, from the CONNECTION row (extra.
+ * The billing event every Admin Meta create sends (payload.js
+ * buildMetaPayload: billing_event "IMPRESSIONS").
+ */
+export const ADMIN_META_BILLING_EVENT = "IMPRESSIONS";
+
+/**
+ * Meta's floor for the billing event, from the CONNECTION row (extra.
  * minimum_budgets) — null when the connection hasn't stored floors yet
  * (the server then 424s create with "re-run admin-ad-connect").
  */
-export function metaFloorCents(connection, goal) {
+export function metaFloorCents(
+  connection,
+  billingEvent = ADMIN_META_BILLING_EVENT,
+) {
   const floors = connection?.extra?.minimum_budgets;
   if (!floors || typeof floors !== "object") return null;
-  const value = floors[metaBudgetCategoryForGoal(goal)];
+  const value = floors[metaBudgetCategoryForBillingEvent(billingEvent)];
   return typeof value === "number" ? value : null;
 }
 
 /**
- * Per-channel floor in cents (Ads Design Contract v1.3 D1 / #3709):
- *  - Meta: per-CATEGORY from the connection row (never hardcoded).
- *  - TikTok: $50/day campaign floor (one ad group per host campaign).
- *  - Snapchat: $20/day campaign floor (squad min $5; campaign binds).
+ * Per-channel floor in cents for ONE ad set at the level Mingla builds
+ * (#4238 D-1, approved by Seth; the server enforces the same):
+ *  - Meta: per-CATEGORY from the connection row, by billing event.
+ *  - TikTok: $20/day per ad group (the budget sits on the ad group).
+ *  - Snapchat: $5/day per ad squad (the budget sits on the ad squad).
  *  - Reddit: $5/day.
  *  - Google: $0 money floor (3-day total-budget rule is separate).
  */
 export function channelFloorCents(
   platform,
-  { connection = null, metaGoal = "LINK_CLICKS" } = {},
+  { connection = null, metaBillingEvent = ADMIN_META_BILLING_EVENT } = {},
 ) {
   switch (platform) {
     case "meta":
-      return metaFloorCents(connection, metaGoal);
+      return metaFloorCents(connection, metaBillingEvent);
     case "tiktok":
-      return 5000;
-    case "snapchat":
       return 2000;
+    case "snapchat":
+      return 500;
     case "google":
       return 0;
     case "reddit":
@@ -174,14 +183,15 @@ export function computeAdminMinimumCents({
   startsAt = null,
   endsAt = null,
   connection = null,
-  metaGoal = "LINK_CLICKS",
+  metaBillingEvent = ADMIN_META_BILLING_EVENT,
 } = {}) {
   const days =
     mode === "lifetime" ? (calendarDaysBetween(startsAt, endsAt) ?? 1) : 1;
   let total = 0;
   const breakdown = [];
   for (const platform of platforms) {
-    const perDay = channelFloorCents(platform, { connection, metaGoal }) ?? 0;
+    const perDay = channelFloorCents(platform, { connection, metaBillingEvent }) ??
+      0;
     const subtotal = perDay * days;
     breakdown.push({
       platform,

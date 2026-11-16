@@ -77,7 +77,7 @@ import {
   isPlatform,
   META_OBJECTIVE_GOAL_MATRIX,
   META_PIXEL_GATED_GOALS,
-  metaBudgetCategoryForGoal,
+  metaBudgetCategoryForBillingEvent,
   REDDIT_CTA_MAP,
   TIKTOK_CTA_MAP,
 } from "../_shared/adChannel.ts";
@@ -6087,7 +6087,9 @@ serve(async (req: Request): Promise<Response> => {
     | Record<string, number>
     | null
     | undefined;
-  const category = metaBudgetCategoryForGoal(optimizationGoal);
+  // #4238 I-4238-META-FLOOR-FOLLOWS-BILLING: Meta's minimum follows what the
+  // ad set is charged for (billing_event), not its optimisation goal.
+  const category = metaBudgetCategoryForBillingEvent(billingEvent);
   if (!floors || typeof floors[category] !== "number") {
     return json({
       error: `${platform}_not_connected`,
@@ -6107,11 +6109,12 @@ serve(async (req: Request): Promise<Response> => {
         ? "budget_below_platform_minimum"
         : "budget_below_minimum",
       detail: budgetType === "lifetime"
-        ? `Lifetime provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢/day × ${schedule.days} days (= ${minCents}¢) for ${optimizationGoal}.`
-        : `Daily provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢ for ${optimizationGoal} (per-category minimum_budgets — PROOF M-P8).`,
+        ? `Lifetime provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢/day × ${schedule.days} days (= ${minCents}¢) for billing event ${billingEvent}.`
+        : `Daily provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢ for billing event ${billingEvent} (per-category minimum_budgets).`,
       floor_cents: floorCents,
       min_budget_cents: minCents,
       category,
+      billing_event: billingEvent,
       days: schedule.days,
     }, 422);
   }
