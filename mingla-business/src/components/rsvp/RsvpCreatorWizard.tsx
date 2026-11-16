@@ -159,7 +159,7 @@ const TOTAL_STEPS = STEP_DEFS.length;
 const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
   { label: "Hub", icon: "calendar", href: "/(tabs)/hub/events", active: true },
-  { label: "Ari", icon: "sparkle", href: "/(tabs)/ari", active: false },
+  { label: "Ari", icon: "ari", href: "/(tabs)/ari", active: false },
   { label: "Blast", icon: "send", href: "/(tabs)/marketing", active: false },
 ] as const;
 

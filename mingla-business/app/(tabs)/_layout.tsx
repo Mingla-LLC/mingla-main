@@ -74,7 +74,7 @@ const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
   { id: "hub", icon: "calendar", label: "Hub" },
   { id: "create", icon: "plus", label: "Create" },
-  { id: "ari", icon: "sparkle", label: "Ari" },
+  { id: "ari", icon: "ari", label: "Ari" },
   { id: "marketing", icon: "send", label: "Blast" },
 ];
 

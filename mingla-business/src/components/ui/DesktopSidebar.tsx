@@ -43,7 +43,7 @@ export interface SidebarTab {
 export const SIDEBAR_SOURCE_TABS: readonly SidebarTab[] = [
   { id: "home", icon: "home", label: "Home" },
   { id: "hub", icon: "calendar", label: "Hub" },
-  { id: "ari", icon: "sparkle", label: "Ari" },
+  { id: "ari", icon: "ari", label: "Ari" },
   { id: "marketing", icon: "send", label: "Blast" },
 ];
 

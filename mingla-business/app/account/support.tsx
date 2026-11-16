@@ -48,7 +48,7 @@ import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 const APP_TABS: { id: string; icon: IconName; label: string }[] = [
   { id: "home", icon: "home", label: "Home" },
   { id: "hub", icon: "calendar", label: "Hub" },
-  { id: "ari", icon: "sparkle", label: "Ari" },
+  { id: "ari", icon: "ari", label: "Ari" },
   // #4420 — the collapsed rail has no Blast item; Blast maps to Campaigns.
   { id: "marketing/campaigns", icon: "send", label: "Campaigns" },
 ];

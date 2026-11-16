@@ -13,8 +13,11 @@ import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import { color as dsColor, brandMarks } from "../../constants/designSystem";
+import { HomeAriOrb } from "../home/HomeAriOrb";
 
 export type IconName =
+  // #4420 (c_6876753693 item 4): Ari is drawn as the Ari orb, never a glyph.
+  | "ari"
   | "home"
   | "calendar"
   | "chat"
@@ -121,6 +124,8 @@ export interface IconProps {
 type Renderer = (color: string) => React.ReactNode;
 
 const RENDERERS: Record<IconName, Renderer> = {
+  // Never drawn as SVG: Icon returns the still Ari orb for "ari" (below).
+  ari: () => null,
   home: () => <Path d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2v-9z" />,
   calendar: () => (
     <>
@@ -473,6 +478,12 @@ export const Icon: React.FC<IconProps> = ({
   testID,
   style,
 }) => {
+  // #4420 (c_6876753693 item 4): Ari's icon is the Ari orb everywhere. The
+  // orb is Ari's identity art, so it stays orange whatever `color` asks for;
+  // callers show active state with the label colour and the pill.
+  if (name === "ari") {
+    return <HomeAriOrb size={size} still testID={testID} style={style} />;
+  }
   const resolvedColor = color ?? dsColor.text1;
   const renderer = RENDERERS[name];
 
