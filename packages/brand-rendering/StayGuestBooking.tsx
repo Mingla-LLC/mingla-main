@@ -46,6 +46,7 @@ import {
 import { StayDateRangeField } from "./StayDateRangeField";
 // issue #4420 — the quick-pick check-in / check-out strip above the field.
 import { StayDateStrip } from "./StayDateStrip";
+import { GlassTabs } from "./GlassTabs";
 import {
   stayDateBounds,
   stayDateErrorMessage,
@@ -58,7 +59,7 @@ import {
   useBrandRenderingState as useState,
   type BrandRenderingReactElement,
 } from "./PublicVenueTabs";
-import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentEdgeOnFill, accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
@@ -551,42 +552,21 @@ export function StayGuestBooking({
             the control that caused it — one message, not two. */}
       </View>
 
-      <View style={styles.tabs} accessibilityRole="tablist">
-        {(["room", "place"] as const).map((kind) => {
-          const selected = kind === activeKind;
-          const label = kind === "room" ? "Rooms" : "Places";
-          return (
-            <Pressable
-              key={kind}
-              accessibilityRole="tab"
-              accessibilityLabel={label}
-              accessibilityState={{ selected }}
-              onPress={() => setActiveKind(kind)}
-              style={[
-                styles.tab,
-                surface.card,
-                selected && {
-                  ...accentFillWithBorder(palette),
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  {
-                    color: selected
-                      ? palette.accentText
-                      : palette.secondaryText,
-                    fontFamily: theme.fontFamilyValue,
-                  },
-                ]}
-              >
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* issue #4420 wave 2 (§3.1.6) — Rooms / Places is the shared glass
+          pill at the small size; the chosen kind is ink. */}
+      <GlassTabs
+        items={[
+          { key: "room" as const, label: "Rooms" },
+          { key: "place" as const, label: "Places" },
+        ]}
+        activeKey={activeKind}
+        onSelect={setActiveKind}
+        palette={palette}
+        theme={theme}
+        size="sm"
+        listLabel="Rooms and Places"
+        style={styles.kindTabs}
+      />
 
       {activeKind === "room" && priceControl !== null ? (
         <RoomPriceFilter
@@ -1225,15 +1205,7 @@ const styles = StyleSheet.create({
   },
   counterButtonText: { fontSize: 22, fontWeight: "700" },
   counterValue: { minWidth: 24, textAlign: "center", fontWeight: "800" },
-  tabs: { flexDirection: "row", gap: 8 },
-  tab: {
-    minHeight: 44,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-  },
-  tabText: { fontSize: 13, fontWeight: "800" },
+  kindTabs: { alignSelf: "flex-start" },
   // Issue #1563 — the price control. 44pt minimum on every tappable thing
   // (WCAG AA target size), which is why the band chips carry a minHeight rather
   // than relying on padding alone.

@@ -37,7 +37,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -130,6 +129,7 @@ import {
 } from "@mingla/offering-rendering/OfferingGlassBar";
 import { OfferingFactRows } from "@mingla/offering-rendering/OfferingFactRows";
 import { BrandOfferingCard } from "./BrandOfferingCard";
+import { GlassTabs, type GlassTabNode } from "./GlassTabs";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 // #3426 — "past" is the date-decided Past tab (all four kinds). Happening now is
@@ -860,7 +860,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       tabs={visibleTabs}
       activeTab={activeTab}
       palette={palette}
-      surface={surface}
       theme={resolvedTheme}
       isDesktop={isDesktop}
       countForTab={countForTab}
@@ -1291,7 +1290,6 @@ interface TabBarProps {
   tabs: Tab[];
   activeTab: Tab;
   palette: ThemePalette;
-  surface: Surface;
   theme: ResolvedTheme;
   isDesktop: boolean;
   countForTab: (tab: Tab) => number | undefined;
@@ -1303,26 +1301,13 @@ const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTab,
   palette,
-  surface,
   theme,
   isDesktop,
   countForTab,
   onSelect,
   focusRequest,
 }: TabBarProps) => {
-  const scrollRef = React.useRef<ScrollView>(null);
-  const offsets = React.useRef<Record<string, number>>({});
-  const showEdgeFade = Platform.OS === "web" && !isDesktop;
-  const tabRefs = React.useRef<
-    Partial<Record<Tab, React.ElementRef<typeof Pressable> | null>>
-  >({});
-
-  useEffect(() => {
-    const x = offsets.current[activeTab];
-    if (typeof x === "number" && scrollRef.current !== null) {
-      scrollRef.current.scrollTo({ x: Math.max(0, x - 16), animated: true });
-    }
-  }, [activeTab]);
+  const tabRefs = React.useRef<Partial<Record<Tab, GlassTabNode | null>>>({});
   useEffect(() => {
     if (focusRequest === null || focusRequest === undefined) return;
     const node = tabRefs.current[focusRequest.tab] as unknown as {
@@ -1331,68 +1316,27 @@ const TabBar: React.FC<TabBarProps> = ({
     node?.focus?.();
   }, [focusRequest]);
 
+  // issue #4420 wave 2 (§1.1.7) — the shared glass pill, sticky under the
+  // header on web (desktop top 76); the chosen tab is ink.
   return (
-    <View style={styles.tabBarWrap}>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabsRowContent}
-      >
-        {tabs.map((tab) => {
-          const count = countForTab(tab);
-          const active = activeTab === tab;
-          return (
-            <Pressable
-              ref={(node) => {
-                tabRefs.current[tab] = node;
-              }}
-              key={tab}
-              onLayout={(e: LayoutChangeEvent) => {
-                offsets.current[tab] = e.nativeEvent.layout.x;
-              }}
-              onPress={() => onSelect(tab)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={tabLabel[tab]}
-              style={[
-                styles.tabChip,
-                surface.card,
-                // issue #4420 wave 2 — the selected tab is ink (the page's
-                // text colour) with page-coloured text; the gradient is the
-                // primary button's alone.
-                active && {
-                  backgroundColor: palette.primaryText,
-                  borderColor: palette.primaryText,
-                },
-              ]}
-              testID={`issue-4420-brand-tab-${tab}`}
-            >
-              <Text
-                style={[
-                  styles.tabLabel,
-                  themeBoldFace(theme),
-                  {
-                    color: active ? palette.page : palette.secondaryText,
-                  },
-                ]}
-              >
-                {tabLabel[tab]}
-                {count !== undefined ? (
-                  <Text style={styles.tabCount}> {count}</Text>
-                ) : null}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      {showEdgeFade ? (
-        <View
-          style={[styles.tabEdgeFade, { backgroundColor: palette.page }]}
-          pointerEvents="none"
-        />
-      ) : null}
-    </View>
+    <GlassTabs
+      items={tabs.map((tab: Tab) => ({
+        key: tab,
+        label: tabLabel[tab],
+        count: countForTab(tab),
+        testID: `issue-4420-brand-tab-${tab}`,
+      }))}
+      activeKey={activeTab}
+      onSelect={onSelect}
+      palette={palette}
+      theme={theme}
+      stickyTop={isDesktop ? 76 : 60}
+      listLabel="Brand sections"
+      style={styles.tabBarWrap}
+      tabRef={(tab: Tab, node: GlassTabNode | null) => {
+        tabRefs.current[tab] = node;
+      }}
+    />
   );
 };
 
@@ -2434,38 +2378,7 @@ const styles = StyleSheet.create({
   },
   // ---- tab bar ----
   tabBarWrap: {
-    position: "relative",
     marginTop: 22,
-  },
-  tabsRowContent: {
-    flexDirection: "row",
-    gap: 6,
-    paddingVertical: 2,
-    paddingRight: 6,
-  },
-  tabChip: {
-    flexGrow: 0,
-    flexShrink: 0,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    overflow: "hidden",
-  },
-  tabLabel: {
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  tabCount: {
-    fontWeight: "700",
-    opacity: 0.7,
-  },
-  tabEdgeFade: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    width: 28,
-    height: "100%",
-    opacity: 0.85,
   },
   // ---- panes ----
   paneWrap: {

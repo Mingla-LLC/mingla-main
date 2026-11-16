@@ -12,11 +12,15 @@ describe("issue #1380 accessibility and clean-install rework", () => {
   test("web tabs expose standards-based selected state without replacing native accessibility state", () => {
     const tabs = readRepo("packages/brand-rendering/PublicVenueTabs.tsx");
 
+    // #4420 wave 2 — the strip is the shared GlassTabs: the venue page hands
+    // its web aria props through `tabProps`; GlassTabs keeps the native
+    // selected state on every tab.
+    const glass = readRepo("packages/brand-rendering/GlassTabs.tsx");
     expect(tabs).toContain('Platform.OS === "web"');
-    expect(tabs).toContain('"aria-selected"?: boolean;');
     expect(tabs).toContain('"aria-selected": active,');
-    expect(tabs).toContain("accessibilityState={{ selected: active }}");
-    expect(tabs).toContain("{...webTabProps}");
+    expect(tabs).toContain("tabProps={webTabPropsFor}");
+    expect(glass).toContain("accessibilityState={{ selected: active }}");
+    expect(glass).toContain("{...(tabProps?.(item.key, index, active) ?? {})}");
   });
 
   test("focus returns only after the maximum Sheet unmount window and next frame", () => {
