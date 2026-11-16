@@ -21,9 +21,7 @@ jest.mock("../../../../services/supabase", () => ({ supabase: { functions: { inv
 // eslint-disable-next-line import/first
 import { HostAdCtaPicker, HostAdPreview, HostAdTextCounters, HostAdUtmTags } from "../HostAdCreativeExtras";
 // eslint-disable-next-line import/first
-import { HostAdBudgetPanel } from "../HostAdBudgetPanel";
 // eslint-disable-next-line import/first
-import { hostAdSplitWithMinimums } from "../hostAdBudget";
 // eslint-disable-next-line import/first
 import { hostAdCopyError, hostAdTextCounts, hostAdUtmLines, hostAdUtmSlug } from "../hostAdCreativeRules";
 // eslint-disable-next-line import/first
@@ -112,27 +110,5 @@ describe("#4238 wave C — button and preview", () => {
     await act(() => press(r, "host-ad-preview-app-snapchat"));
     // Snapchat's own "Learn more" button reads "More".
     expect(textOf(r.root.findAll((n) => n.props.testID === "host-ad-preview-button")[0])).toBe("More");
-  });
-});
-
-describe("#4238 wave C — budget panel", () => {
-  it("shows each app's minimum, the recommended amount and how spending works", async () => {
-    const split = hostAdSplitWithMinimums(90_000_00, ["meta", "tiktok"], { meta: 2_000_00, tiktok: 78_000_00 });
-    const onUse = jest.fn();
-    let r!: Renderer;
-    await act(() => {
-      r = create(
-        <HostAdBudgetPanel mode="total" onMode={jest.fn()} currency="NGN" days={34} split={split} dailyTotalCents={90_000_00} onUseRecommended={onUse} />,
-      );
-    });
-    const text = allText(r);
-    expect(text).toContain("About NGN 90,000.00 a day for 34 days.");
-    // NGN 80,000 of minimums, then NGN 10,000 shared evenly.
-    expect(text).toContain("TikTok: NGN 83,000.00 a day · needs at least NGN 78,000.00");
-    await act(() => press(r, "host-ad-budget-recommended"));
-    expect(onUse).toHaveBeenCalledWith(130_000_00);
-    await act(() => press(r, "host-ad-budget-explain"));
-    expect(allText(r)).toContain("Each app gets its minimum first");
-    expect(hostAdCopyIsPlain(allText(r))).toBe(true);
   });
 });

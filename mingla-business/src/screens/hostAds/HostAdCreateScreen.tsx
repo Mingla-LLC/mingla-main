@@ -68,7 +68,7 @@ import {
   hostAdBuilderStepId,
   hostAdCreativeProblem,
   hostAdCreditFromPay,
-  hostAdHoldPayCents,
+  hostAdPlanBudget,
   hostAdLaunchBlocker,
   hostAdMinimumCreditCents,
   hostAdMinimumPayCents,
@@ -1137,9 +1137,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const runDays =
     endDate !== "" ? hostAdDaysInRun(startDate || today, endDate) : null;
   const venueLike = !scheduleLimit;
-  const holdPayCents = hostAdHoldPayCents(dailyPayCents, runDays);
-  const dailyCreditCents = hostAdCreditFromPay(dailyPayCents);
-  const capCreditCents = dailyCreditCents * Math.max(1, runDays ?? 1);
+  const { holdPayCents, dailyCreditCents, capCreditCents } = hostAdPlanBudget({
+    dailyPayCents,
+    runDays,
+  });
   const appMinimums = useMemo(
     () =>
       Object.fromEntries(planApps.map((platform) => [platform, minimumCredit(platform) ?? undefined])) as Record<

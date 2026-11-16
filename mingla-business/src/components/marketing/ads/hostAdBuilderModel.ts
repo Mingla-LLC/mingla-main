@@ -114,6 +114,26 @@ export function hostAdHoldPayCents(dailyPayCents: number, days: number | null): 
   return dailyPayCents * Math.max(1, days ?? 1);
 }
 
+/**
+ * The budget the plan sends, from what the Host picked (pay terms): the
+ * daily credit the apps spend and the credit cap for the run, plus the hold
+ * in pay terms the Host is shown. The ONE place the builder turns pay into
+ * credit (W1 handoff: never send a pay figure as host_delivery_budget_cents).
+ */
+export function hostAdPlanBudget(input: { dailyPayCents: number; runDays: number | null }): {
+  dailyCreditCents: number;
+  capCreditCents: number;
+  holdPayCents: number;
+} {
+  const days = Math.max(1, input.runDays ?? 1);
+  const dailyCreditCents = hostAdCreditFromPay(input.dailyPayCents);
+  return {
+    dailyCreditCents,
+    capCreditCents: dailyCreditCents * days,
+    holdPayCents: hostAdHoldPayCents(input.dailyPayCents, input.runDays),
+  };
+}
+
 /** A slider step that keeps the number round in any currency. */
 export function hostAdSliderStep(maxCents: number): number {
   const raw = Math.max(100, maxCents / 200);

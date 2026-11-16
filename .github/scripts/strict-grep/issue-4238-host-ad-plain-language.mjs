@@ -58,7 +58,12 @@ const HOST_AD_FILES = [
   "src/components/marketing/ads/HostAdInterestsEditor.tsx",
   "src/components/marketing/ads/hostAdTargeting.ts",
   "src/components/marketing/ads/HostAdReachMeter.tsx",
-  "src/components/marketing/ads/HostAdBudgetPanel.tsx",
+  // #4238 W6a: the v9 builder's own parts (the budget panel is gone, U-2).
+  "src/components/marketing/ads/HostAdBuilderBits.tsx",
+  "src/components/marketing/ads/HostAdTopUpSheet.tsx",
+  "src/components/marketing/ads/HostAdWordsSheet.tsx",
+  "src/components/marketing/ads/hostAdBuilderModel.ts",
+  "src/components/marketing/ads/hostAdBuilderCopy.ts",
   "src/components/marketing/ads/HostAdCreativeExtras.tsx",
   "src/components/marketing/ads/hostAdBudget.ts",
   "src/components/marketing/ads/hostAdCreativeRules.ts",
