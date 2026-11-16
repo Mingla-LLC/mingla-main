@@ -515,7 +515,8 @@ export function phase3dContractDigest(manifest) {
 // #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
 // #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
 // #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "886f66ec6dfeeb55216a5905d74920192e297e77fd336fb430395dfedbaae00d";
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a8e6752972d1566aee8f5328598f81acb9fc38a7848a80cd42af2c21117d4e48";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
