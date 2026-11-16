@@ -1,4 +1,4 @@
--- Issue #4452 (follow-up B21, B22, B25) — Forms automations fixes found in
+-- Issue #4452 (follow-up B21, B22, B25, B26) — Forms automations fixes found in
 -- production on a QA form.
 --
 -- B21 (P0): forms_validate_flow walked the whole flow with `strict $.**` and
@@ -18,6 +18,13 @@
 -- B25 (P3): forms_tool_followup_enroll marks its form_submissions row is_test
 -- when inbound_lead_is_test(email, tool run name) is true, the rule the tool's
 -- own lead event uses, so the form lead event is a test too.
+--
+-- B26 (P3): forms_submit_core marks a public submission is_test when
+-- inbound_lead_is_test(email, name) is true. The row and its lead event are
+-- tests (out of Forms KPIs, Results and Submissions); no pipeline card, no
+-- 24 h dedupe; the automation run still starts, so staff can test a live
+-- form end to end (waits shrink to one minute, subjects start with "[Test]").
+-- A caller's explicit is_test keeps its old meaning (no routing, no run).
 --
 -- Signatures, LANGUAGE, volatility, SECURITY DEFINER / INVOKER, search_path
 -- and grants are unchanged (grants restated below exactly as first issued).
@@ -218,11 +225,138 @@ BEGIN
 END;
 $fn$;
 
+CREATE OR REPLACE FUNCTION public.forms_submit_core(p jsonb) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_key   uuid := (p->>'idempotency_key')::uuid;
+  v_form  public.forms;
+  v_ver   public.form_versions;
+  v_email text := lower(btrim(COALESCE(p->>'email', '')));
+  v_prev  public.form_submissions;
+  v_sub   uuid;
+  v_consent boolean := COALESCE(p->'consent' = 'true'::jsonb, false);
+  -- #4452 B26: v_test is stored on the row (a caller's flag, or inbound_lead_is_test once the
+  -- name is known); v_caller_test alone keeps its old meaning (no routing, no run).
+  v_caller_test boolean := COALESCE(p->'is_test' = 'true'::jsonb, false);
+  v_test  boolean := COALESCE(p->'is_test' = 'true'::jsonb, false);
+  v_check jsonb;
+  v_route jsonb := NULL;
+  v_run   uuid := NULL;
+  v_existing uuid;
+BEGIN
+  -- Step 5: idempotency (the column and the side table). #4452 rework 1 (P2-9):
+  -- concurrent retries with one key serialise on a per-key lock first, so the
+  -- second sees the first's committed row and replays it (no unique violation,
+  -- no double-counted resubmit).
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('forms_submit_key:' || v_key::text, 0));
+  SELECT id INTO v_existing FROM public.form_submissions WHERE idempotency_key = v_key;
+  IF NOT FOUND THEN
+    SELECT submission_id INTO v_existing FROM public.form_submission_keys WHERE idempotency_key = v_key;
+  END IF;
+  IF v_existing IS NOT NULL THEN
+    SELECT * INTO v_prev FROM public.form_submissions WHERE id = v_existing;
+    RETURN jsonb_build_object('replay', true, 'submission_id', v_prev.id, 'lead_event_id', v_prev.lead_event_id,
+                              'deduped', v_prev.idempotency_key <> v_key, 'lead_label', v_prev.lead_label);
+  END IF;
+
+  SELECT * INTO v_form FROM public.forms WHERE id = (p->>'form_id')::uuid;
+  IF NOT FOUND OR v_form.status <> 'live' THEN RAISE EXCEPTION 'form_closed' USING ERRCODE = '22023'; END IF;
+  SELECT * INTO v_ver FROM public.form_versions WHERE id = v_form.live_version_id;
+  v_check := public.forms_validate_answers(v_ver.definition, p->'answers',
+               COALESCE((p->>'today')::date, (now() AT TIME ZONE 'UTC')::date));
+  IF NOT (v_check->>'ok')::boolean THEN
+    RAISE EXCEPTION 'validation' USING ERRCODE = '22023', DETAIL = (v_check->'errors')::text;
+  END IF;
+  IF v_email <> COALESCE(v_check->>'email', '') THEN RAISE EXCEPTION 'validation' USING ERRCODE = '22023'; END IF;
+  v_consent := (v_check->>'consent')::boolean;
+  -- #4452 B26: a test or internal email or name (the one rule every lead source uses) is a test
+  -- submission: it never counts in Forms KPIs, Results or Submissions, its lead event is a test,
+  -- it gets no pipeline card and no 24 h dedupe, and its run still starts so staff can test the
+  -- live flow end to end (waits shrink to one minute, subjects start with "[Test]").
+  v_test := v_caller_test OR COALESCE(public.inbound_lead_is_test(v_email, v_check->>'name'), false);
+
+  -- Step 9: one row per form, email and 24 h.
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('forms_submit:' || v_form.id || ':' || v_email, 0));
+  SELECT * INTO v_prev FROM public.form_submissions
+   WHERE form_id = v_form.id AND email = v_email AND created_at > now() - interval '24 hours' AND NOT is_test
+   ORDER BY created_at DESC LIMIT 1;
+  IF FOUND AND NOT v_test THEN
+    -- The key claims this resubmit exactly once (the conflict target is the key).
+    INSERT INTO public.form_submission_keys (idempotency_key, submission_id) VALUES (v_key, v_prev.id)
+    ON CONFLICT (idempotency_key) DO NOTHING;
+    IF NOT FOUND THEN
+      RETURN jsonb_build_object('replay', true, 'submission_id', v_prev.id, 'lead_event_id', v_prev.lead_event_id,
+                                'deduped', true, 'lead_label', v_prev.lead_label);
+    END IF;
+    UPDATE public.form_submissions SET
+      answers = v_check->'values',
+      name = COALESCE(v_check->>'name', name),
+      phone_e164 = COALESCE(v_check->>'phone_e164', phone_e164),
+      phone_country = COALESCE(v_check->>'phone_country', phone_country),
+      -- consent only goes false -> true
+      marketing_consent = marketing_consent OR v_consent,
+      consent_text = CASE WHEN marketing_consent THEN consent_text WHEN v_consent THEN left(p->>'consent_text', 300) ELSE consent_text END,
+      consent_at = CASE WHEN marketing_consent THEN consent_at WHEN v_consent THEN now() ELSE consent_at END,
+      utm_source = COALESCE(left(p->'utm'->>'source', 100), utm_source),
+      utm_medium = COALESCE(left(p->'utm'->>'medium', 100), utm_medium),
+      utm_campaign = COALESCE(left(p->'utm'->>'campaign', 150), utm_campaign),
+      utm_content = COALESCE(left(p->'utm'->>'content', 150), utm_content),
+      utm_term = COALESCE(left(p->'utm'->>'term', 150), utm_term),
+      utm_id = COALESCE(left(p->'utm'->>'id', 100), utm_id),
+      resubmit_count = resubmit_count + 1,
+      last_resubmitted_at = now(),
+      updated_at = now()
+     WHERE id = v_prev.id;
+    IF v_prev.crm_record_id IS NOT NULL THEN
+      INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body, occurred_at, created_at)
+      VALUES (v_prev.crm_record_id, 'note', 'forms@usemingla.com', left('form-' || v_form.key, 40),
+              left(format('Sent the form again: %s (%s)', v_form.name, COALESCE(p->>'page_path', '/')), 4000), now(), now());
+    END IF;
+    RETURN jsonb_build_object('replay', false, 'deduped', true, 'submission_id', v_prev.id,
+                              'lead_event_id', v_prev.lead_event_id, 'lead_label', v_prev.lead_label);
+  END IF;
+
+  INSERT INTO public.form_submissions (
+    form_id, form_version_id, lead_label, idempotency_key, email, name, phone_e164, phone_country, answers,
+    time_zone, page_path, placement, spot_key, block_id, utm_source, utm_medium, utm_campaign, utm_content,
+    utm_term, utm_id, click_source, referrer_host, ads_allowed, marketing_consent, consent_text, consent_at, is_test)
+  VALUES (
+    v_form.id, v_ver.id, v_form.audience, v_key, v_email, v_check->>'name', v_check->>'phone_e164',
+    v_check->>'phone_country', v_check->'values', left(p->>'time_zone', 64), left(COALESCE(p->>'page_path', '/'), 300),
+    p->>'placement', NULLIF(p->>'spot_key', ''), NULLIF(p->>'block_id', '')::uuid,
+    left(p->'utm'->>'source', 100), left(p->'utm'->>'medium', 100), left(p->'utm'->>'campaign', 150),
+    left(p->'utm'->>'content', 150), left(p->'utm'->>'term', 150), left(p->'utm'->>'id', 100),
+    p->>'click_source', left(p->>'referrer_host', 253), COALESCE(p->'ads_allowed' = 'true'::jsonb, false),
+    v_consent, CASE WHEN v_consent THEN left(COALESCE(p->>'consent_text', ''), 300) END,
+    CASE WHEN v_consent THEN now() END, v_test)
+  RETURNING id INTO v_sub;
+
+  IF NOT v_test AND p->>'placement' IS DISTINCT FROM 'book_call_details' THEN
+    v_route := public.forms_route_submission(v_sub);
+  ELSE
+    v_route := jsonb_build_object('routing_status', 'lead_only');
+  END IF;
+  -- Step 13: start the automation run (M3) for a live, enabled automation.
+  IF to_regprocedure('public.forms_start_run(uuid,text,text)') IS NOT NULL
+     AND p->>'placement' IS DISTINCT FROM 'book_call_details' AND NOT v_caller_test THEN
+    v_run := public.forms_start_run(v_sub, p->>'time_zone', COALESCE(p->>'time_zone_source', 'fallback_utc'));
+  END IF;
+  RETURN jsonb_build_object('replay', false, 'deduped', false, 'submission_id', v_sub, 'lead_event_id', NULL,
+                            'lead_label', v_form.audience, 'routing_status', v_route->>'routing_status',
+                            'run_id', v_run, 'goal', COALESCE(v_ver.definition->'ads'->>'goal', 'none'),
+                            'lead_on', COALESCE(v_ver.definition->'ads'->'lead_on' = 'true'::jsonb, false),
+                            'form_key', v_form.key);
+END;
+$fn$;
+
 REVOKE ALL ON FUNCTION public.forms_validate_flow(jsonb, jsonb, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.forms_validate_flow(jsonb, jsonb, boolean) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION public.admin_form_publish(uuid, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_form_publish(uuid, integer) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION public.forms_tool_followup_enroll(text, uuid, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.forms_tool_followup_enroll(text, uuid, text, text) TO service_role;
+REVOKE ALL ON FUNCTION public.forms_submit_core(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.forms_submit_core(jsonb) TO service_role;
 
 COMMIT;

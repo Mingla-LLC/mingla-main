@@ -13,9 +13,14 @@
 -- FV-5 B25  a tool follow-up enrolment for an internal email, or a tool run with a test name, is an
 --           is_test submission and its form lead event is is_test; a real person's is not.
 --
+-- FV-6 B26  a public submission (forms_submit_core) from an internal email, or with a test name, is an
+--           is_test submission with an is_test lead event, gets no card, is never deduped, and still starts
+--           its run (the welcome is due now); a real person's is real.
+--
 -- FAILS-ON-REVERT: restoring the `strict $.**` step walk fails FV-1 and FV-2 (bad_step:<block id>); dropping
 -- `IS NOT TRUE` fails FV-3 (the email with no `to` slips through); restoring `IF v_f.tested_at IS NULL` alone
--- fails FV-4; dropping is_test from forms_tool_followup_enroll fails FV-5.
+-- fails FV-4; dropping is_test from forms_tool_followup_enroll fails FV-5; dropping the
+-- inbound_lead_is_test line from forms_submit_core fails FV-6.
 
 CREATE OR REPLACE FUNCTION pg_temp.v_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $a$
@@ -173,6 +178,73 @@ BEGIN
   PERFORM pg_temp.v_assert((SELECT NOT bool_or(e.is_test) FROM public.lead_events e
                              WHERE e.source_table = 'form_submissions' AND e.source_id = v_sub.id),
     'FV-5 and its form lead event is real');
+END
+$t$;
+ROLLBACK;
+
+-- ═══ FV-6 ════════════════════════════════════════════════════════════════════
+BEGIN;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $t$
+DECLARE
+  v_web constant uuid := '44520000-0000-4000-e000-0000000000f6';
+  v_form uuid; v jsonb; v_sub public.form_submissions; v_r jsonb; v_r2 jsonb;
+BEGIN
+  INSERT INTO auth.users(id, email, email_confirmed_at) VALUES (v_web, 'fv6-4452-web@mingla-fixture.org', now());
+  INSERT INTO public.admin_team_members(email, role, status, accepted_at) VALUES ('fv6-4452-web@mingla-fixture.org', 'website', 'active', now());
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.v_as(v_web);
+  v_form := (public.admin_form_create('QA public test submit', 'creator', 'creators')->>'id')::uuid;
+  PERFORM public.admin_form_mark_tested(v_form);
+  PERFORM public.admin_form_publish(v_form, 1);
+  PERFORM public.admin_automation_save_draft(v_form, 0,
+    '{"v":1,"steps":[{"id":"e1","type":"email","name":"Welcome","to":"person","from":"creators","reply_to":"team","subject":"Thanks","doc":[{"id":"e1b","type":"rich_text","html":"<p>Thanks.</p>"}],"show_answers":false}]}', '{}');
+  PERFORM public.admin_automation_publish(v_form, 1);
+  PERFORM public.admin_automation_set_enabled(v_form, true);
+  RESET ROLE;
+
+  SET LOCAL ROLE service_role;
+  v_r := public.forms_submit_core(jsonb_build_object('idempotency_key', gen_random_uuid(), 'form_id', v_form, 'email', 'seth+qa4452@usemingla.com',
+    'answers', jsonb_build_object('name', 'Seth QA', 'email', 'seth+qa4452@usemingla.com', 'consent', true,
+       'phone', jsonb_build_object('country','NG','dial','+234','number','801 234 5678'), 'what_do_you_make', 'Video',
+       'your_main_social', jsonb_build_object('platform','instagram','value','@qa'), 'city', jsonb_build_object('label','Lagos')),
+    'consent_text', 'Send me creator tips', 'time_zone', 'Africa/Lagos', 'page_path', '/creators', 'placement', 'inline', 'ads_allowed', true));
+  v_r2 := public.forms_submit_core(jsonb_build_object('idempotency_key', gen_random_uuid(), 'form_id', v_form, 'email', 'seth+qa4452@usemingla.com',
+    'answers', jsonb_build_object('name', 'Seth QA', 'email', 'seth+qa4452@usemingla.com', 'consent', true,
+       'phone', jsonb_build_object('country','NG','dial','+234','number','801 234 5678'), 'what_do_you_make', 'Video',
+       'your_main_social', jsonb_build_object('platform','instagram','value','@qa'), 'city', jsonb_build_object('label','Lagos')),
+    'time_zone', 'Africa/Lagos', 'page_path', '/creators', 'placement', 'inline', 'ads_allowed', true));
+  RESET ROLE;
+  SELECT * INTO v_sub FROM public.form_submissions WHERE id = (v_r->>'submission_id')::uuid;
+  PERFORM pg_temp.v_assert(v_sub.is_test, 'FV-6 B26 an internal email submits as a test submission');
+  PERFORM pg_temp.v_assert((SELECT bool_and(e.is_test) AND count(*) = 1 FROM public.lead_events e
+                             WHERE e.source_table = 'form_submissions' AND e.source_id = v_sub.id),
+    'FV-6 B26 and its form lead event is is_test');
+  PERFORM pg_temp.v_assert(v_r->>'routing_status' = 'lead_only' AND v_sub.crm_record_id IS NULL, 'FV-6 a test submission gets no pipeline card');
+  PERFORM pg_temp.v_assert(v_r->>'run_id' IS NOT NULL
+    AND EXISTS (SELECT 1 FROM public.form_automation_sends WHERE run_id = (v_r->>'run_id')::uuid AND step_id = 'e1' AND due_at <= now()),
+    'FV-6 B26 its run still starts and the welcome is due now (staff test end to end)');
+  PERFORM pg_temp.v_assert(NOT (v_r2->>'deduped')::boolean AND v_r2->>'submission_id' <> v_r->>'submission_id' AND v_r2->>'run_id' IS NOT NULL,
+    'FV-6 a second test within 24 h is a new test run, not a dedupe');
+
+  SET LOCAL ROLE service_role;
+  v_r := public.forms_submit_core(jsonb_build_object('idempotency_key', gen_random_uuid(), 'form_id', v_form, 'email', 'bola@mingla-fixture.org',
+    'answers', jsonb_build_object('name', 'Test Person', 'email', 'bola@mingla-fixture.org', 'consent', false,
+       'phone', jsonb_build_object('country','NG','dial','+234','number','801 234 5678'), 'what_do_you_make', 'Photo',
+       'your_main_social', jsonb_build_object('platform','instagram','value','@bola'), 'city', jsonb_build_object('label','Lagos')),
+    'time_zone', 'Africa/Lagos', 'page_path', '/creators', 'placement', 'popup', 'ads_allowed', false));
+  v_r2 := public.forms_submit_core(jsonb_build_object('idempotency_key', gen_random_uuid(), 'form_id', v_form, 'email', 'ada@mingla-fixture.org',
+    'answers', jsonb_build_object('name', 'Ada Okafor', 'email', 'ada@mingla-fixture.org', 'consent', false,
+       'phone', jsonb_build_object('country','NG','dial','+234','number','801 234 5678'), 'what_do_you_make', 'Photo',
+       'your_main_social', jsonb_build_object('platform','instagram','value','@ada'), 'city', jsonb_build_object('label','Lagos')),
+    'time_zone', 'Africa/Lagos', 'page_path', '/creators', 'placement', 'popup', 'ads_allowed', false));
+  RESET ROLE;
+  PERFORM pg_temp.v_assert((SELECT is_test FROM public.form_submissions WHERE id = (v_r->>'submission_id')::uuid),
+    'FV-6 B26 a test name ("Test Person") submits as a test submission');
+  PERFORM pg_temp.v_assert(NOT (SELECT is_test FROM public.form_submissions WHERE id = (v_r2->>'submission_id')::uuid)
+    AND NOT (SELECT bool_or(e.is_test) FROM public.lead_events e WHERE e.source_table = 'form_submissions' AND e.source_id = (v_r2->>'submission_id')::uuid)
+    AND v_r2->>'run_id' IS NOT NULL,
+    'FV-6 a real person submits as real, with a real lead event and a run');
 END
 $t$;
 ROLLBACK;
