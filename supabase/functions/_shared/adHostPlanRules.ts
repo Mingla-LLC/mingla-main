@@ -621,10 +621,12 @@ export function hostAdSetUnits(input: {
     (stage.stage === "retarget" || stage.stage === "abandoners") &&
     stage.executable
   );
-  const include = [...new Set(warm.flatMap((stage) => stage.includeAudienceIds))];
-  const buyers = input.stagePlan.stages.find((stage) =>
-    stage.stage === "prospecting"
-  )?.excludeAudienceIds ?? [];
+  const include = [
+    ...new Set(warm.flatMap((stage) => stage.includeAudienceIds)),
+  ];
+  const buyers =
+    input.stagePlan.stages.find((stage) => stage.stage === "prospecting")
+      ?.excludeAudienceIds ?? [];
   if (include.length === 0 || buyers.length === 0) {
     return { units: one, folded: "retarget_audience_not_ready" };
   }
@@ -728,4 +730,37 @@ export function hostLiveAdSetBudgets(input: {
       status: retarget.paused ? null : "pause",
     },
   ];
+}
+
+/**
+ * #4238 W4a: the apps whose create path builds the retarget ad set today.
+ * Meta only: Snapchat and TikTok create still build one ad set, so guidance
+ * and create_version must not promise a second one there (the X-1 lesson:
+ * what the Host is shown is what create builds). Exit: the Snapchat and
+ * TikTok Host branches call prepareHostAdSets (carried on #4238).
+ */
+export const HOST_RETARGET_BUILT_PLATFORMS: ReadonlySet<string> = new Set([
+  "meta",
+]);
+
+/** hostAdSetSplit, limited to the apps whose create builds the split. */
+export function hostAdSetSplitAsBuilt(
+  platform: string,
+  spendCents: number,
+  floorCents: number | null,
+  readiness: HostRetargetReadiness | null,
+  budgetMode: "daily" | "lifetime" = "daily",
+): HostAdSetSplit {
+  if (!HOST_RETARGET_BUILT_PLATFORMS.has(platform)) {
+    const spend = Number.isSafeInteger(spendCents) && spendCents > 0
+      ? spendCents
+      : 0;
+    return {
+      ad_sets: 1,
+      prospecting_cents: spend,
+      retarget_cents: 0,
+      retarget: { added: false, reason: "retarget_not_supported" },
+    };
+  }
+  return hostAdSetSplit(platform, spendCents, floorCents, readiness, budgetMode);
 }

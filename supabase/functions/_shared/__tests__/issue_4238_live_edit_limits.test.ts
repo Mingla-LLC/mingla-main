@@ -3,7 +3,10 @@
  * end date only. Any other key (area, audience, goal, creatives, the wider
  * area offer) is refused by name before anything is claimed or pushed.
  */
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
   HOST_LIVE_EDIT_FIELDS,
@@ -18,7 +21,10 @@ const BASE = {
 };
 
 Deno.test("SC-B7: a budget-only or end-only edit is accepted", () => {
-  assertEquals(hostLiveEditUnknownField({ ...BASE, new_budget_cents: 5000 }), null);
+  assertEquals(
+    hostLiveEditUnknownField({ ...BASE, new_budget_cents: 5000 }),
+    null,
+  );
   assertEquals(
     hostLiveEditUnknownField({
       ...BASE,
@@ -73,7 +79,10 @@ Deno.test("change_live refuses an unknown field before the claim (server-enforce
   );
   const start = source.indexOf("async function changeLive(");
   assert(start > 0);
-  const body = source.slice(start, source.indexOf("async function planAndRunLiveEdit", start));
+  const body = source.slice(
+    start,
+    source.indexOf("async function planAndRunLiveEdit", start),
+  );
   const guard = body.indexOf("hostLiveEditUnknownField(body)");
   const claim = body.indexOf("host_ad_live_edit_claim");
   assert(guard > 0, "the allowlist check is in changeLive");

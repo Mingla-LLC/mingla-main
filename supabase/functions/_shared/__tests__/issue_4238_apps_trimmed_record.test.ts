@@ -25,13 +25,15 @@ function fakeDb(tables: Record<string, Row[]>) {
       },
       order: () => chain,
       limit: () => chain,
-      maybeSingle: () => Promise.resolve({ data: rows[0] ?? null, error: null }),
+      maybeSingle: () =>
+        Promise.resolve({ data: rows[0] ?? null, error: null }),
       insert: (items: Row[]) => {
         inserted.push(...items);
         tables[table] = [...(tables[table] ?? []), ...items];
         return Promise.resolve({ error: null });
       },
-      then: (resolve: (value: unknown) => void) => resolve({ data: rows, error: null }),
+      then: (resolve: (value: unknown) => void) =>
+        resolve({ data: rows, error: null }),
     };
     return chain;
   };
@@ -71,7 +73,11 @@ Deno.test("T-6: Meta-only at $8/day pay records TikTok and Snapchat as trimmed, 
   assertEquals(await recordHostAppsTrimmed(db, input), 2);
   assertEquals(
     inserted.map((row) => [row.platform, row.kind, row.status]).sort(),
-    [["snapchat", "apps_trimmed", "applied"], ["tiktok", "apps_trimmed", "applied"]],
+    [["snapchat", "apps_trimmed", "applied"], [
+      "tiktok",
+      "apps_trimmed",
+      "applied",
+    ]],
   );
   for (const row of inserted) {
     const detail = row.detail as Row;
@@ -101,7 +107,9 @@ Deno.test("T-6: an app the plan kept is never recorded as trimmed", async () => 
 });
 
 Deno.test("create_version records trimmed apps only under Mingla's app choice", async () => {
-  const source = await Deno.readTextFile(new URL("../../ad-plan/index.ts", import.meta.url));
+  const source = await Deno.readTextFile(
+    new URL("../../ad-plan/index.ts", import.meta.url),
+  );
   const at = source.indexOf("await recordHostAppsTrimmed(db, {");
   const guard = source.lastIndexOf('canonical.app_choice === "mingla"', at);
   assertEquals(at > 0 && guard > 0 && at - guard < 200, true);

@@ -95,7 +95,7 @@ import {
 } from "../_shared/adAudienceStages.ts";
 import {
   HOST_LIFETIME_PLATFORMS,
-  hostAdSetSplit,
+  hostAdSetSplitAsBuilt,
   hostBudgetModeFor,
   hostPastGuestSeedKeys,
   type HostRetargetReadiness,
@@ -575,7 +575,7 @@ export async function buildHostBudgetGuidance(
     );
   const perApp = guidance.per_app.map((app) => {
     const floor = floorRows.find((row) => row.platform === app.platform);
-    const split = hostAdSetSplit(
+    const split = hostAdSetSplitAsBuilt(
       app.platform,
       Number(shares[app.platform] ?? 0),
       app.minimum_daily_credit_cents,
@@ -3515,7 +3515,7 @@ export async function handleAdPlan(
           ) => item.id === row.connection_id) ?? {};
           return [
             platform,
-            hostAdSetSplit(
+            hostAdSetSplitAsBuilt(
               platform,
               Number(row.provider_delivery_budget_cents),
               hostDailyMinimumCents(

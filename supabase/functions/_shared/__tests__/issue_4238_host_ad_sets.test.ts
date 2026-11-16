@@ -386,3 +386,23 @@ Deno.test("create wiring: the Host Meta branch builds from prepareHostAdSets, AB
   );
   assert(source.includes("ads: plan.creativeIds.map((creativeId, index) => {"));
 });
+
+Deno.test("guidance and create_version promise a retarget ad set only where create builds it (Meta)", async () => {
+  const { hostAdSetSplitAsBuilt } = await import("../adHostPlanRules.ts");
+  const ready = { audienceReady: true, buyerExclusionReady: true };
+  assertEquals(hostAdSetSplitAsBuilt("meta", 1000, 100, ready).ad_sets, 2);
+  for (
+    const [platform, floor] of [["snapchat", 500], ["tiktok", 2000]] as const
+  ) {
+    const split = hostAdSetSplitAsBuilt(platform, 10 * floor, floor, ready);
+    assertEquals([split.ad_sets, split.retarget.reason], [
+      1,
+      "retarget_not_supported",
+    ]);
+  }
+  const source = await Deno.readTextFile(
+    new URL("../../ad-plan/index.ts", import.meta.url),
+  );
+  assertEquals(source.includes("hostAdSetSplit("), false);
+  assertEquals(source.split("hostAdSetSplitAsBuilt(").length - 1, 2);
+});

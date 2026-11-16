@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any -- fakes for the Graph and row shapes
 /**
  * #4238 W4a (5c, D-5): the last-tickets words go live only after the Host
  * accepts, as NEW ads through the apps' review, once per plan per app and
@@ -117,9 +118,7 @@ Deno.test("5c: step 1 adds one new ACTIVE ad per live ad with the last-tickets w
   const { db } = fakeDb(row);
   const { graph, calls } = fakeGraph("PENDING_REVIEW");
   const result = await applyLastTicketsOffer(
-    // deno-lint-ignore no-explicit-any
     { db, graph: graph as any, adAccountId: "1" },
-    // deno-lint-ignore no-explicit-any
     { row: row as any, campaignId: "c1", nowIso: "2026-11-16T00:00:00Z" },
   );
   assertEquals(result, "created");
@@ -135,7 +134,6 @@ Deno.test("5c: step 1 adds one new ACTIVE ad per live ad with the last-tickets w
   assertEquals((row.detail as Row).new_ad_ids, ["newad"]);
   // Step 2 while the app still reviews: waits, pauses nothing.
   assertEquals(
-    // deno-lint-ignore no-explicit-any
     await applyLastTicketsOffer({ db, graph: graph as any, adAccountId: "1" }, {
       row: row as any,
       campaignId: "c1",
@@ -159,9 +157,7 @@ Deno.test("5c: once the new ad is live the old ad pauses and the offer is applie
   const { db } = fakeDb(row);
   const { graph, calls } = fakeGraph("ACTIVE");
   const result = await applyLastTicketsOffer(
-    // deno-lint-ignore no-explicit-any
     { db, graph: graph as any, adAccountId: "1" },
-    // deno-lint-ignore no-explicit-any
     { row: row as any, campaignId: "c1", nowIso: "t" },
   );
   assertEquals(result, "applied");
@@ -182,7 +178,6 @@ Deno.test("5c adversarial: a refused new ad is paused and the old ads are untouc
   };
   const { db } = fakeDb(row);
   const { graph, calls } = fakeGraph("DISAPPROVED");
-  // deno-lint-ignore no-explicit-any
   const result = await applyLastTicketsOffer({
     db,
     graph: graph as any,

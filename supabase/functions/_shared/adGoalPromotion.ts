@@ -410,20 +410,37 @@ export async function applyLastTicketsOffer(deps: {
           fields: "id,name,effective_status,creative{id}",
           limit: 25,
         });
-        for (const ad of (Array.isArray(ads.data) ? ads.data : []) as Record<string, unknown>[]) {
-          if (String(ad.effective_status ?? "").toUpperCase() !== "ACTIVE") continue;
-          const creativeId = String((ad.creative as Record<string, unknown> | undefined)?.id ?? "");
+        for (
+          const ad of (Array.isArray(ads.data) ? ads.data : []) as Record<
+            string,
+            unknown
+          >[]
+        ) {
+          if (String(ad.effective_status ?? "").toUpperCase() !== "ACTIVE") {
+            continue;
+          }
+          const creativeId = String(
+            (ad.creative as Record<string, unknown> | undefined)?.id ?? "",
+          );
           if (!creativeId) continue;
           const source = await graph("GET", creativeId, {
             fields: "name,object_story_spec,asset_feed_spec,url_tags",
           });
           const body = withLastTicketsText({
             name: `${String(source.name ?? "Ad")} — last tickets`.slice(0, 200),
-            ...(source.object_story_spec ? { object_story_spec: source.object_story_spec } : {}),
-            ...(source.asset_feed_spec ? { asset_feed_spec: source.asset_feed_spec } : {}),
+            ...(source.object_story_spec
+              ? { object_story_spec: source.object_story_spec }
+              : {}),
+            ...(source.asset_feed_spec
+              ? { asset_feed_spec: source.asset_feed_spec }
+              : {}),
             ...(source.url_tags ? { url_tags: source.url_tags } : {}),
           }, primary);
-          const newCreative = await graph("POST", `act_${deps.adAccountId}/adcreatives`, body);
+          const newCreative = await graph(
+            "POST",
+            `act_${deps.adAccountId}/adcreatives`,
+            body,
+          );
           if (typeof newCreative.id !== "string") continue;
           const newAd = await graph("POST", `act_${deps.adAccountId}/ads`, {
             name: `${String(ad.name ?? "Ad")} — last tickets`.slice(0, 200),
@@ -439,7 +456,12 @@ export async function applyLastTicketsOffer(deps: {
       }
       if (created.length === 0) return await fail("no_live_ads_to_copy");
       await db.from("ad_plan_automation_events").update({
-        detail: { ...detail, new_ad_ids: created, old_ad_ids: old, started_at: input.nowIso },
+        detail: {
+          ...detail,
+          new_ad_ids: created,
+          old_ad_ids: old,
+          started_at: input.nowIso,
+        },
       }).eq("id", input.row.id).eq("status", "pending");
       return "created";
     }
@@ -548,7 +570,10 @@ export async function runHostAdAutomation(deps: {
           report.ladder = decision.reason;
         } else {
           const { data: setRows } = await db.from("ad_sets")
-            .select("external_adset_id,stage").eq("campaign_id", ctx.campaignId);
+            .select("external_adset_id,stage").eq(
+              "campaign_id",
+              ctx.campaignId,
+            );
           // #4238 W4a: only the prospecting ad set climbs the ladder; a
           // retarget ad set keeps its frozen goal. Older rows have no stage.
           const allSets = (setRows ?? []) as Record<string, unknown>[];
@@ -586,7 +611,9 @@ export async function runHostAdAutomation(deps: {
         .eq("plan_id", ctx.planId).eq("platform", "meta")
         .eq("kind", "low_stock_copy").maybeSingle();
       const row = offer as PromotionRow | null;
-      if (row?.status === "pending" && typeof row.detail?.accepted_at === "string") {
+      if (
+        row?.status === "pending" && typeof row.detail?.accepted_at === "string"
+      ) {
         report.last_tickets_apply = await applyLastTicketsOffer(
           { db, graph: deps.graph, adAccountId: deps.adAccountId },
           { row, campaignId: ctx.campaignId, nowIso },
