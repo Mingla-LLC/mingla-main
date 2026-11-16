@@ -5,10 +5,12 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { callHrefFor, type CallAudience } from '@/lib/cta-destination'
 import { formEvent } from '@/components/forms/form-events'
+import { useCallAudience } from './call-audience'
 
 export function NavCallLink({ audience, origin }: { audience?: CallAudience | null; origin?: string }) {
   const pathname = usePathname() ?? '/'
-  const call = callHrefFor(pathname, audience)
+  const pageAudience = useCallAudience()
+  const call = callHrefFor(pathname, audience ?? pageAudience)
   const href = origin ? `${origin}${call.href}` : call.href
   return (
     <Link

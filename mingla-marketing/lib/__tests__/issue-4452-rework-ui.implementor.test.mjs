@@ -154,10 +154,10 @@ test('RW-UI-5 P2-12 Send is pinned at the bottom of the pop-up pane', () => {
 
 test('RW-UI-6 P2-13 a form page routes the call by its audience', () => {
   const page = code(read('app/apply/[slug]/page.tsx'))
-  assert.match(page, /<SitePage surface=\{form\.audience === 'host' \? 'host' : 'explorer'\} callAudience=\{form\.audience\}>/)
-  const shell = code(read('components/site/site-page.tsx'))
-  assert.match(shell, /<SiteNav surface=\{surface\} current=\{current\} origin=\{origin\} callAudience=\{callAudience\} \/>/)
-  assert.match(code(read('components/site/site-nav.tsx')), /<NavCallLink audience=\{callAudience\} origin=\{origin\} \/>/)
+  assert.match(page, /<CallAudienceProvider audience=\{form\.audience\}>\s*<SitePage /)
+  const link = code(read('components/site/nav-call-link.tsx'))
+  assert.match(link, /const pageAudience = useCallAudience\(\)/)
+  assert.match(link, /callHrefFor\(pathname, audience \?\? pageAudience\)/)
 })
 
 test('RW-UI-7 P3-14 the 47px call link takes the ringed button\'s 44px in layout', () => {

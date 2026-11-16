@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { SiteFooter, type SiteFooterSurface } from '@/components/marketing/footer'
 import { LandingRoot } from '@/components/landing/landing-root'
 import { SiteNav, type SiteNavKey } from './site-nav'
-import type { CallAudience } from '@/lib/cta-destination'
 import '@/components/landing/landing.css'
 import './site.css'
 import './pages.css'
@@ -25,15 +24,13 @@ interface SitePageProps {
    * carries the #3431 copy opt-in on that element), so the shell adds none.
    */
   layoutMain?: boolean
-  /** #4452 §2.11: a form page routes the top-bar call by the form's audience. */
-  callAudience?: CallAudience | null
   children: ReactNode
 }
 
-export function SitePage({ surface, current, origin, layoutMain = false, callAudience = null, children }: SitePageProps) {
+export function SitePage({ surface, current, origin, layoutMain = false, children }: SitePageProps) {
   return (
     <LandingRoot>
-      <SiteNav surface={surface} current={current} origin={origin} callAudience={callAudience} />
+      <SiteNav surface={surface} current={current} origin={origin} />
       {layoutMain ? children : <main id="main">{children}</main>}
       <SiteFooter surface={surface} origin={origin} />
     </LandingRoot>

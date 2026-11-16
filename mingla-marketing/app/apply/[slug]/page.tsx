@@ -9,6 +9,7 @@ import type { PublicForm } from '@/lib/site-pages/model'
 import { SitePage } from '@/components/site/site-page'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 import { ApplyClient } from './apply-client'
+import { CallAudienceProvider } from '@/components/site/call-audience'
 import '@/components/forms/forms.css'
 
 const BG: Record<string, string> = { night: '#15171c', moss: '#2f3a2e', clay: '#8c5a3c', paper: '#f5f4f0' }
@@ -50,7 +51,8 @@ export default async function ApplyPage({ params }: { params: Promise<{ slug: st
   const terms = TERMS[form.audience]
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <SitePage surface={form.audience === 'host' ? 'host' : 'explorer'} callAudience={form.audience}>
+      <CallAudienceProvider audience={form.audience}>
+      <SitePage surface={form.audience === 'host' ? 'host' : 'explorer'}>
         <section className="ap-sec" style={{ background: bg, color: dark ? '#fff' : '#111110' }}>
           <div className="wrap ap-grid">
             <div className="ap-copy">
@@ -68,6 +70,7 @@ export default async function ApplyPage({ params }: { params: Promise<{ slug: st
           </div>
         </section>
       </SitePage>
+      </CallAudienceProvider>
     </div>
   )
 }
