@@ -1,10 +1,8 @@
 /**
  * #4238 iOS P3-1: the age error line must clear the keyboard Done bar.
- * Fails against base 9f4e61651c (the helper and the
- * screen wiring below are what that commit adds).
+ * Fails against base 9f4e61651c (no helper there). The screen wiring is pinned
+ * in the I-4420-HOST-WIRING gate.
  */
-import fs from "fs";
-import path from "path";
 import {
   HOST_AD_CARET_BELOW_FIELD_IOS,
   HOST_AD_ERROR_LINE_ROOM,
@@ -24,11 +22,5 @@ describe("#4238 iOS age error line clears the Done bar", () => {
     expect(hostAdErrorLineBottomOffset("ios", 53, 12, false)).toBeNull();
     expect(hostAdErrorLineBottomOffset("android", 42, 12, true)).toBeNull();
     expect(hostAdErrorLineBottomOffset("web", 0, 12, true)).toBeNull();
-  });
-  it("the builder renders the age error inline and passes the offset to its scroll view", () => {
-    const src = fs.readFileSync(path.join(__dirname, "../../../../screens/hostAds/HostAdCreateScreen.tsx"), "utf8");
-    expect(src).toMatch(/hostAdErrorLineBottomOffset\(\s*Platform\.OS,\s*DONE_BAR_OCCUPIED/);
-    expect(src).toContain('testID="host-ad-age-error"');
-    expect(src).toContain("{...scrollOffsetProps}");
   });
 });

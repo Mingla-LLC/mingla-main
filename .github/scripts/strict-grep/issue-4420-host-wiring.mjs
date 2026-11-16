@@ -422,6 +422,37 @@ export const RULES = [
     why: "the price option card spaces its children through contentStyle (GlassCard style cannot reach children, #1532)",
     has: [/contentStyle=\{styles\.optionContent\}\s*\n\s*testID=\{`experience-price-option-/, /optionContent: \{\s*gap: space\[2\],\s*\}/],
   },
+  // ---- #4238 rework 6 screen wiring (was issue_4238_rework6.implementor.test.ts) ----
+  {
+    file: "src/screens/hostAds/HostAdCreateScreen.tsx",
+    why: "the phone builder's dock steps aside on Android through shouldHideHostAdDock (behaviour: issue_4238_rework6), and hardware back / iOS swipe go through the Leave sheet",
+    has: [
+      "shouldHideHostAdDock(Platform.OS, keyboardOpen)",
+      "{dockHiddenForKeyboard ? null : (",
+      'from "../../wrappers/useKeyboardIsVisible"',
+      'navigation.addListener("beforeRemove"',
+      'setSheet("leave")',
+      "sanctionedExitRef.current = true;",
+    ],
+  },
+  {
+    file: "src/screens/hostAds/HostAdDetailScreen.tsx",
+    from: 'testID="ads-detail-rejected-dock"',
+    to: 'testID="ads-detail-rejected-change"',
+    why: "the rejected-ad dock stacks full-width buttons",
+    has: ["fullWidth"],
+    lacks: ["styles.flex"],
+  },
+  {
+    file: "src/screens/hostAds/HostAdListScreen.tsx",
+    why: "the Promote list keeps its floating-button clearance",
+    has: ["hostAdScrollBottomPadding(useStickyFooterOffset())"],
+  },
+  {
+    file: "src/screens/hostAds/HostAdCreateScreen.tsx",
+    why: "#4238 iOS P3-1: the age error shows inline and the scroll gets the Done-bar offset (behaviour: issue_4238_ios_age_error_offset)",
+    has: [/hostAdErrorLineBottomOffset\(\s*Platform\.OS,\s*DONE_BAR_OCCUPIED/, 'testID="host-ad-age-error"', "{...scrollOffsetProps}"],
+  },
 ];
 
 // ---- No raw Alert.alert (I-4420-NO-RAW-ALERT) ----
