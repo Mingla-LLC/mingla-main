@@ -178,6 +178,12 @@ BEGIN
     AND NOT public.ad_can_host_action(v_brand, v_finance, 'end')
     AND NOT public.ad_can_host_action(v_brand, v_marketing, 'end'),
     'R3 owner does everything; end stays owner-only');
+  -- R3b (#4238 P3-1): a NULL or empty action is refused even for the owner.
+  PERFORM pg_temp.s_assert(
+    public.ad_can_host_action(v_brand, v_owner, NULL) IS FALSE
+    AND public.ad_can_host_action(v_brand, v_owner, '') IS FALSE
+    AND public.ad_can_host_action(v_brand, v_admin, NULL) IS FALSE,
+    'R3b a NULL or empty action is false, the owner included');
   -- R4: every answer is true or false, never NULL (fail closed explicitly).
   PERFORM pg_temp.s_assert(
     (SELECT bool_and(public.ad_can_host_action(v_brand, u, a) IS NOT NULL)

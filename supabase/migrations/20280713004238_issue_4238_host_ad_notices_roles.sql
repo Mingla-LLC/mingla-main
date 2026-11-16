@@ -66,7 +66,9 @@ DECLARE
   v_permissions jsonb := '{}'::jsonb;
   v_is_owner boolean := false;
 BEGIN
-  IF p_brand_id IS NULL OR p_user_id IS NULL
+  -- #4238 P3-1: a NULL action is refused before the owner shortcut
+  -- (NULL NOT IN (...) is NULL, which skipped this guard).
+  IF p_brand_id IS NULL OR p_user_id IS NULL OR p_action IS NULL
      OR p_action NOT IN ('read','plan','fund','launch','pause','end') THEN
     RETURN false;
   END IF;
