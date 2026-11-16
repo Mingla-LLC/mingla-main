@@ -293,6 +293,26 @@ BEGIN
   PERFORM pg_temp.ok('V-SUPPORT support threads are excluded (' || r || ')', r LIKE '42501%');
 END $refused$;
 
+-- ── Plan cards are never unsent ───────────────────────────────────────────
+DO $plan$
+DECLARE v_plan uuid; v_m uuid; r text;
+BEGIN
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.chat_plans(conversation_id, source, created_by, title, when_mode)
+    VALUES (pg_temp.u('crew'), 'chat', pg_temp.u('ana'), 'Jetty dinner', 'none') RETURNING id INTO v_plan;
+  INSERT INTO public.messages(conversation_id, sender_id, content, message_type, plan_id, card_payload, created_at)
+    VALUES (pg_temp.u('crew'), pg_temp.u('ana'), 'Ana added a plan: Jetty dinner', 'plan', v_plan,
+            jsonb_build_object('kind', 'plan', 'planId', v_plan), now() - interval '1 hour')
+    RETURNING id INTO v_m;
+  SET LOCAL session_replication_role = origin;
+  r := pg_temp.unsend('ana', ARRAY[v_m]);
+  PERFORM pg_temp.ok('V-PLAN the RPC refuses a plan card (' || r || ')', r LIKE '42501%');
+  r := pg_temp.try_as('ana', format('UPDATE public.messages SET deleted_at = now() WHERE id = %L', v_m));
+  PERFORM pg_temp.ok('V-PLAN so does the direct update (' || r || ')', r LIKE '42501%');
+  PERFORM pg_temp.ok('V-PLAN the card is untouched',
+    (SELECT deleted_at IS NULL AND unsent_at IS NULL AND card_payload ->> 'kind' = 'plan' FROM public.messages WHERE id = v_m));
+END $plan$;
+
 -- ── Older Explorer builds: the direct deleted_at update becomes the unsend ──
 DO $legacy$
 DECLARE v_m uuid; r text;
@@ -398,6 +418,11 @@ BEGIN
        AND conversation_id = pg_temp.u('dm') FROM public.messages WHERE id = v_m));
   r := pg_temp.try_as('ben', format('UPDATE public.messages SET is_read = true, read_at = now() WHERE id = %L', v_m));
   PERFORM pg_temp.ok('ADV-READ the read flags stay writable (' || r || ')', r = 'ok');
+  -- The read-receipt trigger (sync_message_read_status) updates messages as the reader.
+  r := pg_temp.try_as('ben', format('INSERT INTO public.message_reads(message_id, user_id) VALUES (%L, %L)', v_m, pg_temp.u('ben')));
+  PERFORM pg_temp.ok('ADV-READ a read receipt still saves (' || r || ')', r = 'ok');
+  r := pg_temp.try_as('ana', format('INSERT INTO public.message_reads(message_id, user_id) VALUES (%L, %L)', v_m, pg_temp.u('ana')));
+  PERFORM pg_temp.ok('ADV-READ the sender''s own read receipt still saves (' || r || ')', r = 'ok');
   r := pg_temp.try_as('ana', format('SELECT * FROM public.message_unsend_evidence'));
   PERFORM pg_temp.ok('ADV-STORE app users cannot read the private store (' || r || ')', r LIKE '42501%');
   r := pg_temp.try_as('ana', format('SELECT * FROM public.message_report_evidence'));

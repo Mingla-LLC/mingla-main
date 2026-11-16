@@ -116,8 +116,12 @@ Deno.test("W4 MessageInterface: real document picker, lightbox, video player, no
   const openImage = functionBody(chat, /const handleOpenImage = async \(/);
   assert(/resolveChatMediaUrl\(fileUrl\)/.test(openImage) && /setLightboxUrl\(url\)/.test(openImage),
     "the lightbox gets a resolved (signed) link");
-  const longPress = functionBody(chat, /const handleBubbleLongPress = useCallback\(\(row: ThreadRow, pageY: number\) =>/);
-  assert(/if \(row\.message\.viewOnce\) return;/.test(longPress), "view once has no long-press menu");
+  // Issue #4456 (D7): view once now has a menu (Delete for me, Unsend or
+  // Report) with no reactions, Reply or Copy (the menu's own rule).
+  const longPress = functionBody(chat, /const handleBubbleLongPress = useCallback\(\(row: ThreadRow\) =>/);
+  assert(/isViewOnce: row\.message\.viewOnce === true/.test(longPress), "view once opens its own menu");
+  const menu = stripComments(await read("components/chat/MessageContextMenu.tsx"));
+  assert(/const showReactions = !isTombstone && !isFailed && !isViewOnce && isSent;/.test(menu), "no reactions on view once");
   assert(/<ChatAttachSheet\b/.test(chat), "the attach sheet replaces the clipped menu");
 });
 
