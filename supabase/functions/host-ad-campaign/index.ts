@@ -55,6 +55,11 @@ import {
   runHostLiveEdit,
 } from "../_shared/adHostLiveEdit.ts";
 import { providerDailyMinimumCents } from "../_shared/adHostPlanRules.ts";
+import {
+  HOST_AD_CLICK_WINDOW_DAYS,
+  HOST_AD_RESULTS_COPY,
+  minglaCountedConversions,
+} from "../_shared/hostAdAttribution.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
   endDatePassed,
@@ -655,12 +660,43 @@ serve(async (req: Request): Promise<Response> => {
         .in("ad_set_id", adSetIds)
       : { data: [] };
 
-    const { data: conversions } = await supabase
+    const { data: rawConversions } = await supabase
       .from("ad_conversions")
       .select(
         "touch_id, platform, value_cents, currency, shared_with_platforms, created_at",
       )
       .in("campaign_id", planCampaignIds);
+    // #4238 W4b §5: Mingla's count is a sale within 7 days after the ad tap
+    // it was credited to. Rows outside the window (or with no tap) are not
+    // shown as results.
+    const rawTouchIds = [
+      ...new Set(
+        (rawConversions ?? []).flatMap((row: { touch_id?: unknown }) =>
+          typeof row.touch_id === "string" ? [row.touch_id] : []
+        ),
+      ),
+    ];
+    const { data: touches } = rawTouchIds.length > 0
+      ? await supabase
+        .from("ad_attribution_touches")
+        .select("id, network, surface, utm, created_at")
+        .in("id", rawTouchIds)
+      : { data: [] };
+    const conversions = minglaCountedConversions(
+      (rawConversions ?? []) as {
+        touch_id?: unknown;
+        platform?: unknown;
+        value_cents?: unknown;
+        currency?: unknown;
+        shared_with_platforms?: boolean;
+        created_at?: unknown;
+      }[],
+      new Map(
+        ((touches ?? []) as { id: unknown; created_at?: unknown }[]).map(
+          (row) => [String(row.id), row.created_at],
+        ),
+      ),
+    );
     const conversionCounts = new Map<string, number>();
     const conversionValueByCurrency = new Map<string, number>();
     const conversionByPlatform = new Map<string, {
@@ -691,19 +727,13 @@ serve(async (req: Request): Promise<Response> => {
       platformResult.conversions += 1;
       conversionByPlatform.set(conversionPlatform, platformResult);
     }
-    const touchIds = [...conversionCounts.keys()];
-    const { data: touches } = touchIds.length > 0
-      ? await supabase
-        .from("ad_attribution_touches")
-        .select("id, network, surface, utm")
-        .in("id", touchIds)
-      : { data: [] };
     const placementMap = new Map<string, {
       platform: string;
       placement: string;
       conversions: number;
     }>();
     for (const row of touches ?? []) {
+      if (!conversionCounts.has(String(row.id))) continue;
       const utm = row.utm && typeof row.utm === "object"
         ? row.utm as Record<string, unknown>
         : {};
@@ -805,6 +835,13 @@ serve(async (req: Request): Promise<Response> => {
       },
       measurement: {
         manifest: planMeasurement,
+        // #4238 W4b §5: how the count above was made.
+        counted_by: "mingla",
+        click_window_days: HOST_AD_CLICK_WINDOW_DAYS,
+        view_through: false,
+        excluded_outside_window_count: (rawConversions ?? []).length -
+          conversions.length,
+        copy: HOST_AD_RESULTS_COPY,
         trusted_conversion_count: (conversions ?? []).length,
         platform_shared_conversion_count: (conversions ?? []).filter(
           (row: { shared_with_platforms?: boolean }) =>
