@@ -292,3 +292,22 @@ export function hostAdAgeRangeValid(ageMin: string, ageMax: string): boolean {
   if (min === null || max === null) return false;
   return min >= HOST_AD_AGE_FLOOR && max <= HOST_AD_AGE_CEILING && min <= max;
 }
+
+/** Width a mark's label may take under the track (s.mark). */
+export const HOST_AD_MARK_LABEL_WIDTH = 120;
+
+/**
+ * #4238 W7 (native P3-4): two marks stack (the second drops a row) when
+ * their labels would touch. Measured in points on the real track width, so
+ * a phone track (~330 pt) stacks "Minimum" and "Recommended" where a
+ * desktop track would not; before the first layout the old 22% rule holds.
+ */
+export function hostAdMarksCollide(
+  pctA: number,
+  pctB: number,
+  trackWidth: number,
+): boolean {
+  const apart = Math.abs(pctA - pctB);
+  if (!(trackWidth > 0)) return apart < 22;
+  return (apart / 100) * trackWidth < HOST_AD_MARK_LABEL_WIDTH + 8;
+}

@@ -486,7 +486,12 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                       ) : null}
                       <View style={styles.phoneMiddle}>
                         <View style={styles.phoneTitleRow}>
-                          <Text style={styles.name} numberOfLines={1}>{campaign.name}</Text>
+                          {/* #4238 W7 (native P3-3): two lines on a phone, so
+                              ads with a shared start ("Rooftop Test Night ·")
+                              stay told apart. */}
+                          <Text style={styles.name} numberOfLines={2} testID={`home-ad-name-${campaign.id}`}>
+                            {campaign.name}
+                          </Text>
                           <StatusPill campaign={campaign} />
                         </View>
                         <Results campaign={campaign} compact />

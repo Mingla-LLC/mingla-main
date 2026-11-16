@@ -413,6 +413,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [launched, setLaunched] = useState<null | "staff" | "apps">(null);
   const scrollRef = useRef<{ scrollTo?: (options: { y: number; animated?: boolean }) => void } | null>(null);
   const checksYRef = useRef(0);
+  // #4238 W7 (native P3-4): each step opens at its top, never at the scroll
+  // offset the previous step was left at.
+  useEffect(() => {
+    scrollRef.current?.scrollTo?.({ y: 0, animated: false });
+  }, [activeStepId]);
 
   useEffect(() => {
     if (requestedDraftId !== null || draftIdRef.current === null) return;

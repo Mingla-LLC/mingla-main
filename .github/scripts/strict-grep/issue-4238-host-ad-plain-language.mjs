@@ -436,6 +436,43 @@ function main() {
     if (!sheets.includes("row.ad_name?.trim()")) fail("HostAdManageSheets no longer names statement rows by the ad's name");
   }
 
+  // 8. #4238 W7 (native verdict P3-5, P3-1, P3-3, P3-4, P4-3) — structural
+  // wiring kept here instead of Jest readFileSync pins (#1047). The helpers
+  // these name are tested for behaviour in Jest (issue_4238_w7_*).
+  if (create !== null) {
+    for (const id of ["host-ad-age-min", "host-ad-age-max"]) {
+      const at = create.indexOf(`testID="${id}"`);
+      const block = at < 0 ? "" : create.slice(create.lastIndexOf("<Input", at), at);
+      if (!block.includes('variant="integer"')) fail(`create.tsx ${id} is not the integer number pad (variant="integer")`);
+    }
+    if (!create.includes("!hostAdAgeRangeValid(ageMin, ageMax)")) fail("create.tsx no longer validates ages with hostAdAgeRangeValid");
+    if (!/useEffect\(\(\) => \{\s*scrollRef\.current\?\.scrollTo\?\.\(\{ y: 0, animated: false \}\);\s*\}, \[activeStepId\]\);/.test(create)) {
+      fail("create.tsx no longer opens each step at its top");
+    }
+  }
+  const bits = read("src/components/marketing/ads/HostAdBuilderBits.tsx");
+  if (bits !== null) {
+    for (const needle of ["hostAdMarksCollide(pct(markValues[0]), pct(markValues[1]), trackWidth)", "setTrackWidth(event.nativeEvent.layout.width)"]) {
+      if (!bits.includes(needle)) fail(`HostAdBuilderBits lost the measured mark stacking ${JSON.stringify(needle)}`);
+    }
+  }
+  const list = read("src/screens/hostAds/HostAdListScreen.tsx");
+  if (list !== null) {
+    for (const needle of ["hostAdListUsesTable(isWideDesktop, deskMainWidth)", ") : showTable ? (", "setDeskMainWidth(event.nativeEvent.layout.width)"]) {
+      if (!list.includes(needle)) fail(`HostAdListScreen lost the table-fits rule ${JSON.stringify(needle)}`);
+    }
+  }
+  if (homeAds !== null) {
+    const at = homeAds.indexOf("testID={`home-ad-name-${campaign.id}`}");
+    if (at < 0 || !homeAds.slice(homeAds.lastIndexOf("<Text", at), at).includes("numberOfLines={2}")) {
+      fail("HomeAdsSection phone tile name is back to one line");
+    }
+  }
+  const notices = read("src/components/notifications/BusinessNotificationsScreen.tsx");
+  if (notices !== null && notices.includes("${formatRelative(notification.created_at)} ago")) {
+    fail('BusinessNotificationsScreen reads "<short time> ago" again (use formatRelativeSpoken)');
+  }
+
   if (failures.length) {
     console.error(`FAIL [${TAG}]: Host ad copy uses internal words or lost a structural rule (issue #4238).`);
     for (const f of failures) console.error(`  x ${f}`);

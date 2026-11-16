@@ -6,7 +6,8 @@
  * No colour literal here (I-HOST-CHROME-TOKENS-ONLY); Android gets the
  * materials' solid fills through Material.
  */
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
+import { HOST_AD_MARK_LABEL_WIDTH, hostAdMarksCollide } from "./hostAdBuilderRules";
 import {
   type LayoutChangeEvent,
   PanResponder,
@@ -388,6 +389,7 @@ export function BudgetSlider(props: {
   testID?: string;
 }): React.ReactElement {
   const widthRef = useRef(0);
+  const [trackWidth, setTrackWidth] = useState(0);
   const startRef = useRef(props.value);
   const valueRef = useRef(props.value);
   valueRef.current = props.value;
@@ -423,7 +425,8 @@ export function BudgetSlider(props: {
       }),
     [min, span],
   );
-  const close = markValues.length === 2 && Math.abs(pct(markValues[0]) - pct(markValues[1])) < 22;
+  const close =
+    markValues.length === 2 && hostAdMarksCollide(pct(markValues[0]), pct(markValues[1]), trackWidth);
   const webKeys = WEB
     ? {
         onKeyDown: (event: { nativeEvent: { key: string }; preventDefault?: () => void }) => {
@@ -446,6 +449,7 @@ export function BudgetSlider(props: {
         style={s.sliderHit}
         onLayout={(event: LayoutChangeEvent) => {
           widthRef.current = event.nativeEvent.layout.width;
+          setTrackWidth(event.nativeEvent.layout.width);
         }}
         accessible
         accessibilityRole="adjustable"
@@ -719,7 +723,13 @@ const s = StyleSheet.create({
   },
   marks: { position: "relative", height: 52, marginTop: space[1] },
   marksTall: { height: 84 },
-  mark: { position: "absolute", top: 0, alignItems: "center", width: 120, marginLeft: -60 },
+  mark: {
+    position: "absolute",
+    top: 0,
+    alignItems: "center",
+    width: HOST_AD_MARK_LABEL_WIDTH,
+    marginLeft: -HOST_AD_MARK_LABEL_WIDTH / 2,
+  },
   markLow: { top: 34 },
   markStart: { marginLeft: -1, alignItems: "flex-start" },
   markEnd: { marginLeft: -119, alignItems: "flex-end" },

@@ -31,7 +31,12 @@ import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { applyAdCreditTopUp } from "../../services/adCreditService";
 import { minorFromMajor } from "../../utils/currency";
-import { HOST_AD_NAME_COL_MIN } from "../../components/marketing/ads/hostAdListLayout";
+import {
+  HOST_AD_MONEY_COL_MIN,
+  HOST_AD_NAME_COL_MIN,
+  HOST_AD_STATUS_COL_MIN,
+  hostAdListUsesTable,
+} from "../../components/marketing/ads/hostAdListLayout";
 import { buildHostAdList, hostAdRowIdentity, type HostAdListItem } from "../../services/hostAdLifecycle";
 import { AdListSummaryCard } from "../../components/marketing/ads/results/AdListSummaryCard";
 import { hostAdScrollBottomPadding } from "../../components/marketing/ads/hostAdBuilderRules";
@@ -124,6 +129,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const network = useNetInfoSafe();
   const offline = network?.isConnected === false;
   const { isWideDesktop } = useResponsiveLayout();
+  // #4238 W7 (native P3-1): the table only when every column fits.
+  const [deskMainWidth, setDeskMainWidth] = useState(0);
+  const showTable = hostAdListUsesTable(isWideDesktop, deskMainWidth);
   const [overlay, setOverlay] = useState<Overlay>(null);
   // #4238 rework 5 (native P1-1 audit): a wallet sheet (top up, withdraw)
   // belongs to the brand it was opened on; a brand switch closes it so it can
@@ -379,7 +387,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
     </BuilderCard>
   ) : shown.length === 0 ? (
     <Text style={bs.small} testID="ads-campaigns-filter-empty">{hm("list.filterEmpty")}</Text>
-  ) : isWideDesktop ? (
+  ) : showTable ? (
     <View style={styles.table} testID="ads-table">
       <View style={[styles.tr, styles.th]}>
         <Text style={[styles.td, styles.tdName, styles.thText]}>{hm("list.colAd")}</Text>
@@ -497,7 +505,10 @@ export default function MarketingAdsRoute(): React.ReactElement {
         {returnNotice !== null ? <Note tone="info" text={returnNotice} testID="ads-return-notice" /> : null}
         {isWideDesktop ? (
           <View style={styles.desk}>
-            <View style={styles.deskMain}>
+            <View
+              style={styles.deskMain}
+              onLayout={(event) => setDeskMainWidth(event.nativeEvent.layout.width)}
+            >
               <View style={bs.rowBetween}>
                 <Text style={styles.title} accessibilityRole="header">{hm("title")}</Text>
                 {promoteButton}
@@ -623,6 +634,6 @@ const styles = StyleSheet.create({
   tdNameCell: { flex: 3, minWidth: HOST_AD_NAME_COL_MIN, gap: space[1] },
   tdNameText: { ...type.small, color: color.text1, fontWeight: "600" },
   // Money never breaks between the currency code and the amount.
-  tdNum: { minWidth: 112, flexShrink: 0 },
-  tdStatus: { flex: 1, minWidth: 120, alignItems: "flex-start" },
+  tdNum: { minWidth: HOST_AD_MONEY_COL_MIN, flexShrink: 0 },
+  tdStatus: { flex: 1, minWidth: HOST_AD_STATUS_COL_MIN, alignItems: "flex-start" },
 });
