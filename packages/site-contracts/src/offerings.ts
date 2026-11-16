@@ -141,6 +141,9 @@ export function normalizeSiteOffering(raw: unknown): SiteOffering | null {
   for (const [key, max] of [["summary", 500], ["destination_text", 200]] as const) {
     if (pick[key] !== null && !boundedText(pick[key], max, true)) pick[key] = null;
   }
+  // A timezone that would be refused blanks only the timezone (display falls
+  // back to UTC); the offering itself stays on the site (#4453).
+  if (pick.timezone !== null && !isIanaTimeZone(pick.timezone)) pick.timezone = null;
   return isSiteOffering(pick) ? pick : null;
 }
 

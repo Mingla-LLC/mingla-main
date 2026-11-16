@@ -9,7 +9,7 @@ import {
   UnorderedListFeature,
   lexicalEditor,
 } from "@payloadcms/richtext-lexical";
-import { safeText, safeTimeZone, safeUrl } from "../lib/validation";
+import { safeCityTimeZone, safeText, safeUrl } from "../lib/validation";
 import { statsIconOptions } from "../lib/statsIcons";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
 import { FEATURE_ICON_NAMES } from "../contracts/generated/icons.ts";
@@ -692,7 +692,7 @@ const BLOCK_CONFIGS: Block[] = [
          * contract refuses them too; this is the message the editor sees
          * first, while they can still fix it.
          */
-        validate: safeTimeZone,
+        validate: safeCityTimeZone,
         admin: {
           description:
             "The timezone this place is in, as a region and city \u2014 for example Africa/Lagos or Europe/London. Needed for the live local time; without it no time is shown.",
