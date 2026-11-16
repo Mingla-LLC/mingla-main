@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { showAlert } from "../ui/showAlert";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
@@ -241,7 +242,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
   }, [copy, eventTitle]);
 
   const reset = useCallback((link: TicketLinkRecord) => {
-    Alert.alert(
+    showAlert(
       "Reset this link?",
       "The current link stops working right away and you get a new one to share. Guests already on the list keep their tickets.",
       [
@@ -267,7 +268,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
   }, [copy, refresh]);
 
   const revoke = useCallback((link: TicketLinkRecord) => {
-    Alert.alert(
+    showAlert(
       `Revoke ${link.label}?`,
       "Nobody can use this link any more. People already on the list keep their tickets, and requests still waiting are declined.",
       [

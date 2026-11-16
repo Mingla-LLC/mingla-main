@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { showAlert } from "../../components/ui/showAlert";
 import { Button } from "../../components/ui/Button";
 import { GlassCard } from "../../components/ui/GlassCard";
 import {
@@ -219,7 +219,7 @@ export function ContactImportFlow({
           data: { action: unknown };
         };
         event.preventDefault();
-        Alert.alert(
+        showAlert(
           "Your import is still running",
           "You can leave and check its status later.",
           [

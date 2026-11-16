@@ -520,7 +520,8 @@ export function phase3dContractDigest(manifest) {
 // #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
 // #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
 // #4238 rework 5: merged origin/main e4cb2564bd (#4452 rows kept in filename order ahead of the #4238 rows; both #1931 exact-filename skip blocks kept); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e6b5744c3b90489c57b0500b1fef0b3170a09ad312fab24714c8440aaf016aa8";
+// #4238 W7: merged origin/4420-host-graphite-glass a196ecfd7a (its 20280719004420 migration row kept after the #4238 rows); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "05a1a1b6776f5d4cca030a661625312bcaf96619d8d99645f722e1232314df80";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

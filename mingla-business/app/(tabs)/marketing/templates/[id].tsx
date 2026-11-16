@@ -13,13 +13,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { showAlert } from "../../../../src/components/ui/showAlert";
 // ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper.
 // KeyboardAvoidingView removed. Per SPEC_ORCH-0892-B_v2 §7.F.
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
@@ -105,7 +105,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
   const performSave = useCallback(async (): Promise<string | null> => {
     if (accountId === null) return null;
     if (subject.trim().length === 0 && body.trim().length === 0) {
-      Alert.alert("Add a name + body", "Subject is optional, but body is required.");
+      showAlert("Add a name + body", "Subject is optional, but body is required.", undefined, { kind: "warn" });
       return null;
     }
     if (isNewMode) {
@@ -150,7 +150,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
       sanctionedExitRef.current = true;
       router.replace(`/marketing/templates/${copy.id}` as never);
     } catch (err) {
-      Alert.alert(
+      showAlert(
         "Couldn't duplicate",
         err instanceof Error ? err.message : "Try again in a moment.",
       );
@@ -159,7 +159,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
 
   const handleDelete = useCallback(() => {
     if (template === null) return;
-    Alert.alert(
+    showAlert(
       "Delete this template?",
       "This can't be undone. Campaigns that used this template keep their saved content.",
       [
@@ -174,7 +174,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
               if (router.canGoBack()) router.back();
               else router.replace("/(tabs)/marketing/templates" as never);
             } catch (err) {
-              Alert.alert(
+              showAlert(
                 "Couldn't delete",
                 err instanceof Error ? err.message : "Try again in a moment.",
               );
@@ -205,7 +205,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
       if (sanctionedExitRef.current) return;
       if (!isDirty) return;
       ev.preventDefault?.();
-      Alert.alert(
+      showAlert(
         "Save changes?",
         "You've edited this template. Save them so you can use them later — or discard.",
         [

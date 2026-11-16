@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { webPrivacyMaxHeight } from "../../src/components/messages/webViewportPin";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -20,6 +19,7 @@ import {
   type TextInputSelectionChangeEventData,
   type ViewStyle,
 } from "react-native";
+import { showAlert } from "../../src/components/ui/showAlert";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -610,7 +610,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       autoFollowLatest.current = true;
       await refresh();
     } catch (cause) {
-      Alert.alert("Message not sent", cause instanceof Error ? cause.message : "Try again.");
+      showAlert("Message not sent", cause instanceof Error ? cause.message : "Try again.");
     } finally {
       setSending(false);
     }

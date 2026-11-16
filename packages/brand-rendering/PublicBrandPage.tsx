@@ -90,15 +90,9 @@ import {
 // than as a stale mock. Importing from the module directly bypasses those
 // mocks entirely, which is why this stays a deep import and why `hexToRgba` is
 // deliberately NOT re-exported from the barrel (#2539 PR #2552 CI).
-import {
-  hexToRgba,
-  themeAccentFill,
-  themeTextAccent,
-} from "@mingla/offering-rendering/themePalette";
-import {
-  ThemeAccentFill,
-  ThemeAccentGradientLayer,
-} from "@mingla/offering-rendering/ThemeAccentFill";
+import { themeTextAccent } from "@mingla/offering-rendering/themePalette";
+
+import { ThemeAccentFill } from "@mingla/offering-rendering/ThemeAccentFill";
 
 import { spacing } from "./designTokens";
 // #3188 — the socials-row sizing solver. A separate, pure, import-free module
@@ -123,8 +117,18 @@ import type {
   PublicBrandVenueSummary,
   PublicMediaType,
 } from "./types";
-import { accentFill, accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
-import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
+import { accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import {
+  neutralControl,
+  opaqueAccentWashColor,
+} from "@mingla/offering-rendering/themePalette";
+// issue #4420 wave 2 — the premium frame's shared parts (deep imports, same
+// partial-barrel-mock reason as above).
+import {
+  OFFERING_GLASS_BAR_HEIGHT,
+  OfferingGlassBar,
+} from "@mingla/offering-rendering/OfferingGlassBar";
+import { OfferingFactRows } from "@mingla/offering-rendering/OfferingFactRows";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 // #3426 — "past" is the date-decided Past tab (all four kinds). Happening now is
@@ -300,6 +304,52 @@ const openUrl = (url: string): void => {
   void Linking.openURL(url).catch(() => undefined);
 };
 
+// issue #4420 wave 2 — the Next-up glass bar's button, by offering kind.
+const NEXT_UP_CTA_LABEL: Record<PublicBrandUpcoming["offeringType"], string> = {
+  event: "Get tickets",
+  rsvp: "RSVP",
+  experience: "Book a time",
+  trip: "Reserve",
+};
+
+/**
+ * issue #4420 wave 2 — "41 Bond Street, New York, NY" → street "41 Bond
+ * Street", rest "New York, NY". A one-part address is all street.
+ */
+export const splitAddress = (
+  address: string | null,
+): { street: string; rest: string | null } | null => {
+  if (address === null) return null;
+  const parts = address
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length === 0) return null;
+  const [street, ...rest] = parts;
+  return { street: street ?? address, rest: rest.length > 0 ? rest.join(", ") : null };
+};
+
+/** The city for the cover eyebrow: the part before a region code, else the last part. */
+export const cityFromAddress = (address: string | null): string | null => {
+  const split = splitAddress(address);
+  if (split === null || split.rest === null) return null;
+  const rest = split.rest.split(",").map((p) => p.trim());
+  if (rest.length >= 2) {
+    const last = rest[rest.length - 1] ?? "";
+    // "New York, NY" / "Lagos, Nigeria": a short code names a region, so
+    // the city is the part before it.
+    return /^[A-Z]{2,3}( \d.*)?$/.test(last) || rest.length > 2
+      ? (rest[rest.length - 2] ?? null)
+      : (rest[0] ?? null);
+  }
+  return rest[0] ?? null;
+};
+
+type WebBrandStyle = Omit<ViewStyle, "position"> & {
+  position?: ViewStyle["position"] | "sticky";
+};
+const webBrandStyle = (style: WebBrandStyle): ViewStyle => style as ViewStyle;
+
 const tabLabel: Record<Tab, string> = {
   about: "About",
   reservations: "Reservations",
@@ -366,7 +416,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 }: PublicBrandPageProps) => {
   void hideFloatingChrome;
   const { isDesktop } = useResponsiveLayout();
-  const [activeTab, setActiveTab] = useState<Tab>("about");
+  // issue #4420 wave 2 (D-B2) — Upcoming is the default tab whenever the
+  // Upcoming tab exists; otherwise About. A guest's own pick wins while its
+  // tab is visible.
+  const [selectedTab, setActiveTab] = useState<Tab | null>(null);
+  const hasUpcomingTab =
+    happeningNow.length > 0 || upcoming.length > 0 || upcomingHasMore;
+  const activeTab: Tab =
+    selectedTab ?? (hasUpcomingTab ? "upcoming" : "about");
   const [muted, setMuted] = useState<boolean>(true);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const toggleMute = (): void => setMuted((v) => !v);
@@ -531,7 +588,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     }
     // #3426 — Happening now lives at the top of the Upcoming tab, so either
     // bucket makes the tab appear.
-    if (happeningNow.length > 0 || upcoming.length > 0 || upcomingHasMore) tabs.push("upcoming");
+    if (hasUpcomingTab) tabs.push("upcoming");
     if (pastCards.length > 0 || pastHasMore) tabs.push("past");
     // Historical ORCH-1155 source marker:
     // if (upcomingEvents.length > 0 || pastEvents.length > 0) tabs.push("events");
@@ -541,7 +598,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     return tabs;
   }, [
     experiences.length,
-    happeningNow.length,
+    hasUpcomingTab,
     pastCards.length,
     pastHasMore,
     pastTrips.length,
@@ -553,12 +610,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     venuesLoadState,
   ]);
 
-  // State-guard: if the active offering bucket empties, snap to About (index 0).
+  // State-guard: if the picked offering bucket empties, fall back to the
+  // default tab (Upcoming when it exists, else About).
   useEffect(() => {
-    if (!visibleTabs.includes(activeTab)) {
-      setActiveTab(visibleTabs[0] ?? "about");
+    if (selectedTab !== null && !visibleTabs.includes(selectedTab)) {
+      setActiveTab(null);
     }
-  }, [activeTab, visibleTabs]);
+  }, [selectedTab, visibleTabs]);
 
   const coverHue =
     resolvedTheme.color === MINGLA_DEFAULT_THEME.color && brand.coverHue !== 25
@@ -645,7 +703,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   const countForTab = (tab: Tab): number | undefined => {
     if (tab === "reservations") return venues.length;
-    if (tab === "upcoming") return happeningNow.length + upcoming.length;
+    // issue #4420 audit — the count is the rows the Upcoming list shows; a
+    // capped first page (more to load) shows no number, never a false total.
+    if (tab === "upcoming")
+      return upcomingHasMore ? undefined : happeningNow.length + upcoming.length;
     // #3426 — no number while more pages exist: "Past 30" would be a false total.
     if (tab === "past") return pastHasMore ? undefined : pastCards.length;
     if (tab === "events") return upcomingEvents.length;
@@ -654,33 +715,44 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     return undefined;
   };
 
-  // Featured "Next up" teaser shows only when there is >1 upcoming offering
-  // (design A.4/A.7 — a single offering's teaser would duplicate the only card).
-  const showFeaturedTeaser = upcoming.length > 1;
+  // issue #4420 wave 2 (D-B1) — "Next up" is the bottom glass bar, shown
+  // from ONE upcoming offering (the server's upcoming rows start in the
+  // future, so the first row is never live). It opens the same route the
+  // old teaser opened; no route, no bar (never a dead tap).
+  const nextUp: PublicBrandUpcoming | null =
+    upcoming.length > 0 && callbacks.onOpenUpcoming !== undefined
+      ? (upcoming[0] ?? null)
+      : null;
+  const nextUpPrice = nextUp !== null ? offeringPriceLabel(nextUp) : null;
+  const nextUpCta =
+    nextUp !== null ? NEXT_UP_CTA_LABEL[nextUp.offeringType] : null;
+  const nextUpBar =
+    nextUp !== null && nextUpCta !== null ? (
+      <OfferingGlassBar
+        palette={palette}
+        theme={resolvedTheme}
+        title={`Next up · ${formatUpcomingDateLine(nextUp.startsAt)}`}
+        subtitle={
+          nextUpPrice !== null ? `${nextUp.name} · ${nextUpPrice}` : nextUp.name
+        }
+        ctaLabel={nextUpCta}
+        onPress={() => callbacks.onOpenUpcoming?.(nextUp)}
+        ctaAccessibilityLabel={`${nextUpCta}, ${nextUp.name}`}
+        testID="issue-4420-brand-next-up-bar"
+      />
+    ) : null;
 
-  // ---- shared sub-blocks ----
-  const identityBlock = (
-    <View style={styles.identityRow}>
-      <Avatar brand={brand} palette={palette} theme={theme} />
-      <View style={styles.identityCopy}>
-        {isVerified ? (
-          <Text style={[styles.verifiedBadge, { color: themeTextAccent(palette) }]}>
-            Verified venue
-          </Text>
-        ) : null}
-        <Text
-          style={[styles.brandName, themedBoldFont, { color: palette.primaryText }]}
-        >
-          {brand.displayName}
-        </Text>
-        {address !== null ? (
-          <Text style={[styles.brandAddr, { color: palette.tertiaryText }]}>
-            {address}
-          </Text>
-        ) : null}
-      </View>
-    </View>
-  );
+  const city = cityFromAddress(address);
+  const coverIdentity = {
+    avatar: {
+      photo: brand.photo !== undefined && brand.photo.length > 0 ? brand.photo : null,
+      initial: brand.displayName,
+      label: `${brand.displayName} avatar`,
+    },
+    eyebrow: [isVerified ? "Verified venue" : null, city],
+    title: brand.displayName,
+    presenter: null,
+  };
 
   const socialsBlock =
     socialEntries.length > 0 ? (
@@ -691,13 +763,80 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       />
     ) : null;
 
-  const featuredTeaser = showFeaturedTeaser ? (
-    <NextOfferingTeaser
-      item={upcoming[0]}
-      theme={resolvedTheme}
+  // issue #4420 wave 2 — the address as a fact row; a tag line counts what
+  // the tabs hold (zero counts hide).
+  const tagCounts: string[] = [];
+  const upcomingTotal = happeningNow.length + upcoming.length;
+  if (upcomingTotal > 0)
+    tagCounts.push(`${upcomingHasMore ? `${upcomingTotal}+` : upcomingTotal} upcoming`);
+  if (upcomingTrips.length > 0)
+    tagCounts.push(`${upcomingTrips.length} ${upcomingTrips.length === 1 ? "trip" : "trips"}`);
+  if (venues.length > 0)
+    tagCounts.push(`${venues.length} ${venues.length === 1 ? "venue" : "venues"} to book`);
+  const addressParts = splitAddress(address);
+  const factRows =
+    addressParts !== null || tagCounts.length > 1 ? (
+      <View style={styles.factWrap}>
+        <OfferingFactRows
+          facts={
+            addressParts !== null
+              ? [
+                  {
+                    key: "where",
+                    icon: "pin",
+                    value: addressParts.street,
+                    detail: addressParts.rest,
+                  },
+                ]
+              : []
+          }
+          palette={palette}
+          theme={resolvedTheme}
+          tags={tagCounts.length > 1 ? tagCounts : undefined}
+          testID="issue-4420-brand-facts"
+        />
+      </View>
+    ) : null;
+
+  const followControl = (desktop: boolean) => (
+    <BrandFollowControl
+      brand={brand}
       palette={palette}
-      onPress={(item) => callbacks.onOpenUpcoming?.(item)}
+      theme={theme}
+      isFollowing={isFollowing}
+      followPending={followPending}
+      followState={followState}
+      followCaption={followCaption}
+      followerCount={followerCount}
+      followerCountLoading={followerCountLoading}
+      followerCountLabels={followerCountLabels}
+      onToggleFollow={callbacks.onToggleFollow}
+      onFollowingMenu={callbacks.onFollowingMenu}
+      desktop={desktop}
     />
+  );
+
+  // issue #4420 wave 2 — nothing upcoming: one calm card, no emoji and no
+  // second Follow (Follow already sits above).
+  const emptyCard = !hasUpcomingTab ? (
+    <View
+      style={[styles.brandEmptyCard, { borderColor: neutralControl(palette) }]}
+      testID="issue-4420-brand-empty"
+    >
+      <View style={[styles.brandEmptyDisc, { backgroundColor: palette.accentWash }]}>
+        <CalendarCheck size={24} color={themeTextAccent(palette)} strokeWidth={1.8} />
+      </View>
+      <Text
+        accessibilityRole="header"
+        style={[styles.brandEmptyTitle, themedBoldFont, { color: palette.primaryText }]}
+      >
+        Nothing on the calendar yet
+      </Text>
+      <Text style={[styles.brandEmptyBody, { color: palette.secondaryText }]}>
+        {brand.displayName} hasn't announced anything new. Follow to hear first
+        when they do.
+      </Text>
+    </View>
   ) : null;
 
   const handleTabSelect = (tab: Tab): void => {
@@ -812,33 +951,17 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       <AboutTab brand={brand} theme={resolvedTheme} palette={palette} />
     );
 
-  // ---- body (left column / phone flow) ----
+  // ---- body (right column on desktop / the sheet on phone) ----
   const bodyContent = (
     <View>
-      {/* Identity above the tabs ONLY on phone/native — desktop overlays it on
-          the hero + repeats it in the sticky panel. */}
       {!isDesktop ? (
         <View style={styles.phoneIdentityWrap}>
-          {identityBlock}
-          <BrandFollowControl
-            brand={brand}
-            palette={palette}
-            theme={theme}
-            isFollowing={isFollowing}
-            followPending={followPending}
-            followState={followState}
-            followCaption={followCaption}
-            followerCount={followerCount}
-            followerCountLoading={followerCountLoading}
-            followerCountLabels={followerCountLabels}
-            onToggleFollow={callbacks.onToggleFollow}
-            onFollowingMenu={callbacks.onFollowingMenu}
-          />
+          {followControl(false)}
           {socialsBlock}
-          {featuredTeaser}
         </View>
       ) : null}
-
+      {factRows}
+      {emptyCard}
       {tabBar}
       <View style={styles.paneWrap}>{activePane}</View>
       {/* #4111 — the host's page foot, under the active pane on every tab. */}
@@ -850,69 +973,33 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     </View>
   );
 
-  // ---- desktop sticky brand-summary panel (Share + Next-up only) ----
-  const stickyPanel = isDesktop ? (
-    <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, accentFill(palette)]} />
-      <View style={styles.deskInner}>
-        <View style={styles.deskIdentity}>
-          <Avatar brand={brand} palette={palette} theme={theme} size={60} />
-          <View style={styles.identityCopy}>
-            <Text
-              style={[
-                styles.deskBrandName,
-                themedBoldFont,
-                { color: palette.primaryText },
-              ]}
-            >
-              {brand.displayName}
-            </Text>
-            {address !== null ? (
-              <Text style={[styles.brandAddr, { color: palette.tertiaryText }]}>
-                {address}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-        {socialsBlock}
-        <BrandFollowControl
-          brand={brand}
-          palette={palette}
-          theme={theme}
-          isFollowing={isFollowing}
-          followPending={followPending}
-          followState={followState}
-          followCaption={followCaption}
-          followerCount={followerCount} followerCountLoading={followerCountLoading} followerCountLabels={followerCountLabels}
-          onToggleFollow={callbacks.onToggleFollow}
-          onFollowingMenu={callbacks.onFollowingMenu}
-          desktop
-        />
-        <DeskShareRow
-          palette={palette}
-          brandName={brand.displayName}
-          onShare={callbacks.onShare}
-          onMessage={callbacks.onMessage}
-        />
-            {showFeaturedTeaser ? (
-              <View style={styles.deskNextWrap}>
-                <Text style={[styles.deskNextLabel, { color: palette.tertiaryText }]}>Next up</Text>
-            <NextOfferingTeaser
-              item={upcoming[0]}
-              theme={resolvedTheme}
-              palette={palette}
-              onPress={(item) => callbacks.onOpenUpcoming?.(item)}
-            />
-          </View>
-        ) : null}
-      </View>
+  // issue #4420 wave 2 — desktop: the actions live under the flyer (Follow,
+  // Share / Message ghosts), then Next up, then the social row.
+  const flyerActions = isDesktop ? (
+    <View style={styles.flyerActions} testID="issue-4420-brand-flyer-actions">
+      {followControl(true)}
+      <DeskShareRow
+        palette={palette}
+        brandName={brand.displayName}
+        onShare={callbacks.onShare}
+        onMessage={callbacks.onMessage}
+      />
+      {nextUpBar !== null ? <View style={styles.flyerBar}>{nextUpBar}</View> : null}
+      {socialsBlock !== null ? (
+        <View style={styles.flyerSocials}>{socialsBlock}</View>
+      ) : null}
     </View>
   ) : null;
 
-  // Desktop hero overlay intentionally removed: the cover artwork stays clean,
-  // while the page body remains the single owner of brand identity and details.
+  // Native: the bar floats over the page above the bottom inset; phone web
+  // keeps it inside the shell's one scroll (sticky, the #2729 keyed slot).
+  const barBottom = Math.max(0, contentBottomInset - 24) + 12;
+  const phoneBarOnNative = !isDesktop && Platform.OS !== "web" && nextUpBar !== null;
+  const shellBottomInset = phoneBarOnNative
+    ? contentBottomInset + OFFERING_GLASS_BAR_HEIGHT + 12
+    : contentBottomInset;
 
-  return (
+  const shell = (
     <ParallaxCoverShell
       palette={palette}
       theme={resolvedTheme}
@@ -927,13 +1014,39 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       onShare={callbacks.onShare}
       hideCloseOnWeb
       directionCIdentity={useDirectionCIdentity ? { title: brand.displayName, meta: address } : undefined}
-      stickyPanel={stickyPanel}
+      frame="premium"
+      coverIdentity={coverIdentity}
+      headerTitle={brand.displayName}
+      desktopFlyerActions={flyerActions}
       safeAreaTop={chromeTopOffset ?? 0}
-      contentBottomInset={contentBottomInset}
+      contentBottomInset={shellBottomInset}
       testID="orch-1155-public-brand"
     >
       {bodyContent}
+      {Platform.OS === "web" && !isDesktop && nextUpBar !== null ? (
+        <React.Fragment key="issue-2729-web-phone-action">
+          <View
+            style={[styles.webPhoneBar, webBrandStyle({ position: "sticky" })]}
+            pointerEvents="box-none"
+          >
+            {nextUpBar}
+          </View>
+        </React.Fragment>
+      ) : null}
     </ParallaxCoverShell>
+  );
+
+  if (!phoneBarOnNative) return shell;
+  return (
+    <View style={styles.nativeHost}>
+      {shell}
+      <View
+        style={[styles.nativeBarWrap, { bottom: barBottom }]}
+        pointerEvents="box-none"
+      >
+        {nextUpBar}
+      </View>
+    </View>
   );
 };
 
@@ -954,11 +1067,13 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
       style={({ pressed }) => [
         styles.deskShareBtn,
         onMessage !== undefined && styles.deskShareBtnHalf,
-        accentFill(palette),
+        // issue #4420 wave 2 — a ghost pill (Follow is the one primary).
+        styles.deskMessageBtn,
+        { borderColor: neutralControl(palette) },
         pressed && styles.cardPressed,
       ]}
     >
-      <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
+      <Text style={[styles.deskShareLabel, { color: palette.primaryText }]}>
         Share
       </Text>
     </Pressable>
@@ -972,7 +1087,7 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
           styles.deskShareBtn,
           styles.deskShareBtnHalf,
           styles.deskMessageBtn,
-          accentOutline(palette, { opaqueBackground: palette.page }),
+          { borderColor: neutralControl(palette) },
           pressed && styles.cardPressed,
         ]}
       >
@@ -983,158 +1098,6 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
     ) : null}
   </View>
 );
-
-const Avatar: React.FC<{
-  brand: PublicBrand;
-  palette: ThemePalette;
-  /** issue #1023 wave 2 — a gradient theme draws the ring as a 2 px gradient. */
-  theme?: ResolvedTheme;
-  size?: number;
-}> = ({ brand, palette, theme, size = 84 }) => {
-  // issue #1023 wave 2 — a gradient cannot be a borderColor, so a gradient
-  // theme wraps the avatar in a gradient circle the same size and draws the
-  // avatar 2 px inside it with no border. A solid theme keeps today's ring.
-  const gradientRing =
-    theme !== undefined && themeAccentFill(theme, palette).kind === "gradient";
-  if (gradientRing && theme !== undefined) {
-    return (
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          boxShadow: [
-            {
-              offsetX: 0,
-              offsetY: 10,
-              blurRadius: 18,
-              spreadDistance: 0,
-              color: hexToRgba(palette.accent, 0.26),
-            },
-          ],
-        }}
-      >
-        <ThemeAccentFill
-          theme={theme}
-          palette={palette}
-          style={[styles.avatarRing, { width: size, height: size, borderRadius: size / 2 }]}
-          testID="brand-avatar-gradient-ring"
-        >
-          <AvatarFace brand={brand} palette={palette} size={size - 4} bordered={false} />
-        </ThemeAccentFill>
-      </View>
-    );
-  }
-  // #2539 — NO shadowColor here either. It is a shadow* prop like the other
-  // three, and on web it reaches the SAME react-native-web <Image> that turns
-  // the set into `filter: drop-shadow()` on the clipped inner layer.
-  const avatarStyle = [
-    styles.avatar,
-    {
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      backgroundColor: palette.panelStrong,
-      borderColor: palette.accent,
-    },
-  ];
-  // #2539 — the accent glow lives HERE, on a plain layout box wrapping the
-  // avatar, and never on the avatar itself. One wrapper, both branches, so a
-  // brand with a photo and a brand without one look the same. Two defects, one
-  // cause — the shadow was on the wrong element:
-  //   (1) on web a shadow on the <Image> becomes a CSS filter on the inner
-  //       picture layer, and WebKit gives that layer its own composited layer
-  //       and clips it to a RECTANGLE — the round crop silently disappears;
-  //   (2) a shadow on the CLIPPING element cannot render anywhere: RNW erases
-  //       it from the Image root, CoreAnimation will not draw a masksToBounds
-  //       layer's shadow, and Android's legacy shadow* needs the `elevation`
-  //       ORCH-1155 removed. On a wrapper outside the clip, all three surfaces
-  //       draw it.
-  // boxShadow (RN 0.81 array form) rather than shadow*: it is the form
-  // react-native-web maps to a real CSS box-shadow, and the one iOS Fabric
-  // honours through a clipping ancestor (RCTViewComponentView.mm L787-791).
-  // The wrapper stays a PLAIN box on purpose — no `overflow` (it would re-clip
-  // the glow), no `backgroundColor` (it would paint over it), and no
-  // accessibility props (the <Image> already carries the label; a second
-  // accessible node would be read out twice).
-  const glowStyle: ViewStyle = {
-    width: size,
-    height: size,
-    borderRadius: size / 2,
-    boxShadow: [
-      {
-        offsetX: 0,
-        offsetY: 10,
-        blurRadius: 18,
-        spreadDistance: 0,
-        color: hexToRgba(palette.accent, 0.26),
-      },
-    ],
-  };
-  return (
-    <View style={glowStyle}>
-      {brand.photo !== undefined && brand.photo.length > 0 ? (
-        <Image
-          source={{ uri: brand.photo }}
-          style={avatarStyle}
-          resizeMode="cover"
-          accessibilityLabel={`${brand.displayName} avatar`}
-        />
-      ) : (
-        <View style={avatarStyle}>
-          <Text
-            style={[
-              styles.avatarInitial,
-              { fontSize: size * 0.42, color: palette.primaryText },
-            ]}
-          >
-            {(brand.displayName.charAt(0) || "?").toUpperCase()}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
-};
-
-// issue #1023 wave 2 — the avatar face alone (photo or initial), for the
-// gradient ring. Same styles as Avatar's own branches, minus the border.
-const AvatarFace: React.FC<{
-  brand: PublicBrand;
-  palette: ThemePalette;
-  size: number;
-  bordered: boolean;
-}> = ({ brand, palette, size, bordered }) => {
-  const faceStyle = [
-    styles.avatar,
-    {
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      backgroundColor: palette.panelStrong,
-      borderColor: palette.accent,
-    },
-    bordered ? null : styles.avatarNoBorder,
-  ];
-  return brand.photo !== undefined && brand.photo.length > 0 ? (
-    <Image
-      source={{ uri: brand.photo }}
-      style={faceStyle}
-      resizeMode="cover"
-      accessibilityLabel={`${brand.displayName} avatar`}
-    />
-  ) : (
-    <View style={faceStyle}>
-      <Text
-        style={[
-          styles.avatarInitial,
-          { fontSize: size * 0.42, color: palette.primaryText },
-        ]}
-      >
-        {(brand.displayName.charAt(0) || "?").toUpperCase()}
-      </Text>
-    </View>
-  );
-};
 
 // Issue #3188 [brand-page social icons wrap onto a second line] — the row now
 // fits ONE line at any entry count (the true maximum is 8: `SocialKind` has
@@ -1188,13 +1151,18 @@ const SocialLinksRow: React.FC<{
             {
               width: metrics.diameter,
               height: metrics.diameter,
-              ...accentFill(palette),
+              // issue #4420 wave 2 — socials are controls, not CTAs: glass
+              // circle, accent rim, the glyph in the text accent (the
+              // gradient stays on the primary button only).
+              backgroundColor: palette.glass,
+              borderWidth: 1,
+              borderColor: palette.panelBorder,
             },
           ]}
         >
           <SocialIcon
             kind={entry.kind}
-            color="#ffffff"
+            color={themeTextAccent(palette)}
             size={metrics.glyph}
             strokeWidth={metrics.strokeWidth}
           />
@@ -1381,27 +1349,22 @@ const TabBar: React.FC<TabBarProps> = ({
               style={[
                 styles.tabChip,
                 surface.card,
+                // issue #4420 wave 2 — the selected tab is ink (the page's
+                // text colour) with page-coloured text; the gradient is the
+                // primary button's alone.
                 active && {
-                  ...accentFillWithBorder(palette),
+                  backgroundColor: palette.primaryText,
+                  borderColor: palette.primaryText,
                 },
               ]}
+              testID={`issue-4420-brand-tab-${tab}`}
             >
-              {/* issue #1023 — the active tab paints the theme gradient (a
-                  solid theme renders nothing here and looks as before). */}
-              {active ? (
-                <ThemeAccentGradientLayer
-                  theme={theme}
-                  palette={palette}
-                  borderRadius={styles.tabChip.borderRadius}
-                  testID={`brand-tab-gradient-${tab}`}
-                />
-              ) : null}
               <Text
                 style={[
                   styles.tabLabel,
                   themeBoldFace(theme),
                   {
-                    color: active ? palette.accentText : palette.secondaryText,
+                    color: active ? palette.page : palette.secondaryText,
                   },
                 ]}
               >
@@ -1535,6 +1498,8 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
       ]}
     >
       <CoverBlock
+        theme={theme}
+        palette={palette}
         hue={event.coverHue}
         mediaUrl={event.coverMediaUrl}
         mediaType={event.coverMediaType}
@@ -1570,79 +1535,35 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
             Online event
           </Text>
         ) : null}
-        {price !== null ? (
-          <View style={styles.oCardPriceRow}>
-            <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
-              {price}
-            </Text>
-            {salePrice !== null && listPrice !== null ? (
-              <Text
-                style={[styles.oCardListPrice, { color: palette.tertiaryText }]}
-                accessibilityLabel={`Regular price ${listPrice}`}
-              >
-                {listPrice}
+        {/* issue #4420 wave 2 (D-B3) — the price and a small TONAL pill on
+            one row; the page's one gradient is the Follow button. */}
+        <View style={styles.cardActionRow}>
+          {price !== null ? (
+            <View style={[styles.oCardPriceRow, styles.cardActionPrice]}>
+              <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
+                {price}
               </Text>
-            ) : null}
+              {salePrice !== null && listPrice !== null ? (
+                <Text
+                  style={[styles.oCardListPrice, { color: palette.tertiaryText }]}
+                  accessibilityLabel={`Regular price ${listPrice}`}
+                >
+                  {listPrice}
+                </Text>
+              ) : null}
+            </View>
+          ) : (
+            <View style={styles.cardActionPrice} />
+          )}
+          <View
+            style={[styles.buyPill, { backgroundColor: palette.accentWash }]}
+            testID="issue-4420-brand-card-pill"
+          >
+            <Text style={[styles.buyPillLabel, { color: palette.primaryText }]}>
+              {action}
+            </Text>
           </View>
-        ) : null}
-        <View style={[styles.buyPill, accentFill(palette)]}>
-          <ThemeAccentGradientLayer
-            theme={theme}
-            palette={palette}
-            borderRadius={styles.buyPill.borderRadius}
-          />
-          <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
-            {action}
-          </Text>
         </View>
-      </View>
-    </Pressable>
-  );
-};
-
-const NextOfferingTeaser: React.FC<{
-  item: PublicBrandUpcoming;
-  theme: ResolvedTheme;
-  palette: ThemePalette;
-  onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ item, theme, palette, onPress }) => {
-  const price = offeringPriceLabel(item);
-  const dateLine = formatUpcomingDateLine(item.startsAt);
-  const bodyText =
-    price !== null
-      ? `${dateLine} · ${item.name} · ${price}`
-      : `${dateLine} · ${item.name}`;
-  return (
-    <Pressable
-      onPress={() => onPress(item)}
-      accessibilityRole="button"
-      accessibilityLabel={`Next offering ${item.name}`}
-      style={({ pressed }) => [
-        styles.nextTeaser,
-        accentFill(palette),
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <View style={styles.nextTeaserCopy}>
-        <Text style={[styles.nextTeaserLabel, { color: palette.accentText }]}>
-          NEXT UP · {item.offeringType.toUpperCase()}
-        </Text>
-        <Text
-          style={[
-            styles.nextTeaserBody,
-            { ...themeBoldFace(theme), color: palette.accentText },
-          ]}
-          numberOfLines={2}
-        >
-          {bodyText}
-        </Text>
-      </View>
-      <View style={styles.nextTeaserAction}>
-        <Text
-          style={[styles.nextTeaserActionText, { color: palette.accentText }]}
-        >
-          View
-        </Text>
       </View>
     </Pressable>
   );
@@ -1749,6 +1670,8 @@ const TripMiniCard: React.FC<{
       ]}
     >
       <CoverBlock
+        theme={theme}
+        palette={palette}
         hue={hashHueFromString(trip.id)}
         mediaUrl={trip.coverMediaUrl}
         mediaType={trip.coverMediaType}
@@ -1874,6 +1797,8 @@ const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
       ]}
     >
       <CoverBlock
+        theme={theme}
+        palette={palette}
         hue={hashHueFromString(item.offeringId)}
         mediaUrl={item.coverMediaUrl}
         mediaType={item.coverMediaType}
@@ -2040,6 +1965,8 @@ const SectionMiniCard: React.FC<SectionCardProps> = ({
       ]}
     >
       <CoverBlock
+        theme={theme}
+        palette={palette}
         hue={hashHueFromString(card.hueSeed)}
         mediaUrl={card.coverMediaUrl}
         mediaType={card.coverMediaType}
@@ -2255,6 +2182,8 @@ const ExperienceMiniCard: React.FC<{
       ]}
     >
       <CoverBlock
+        theme={theme}
+        palette={palette}
         hue={hashHueFromString(experience.experienceId)}
         mediaUrl={experience.coverMediaUrl}
         // ORCH-1155 — render the experience's REAL cover media type (video/gif),
@@ -2298,23 +2227,35 @@ const CoverBlock: React.FC<{
   hue: number;
   mediaUrl: string | null;
   mediaType: string | null;
-}> = ({ hue, mediaUrl, mediaType }) => (
-  <EventCoverMedia
-    hue={hue}
-    mediaUrl={mediaUrl}
-    mediaType={mediaType as PublicMediaType | null}
-    radius={0}
-    label="Cover"
-    style={styles.oCardCover}
-  />
-);
+  /** issue #4420 wave 2 — a card with no cover wears the host's colour. */
+  theme: ResolvedTheme;
+  palette: ThemePalette;
+}> = ({ hue, mediaUrl, mediaType, theme, palette }) =>
+  mediaUrl === null || mediaUrl.trim().length === 0 ? (
+    <ThemeAccentFill
+      theme={theme}
+      palette={palette}
+      style={styles.oCardCover}
+      testID="issue-4420-brand-card-nocover"
+    >
+      <View style={styles.oCardCoverShade} />
+    </ThemeAccentFill>
+  ) : (
+    <EventCoverMedia
+      hue={hue}
+      mediaUrl={mediaUrl}
+      mediaType={mediaType as PublicMediaType | null}
+      radius={0}
+      label="Cover"
+      style={styles.oCardCover}
+    />
+  );
 
 const EmptyPane: React.FC<{ copy: string; palette: ThemePalette }> = ({
   copy,
   palette,
 }) => (
   <View style={styles.emptyWrap}>
-    <Text style={styles.emptyEmoji}>🗺️</Text>
     <Text style={[styles.emptyTitle, { color: palette.primaryText }]}>
       Nothing on the calendar yet
     </Text>
@@ -2758,6 +2699,10 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 184,
   },
+  oCardCoverShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.12)",
+  },
   oCardBody: {
     padding: 14,
     gap: 4,
@@ -2809,18 +2754,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textDecorationLine: "line-through",
   },
+  cardActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 12,
+  },
+  cardActionPrice: {
+    flex: 1,
+    minWidth: 0,
+    marginTop: 0,
+  },
   buyPill: {
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 44,
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 12,
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    flexShrink: 0,
   },
   buyPillLabel: {
-    fontSize: 15,
-    fontWeight: "900",
-    letterSpacing: 0.4,
+    fontSize: 13.5,
+    fontWeight: "800",
   },
   badge: {
     paddingVertical: 4,
@@ -2972,12 +2927,12 @@ const styles = StyleSheet.create({
   deskShareRow: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 18,
+    marginTop: 12,
   },
   deskShareBtn: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: 14,
+    minHeight: 44,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2985,8 +2940,65 @@ const styles = StyleSheet.create({
     flexBasis: 0,
   },
   deskMessageBtn: {
-    borderWidth: 1.5,
+    borderWidth: 1,
     backgroundColor: "transparent",
+  },
+  // ---- issue #4420 wave 2 ----
+  factWrap: {
+    marginTop: 18,
+  },
+  flyerActions: {
+    marginTop: 4,
+    gap: 4,
+  },
+  flyerBar: {
+    marginTop: 12,
+  },
+  flyerSocials: {
+    marginTop: 8,
+    alignItems: "center",
+  },
+  brandEmptyCard: {
+    marginTop: 22,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    padding: 20,
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  brandEmptyDisc: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandEmptyTitle: {
+    fontSize: 21,
+    fontWeight: "700",
+  },
+  brandEmptyBody: {
+    fontSize: 14.5,
+    lineHeight: 21,
+  },
+  webPhoneBar: {
+    left: 0,
+    right: 0,
+    bottom: 0,
+    marginTop: 8,
+    paddingTop: 8,
+    paddingBottom: 12,
+    zIndex: 6,
+  },
+  nativeHost: {
+    flex: 1,
+  },
+  nativeBarWrap: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    zIndex: 6,
   },
   // Issue #679 / #3682 — Follow wrap (button owns its own chrome).
   followWrapPhone: {

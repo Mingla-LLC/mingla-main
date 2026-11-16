@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -10,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { showAlert } from "../ui/showAlert";
 // Library-recommended primitive for sticky-composer-above-keyboard pattern.
 // react-native-keyboard-controller is the canonical Mingla keyboard library
 // per I-PROPOSED-KEYBOARD-LIBRARY-ONLY (ORCH-0892-C) — already a project dep.
@@ -108,7 +108,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
       setComposer("");
       setAttachment(null);
     } catch (err) {
-      Alert.alert("Message failed", err instanceof Error ? err.message : "Try again.");
+      showAlert("Message failed", err instanceof Error ? err.message : "Try again.");
     } finally {
       setSending(false);
     }
@@ -117,9 +117,11 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
   const handlePickImage = async () => {
     const { status, granted } = await requestMediaLibraryPermissionsAsync();
     if (status !== "granted" && !granted) {
-      Alert.alert(
+      showAlert(
         "Photo access needed",
         "Grant Mingla access to your photos in iOS Settings to attach an image.",
+        undefined,
+        { kind: "warn" },
       );
       return;
     }
@@ -147,7 +149,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
   const handleToggleBroadcast = async (value: boolean) => {
     const result = await moderation.setBroadcastOnly(value);
     if (result.error) {
-      Alert.alert("Could not update chat", result.error);
+      showAlert("Could not update chat", result.error);
       return;
     }
     await chat.refresh();
@@ -155,13 +157,13 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
 
   const handleRemoveParticipant = async (userId: string) => {
     const result = await moderation.removeParticipant(userId);
-    if (result.error) Alert.alert("Could not remove member", result.error);
+    if (result.error) showAlert("Could not remove member", result.error);
   };
 
   const handleDeleteMessage = async (messageId: string) => {
     const result = await moderation.deleteMessage(messageId);
     if (result.error) {
-      Alert.alert("Could not delete message", result.error);
+      showAlert("Could not delete message", result.error);
       return;
     }
     await chat.refresh();

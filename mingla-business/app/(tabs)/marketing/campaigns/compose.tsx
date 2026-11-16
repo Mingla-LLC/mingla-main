@@ -1642,6 +1642,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           return;
         }
         ev.preventDefault?.();
+        // I-4420-NO-RAW-ALERT native-only: web returns above (autosave keeps the draft); this guard runs on a phone only.
         Alert.alert(
           "Save your draft?",
           "You've got unsaved edits. Save them so you can pick up later — or discard.",

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -9,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { showAlert } from "../ui/showAlert";
 
 import { color, radius, scrim, space } from "../../constants/designSystem";
 import {
@@ -77,9 +77,9 @@ export function BrandGroupFileUploadSheet({
       onClose();
     } catch (cause) {
       if (cause instanceof BrandGroupFilePermissionError) {
-        Alert.alert(cause.source === "camera" ? "Camera access is off" : "Photo access is off", "Allow access in device settings, then try again.");
+        showAlert(cause.source === "camera" ? "Camera access is off" : "Photo access is off", "Allow access in device settings, then try again.", undefined, { kind: "warn" });
       } else {
-        Alert.alert("Files not added", cause instanceof Error ? cause.message : "Try again.");
+        showAlert("Files not added", cause instanceof Error ? cause.message : "Try again.");
       }
     } finally {
       setPreparing(false);

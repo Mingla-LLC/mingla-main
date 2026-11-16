@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // MINGLA-INVARIANT: I-4420-HOST-WIRING | issue #4420 | The Graphite Glass redesign's structural wiring (which screen mounts which shared piece, which gate shows a pane, which strings the shared pickers carry) stays in place.
+// MINGLA-INVARIANT: I-4420-NO-RAW-ALERT | issue #4420 | Host app code raises alerts through showAlert (web shows a Toast or ConfirmDialog); a raw Alert.alert, a silent no-op on react-native-web, appears only in showAlert itself and in the allowlisted native-only files, at no more than their counted calls.
 /**
  * issue #4420 — Graphite Glass: structural wiring rules.
  * Invariant: I-4420-HOST-WIRING.
@@ -423,6 +424,56 @@ export const RULES = [
   },
 ];
 
+// ---- No raw Alert.alert (I-4420-NO-RAW-ALERT) ----
+// react-native-web implements Alert.alert as a no-op, so a raw call on a
+// web-reachable path is a silent failure (Constitution 3). Every alert goes
+// through src/components/ui/showAlert.ts. The files below run ONLY on a phone
+// and keep their raw calls, each marked "I-4420-NO-RAW-ALERT native-only";
+// the number is a ceiling, so a new raw call there fails too. Comment lines
+// and __tests__ are ignored. Behaviour: ui/__tests__/issue_4420_show_alert.
+export const RAW_ALERT_ALLOW = {
+  "src/components/ui/showAlert.ts": 1,
+  "src/context/AuthContext.tsx": 6,
+  "src/components/door/tap/TapToPaySaleScreen.tsx": 1,
+  "src/components/door/useDoorModeTapSale.ts": 1,
+  "app/(tabs)/marketing/campaigns/compose.tsx": 1,
+  "src/components/marketing/ComposerV2/TemplatePreviewDrawer.tsx": 1,
+  "src/components/marketing/ComposerV2/SelectionFormattingTooltip.tsx": 1,
+};
+export const RAW_ALERT_ROOTS = ["app", "src"];
+
+/** Pure: raw-alert problems for `files` ({ path, text }[], paths relative to mingla-business/). */
+export function checkRawAlerts(files, allow = RAW_ALERT_ALLOW) {
+  const problems = [];
+  for (const { path: rel, text } of files) {
+    if (/(^|\/)__tests__\//.test(rel)) continue;
+    const count = text
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .reduce((n, line) => n + (line.match(/\bAlert\s*\.\s*alert\s*\(/g) ?? []).length, 0);
+    const ceiling = allow[rel] ?? 0;
+    if (count > ceiling) {
+      problems.push(
+        ceiling === 0
+          ? `${rel}: ${count} raw Alert.alert call(s); use showAlert (src/components/ui/showAlert.ts) — Alert.alert shows nothing on web`
+          : `${rel}: ${count} raw Alert.alert call(s), allowlist ceiling is ${ceiling} (native-only); use showAlert`,
+      );
+    }
+  }
+  return problems;
+}
+
+const listSources = (dir, rel = "") => {
+  const out = [];
+  for (const entry of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const child = rel ? `${rel}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...listSources(dir, child));
+    else if (/\.(tsx?|jsx?)$/.test(entry.name)) out.push(child);
+  }
+  return out;
+};
+
 const label = (p) => (p instanceof RegExp ? String(p) : JSON.stringify(p));
 const hit = (text, p) => (p instanceof RegExp ? p.test(text) : text.includes(p));
 
@@ -456,11 +507,22 @@ if (process.argv.includes("--self-test")) {
     ["missing slice marker fails", { file: "a.ts", why: "w", from: "export const nope", to: "};", has: ["x"] }, 1],
   ];
   const failures = cases.filter(([, rule, want]) => (checkRule(rule, read).length > 0 ? 1 : 0) !== want).map(([name]) => name);
+  const alertCases = [
+    ["raw Alert.alert outside the allowlist fails", [{ path: "src/x.tsx", text: "Alert.alert(\"a\");" }], 1],
+    ["showAlert passes", [{ path: "src/x.tsx", text: "showAlert(\"a\");" }], 0],
+    ["a commented Alert.alert passes", [{ path: "src/x.tsx", text: "// Alert.alert is a no-op on web\n * Alert.alert(" }], 0],
+    ["tests are ignored", [{ path: "src/__tests__/x.test.tsx", text: "Alert.alert(\"a\");" }], 0],
+    ["an allowlisted file within its ceiling passes", [{ path: "src/context/AuthContext.tsx", text: "Alert.alert(1);\nAlert.alert(2);" }], 0],
+    ["an allowlisted file over its ceiling fails", [{ path: "src/components/door/useDoorModeTapSale.ts", text: "Alert.alert(1);\nAlert.alert(2);" }], 1],
+  ];
+  for (const [name, files, want] of alertCases) {
+    if ((checkRawAlerts(files).length > 0 ? 1 : 0) !== want) failures.push(name);
+  }
   if (failures.length) {
     console.error(`#4420 host-wiring self-test FAIL: ${failures.join("; ")}`);
     process.exit(1);
   }
-  console.log(`#4420 host-wiring self-test PASS (${cases.length} cases)`);
+  console.log(`#4420 host-wiring self-test PASS (${cases.length + alertCases.length} cases)`);
   process.exit(0);
 }
 
@@ -469,9 +531,14 @@ const readBiz = (rel) => {
   return fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : null;
 };
 const problems = RULES.flatMap((rule) => checkRule(rule, readBiz));
+const sourceFiles = RAW_ALERT_ROOTS.flatMap((root) => listSources(BUSINESS, root));
+for (const rel of Object.keys(RAW_ALERT_ALLOW)) {
+  if (!sourceFiles.includes(rel)) problems.push(`${rel}: allowlisted for raw Alert.alert but missing (I-4420-NO-RAW-ALERT); drop or rename the entry`);
+}
+problems.push(...checkRawAlerts(sourceFiles.map((rel) => ({ path: rel, text: readBiz(rel) ?? "" }))));
 if (problems.length) {
   console.error(`FAIL [I-4420-HOST-WIRING]: ${problems.length} wiring rule(s) broken:`);
   for (const p of problems) console.error(`  x ${p}`);
   process.exit(1);
 }
-console.log(`OK [I-4420-HOST-WIRING]: ${RULES.length} wiring rules hold.`);
+console.log(`OK [I-4420-HOST-WIRING]: ${RULES.length} wiring rules hold; no raw Alert.alert outside showAlert and ${Object.keys(RAW_ALERT_ALLOW).length - 1} native-only files (I-4420-NO-RAW-ALERT).`);

@@ -48,6 +48,7 @@ import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 import { ToastHost } from "../src/components/ui/ToastHost";
+import { AlertDialogHost } from "../src/components/ui/AlertDialogHost";
 import { HostDesktopShell } from "../src/components/ui/HostDesktopShell";
 import { TapToPayAwarenessModal } from "../src/components/door/tap/TapToPayAwarenessModal";
 import { TapToPayTerminalHost } from "../src/components/door/tap/TapToPayTerminalHost";
@@ -1025,6 +1026,9 @@ export default function RootLayout(): React.ReactElement {
             (it reads insets), outside AuthProvider (auth-free). Sheets and
             dialogs mount their own host inside their Modal window. */}
         <ToastHost layer="root" />
+        {/* #4420: the web confirm `showAlert` queues (Alert.alert is a no-op on
+            react-native-web). Empty on native and until a dialog is queued. */}
+        <AlertDialogHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

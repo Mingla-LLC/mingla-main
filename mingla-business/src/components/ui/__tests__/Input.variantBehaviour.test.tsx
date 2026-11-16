@@ -30,6 +30,7 @@ const EXPECTED_VARIANTS = [
   "email",
   "phone",
   "number",
+  "integer",
   "password",
   "search",
 ] as const;
@@ -68,5 +69,12 @@ describe("Input VARIANT_BEHAVIOUR — ORCH-0823 regression", () => {
         expect(behaviour.autoCapitalize).not.toBe("sentences");
       });
     });
+  });
+});
+
+describe("#4420 integer variant", () => {
+  test("whole numbers get the pad with no decimal key", () => {
+    expect(VARIANT_BEHAVIOUR.integer.keyboardType).toBe("number-pad");
+    expect(VARIANT_BEHAVIOUR.number.keyboardType).toBe("numeric");
   });
 });

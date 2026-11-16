@@ -321,8 +321,13 @@ function chipBox(node: HostNode): Record<string, unknown> {
 
 /** The glyph host node inside a chip (the icon mock forwards props verbatim). */
 function glyphs(tree: Tree): HostNode[] {
+  // issue #4420 wave 2 — the page also draws a calendar icon in its "nothing
+  // upcoming" card; only the social glyphs count here.
   return tree.root.findAll(
-    (node) => typeof node.type === "string" && node.type === "mock-icon",
+    (node) =>
+      typeof node.type === "string" &&
+      node.type === "mock-icon" &&
+      node.props["data-icon"] !== "CalendarCheck",
   );
 }
 
@@ -378,7 +383,11 @@ describe("#3188 R-1/R-2 — the REPORTED container: 8 chips, 318pt sticky panel"
       expect(chipBox(chip)).toEqual({
         width: 31,
         height: 31,
-        backgroundColor: "#2266cc",
+        // issue #4420 wave 2 — socials are glass controls with an accent rim
+        // (the gradient fill is the primary button's alone).
+        backgroundColor: "rgba(255,255,255,0.12)",
+        borderWidth: 1,
+        borderColor: "rgba(34,102,204,0.38)",
       });
       // Native only — hitSlop is inert on web (R-4 measures what web gets).
       expect(chip.props.hitSlop).toEqual({
@@ -405,7 +414,8 @@ describe("#3188 R-1/R-2 — the REPORTED container: 8 chips, 318pt sticky panel"
     for (const mark of marks) {
       expect(mark.props.size).toBe(15);
       expect(mark.props.strokeWidth).toBe(1.8);
-      expect(mark.props.color).toBe("#ffffff");
+      // issue #4420 wave 2 — the glyph is the text accent on a glass circle.
+      expect(mark.props.color).toBe("#397bde");
     }
 
     tree.unmount();
@@ -452,7 +462,11 @@ describe("#3188 R-3 — the NARROW phone container (this was never desktop-only)
       expect(chipBox(chip)).toEqual({
         width: 31,
         height: 31,
-        backgroundColor: "#2266cc",
+        // issue #4420 wave 2 — socials are glass controls with an accent rim
+        // (the gradient fill is the primary button's alone).
+        backgroundColor: "rgba(255,255,255,0.12)",
+        borderWidth: 1,
+        borderColor: "rgba(34,102,204,0.38)",
       });
       expect(chip.props.hitSlop).toEqual({
         top: 7,
@@ -567,7 +581,11 @@ describe("#3188 R-6/R-7 — no regression, and no measurement", () => {
       expect(chipBox(chip)).toEqual({
         width: 44,
         height: 44,
-        backgroundColor: "#2266cc",
+        // issue #4420 wave 2 — socials are glass controls with an accent rim
+        // (the gradient fill is the primary button's alone).
+        backgroundColor: "rgba(255,255,255,0.12)",
+        borderWidth: 1,
+        borderColor: "rgba(34,102,204,0.38)",
       });
       // Zero slop, not merely small — today's chip has none.
       expect(chip.props.hitSlop).toEqual({

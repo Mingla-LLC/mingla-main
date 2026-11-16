@@ -9,13 +9,13 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { showAlert } from "../../components/ui/showAlert";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
@@ -126,9 +126,9 @@ export const AriSettingsScreen: React.FC = () => {
         display_name: displayName.trim() || null,
         preferred_timezone: timezone.trim() || null,
       });
-      Alert.alert("Saved", "Your preferences are updated.");
+      showAlert("Saved", "Your preferences are updated.", undefined, { kind: "success" });
     } catch (err) {
-      Alert.alert(
+      showAlert(
         "Couldn't save",
         err instanceof Error ? err.message : "Unknown error",
       );
@@ -136,7 +136,7 @@ export const AriSettingsScreen: React.FC = () => {
   };
 
   const handleDeleteAll = (): void => {
-    Alert.alert(
+    showAlert(
       "Delete all Ari data?",
       "This permanently removes every conversation, fact, and preference Ari has stored for you. This cannot be undone.",
       [
@@ -147,13 +147,15 @@ export const AriSettingsScreen: React.FC = () => {
           onPress: async () => {
             try {
               await prefs.deleteAll();
-              Alert.alert(
+              showAlert(
                 "Deleted",
                 "All Ari data for your account has been removed.",
+                undefined,
+                { kind: "success" },
               );
               router.back();
             } catch (err) {
-              Alert.alert(
+              showAlert(
                 "Couldn't delete",
                 err instanceof Error ? err.message : "Unknown error",
               );
@@ -185,7 +187,7 @@ export const AriSettingsScreen: React.FC = () => {
       }
       resetMemoryComposer();
     } catch (err) {
-      Alert.alert(
+      showAlert(
         "Couldn't save memory",
         err instanceof Error ? err.message : "Unknown error",
       );
@@ -237,7 +239,7 @@ export const AriSettingsScreen: React.FC = () => {
         action,
       });
     } catch (err) {
-      Alert.alert(
+      showAlert(
         "Couldn't update task",
         err instanceof Error ? err.message : "Unknown error",
       );
