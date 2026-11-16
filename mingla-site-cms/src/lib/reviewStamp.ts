@@ -19,7 +19,8 @@ import { editorCoreUserId } from "../collections/SiteContent";
  *     while SITES_PROOF_PART is on, so nothing changes for owners until then.
  *   - `minglaMarkReviewed` (the "Looks right" action, after Core checked the
  *     member's rank) marks the named blocks, or every block, reviewed.
- *   - Any other write by a person: a block they changed is reviewed by them
+ *   - Any other signed Core write (Ari with the flag off): stamps are kept.
+ *   - A person's own Studio write: a block they changed is reviewed by them
  *     (saving a section in Studio reviews it); an unchanged block keeps its stamp.
  */
 
@@ -65,6 +66,8 @@ export type ReviewContext = {
   markReviewed: "all" | ReadonlySet<string> | null;
   editor: string | null;
   now: string;
+  /** A signed Core write (Ari's path, Build, "Looks right"): never reviews by saving. */
+  signed?: boolean;
 };
 
 /** The blocks to store, each with the stamp it is owed (pure; the hook below calls it). */
@@ -79,7 +82,7 @@ export function stampBlocks(next: readonly AnyDoc[], previous: readonly AnyDoc[]
     let stamp: BlockReviewStamp | null = kept;
     if (ctx.source && changed) {
       stamp = { state: "draft", source: ctx.source, at: ctx.now, by: null };
-    } else if (!ctx.source && changed && kept?.state === "draft") {
+    } else if (!ctx.source && !ctx.signed && changed && kept?.state === "draft") {
       // A person saved this section in Studio: that reviews it.
       stamp = { state: "reviewed", source: kept.source, at: ctx.now, by: ctx.editor };
     }
@@ -108,6 +111,8 @@ export const stampBlockReview: CollectionBeforeChangeHook = ({ data, originalDoc
       markReviewed,
       editor: editorCoreUserId(req.user),
       now: new Date().toISOString(),
+      // #4453 — with the flag off Ari's write carries no source: it keeps the stamp, never reviews.
+      signed,
     }),
   };
 };

@@ -25,7 +25,9 @@ export function PastTripsSection(): React.ReactElement {
   const trips = past.data?.trips ?? [];
   // #4453 (spec v1 §3.5) — "Add a trip you ran before Mingla" (brand admins and owners; Core checks).
   const [addingPast, setAddingPast] = useState(false);
-  const addPastTrip = canHide ? (
+  // Only while SITES_PROOF_PART is on (Core says so in the plan read; its routes refuse otherwise).
+  const proofOn = ctx.plan?.proofEnabled === true;
+  const addPastTrip = canHide && proofOn ? (
     <Card testID="past-add-before-mingla">
       <WButton label="Add a trip you ran before Mingla" onPress={() => setAddingPast(true)} testID="past-add-before-mingla-open" />
       <ProofSheet visible={addingPast} title="Add a trip you ran before Mingla" onClose={() => setAddingPast(false)} testID="past-add-before-mingla-sheet">

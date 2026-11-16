@@ -128,7 +128,7 @@ export function PublishSection({ variant, onFix }: {
           </Banner>
         ) : null}
         {/* #4453 — Draft sections block publishing until reviewed (UNREVIEWED_SECTIONS). */}
-        <DraftReviewCard siteId={site.id} readOnly mode="publish" toast={toast} />
+        <DraftReviewCard siteId={site.id} proofEnabled={ctx.plan?.proofEnabled === true} readOnly mode="publish" toast={toast} />
         {validation.isLoading || validation.isFetching || designChecks.isFetching ? <Hint>{"Checking your pages\u2026"}</Hint> : null}
         {validation.data && !blocker ? (
           <View style={styles.setupRow} testID="setup-check-pages"><CheckCircle state="on" /><Text style={styles.setupRowText}>Every page has content</Text></View>
@@ -183,7 +183,7 @@ export function PublishSection({ variant, onFix }: {
     <View testID="website-publish">
       <OfflineBanner />
       <SectionHead ref={headingRef} phone={phone} title="Publish & history" subtitle="Changes you make are saved to your draft. Publishing makes them visible." />
-      <DraftReviewCard siteId={site.id} readOnly mode="publish" toast={toast} />
+      <DraftReviewCard siteId={site.id} proofEnabled={ctx.plan?.proofEnabled === true} readOnly mode="publish" toast={toast} />
       {tracking ? (
         <Card testID="publish-progress">
           <View role="status" accessibilityLiveRegion="polite">

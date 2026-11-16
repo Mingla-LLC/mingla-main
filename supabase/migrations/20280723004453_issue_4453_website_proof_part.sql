@@ -20,7 +20,9 @@
 --    brand_site_plan_get (20280421002830): the proof answers and counts;
 --    brand_site_plan_save (20280119092829): the proof answers, 'proof' skips,
 --      PT409 on a stale revision;
---    brand_site_content_min_rank (20280119122829): review_status, mark_reviewed.
+--    brand_site_content_min_rank (20280119122829): review_status, mark_reviewed;
+--    brand_site_plan_authorize_provision and _compose (20280216002830): the
+--      parts required before Build by key, never by position.
 --    brand_site_setup_status_internal needs no change: its ELSE gives 'proof'
 --    no brand-context fields.
 -- 6. public.brand_site_setup_content: Q1 reviews, Q3 destinations and Q4
@@ -296,6 +298,10 @@ AS $function$
 DECLARE
   v_rank integer;
 BEGIN
+  -- #4453 — nothing new while SITES_PROOF_PART is off (server-side, not only the UI).
+  IF NOT public.brand_site_proof_part_enabled() THEN
+    RAISE EXCEPTION 'sites_feature_off';
+  END IF;
   IF p_user_id IS NULL OR p_brand_id IS NULL THEN
     RAISE EXCEPTION 'sites_forbidden';
   END IF;
@@ -404,6 +410,10 @@ AS $function$
 DECLARE
   v_rank integer;
 BEGIN
+  -- #4453 — nothing new while SITES_PROOF_PART is off (server-side, not only the UI).
+  IF NOT public.brand_site_proof_part_enabled() THEN
+    RAISE EXCEPTION 'sites_feature_off';
+  END IF;
   v_rank := public.biz_brand_effective_rank(p_brand_id, p_user_id);
   IF p_user_id IS NULL OR v_rank IS NULL OR v_rank < 20 THEN
     RAISE EXCEPTION 'sites_forbidden';
@@ -508,6 +518,10 @@ AS $function$
 DECLARE
   v_rank integer;
 BEGIN
+  -- #4453 — nothing new while SITES_PROOF_PART is off (server-side, not only the UI).
+  IF NOT public.brand_site_proof_part_enabled() THEN
+    RAISE EXCEPTION 'sites_feature_off';
+  END IF;
   v_rank := public.biz_brand_effective_rank(p_brand_id, p_user_id);
   IF p_user_id IS NULL OR v_rank IS NULL OR v_rank < 50 THEN
     RAISE EXCEPTION 'sites_forbidden';
@@ -921,5 +935,117 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION public.brand_site_content_min_rank(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.brand_site_content_min_rank(text) TO authenticated, service_role;
+
+
+-- ── 10. Build checks the required parts by key ────────────────────────────
+-- The parts that must be done before Build, by key (site-contracts
+-- BUILD_REQUIRED_PARTS). Optional parts never block, wherever they sit.
+CREATE OR REPLACE FUNCTION public.brand_site_plan_build_required_parts()
+RETURNS text[]
+LANGUAGE sql IMMUTABLE
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT ARRAY['offer','brand','look','story','approve'];
+$function$;
+REVOKE ALL ON FUNCTION public.brand_site_plan_build_required_parts() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.brand_site_plan_build_required_parts() TO service_role;
+
+-- Re-issued from 20280216002830; the only change is the required-parts test
+-- (by key, through brand_site_plan_build_required_parts(), not "position <= 5").
+CREATE OR REPLACE FUNCTION public.brand_site_plan_authorize_provision(p_brand_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_plan public.brand_site_plans%ROWTYPE;
+  v_status jsonb;
+  v_context jsonb;
+  v_part jsonb;
+BEGIN
+  PERFORM public.brand_site_plan_gate(p_brand_id, 50);
+  SELECT * INTO v_plan FROM public.brand_site_plans WHERE brand_id = p_brand_id FOR UPDATE;
+  IF v_plan.brand_id IS NULL THEN RAISE EXCEPTION 'sites_plan_not_ready'; END IF;
+  IF v_plan.lock_holder IS NOT NULL AND v_plan.lock_expires_at > now()
+    AND v_plan.lock_holder <> auth.uid() THEN RAISE EXCEPTION 'sites_plan_locked'; END IF;
+  v_status := public.brand_site_plan_status_internal(p_brand_id);
+  IF EXISTS (
+    -- #4453 — the required parts BY KEY (never by position): an optional
+    -- part ('proof', 'first_offering') may sit anywhere and never blocks.
+    SELECT 1 FROM unnest(public.brand_site_plan_build_required_parts()) AS required(key)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_status->'parts') AS p(value)
+      WHERE p.value->>'key' = required.key AND COALESCE((p.value->>'done')::boolean,false)
+    )
+  ) THEN RAISE EXCEPTION 'sites_plan_not_ready'; END IF;
+  v_context := public.brand_context_completeness_internal(p_brand_id);
+  IF COALESCE((v_context->>'context_complete')::boolean,false) = false THEN
+    RAISE EXCEPTION 'sites_context_incomplete';
+  END IF;
+  RETURN jsonb_build_object(
+    'brand_id',p_brand_id,'revision',v_plan.revision,
+    'design_key',v_plan.design_key,'context',v_context
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.brand_site_plan_authorize_provision(uuid)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.brand_site_plan_authorize_provision(uuid)
+  TO authenticated, service_role;
+
+
+-- Re-issued from 20280216002830; the only change is the required-parts test.
+CREATE OR REPLACE FUNCTION public.brand_site_plan_authorize_compose(p_brand_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_plan public.brand_site_plans%ROWTYPE;
+  v_site public.brand_sites%ROWTYPE;
+  v_brand public.brands%ROWTYPE;
+  v_status jsonb;
+BEGIN
+  PERFORM public.brand_site_plan_gate(p_brand_id, 50);
+  SELECT * INTO v_plan FROM public.brand_site_plans WHERE brand_id = p_brand_id FOR UPDATE;
+  IF v_plan.brand_id IS NULL OR v_plan.approved_at IS NULL
+    OR v_plan.offerings_selected IS NULL THEN RAISE EXCEPTION 'sites_plan_not_ready'; END IF;
+  IF v_plan.lock_holder IS NOT NULL AND v_plan.lock_expires_at > now()
+    AND v_plan.lock_holder <> v_actor THEN RAISE EXCEPTION 'sites_plan_locked'; END IF;
+  v_status := public.brand_site_plan_status_internal(p_brand_id);
+  IF EXISTS (
+    -- #4453 — the required parts BY KEY (never by position): an optional
+    -- part ('proof', 'first_offering') may sit anywhere and never blocks.
+    SELECT 1 FROM unnest(public.brand_site_plan_build_required_parts()) AS required(key)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_status->'parts') AS p(value)
+      WHERE p.value->>'key' = required.key AND COALESCE((p.value->>'done')::boolean,false)
+    )
+  ) OR COALESCE((public.brand_context_completeness_internal(p_brand_id)->>'context_complete')::boolean,false) = false
+  THEN RAISE EXCEPTION 'sites_plan_not_ready'; END IF;
+  SELECT * INTO v_site FROM public.brand_sites WHERE brand_id = p_brand_id;
+  IF v_site.id IS NULL OR v_site.status IN ('provisioning','error') THEN
+    RAISE EXCEPTION 'sites_invalid_state';
+  END IF;
+  SELECT * INTO v_brand FROM public.brands WHERE id = p_brand_id;
+  RETURN jsonb_build_object(
+    'site_id',v_site.id,'brand_id',p_brand_id,'revision',v_plan.revision,
+    'design_key',COALESCE(v_plan.design_key,v_site.design_key,'atelier'),
+    'offerings_selected',to_jsonb(v_plan.offerings_selected),
+    'venue_descriptor',v_plan.venue_descriptor,'story',v_plan.story,
+    'brand',jsonb_build_object(
+      'name',v_brand.name,'description',v_brand.description,
+      'contact_email',v_brand.contact_email,'contact_phone',v_brand.contact_phone,
+      'city',v_brand.city,'country_code',v_brand.country_code,'address',v_brand.address,
+      'social_links',v_brand.social_links,'profile_photo_url',v_brand.profile_photo_url,
+      'cover_media_url',v_brand.cover_media_url,'cover_media_type',v_brand.cover_media_type,
+      'cover_media_poster_url',v_brand.cover_media_poster_url));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.brand_site_plan_authorize_compose(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.brand_site_plan_authorize_compose(uuid)
+  TO authenticated, service_role;
+
 
 COMMIT;

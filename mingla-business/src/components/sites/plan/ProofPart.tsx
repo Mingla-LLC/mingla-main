@@ -121,7 +121,8 @@ function StagedSection({ brandId, kind, items, canConfirm, readOnly }: {
   const open = (item: SetupContentItem | "new") => {
     setEditing(item);
     setValues(item === "new" ? {} : { ...item.payload });
-    setConfirmed(item !== "new" && item.confirmedReal);
+    // #4453 P3-1 — always unticked: an edited review needs a fresh "real review" tick.
+    setConfirmed(false);
     setProblems({});
     setNotice(null);
   };

@@ -46,6 +46,7 @@ export type PlanFailureCode =
   | "REVIEW_NOT_CONFIRMED"
   | "PAST_TRIP_NOT_ENDED"
   | "SETUP_LIMIT_REACHED"
+  | "NOT_AVAILABLE"
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 const MESSAGES: Record<PlanFailureCode, string> = {
@@ -62,6 +63,7 @@ const MESSAGES: Record<PlanFailureCode, string> = {
   USE_WEBSITE_CONTENT: "Your website draft exists, so add these in Website: Reviews, Destinations and Stories.",
   REVIEW_NOT_CONFIRMED: "Tick \"This is a real review from a real guest\" to save it.",
   PAST_TRIP_NOT_ENDED: "Past trips must have ended. Add upcoming trips from Create.",
+  NOT_AVAILABLE: "This part of Website setup isn't available for your brand yet.",
   SETUP_LIMIT_REACHED: "You've added the most this part takes. Add more in Website once your draft exists.",
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
@@ -120,6 +122,7 @@ export function planFailureFromRpc(message: string, operationId: string | null =
     ["historical_trip_not_ended", "PAST_TRIP_NOT_ENDED", 400],
     ["historical_trip_invalid", "VALIDATION_FAILED", 400],
     ["sites_setup_limit_reached", "SETUP_LIMIT_REACHED", 409],
+    ["sites_feature_off", "NOT_AVAILABLE", 404],
   ];
   const hit = table.find(([needle]) => message.includes(needle));
   return hit ? planFailure(hit[1], hit[2], operationId) : planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
@@ -345,6 +348,9 @@ async function handleSetupProofRoute(
   input: JsonObject,
   ctx: SitePlanContext,
 ): Promise<Response> {
+  // #4453 — every setup-part route is off while SITES_PROOF_PART is off (the RPCs check again).
+  const flag = await ctx.serviceRpc("brand_site_proof_part_enabled", {});
+  if (flag.error || flag.data !== true) return planFailure("NOT_AVAILABLE", 404);
   if (pastTrip) {
     if (method !== "POST") return planFailure("VALIDATION_FAILED", 405);
     const field = (key: string, max: number): string | null =>

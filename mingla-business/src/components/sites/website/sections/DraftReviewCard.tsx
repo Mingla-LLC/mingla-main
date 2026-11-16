@@ -28,15 +28,20 @@ export function reviewCountLabel(count: number): string {
   return count === 1 ? "1 section to review" : `${count} sections to review`;
 }
 
-export function DraftReviewCard({ siteId, readOnly, mode, toast }: {
+export function DraftReviewCard({ siteId, proofEnabled, readOnly, mode, toast }: {
   siteId: string | null;
+  /** SITES_PROOF_PART, from the plan read (WebsiteContext.plan). */
+  proofEnabled: boolean;
   readOnly: boolean;
   /** "pages": every Draft with Looks right; "publish": the pages that block publishing. */
   mode: "pages" | "publish";
   toast: (message: string, kind?: "success" | "info" | "warn" | "error") => void;
 }): React.ReactElement | null {
-  const status = useReviewStatus(siteId);
+  // #4453 P3-3 — nothing at all (no query, no error) while SITES_PROOF_PART is off.
+  const proofOn = proofEnabled;
+  const status = useReviewStatus(siteId, proofOn);
   const mark = useMarkReviewed(siteId);
+  if (!proofOn) return null;
   if (status.isLoading || !status.data) {
     return status.isError ? <Banner tone="err" icon="alert" title="We couldn't check which sections need review." body="Try again in a moment." /> : null;
   }

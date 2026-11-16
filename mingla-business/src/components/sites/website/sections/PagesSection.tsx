@@ -106,7 +106,7 @@ export function PagesSection(): React.ReactElement {
         )}
       />
       {/* #4453 — Draft sections and "Looks right". */}
-      <DraftReviewCard siteId={siteId} readOnly={readOnly} mode="pages" toast={toast} />
+      <DraftReviewCard siteId={siteId} proofEnabled={ctx.plan?.proofEnabled === true} readOnly={readOnly} mode="pages" toast={toast} />
       {pages.isLoading ? <Hint>Loading your pages…</Hint> : pages.isError ? (
         <Card>
           <CardTitle>Your pages couldn&apos;t be loaded</CardTitle>

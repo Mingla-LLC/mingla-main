@@ -88,6 +88,12 @@ describe("#4453 stampBlocks", () => {
     expect(run({ minglaSignedCore: true, minglaReviewSource: "someone" }).blocks[0]!.review).toBeNull();
   });
 
+  it("P3-2 a signed write with no source (Ari with the flag off) keeps a Draft as Draft", () => {
+    const draft = { state: "draft", source: "ari", at: NOW, by: null };
+    const out = stampBlocks([block("a", "Changed by Ari")], [block("a", "One", { review: draft })], { source: null, markReviewed: null, editor: "u9", now: NOW, signed: true });
+    expect(out[0]!.review).toEqual(draft);
+  });
+
   it("summaries and chips name the source", () => {
     const draft = { state: "draft", source: "ari", at: NOW, by: null };
     expect(pageReviewSummary([block("a", "One", { review: draft }), block("b", "Two")])).toEqual({ count: 1, blocks: [{ id: "a", type: "page_header", source: "ari" }] });

@@ -209,7 +209,7 @@ function sentinelBlock(type: BlockType, artifact: ArtifactV2): { block: Record<s
     for (const v of drop) expected.splice(expected.indexOf(v), 1);
     expected.push("Q900Z");
   }
-  if (type === "offering_grid") block.mode = "upcoming"; // only ended trips exist: the designed empty state draws empty_text and its button.
+  if (type === "offering_grid") block.mode = "upcoming"; // only ended trips exist: the designed empty state (Draft preview only) draws empty_text and its button.
   if (type === "rich_text") assertRichText(block.body);
   return { block, expected };
 }
@@ -224,7 +224,9 @@ describe("#4453 §3.3 every shared layout draws every field its block defines", 
       it(`${type}:${variant}`, () => {
         const { block, expected } = sentinelBlock(type, artifact);
         const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
-        const html = renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={ctx} />);
+        // #4453 — an empty upcoming grid is drawn only in a Draft preview (left out of the public site).
+        const drawCtx = type === "offering_grid" ? { ...ctx, analytics: { ...ctx.analytics, publicationId: "preview-sentinel" } } : ctx;
+        const html = renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={drawCtx} />);
         // §5.2 binding limits: mosaic draws the first 5 pictures, stagger the first 3 (pinned up to 10).
         const take = type === "gallery" ? { mosaic: 5, stagger: 3, pinned: 10 }[variant] ?? 12 : Infinity;
         const media = expected.filter((v) => v.startsWith("/media/") && Array.isArray(block.images));
@@ -332,7 +334,8 @@ describe("#4453 SC-D7 stored voyage sites render as before; new compositions get
 
   it("a stored site keeps voyage's own header and footer, and its photo-card structure", () => {
     assertArtifactV2(stored);
-    const html = render(stored);
+    // #4453 — the fixture's grid is empty, which only a Draft preview draws (left out publicly).
+    const html = render({ ...stored, publication_id: `preview-${stored.publication_id}` });
     expect(html).not.toContain('data-mg-header=""');
     expect(html).not.toContain("mg-foot");
     expect(html).not.toContain('data-mg-look="gallery"');

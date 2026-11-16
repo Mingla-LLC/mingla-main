@@ -20,6 +20,8 @@
 -- T-13 SC-3.5 once the brand has a site, staging is refused (sites_use_website_content).
 -- T-14 SC-3.3 a past trip ending today is refused; a past one becomes a real ended trip (setup:*).
 -- T-15 content ranks: review_status and mark_reviewed are rank 20.
+-- T-17 P1-3 flag off: list, staging and past trips are refused (sites_feature_off).
+-- T-16 P1-1 Build's plan check is by key: proof skipped/untouched never blocks (flag on or off); unapproved is refused.
 --
 -- FAILS-ON-REVERT: drop 20280723004453 -> T-1 (table and functions missing); the old
 -- plan_status_internal -> T-4; the old plan_save -> T-5/T-6; no confirmed_real CHECK -> T-10.
@@ -286,6 +288,53 @@ BEGIN
     AND (v_plan->'proof_counts'->>'reviews')::integer = 24
     AND (v_plan->'proof_counts'->>'destinations')::integer = 1, 'T-14d proof_counts');
 
+  -- T-16 Build's plan check reads the required parts by key (P1-1): proof
+  -- skipped or untouched never blocks; an unapproved plan is always refused.
+  v_plan := public.brand_site_plan_get(v_brand);
+  v_rev := (v_plan->'plan'->>'revision')::integer;
+  v_plan := public.brand_site_plan_save(v_brand, v_rev, jsonb_build_object(
+    'offerings_selected', jsonb_build_array('trips'),
+    'story', jsonb_build_object('who', 'People new to the city', 'why', 'We know it well', 'main_action', 'Reserve the next trip'),
+    'skipped_parts', jsonb_build_array('look', 'proof')));
+  v_rev := (v_plan->'plan'->>'revision')::integer;
+  v_plan := public.brand_site_plan_save(v_brand, v_rev, jsonb_build_object('approve', true, 'approved_plan',
+    jsonb_build_object('for', 'New arrivals', 'leads_with', 'Walks', 'main_action', 'Book a walk',
+      'look', 'Calm', 'pages', 'Home, Trips', 'wont_do', 'Nightlife')));
+  v_rev := (v_plan->'plan'->>'revision')::integer;
+  FOREACH v_state IN ARRAY ARRAY['on', 'off'] LOOP
+    UPDATE public.feature_flags SET is_enabled = (v_state = 'on') WHERE flag_key = 'SITES_PROOF_PART';
+    v_failed := NULL;
+    BEGIN PERFORM public.brand_site_plan_authorize_provision(v_brand);
+    EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
+    PERFORM pg_temp.p_assert(v_failed IS DISTINCT FROM 'sites_plan_not_ready',
+      'T-16a flag ' || v_state || ': approved, proof skipped: the plan check passes (got ' || COALESCE(v_failed, 'none') || ')');
+  END LOOP;
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'SITES_PROOF_PART';
+  v_plan := public.brand_site_plan_save(v_brand, v_rev, jsonb_build_object('skipped_parts', jsonb_build_array('look')));
+  v_rev := (v_plan->'plan'->>'revision')::integer;
+  v_failed := NULL;
+  BEGIN PERFORM public.brand_site_plan_authorize_provision(v_brand);
+  EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
+  PERFORM pg_temp.p_assert(v_failed IS DISTINCT FROM 'sites_plan_not_ready',
+    'T-16b flag on: approved, proof untouched: the plan check passes (got ' || COALESCE(v_failed, 'none') || ')');
+  v_plan := public.brand_site_plan_save(v_brand, v_rev, jsonb_build_object('approve', false));
+  v_rev := (v_plan->'plan'->>'revision')::integer;
+  FOREACH v_state IN ARRAY ARRAY['on', 'off'] LOOP
+    UPDATE public.feature_flags SET is_enabled = (v_state = 'on') WHERE flag_key = 'SITES_PROOF_PART';
+    v_failed := NULL;
+    BEGIN PERFORM public.brand_site_plan_authorize_provision(v_brand);
+    EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
+    PERFORM pg_temp.p_assert(v_failed = 'sites_plan_not_ready', 'T-16c flag ' || v_state || ': an unapproved plan is refused (got ' || COALESCE(v_failed, 'none') || ')');
+    v_failed := NULL;
+    BEGIN PERFORM public.brand_site_plan_authorize_compose(v_brand);
+    EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
+    PERFORM pg_temp.p_assert(v_failed = 'sites_plan_not_ready', 'T-16d flag ' || v_state || ': compose refuses an unapproved plan (got ' || COALESCE(v_failed, 'none') || ')');
+  END LOOP;
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'SITES_PROOF_PART';
+  PERFORM pg_temp.p_assert(NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname IN ('brand_site_plan_authorize_provision','brand_site_plan_authorize_compose')
+      AND pronamespace = 'public'::regnamespace AND (prosrc LIKE '%position <=%' OR prosrc NOT LIKE '%brand_site_plan_build_required_parts()%')),
+    'T-16e both Build checks read the required parts by key, never by position');
+
   -- T-13 a site exists → the workspace is the home
   INSERT INTO public.brand_sites(brand_id, status, created_by)
   VALUES (v_brand, 'provisioning', v_owner);
@@ -295,6 +344,22 @@ BEGIN
       jsonb_build_object('title', 'Our first trip', 'story', 'It rained.'), NULL, NULL);
   EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
   PERFORM pg_temp.p_assert(v_failed = 'sites_use_website_content', 'T-13 staging after a site exists is refused');
+
+  -- T-17 P1-3 with the flag off every setup-part function refuses (server-side).
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'SITES_PROOF_PART';
+  v_failed := NULL;
+  BEGIN PERFORM public.brand_site_setup_content_list(v_brand, v_owner);
+  EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
+  PERFORM pg_temp.p_assert(v_failed = 'sites_feature_off', 'T-17a flag off: list refused');
+  v_failed := NULL;
+  BEGIN PERFORM public.brand_site_setup_content_save(v_brand, v_owner, 'destination', NULL, jsonb_build_object('name', 'Rome'), NULL, NULL);
+  EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
+  PERFORM pg_temp.p_assert(v_failed = 'sites_feature_off', 'T-17b flag off: staging refused');
+  v_failed := NULL;
+  BEGIN PERFORM public.brand_site_setup_add_past_trip(v_brand, v_owner, 'Old trip', v_today - 30, v_today - 25, v_tz, 'Lisbon', NULL);
+  EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
+  PERFORM pg_temp.p_assert(v_failed = 'sites_feature_off', 'T-17c flag off: past trip refused');
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'SITES_PROOF_PART';
 
   -- T-15 content ranks
   PERFORM pg_temp.p_assert(public.brand_site_content_min_rank('review_status') = 20

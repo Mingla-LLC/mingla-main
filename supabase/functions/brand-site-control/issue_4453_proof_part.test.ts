@@ -25,7 +25,8 @@ type Call = { fn: string; args: Record<string, unknown> };
 function ctx(answers: Record<string, { data?: unknown; error?: { message: string } | null }>, calls: Call[], cms?: (payload: Record<string, unknown>) => unknown): SitePlanContext {
   const rpc = async (fn: string, args: Record<string, unknown>) => {
     calls.push({ fn, args });
-    const answer = answers[fn] ?? { data: null, error: null };
+    // The flag reads as on unless a case says otherwise.
+    const answer = answers[fn] ?? (fn === "brand_site_proof_part_enabled" ? { data: true, error: null } : { data: null, error: null });
     return { data: answer.data ?? null, error: answer.error ?? null };
   };
   return {
@@ -42,10 +43,10 @@ Deno.test("#4453 a staged review is saved as the caller, with the tick passed th
     kind: "review", payload: { reviewer: "Tolu" }, confirmed_real: true, user_id: OTHER,
   }, ctx({ brand_site_setup_content_save: { data: { id: ROW } } }, calls));
   assertEquals(res?.status, 200);
-  assertEquals(calls[0]!.fn, "brand_site_setup_content_save");
-  assertEquals(calls[0]!.args.p_user_id, USER);
-  assertEquals(calls[0]!.args.p_confirmed_real, true);
-  assertEquals(calls[0]!.args.p_kind, "review");
+  const saved = calls.find((call) => call.fn === "brand_site_setup_content_save")!;
+  assertEquals(saved.args.p_user_id, USER);
+  assertEquals(saved.args.p_confirmed_real, true);
+  assertEquals(saved.args.p_kind, "review");
 });
 
 Deno.test("#4453 refusals are plain owner messages", async () => {
@@ -76,7 +77,7 @@ Deno.test("#4453 a bad shape never reaches Core", async () => {
   }
   const trip = await handleSitePlanRoute(`/v1/brands/${BRAND}/past-trips`, "POST", { title: "x", where: "y", timezone: "UTC", start_date: "15/11/2026", end_date: "2026-11-16" }, ctx({}, calls));
   assertEquals(trip?.status, 400);
-  assertEquals(calls.length, 0);
+  assertEquals(calls.filter((call) => call.fn !== "brand_site_proof_part_enabled").length, 0);
 });
 
 Deno.test("#4453 a stale save returns the latest list", async () => {
@@ -128,4 +129,18 @@ Deno.test("#4453 UNREVIEWED_SECTIONS is owner-fixable and names pages, not conte
   assertEquals(body.error.message, "Review the sections marked Draft before you publish.");
   assertEquals(body.error.pages, [{ path: "", title: "Home", count: 2 }]);
   assertEquals(unreviewedRefusal({ code: "OTHER" }), null);
+});
+
+Deno.test("#4453 P1-3 with SITES_PROOF_PART off every setup-part route refuses and never reaches the RPC", async () => {
+  for (const [path, method, input] of [
+    [`/v1/brands/${BRAND}/setup-content`, "GET", {}],
+    [`/v1/brands/${BRAND}/setup-content`, "POST", { kind: "story", payload: { title: "x" } }],
+    [`/v1/brands/${BRAND}/past-trips`, "POST", { title: "Porto", where: "Porto", timezone: "Europe/London", start_date: "2025-04-01", end_date: "2025-04-05" }],
+  ] as const) {
+    const calls: Call[] = [];
+    const res = await handleSitePlanRoute(path, method, input, ctx({ brand_site_proof_part_enabled: { data: false } }, calls));
+    const body = await res!.json();
+    assertEquals([res!.status, body.error.code], [404, "NOT_AVAILABLE"]);
+    assertEquals(calls.map((call) => call.fn), ["brand_site_proof_part_enabled"]);
+  }
 });
