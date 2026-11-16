@@ -24,7 +24,7 @@
             "node --test lib/__tests__/issue-4452-analytics-booking.implementor.test.mjs"
           ]
         },
-        "exceptionRationale": "New self-registering execution for #4452."
+        "exceptionRationale": "New self-registering execution for #4452 replaces a legacy workflow registry edit."
       }
     ],
     "lifecycle": "batched-active",
@@ -38,8 +38,7 @@
     "envNames": [],
     "isolation": "clean-worktree",
     "expectedFiles": [
-      "mingla-marketing/lib/__tests__/issue-4452-analytics-booking.implementor.test.mjs",
-      "mingla-marketing/lib/__tests__/issue-4452-ts-loader.mjs"
+      "mingla-marketing/lib/__tests__/issue-4452-analytics-booking.implementor.test.mjs"
     ],
     "externalReferenceFiles": [],
     "requiredContext": "CI batch: node22-noinstall",

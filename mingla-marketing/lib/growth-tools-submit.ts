@@ -279,9 +279,14 @@ export async function submitGrowthToolsGate(
 ): Promise<GrowthToolsGateResponse> {
   const origin = typeof window !== 'undefined' ? window.location.origin : undefined
   const ad = marketingAdContext()
+  // #4452 §6.9: with the tips box ticked, the follow-ups send at 10:00 in their own time zone.
+  let timeZone: string | undefined
+  if (marketingConsent) {
+    try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined } catch { timeZone = undefined }
+  }
   const result = await postGrowthTools(
     'growth-tools-gate',
-    { run_id, email, ...(origin ? { origin } : {}), ...(ad ? { ad } : {}), ...(marketingConsent ? { marketing_consent: true } : {}) },
+    { run_id, email, ...(origin ? { origin } : {}), ...(ad ? { ad } : {}), ...(marketingConsent ? { marketing_consent: true, ...(timeZone ? { time_zone: timeZone } : {}) } : {}) },
     signal,
   )
   if (!result.ok) return result

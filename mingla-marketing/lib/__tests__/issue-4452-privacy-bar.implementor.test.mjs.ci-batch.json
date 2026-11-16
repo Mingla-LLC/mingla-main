@@ -24,7 +24,7 @@
             "node --test lib/__tests__/issue-4452-privacy-bar.implementor.test.mjs"
           ]
         },
-        "exceptionRationale": "New self-registering execution for #4452."
+        "exceptionRationale": "New self-registering execution for #4452 replaces a legacy workflow registry edit."
       }
     ],
     "lifecycle": "batched-active",

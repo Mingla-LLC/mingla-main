@@ -433,6 +433,7 @@ export function placementTags(row, pageName = (k) => k) {
 /** "n steps" or "Uses Book-a-call emails" (design list sub-line). */
 export function formSubLine(row) {
   if (row.template === "book_call_extra") return "Uses Book-a-call emails";
+  if (row.template === "tool") return "Free tool follow-ups (system form)";
   const n = Number(row.fields || 0);
   return `${n} ${n === 1 ? "question" : "questions"}`;
 }

@@ -62,14 +62,14 @@ export function actionBarCopy(input: ActionBarInput): BarCopy {
 
 const INK = "#111110";
 const ORANGE = "#EB7825";
-const LINE = "#E7E3DA";
+const HAIRLINE = "#E7E3DA";
 
 /** One pill button: ink, white text (18.9:1), a 3 px orange ring (box-shadow, border fallback for Outlook). */
 export function renderButton(text: string, href: string, variant: "primary" | "secondary" = "primary"): string {
   const primary = variant === "primary";
   const bg = primary ? INK : "#FFFFFF";
   const fg = primary ? "#FFFFFF" : INK;
-  const border = primary ? `3px solid ${ORANGE}` : `1.5px solid ${LINE}`;
+  const border = primary ? `3px solid ${ORANGE}` : `1.5px solid ${HAIRLINE}`;
   const shadow = primary ? `box-shadow:0 0 0 3px ${ORANGE};` : "";
   return `<a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 22px;border-radius:999px;background:${bg};color:${fg};border:${border};${shadow}font-family:Geist,Helvetica,Arial,sans-serif;font-size:15px;line-height:20px;font-weight:600;text-decoration:none;mso-padding-alt:0;">${escapeHtml(text)}</a>`;
 }
@@ -80,7 +80,7 @@ export function renderActionBar(input: ActionBarInput | null | undefined): strin
   const call = input.noCall ? null : copy.call;
   const cell = (html: string) =>
     `<td class="mingla-ab-cell" style="padding:6px;" valign="top">${html}</td>`;
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="mingla-ab" style="margin:8px 0 0 0;background:#F5F4F0;border:1px solid ${LINE};border-radius:16px;">
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="mingla-ab" style="margin:8px 0 0 0;background:#F5F4F0;border:1px solid ${HAIRLINE};border-radius:16px;">
   <tr>
     <td style="padding:20px 20px 14px 20px;">
       <p style="margin:0 0 12px 0;font-family:'Instrument Serif',Georgia,'Times New Roman',serif;font-weight:400;font-size:24px;line-height:1.1;color:${INK};">${escapeHtml(copy.title)} <em>${escapeHtml(copy.em)}</em></p>

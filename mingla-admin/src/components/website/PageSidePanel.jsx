@@ -36,7 +36,8 @@ function DestPicker({ value, onChange, forms, disabled, label = "Goes to" }) {
 }
 
 function FormSelect({ value, onChange, forms, disabled, details }) {
-  const usable = forms.filter((f) => f.status !== "archived" && (details ? f.template === "book_call_extra" : f.template !== "book_call_extra"));
+  // #4452 §6.9: the free tools' system follow-up forms (template "tool") are never placed on a page.
+  const usable = forms.filter((f) => f.status !== "archived" && f.template !== "tool" && (details ? f.template === "book_call_extra" : f.template !== "book_call_extra"));
   return (
     <Select label={details ? "Questions from a form" : "Form"} value={value || ""} disabled={disabled} placeholder="Pick a form"
       onChange={(e) => { if (e.target.value === "__new") { window.location.hash = "#/forms"; return; } onChange(e.target.value); }}

@@ -22,7 +22,7 @@
             "node --test src/__tests__/issue4452_admin_contrast.test.js"
           ]
         },
-        "exceptionRationale": "New self-registering execution for #4452."
+        "exceptionRationale": "New self-registering execution for #4452 replaces a legacy workflow registry edit."
       }
     ],
     "lifecycle": "batched-active",
