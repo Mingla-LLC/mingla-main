@@ -7,8 +7,9 @@
  */
 import english from "../../../i18n/locales/en/hostAds.json";
 import { businessT, registerBusinessEnglish } from "../../../i18n";
-import type { HostAdGoal } from "./hostAdBuilderModel";
+import { hostAdPayFromCredit, type HostAdGoal } from "./hostAdBuilderModel";
 import type { HostAdStopReason } from "./hostAdManageModel";
+import { formatHostAdMoneyCents } from "./hostAdMoney";
 
 registerBusinessEnglish(english);
 
@@ -17,6 +18,29 @@ export type HostAdManageVars = Record<string, string | number>;
 /** One W6b string in the current language (falls back to English). */
 export function hm(key: string, variables?: HostAdManageVars): string {
   return businessT(`hostAds.manage.${key}`, variables);
+}
+
+/**
+ * #4238 rework 5 (native P2-1): the ONE "Pause this ad?" confirm, shared by
+ * the ad detail page and the Home ad tile, so both state the same money: what
+ * stays held (the plan total minus what was spent, in what the Host pays).
+ */
+export function hostAdPauseConfirmWords(input: {
+  capCredit: number | null;
+  spentCredit: number | null;
+  currency: string | null;
+}): { title: string; description: string; confirmLabel: string; cancelLabel: string } {
+  const heldCredit = Math.max(0, Math.trunc(input.capCredit ?? 0) - Math.max(0, Math.trunc(input.spentCredit ?? 0)));
+  const amount =
+    input.currency !== null && /^[A-Z]{3}$/.test(input.currency)
+      ? formatHostAdMoneyCents(hostAdPayFromCredit(heldCredit), input.currency) ?? ""
+      : "";
+  return {
+    title: hm("confirm.pauseTitle"),
+    description: hm("confirm.pauseBody", { amount }),
+    confirmLabel: hm("confirm.pause"),
+    cancelLabel: hm("confirm.keepRunning"),
+  };
 }
 
 /** "tickets" / "sign-ups" / "page visits" (or the singular). */

@@ -70,6 +70,8 @@ jest.mock("../../../ui/GlassCard", () => ({
 }));
 jest.mock("../../../ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../ui/Skeleton", () => ({ Skeleton: () => null }));
+// #4238 rework 5: Home now owns a pause confirm (rendered only when a Pause is tapped).
+jest.mock("../../../ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
 jest.mock("react-native-svg", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ReactLib = require("react") as typeof React;

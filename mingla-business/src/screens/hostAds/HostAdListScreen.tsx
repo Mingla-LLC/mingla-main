@@ -125,6 +125,12 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const offline = network?.isConnected === false;
   const { isWideDesktop } = useResponsiveLayout();
   const [overlay, setOverlay] = useState<Overlay>(null);
+  // #4238 rework 5 (native P1-1 audit): a wallet sheet (top up, withdraw)
+  // belongs to the brand it was opened on; a brand switch closes it so it can
+  // never submit against the other brand's credit.
+  useEffect(() => {
+    setOverlay(null);
+  }, [brandId]);
   const [returnNotice, setReturnNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const params = useLocalSearchParams<{
@@ -513,6 +519,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
             {banner}
             {creditCard}
             {adItems.length > 0 ? <Text style={styles.h2} accessibilityRole="header">{hm("yourAds")}</Text> : null}
+            {/* #4238 rework 5 (native P2-2): the same "This month" line as Home on phones too. */}
+            {adItems.length > 0 ? <AdListSummaryCard summary={campaignsQuery.summary} /> : null}
             {filters}
             {list}
             {tools}

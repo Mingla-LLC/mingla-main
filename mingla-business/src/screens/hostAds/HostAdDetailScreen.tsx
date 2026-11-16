@@ -17,16 +17,31 @@
  *
  * #4420 B2: Pause on a live ad asks once ("Pause this ad?") before the pause
  * call runs; Keep running calls nothing.
+ *
+ * #4238 rework 5 (native P1-1): every confirm and sheet belongs to ONE ad.
+ * The screen is keyed by brand + route ad, so moving to another ad (a
+ * notification, a link, a brand switch) mounts a fresh screen with nothing
+ * open. Each confirm also records the ad it was opened for
+ * (hostAdConfirmKey) and its submit refuses unless the screen still shows
+ * that ad, so a confirm can never act on a different ad than the one the
+ * Host read. The server acts only on the campaign_id / plan_id it is sent
+ * (host-ad-campaign rejects a missing or invalid campaign_id), and the
+ * client only ever sends the confirmed ad's ids.
+ *
+ * #4238 rework 5 (native P1-2): on phones the next-step dock (resume, top
+ * up, fix a rejected ad, promote again) is pinned above the floating tab bar
+ * (the builder's Next bar pattern), and the scroll clears it.
  */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, type LayoutChangeEvent, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { IconChrome } from "../../components/ui/IconChrome";
+import { Material } from "../../components/ui/Material";
 import { color, radius, space, type } from "../../constants/designSystem";
 import { useAdCreditWallet } from "../../hooks/marketing/useAdCreditWallet";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
@@ -77,6 +92,7 @@ import {
   hostAdAriRefusal,
   hostAdCountingLine,
   hostAdLearningWho,
+  hostAdPauseConfirmWords,
   hostAdReasonLine,
   hostAdReasonShort,
   hostAdUnit,
@@ -85,6 +101,8 @@ import {
   hostAdAppMinimumFromDetail,
   hostAdBrandLinkDecision,
   hostAdBudgetCard,
+  hostAdConfirmKey,
+  hostAdConfirmStillBound,
   hostAdCreativeRejected,
   hostAdDetailDailyCredit,
   hostAdGoalFromResult,
@@ -147,8 +165,22 @@ function StatusChip(props: { phase: Phase; label: string }): React.ReactElement 
   );
 }
 
+/**
+ * #4238 rework 5 (native P1-1): one screen instance per ad. A new route ad
+ * (or `by`, or brand) remounts the body, so no confirm, sheet, error or
+ * half-typed edit from the previous ad survives the move.
+ */
 export default function HostAdDetailRoute(): React.ReactElement {
-  const scrollBottomPadding = hostAdScrollBottomPadding(useStickyFooterOffset());
+  const params = useLocalSearchParams<{ id?: string | string[]; by?: string | string[] }>();
+  const brandId = useCurrentBrand()?.id ?? "";
+  const adScreenKey = `${brandId}|${firstParam(params.id) ?? ""}|${firstParam(params.by) ?? ""}`;
+  return <HostAdDetailBody key={adScreenKey} />;
+}
+
+function HostAdDetailBody(): React.ReactElement {
+  const stickyFooterOffset = useStickyFooterOffset();
+  const scrollBottomPadding = hostAdScrollBottomPadding(stickyFooterOffset);
+  const [dockHeight, setDockHeight] = useState(0);
   const { isWideDesktop } = useResponsiveLayout();
   const network = useNetInfoSafe();
   const offline = network?.isConnected === false;
@@ -195,6 +227,47 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const [shareVisible, setShareVisible] = useState(false);
   const editAttempt = useRef<HostAdLiveEditAttempt | null>(null);
   const inFlight = useRef(false);
+  // #4238 rework 5 (native P1-1): the ad on screen now, and the ad the open
+  // confirm was opened for. A submit runs only while the two match; after
+  // this screen unmounts the current ad is null, so a stale submit refuses.
+  const adKey = hostAdConfirmKey({ brandId, campaignId, planId: payload?.plan_id });
+  const currentAdKey = useRef<string | null>(adKey);
+  currentAdKey.current = adKey;
+  useEffect(
+    () => () => {
+      currentAdKey.current = null;
+    },
+    [],
+  );
+  const [boundAdKey, setBoundAdKey] = useState<string | null>(null);
+  const bindConfirm = useCallback((): void => setBoundAdKey(currentAdKey.current), []);
+  const closeConfirms = useCallback((): void => {
+    setPauseConfirmVisible(false);
+    setResumeVisible(false);
+    setDestructive(null);
+    setEditVisible(false);
+    setNeedsLearningConfirm(false);
+    setAriVisible(false);
+    setTopUpCents(null);
+    setShareVisible(false);
+    setBoundAdKey(null);
+    editAttempt.current = null;
+  }, []);
+  // The ad behind the screen changed (a plan link resolving to another
+  // campaign, a reload with another plan): nothing stays open.
+  useEffect(() => {
+    closeConfirms();
+  }, [adKey, closeConfirms]);
+  /** False (and every confirm closed, nothing sent) when the ad changed since the confirm opened. */
+  const confirmStillBound = useCallback(
+    (bound: string | null): boolean => {
+      if (hostAdConfirmStillBound(bound, currentAdKey.current)) return true;
+      closeConfirms();
+      setError(hm("detail.actionFailed"));
+      return false;
+    },
+    [closeConfirms],
+  );
   // W6c: the apps' one-ad-set minimum (pay terms) for the edit sheet's floor.
   const [appsMinimumDailyPay, setAppsMinimumDailyPay] = useState<number | null>(null);
   const editApps = (payload?.plan_campaigns ?? []).map((row) => String(row.platform));
@@ -271,6 +344,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
   const onPause = useCallback(async () => {
     if (brandId === null || campaignId === null || !permissions.canPause) return;
+    if (!confirmStillBound(boundAdKey)) return;
     setBusy(true);
     setPauseError(null);
     try {
@@ -282,10 +356,11 @@ export default function HostAdDetailRoute(): React.ReactElement {
     } finally {
       setBusy(false);
     }
-  }, [brandId, campaignId, load, permissions.canPause]);
+  }, [boundAdKey, brandId, campaignId, confirmStillBound, load, permissions.canPause]);
 
   const onResume = useCallback(async () => {
     if (campaignId === null || !permissions.canLaunch) return;
+    if (!confirmStillBound(boundAdKey)) return;
     await run(
       async () => {
         await resumeHostAdCampaignPlan({ campaignId, reason: "Host resumed paused ad plan from Ads detail" });
@@ -294,10 +369,11 @@ export default function HostAdDetailRoute(): React.ReactElement {
       },
       () => setError(hm("detail.actionFailed")),
     );
-  }, [campaignId, load, permissions.canLaunch, run]);
+  }, [boundAdKey, campaignId, confirmStillBound, load, permissions.canLaunch, run]);
 
   const onStop = useCallback(async () => {
     if (brandId === null || campaignId === null || !permissions.canEnd || destructive === null) return;
+    if (!confirmStillBound(boundAdKey)) return;
     const action = destructive;
     setDestructiveError(null);
     await run(
@@ -310,7 +386,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
       },
       () => setDestructiveError(hm("detail.actionFailed")),
     );
-  }, [brandId, campaignId, destructive, load, permissions.canEnd, run]);
+  }, [boundAdKey, brandId, campaignId, confirmStillBound, destructive, load, permissions.canEnd, run]);
 
   const onDuplicate = useCallback(async (step: "promote" | "creative") => {
     const planId = payload?.plan_id;
@@ -327,6 +403,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const onEdit = useCallback(async (input: HostAdEditSubmit) => {
     const planId = payload?.plan_id;
     if (brandId === null || !planId || !permissions.canFund) return;
+    if (!confirmStillBound(boundAdKey)) return;
     const attempt = hostAdLiveEditAttempt(
       editAttempt.current,
       { planId, newBudgetCents: input.newBudgetCredit, newEndsAt: input.newEndsAt },
@@ -368,12 +445,13 @@ export default function HostAdDetailRoute(): React.ReactElement {
         );
       },
     );
-  }, [brandId, load, payload?.plan_currency, payload?.plan_id, permissions.canFund, run]);
+  }, [boundAdKey, brandId, confirmStillBound, load, payload?.plan_currency, payload?.plan_id, permissions.canFund, run]);
 
   const onApplySuggestion = useCallback(async () => {
     const planId = payload?.plan_id;
     const suggestion = payload?.suggestion ?? null;
     if (brandId === null || !planId || suggestion === null) return;
+    if (!confirmStillBound(boundAdKey)) return;
     setAriError(null);
     await run(
       async () => {
@@ -398,7 +476,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
         if (code === "ad_suggestion_stale") void load();
       },
     );
-  }, [brandId, load, payload?.plan_id, payload?.suggestion, run]);
+  }, [boundAdKey, brandId, confirmStillBound, load, payload?.plan_id, payload?.suggestion, run]);
 
   const shell = (child: React.ReactElement): React.ReactElement => <View style={styles.host}>{child}</View>;
 
@@ -709,6 +787,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 onPress={() => {
                   setEditError(null);
                   setNeedsLearningConfirm(false);
+                  bindConfirm();
                   setEditVisible(true);
                 }}
                 testID="ads-detail-edit"
@@ -751,6 +830,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
         blockedReason={editBlock.blocked ? (editBlock.askName ? hm("detail.team", { name: editBlock.askName }) : hm("detail.teamNoName")) : null}
         onReview={() => {
           setAriError(null);
+          bindConfirm();
           setAriVisible(true);
         }}
         onAddVideo={() => void onDuplicate("creative")}
@@ -765,7 +845,18 @@ export default function HostAdDetailRoute(): React.ReactElement {
         testID="ads-detail-last-tickets"
         actions={
           !editBlock.blocked && !offline ? (
-            <Button label={hm("detail.lastTicketsAccept")} variant="secondary" size="sm" loading={busy} onPress={() => setAriVisible(true)} testID="ads-detail-last-tickets-accept" />
+            <Button
+              label={hm("detail.lastTicketsAccept")}
+              variant="secondary"
+              size="sm"
+              loading={busy}
+              onPress={() => {
+                setAriError(null);
+                bindConfirm();
+                setAriVisible(true);
+              }}
+              testID="ads-detail-last-tickets-accept"
+            />
           ) : undefined
         }
       />
@@ -802,6 +893,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           disabled={busy || offline}
           onPress={() => {
             setPauseError(null);
+            bindConfirm();
             setPauseConfirmVisible(true);
           }}
           accessibilityLabel={hm("confirm.pauseTitle")}
@@ -817,6 +909,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           disabled={busy || offline}
           onPress={() => {
             setDestructiveError(null);
+            bindConfirm();
             setDestructive(canCancel ? "cancel" : "end");
           }}
           testID={canCancel ? "ads-detail-cancel" : "ads-detail-end"}
@@ -839,7 +932,17 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const dock = canResume ? (
     <View style={bs.stack}>
       {(payload.days_live ?? 8) <= 7 ? <Blocker text={hm("detail.resumeLearning")} /> : null}
-      <Button label={hm("detail.resume")} variant="primary" fullWidth disabled={busy || offline} onPress={() => setResumeVisible(true)} testID="ads-detail-resume" />
+      <Button
+        label={hm("detail.resume")}
+        variant="primary"
+        fullWidth
+        disabled={busy || offline}
+        onPress={() => {
+          bindConfirm();
+          setResumeVisible(true);
+        }}
+        testID="ads-detail-resume"
+      />
     </View>
   ) : paused && reason === "creditOut" && wallet.canView ? (
     <Button label={hm("detail.topUp")} variant="primary" fullWidth disabled={offline} onPress={() => setTopUpCents(budget.dailyPay ?? budget.totalPay)} testID="ads-detail-topup" />
@@ -883,9 +986,20 @@ export default function HostAdDetailRoute(): React.ReactElement {
     />
   ) : null;
 
+  // #4238 rework 5 (native P1-2): on phones the next-step dock is pinned above
+  // the floating tab bar, and the scroll reserves its measured height plus
+  // breathing room so the last card never hides behind it.
+  const pinnedDock = !isWideDesktop && dock !== null;
+  const phoneBottomPadding = pinnedDock ? Math.max(scrollBottomPadding, dockHeight + space[6]) : scrollBottomPadding;
+  const onDockLayout = (event: LayoutChangeEvent): void => {
+    const next = Math.ceil(event.nativeEvent.layout.height);
+    if (next !== dockHeight) setDockHeight(next);
+  };
+  const pauseWords = hostAdPauseConfirmWords({ capCredit, spentCredit, currency });
+
   return (
     <View style={styles.host} testID="ads-detail-screen">
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPadding }]}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: phoneBottomPadding }]}>
         <IconChrome icon="chevL" onPress={() => goBackToAds(router)} accessibilityLabel={hm("detail.back2")} testID="ads-detail-back" />
         {isWideDesktop ? (
           <View style={styles.desk}>
@@ -919,12 +1033,18 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 {refundCard}
                 {actions}
                 {dupRow}
-                {dock}
               </>
             )}
           </View>
         )}
       </ScrollView>
+      {pinnedDock ? (
+        <View style={styles.dockWrap} onLayout={onDockLayout} testID="ads-detail-dock">
+          <Material kind="chrome" style={[styles.dock, { paddingBottom: Math.max(space[6], stickyFooterOffset) }]}>
+            {dock}
+          </Material>
+        </View>
+      ) : null}
       <ConfirmDialog
         visible={pauseConfirmVisible}
         onClose={() => {
@@ -935,10 +1055,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
         }}
         onConfirm={onPause}
         variant="simple"
-        title={hm("confirm.pauseTitle")}
-        description={hm("confirm.pauseBody", { amount: money(held) })}
-        confirmLabel={hm("confirm.pause")}
-        cancelLabel={hm("confirm.keepRunning")}
+        title={pauseWords.title}
+        description={pauseWords.description}
+        confirmLabel={pauseWords.confirmLabel}
+        cancelLabel={pauseWords.cancelLabel}
         confirmLoading={busy}
         closeDisabled={busy}
         errorMessage={pauseError}
@@ -1096,5 +1216,13 @@ const styles = StyleSheet.create({
   },
   stat: { ...type.stat, color: color.text1 },
   skel: { padding: space[4], gap: space[4] },
+  dockWrap: { position: "absolute", left: 0, right: 0, bottom: 0 },
+  dock: {
+    paddingTop: space[4],
+    paddingHorizontal: space[4],
+    gap: space[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+  },
   skelBlock: { borderRadius: radius.xl, backgroundColor: color.fill.tile },
 });

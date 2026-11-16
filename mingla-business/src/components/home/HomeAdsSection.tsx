@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -19,6 +19,7 @@ import {
 import { formatCurrencyRound } from "../../utils/currency";
 import { hostAdPayFromCredit } from "../marketing/ads/hostAdBuilderModel";
 import { hostAdListSummaryLine } from "../marketing/ads/results/AdListSummaryCard";
+import { hm, hostAdPauseConfirmWords } from "../marketing/ads/hostAdManageCopy";
 import {
   campaignCurrencies,
   homeAdAttentionReason,
@@ -29,6 +30,7 @@ import {
   selectHomeAdCampaigns,
 } from "../../utils/homeAdLifecycle";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Skeleton } from "../ui/Skeleton";
@@ -239,7 +241,6 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
   // ads included), so the two never show different figures for the same data.
   const monthLine = ads.summary === null ? null : hostAdListSummaryLine(ads.summary);
   const [busyCampaignId, setBusyCampaignId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const adSales = traffic.data?.sources.find((row) =>
     row.source === "mingla_ads"
@@ -253,19 +254,42 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
   const openCampaign = useCallback((campaignId: string): void => {
     router.push(`/(tabs)/marketing/ads/${campaignId}` as never);
   }, [router]);
-  const pause = useCallback(async (campaign: HostAdCampaign): Promise<void> => {
+  // #4238 rework 5 (native P2-1): the tile's Pause asks first with the SAME
+  // money-stating confirm as the ad detail page (hostAdPauseConfirmWords).
+  // The confirm holds the ad it was opened for, and only that ad is paused.
+  const [pauseTarget, setPauseTarget] = useState<HostAdCampaign | null>(null);
+  const [pauseError, setPauseError] = useState<string | null>(null);
+  useEffect(() => {
+    setPauseTarget(null);
+    setPauseError(null);
+  }, [brandId]);
+  const askPause = useCallback((campaign: HostAdCampaign): void => {
     if (!permissions.canPause) return;
+    setPauseError(null);
+    setPauseTarget(campaign);
+  }, [permissions.canPause]);
+  const pause = useCallback(async (): Promise<void> => {
+    const campaign = pauseTarget;
+    if (campaign === null || !permissions.canPause || busyCampaignId !== null) return;
     setBusyCampaignId(campaign.id);
-    setActionError(null);
+    setPauseError(null);
     try {
       await pauseHostAdCampaign({ brandId, campaignId: campaign.id });
+      setPauseTarget(null);
       await ads.refetch();
     } catch {
-      setActionError(`Could not pause ${campaign.name}. Try again from Ads.`);
+      setPauseError(hm("detail.actionFailed"));
     } finally {
       setBusyCampaignId(null);
     }
-  }, [ads, brandId, permissions.canPause]);
+  }, [ads, brandId, busyCampaignId, pauseTarget, permissions.canPause]);
+  const pauseWords = pauseTarget === null
+    ? null
+    : hostAdPauseConfirmWords({
+      capCredit: pauseTarget.cap_cents,
+      spentCredit: pauseTarget.host_spend_equivalent_cents,
+      currency: pauseTarget.currency,
+    });
 
   if (permissions.isLoading || permissions.isError || !permissions.canRead) {
     return null;
@@ -417,7 +441,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                     </Pressable>
                     {pauseVisible ? (
                       <Pressable
-                        onPress={() => void pause(campaign)}
+                        onPress={() => askPause(campaign)}
                         disabled={busyCampaignId !== null}
                         accessibilityRole="button"
                         accessibilityLabel={`Pause ${campaign.name}`}
@@ -476,7 +500,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                     </Pressable>
                     {pauseVisible ? (
                       <Pressable
-                        onPress={() => void pause(campaign)}
+                        onPress={() => askPause(campaign)}
                         disabled={busyCampaignId !== null}
                         accessibilityRole="button"
                         accessibilityLabel={`Pause ${campaign.name}`}
@@ -511,12 +535,30 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
             </Pressable>
           ) : null}
         </View>
-        {actionError === null ? null : (
-          <Text accessibilityRole="alert" style={styles.actionError}>
-            {actionError}
-          </Text>
-        )}
       </GlassCard>
+      {permissions.canPause && pauseWords !== null ? (
+        <ConfirmDialog
+          visible
+          onClose={() => {
+            if (busyCampaignId === null) {
+              setPauseTarget(null);
+              setPauseError(null);
+            }
+          }}
+          onConfirm={pause}
+          variant="simple"
+          title={pauseWords.title}
+          description={pauseWords.description}
+          confirmLabel={pauseWords.confirmLabel}
+          cancelLabel={pauseWords.cancelLabel}
+          confirmLoading={busyCampaignId !== null}
+          closeDisabled={busyCampaignId !== null}
+          errorMessage={pauseError}
+          confirmTestID="home-ad-pause-confirm"
+          cancelTestID="home-ad-pause-keep"
+          testID="home-ad-pause-dialog"
+        />
+      ) : null}
     </View>
   );
 };
@@ -631,7 +673,6 @@ const styles = StyleSheet.create({
   compactLine: { ...type.caption, color: color.text2, marginTop: space[1] },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: color.fill.tile },
   phoneViewAll: { minHeight: 52, alignItems: "center", justifyContent: "center" },
-  actionError: { ...type.small, color: color.errorText, padding: space[4] },
   errorText: { ...type.small, color: color.text1 },
   retry: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center" },
   skeletonRow: { flexDirection: "row", alignItems: "center", gap: space[4] },

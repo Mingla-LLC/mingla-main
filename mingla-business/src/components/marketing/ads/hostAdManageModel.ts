@@ -15,6 +15,27 @@ import {
   type HostAdGoal,
 } from "./hostAdBuilderModel";
 
+// ── Confirms bound to their ad (#4238 rework 5, native P1-1) ─────────────
+
+/**
+ * The identity of the ad a confirm acts on: brand, campaign and plan. A
+ * confirm records this key when it opens; its submit runs only while the
+ * screen still shows that same ad.
+ */
+export function hostAdConfirmKey(input: {
+  brandId: string | null;
+  campaignId: string | null;
+  planId: string | null | undefined;
+}): string | null {
+  if (!input.brandId || !input.campaignId) return null;
+  return `${input.brandId}|${input.campaignId}|${input.planId ?? ""}`;
+}
+
+/** True only when the confirm was opened for the ad the screen shows now. */
+export function hostAdConfirmStillBound(bound: string | null, current: string | null): boolean {
+  return bound !== null && current !== null && bound === current;
+}
+
 // ── True stop reasons (I-4238-TRUE-PAUSE-REASON, client side) ───────────
 
 /** Why an ad is not running, in the Host's terms. Never "ended or isn't public". */
