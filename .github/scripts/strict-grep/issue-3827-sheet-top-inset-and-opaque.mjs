@@ -29,6 +29,10 @@
  *   S3. SheetMobile.tsx exports WEB_OPAQUE_BACKGROUND as a 6-digit hex (no
  *       alpha), and Sheet.web.tsx imports it and paints it as an
  *       absolute-fill base inside the desktop card.
+ *   S4. (#4420) SheetMobile.tsx exports `SHEET_SIDE_GUTTER = space[5]` and pads
+ *       its bottom-sheet body with it; Sheet.web.tsx imports it, has a style
+ *       `paddingHorizontal: SHEET_SIDE_GUTTER`, and applies it to the desktop
+ *       card body, so desktop sheet content never sits flush on the card edge.
  *
  * DOES NOT CATCH, stated rather than implied:
  *   - a consumer that pads its own header to zero with a NEGATIVE margin;
@@ -142,6 +146,22 @@ export function check(input) {
   } else if (!new RegExp(`StyleSheet\\.absoluteFill\\s*,\\s*styles\\.${baseStyle[1]}\\b`).test(web)) {
     violations.push(`S3 Sheet.web.tsx does not paint styles.${baseStyle[1]} as an absolute-fill base in the desktop card`);
   }
+  // S4 (#4420) — the side gutter, one constant for both sheets.
+  if (!/export\s+const\s+SHEET_SIDE_GUTTER\s*=\s*space\[5\]\s*;/.test(mobile)) {
+    violations.push("S4 SheetMobile.tsx no longer exports SHEET_SIDE_GUTTER = space[5]");
+  }
+  if (!/paddingHorizontal\s*:\s*SHEET_SIDE_GUTTER\b/.test(mobile)) {
+    violations.push("S4 SheetMobile.tsx no longer pads the bottom-sheet body with SHEET_SIDE_GUTTER");
+  }
+  if (!/\bSHEET_SIDE_GUTTER\b/.test(imported)) {
+    violations.push('S4 Sheet.web.tsx does not import SHEET_SIDE_GUTTER from "./SheetMobile"');
+  }
+  const gutterStyle = /\n\s*(\w+)\s*:\s*\{\s*paddingHorizontal\s*:\s*SHEET_SIDE_GUTTER\s*,?\s*\}/.exec(web);
+  if (gutterStyle === null) {
+    violations.push("S4 Sheet.web.tsx has no style `{ paddingHorizontal: SHEET_SIDE_GUTTER }`");
+  } else if (!new RegExp(`style=\\{\\[\\s*styles\\.cardBody\\s*,[^\\]]*styles\\.${gutterStyle[1]}\\b`).test(web)) {
+    violations.push(`S4 Sheet.web.tsx does not apply styles.${gutterStyle[1]} to the desktop card body (styles.cardBody)`);
+  }
   return violations;
 }
 
@@ -152,17 +172,20 @@ if (process.argv.includes("--self-test")) {
     "export const SHEET_TOP_INSET = HANDLE_REGION_HEIGHT;",
     'export const WEB_OPAQUE_BACKGROUND = "#16181b";',
     "const X = () => (<View style={styles.handleWrap}><View style={styles.handle} /></View>);",
+    "export const SHEET_SIDE_GUTTER = space[5];",
+    "const styles = StyleSheet.create({ body: { flex: 1, paddingHorizontal: SHEET_SIDE_GUTTER } });",
   ].join("\n");
   const web = [
-    'import {\n  Sheet as MobileSheet,\n  SHEET_TOP_INSET,\n  WEB_OPAQUE_BACKGROUND,\n  type SheetProps,\n} from "./SheetMobile";',
+    'import {\n  Sheet as MobileSheet,\n  SHEET_SIDE_GUTTER,\n  SHEET_TOP_INSET,\n  WEB_OPAQUE_BACKGROUND,\n  type SheetProps,\n} from "./SheetMobile";',
     "const Card = () => (<View>",
     "  <View style={[StyleSheet.absoluteFill, styles.opaqueBase]} pointerEvents=\"none\" />",
-    "  <View style={[styles.cardBody, competition ? null : styles.cardBodyInset]}>{children}</View>",
+    "  <View style={[styles.cardBody, competition ? null : styles.cardBodyInset, competition ? null : styles.cardBodyGutter]}>{children}</View>",
     "</View>);",
     "const styles = StyleSheet.create({",
     "  cardBody: { flexShrink: 1 },",
     "  opaqueBase: {\n    backgroundColor: WEB_OPAQUE_BACKGROUND,\n  },",
     "  cardBodyInset: {\n    paddingTop: SHEET_TOP_INSET,\n  },",
+    "  cardBodyGutter: {\n    paddingHorizontal: SHEET_SIDE_GUTTER,\n  },",
     "});",
   ].join("\n");
   const cases = [
@@ -172,7 +195,12 @@ if (process.argv.includes("--self-test")) {
     ["S2 the inset import is gone", { mobile, web: web.replace("  SHEET_TOP_INSET,\n", "") }, 1],
     ["S2 the inset style is deleted (the original bug)", { mobile, web: web.replace("  cardBodyInset: {\n    paddingTop: SHEET_TOP_INSET,\n  },\n", "") }, 1],
     ["S2 the inset style exists but the body no longer uses it", { mobile, web: web.replace("competition ? null : styles.cardBodyInset", "null") }, 1],
-    ["S2 a commented-out application does not count", { mobile, web: web.replace("<View style={[styles.cardBody, competition ? null : styles.cardBodyInset]}>", "{/* <View style={[styles.cardBody, styles.cardBodyInset]}> */}<View style={[styles.cardBody]}>") }, 1],
+    ["S2 a commented-out application does not count", { mobile, web: web.replace("<View style={[styles.cardBody, competition ? null : styles.cardBodyInset, competition ? null : styles.cardBodyGutter]}>", "{/* <View style={[styles.cardBody, styles.cardBodyInset, styles.cardBodyGutter]}> */}<View style={[styles.cardBody]}>") }, 2],
+    ["S4 the gutter style is deleted (the #4420 flush-content bug)", { mobile, web: web.replace("  cardBodyGutter: {\n    paddingHorizontal: SHEET_SIDE_GUTTER,\n  },\n", "") }, 1],
+    ["S4 the gutter style exists but the body no longer uses it", { mobile, web: web.replace(", competition ? null : styles.cardBodyGutter", "") }, 1],
+    ["S4 the gutter import is gone", { mobile, web: web.replace("  SHEET_SIDE_GUTTER,\n", "") }, 1],
+    ["S4 the gutter constant drifts off the kit's 20", { mobile: mobile.replace("SHEET_SIDE_GUTTER = space[5];", "SHEET_SIDE_GUTTER = space[2];"), web }, 1],
+    ["S4 the bottom sheet body stops reading the constant", { mobile: mobile.replace("paddingHorizontal: SHEET_SIDE_GUTTER", "paddingHorizontal: 16"), web }, 1],
     ["S3 the opaque colour gains alpha", { mobile: mobile.replace('"#16181b"', '"rgba(20, 22, 26, 0.92)"'), web }, 1],
     ["S3 the opaque base is not painted (the see-through picker)", { mobile, web: web.replace("[StyleSheet.absoluteFill, styles.opaqueBase]", "[styles.opaqueBase]") }, 1],
     ["S3 the opaque import is gone", { mobile, web: web.replace("  WEB_OPAQUE_BACKGROUND,\n", "") }, 1],

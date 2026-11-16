@@ -382,6 +382,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
               style={[
                 styles.cardBody,
                 competition ? null : styles.cardBodyInset,
+                competition ? null : styles.cardBodyGutter,
                 competition ? null : styles.cardBodyBreathing,
               ]}
               testID={testID !== undefined ? `${testID}-desktop-body` : undefined}
@@ -442,6 +443,9 @@ const styles = StyleSheet.create({
   // Invariant I-SHEET-BREATHING-ROOM | issue #3355 | Every default wide-web
   // sheet card reserves spacing.lg below its content. Enforced by
   // issue_3827_desktop_sheet_inset_and_opaque.implementor.test.tsx.
+  cardBodyInset: {
+    paddingTop: SHEET_TOP_INSET,
+  },
   // #4420 (shots-bundle 03/04) — the card keeps the SAME 20 side gutter the
   // bottom sheet's body keeps. #4420 moved the side padding off
   // SheetScrollLayout onto the bottom sheet's body; this card never had one,
@@ -449,9 +453,9 @@ const styles = StyleSheet.create({
   // card edge and a bordered row was clipped by it.
   // Invariant I-4420-SHEET-SIDE-GUTTER | issue #4420 | Every default wide-web
   // sheet card pads its body by SHEET_SIDE_GUTTER on both sides. Enforced by
-  // issue_3827_desktop_sheet_inset_and_opaque.implementor.test.tsx.
-  cardBodyInset: {
-    paddingTop: SHEET_TOP_INSET,
+  // issue_3827_desktop_sheet_inset_and_opaque.implementor.test.tsx and the
+  // strict-grep gate issue-3827-sheet-top-inset-and-opaque.mjs (S4).
+  cardBodyGutter: {
     paddingHorizontal: SHEET_SIDE_GUTTER,
   },
   cardBodyBreathing: {
