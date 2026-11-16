@@ -571,6 +571,7 @@
         "feeLine": "Din schimbare, {{fee}} este taxa Mingla de 15%. Suplimentul se rezervă acum din creditul pentru reclame.",
         "backLine": "{{amount}} se întoarce în creditul pentru reclame.",
         "endsLine": "Reclama va rula până pe {{date}}.",
+        "sameTotalLine": "Totalul tău rămâne la fel. Se împarte pe mai multe zile, deci plătești mai puțin pe zi.",
         "apply": "Aplică",
         "keep": "Las-o așa",
         "done": "Gata. Reclama ta e actualizată.",

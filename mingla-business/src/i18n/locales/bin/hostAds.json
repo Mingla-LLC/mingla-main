@@ -571,6 +571,7 @@
         "feeLine": "Vbe ewerriẹ na, {{fee}} ọre igho Mingla 15%. A mu igho ọbọ ye ẹgbẹ vbe igho ẹkpẹti ruẹ nia.",
         "backLine": "{{amount}} werriẹ ye igho ẹkpẹti ruẹ.",
         "endsLine": "Ẹkpẹti khian ye rre sẹ {{date}}.",
+        "sameTotalLine": "Your total stays the same. It is spread over more days, so you pay less each day.",
         "apply": "Loo ẹre",
         "keep": "Mu ẹre vbene ọ ye",
         "done": "Ọ fo. A werriẹ ẹkpẹti ruẹ.",

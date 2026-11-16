@@ -571,6 +571,7 @@
         "feeLine": "Sur ce changement, {{fee}} correspond aux 15 % de frais Mingla. Le supplément est réservé sur votre crédit pub dès maintenant.",
         "backLine": "{{amount}} revient sur votre crédit pub.",
         "endsLine": "La pub tournera jusqu'au {{date}}.",
+        "sameTotalLine": "Votre total reste le même. Il est réparti sur plus de jours, donc vous payez moins chaque jour.",
         "apply": "Appliquer",
         "keep": "La laisser telle quelle",
         "done": "C'est fait. Votre pub est à jour.",

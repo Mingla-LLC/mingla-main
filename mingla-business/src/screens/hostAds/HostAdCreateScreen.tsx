@@ -7,7 +7,7 @@
  * check, the media rights and enough credit, with the reason pinned above it.
  */
 
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
   useCallback,
   useEffect,
@@ -18,6 +18,7 @@ import React, {
 import {
   ActivityIndicator,
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -42,6 +43,7 @@ import {
   hostAdScheduleIsos,
   hostAdScheduleLimit,
   hostAdScrollBottomPadding,
+  shouldHideHostAdDock,
   hostAdAgeRangeValid,
   initialHostAdConnections,
 } from "../../components/marketing/ads/hostAdBuilderRules";
@@ -157,6 +159,7 @@ import { color, edge, radius, space, type } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../hooks/useHostAdPermissions";
 import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { hostAdPageGoal } from "../../components/marketing/ads/hostAdGoal";
 import type {
@@ -290,6 +293,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
   // button sit over this screen on phones. Reserve both so the step buttons
   // stay reachable at full scroll (business web and native).
   const bottomChromeInset = useStickyFooterOffset();
+  // #4238 rework 6 (P1-1): on Android the window does not resize for the
+  // keyboard, so the pinned dock under the scroll view stayed behind the
+  // keyboard and the keyboard-aware scroll aligned the field to a viewport edge
+  // the Host cannot see. While the keyboard is open the dock steps aside so the
+  // scroll view runs to the keyboard, as it does in the sheets that already work.
+  const keyboardOpen = useKeyboardIsVisible();
+  const dockHiddenForKeyboard = shouldHideHostAdDock(Platform.OS, keyboardOpen);
   const scrollBottomStyle = useMemo(
     () => ({ paddingBottom: hostAdScrollBottomPadding(bottomChromeInset) }),
     [bottomChromeInset],
@@ -432,7 +442,24 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   // #4238 D5: after a refresh or a direct link there is no history, so a bare
   // router.back() did nothing. Go to the Ads list explicitly then.
-  const backToAds = useCallback(() => goBackToAds(router), [router]);
+  const navigation = useNavigation();
+  const sanctionedExitRef = useRef(false);
+  const backToAds = useCallback(() => {
+    sanctionedExitRef.current = true;
+    goBackToAds(router);
+  }, [router]);
+  // #4238 rework 6: Android hardware back and the iOS swipe both leave the
+  // builder through the same "Leave the builder? Your draft is kept" sheet as
+  // the close button. Once launched there is nothing to lose, so it just leaves.
+  useEffect(() => {
+    if (Platform.OS === "web") return undefined;
+    const unsubscribe = navigation.addListener("beforeRemove" as never, ((event: { preventDefault: () => void }) => {
+      if (sanctionedExitRef.current || launched) return;
+      event.preventDefault();
+      setSheet("leave");
+    }) as never);
+    return unsubscribe;
+  }, [navigation, launched]);
 
   const load = useCallback(async (force = false) => {
     if (!brandId || !permissions.canRead) return;
@@ -3566,10 +3593,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
         {banners}
         {bodies[activeStepId]}
       </ScrollView>
-      <Material kind="chrome" style={[styles.dock, { paddingBottom: Math.max(space[6], bottomChromeInset) }]}>
-        {dockBlockerNode}
-        {primary}
-      </Material>
+      {dockHiddenForKeyboard ? null : (
+        <Material kind="chrome" style={[styles.dock, { paddingBottom: Math.max(space[6], bottomChromeInset) }]}>
+          {dockBlockerNode}
+          {primary}
+        </Material>
+      )}
       {sheets}
     </View>
   );

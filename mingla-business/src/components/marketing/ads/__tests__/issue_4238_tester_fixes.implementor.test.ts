@@ -352,7 +352,9 @@ describe("#4238 retest 4: back link, ledger words, counting lines, card title", 
     const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(detail).toContain("onPress={() => goBackToAds(router)}");
     expect(detail).not.toContain("router.back()");
-    expect(createRoute).toContain("const backToAds = useCallback(() => goBackToAds(router), [router]);");
+    // rework 6: the builder's back helper also marks the exit as sanctioned so the hardware-back guard lets it through.
+    expect(createRoute).toContain("const backToAds = useCallback(() => {");
+    expect(createRoute).toContain("goBackToAds(router);");
   });
 
 

@@ -571,6 +571,7 @@
         "feeLine": "Trong phần thay đổi, {{fee}} là phí Mingla 15%. Phần thêm được giữ từ tín dụng quảng cáo ngay bây giờ.",
         "backLine": "{{amount}} về lại tín dụng quảng cáo.",
         "endsLine": "Quảng cáo sẽ chạy đến {{date}}.",
+        "sameTotalLine": "Tổng số tiền của bạn giữ nguyên. Số tiền được chia ra nhiều ngày hơn nên mỗi ngày bạn trả ít hơn.",
         "apply": "Áp dụng",
         "keep": "Giữ nguyên",
         "done": "Xong. Quảng cáo đã được cập nhật.",

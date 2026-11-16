@@ -571,6 +571,7 @@
         "feeLine": "Dari perubahan ini, {{fee}} adalah yuran Mingla 15%. Tambahannya ditahan dari kredit iklan anda sekarang.",
         "backLine": "{{amount}} kembali ke kredit iklan anda.",
         "endsLine": "Iklan akan berjalan sampai {{date}}.",
+        "sameTotalLine": "Jumlah anda kekal sama. Ia dibahagikan kepada lebih banyak hari, jadi anda membayar lebih sedikit setiap hari.",
         "apply": "Terapkan",
         "keep": "Biarkan seperti ini",
         "done": "Siap. Iklan anda sudah diperbarui.",

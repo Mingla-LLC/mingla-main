@@ -571,6 +571,7 @@
         "feeLine": "N'ime mgbanwe ahụ, {{fee}} bụ ụgwọ Mingla 15%. A na-edobe mgbakwunye ahụ site na kredit mgbasa ozi gị ugbu a.",
         "backLine": "{{amount}} na-alaghachi na kredit mgbasa ozi gị.",
         "endsLine": "Mgbasa ozi ga-agba ruo {{date}}.",
+        "sameTotalLine": "Ngụkọta gị ka dị otu. A na-ekesa ya n'ụbọchị ndị ọzọ, ya mere ị na-akwụ obere kwa ụbọchị.",
         "apply": "Tinye n'ọrụ",
         "keep": "Hapụ ya dịka ọ dị",
         "done": "O mechaala. Emelitela mgbasa ozi gị.",

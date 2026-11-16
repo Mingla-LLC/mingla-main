@@ -571,6 +571,7 @@
         "feeLine": "Ze zmiany {{fee}} to 15% opłata Mingla. Nadwyżka jest teraz rezerwowana ze środków na reklamy.",
         "backLine": "{{amount}} wraca na środki na reklamy.",
         "endsLine": "Reklama będzie działać do {{date}}.",
+        "sameTotalLine": "Twoja łączna kwota się nie zmienia. Rozkłada się na więcej dni, więc płacisz mniej każdego dnia.",
         "apply": "Zastosuj",
         "keep": "Zostaw bez zmian",
         "done": "Gotowe. Reklama została zaktualizowana.",

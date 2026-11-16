@@ -571,6 +571,7 @@
         "feeLine": "Daga canjin, {{fee}} shi ne kuɗin Mingla na 15%. Ana ajiye ƙarin daga kuɗin tallanka yanzu.",
         "backLine": "{{amount}} yana komawa kuɗin tallanka.",
         "endsLine": "Tallan zai gudana har {{date}}.",
+        "sameTotalLine": "Jimillarka ba zai canza ba. Za a raba shi cikin ƙarin kwanaki, don haka za ku biya ƙasa a kowace rana.",
         "apply": "Yi amfani",
         "keep": "Bar shi yadda yake",
         "done": "An gama. An sabunta tallanka.",

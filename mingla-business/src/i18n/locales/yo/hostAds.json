@@ -571,6 +571,7 @@
         "feeLine": "Nínú àyípadà náà, {{fee}} ni owó iṣẹ́ Mingla 15%. A ń fi àfikún pamọ́ láti inú kírẹ́dìtì ìpolówó rẹ báyìí.",
         "backLine": "{{amount}} yóò padà sí kírẹ́dìtì ìpolówó rẹ.",
         "endsLine": "Ìpolówó yóò máa lọ títí di {{date}}.",
+        "sameTotalLine": "Àpapọ̀ rẹ kò yí padà. A pín in sí àwọn ọjọ́ púpọ̀ sí i, nítorí náà o san díẹ̀ lójoojúmọ́.",
         "apply": "Lò ó",
         "keep": "Fi sílẹ̀ bí ó ṣe wà",
         "done": "Ó ti parí. A ti ṣe àtúnṣe ìpolówó rẹ.",

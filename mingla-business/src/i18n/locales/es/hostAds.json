@@ -571,6 +571,7 @@
         "feeLine": "Del cambio, {{fee}} es la comisión del 15% de Mingla. El extra se reserva ahora de tu crédito para anuncios.",
         "backLine": "{{amount}} vuelve a tu crédito para anuncios.",
         "endsLine": "El anuncio estará activo hasta el {{date}}.",
+        "sameTotalLine": "Tu total sigue igual. Se reparte en más días, así que pagas menos cada día.",
         "apply": "Aplicar",
         "keep": "Dejarlo como está",
         "done": "Listo. Tu anuncio está actualizado.",

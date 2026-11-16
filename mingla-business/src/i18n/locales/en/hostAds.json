@@ -571,6 +571,7 @@
         "feeLine": "Of the change, {{fee}} is the 15% Mingla fee. The extra is held from your Ads credit now.",
         "backLine": "{{amount}} comes back to your Ads credit.",
         "endsLine": "The ad will run until {{date}}.",
+        "sameTotalLine": "Your total stays the same. It is spread over more days, so you pay less each day.",
         "apply": "Apply",
         "keep": "Keep it as it is",
         "done": "Done. Your ad is updated.",

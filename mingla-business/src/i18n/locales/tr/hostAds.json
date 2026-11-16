@@ -571,6 +571,7 @@
         "feeLine": "Değişikliğin {{fee}} kadarı %15 Mingla ücreti. Ek tutar şimdi reklam kredinden ayrılır.",
         "backLine": "{{amount}} reklam kredine geri döner.",
         "endsLine": "Reklam {{date}} tarihine kadar yayında olacak.",
+        "sameTotalLine": "Toplam tutarınız aynı kalır. Daha fazla güne yayılır, bu yüzden günlük ödemeniz azalır.",
         "apply": "Uygula",
         "keep": "Olduğu gibi kalsın",
         "done": "Tamam. Reklamın güncellendi.",

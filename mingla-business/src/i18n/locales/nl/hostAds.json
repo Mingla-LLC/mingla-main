@@ -571,6 +571,7 @@
         "feeLine": "Van de wijziging is {{fee}} de Mingla-vergoeding van 15%. Het extra bedrag wordt nu van je advertentietegoed gereserveerd.",
         "backLine": "{{amount}} komt terug op je advertentietegoed.",
         "endsLine": "De advertentie loopt tot {{date}}.",
+        "sameTotalLine": "Je totaal blijft hetzelfde. Het wordt over meer dagen verdeeld, dus je betaalt per dag minder.",
         "apply": "Toepassen",
         "keep": "Laten zoals het is",
         "done": "Klaar. Je advertentie is bijgewerkt.",

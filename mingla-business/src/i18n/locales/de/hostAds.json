@@ -571,6 +571,7 @@
         "feeLine": "Von der Änderung sind {{fee}} die Mingla-Gebühr von 15 %. Der Mehrbetrag wird jetzt aus deinem Anzeigenguthaben reserviert.",
         "backLine": "{{amount}} kommt zurück in dein Anzeigenguthaben.",
         "endsLine": "Die Anzeige läuft bis {{date}}.",
+        "sameTotalLine": "Dein Gesamtbetrag bleibt gleich. Er verteilt sich auf mehr Tage, also zahlst du pro Tag weniger.",
         "apply": "Übernehmen",
         "keep": "So lassen",
         "done": "Erledigt. Deine Anzeige ist aktualisiert.",

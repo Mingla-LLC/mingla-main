@@ -448,6 +448,9 @@ export function HostAdSuggestionConfirmSheet(props: {
       {props.suggestion.ends_at ? (
         <Text style={bs.caption}>{hm("ari.endsLine", { date: props.dateText(props.suggestion.ends_at) })}</Text>
       ) : null}
+      {props.suggestion.kind === "extend_end" ? (
+        <Text style={bs.caption} testID="host-ad-ari-same-total">{hm("ari.sameTotalLine")}</Text>
+      ) : null}
       {props.error ? <Note tone="error" text={props.error} testID="host-ad-ari-error" /> : null}
     </SheetFrame>
   );
@@ -516,17 +519,17 @@ export function HostAdWithdrawSheet(props: {
       onClose={props.onClose}
       testID="host-ad-withdraw-sheet"
       foot={
-        <View style={bs.actions}>
-          <Button label={hm("withdraw.keep")} variant="secondary" style={s.half} onPress={props.onClose} disabled={phase === "sending"} testID="host-ad-withdraw-keep" />
+        <View style={s.stackedActions}>
           <Button
             label={quote ? hm("withdraw.go", { amount: props.money(quote.backPay) }) : hm("credit.withdraw")}
             variant="primary"
-            style={s.half}
+            fullWidth
             loading={phase === "sending"}
             disabled={quote === null || phase !== "ready" || credit <= 0}
             onPress={() => void send()}
             testID="host-ad-withdraw-go"
           />
+          <Button label={hm("withdraw.keep")} variant="secondary" fullWidth onPress={props.onClose} disabled={phase === "sending"} testID="host-ad-withdraw-keep" />
         </View>
       }
     >
@@ -804,6 +807,8 @@ const s = StyleSheet.create({
   title: { ...type.h1, color: color.text1, marginBottom: space[4] },
   foot: { paddingTop: space[2], paddingBottom: space[4] },
   half: { flex: 1 },
+  // #4238 rework 6: full-width stacked buttons so a long money label never truncates.
+  stackedActions: { gap: space[3] },
   center: { textAlign: "center" },
   stepper: { flexDirection: "row", alignItems: "center", gap: space[4] },
   stepBtn: {

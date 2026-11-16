@@ -50,6 +50,15 @@ export function hostAdScrollBottomPadding(stickyFooterOffset: number): number {
   return scrollPaddingClearOfFloatingAction(stickyFooterOffset);
 }
 
+/**
+ * #4238 rework 6 (P1-1): Android does not resize the window for the keyboard,
+ * so the pinned dock sits behind it and the field being typed in ends up under
+ * it. The dock steps aside on Android while the keyboard is open. iOS keeps it.
+ */
+export function shouldHideHostAdDock(platform: string, keyboardOpen: boolean): boolean {
+  return platform === "android" && keyboardOpen;
+}
+
 /** The router calls the back link needs (expo-router's router fits). */
 export type HostAdBackRouter = {
   canGoBack: () => boolean;

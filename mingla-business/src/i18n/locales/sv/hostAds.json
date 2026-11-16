@@ -571,6 +571,7 @@
         "feeLine": "Av ändringen är {{fee}} Minglas avgift på 15 %. Det extra reserveras från din annonskredit nu.",
         "backLine": "{{amount}} kommer tillbaka till din annonskredit.",
         "endsLine": "Annonsen pågår till {{date}}.",
+        "sameTotalLine": "Din totalsumma är oförändrad. Den fördelas på fler dagar, så du betalar mindre per dag.",
         "apply": "Använd",
         "keep": "Låt den vara",
         "done": "Klart. Din annons är uppdaterad.",

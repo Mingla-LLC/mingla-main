@@ -947,10 +947,10 @@ function HostAdDetailBody(): React.ReactElement {
   ) : paused && reason === "creditOut" && wallet.canView ? (
     <Button label={hm("detail.topUp")} variant="primary" fullWidth disabled={offline} onPress={() => setTopUpCents(budget.dailyPay ?? budget.totalPay)} testID="ads-detail-topup" />
   ) : allRejected ? (
-    <View style={bs.actions}>
-      <Button label={hm("detail.askAri")} variant="secondary" style={styles.flex} onPress={() => router.push(`/(tabs)/ari?brandId=${encodeURIComponent(brandId)}` as never)} testID="ads-detail-ask-ari" />
+    <View style={styles.stackedDock} testID="ads-detail-rejected-dock">
+      <Button label={hm("detail.askAri")} variant="secondary" fullWidth onPress={() => router.push(`/(tabs)/ari?brandId=${encodeURIComponent(brandId)}` as never)} testID="ads-detail-ask-ari" />
       {permissions.canPlan ? (
-        <Button label={hm("detail.changeVideo")} variant="primary" style={styles.flex} onPress={() => void onDuplicate("creative")} testID="ads-detail-rejected-change" />
+        <Button label={hm("detail.changeVideo")} variant="primary" fullWidth onPress={() => void onDuplicate("creative")} testID="ads-detail-rejected-change" />
       ) : null}
     </View>
   ) : ended && payload.plan_id && permissions.canPlan ? (
@@ -1184,6 +1184,8 @@ const styles = StyleSheet.create({
   deskMain: { flex: 1, minWidth: 0, gap: space[6] },
   deskSide: { width: 360, gap: space[6] },
   flex: { flex: 1 },
+  // #4238 rework 6: stacked full-width buttons so a long label never truncates.
+  stackedDock: { gap: space[3] },
   hero: {
     gap: space[3],
     padding: space[6],
