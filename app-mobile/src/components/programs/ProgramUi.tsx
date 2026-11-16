@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
+  type ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -82,6 +83,8 @@ type ScreenProps = {
   refreshing?: boolean;
   onRefresh?: () => void;
   contentStyle?: StyleProp<ViewStyle>;
+  /** #4445: lets a form scroll to its first error (see useScrollToFirstError). */
+  scrollRef?: React.Ref<ScrollView>;
 };
 
 /**
@@ -96,13 +99,14 @@ type ScreenProps = {
  * field. The footer stays mounted and is only hidden while typing, so the scroll
  * frame never changes size while the keyboard moves.
  */
-export function ProgramScreen({ title, children, footer, right, onBack, refreshing, onRefresh, contentStyle }: ScreenProps): React.ReactElement {
+export function ProgramScreen({ title, children, footer, right, onBack, refreshing, onRefresh, contentStyle, scrollRef }: ScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const typing = useKeyboardIsVisible();
   return <View style={[styles.safe, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
     <Stack.Screen options={{ headerShown: false }} />
     <ProgramHeader title={title} right={right} onBack={onBack} />
     <SmartScrollView
+      ref={scrollRef}
       style={styles.flex}
       contentContainerStyle={[styles.content, contentStyle, !footer && { paddingBottom: 48 + insets.bottom }]}
       automaticallyAdjustContentInsets={false}
@@ -243,10 +247,12 @@ type FieldProps = TextInputProps & {
   counter?: { max: number; min?: number };
   /** Inside a bottom sheet: use the sheet's keyboard-aware input. */
   inSheet?: boolean;
+  /** #4445: reach the text box so a blocked submit can focus it. */
+  inputRef?: React.Ref<TextInput>;
 };
 
-export function ProgramField({ label, error, hint, prefix, suffix, counter, inSheet = false, style, multiline, value, ...rest }: FieldProps): React.ReactElement {
-  const Input = (inSheet ? BottomSheetTextInput : TextInput) as unknown as React.ComponentType<TextInputProps>;
+export function ProgramField({ label, error, hint, prefix, suffix, counter, inSheet = false, inputRef, style, multiline, value, ...rest }: FieldProps): React.ReactElement {
+  const Input = (inSheet ? BottomSheetTextInput : TextInput) as unknown as React.ComponentType<TextInputProps & React.RefAttributes<TextInput>>;
   const length = (value ?? '').length;
   const under = counter?.min !== undefined && length < counter.min;
   return <View style={styles.fieldWrap}>
@@ -257,6 +263,7 @@ export function ProgramField({ label, error, hint, prefix, suffix, counter, inSh
     <View style={[styles.field, multiline && styles.fieldMultiline, error ? styles.fieldError : null]}>
       {prefix ? <Text style={styles.affix}>{prefix}</Text> : null}
       <Input
+        ref={inputRef}
         placeholderTextColor={C.faint}
         selectionColor={C.accent}
         {...rest}

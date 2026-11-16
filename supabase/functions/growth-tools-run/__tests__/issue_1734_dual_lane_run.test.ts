@@ -197,11 +197,10 @@ Deno.test("T-W2 — Bearer-carrying web request (no lane) still runs anonymously
       await hashIp("9.9.9.9"),
       "web ip hash persisted as before",
     );
-    assertEquals(
-      r.body.report.meta.schema_version,
-      1,
-      "P-11 stamps BOTH lanes",
-    );
+    // #4452 §6.4: the web lane returns the preview only; the full report (with its schema stamp) is stored for the emailed link.
+    assertEquals(r.body.report, undefined);
+    assert(r.body.preview && typeof r.body.preview === "object");
+    assertEquals(row.report.meta.schema_version, 1, "P-11 stamps BOTH lanes");
   } finally {
     stub.restore();
   }

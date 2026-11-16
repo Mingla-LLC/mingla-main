@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-gate/issue_4452_tool_email.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4452-tools-email",
+  "profile": "deno-2-unit"
+}

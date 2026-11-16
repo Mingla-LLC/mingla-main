@@ -293,7 +293,19 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): listed the new pg17 suite and its sidecar in the #1931 and #2117 replay inventories; re-sealed.
 // #4238 integration 3: merged origin/main f512401461 (#4438: the #4430 local review owner-read pg17 suite and sidecar kept in the #1931 and #2117 inventories beside the #4238 rows); re-sealed.
 // #4420 filtered replay lanes (#1931, #2117) skip the experience venue-line privacy migration by exact filename; re-sealed.
-export const BOOTSTRAP_SHA256 = "4e2ba01940a14fb6ecfaaf5839f63dc3b464503c617b6f8bab2ae7c8eaa48fcd";
+// #4435 Phase 0 characterization: listed the four new pg17 suites and their sidecars in the #1931 and #2117 replay inventories beside the #4436 rows; re-sealed.
+// #4436 follow-up 20280708046436 (invited self-join, own prefs): listed the migration after the #4436 guard migration in the #1857, #1931 and #2117 lanes and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4435 W2: listed migrations 20280708054435 (group lifecycle) and 20280708064435 (chat reopen and clear) after 20280708046436 in the #1857, #1931 and #2117 lanes, and their four pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4435 W3c: registered the concurrent-add cap race suite (issue_4435_group_cap_race) and its sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4435 CI fix: skip 20280708054435 (group lifecycle; re-emits the plan RPCs over chat_plans, chat_plan_place_options and chat_plan_place_votes, which only the skipped #4261 migrations create) by exact filename in the #1931 filtered replay; re-sealed.
+// #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4452 retest 1: registered the tester rework adversarial pg17 suite and its sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
+// #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
+// #4420 merge of main after #4455: kept the #4420 Stay other-contact and experience venue-line privacy migrations after the #4452 migrations in the #1857, #1931 and #2117 lanes, and the #4420 venue-line privacy skip after the #4452 skips in the #1931 filtered replay; re-sealed.
+export const BOOTSTRAP_SHA256 = "b7545facb2fb2da445e218e5b1b327390a9f809b8deb05e361a01e0a1c269edf";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

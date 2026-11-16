@@ -354,10 +354,10 @@ function ticketFixture() {
   };
 }
 
-Deno.test("ORCH-1329 tester — cross-surface: ticket email complete (1 doctype), CTA fill #C4471A, content intact", () => {
+Deno.test("ORCH-1329 tester — cross-surface: ticket email complete (1 doctype), CTA fill #111110 (#4452 ink), content intact", () => {
   const r = renderTransactionalEmail(ticketFixture());
   assertEquals(countDoctypes(r.html), 1, "ticket email must have exactly one doctype");
-  assertStringIncludes(r.html, "background:#C4471A");
+  assertStringIncludes(r.html, "background:#111110");
   assert(!r.html.includes("background:#F97316"), "ticket CTA still on #F97316");
   assert(!r.html.includes("background:#FF6B2C"), "ticket CTA still on #FF6B2C");
   // Core content unchanged.
@@ -367,7 +367,7 @@ Deno.test("ORCH-1329 tester — cross-surface: ticket email complete (1 doctype)
   assertStringIncludes(r.text, "Sunset Sail");
 });
 
-Deno.test("ORCH-1329 tester — cross-surface: generic email complete (1 doctype), CTA fill #C4471A, content intact", () => {
+Deno.test("ORCH-1329 tester — cross-surface: generic email complete (1 doctype), CTA fill #111110 (#4452 ink), content intact", () => {
   const r = renderTransactionalEmail({
     variant: "generic_notification" as const,
     recipient: { name: null, email: "x@y.z" },
@@ -379,7 +379,7 @@ Deno.test("ORCH-1329 tester — cross-surface: generic email complete (1 doctype
     },
   });
   assertEquals(countDoctypes(r.html), 1, "generic email must have exactly one doctype");
-  assertStringIncludes(r.html, "background:#C4471A");
+  assertStringIncludes(r.html, "background:#111110");
   assert(!r.html.includes("background:#FF6B2C"), "generic CTA still on #FF6B2C");
   assert(!r.html.includes("background:#F97316"), "generic CTA still on #F97316");
   assertStringIncludes(r.html, "Heads up");
@@ -387,7 +387,7 @@ Deno.test("ORCH-1329 tester — cross-surface: generic email complete (1 doctype
   assertStringIncludes(r.html, "Open Mingla Host");
 });
 
-Deno.test("ORCH-1329 tester — cross-surface: trip email complete (1 doctype), CTA fill #C4471A, content intact", () => {
+Deno.test("ORCH-1329 tester — cross-surface: trip email complete (1 doctype), CTA fill #111110 (#4452 ink), content intact", () => {
   const r = renderTripConfirmationEmail({
     recipient: { name: "Trav", email: "trav@example.com" },
     trip: {
@@ -403,14 +403,14 @@ Deno.test("ORCH-1329 tester — cross-surface: trip email complete (1 doctype), 
     order: { id: "order_trip_1", shortId: "trip9999", totalCents: 120000, currency: "USD" },
   });
   assertEquals(countDoctypes(r.html), 1, "trip email must have exactly one doctype");
-  assertStringIncludes(r.html, "background:#C4471A");
+  assertStringIncludes(r.html, "background:#111110");
   assert(!r.html.includes("background:#F97316"), "trip CTA still on #F97316");
   assert(!r.html.includes("background:#FF6B2C"), "trip CTA still on #FF6B2C");
   assertStringIncludes(r.html, "You're booked");
   assertStringIncludes(r.html, "Atlas Ridge Escape");
 });
 
-Deno.test("ORCH-1329 tester — cross-surface: experience email complete (1 doctype), CTA fill #C4471A, content intact", () => {
+Deno.test("ORCH-1329 tester — cross-surface: experience email complete (1 doctype), CTA fill #111110 (#4452 ink), content intact", () => {
   const r = renderExperienceConfirmationEmail({
     recipient: { name: "Ex", email: "ex@example.com" },
     experience: {
@@ -427,7 +427,7 @@ Deno.test("ORCH-1329 tester — cross-surface: experience email complete (1 doct
     order: { id: "order_exp_1", shortId: "exp7777", totalCents: 6000, currency: "EUR" },
   });
   assertEquals(countDoctypes(r.html), 1, "experience email must have exactly one doctype");
-  assertStringIncludes(r.html, "background:#C4471A");
+  assertStringIncludes(r.html, "background:#111110");
   // Experience keeps a decorative color:#F97316 on the stop label (text, not a
   // button) — so we assert only that no BUTTON FILL is on the failing orange.
   assert(!r.html.includes("background:#F97316"), "experience CTA still on #F97316");

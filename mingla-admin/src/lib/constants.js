@@ -146,7 +146,10 @@ export const NAV_GROUPS = [
       { id: "program-gigs",              label: "Gigs",               icon: "Clapperboard" },
       { id: "program-locals",            label: "Mingla Locals",      icon: "MapPin" },
       { id: "program-disputes",          label: "Disputes",           icon: "Scale" },
-      { id: "inbound",                   label: "Inbound leads",      icon: "Inbox" },
+      // #4452 A1.8: the one Leads list (the id stays, so old links work).
+      { id: "inbound",                   label: "Leads",              icon: "Inbox" },
+      // #4452 §7.0: Forms, after Leads (a New tag for 14 days: NAV_NEW_UNTIL).
+      { id: "forms",                     label: "Forms",              icon: "FileText" },
       { id: "content-calendar",          label: "Calendar",           icon: "CalendarClock" },
       { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
     ],
@@ -173,6 +176,10 @@ export const NAV_GROUPS = [
       { id: "email",                     label: "Email",              icon: "Mail" },
       { id: "blog",                      label: "Blog",               icon: "Newspaper" },
       { id: "links",                     label: "Links page",         icon: "Link" },
+      // #4452 §7.2: moved out of Community (old tab addresses redirect).
+      { id: "brand-groups",              label: "Brand groups",       icon: "Hand" },
+      // #4452 §7.0: the Website pages editor.
+      { id: "website-pages",             label: "Website pages",      icon: "LayoutTemplate" },
     ],
   },
   {
@@ -285,3 +292,7 @@ export const TABLE_CATEGORIES = [
     tables: ["discover_daily_cache", "google_places_cache", "ticketmaster_events_cache", "admin_backfill_log", "admin_config", "admin_audit_log", "email_templates"],
   },
 ];
+
+// #4452 §7.0: pages that wear a "New" tag in the menu until this date (14 days
+// after they ship). Kept apart from NAV_GROUPS, whose items are id, label and icon only.
+export const NAV_NEW_UNTIL = Object.freeze({ forms: "2026-12-07", "website-pages": "2026-12-07" });

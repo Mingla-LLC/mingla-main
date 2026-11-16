@@ -384,6 +384,32 @@ export const GOOGLE_CONVERSION_KINDS: Record<
     name: "Mingla Host sign-up (server upload)",
     primary: false,
   },
+  // #4452 §4.3: one action per lead label and per booked call.
+  creator_lead: {
+    category: "SUBMIT_LEAD_FORM",
+    name: "Mingla Creator lead (server upload)",
+    primary: false,
+  },
+  local_lead: {
+    category: "SUBMIT_LEAD_FORM",
+    name: "Mingla Local lead (server upload)",
+    primary: false,
+  },
+  host_call_booked: {
+    category: "BOOK_APPOINTMENT",
+    name: "Mingla Host call booked (server upload)",
+    primary: false,
+  },
+  creator_call_booked: {
+    category: "BOOK_APPOINTMENT",
+    name: "Mingla Creator call booked (server upload)",
+    primary: false,
+  },
+  local_call_booked: {
+    category: "BOOK_APPOINTMENT",
+    name: "Mingla Local call booked (server upload)",
+    primary: false,
+  },
 };
 
 export function isGoogleConversionKind(

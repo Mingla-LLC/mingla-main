@@ -1,28 +1,32 @@
 'use client'
-// #1006 [The Undercharging Audit] — the client state machine: intake → running →
-// report.
+// #1006 [The Undercharging Audit] — the client state machine: intake → running
+// → report.
 //
-// INTAKE — a validated experience form (description, city autocomplete, seats,
-// current price, cadence + optional costs). RUNNING — progress theater while the
-// run does live comp research + the audit engine + synthesis (~15-25s). REPORT —
-// the parchment audit document (PricingReportView), gated behind an emailed link.
+// INTAKE — a validated experience form (Google city search). RUNNING — the
+// research screen while the run researches comparable prices + the cost engine
+// + synthesis (~15-25s). REPORT — the gated preview (web lane) or the full
+// report (app lane).
+//
+// #4452 §6.1–6.3, §6.6: on the paper template (design ch. 4c). The category is
+// choice cards with no default (a pick is required). "Free right now" hides the
+// current price and asks what each session costs and whether guests would pay
+// a deposit (asked because it's free today).
 
-import { useEffect, useRef, useState } from 'react'
-import { cn } from '@/lib/cn'
-import { buttonClasses } from '@/components/ui/button'
+import { useState } from 'react'
+import { PreviewGate } from '../_preview/PreviewGate'
+import { Choice, CitySearch, FollowupBlock, ResearchScreen, RunError, StillNeed, ToolField, ToolPage } from '../_template/ToolPage'
+import type { ToolPreview } from '@/lib/growth-tools-submit'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { toolAttribution } from '@/lib/links-src'
 import {
   runPricingAudit,
-  searchCities,
-  type CitySuggestion,
   type GrowthToolsError,
   type PricingReport,
   type PricingRunInput,
 } from '@/lib/growth-tools-submit'
+import { followupActive, followupBody, followupMissing, hiddenFields, SCENARIO, withFollowup, type FollowupAnswers } from '@/lib/tools/scenarios'
 import { PricingReportView } from './PricingReportView'
-import { GoogleMapsAttribution } from '@/components/ui/google-maps-attribution'
 
 type Phase = 'intake' | 'running' | 'report'
 
@@ -34,11 +38,6 @@ function collectUtm(): Record<string, string> {
   })
   return utm
 }
-
-const MICRO_LABEL =
-  'block text-xs font-semibold uppercase tracking-[0.16em] text-white/60'
-const FIELD =
-  'min-h-12 w-full rounded-2xl border border-white/14 bg-black/30 px-4 text-base text-white placeholder:text-white/35 focus-ring'
 
 const CATEGORIES = [
   'Workshop / class',
@@ -53,116 +52,21 @@ const CATEGORIES = [
   'Other',
 ]
 const CURRENCIES = ['USD', 'GBP', 'EUR', 'NGN', 'CAD', 'AUD', 'AED', 'ZAR', 'INR', 'NZD']
-
-const THEATER_LINES = [
-  'Finding what similar experiences charge nearby',
-  'Pricing your time at a fair local rate',
-  'Working out your true cost per head',
-  'Checking demand for your kind of experience',
-  'Writing your pricing verdict',
-] as const
-
-function RunningTheater({
-  title,
-  error,
-  onRetry,
-  onBack,
-}: {
-  title: string
-  error: GrowthToolsError | null
-  onRetry: () => void
-  onBack: () => void
-}) {
-  const [revealed, setRevealed] = useState(0)
-  useEffect(() => {
-    if (error) return
-    if (revealed >= THEATER_LINES.length) return
-    const timer = setTimeout(
-      () => setRevealed((c) => Math.min(c + 1, THEATER_LINES.length)),
-      revealed === 0 ? 400 : 3000,
-    )
-    return () => clearTimeout(timer)
-  }, [revealed, error])
-
-  if (error) {
-    const rateLimited = error === 'rate_limited'
-    return (
-      <div className="rounded-md glass-soft p-6 md:p-8" role="alert">
-        <p className="font-display text-2xl text-white">
-          {rateLimited ? 'You’ve used your free audits for today' : 'That didn’t work — try again'}
-        </p>
-        <p className="mt-3 text-sm leading-relaxed text-white/70 md:text-base">
-          {rateLimited
-            ? 'That’s your free audits used up for today — come back tomorrow, or relaunch your experience at the right price on the Mingla app now, with all-in checkout.'
-            : 'Something broke while building your audit. Give it another go — it usually works the second time.'}
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          {rateLimited ? (
-            <DeviceLink
-              surface="host"
-              attribution={toolAttribution('tool_pricing')}
-              sameTab
-              onActivate={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'experiences' })}
-              className={buttonClasses({ variant: 'primary' })}
-            >
-              Relaunch in Mingla Host
-            </DeviceLink>
-          ) : (
-            <button type="button" onClick={onRetry} className={buttonClasses({ variant: 'primary' })}>
-              Try again
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex min-h-11 items-center rounded-full border border-white/14 bg-white/8 px-5 text-sm font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
-          >
-            Back
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-md glass-soft p-6 md:p-8">
-      <p className="font-display text-2xl text-white md:text-3xl">
-        Auditing <span className="break-words text-warm">{title}</span>…
-      </p>
-      <ul className="mt-6 space-y-3" aria-live="polite">
-        {THEATER_LINES.slice(0, Math.max(revealed, 1)).map((line, i) => {
-          const isActive = i === Math.max(revealed, 1) - 1
-          return (
-            <li key={line} className="flex items-center gap-3 text-sm text-white/80 md:text-base">
-              {isActive ? (
-                <span aria-hidden="true" className="size-2 shrink-0 animate-pulse rounded-full bg-warm" />
-              ) : (
-                <span aria-hidden="true" className="shrink-0 font-semibold text-warm">✓</span>
-              )}
-              <span className={cn(isActive ? 'text-white' : 'text-white/60')}>{line}…</span>
-            </li>
-          )
-        })}
-      </ul>
-      <p className="mt-6 text-xs text-white/45">
-        This takes 15–25 seconds — we research real comparable prices in your city.
-      </p>
-    </div>
-  )
-}
+const CHARGES: ReadonlyArray<{ value: 'paid' | 'free'; label: string }> = [
+  { value: 'paid', label: 'I charge for it' }, { value: 'free', label: 'Free right now' },
+]
+const DEPOSIT: ReadonlyArray<{ value: 'probably' | 'not_sure'; label: string }> = [
+  { value: 'probably', label: 'Probably' }, { value: 'not_sure', label: 'Not sure' },
+]
 
 export function PricingAuditExperience({ embedded = false }: { readonly embedded?: boolean } = {}) {
   const [phase, setPhase] = useState<Phase>('intake')
 
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState(CATEGORIES[0])
+  // #4452 §6.6: no default; a pick is required.
+  const [category, setCategory] = useState('')
   const [city, setCity] = useState('')
-  const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([])
-  const [citySearching, setCitySearching] = useState(false)
-  const [cityFocused, setCityFocused] = useState(false)
   const [cityChosen, setCityChosen] = useState(false)
-  const [geocodeDown, setGeocodeDown] = useState(false)
-  const cityAbort = useRef<AbortController | null>(null)
 
   const [seats, setSeats] = useState('')
   const [price, setPrice] = useState('')
@@ -173,54 +77,21 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
   const [materialsCost, setMaterialsCost] = useState('')
   const [ownHours, setOwnHours] = useState('')
   const [hourlyRate, setHourlyRate] = useState('')
+  const [sessionCost, setSessionCost] = useState('')
+  const [deposit, setDeposit] = useState<'probably' | 'not_sure' | null>(null)
 
   const [runError, setRunError] = useState<GrowthToolsError | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<PricingReport | null>(null)
+  const [preview, setPreview] = useState<ToolPreview | null>(null)
+  const [ranFree, setRanFree] = useState(false)
 
-  // Debounced city autocomplete (validates the city against Google Places).
-  useEffect(() => {
-    const q = city.trim()
-    if (cityChosen || q.length < 2) {
-      setCitySuggestions([])
-      setCitySearching(false)
-      return
-    }
-    setCitySearching(true)
-    const timer = setTimeout(async () => {
-      cityAbort.current?.abort()
-      const controller = new AbortController()
-      cityAbort.current = controller
-      try {
-        const res = await searchCities(q, controller.signal)
-        if (controller.signal.aborted) return
-        setCitySearching(false)
-        if (res.ok) {
-          setCitySuggestions(res.cities)
-          setGeocodeDown(false)
-        } else {
-          setCitySuggestions([])
-          if (res.error === 'network' || res.error === 'server') setGeocodeDown(true)
-        }
-      } catch {
-        // superseded
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [city, cityChosen])
-
-  function selectCity(hit: CitySuggestion) {
-    const value = hit.country
-      ? `${hit.city}, ${hit.country}`
-      : hit.region
-        ? `${hit.city}, ${hit.region}`
-        : hit.city
-    setCity(value)
-    setCityChosen(true)
-    setCitySuggestions([])
-    setCitySearching(false)
-  }
+  // #4452 §6.2: "Free right now" is the situation the form adapts to.
+  const facts = { tool: 'pricing' as const, free: isFree }
+  const asked = followupActive(facts)
+  const hidden = hiddenFields(facts)
+  const answers: FollowupAnswers = { tool: 'pricing', session_cost: sessionCost, deposit }
 
   const seatsNum = Number(seats)
   const seatsValid = Number.isFinite(seatsNum) && seatsNum >= 1
@@ -230,16 +101,15 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
   const perMonthNum = Number(perMonth)
   const perMonthValid = Number.isFinite(perMonthNum) && perMonthNum >= 1
   const cityValid = cityChosen || city.trim().length >= 2
-  const showCityDropdown =
-    cityFocused && !cityChosen && city.trim().length >= 2 &&
-    (citySearching || citySuggestions.length > 0)
 
   const missing: string[] = []
   if (description.trim().length < 4) missing.push('what your experience is')
+  if (!category) missing.push('what kind it is')
   if (!cityValid) missing.push('city')
   if (!seatsValid) missing.push('seats per event')
   if (!priceValid) missing.push('your current price (or mark it free)')
   if (!perMonthValid) missing.push('how often you run it')
+  if (asked) missing.push(...followupMissing(answers))
   const canRun = missing.length === 0
 
   function optNum(v: string): number | null {
@@ -252,8 +122,9 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
     captureMarketing('tool_run_started', { tool: 'experiences' })
     setRunError(null)
     setAttempt((n) => n + 1)
+    setRanFree(asked)
     setPhase('running')
-    const input: PricingRunInput = {
+    const base: PricingRunInput = {
       description: description.trim(),
       category: category.trim(),
       city: city.trim(),
@@ -266,10 +137,14 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
       own_hours: optNum(ownHours),
       hourly_rate: optNum(hourlyRate),
     }
+    // #4452 §6.2 / SC-136: without the new answers the body is today's.
+    const input = withFollowup(base, followupBody(facts, answers)) as PricingRunInput
     const res = await runPricingAudit(input, { pid: 'tool_pricing', utm: collectUtm() })
     if (res.ok) {
       setRunId(res.run_id)
-      setReport(res.report)
+      // #4452 §6.4: the web lane answers the preview only.
+      if (res.report) setReport(res.report)
+      else if (res.preview) setPreview(res.preview)
       captureMarketing('tool_report_ready', { tool: 'experiences', run_id: res.run_id })
       setPhase('report')
       return
@@ -278,23 +153,34 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
   }
 
   // ── REPORT ──────────────────────────────────────────────────────────────
+  if (phase === 'report' && preview && !report && runId) {
+    return (
+      <ToolPage tool="pricing" embedded={embedded} active={ranFree} left={(
+        <PreviewGate
+          tool="experiences"
+          preview={preview}
+          runId={runId}
+          resetLabel="← Audit another experience"
+          onReset={() => {
+            setPhase('intake')
+            setPreview(null)
+            setRunId(null)
+          }}
+        />
+      )} />
+    )
+  }
   if (phase === 'report' && report && runId) {
     return (
-      <div className={embedded ? 'p-0' : 'px-4 py-10 sm:px-6 md:px-10 md:py-16 [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))]'}>
-        <div className="mx-auto max-w-3xl">
-          <button
-            type="button"
-            onClick={() => {
-              setPhase('intake')
-              setReport(null)
-              setRunId(null)
-            }}
-            className="mb-6 inline-flex min-h-10 items-center rounded-full border border-white/12 bg-white/8 px-4 text-sm font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
-          >
+      <div className="tp-report">
+        {embedded ? (
+          null
+        ) : (
+          <button type="button" className="tp-ghost" onClick={() => { setPhase('intake'); setReport(null); setRunId(null) }}>
             ← Audit another experience
           </button>
-          <PricingReportView report={report} runId={runId} />
-        </div>
+        )}
+        <PricingReportView report={report} runId={runId} />
       </div>
     )
   }
@@ -302,296 +188,140 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
   // ── RUNNING ─────────────────────────────────────────────────────────────
   if (phase === 'running') {
     return (
-      <div className={embedded ? 'p-0' : 'px-6 py-16 md:px-10 md:py-24 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]'}>
-        <div className="mx-auto max-w-xl">
-          <RunningTheater
-            key={attempt}
-            title={description.trim().slice(0, 40) || 'your experience'}
-            error={runError}
-            onRetry={handleRun}
-            onBack={() => {
-              setRunError(null)
-              setPhase('intake')
-            }}
-          />
-        </div>
-      </div>
+      <ToolPage tool="pricing" embedded={embedded} active={ranFree} left={(
+        <ResearchScreen
+          key={attempt}
+          tool="pricing"
+          active={ranFree}
+          error={runError ? (
+            <RunError
+              error={runError}
+              limitTitle="You’ve used your free audits for today"
+              limitBody="Come back tomorrow, or relaunch your experience at the right price on the Mingla app now, with all-in checkout."
+              failBody="Something broke while building your audit. Give it another go: it usually works the second time."
+              onRetry={handleRun}
+              onBack={() => { setRunError(null); setPhase('intake') }}
+              limitCta={(
+                <DeviceLink
+                  surface="host"
+                  attribution={toolAttribution('tool_pricing')}
+                  sameTab
+                  onActivate={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'experiences' })}
+                  className="tp-go"
+                >
+                  Relaunch in Mingla Host
+                </DeviceLink>
+              )}
+            />
+          ) : undefined}
+        />
+      )} />
     )
   }
 
   // ── INTAKE ──────────────────────────────────────────────────────────────
   return (
-    <div className={embedded ? 'p-0' : 'px-6 py-14 md:px-10 md:py-20 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]'}>
-      <div className="mx-auto max-w-2xl">
-        <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
-          The Undercharging Audit
-        </span>
-        {embedded ? (
-          <h3 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">Are you charging what you’re worth?</h3>
-        ) : (
-          <h1 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">Are you charging what you’re worth?</h1>
-        )}
-        <p className="mt-4 max-w-xl text-base leading-relaxed text-white/72 md:text-lg">
-          Most hosts price by guilt and quietly lose money — because their own time was never in
-          the number. Get a free audit: your true cost per head, what comparable experiences
-          charge, and the price you should be charging.
-        </p>
+    <ToolPage tool="pricing" embedded={embedded} active={asked} left={(
+      <form className="tp-card" onSubmit={(e) => { e.preventDefault(); void handleRun() }} noValidate>
+        <ToolField label="What’s your experience?" htmlFor="pr-desc">
+          <textarea id="pr-desc" className="fk-input fk-area" value={description} onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. A hands-on pasta-making supper club with wine pairing" maxLength={400} />
+        </ToolField>
 
-        <div className="mt-10 space-y-5 rounded-md glass-soft p-5 sm:p-6 md:p-8">
-          <div>
-            <label htmlFor="pr-desc" className={MICRO_LABEL}>
-              What’s your experience? <span aria-hidden="true" className="text-warm">*</span>
-            </label>
-            <textarea
-              id="pr-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              placeholder="e.g. A hands-on pasta-making supper club with wine pairing"
-              className={cn(FIELD, 'mt-2 py-3 leading-relaxed')}
-            />
+        <ToolField label="Type" id="pr-category-label">
+          {/* #4452 §6.6: choice cards with no default; a pick is required. */}
+          <div id="pr-category" role="radiogroup" aria-label="Type" className="fk-chips" data-category-cards="">
+            {CATEGORIES.map((c) => (
+              <button key={c} type="button" role="radio" aria-checked={category === c} onClick={() => setCategory(c)}
+                className={category === c ? 'on' : undefined}>
+                {c}
+              </button>
+            ))}
           </div>
+        </ToolField>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="pr-category" className={MICRO_LABEL}>
-                Type <span aria-hidden="true" className="text-warm">*</span>
-              </label>
-              <select
-                id="pr-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className={cn(FIELD, 'mt-2 appearance-none')}
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="bg-[#0d0d10]">{c}</option>
-                ))}
-              </select>
-            </div>
-            <div className="relative">
-              <label htmlFor="pr-city" className={MICRO_LABEL}>
-                City <span aria-hidden="true" className="text-warm">*</span>
-              </label>
-              <input
-                id="pr-city"
-                type="text"
-                autoComplete="off"
-                spellCheck={false}
-                value={city}
-                onChange={(e) => {
-                  setCity(e.target.value)
-                  if (cityChosen) setCityChosen(false)
-                }}
-                onFocus={() => setCityFocused(true)}
-                onBlur={() => setCityFocused(false)}
-                placeholder="Start typing your city…"
-                aria-expanded={showCityDropdown}
-                aria-autocomplete="list"
-                className={cn(FIELD, 'mt-2', cityChosen && 'border-moss/50')}
-              />
-              {cityChosen ? (
-                <span aria-hidden="true" className="pointer-events-none absolute right-3 top-[2.55rem] text-moss">✓</span>
-              ) : null}
-              {showCityDropdown ? (
-                <div className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-white/14 bg-[#0d0d10]/97 shadow-[0_24px_64px_rgba(0,0,0,0.55)]">
-                  {citySearching && citySuggestions.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-white/55">Searching…</p>
-                  ) : (
-                    <ul>
-                      {citySuggestions.map((hit) => (
-                        <li key={hit.label}>
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              selectCity(hit)
-                            }}
-                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-white/85 transition hover:bg-white/8 focus-ring"
-                          >
-                            <span aria-hidden="true" className="text-warm">◎</span>
-                            <span className="truncate">{hit.label}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <GoogleMapsAttribution />
-                </div>
-              ) : null}
-              {!cityChosen && !geocodeDown && !citySearching && city.trim().length >= 2 &&
-                citySuggestions.length === 0 && cityFocused ? (
-                <p className="mt-1 text-xs text-white/45">Pick your city from the list.</p>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label htmlFor="pr-seats" className={MICRO_LABEL}>
-                Seats / event <span aria-hidden="true" className="text-warm">*</span>
-              </label>
-              <input
-                id="pr-seats"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={seats}
-                onChange={(e) => setSeats(e.target.value)}
-                placeholder="12"
-                className={cn(FIELD, 'mt-2')}
-              />
-            </div>
-            <div>
-              <span className={MICRO_LABEL}>
-                Current price <span aria-hidden="true" className="text-warm">*</span>
-              </span>
-              <div className="mt-2 flex gap-2">
-                <select
-                  aria-label="Currency"
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  disabled={isFree}
-                  className={cn(FIELD, 'w-[4.5rem] shrink-0 appearance-none px-2', isFree && 'opacity-40')}
-                >
-                  {CURRENCIES.map((c) => (
-                    <option key={c} value={c} className="bg-[#0d0d10]">{c}</option>
-                  ))}
-                </select>
-                <input
-                  aria-label="Current price per person"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={isFree ? '' : price}
-                  disabled={isFree}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder={isFree ? 'Free' : '45'}
-                  className={cn(FIELD, 'flex-1', isFree && 'opacity-40')}
-                />
-                <button
-                  type="button"
-                  onClick={() => setIsFree((f) => !f)}
-                  className={cn(
-                    'min-h-12 shrink-0 rounded-2xl border px-3 text-sm font-semibold transition focus-ring',
-                    isFree
-                      ? 'border-warm bg-warm/15 text-white'
-                      : 'border-white/14 bg-black/30 text-white/70 hover:bg-white/8',
-                  )}
-                  aria-pressed={isFree}
-                >
-                  Free
-                </button>
-              </div>
-              {isFree ? (
-                <p className="mt-1 text-xs text-white/45">
-                  Free right now? We&rsquo;ll show what your time is worth and what to start charging.
-                </p>
-              ) : null}
-            </div>
-            <div>
-              <label htmlFor="pr-permonth" className={MICRO_LABEL}>
-                Times / month <span aria-hidden="true" className="text-warm">*</span>
-              </label>
-              <input
-                id="pr-permonth"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={perMonth}
-                onChange={(e) => setPerMonth(e.target.value)}
-                placeholder="4"
-                className={cn(FIELD, 'mt-2')}
-              />
-            </div>
-          </div>
-
-          <details className="group">
-            <summary className="cursor-pointer list-none text-sm font-semibold text-warm underline-offset-4 hover:underline focus-ring">
-              + Your costs &amp; time (makes the loss number real, not estimated)
-            </summary>
-            <div className="mt-4 space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="pr-venue" className={MICRO_LABEL}>Venue / space cost (per event)</label>
-                  <input
-                    id="pr-venue"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    value={venueCost}
-                    onChange={(e) => setVenueCost(e.target.value)}
-                    placeholder="e.g. 150 (blank = your own space)"
-                    className={cn(FIELD, 'mt-2')}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="pr-materials" className={MICRO_LABEL}>Materials / supplies (per event)</label>
-                  <input
-                    id="pr-materials"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    value={materialsCost}
-                    onChange={(e) => setMaterialsCost(e.target.value)}
-                    placeholder="e.g. 120"
-                    className={cn(FIELD, 'mt-2')}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="pr-hours" className={MICRO_LABEL}>Your hours (per event)</label>
-                  <input
-                    id="pr-hours"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    value={ownHours}
-                    onChange={(e) => setOwnHours(e.target.value)}
-                    placeholder="prep + delivery, e.g. 8"
-                    className={cn(FIELD, 'mt-2')}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="pr-rate" className={MICRO_LABEL}>Your time is worth ({currency}/hr)</label>
-                  <input
-                    id="pr-rate"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    value={hourlyRate}
-                    onChange={(e) => setHourlyRate(e.target.value)}
-                    placeholder="blank = we set a fair rate"
-                    className={cn(FIELD, 'mt-2')}
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-white/45">
-                Leave any blank and we’ll estimate it from live research — and label it as estimated
-                in your audit.
-              </p>
-            </div>
-          </details>
-
-          <button
-            type="button"
-            onClick={handleRun}
-            disabled={!canRun}
-            className={buttonClasses({ variant: 'primary', size: 'lg', className: 'w-full sm:w-auto' })}
-          >
-            Audit my pricing
-          </button>
-          {!canRun && missing.length > 0 ? (
-            <p className="mt-3 text-sm text-white/55">
-              Still need:{' '}
-              <span className="font-semibold text-warm">{missing.join(' · ')}</span>
-            </p>
-          ) : null}
+        <div className="tp-two">
+          <ToolField label="City" htmlFor="pr-city" tag="Google">
+            <CitySearch id="pr-city" value={city} chosen={cityChosen} placeholder="Start typing your city…" prompt="Cities"
+              onType={(v) => { setCity(v); if (cityChosen) setCityChosen(false) }}
+              onPick={(label) => { setCity(label); setCityChosen(true) }} />
+          </ToolField>
+          <ToolField label="Seats" htmlFor="pr-seats" help="Guests per event.">
+            <input id="pr-seats" className="fk-input" type="number" inputMode="numeric" min={1} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="12" />
+          </ToolField>
         </div>
 
-        <p className="mt-4 text-xs text-white/45">
-          Free while in test. No account needed — we research real comparable prices and email
-          your full audit. Comps are current estimates; your loss/upside is your own maths, shown.
-        </p>
-      </div>
-    </div>
+        <ToolField label="Do you charge for it now?" id="pr-charge-label">
+          <Choice options={CHARGES} value={isFree ? 'free' : 'paid'} onChange={(v) => setIsFree(v === 'free')} labelledBy="pr-charge-label" />
+        </ToolField>
+
+        <div className="tp-two">
+          {hidden.includes('current_price') ? (
+            <ToolField label="Currency" htmlFor="pr-currency">
+              <select id="pr-currency" className="fk-input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </ToolField>
+          ) : (
+            <ToolField label="Your price now" htmlFor="pr-price" help="Per person.">
+              <div className="fk-prefixed">
+                <select aria-label="Currency" className="fk-country" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <input id="pr-price" aria-label="Current price per person" className="fk-input" type="number" inputMode="decimal" min={0} value={price}
+                  onChange={(e) => setPrice(e.target.value)} placeholder="35" />
+              </div>
+            </ToolField>
+          )}
+          <ToolField label="Times a month" htmlFor="pr-permonth">
+            <input id="pr-permonth" className="fk-input" type="number" inputMode="numeric" min={1} value={perMonth} onChange={(e) => setPerMonth(e.target.value)} placeholder="4" />
+          </ToolField>
+        </div>
+
+        {asked ? (
+          <FollowupBlock tool="pricing">
+            <div className="tp-two">
+              <ToolField label="What does each session cost you?" htmlFor="pr-session" why={SCENARIO.pricing.tag}>
+                <div className="fk-prefixed">
+                  <span className="fk-country" style={{ display: 'inline-flex', alignItems: 'center' }}>{currency}</span>
+                  <input id="pr-session" className="fk-input" type="number" inputMode="decimal" min={0} value={sessionCost}
+                    onChange={(e) => setSessionCost(e.target.value)} placeholder="370" />
+                </div>
+              </ToolField>
+              <ToolField label="Would guests pay a deposit?" id="pr-deposit-label">
+                <Choice chips options={DEPOSIT} value={deposit} onChange={setDeposit} labelledBy="pr-deposit-label" />
+              </ToolField>
+            </div>
+          </FollowupBlock>
+        ) : null}
+
+        <details>
+          <summary className="tp-link" style={{ listStyle: 'none' }}>+ Add your costs and time (sharpens the audit)</summary>
+          <div style={{ display: 'grid', gap: 16, marginTop: 14 }}>
+            <div className="tp-two">
+              <ToolField label="Venue or space cost (per event)" htmlFor="pr-venue" optional>
+                <input id="pr-venue" className="fk-input" type="number" inputMode="decimal" min={0} value={venueCost} onChange={(e) => setVenueCost(e.target.value)} placeholder={`${currency} 0`} />
+              </ToolField>
+              <ToolField label="Materials or supplies (per event)" htmlFor="pr-materials" optional>
+                <input id="pr-materials" className="fk-input" type="number" inputMode="decimal" min={0} value={materialsCost} onChange={(e) => setMaterialsCost(e.target.value)} placeholder={`${currency} 0`} />
+              </ToolField>
+            </div>
+            <div className="tp-two">
+              <ToolField label="Your hours (per event)" htmlFor="pr-hours" optional>
+                <input id="pr-hours" className="fk-input" type="number" inputMode="decimal" min={0} value={ownHours} onChange={(e) => setOwnHours(e.target.value)} placeholder="5" />
+              </ToolField>
+              <ToolField label={`Your time is worth (${currency} an hour)`} htmlFor="pr-rate" optional>
+                <input id="pr-rate" className="fk-input" type="number" inputMode="decimal" min={0} value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} placeholder="25" />
+              </ToolField>
+            </div>
+            <p className="fk-help">Leave any blank and we&rsquo;ll estimate it from live research, and label it as estimated in your audit.</p>
+          </div>
+        </details>
+
+        <button type="submit" className="tp-go" disabled={!canRun}>Audit my pricing →</button>
+        <StillNeed missing={missing} />
+        <p className="tp-tiny">Free. No account. We research real comparable prices and email your full audit.</p>
+      </form>
+    )} />
   )
 }

@@ -34,6 +34,7 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { toastManager } from "../ui/Toast";
@@ -53,6 +54,7 @@ import {
   leaveCopyVariant,
   leaveHeir,
   memberActions,
+  pruneHiddenMembers,
   REMOVE_UNDO_MS,
   sortGroupMembers,
   type GroupMemberRow,
@@ -145,11 +147,18 @@ export function GroupInfoSheet({
 }: GroupInfoSheetProps): React.ReactElement {
   const { t } = useTranslation(["chat", "common"]);
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [muted, setMuted] = useState(initiallyMuted);
   const [muteBusy, setMuteBusy] = useState(false);
   const [leaving, setLeaving] = useState(false);
   // #4261: Add people steps this sheet aside (one RN Modal at a time on iOS).
   const [addingPeople, setAddingPeople] = useState(false);
+  // #4435 QA F-2: opened straight on Add people (the deck's button), this
+  // sheet never presents first. Add people is derived in render, so the two
+  // RN Modals never swap within one open; Back from Add people shows group
+  // info (backFromAdd) until the sheet closes.
+  const [backFromAdd, setBackFromAdd] = useState(false);
+  const showAdd = !managed && (addingPeople || (startWithAddPeople && !backFromAdd));
   const { share: shareGroupLink, busy: sharingLink } = useShareGroupLink(managed ? null : conversationId, name);
   const isSession = Boolean(session) && !managed;
   const joinRequests = useGroupJoinRequests(isSession ? conversationId : null);
@@ -177,14 +186,11 @@ export function GroupInfoSheet({
   useEffect(() => {
     if (!visible) {
       setAddingPeople(false);
+      setBackFromAdd(false);
       setOpenMemberId(null);
       setRenaming(false);
     }
   }, [visible]);
-
-  useEffect(() => {
-    if (visible && startWithAddPeople && !managed) setAddingPeople(true);
-  }, [managed, startWithAddPeople, visible]);
 
   useEffect(() => {
     setMuted(initiallyMuted);
@@ -206,6 +212,25 @@ export function GroupInfoSheet({
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     };
   }, []);
+
+  // #4435 QA: opening Group info after a failed member load (a slow or
+  // dropped first load) loads again at once instead of waiting for Retry.
+  const sessionNeedsLoad = Boolean(session && session.error && !session.loading && session.members.length === 0);
+  const retryMembers = session?.onRetry;
+  useEffect(() => {
+    if (visible && sessionNeedsLoad) retryMembers?.();
+    // Only on open: a failing reload must not loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  // #4435 QA F-3: a removed member stays hidden only until the server's list
+  // drops them; after that the hide is cleared, so a re-added member shows.
+  useEffect(() => {
+    const list = session?.members;
+    if (!list || list.length === 0 || session?.loading) return;
+    const ids = list.map((m) => m.userId);
+    setHidden((prev) => pruneHiddenMembers(prev, ids, deferredRef.current.pending()));
+  }, [session?.members, session?.loading]);
 
   const sessionMembers = useMemo(
     () => sortGroupMembers((session?.members ?? []).filter((m) => !hidden.has(m.userId)), currentUserId),
@@ -614,7 +639,7 @@ export function GroupInfoSheet({
   return (
     <>
     <BaseBottomSheet
-      visible={visible && !addingPeople}
+      visible={visible && !showAdd}
       onClose={onClose}
       snapPoints={isSession ? SESSION_INFO_SNAP : GROUP_INFO_SNAP}
       wrapInRNModal
@@ -625,9 +650,12 @@ export function GroupInfoSheet({
       android_keyboardInputMode="adjustResize"
       accessibilityLabel={t("chat:groupInfo")}
       header={header}
-    >
-      <View style={styles.body} testID="group-info-sheet">
-        {undo ? (
+      // #4435 QA: the Undo bar (Remove and Make admin) is pinned to the bottom
+      // of the sheet's window, so it shows wherever the list is scrolled (it
+      // used to sit at the top of the scrolling body, out of view when the
+      // member row was further down).
+      overlay={undo ? (
+        <View pointerEvents="box-none" style={[styles.undoDock, { bottom: Math.max(insets.bottom, 12) + 12 }]}>
           <View style={styles.undoBar} accessibilityLiveRegion="polite" testID="group-undo-bar">
             <Text style={styles.undoText}>
               {undo.kind === "remove"
@@ -640,7 +668,10 @@ export function GroupInfoSheet({
               <Text style={styles.undoButtonText}>{t("common:undo")}</Text>
             </Pressable>
           </View>
-        ) : null}
+        </View>
+      ) : undefined}
+    >
+      <View style={styles.body} testID="group-info-sheet">
 
         {!managed && conversationId ? (
           <>
@@ -784,13 +815,16 @@ export function GroupInfoSheet({
     </BaseBottomSheet>
     {!managed && conversationId ? (
       <AddGroupPeopleSheet
-        visible={visible && addingPeople}
+        visible={visible && showAdd}
         conversationId={conversationId}
         groupName={name}
         memberIds={isSession ? sessionMembers.map((member) => member.userId) : members.map((member) => member.id)}
         sessionId={session?.sessionId ?? null}
         acceptedCount={isSession ? acceptedCount : undefined}
-        onBack={() => setAddingPeople(false)}
+        onBack={() => {
+          setAddingPeople(false);
+          setBackFromAdd(true);
+        }}
         onAdded={() => afterMembershipChange()}
       />
     ) : null}
@@ -849,6 +883,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 32,
   },
+  undoDock: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+  },
   undoBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -858,7 +897,6 @@ const styles = StyleSheet.create({
     backgroundColor: chatTokens.accent,
     paddingLeft: 14,
     paddingRight: 8,
-    marginBottom: 12,
   },
   undoText: {
     flex: 1,

@@ -1,10 +1,11 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { GoogleAnalytics } from '@next/third-parties/google'
 import { inter, mochiy, nunito } from './fonts'
 import './globals.css'
 import { ContentProtection } from '@/components/marketing/content-protection'
 import { PostHogProvider } from '@/components/marketing/posthog-provider'
 import { ConsentBanner } from '@/components/marketing/consent-banner'
+import { PopupMount } from '@/components/forms/popup-mount'
 import { requireRouteContract, type SearchReadyRouteContract } from '@/lib/search/route-registry'
 import { SITE_ORIGIN } from '@/lib/site'
 import { SkipLink } from '@/components/marketing/skip-link'
@@ -28,6 +29,12 @@ void GA_CONSENT_DEFAULT_COMMAND
 void GA_CONSENT_DEFAULTS
 
 const homeRoute = requireRouteContract('/', 'search_ready') as SearchReadyRouteContract
+
+// #4452 §2.14 (F-PB-1): viewport-fit=cover makes env(safe-area-inset-bottom)
+// real in iOS Safari, so the privacy strip is pinned to the screen's bottom
+// edge instead of riding on the moving toolbar.
+// Invariant I-4452-PRIVACY-BAR-PINNED (declared in its test): viewportFit 'cover' + the strip fixed at bottom:0 with the inset height (lib/__tests__/issue-4452-privacy-bar.implementor.test.mjs).
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' }
 
 export const metadata: Metadata = {
   title: { default: homeRoute.title, template: '%s — Mingla' },
@@ -73,6 +80,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </noscript>
         <SkipLink />
         {children}
+        {/* #4452 §2.4: the page's pop-up form, only when one is published. */}
+        <PopupMount />
         <ContentProtection />
         {/* META-ORCH-1187 — analytics (consent-gated). */}
         <PostHogProvider>

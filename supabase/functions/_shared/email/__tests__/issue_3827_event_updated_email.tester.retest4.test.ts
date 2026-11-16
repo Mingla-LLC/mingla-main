@@ -120,7 +120,8 @@ Deno.test("K4-04 the rendered email carries none of them and no link it did not 
   }
   has(rendered.text, "Café.Bar is closed.", "the prose reaches the plain text");
   // Every href in the HTML is one the email itself owns.
-  const hrefs = Array.from(rendered.html.matchAll(/href="([^"]*)"/g), (m) => m[1]);
+  // #4452: anchors only (the shell's font stylesheet <link> is not a clickable link).
+  const hrefs = Array.from(rendered.html.matchAll(/<a [^>]*href="([^"]*)"/g), (m) => m[1]);
   for (const href of hrefs) {
     if (!/^(https:\/\/usemingla\.com|mailto:|https:\/\/[a-z0-9.-]*mingla)/i.test(href.replace(/&amp;/g, "&"))) {
       fail(`unexpected link in the email: ${href}`);

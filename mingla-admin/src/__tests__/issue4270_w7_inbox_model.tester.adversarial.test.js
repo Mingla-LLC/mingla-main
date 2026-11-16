@@ -328,7 +328,7 @@ describe("P the side panel address under tampering", () => {
     assert.equal(opened.get("side"), `calendar:${U2}`, "the calendar kind survives a Brand group address write");
     const tampered = new URLSearchParams(brandGroupSearch("tab=brand-groups", { side: { kind: "nope", id: U2 } }));
     assert.equal(tampered.get("side"), null);
-    assert.equal(tampered.get("tab"), "brand-groups");
+    assert.equal(tampered.get("tab"), null, "#4452 §7.2: its own screen, no Community tab in the address");
   });
 
   it("P-5 close steps: only a positive whole count walks history back; anything else pushes", () => {

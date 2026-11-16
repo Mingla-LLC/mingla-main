@@ -1,466 +1,63 @@
 'use client'
-// #1005 [Quote Any Trip] — the report document.
+// #1005 [Quote Any Trip] — the full report.
 //
-// A parchment "document card" on the dark /tools stage (data-theme="light").
-// FREE zone: the trip header + the big PER-PERSON PRICE + group total + headline.
-// GATED zone (blur + gate overlay): the cost sheet, margin ladder (what to
-// charge), day-by-day itinerary, named hotels, comparable trips, the fill/ad
-// plan, weather + demand, and the fixes — revealed only via the emailed tokenized
-// link. Once ungated the consolidated offer closes to /schedule + publish.
+// #4452 §6.7: redesigned on the paper report template (design ch. 4d, tripReport,
+// approved from the real Kyoto in Bloom report). Every section it rendered
+// before is kept, in the same order (the order guard keys on `data-section`):
+// the cover with the price · the read · the bottom line · your cost sheet · what
+// to charge · perfect timing · signature experiences · your day-by-day plan ·
+// where they'll stay · what comparable trips charge · filling the seats · pick
+// your promo spend · what's shaping this quote · weather · demand right now ·
+// how to sell it out & lift margin · your trip as a bookable Mingla page · the
+// offer. Newly shown: the listing's included, excluded, why go and best for,
+// and the comparables drawn to scale against your price.
+//
+// #4452 §6.5, the honest state: when live prices did not come back
+// (`pricing_status: "unpriced"`, or the same rule on an older report), the page
+// says "We couldn't price this trip yet.", shows no money at all, hides the cost
+// sheet and the margin ladder, and keeps the plan, the hotels and the experiences.
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { cn } from '@/lib/cn'
-import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
-import {
-  submitGrowthToolsGate,
-  type TripFactor,
-  type TripPricingPlan,
-  type TripReport,
-  type TripScenario,
-  type GrowthToolsError,
-} from '@/lib/growth-tools-submit'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { toolAttribution } from '@/lib/links-src'
+import type { TripReport, TripScenario } from '@/lib/growth-tools-submit'
+import { nextStepCta } from '@/lib/tools/scenarios'
+import { BottomLine, effortLabel, Factors, Fixes, money, Offer, ReportFrame, RSec, ScaleBars, Source, splitTitle, ToldUs, WeatherCard } from '../_template/ReportShell'
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-const GATE_ERROR_COPY: Record<GrowthToolsError, string> = {
-  rate_limited: 'You’ve hit today’s limit — try again tomorrow.',
-  generation_failed: 'That didn’t work — try again.',
-  validation: 'Enter a valid email address.',
-  server: 'That didn’t work — try again.',
-  network: 'We couldn’t reach our servers — check your connection and try again.',
-  booking_unconfigured: 'That didn’t work — try again.',
-  slot_taken: 'That time was just taken — pick another.',
-  calendar_unavailable: 'That didn’t work — try again.',
+/** §6.5: the server's rule, applied again for reports stored before the status existed. */
+export function tripIsUnpriced(report: Pick<TripReport, 'plan'> & { pricing_status?: string }): boolean {
+  if (report.pricing_status === 'unpriced') return true
+  const lines = report.plan?.cost_lines ?? []
+  const sum = lines.reduce((s, l) => s + (Number.isFinite(l.per_person) ? l.per_person : 0), 0)
+  const positive = lines.filter((l) => l.per_person > 0).length
+  return sum <= 0 || !(report.plan?.recommended_price_per_person > 0) || positive < 2
 }
 
-const FACTOR_STYLE: Record<TripFactor['status'], { mark: string; className: string }> = {
-  help: { mark: '↑', className: 'border-moss/40 bg-moss/12 text-moss' },
-  watch: { mark: '~', className: 'border-butter/50 bg-butter/15 text-warning' },
-  hurt: { mark: '↓', className: 'border-danger/30 bg-danger/10 text-danger' },
-}
-
-const EFFORT_CHIP: Record<string, string> = {
-  this_week: 'This week',
-  this_month: 'This month',
-  project: 'Bigger project',
-}
-
-function money(n: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: n < 100 && !Number.isInteger(n) ? 2 : 0,
-    }).format(n)
-  } catch {
-    return `${currency} ${Math.round(n)}`
-  }
-}
-
-function DocHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-      {children}
-    </h2>
-  )
-}
-
-// A generic disclaimer only — never expose the CPC / conversion assumptions.
-function EstimateNote({ checkedOn, note }: { checkedOn?: string; note?: string }) {
-  return (
-    <p className="mt-3 text-xs leading-relaxed text-text-muted">
-      {note || 'Prices are current estimates from live research — not guaranteed rates.'}
-      {checkedOn ? ` Checked ${checkedOn}.` : ''}
-    </p>
-  )
-}
-
-// ── Price hero: the per-person price + group total + confidence ──────────────
-function PriceHero({ report }: { report: TripReport }) {
-  const p = report.plan
-  const cur = p.currency
-  const confColor = report.confidence === 'high'
-    ? 'bg-moss/15 text-moss'
-    : report.confidence === 'low'
-      ? 'bg-danger/10 text-danger'
-      : 'bg-butter/20 text-warning'
-  return (
-    <div className="rounded-md border border-divider-strong bg-stripe p-6 text-center md:p-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-        Charge per person
-      </p>
-      <p className="mt-2 font-display text-[clamp(2.4rem,8vw,4rem)] leading-none text-text-primary">
-        {money(p.recommended_price_per_person, cur)}
-      </p>
-      <p className="mt-1 text-sm font-semibold text-text-secondary">
-        {money(p.group_price, cur)} for your group of {p.group_size} ·{' '}
-        <span className="text-moss">{money(p.group_profit, cur)} profit</span>
-      </p>
-      <p className="mt-1 text-xs text-text-muted">
-        Built from {money(p.cost_per_person, cur)}/person real cost at a{' '}
-        {p.recommended_margin_pct}% margin
-      </p>
-      <div className="mt-4 inline-flex items-center gap-2">
-        <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize', confColor)}>
-          {report.confidence} confidence
-        </span>
-      </div>
-      {report.headline_read ? (
-        <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-text-secondary md:text-base">
-          {report.headline_read}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
-// Small stat cell used across the warm cards.
-function Stat({ k, v, sub }: { k: string; v: string; sub?: string }) {
-  return (
-    <div className="rounded-md bg-white/12 p-3">
-      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-white/70">{k}</p>
-      <p className="mt-1 text-lg font-bold">{v}</p>
-      {sub ? <p className="text-[0.7rem] text-white/70">{sub}</p> : null}
-    </div>
-  )
-}
-
-// ── The bottom line — decision-first summary ─────────────────────────────────
-function DecisionBox({ report }: { report: TripReport }) {
-  const p = report.plan
-  const cur = p.currency
-  const topFix = report.fixes[0]
-  const risk = report.factors.find((x) => x.status === 'hurt') ??
-    report.factors.find((x) => x.status === 'watch')
-  return (
-    <div className="rounded-md border-2 border-warm/30 bg-warm/[0.06] p-5 md:p-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-warm">The bottom line</p>
-      <p className="mt-2 text-base leading-relaxed text-text-primary md:text-lg">
-        Charge <span className="font-bold">{money(p.recommended_price_per_person, cur)}</span> a head
-        — that clears <span className="font-bold">{money(p.profit_per_person, cur)}</span> profit each,
-        about <span className="font-bold">{money(p.group_profit, cur)}</span> across{' '}
-        {p.group_size} people at a <span className="font-bold">{p.recommended_margin_pct}% margin</span>.
-      </p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {topFix ? (
-          <div className="rounded-md bg-white p-3">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-moss">Best move</p>
-            <p className="mt-0.5 text-sm font-semibold text-text-primary">{topFix.title}</p>
-          </div>
-        ) : null}
-        {risk ? (
-          <div className="rounded-md bg-white p-3">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-warning">Watch out for</p>
-            <p className="mt-0.5 text-sm font-semibold text-text-primary">{risk.label}</p>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-// ── The cost sheet — line items → cost per person → what to charge ───────────
-function CostSheet({ report }: { report: TripReport }) {
-  const p = report.plan
-  const cur = p.currency
-  return (
-    <div className="rounded-md border border-divider-strong bg-white p-5">
-      <DocHeading>Your cost sheet (per person)</DocHeading>
-      <div className="mt-3 divide-y divide-divider">
-        {p.cost_lines.map((line) => (
-          <div key={line.key} className="flex items-baseline justify-between gap-3 py-2">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-text-primary">{line.label}</p>
-              {line.basis ? <p className="text-xs text-text-muted">{line.basis}</p> : null}
-            </div>
-            <p className="shrink-0 text-sm font-bold text-text-primary tabular-nums">
-              {money(line.per_person, cur)}
-            </p>
-          </div>
-        ))}
-        <div className="flex items-baseline justify-between gap-3 py-2.5">
-          <p className="text-sm font-bold text-text-primary">Cost per person</p>
-          <p className="shrink-0 text-base font-bold text-text-primary tabular-nums">
-            {money(p.cost_per_person, cur)}
-          </p>
-        </div>
-      </div>
-      <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-warm/10 px-3 py-2.5">
-        <div>
-          <p className="text-sm font-bold text-warm-ink">What to charge</p>
-          <p className="text-xs text-text-secondary">at a {p.recommended_margin_pct}% margin</p>
-        </div>
-        <p className="shrink-0 text-lg font-bold text-warm-ink tabular-nums">
-          {money(p.recommended_price_per_person, cur)}
-        </p>
-      </div>
-      <EstimateNote checkedOn={report.price_basis?.checked_on} note={report.price_basis?.note} />
-    </div>
-  )
-}
-
-// ── Margin ladder — what to charge at each margin (the pricing tool) ─────────
-function MarginLadder({ plan }: { plan: TripPricingPlan }) {
-  if (plan.margin_tiers.length === 0) return null
-  const cur = plan.currency
-  return (
-    <div className="mt-8">
-      <DocHeading>What to charge</DocHeading>
-      <p className="mt-1 text-sm text-text-secondary">{plan.price_vs_market}</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        {plan.margin_tiers.map((t) => (
-          <div
-            key={t.margin_pct}
-            className={cn(
-              'rounded-md border p-4 text-center',
-              t.recommended ? 'border-warm bg-warm/10' : 'border-divider-strong bg-white',
-            )}
-          >
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-              {t.recommended ? '★ ' : ''}{t.margin_pct}% margin
-            </p>
-            <p className="mt-1 font-display text-2xl text-text-primary">
-              {money(t.price_per_person, cur)}
-            </p>
-            <p className="text-[0.7rem] text-text-muted">per person</p>
-            <p className="mt-2 text-sm font-bold text-moss">+{money(t.group_profit, cur)}</p>
-            <p className="text-[0.7rem] text-text-muted">group profit</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Day-by-day itinerary — the researched plan ───────────────────────────────
-function Itinerary({ report }: { report: TripReport }) {
-  if (report.itinerary.length === 0) return null
-  return (
-    <div className="mt-8">
-      <DocHeading>Your day-by-day plan</DocHeading>
-      <ol className="mt-3 space-y-3">
-        {report.itinerary.map((d) => (
-          <li key={d.day} className="rounded-md border border-divider-strong bg-white p-4">
-            <div className="flex items-start gap-3">
-              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-warm/15 text-xs font-bold text-warm">
-                {d.day}
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-text-primary">{d.title}</p>
-                {d.summary ? <p className="mt-1 text-xs leading-relaxed text-text-secondary">{d.summary}</p> : null}
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {d.stay ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-stripe-strong px-2 py-0.5 text-[0.7rem] font-medium text-text-secondary">
-                      🛏 {d.stay}
-                    </span>
-                  ) : null}
-                  {d.activities.map((a) => (
-                    <span key={a} className="inline-flex items-center gap-1 rounded-full bg-warm/10 px-2 py-0.5 text-[0.7rem] font-medium text-warm-ink">
-                      ◆ {a}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
-  )
-}
-
-// ── Perfect timing — the "why now" seasonal callout ──────────────────────────
-function SeasonCallout({ note }: { note: string }) {
-  if (!note.trim()) return null
-  return (
-    <div className="mt-8 flex items-start gap-3 rounded-md border border-warm/30 bg-warm/[0.06] p-4">
-      <span aria-hidden="true" className="text-2xl leading-none">🗓️</span>
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-warm">Perfect timing</p>
-        <p className="mt-1 text-sm leading-relaxed text-text-primary">{note}</p>
-      </div>
-    </div>
-  )
-}
-
-// ── Signature experiences — the curated, popular, in-season highlights reel ───
-const TAG_STYLE: Record<string, string> = {
-  'Must-see': 'bg-warm/15 text-warm-ink',
-  Seasonal: 'bg-butter/20 text-warning',
-  'Hidden gem': 'bg-moss/15 text-moss',
-  'Local favourite': 'bg-moss/15 text-moss',
-  Adventure: 'bg-warm/15 text-warm-ink',
-  'Food & drink': 'bg-warm/15 text-warm-ink',
-  Culture: 'bg-stripe-strong text-text-secondary',
-  Nature: 'bg-moss/15 text-moss',
-}
-function tagClass(tag: string): string {
-  return TAG_STYLE[tag] ?? 'bg-stripe-strong text-text-secondary'
-}
-function ExperiencesShowcase({ report }: { report: TripReport }) {
-  const acts = report.activities.filter((a) => a.name)
-  if (acts.length === 0) return null
-  const cur = report.plan.currency
-  return (
-    <div className="mt-8">
-      <DocHeading>Signature experiences — all included</DocHeading>
-      <p className="mt-1 text-sm text-text-secondary">
-        The popular, in-season highlights we&rsquo;d build this trip around.
-      </p>
-      <div className="mt-3 grid gap-2.5 sm:auto-rows-fr sm:grid-cols-2">
-        {acts.map((a, i) => {
-          const lastOdd = i === acts.length - 1 && acts.length % 2 === 1
-          return (
-            <div key={a.name} className={cn('rounded-md border border-divider-strong bg-white p-4', lastOdd && 'sm:col-span-2')}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                {a.tag ? (
-                  <span className={cn('rounded-full px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide', tagClass(a.tag))}>
-                    {a.tag}
-                  </span>
-                ) : <span />}
-                {a.price_pp !== null ? (
-                  <span className="text-xs font-bold text-text-primary tabular-nums">{money(a.price_pp, cur)}/pp</span>
-                ) : null}
-              </div>
-              <p className="mt-2 text-sm font-semibold text-text-primary">{a.name}</p>
-              {a.why ? <p className="mt-1 text-xs leading-relaxed text-text-secondary">{a.why}</p> : null}
-              {a.best_time ? (
-                <p className="mt-1.5 inline-flex items-center gap-1 text-[0.7rem] font-semibold text-warm-ink">
-                  <span aria-hidden="true">◷</span> {a.best_time}
-                </p>
-              ) : null}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Fill + ad plan (secondary) — the profit-max promo budget ─────────────────
-function FillPlan({ report }: { report: TripReport }) {
-  const p = report.plan
-  const cur = p.currency
-  if (!p.ads_worth_it) {
-    return (
-      <div className="mt-8 rounded-md border border-divider-strong bg-white p-5">
-        <DocHeading>Filling the seats</DocHeading>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">{p.read}</p>
-      </div>
-    )
-  }
-  return (
-    <div
-      className="mt-8 overflow-hidden rounded-md p-6 text-white md:p-7"
-      style={{ background: 'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)' }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/75">
-        Fill the rest with promo
-      </p>
-      <p className="mt-2 font-display text-[clamp(1.5rem,4.5vw,2.2rem)] leading-tight">
-        Spend <span className="whitespace-nowrap">{money(p.recommended_ad_budget, cur)}</span> →
-        book <span className="whitespace-nowrap">~{p.ad_bookings_low}–{p.ad_bookings_high}</span> more
-        seats → net <span className="whitespace-nowrap">≈{money(p.ad_extra_profit, cur)}</span>.
-      </p>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <Stat k="Promo budget" v={money(p.recommended_ad_budget, cur)} sub="the profit sweet-spot" />
-        <Stat k="Extra seats booked" v={`${p.ad_bookings_low}–${p.ad_bookings_high}`} sub={`~${money(p.ad_extra_profit, cur)} extra profit`} />
-        <Stat k="Ad cost per click" v={money(p.cpc, cur)} sub={p.cpc_source === 'researched' ? 'from live research' : 'estimated'} />
-      </div>
-      <div className="mt-5 rounded-md bg-white/10 p-4 text-sm text-white/90">{p.read}</div>
-    </div>
-  )
-}
-
-// ── Pick your spend — the promo scenario ladder ──────────────────────────────
 function ScenarioLadder({ scenarios, currency }: { scenarios: TripScenario[]; currency: string }) {
   if (scenarios.length === 0) return null
   const maxProfit = Math.max(...scenarios.map((s) => s.extra_profit), 1)
   return (
-    <div className="mt-8">
-      <DocHeading>Pick your promo spend</DocHeading>
-      <p className="mt-1 text-sm text-text-secondary">
-        Every level nets extra profit — pick your risk. We recommend the one marked ★.
-      </p>
-      <div className="mt-3 space-y-2">
+    <RSec id="Pick your promo spend" h="Pick your promo" em="spend." lede="Every level nets extra profit: pick your risk. We recommend the one marked ★.">
+      <div className="scen">
         {scenarios.map((s) => (
-          <div
-            key={s.label}
-            className={cn('rounded-md border p-3', s.recommended ? 'border-warm bg-warm/10' : 'border-divider-strong bg-white')}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-text-primary">
-                {s.recommended ? '★ ' : ''}{s.label} — {money(s.budget, currency)}
-              </span>
-              <span className="text-xs text-text-secondary">
-                {s.total_booked} booked ({s.pct_full}% full)
-              </span>
-            </div>
-            <div className="mt-2 flex items-center gap-3">
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-stripe">
-                <div className="h-full rounded-full bg-warm" style={{ width: `${Math.max(4, (s.extra_profit / maxProfit) * 100)}%` }} />
-              </div>
-              <span className="shrink-0 text-sm font-bold text-warm-ink">+{money(s.extra_profit, currency)} profit</span>
-            </div>
-            <p className="mt-1 text-xs text-text-muted">
-              {s.ad_bookings} extra seats{s.cost_per_booking !== null ? ` · ${money(s.cost_per_booking, currency)}/seat` : ''}
-            </p>
+          <div key={s.label} className={`r${s.recommended ? ' rec' : ''}`}>
+            <b>{s.recommended ? '★ ' : ''}{s.label}</b>
+            <span>{money(s.budget, currency)}</span>
+            <span className="bar" aria-hidden="true"><i style={{ width: `${Math.max(4, (s.extra_profit / maxProfit) * 100)}%` }} /></span>
+            <span style={{ textAlign: 'right' }}>
+              <b>+{money(s.extra_profit, currency)}</b><br />
+              <small>{s.total_booked} booked ({s.pct_full}%) · {s.ad_bookings} extra seats{s.cost_per_booking !== null ? ` · ${money(s.cost_per_booking, currency)}/seat` : ''}</small>
+            </span>
           </div>
         ))}
       </div>
-    </div>
+    </RSec>
   )
 }
 
-// ── Weather card ─────────────────────────────────────────────────────────────
-function weatherGlyph(summary: string): string {
-  const s = summary.toLowerCase()
-  if (/(snow|freezing)/.test(s)) return '❄️'
-  if (/(thunder|storm)/.test(s)) return '⛈️'
-  if (/(rain|drizzle|shower)/.test(s)) return '🌧️'
-  if (/fog/.test(s)) return '🌫️'
-  if (/(overcast|cloud)/.test(s)) return '☁️'
-  if (/(clear|sun)/.test(s)) return '☀️'
-  return '🌤️'
-}
-function WeatherCard({ weather }: { weather: NonNullable<TripReport['weather']> }) {
-  const badge = weather.kind === 'forecast'
-    ? { t: 'Forecast', c: 'bg-moss/15 text-moss' }
-    : { t: weather.kind === 'climate_normal' ? 'Typical for these dates' : 'Seasonal', c: 'bg-butter/20 text-warning' }
-  return (
-    <div className="rounded-md border border-divider-strong bg-white p-4">
-      <div className="flex items-center justify-between gap-2">
-        <DocHeading>Weather</DocHeading>
-        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold', badge.c)}>{badge.t}</span>
-      </div>
-      <div className="mt-2 flex items-start gap-3">
-        <span aria-hidden="true" className="text-3xl leading-none">{weatherGlyph(weather.summary)}</span>
-        <div>
-          <p className="text-sm text-text-secondary">{weather.summary}</p>
-          {weather.impact ? <p className="mt-1 text-xs font-medium text-warm-ink">{weather.impact}</p> : null}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export function TripReportView({
-  report,
-  runId,
-  initialGated = true,
-}: {
-  report: TripReport
-  runId: string
-  initialGated?: boolean
-}) {
-  const [gated, setGated] = useState(initialGated)
-  const [email, setEmail] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [gateError, setGateError] = useState<GrowthToolsError | null>(null)
-  const [emailedTo, setEmailedTo] = useState<string | null>(null)
-
+export function TripReportView({ report, runId }: { report: TripReport; runId: string }) {
   // Deep-link to /schedule with trip context (added after mount — no SSR window).
   const [bookHref, setBookHref] = useState(
     () => `/schedule?${new URLSearchParams({ venue: report.trip.title, source: 'trip_quoter' }).toString()}`,
@@ -474,313 +71,289 @@ export function TripReportView({
       }).toString()}`,
     )
   }, [report.trip.title])
-
   useEffect(() => {
     captureMarketing('tool_gate_viewed', { tool: 'trips', run_id: runId })
+    captureMarketing('tool_offer_view', { tool: 'trips', run_id: runId })
   }, [runId])
-  useEffect(() => {
-    if (!gated) captureMarketing('tool_offer_view', { tool: 'trips', run_id: runId })
-  }, [gated, runId])
 
-  const emailValid = EMAIL_REGEX.test(email.trim())
   const t = report.trip
+  const p = report.plan
+  const cur = p.currency
+  const unpriced = tripIsUnpriced(report)
   const offerFrom = report.offer?.per_person_from ?? '$3.99'
+  const situation = report.followup?.reason === 'group_over_15' ? report.followup : null
   const durationLabel = `${t.nights} night${t.nights === 1 ? '' : 's'} · ${t.days} day${t.days === 1 ? '' : 's'}`
+  const topFix = report.fixes[0]
+  const risk = report.factors.find((x) => x.status === 'hurt') ?? report.factors.find((x) => x.status === 'watch')
+  const acts = report.activities.filter((a) => a.name)
+  const lp = report.listing_preview
+  const [plain, em] = splitTitle(t.title, 1)
+  const pricedComps = report.comparables.filter((c) => c.price_pp !== null && c.price_pp > 0)
 
-  async function onGateSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!emailValid || submitting) return
-    setSubmitting(true)
-    setGateError(null)
-    captureMarketing('tool_gate_email_submitted', { tool: 'trips', run_id: runId })
-    const res = await submitGrowthToolsGate(runId, email.trim())
-    setSubmitting(false)
-    if (res.ok) {
-      captureMarketing('tool_report_emailed', { tool: 'trips', run_id: runId })
-      setEmailedTo(email.trim())
-      return
-    }
-    setGateError(res.error)
-  }
+  const cover = (
+    <div className="tcover" style={lp.cover_url ? { backgroundImage: `url(${JSON.stringify(lp.cover_url)})` } : undefined} data-hero="trips">
+      <div className="in">
+        <div style={{ display: 'grid', gap: 8 }}>
+          <span className="rkick">{[t.destination, 'trip quote', 'full report'].filter(Boolean).join(' · ')}</span>
+          <h1>{plain ? `${plain} ` : ''}<em>{em}</em></h1>
+          <p>{[t.departure ? `From ${t.departure}` : '', t.date_range, durationLabel, `${t.group_size} people`].filter(Boolean).join(' · ')}</p>
+          {situation ? <ToldUs>{situation.coach ? 'a coach between stops' : 'no coach'}, {situation.rooms} rooms.</ToldUs> : null}
+        </div>
+        {unpriced ? (
+          <div className="px" data-unpriced="">
+            <span className="rkick">Charge per person</span>
+            <b style={{ fontSize: 'clamp(30px, 4vw, 40px)', lineHeight: 1.05 }}>We couldn&rsquo;t price this trip yet.</b>
+            <span>Live prices for {t.destination} didn&rsquo;t come back. Your plan, hotels and activities are below; prices will follow when we can check them.</span>
+          </div>
+        ) : (
+          <div className="px">
+            <span className="rkick">Charge per person</span>
+            <b>{money(p.recommended_price_per_person, cur)}</b>
+            <span>{money(p.group_price, cur)} for your group of {p.group_size} · {money(p.group_profit, cur)} profit</span>
+            <span style={{ fontSize: 12, opacity: 0.75 }}>Built from {money(p.cost_per_person, cur)} real cost at a {p.recommended_margin_pct}% margin</span>
+            <span className={`conf ${report.confidence}`}>{report.confidence[0].toUpperCase()}{report.confidence.slice(1)} confidence</span>
+            <span className="src" style={{ color: 'rgba(245,244,240,.6)' }}>From live research and your answers.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   return (
-    <article
-      data-theme="light"
-      className="rounded-md bg-parchment p-5 font-dashboard text-text-primary shadow-[0_40px_120px_rgba(0,0,0,0.5)] sm:p-8 md:p-10"
+    <ReportFrame
+      tool="trips"
+      runId={runId}
+      kick=""
+      title={t.title}
+      before={cover}
+      hero={null}
+      actionLine="Publish the trip in Mingla Host, or set it up with the team."
+      offer={(
+        <Offer
+          title={<>You&rsquo;ve got the quote. Now give them a real place to pay.</>}
+          body={<>Publish this as a bookable Mingla trip page with checkout, deposits and pay-over-time, and we&rsquo;ll fill the seats{unpriced ? '' : <> from {offerFrom} per head</>}. Book a call and we&rsquo;ll set it up.</>}
+        >
+          {situation ? (
+            <DeviceLink surface="host" attribution={toolAttribution('tool_trips')} className="tp-go"
+              onActivate={() => captureMarketing('tool_gate_app_click', { tool: 'trips', run_id: runId, location: 'offer' })}>
+              {nextStepCta('trips', 'group_over_15')}
+            </DeviceLink>
+          ) : null}
+          <Link href={bookHref} className={situation ? 'tp-ghost' : 'tp-go'}
+            onClick={() => captureMarketing('tool_offer_cta_click', { tool: 'trips', run_id: runId, cta: 'call' })}>
+            Book a call: we&rsquo;ll help you publish it
+          </Link>
+        </Offer>
+      )}
     >
-      {/* ── FREE ZONE ─────────────────────────────────────────────────────── */}
-      <header>
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-warm">
-          {t.destination}
-        </span>
-        <h1 className="mt-2 break-words font-display text-3xl leading-tight text-text-primary md:text-4xl">
-          {t.title}
-        </h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          {[t.departure ? `From ${t.departure}` : '', t.date_range, durationLabel, `${t.group_size} people`]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
-      </header>
-
-      <div className="mt-6">
-        <PriceHero report={report} />
-      </div>
-
-      {report.cover_narrative ? (
-        <p className="mt-5 text-sm leading-relaxed text-text-secondary md:text-base">
-          {report.cover_narrative}
-        </p>
+      {report.headline_read || report.cover_narrative ? (
+        <div className="rsec">
+          {report.headline_read ? <p style={{ fontSize: 18, lineHeight: 1.5, fontFamily: 'var(--tp-serif)' }}>{report.headline_read}</p> : null}
+          {report.cover_narrative ? <p className="prose" style={{ color: '#3f3d39' }}>{report.cover_narrative}</p> : null}
+        </div>
       ) : null}
 
-      {/* ── GATED ZONE ────────────────────────────────────────────────────── */}
-      <section className="relative mt-8">
-        <div className={cn(gated && 'pointer-events-none select-none blur-[7px]')} aria-hidden={gated}>
-          {/* Bottom line + cost sheet — decision-first */}
-          <div className="grid gap-4">
-            <DecisionBox report={report} />
-            <CostSheet report={report} />
+      <RSec id="The bottom line" h="The bottom" em="line.">
+        <BottomLine best={topFix?.title} watch={risk?.label}>
+          {unpriced
+            ? <>Your plan is ready; the price isn&rsquo;t yet. We&rsquo;ll price it when live rates for {t.destination} come back.</>
+            : <>Charge {money(p.recommended_price_per_person, cur)} a head. That clears {money(p.profit_per_person, cur)} profit each, about {money(p.group_profit, cur)} across {p.group_size} people at a {p.recommended_margin_pct}% margin.</>}
+        </BottomLine>
+      </RSec>
+
+      {!unpriced ? (
+        <RSec id="Your cost sheet (per person)" h="Your cost sheet," em="per person.">
+          <div className="rcard">
+            {p.cost_lines.map((line) => (
+              <div key={line.key} className="costrow"><span><b>{line.label}</b>{line.basis ? <small>{line.basis}</small> : null}</span><b>{money(line.per_person, cur)}</b></div>
+            ))}
+            <div className="costrow tot">
+              <span><b>Cost per person</b>{p.cost_per_person_low > 0 && p.cost_per_person_high > 0 ? <small>Range {money(p.cost_per_person_low, cur)} to {money(p.cost_per_person_high, cur)}</small> : null}</span>
+              <b>{money(p.cost_per_person, cur)}</b>
+            </div>
+            <div className="costrow tot" style={{ background: '#111110', color: '#fff', borderRadius: 14, padding: '12px 14px' }}>
+              <span><b style={{ color: '#fff' }}>What to charge at a {p.recommended_margin_pct}% margin</b></span><b style={{ color: '#fff' }}>{money(p.recommended_price_per_person, cur)}</b>
+            </div>
+            <small style={{ color: '#7c7870' }}>{report.price_basis?.note || 'Prices are current estimates from live research, not guaranteed rates.'}{report.price_basis?.checked_on ? ` Checked ${report.price_basis.checked_on}.` : ''}</small>
           </div>
+        </RSec>
+      ) : null}
 
-          {/* What to charge — the margin ladder */}
-          <MarginLadder plan={report.plan} />
-
-          {/* Perfect timing — the seasonal "why now" */}
-          {report.season_note ? <SeasonCallout note={report.season_note} /> : null}
-
-          {/* Signature experiences — the curated, in-season highlights reel */}
-          <ExperiencesShowcase report={report} />
-
-          {/* Day-by-day itinerary */}
-          <Itinerary report={report} />
-
-          {/* Named hotels */}
-          {report.hotels.length > 0 ? (
-            <div className="mt-8">
-              <DocHeading>Where they’ll stay</DocHeading>
-              <ul className="mt-3 space-y-2">
-                {report.hotels.map((h) => (
-                  <li key={h.name} className="rounded-md border border-divider-strong bg-white p-3.5">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <p className="text-sm font-semibold text-text-primary">{h.name}</p>
-                      {h.nightly_pp !== null ? (
-                        <span className="rounded-full bg-stripe-strong px-2 py-0.5 text-[0.7rem] font-semibold text-text-muted">
-                          ~{money(h.nightly_pp, report.plan.currency)}/night pp
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-xs text-text-secondary">
-                      {[h.area, h.note].filter(Boolean).join(' · ')}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {/* What to charge vs market — comparable trips */}
-          {report.comparables.length > 0 ? (
-            <div className="mt-8 rounded-md border border-divider-strong bg-white p-4">
-              <DocHeading>What comparable trips charge</DocHeading>
-              <ul className="mt-2 space-y-2">
-                {report.comparables.map((c) => (
-                  <li key={c.name} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                    <span className="min-w-0">
-                      <span className="font-semibold text-text-primary">{c.name}</span>
-                      {c.operator ? <span className="text-text-muted"> · {c.operator}</span> : null}
-                    </span>
-                    {c.price_pp !== null ? (
-                      <span className="shrink-0 font-bold text-text-primary tabular-nums">
-                        {money(c.price_pp, report.plan.currency)}/person
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {/* Fill + ad plan */}
-          <FillPlan report={report} />
-
-          {/* Scenario ladder — pick your promo spend */}
-          {report.plan.ads_worth_it && report.plan.scenarios.length > 0 ? (
-            <ScenarioLadder scenarios={report.plan.scenarios} currency={report.plan.currency} />
-          ) : null}
-
-          {/* Factor breakdown */}
-          {report.factors.length > 0 ? (
-            <div className="mt-8">
-              <DocHeading>What’s shaping this quote</DocHeading>
-              <div className="mt-3 grid gap-2.5 sm:auto-rows-fr sm:grid-cols-2">
-                {report.factors.map((factor, i) => {
-                  const s = FACTOR_STYLE[factor.status]
-                  const lastOdd = i === report.factors.length - 1 && report.factors.length % 2 === 1
-                  return (
-                    <div key={factor.label} className={cn('rounded-md border border-divider-strong bg-white p-3.5', lastOdd && 'sm:col-span-2')}>
-                      <div className="flex items-center gap-2">
-                        <span className={cn('grid size-6 shrink-0 place-items-center rounded-full border text-xs font-bold', s.className)}>
-                          {s.mark}
-                        </span>
-                        <p className="text-sm font-semibold text-text-primary">{factor.label}</p>
-                      </div>
-                      <p className="mt-1.5 text-xs leading-relaxed text-text-secondary">{factor.detail}</p>
-                    </div>
-                  )
-                })}
+      {!unpriced && p.margin_tiers.length > 0 ? (
+        <RSec id="What to charge" h="What to" em="charge." lede={p.price_vs_market}>
+          <div className="ladder">
+            {p.margin_tiers.map((tier) => (
+              <div key={tier.margin_pct} className={tier.recommended ? 'rec' : undefined}>
+                <span className="rkick">{tier.recommended ? '★ ' : ''}{tier.margin_pct}% margin</span>
+                <b>{money(tier.price_per_person, cur)}</b>
+                <span>per person · +{money(tier.group_profit, cur)} for the group</span>
               </div>
-            </div>
-          ) : null}
+            ))}
+          </div>
+        </RSec>
+      ) : null}
 
-          {/* Weather + demand — side by side */}
-          {(report.weather || report.demand_read) ? (
-            <div className="mt-8 grid gap-4 md:auto-rows-fr md:grid-cols-2">
-              {report.weather ? <WeatherCard weather={report.weather} /> : null}
-              {report.demand_read ? (
-                <div className="rounded-md border border-divider-strong bg-white p-4">
-                  <DocHeading>Demand right now</DocHeading>
-                  <p className="mt-2 text-sm text-text-secondary">{report.demand_read}</p>
+      {report.season_note && report.season_note.trim() ? (
+        <RSec id="Perfect timing" h="Perfect" em="timing.">
+          <div className="rcard"><div style={{ fontSize: 14.5, lineHeight: 1.6 }}>{report.season_note}</div><Source from={['research']} /></div>
+        </RSec>
+      ) : null}
+
+      {acts.length > 0 ? (
+        <RSec id="Signature experiences — all included" h="Signature experiences," em="all included." lede="The popular, in-season highlights we’d build this trip around.">
+          <div className="acts">
+            {acts.map((a) => (
+              <div key={a.name} className="act">
+                <div className="t">
+                  {a.tag ? <span className="chip2">{a.tag}</span> : <span />}
+                  {!unpriced && a.price_pp !== null && a.price_pp > 0 ? <b style={{ fontSize: 13 }}>{money(a.price_pp, cur)}/pp</b> : null}
                 </div>
-              ) : null}
-            </div>
-          ) : null}
+                <b>{a.name}</b>
+                {a.why ? <span>{a.why}</span> : null}
+                {a.best_time ? <small style={{ color: '#7c7870' }}>◷ {a.best_time}</small> : null}
+              </div>
+            ))}
+          </div>
+        </RSec>
+      ) : null}
 
-          {/* Fixes */}
-          {report.fixes.length > 0 ? (
-            <div className="mt-8">
-              <DocHeading>How to sell it out & lift margin</DocHeading>
-              <ol className="mt-3 space-y-3">
-                {report.fixes.map((fix, i) => (
-                  <li key={fix.title} className="rounded-md border border-divider-strong bg-white p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-warm/15 text-xs font-bold text-warm">{i + 1}</span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-text-primary">{fix.title}</p>
-                          <span className="rounded-full border border-divider-strong bg-stripe-strong px-2 py-0.5 text-[0.7rem] font-medium text-text-secondary">
-                            {EFFORT_CHIP[fix.effort] ?? fix.effort}
-                          </span>
-                        </div>
-                        {fix.change ? <p className="mt-1 text-xs leading-relaxed text-text-secondary">{fix.change}</p> : null}
-                        {fix.lift_note ? <p className="mt-1 text-xs font-semibold text-warm-ink">Upside: {fix.lift_note}</p> : null}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ) : null}
+      {report.itinerary.length > 0 ? (
+        <RSec id="Your day-by-day plan" h="Your day-by-day" em="plan.">
+          <ol className="days2" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {report.itinerary.map((d) => (
+              <li key={d.day} className="day">
+                <span className="dn" aria-hidden="true">{d.day}</span>
+                <div className="dc">
+                  <b><span className="sr-only">Day {d.day}: </span>{d.title}</b>
+                  {d.summary ? <span>{d.summary}</span> : null}
+                  <div className="ch3">
+                    {d.stay ? <span className="chip2">🛏 {d.stay}</span> : null}
+                    {d.activities.map((x) => <span key={x} className="chip2">◆ {x}</span>)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </RSec>
+      ) : null}
 
-          {/* Listing preview link */}
-          <div className="mt-8 rounded-md border border-divider-strong bg-white p-5">
-            <DocHeading>Your trip as a bookable Mingla page</DocHeading>
-            <p className="mt-2 text-sm text-text-secondary">
-              {report.listing_preview.tagline || 'A polished, ready-to-publish version of this trip.'}
-            </p>
-            {report.listing_preview.vibe_tags.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {report.listing_preview.vibe_tags.map((tag) => (
-                  <span key={tag} className="rounded-full bg-warm/10 px-3 py-1 text-xs font-semibold text-warm-ink">{tag}</span>
-                ))}
+      {report.hotels.length > 0 ? (
+        <RSec id="Where they’ll stay" h="Where they’ll" em="stay.">
+          <div className="lines">
+            {report.hotels.map((h) => (
+              <div key={h.name}>
+                <span><b>{h.name}</b><small>{[h.area, h.note].filter(Boolean).join(' · ')}</small></span>
+                {!unpriced && h.nightly_pp !== null && h.nightly_pp > 0 ? <b>~{money(h.nightly_pp, cur)}/night pp</b> : <span />}
+              </div>
+            ))}
+          </div>
+          <Source from={['research']} />
+        </RSec>
+      ) : null}
+
+      {report.comparables.length > 0 ? (
+        <RSec id="What comparable trips charge" h="What comparable trips" em="charge." isNew={!unpriced && pricedComps.length > 0}>
+          {!unpriced && pricedComps.length > 0 ? (
+            <>
+              <ScaleBars
+                format={(n) => money(n, cur)}
+                rows={[
+                  { label: 'Your price', value: p.recommended_price_per_person, kind: 'me' as const },
+                  ...pricedComps.map((c) => ({ label: [c.name, c.operator].filter(Boolean).join(' · '), value: c.price_pp as number, note: c.note || undefined })),
+                ]}
+              />
+              <small style={{ color: '#7c7870' }}>Operators&rsquo; published prices, from live research. Land only; flights excluded.</small>
+            </>
+          ) : (
+            <div className="lines">
+              {report.comparables.map((c) => (
+                <div key={c.name}><span><b>{c.name}</b><small>{[c.operator, c.note].filter(Boolean).join(' · ')}</small></span><span /></div>
+              ))}
+            </div>
+          )}
+        </RSec>
+      ) : null}
+
+      {!unpriced ? (
+        p.ads_worth_it ? (
+          <div className="rsec" style={{ paddingTop: 0 }} data-section="Filling the seats">
+            <div className="adplan">
+              <span className="rkick">Fill the rest with promo</span>
+              <h3>Spend {money(p.recommended_ad_budget, cur)} → book ~{p.ad_bookings_low}–{p.ad_bookings_high} more seats → net ≈ {money(p.ad_extra_profit, cur)}.</h3>
+              <div className="stats">
+                <div><b>{money(p.recommended_ad_budget, cur)}</b><span>Promo budget</span></div>
+                <div><b>{p.ad_bookings_low}–{p.ad_bookings_high}</b><span>Extra seats booked</span></div>
+                <div><b>{money(p.cpc, cur)}</b><span>Per click, {p.cpc_source === 'researched' ? 'live research' : 'estimated'}</span></div>
+              </div>
+              <p>{p.read}</p>
+            </div>
+          </div>
+        ) : (
+          <RSec id="Filling the seats" h="Filling the" em="seats.">
+            <div className="rcard"><div style={{ fontSize: 14.5 }}>{p.read}</div></div>
+          </RSec>
+        )
+      ) : null}
+
+      {!unpriced && p.ads_worth_it && p.scenarios.length > 0 ? <ScenarioLadder scenarios={p.scenarios} currency={cur} /> : null}
+
+      {report.factors.length > 0 ? (
+        <RSec id="What’s shaping this quote" h="What’s shaping this" em="quote.">
+          <Factors items={report.factors} />
+        </RSec>
+      ) : null}
+
+      {report.weather || report.demand_read ? (
+        <section className="rsec" data-section={report.weather ? 'Weather' : 'Demand right now'}>
+          <h2>{report.weather && report.demand_read ? <>Weather and <em>demand.</em></> : report.weather ? <>The <em>weather.</em></> : <>Demand right <em>now.</em></>}</h2>
+          <div className="wx">
+            {report.weather ? <WeatherCard weather={report.weather} /> : null}
+            {report.demand_read ? (
+              <div className="rcard" data-section={report.weather ? 'Demand right now' : undefined}>
+                <b>Demand right now</b><div>{report.demand_read}</div><Source from={['research']} />
               </div>
             ) : null}
-            {!gated ? (
-              <Link
-                href={`/trip-preview?run_id=${encodeURIComponent(runId)}`}
-                target="_blank"
-                className="mt-4 inline-flex min-h-10 items-center rounded-full border border-divider-strong bg-parchment px-4 text-sm font-semibold text-text-primary transition hover:bg-stripe focus-ring"
-              >
-                See the full trip page preview →
-              </Link>
+          </div>
+        </section>
+      ) : null}
+
+      {report.fixes.length > 0 ? (
+        <RSec id="How to sell it out & lift margin" h="How to sell it out and" em="lift margin.">
+          <Fixes items={report.fixes.map((fix, i) => ({
+            title: fix.title,
+            body: fix.change,
+            why: fix.why,
+            upside: unpriced ? undefined : fix.lift_note,
+            tags: effortLabel(fix.effort) ? [{ label: effortLabel(fix.effort) as string, hot: i === 0 }] : [],
+          }))} />
+        </RSec>
+      ) : null}
+
+      <RSec id="Your trip as a bookable Mingla page" h="Your trip as a bookable" em="Mingla page." isNew={lp.included.length > 0 || lp.excluded.length > 0 || lp.why_go.length > 0 || lp.best_for.length > 0}>
+        <div className="listing">
+          <div className="cv" style={lp.cover_url ? { backgroundImage: `url(${JSON.stringify(lp.cover_url)})` } : undefined}>
+            <div><b>{lp.title || t.title}</b><span style={{ fontSize: 13.5, opacity: 0.9 }}>{lp.tagline || 'A polished, ready-to-publish version of this trip.'}</span></div>
+          </div>
+          <div className="bd2">
+            {lp.vibe_tags.length > 0 ? <div className="vibes">{lp.vibe_tags.map((x) => <span key={x}>{x}</span>)}</div> : null}
+            {lp.included.length > 0 || lp.excluded.length > 0 ? (
+              <div className="two2">
+                {lp.included.length > 0 ? <div><b>Included</b><ul>{lp.included.map((x) => <li key={x}>{x}</li>)}</ul></div> : null}
+                {lp.excluded.length > 0 ? <div><b>Not included</b><ul>{lp.excluded.map((x) => <li key={x}>{x}</li>)}</ul></div> : null}
+              </div>
             ) : null}
-          </div>
-        </div>
-
-        {/* Gate overlay */}
-        {gated ? (
-          <div className="absolute inset-x-0 top-0 z-10 flex justify-center px-2 pt-10">
-            <div className="w-full max-w-md rounded-md border border-divider-strong bg-parchment p-6 text-center shadow-[0_24px_64px_rgba(0,0,0,0.25)]">
-              {emailedTo ? (
-                <>
-                  <div className="mx-auto grid size-11 place-items-center rounded-full bg-moss/15 text-xl text-moss">✓</div>
-                  <p className="mt-3 font-display text-xl text-text-primary">Check your inbox</p>
-                  <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                    Your full costed quote — cost sheet, itinerary and a client-ready proposal — is on
-                    its way to <span className="font-semibold text-text-primary">{emailedTo}</span> with
-                    a private link.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setEmailedTo(null)}
-                    className="mt-3 text-sm font-semibold text-warm underline-offset-4 hover:underline focus-ring"
-                  >
-                    Wrong email? Send to a different one
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="font-display text-xl text-text-primary">See your full quote</p>
-                  <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                    The cost sheet, the day-by-day plan, what to charge, and a client-ready proposal —
-                    we’ll email your full quote with a private link.
-                  </p>
-                  <form onSubmit={onGateSubmit} className="mt-4">
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="email"
-                        inputMode="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@yourtravelco.com"
-                        aria-label="Your email"
-                        aria-invalid={email.trim().length > 0 && !emailValid}
-                        className="min-h-11 w-full min-w-0 flex-1 rounded-sm border border-divider-strong bg-white px-3 text-base text-text-primary placeholder:text-text-muted focus-ring"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!emailValid || submitting}
-                        className={buttonClasses({ variant: 'primary', size: 'sm', className: 'whitespace-nowrap' })}
-                      >
-                        {submitting ? 'Sending…' : 'Email my quote'}
-                      </button>
-                    </div>
-                    {gateError ? (
-                      <p role="alert" className="mt-2 text-sm text-danger">{GATE_ERROR_COPY[gateError]}</p>
-                    ) : null}
-                  </form>
-                </>
-              )}
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      {/* ── THE OFFER — one consolidated close (post-unlock) ────────────────── */}
-      {!gated ? (
-        <div
-          className="mt-10 overflow-hidden rounded-md p-6 text-white md:p-8"
-          style={{ background: 'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)' }}
-        >
-          <p className="break-words font-display text-[clamp(1.6rem,4.5vw,2.3rem)] leading-tight">
-            You’ve got the quote. Now give them a real place to pay.
-          </p>
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 md:text-base">
-            Publish this as a bookable Mingla trip page — checkout, deposits and pay-over-time built
-            in — and we’ll fill the seats for as low as{' '}
-            <span className="whitespace-nowrap">{offerFrom}</span> per head. Book a call and we’ll set it up.
-          </p>
-          <div className="mt-6">
-            <Link
-              href={bookHref}
-              onClick={() => captureMarketing('tool_offer_cta_click', { tool: 'trips', run_id: runId, cta: 'call' })}
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
-            >
-              Book a call — we’ll help you publish it
+            {lp.why_go.length > 0 || lp.best_for.length > 0 ? (
+              <div className="two2">
+                {lp.why_go.length > 0 ? <div><b>Why go</b><ul>{lp.why_go.map((x) => <li key={x}>{x}</li>)}</ul></div> : null}
+                {lp.best_for.length > 0 ? <div><b>Best for</b><ul>{lp.best_for.map((x) => <li key={x}>{x}</li>)}</ul></div> : null}
+              </div>
+            ) : null}
+            <Link href={`/trip-preview?run_id=${encodeURIComponent(runId)}`} target="_blank" className="tp-ghost" style={{ justifySelf: 'start' }}>
+              See the full trip page preview →
             </Link>
           </div>
         </div>
-      ) : null}
-    </article>
+      </RSec>
+    </ReportFrame>
   )
 }

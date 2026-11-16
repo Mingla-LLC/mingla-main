@@ -73,7 +73,7 @@ export const SOCIAL_LABELS = Object.freeze({
 });
 
 /** Only a real https profile or http(s) site is ever rendered as a link. */
-function safeLink(url, allowHttp) {
+export function safeLink(url, allowHttp) {
   if (typeof url !== "string") return null;
   const value = url.trim();
   return (allowHttp ? /^https?:\/\/[^\s]+$/i : /^https:\/\/[^\s]+$/i).test(value) ? value : null;

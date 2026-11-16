@@ -66,8 +66,6 @@
     "searchPlaceholder": "বন্ধু খুঁজুন...", "loadingFriends": "বন্ধু লোড হচ্ছে...", "noUsersFound": "কোনো ব্যবহারকারী পাওয়া যায়নি",
     "allFriendsInBoard": "সব বন্ধু ইতিমধ্যে এই বোর্ডে আছে", "noFriendsAvailable": "কোনো বন্ধু উপলব্ধ নেই",
     "tryDifferentName": "ভিন্ন নাম বা ইউজারনেম চেষ্টা করুন", "addMoreFriends": "আমন্ত্রণ জানাতে আরও বন্ধু যোগ করুন",
-    "sendInvites": "আমন্ত্রণ পাঠান ({{count}})", "invitesSent": "আমন্ত্রণ পাঠানো হয়েছে",
-    "invitesSentMsg": "\"{{name}}\"-এ সফলভাবে {{count}} জন বন্ধু{{plural}} আমন্ত্রণ জানানো হয়েছে।",
     "errorSendInvites": "আমন্ত্রণ পাঠাতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।", "error": "ত্রুটি",
     "addPeople": "যোগ করুন ({{count}})",
     "peopleAdded": "যোগ হয়েছে",

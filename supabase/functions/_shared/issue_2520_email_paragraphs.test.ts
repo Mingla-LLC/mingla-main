@@ -36,7 +36,8 @@ const BODY_P = '<p style="margin:0 0 16px 0;';
  * its own paragraph and newlines.
  */
 function bodyCell(html: string): string {
-  const start = html.indexOf('<td style="padding:28px;">');
+  // #4452 §5.9: the rebranded body cell.
+  const start = html.indexOf('<td style="padding:24px 28px 28px 28px;');
   assert(start !== -1, "body cell not found in rendered shell");
   const footer = html.indexOf('<p style="margin:32px 0 0 0;', start);
   const end = footer === -1 ? html.indexOf("</td>", start) : footer;

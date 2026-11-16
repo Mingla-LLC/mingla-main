@@ -61,8 +61,6 @@
     "searchPlaceholder": "ค้นหาเพื่อน...", "loadingFriends": "กำลังโหลดเพื่อน...", "noUsersFound": "ไม่พบผู้ใช้",
     "allFriendsInBoard": "เพื่อนทุกคนอยู่ในบอร์ดนี้แล้ว", "noFriendsAvailable": "ไม่มีเพื่อนที่พร้อม",
     "tryDifferentName": "ลองชื่อหรือชื่อผู้ใช้อื่น", "addMoreFriends": "เพิ่มเพื่อนอีกเพื่อเชิญ",
-    "sendInvites": "ส่งคำเชิญ ({{count}})", "invitesSent": "ส่งคำเชิญแล้ว",
-    "invitesSentMsg": "เชิญเพื่อน {{count}} คน{{plural}}ไปยัง \"{{name}}\" สำเร็จ",
     "errorSendInvites": "ส่งคำเชิญไม่สำเร็จ กรุณาลองใหม่", "error": "ข้อผิดพลาด",
     "addPeople": "เพิ่ม ({{count}})",
     "peopleAdded": "เพิ่มแล้ว",

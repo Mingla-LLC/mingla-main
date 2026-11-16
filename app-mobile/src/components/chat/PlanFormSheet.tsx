@@ -18,12 +18,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { toastManager } from "../ui/Toast";
 import { chatTokens } from "../../constants/chatTokens";
 import { createClientMessageId } from "../../utils/mergeMessages";
 import { useCreatePlan } from "../../hooks/useChatPlans";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
+import { KEYBOARD_TOOLBAR_HEIGHT } from "../../wrappers/keyboardConstants";
 import {
   blankPlanForm,
   canPostPlan,
@@ -47,6 +50,22 @@ import { PlanDateTimeFields } from "./PlanTimePickerSheet";
 import { PlanPlacePicker } from "./PlanPlacePicker";
 
 const SNAP_POINTS = ["92%"];
+
+/** #4435 QA: a raised sheet stops 8pt below the status bar (breathing room). */
+export function planSheetTopInset(safeTop: number): number {
+  return Math.max(0, safeTop) + 8;
+}
+
+/**
+ * #4435 QA: while the keyboard is up, its Done bar (KEYBOARD_TOOLBAR_HEIGHT)
+ * sits on top of the keyboard, over the sheet's bottom edge. This spacer
+ * lifts Post above it. It renders inside the sheet's own window, so it reads
+ * that window's keyboard state.
+ */
+function KeyboardToolbarSpacer(): React.ReactElement | null {
+  const keyboardUp = useKeyboardIsVisible();
+  return keyboardUp ? <View style={styles.toolbarSpacer} testID="plan-form-toolbar-spacer" /> : null;
+}
 
 interface PlanFormSheetProps {
   visible: boolean;
@@ -94,6 +113,7 @@ function Segmented<T extends string>({
 
 export function PlanFormSheet({ visible, onClose, conversationId, senderId, chatName, memberCount = 2 }: PlanFormSheetProps): React.ReactElement {
   const { t, i18n } = useTranslation(["chat"]);
+  const insets = useSafeAreaInsets();
   const [form, setForm] = useState<PlanFormDraft>(blankPlanForm);
   const [clientId, setClientId] = useState<string>(() => createClientMessageId());
   const [sessionToken, setSessionToken] = useState<string>(() => createClientMessageId());
@@ -191,6 +211,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
       onClose={posting ? () => undefined : onClose}
       theme="dark"
       snapPoints={SNAP_POINTS}
+      topInset={planSheetTopInset(insets.top)}
       scrollMode="scroll"
       wrapInRNModal
       keyboardBehavior="interactive"
@@ -219,6 +240,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
               <Text style={[styles.postText, !canPost && styles.postTextOff]}>{t("chat:plan_form_post")}</Text>
             )}
           </TouchableOpacity>
+          <KeyboardToolbarSpacer />
         </View>
       }
       scrollProps={{ keyboardShouldPersistTaps: "handled", contentContainerStyle: styles.body }}
@@ -468,6 +490,7 @@ const styles = StyleSheet.create({
     borderTopColor: chatTokens.hairline,
     backgroundColor: chatTokens.surface,
   },
+  toolbarSpacer: { height: KEYBOARD_TOOLBAR_HEIGHT },
   missing: { color: chatTokens.textSoft, fontSize: 13, textAlign: "center" },
   autoLock: { flexDirection: "row", alignItems: "center", gap: 6 },
   autoLockText: { flex: 1, color: chatTokens.textSoft, fontSize: 12, lineHeight: 17 },

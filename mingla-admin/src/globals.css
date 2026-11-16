@@ -53,6 +53,16 @@
 
   --font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+  /* #4452 §7.1: Instrument Serif (local copy of the marketing font; no network font). */
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/InstrumentSerif-latin-400-normal.woff2") format("woff2");
 }
 
 :root {
@@ -60,15 +70,43 @@
   --brand-gradient-start: #FF7043;
   --brand-gradient-end:   #FF5722;
 
-  --color-background-primary:   #ffffff;
-  --color-background-secondary: #faf8f6;
+  /* #4452 §7.1 the Admin refresh tokens (design v13, exact). The --color-*
+     variables below map onto them so every page inherits the refresh.
+     Invariant I-4452-ADMIN-CONTRAST (declared in its test): every admin text/background
+     token pair is >= 4.5:1 in light and dark (issue4452_admin_contrast test). */
+  --a-bg:#f6f5f1;
+  --a-panel:#ffffff;
+  --a-line:#e7e3da;
+  --a-text:#141413;
+  --a-text2:#4d4943;
+  --a-muted:#66625a;
+  --a-dim:#6f6a62;
+  --a-soft:#f1efe9;
+  --a-active:#141413;
+  --a-accent:#eb7825;
+  --a-chip:#fff4ea;
+  --a-chip-ink:#9a4810;
+  --a-shadow:0 1px 2px rgba(20,20,19,.04),0 8px 24px rgba(20,20,19,.05);
+  --a-live-ink:#166534;
+  --a-live-bg:#dcfce7;
+  --a-stop-ink:#92400e;
+  --a-stop-bg:#fef3c7;
+  --a-sched-ink:#1d4ed8;
+  --a-sched-bg:#dbeafe;
+  --a-draft-ink:var(--a-text2);
+  /* The primary button's hover is ink on orange (6.4:1), not white (3.0:1): §12 Q-10. */
+  --a-hover-ink:#141413;
+  --a-hover-bg:#eb7825;
+
+  --color-background-primary:   var(--a-panel);
+  --color-background-secondary: var(--a-bg);
   --color-background-tertiary:  #f5f0ec;
 
-  --color-text-primary:   #111827;
-  --color-text-secondary: #4b5563;
-  --color-text-tertiary:  #6b7280;
+  --color-text-primary:   var(--a-text);
+  --color-text-secondary: var(--a-text2);
+  --color-text-tertiary:  var(--a-muted);
   --color-text-inverse:   #ffffff;
-  --color-text-muted:     #9ca3af;
+  --color-text-muted:     var(--a-dim);
   /* #3697 — tertiary text on the new Creative Library and Builder video
      screens only. Same as tertiary in light mode; readable (6.1:1) in dark.
      The global --color-text-tertiary is unchanged. */
@@ -105,18 +143,24 @@
   --page-gutter:   24px;
   --content-max-width: 1600px;
 
-  /* The menu follows the theme: light here, ink under [data-theme="dark"]. */
-  --sidebar-bg:          var(--color-background-primary);
-  --sidebar-text:        var(--color-text-secondary);
-  --sidebar-text-dim:    var(--color-text-tertiary);
-  --sidebar-text-active: var(--color-text-primary);
-  --sidebar-border:      var(--gray-200);
-  --sidebar-hover:       var(--gray-100);
-  --sidebar-active-bg:   var(--color-brand-50);
-  --sidebar-accent:      var(--color-brand-600);
+  /* #4452 §7.1 (design .shell.rf): the menu sits on --a-bg; the active item is
+     an ink pill (--a-active, --a-panel text) with an orange icon. Every value
+     is an --a-* token, so light, the OS dark choice and the toggle all follow. */
+  --sidebar-bg:          var(--a-bg);
+  --sidebar-text:        var(--a-text2);
+  --sidebar-text-dim:    var(--a-muted);
+  --sidebar-text-active: var(--a-text);
+  --sidebar-border:      var(--a-line);
+  --sidebar-hover:       var(--a-soft);
+  --sidebar-active-bg:   var(--a-active);
+  --sidebar-active-text: var(--a-panel);
+  --sidebar-count-bg:    var(--a-chip);
+  --sidebar-count-text:  var(--a-chip-ink);
+  --sidebar-accent:      var(--a-accent);
 
-  --header-bg:     var(--color-background-primary);
-  --header-border: var(--gray-200);
+  /* #4452 §7.1: the header is frosted panel. */
+  --header-bg:     color-mix(in srgb, var(--a-panel) 82%, transparent);
+  --header-border: var(--a-line);
 
   --space-xs:  4px;
   --space-sm:  8px;
@@ -125,20 +169,65 @@
   --space-xl:  32px;
   --space-2xl: 48px;
 
-  --table-header-bg:  var(--gray-50);
-  --table-border:     var(--gray-200);
+  /* #4452 §7.1: table headers on the panel, lines in --a-line. */
+  --table-header-bg:  var(--a-panel);
+  --table-border:     var(--a-line);
   --table-row-hover:  var(--gray-50);
   --table-stripe:     var(--color-background-secondary);
 }
 
+/* #4452 §7.1 dark tokens: the OS choice before the theme is set, and the toggle. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --a-bg:#0f0f0e;
+    --a-panel:#181816;
+    --a-line:#2b2a26;
+    --a-text:#eeece7;
+    --a-text2:#c9c5bc;
+    --a-muted:#9c978d;
+    --a-dim:#8f8a80;
+    --a-soft:#201f1c;
+    --a-active:#eeece7;
+    --a-chip:#2b1d15;
+    --a-chip-ink:#f0904a;
+    --a-shadow:0 1px 2px rgba(0,0,0,.4);
+    --a-live-ink:#86efac;
+    --a-live-bg:#052e16;
+    --a-stop-ink:#fcd34d;
+    --a-stop-bg:#451a03;
+    --a-sched-ink:#93c5fd;
+    --a-sched-bg:#172554;
+  }
+}
+
 [data-theme="dark"] {
-  --color-background-primary:   #0f1117;
-  --color-background-secondary: #1a1d27;
+  --a-bg:#0f0f0e;
+  --a-panel:#181816;
+  --a-line:#2b2a26;
+  --a-text:#eeece7;
+  --a-text2:#c9c5bc;
+  --a-muted:#9c978d;
+  --a-dim:#8f8a80;
+  --a-soft:#201f1c;
+  --a-active:#eeece7;
+  --a-chip:#2b1d15;
+  --a-chip-ink:#f0904a;
+  --a-shadow:0 1px 2px rgba(0,0,0,.4);
+  --a-live-ink:#86efac;
+  --a-live-bg:#052e16;
+  --a-stop-ink:#fcd34d;
+  --a-stop-bg:#451a03;
+  --a-sched-ink:#93c5fd;
+  --a-sched-bg:#172554;
+
+  --color-background-primary:   var(--a-panel);
+  --color-background-secondary: var(--a-bg);
   --color-background-tertiary:  #242833;
 
-  --color-text-primary:   #f3f4f6;
-  --color-text-secondary: #9ca3af;
-  --color-text-tertiary:  #6b7280;
+  --color-text-primary:   var(--a-text);
+  --color-text-secondary: var(--a-text2);
+  --color-text-tertiary:  var(--a-muted);
+  --color-text-muted:     var(--a-dim);
   --color-text-tertiary-strong: #8b93a1;
 
   --gray-50:  #1a1d27;
@@ -169,19 +258,23 @@
   --shadow-lg:  0 12px 24px rgba(0, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.2);
   --shadow-xl:  0 20px 40px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2);
 
-  --sidebar-bg:          #0a0c12;
-  --sidebar-text:        #c5c9d2;
-  --sidebar-text-dim:    #8b93a1;
-  --sidebar-text-active: #ffffff;
-  --sidebar-border:      rgba(255, 255, 255, 0.08);
-  --sidebar-hover:       rgba(255, 255, 255, 0.06);
-  --sidebar-active-bg:   rgba(255, 255, 255, 0.1);
-  --sidebar-accent:      var(--color-brand-500);
-  --header-bg:     #0f1117;
-  --header-border: #2d3241;
+  /* #4452 §7.1: the menu and header read the --a-* tokens, so dark restates the same names. */
+  --sidebar-bg:          var(--a-bg);
+  --sidebar-text:        var(--a-text2);
+  --sidebar-text-dim:    var(--a-muted);
+  --sidebar-text-active: var(--a-text);
+  --sidebar-border:      var(--a-line);
+  --sidebar-hover:       var(--a-soft);
+  --sidebar-active-bg:   var(--a-active);
+  --sidebar-active-text: var(--a-panel);
+  --sidebar-count-bg:    var(--a-chip);
+  --sidebar-count-text:  var(--a-chip-ink);
+  --sidebar-accent:      var(--a-accent);
+  --header-bg:     color-mix(in srgb, var(--a-panel) 82%, transparent);
+  --header-border: var(--a-line);
 
-  --table-header-bg: #1a1d27;
-  --table-border:    #2d3241;
+  --table-header-bg: var(--a-panel);
+  --table-border:    var(--a-line);
   --table-row-hover: #1a1d27;
   --table-stripe:    #141720;
 }

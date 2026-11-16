@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/local/__tests__/issue_4445_local_display.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4445-local-display-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["net", "read"]
+}

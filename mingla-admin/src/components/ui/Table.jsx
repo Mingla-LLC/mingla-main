@@ -95,13 +95,13 @@ export function DataTable({
   return (
     <div
       className={[
-        "bg-[var(--color-background-primary)] border border-[var(--gray-200)]",
-        "rounded-xl overflow-hidden",
+        "bg-[var(--color-background-primary)] border border-[var(--a-line)]",
+        "rounded-2xl overflow-hidden shadow-[var(--a-shadow)]",
         className,
       ].join(" ")}
     >
       <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-        <table className="w-full border-collapse text-sm">
+        <table data-admin-table="" className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10">
             <tr>
               {selectable && (
@@ -120,9 +120,10 @@ export function DataTable({
                   key={col.key}
                   onClick={() => handleHeaderClick(col)}
                   className={[
+                    // #4452 §7.1: mono 10 px uppercase headings, letter-spacing .12em.
                     headerCase === "sentence"
                       ? "px-4 py-3 text-left text-xs font-medium"
-                      : "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider",
+                      : "px-4 py-3 text-left font-mono text-[10px] font-medium uppercase tracking-[0.12em]",
                     "text-[var(--color-text-tertiary)]",
                     "bg-[var(--table-header-bg)] border-b border-[var(--table-border)]",
                     "whitespace-nowrap",
@@ -203,7 +204,7 @@ export function DataTable({
                       <td
                         key={col.key}
                         className={[
-                          "px-4 py-3 text-[var(--color-text-primary)]",
+                          "px-4 py-3.5 text-[var(--color-text-primary)]", /* #4452 §7.1: cells 14px 16px */
                           "max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap",
                           col.cellClassName || "",
                         ].join(" ")}

@@ -37,7 +37,11 @@ interface HelpVideoPageProps {
   readonly params: Promise<{ slug: string }>
 }
 
-export const dynamicParams = false
+// #4452 rework 1 (P0-3): true, not false. The site-pages tag reaches every page
+// (the root layout's pop-up mount), and on Next 15 revalidating a tag on a
+// `dynamicParams = false` route 404s its prerendered pages. Every article is
+// still prerendered below; an unknown slug is the 404 page through notFound().
+export const dynamicParams = true
 
 export function generateStaticParams() {
   return HELP_VIDEOS.map((v) => ({ slug: v.slug }))

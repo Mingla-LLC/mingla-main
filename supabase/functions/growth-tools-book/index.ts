@@ -52,6 +52,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 // Branded email shell + senders + escape — reused by import (same infra the
 // grader gate uses to email the report). DO-NOT edit those modules here.
 import { renderShell, SHELL_TOKENS } from "../_shared/email/shell.ts";
+import { emailButton, renderBookingConfirmation } from "./bookingConfirmation.ts";
 import { escapeHtml } from "../_shared/email/escape.ts";
 import {
   type GrowthToolsEmail,
@@ -78,12 +79,13 @@ import {
   CREATOR_MAKES_LABELS,
   ICP_LABELS,
   parseBookingContext,
+  parseBookingExtras,
   parseTimeZone,
   SOCIAL_LABELS,
 } from "./bookingContext.ts";
 import { buildBookingLead, recordBookingLead } from "./bookingLead.ts";
 // #4238 W3-3: a Host booking with the page's ad context is a host lead.
-import { recordBookingAdLead } from "./bookingAdLead.ts";
+import { recordBookingConversions, resolveFormLink } from "./bookingAdLead.ts";
 import { parseHostAdContext } from "../_shared/hostFunnelConversion.ts";
 import {
   type CalendarKeys,
@@ -270,9 +272,6 @@ function formatLocal(ms: number, timeZone: string = TZ): string {
 
 const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED, BRAND_BORDER } = SHELL_TOKENS;
 
-function emailButton(href: string, label: string): string {
-  return `<a href="${escapeHtml(href)}" style="display:inline-block;background:${BRAND_ORANGE_BUTTON};color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:9999px;font-size:15px;">${escapeHtml(label)}</a>`;
-}
 
 // #4339 calendar sync — the send itself is shared with growth-tools-calendar-sync.
 async function sendResend(input: GrowthToolsEmail): Promise<boolean> {
@@ -284,7 +283,7 @@ async function sendResend(input: GrowthToolsEmail): Promise<boolean> {
 
 // Fire both emails. Never throws — a mail failure must not fail the booking
 // (the Google Calendar invite has already gone out via sendUpdates=all).
-async function sendBookingEmails(input: {
+export async function sendBookingEmails(input: {
   startMs: number;
   name: string;
   email: string;
@@ -309,21 +308,16 @@ async function sendBookingEmails(input: {
       footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
         "Mingla, hello@usemingla.com",
     });
-  const meetBtn = input.meetUrl
-    ? `<p style="margin:20px 0 0;">${emailButton(input.meetUrl, "Join the Google Meet")}</p>`
-    : "";
-
-  // 1) Confirmation to the booker.
-  const bookerBody = `
-    <h1 style="margin:0 0 8px;color:${BRAND_INK};font-size:22px;">You’re booked in ✅</h1>
-    <p style="margin:0 0 4px;color:${BRAND_INK};font-size:16px;">Your call with Mingla is confirmed for:</p>
-    <p style="margin:0 0 8px;color:${BRAND_INK};font-size:18px;font-weight:700;">${escapeHtml(when)}</p>
-    <p style="margin:0;color:${BRAND_MUTED};font-size:14px;">A Google Calendar invite with the Meet link is also on its way. Reply to this email if you need to move it.</p>
-    ${meetBtn}`;
-  const bookerText =
-    `You're booked in.\n\nYour call with Mingla is confirmed for ${when}.\n` +
-    `A Google Calendar invite with the Meet link is on its way.` +
-    (input.meetUrl ? `\n\nMeet: ${input.meetUrl}` : "");
+  // 1) Confirmation to the booker: the audience's bar with the app button only (#4452 SC-86).
+  const booker = renderBookingConfirmation({
+    when,
+    meetUrl: input.meetUrl,
+    audience: input.context.audience,
+    supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? REPLY_TO,
+    logoUrl: logo,
+    footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
+      "Mingla, hello@usemingla.com",
+  });
 
   // 2) Notification to Seth — reply-to is the lead so a reply reaches them.
   // #4339 §6 — their social (a working profile link) and website come FIRST, so
@@ -383,7 +377,7 @@ async function sendBookingEmails(input: {
   const ownerBody = `
     <h1 style="margin:0 0 12px;color:${BRAND_INK};font-size:22px;">${host ? "New call booked" : `New ${callLabel} booked`} 📅</h1>
     <p style="margin:0 0 14px;font-size:15px;">${contextLinks}</p>
-    <table style="border-collapse:collapse;font-size:15px;border-top:1px solid ${BRAND_BORDER};border-bottom:1px solid ${BRAND_BORDER};padding:8px 0;">${rows}</table>
+    <table role="presentation" style="border-collapse:collapse;font-size:15px;border-top:1px solid ${BRAND_BORDER};border-bottom:1px solid ${BRAND_BORDER};padding:8px 0;">${rows}</table>
     <p style="margin:18px 0 0;">${links}</p>`;
   const ownerText =
     (host ? `New Mingla call booked.\n\n` : `New Mingla ${callLabel} booked.\n\n`) +
@@ -402,8 +396,8 @@ async function sendBookingEmails(input: {
     sendResend({
       to: [input.email],
       subject: "You’re booked — your Mingla call",
-      html: shell(bookerBody, `Confirmed: ${when}`),
-      text: bookerText,
+      html: booker.html,
+      text: booker.text,
       replyTo: REPLY_TO,
     }),
     sendResend({
@@ -469,6 +463,12 @@ async function handleBook(
     return json({ error: "validation", field: parsedContext.field }, 400);
   }
   const context = parsedContext.context;
+  // #4452 §4.6: phone (required for Creators and Locals), UTM, click source, form link, consent.
+  const parsedExtras = parseBookingExtras(body, context.audience);
+  if (!parsedExtras.ok) {
+    return json({ error: "validation", field: parsedExtras.field }, 400);
+  }
+  const extras = parsedExtras.extras;
   const timeZone = parseTimeZone(body.time_zone);
   // Slot must be in the future (min notice) and land on a valid grid boundary.
   if (startMs < Date.now() + MIN_NOTICE_MS) {
@@ -535,6 +535,12 @@ async function handleBook(
   // #4339 round A — the booking becomes an Inbound lead in Mingla Admin. Awaited
   // so the write completes before the isolate is frozen; it never fails the
   // booking (recordBookingLead never throws and logs every failure loudly).
+  const leadConfig = {
+    supabaseUrl: Deno.env.get("SUPABASE_URL"),
+    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  };
+  // #4452 §4.6 A: a booking from a form links to it only with the same email within 7 days.
+  const formLink = await resolveFormLink(extras.formSubmissionId, email, leadConfig);
   const leadRow = buildBookingLead({
     eventId: ev.id ?? null,
     startMs,
@@ -546,19 +552,19 @@ async function handleBook(
     timeZone,
     meetUrl: meet,
     eventUrl: ev.htmlLink ?? null,
+    extras,
+    formSubmissionId: formLink?.id ?? null,
   });
-  const leadConfig = {
-    supabaseUrl: Deno.env.get("SUPABASE_URL"),
-    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
-  };
   const leadWrite = await recordBookingLead(leadRow, leadConfig);
 
-  // #4238 W3-3 (D7): a Host call booked with the page's ad context is a host
-  // lead. Creator and Local calls are not. Never fails the booking.
-  const ad = context.audience === "host" ? parseHostAdContext(body.ad, req) : null;
-  const leadEventId = ad && leadWrite === "written"
-    ? await recordBookingAdLead(leadRow.booking_key, ad, leadConfig)
-    : null;
+  // #4452 §4.6 (was #4238 W3-3 host-only): every audience's booking is a
+  // labelled Lead (unless the form already fired it) and a call_booked goal.
+  // The ad context is read for every audience now. Never fails the booking.
+  const ad = parseHostAdContext(body.ad, req);
+  const conversions = leadWrite === "written"
+    ? await recordBookingConversions(leadRow.booking_key, context.audience, ad, formLink, leadConfig)
+    : { leadEventId: null, goalEventId: null };
+  const leadEventId = conversions.leadEventId;
 
   // Confirmation to the booker + notification to Seth. Best-effort and awaited
   // so the sends complete before the isolate is frozen; never fails the booking.
@@ -581,6 +587,7 @@ async function handleBook(
     meet_url: meet,
     start: new Date(startMs).toISOString(),
     lead_event_id: leadEventId,
+    goal_event_id: conversions.goalEventId,
   });
 }
 

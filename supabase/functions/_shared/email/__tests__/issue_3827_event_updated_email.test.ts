@@ -265,7 +265,8 @@ Deno.test("H-01 markup in a reason is quoted text, never HTML", () => {
   assertStringIncludes(out.html, "&lt;script&gt;alert(1)&lt;/script&gt;");
   assertStringIncludes(out.html, "&quot;quoted&quot; &amp; &#39;single&#39;");
   // The only anchors in the body are ours.
-  const hrefs = [...out.html.matchAll(/href="([^"]*)"/g)].map((match) => match[1]);
+  // #4452: anchors only (the shell's font stylesheet <link> is not a link a reader can click).
+  const hrefs = [...out.html.matchAll(/<a [^>]*href="([^"]*)"/g)].map((match) => match[1]);
   assertEquals(hrefs.filter((href) => href !== EVENT_URL && !href.startsWith("mailto:support@")), []);
 });
 

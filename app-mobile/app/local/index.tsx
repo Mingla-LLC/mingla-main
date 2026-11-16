@@ -10,11 +10,12 @@ import { isMonthAlreadyPicked } from '../../src/components/local/localPick';
 import { formatInZone, formatMoney, formatMonth, formatShortDate, pickWindowWords, toDayString, visitedOnBounds, visitedOnError } from '../../src/utils/programFormat';
 import { changesCardWords, reviewReadEnabled } from '../../src/components/local/localReviewDraft';
 import { placeNamesQueryEnabled, refreshLocal } from '../../src/components/local/localRefresh';
-import { APPLICATION_COPY, LOCAL_STEPS, localMoneyWord, localMonthWords, localStepIndex } from '../../src/components/local/localWords';
+import { APPLICATION_COPY, ENDED_COPY, LOCAL_STEPS, localMoneyWord, localMonthWords, localSeatEnded, localStepIndex } from '../../src/components/local/localWords';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { CheckRow, ChoiceField, Chip, DateField, ToggleRow } from '../../src/components/programs/ProgramPickers';
 import { JOIN_IN_FLIGHT } from '../../src/components/programs/programRefresh';
 import { useRefreshOnFocus } from '../../src/components/programs/useProgramRefresh';
+import { useScrollToFirstError } from '../../src/components/programs/useScrollToFirstError';
 import { Icon } from '../../src/components/ui/Icon';
 // #4261: the agreement document opens in Mingla's in-app document overlay.
 import { useOpenInMingla } from '../../src/components/InAppBrowserProvider';
@@ -33,6 +34,8 @@ export default function LocalScreen(): React.ReactElement {
   if (landing.isLoading || (signedLocal && home.isLoading)) return <ProgramScreen title="Mingla Local"><ProgramLoading /></ProgramScreen>;
   if (landing.isError || !landing.data) return <ProgramScreen title="Mingla Local"><ProgramLoadError text={programErrorText(landing.error)} onRetry={refresh} /></ProgramScreen>;
   const latest = landing.data.applications[0];
+  // #4445: an ended seat gets its own home, before any agreement or month step.
+  if (localSeatEnded(landing.data.local)) return <LocalEnded landing={landing.data} home={home.data ?? null} refreshing={landing.isFetching} onRefresh={refresh} />;
   if (latest?.status === 'agreement_pending' || (landing.data.local && !landing.data.local.agreement_signed_at)) {
     return <LocalAgreementSign landing={landing.data} refreshing={landing.isFetching} onRefresh={refresh} />;
   }
@@ -42,6 +45,9 @@ export default function LocalScreen(): React.ReactElement {
 }
 
 // ── Apply ──────────────────────────────────────────────────────────────────
+
+type ApplyFieldKey = 'city' | 'accounts' | 'links' | 'why';
+const APPLY_FIELD_ORDER: readonly ApplyFieldKey[] = ['city', 'accounts', 'links', 'why'];
 
 function ApplyForm({ landing, onApplied }: { landing: LocalLanding; onApplied: () => void }): React.ReactElement {
   const open = landing.enabled ? landing.programs : [];
@@ -54,6 +60,7 @@ function ApplyForm({ landing, onApplied }: { landing: LocalLanding; onApplied: (
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  const { scrollRef, layoutOf, inputOf, scrollToFirstError } = useScrollToFirstError<ApplyFieldKey>();
   const city = open.find((p) => p.city_id === cityId) ?? null;
   const rate = localCityRate(city);
   const cleanLinks = links.map((l) => l.trim()).filter(Boolean);
@@ -63,7 +70,11 @@ function ApplyForm({ landing, onApplied }: { landing: LocalLanding; onApplied: (
 
   const apply = async (): Promise<void> => {
     setTouched(true);
-    if (!valid || !cityId) return;
+    // #4445: a blocked Apply takes the person to the first thing to fix.
+    if (!valid || !cityId) {
+      scrollToFirstError(APPLY_FIELD_ORDER, { city: !city, accounts: !handle(instagram) && !handle(tiktok), links: Boolean(badLink), why: why.trim().length < 20 });
+      return;
+    }
     setBusy(true); setError(null);
     try {
       const handles: Record<string, string> = {};
@@ -78,22 +89,24 @@ function ApplyForm({ landing, onApplied }: { landing: LocalLanding; onApplied: (
     <ProgramEmpty title="Applications aren’t open yet" text="Mingla picks a few Locals per city. We’ll let you know when your city opens." />
   </ProgramScreen>;
 
-  return <ProgramScreen title="Mingla Local" footer={<ProgramButton label={city ? `Apply for ${city.city}` : 'Choose a city to apply'} busy={busy} disabled={!city} onPress={() => void apply()} />}>
+  return <ProgramScreen title="Mingla Local" scrollRef={scrollRef} footer={<ProgramButton label={city ? `Apply for ${city.city}` : 'Choose a city to apply'} busy={busy} disabled={!city} onPress={() => void apply()} />}>
     <ProgramCard tone="highlight">
       <Text style={s.h1}>Review one place a month. Get paid by Mingla.</Text>
       {[['1', 'You pick a place in your city each month'], ['2', 'Visit as a normal customer, then post an honest review'], ['3', 'Mingla checks it and pays you. Places never pay for reviews.']].map(([n, t]) =>
         <View key={n} style={styles.how}><View style={styles.num}><Text style={s.accentText}>{n}</Text></View><Text style={[s.copy, s.flex]}>{t}</Text></View>)}
     </ProgramCard>
-    <ChoiceField label="City" title="City" placeholder="Choose your city" value={cityId}
+    <View onLayout={layoutOf('city')}><ChoiceField label="City" title="City" placeholder="Choose your city" value={cityId}
       options={open.map((p) => ({ value: p.city_id, label: p.city, hint: `${p.seats} seat${p.seats === 1 ? '' : 's'} left${localCityRate(p) ? ` · ${formatMoney(localCityRate(p)!.minor, localCityRate(p)!.currency)} a month` : ''}`, disabled: p.seats <= 0 }))}
-      onChange={setCityId} error={touched && !city ? 'Choose a city.' : null} />
+      onChange={setCityId} error={touched && !city ? 'Choose a city.' : null} /></View>
     {city ? <ProgramCard>
       <ProgramRow title={`Monthly pay in ${city.city}`} value={rate ? `${formatMoney(rate.minor, rate.currency)} a month` : 'Set per city'} chevron={false} isLast />
     </ProgramCard> : null}
-    <ProgramField label="Instagram" prefix="@" value={instagram} onChangeText={setInstagram} placeholder="yourhandle" autoCapitalize="none" autoCorrect={false} spellCheck={false} />
+    <View onLayout={layoutOf('accounts')}>
+    <ProgramField label="Instagram" inputRef={inputOf('accounts')} prefix="@" value={instagram} onChangeText={setInstagram} placeholder="yourhandle" autoCapitalize="none" autoCorrect={false} spellCheck={false} />
     <ProgramField label="TikTok (optional)" prefix="@" value={tiktok} onChangeText={setTiktok} placeholder="yourhandle" autoCapitalize="none" autoCorrect={false} spellCheck={false}
       error={touched && !handle(instagram) && !handle(tiktok) ? 'Add at least one account.' : null} />
-    <View style={{ gap: 8 }}>
+    </View>
+    <View style={{ gap: 8 }} onLayout={layoutOf('links')}>
       <Text style={s.fieldLabel}>Sample posts or reviews (links)</Text>
       {links.map((l, i) => <View key={i} style={styles.linkRow}>
         <View style={s.flex}><ProgramField value={l} onChangeText={(v) => setLinks(links.map((x, j) => (j === i ? v : x)))} placeholder="https://…" autoCapitalize="none" autoCorrect={false} keyboardType="url" textContentType="URL" accessibilityLabel={`Sample link ${i + 1}`} /></View>
@@ -102,8 +115,10 @@ function ApplyForm({ landing, onApplied }: { landing: LocalLanding; onApplied: (
       {touched && badLink ? <Text style={s.fieldErrorText}>Links must start with https://</Text> : null}
       {links.length < 10 ? <ProgramButton label="Add another link" variant="ghost" icon="add" onPress={() => setLinks([...links, ''])} /> : null}
     </View>
-    <ProgramField label="Why you’d be a good Local" value={why} onChangeText={setWhy} multiline counter={{ max: 600, min: 20 }} maxLength={600}
+    <View onLayout={layoutOf('why')}>
+    <ProgramField label="Why you’d be a good Local" inputRef={inputOf('why')} value={why} onChangeText={setWhy} multiline counter={{ max: 600, min: 20 }} maxLength={600}
       placeholder="Where you go, what you notice, who you tell" error={touched && why.trim().length < 20 ? 'Write at least 20 characters.' : null} />
+    </View>
     {error ? <ProgramNotice tone="error" text={error} /> : null}
   </ProgramScreen>;
 }
@@ -204,7 +219,6 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
   const names = useQuery({ queryKey: localKeys.placeNames(placeIds), queryFn: () => localProgramService.placeNames(placeIds.filter((id): id is string => Boolean(id))), enabled: placeNamesQueryEnabled(placeIds) });
   // #4430 L-3: Admin's request shows on the card (the same read the review form uses).
   const changesRead = useQuery({ queryKey: localKeys.review(current?.id ?? ''), queryFn: () => localProgramService.myReview(current!.id), enabled: Boolean(current?.id) && reviewReadEnabled(current?.status) && current?.status === 'changes_requested' });
-  const payout = useQuery({ queryKey: ['creator', 'payout'], queryFn: () => payoutService.status(), retry: 0 });
   const program = landing.programs.find((p) => p.city_id === home.local.city_id);
   const rate = localCityRate(program);
   const placeName = (m: LocalMonth | null): string => (m?.place_name ?? (m?.place_id ? names.data?.[m.place_id] : null)) || 'Your place';
@@ -243,20 +257,45 @@ function LocalMonthHome({ landing, home, refreshing, onRefresh }: { landing: Loc
       <ProgramRow title={month.place_id ? placeName(month) : 'No place picked'} subtitle={localMonthWords(month.status)} value={localMoneyWord(month.status) && month.payout_amount_minor && month.payout_currency ? formatMoney(month.payout_amount_minor, month.payout_currency) : null} chevron={false} isLast />
     </ProgramCard> : null}
 
+    <HistoryAndPay months={home.months} placeName={placeName} />
+    <Text style={s.small}>Paid by Mingla, never by the places. Pay arrives after your review is approved.</Text>
+  </ProgramScreen>;
+}
+
+/** #4445: History and pay + Payout account, shared by the month home and the ended-seat home. */
+function HistoryAndPay({ months, placeName }: { months: LocalMonth[]; placeName: (m: LocalMonth | null) => string }): React.ReactElement {
+  const router = useRouter();
+  const payout = useQuery({ queryKey: ['creator', 'payout'], queryFn: () => payoutService.status(), retry: 0 });
+  return <>
     <Text style={s.label}>History and pay</Text>
-    {home.months.length === 0 ? <Text style={s.copy}>Your months show here once you pick your first place.</Text> : <ProgramCard>
-      {home.months.map((m, i) => {
+    {months.length === 0 ? <Text style={s.copy}>Your months show here once you pick your first place.</Text> : <ProgramCard>
+      {months.map((m, i) => {
         const money = localMoneyWord(m.status);
         return <ProgramRow key={m.id} title={`${formatMonth(m.month)} · ${m.place_id ? placeName(m) : 'No place'}`} subtitle={localMonthWords(m.status)}
           right={money ? <ProgramPill label={`${m.payout_amount_minor && m.payout_currency ? `${formatMoney(m.payout_amount_minor, m.payout_currency)} · ` : ''}${money}`} tone={money === 'Paid' ? 'success' : 'neutral'} /> : null}
-          chevron={false} isLast={i === home.months.length - 1} />;
+          chevron={false} isLast={i === months.length - 1} />;
       })}
     </ProgramCard>}
     <ProgramCard>
       <ProgramRow icon="cash-outline" title="Payout account" subtitle={payout.data?.summary ?? 'Checking…'} value={payout.data?.connected ? 'Connected' : null} onPress={() => router.push('/payout' as never)} isLast />
     </ProgramCard>
     {payout.data && !payout.data.connected ? <ProgramNotice tone="warning" text="Connect a bank so approved months can be paid." /> : null}
-    <Text style={s.small}>Paid by Mingla, never by the places. Pay arrives after your review is approved.</Text>
+  </>;
+}
+
+/** #4445: the seat has ended. No month card, no Pick, no visit: just what happened and the money. */
+function LocalEnded({ landing, home, refreshing, onRefresh }: { landing: LocalLanding; home: LocalHome | null; refreshing: boolean; onRefresh: () => void | Promise<void> }): React.ReactElement {
+  const months = home?.months ?? [];
+  const placeIds = months.map((m) => m.place_id);
+  const names = useQuery({ queryKey: localKeys.placeNames(placeIds), queryFn: () => localProgramService.placeNames(placeIds.filter((id): id is string => Boolean(id))), enabled: placeNamesQueryEnabled(placeIds) });
+  const placeName = (m: LocalMonth | null): string => (m?.place_name ?? (m?.place_id ? names.data?.[m.place_id] : null)) || 'Your place';
+  return <ProgramScreen title={`Mingla Local · ${landing.local?.city ?? ''}`} refreshing={refreshing} onRefresh={onRefresh}>
+    <ProgramCard tone="highlight">
+      <ProgramPill label={ENDED_COPY.pill} tone="neutral" />
+      <Text style={s.title}>{ENDED_COPY.title}</Text>
+      <Text style={s.copy}>{ENDED_COPY.text}</Text>
+    </ProgramCard>
+    <HistoryAndPay months={months} placeName={placeName} />
   </ProgramScreen>;
 }
 

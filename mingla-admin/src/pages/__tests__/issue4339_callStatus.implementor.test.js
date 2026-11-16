@@ -143,10 +143,15 @@ describe("#4339 CST-4: Inbound leads shows each booking's status", () => {
     assert.equal(lead.booking.originalCallAt, MOVED.original_call_at);
     assert.equal(lead.booking.statusChangedAt, MOVED.status_changed_at);
   });
-  it("the row renders it", () => {
-    const inbound = strip(read("pages/InboundLeadsPage.jsx"));
-    assert.match(inbound, /data-booking-status=\{booking\.status\}/);
-    assert.match(inbound, /\{booking\.statusLabel\}/);
-    assert.match(inbound, /data-booking-original="">Was: \{formatDateTime\(booking\.originalCallAt\)\}/);
+  it("the lead renders it", () => {
+    // #4452 A1.8: a booking's status shows in the Leads drawer's history. The booking line
+    // moved from LeadDrawer.jsx into components/leads/BookingLine.jsx (the drawer renders it
+    // per event), and it now adds when the status changed after the label.
+    const drawer = strip(read("components/leads/LeadDrawer.jsx"));
+    assert.match(drawer, /\{e\.booking && <BookingLine booking=\{e\.booking\} \/>\}/);
+    const line = strip(read("components/leads/BookingLine.jsx"));
+    assert.match(line, /const status = callStatus\(booking\.status\);/);
+    assert.match(line, /<span data-booking-status=\{status\}>\s*\{CALL_STATUS_LABELS\[status\]\}/);
+    assert.match(line, /className=\{off \? "line-through" : undefined\}>Call: \{formatDateTime\(booking\.call_at\)\}/);
   });
 });

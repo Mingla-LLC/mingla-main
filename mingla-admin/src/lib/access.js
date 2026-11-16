@@ -28,6 +28,8 @@ export const AREA = {
   BETA_LEADS: "beta_leads",
   // Shared email drafts and sending, for the whole team (issue #4255, D5).
   EMAIL_DRAFTS: "email_drafts",
+  // The Website editor role (#4452 §1.1.1). The server decides who holds it.
+  WEBSITE: "website",
 };
 
 // Issue #4255 (D3): owner, admin and Founding partner are the full-admin
@@ -76,6 +78,15 @@ export const PAGE_ADDITIONAL_AREAS = Object.freeze({
   email: Object.freeze([AREA.EMAIL_DRAFTS]),
   blog: Object.freeze([BLOG_AREA]),
   links: Object.freeze([SUPPORT_OPERATIONS_AREA]),
+  // #4452 §7.2: Brand groups keeps exactly the access its Community tab had
+  // (the Support area; its issue_3720_* / issue_4270_* RPCs gate on it).
+  "brand-groups": Object.freeze([SUPPORT_OPERATIONS_AREA]),
+  // #4452 §7.0: Forms and Website pages open to forms_can_view (admins and
+  // partners through admin_console, the Website editor role, and growth /
+  // beta_leads read-only). Every write RPC checks forms_can_edit again; the
+  // view-only state is drawn from the RPC's can_edit, never from here.
+  forms: Object.freeze([AREA.WEBSITE, AREA.CRM, AREA.BETA_LEADS]),
+  "website-pages": Object.freeze([AREA.WEBSITE, AREA.CRM, AREA.BETA_LEADS]),
 });
 
 // Every page id NOT listed here needs AREA.ADMIN_CONSOLE. A page added by any

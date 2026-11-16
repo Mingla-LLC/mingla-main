@@ -47,10 +47,15 @@ import {
   Mail,
   Newspaper,
   Link,
+  // #4452 §7.2: Brand groups.
+  Hand,
+  // #4452 §7.0: Forms and Website pages.
+  FileText,
+  LayoutTemplate,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { NAV_GROUPS } from "../../lib/constants";
+import { NAV_GROUPS, NAV_NEW_UNTIL } from "../../lib/constants";
 import { ROLE_LABELS, homePageFor, visibleNavGroups } from "../../lib/access";
 import {
   browserStorage,
@@ -64,6 +69,7 @@ import {
 // and never a typed "Mingla" beside it.
 import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
 import { useReviewCount } from "../../hooks/useReviewCount";
+import { BRAND_GROUP_WAITING_EVENT, brandGroupWaiting } from "../../lib/brandGroupWaiting";
 
 // The one registry of menu icons. Every `icon` named in NAV_GROUPS
 // (lib/constants.js) and in the role Home group (lib/access.js) must be a key
@@ -71,6 +77,9 @@ import { useReviewCount } from "../../hooks/useReviewCount";
 // src/__tests__/admin_shell_issue3802.implementor.happy.test.js fails
 // otherwise. There is no fallback icon, so a wrong name cannot ship looking
 // like the Dashboard.
+// #4452 §7.0: when this Admin tab opened (the New tags compare against it).
+const NAV_OPENED_AT = Date.now();
+
 const ICON_MAP = {
   Home,
   LayoutDashboard,
@@ -116,6 +125,9 @@ const ICON_MAP = {
   Mail,
   Newspaper,
   Link,
+  Hand,
+  FileText,
+  LayoutTemplate,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"
@@ -149,6 +161,13 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const [foldedGroups, setFoldedGroups] = useState(() => readFoldedGroups(browserStorage()));
   const [signingOut, setSigningOut] = useState(false);
   const reviewCount = useReviewCount();
+  // #4452 §7.2: the Brand groups item shows how many groups wait on Mingla.
+  const [groupsWaiting, setGroupsWaiting] = useState(brandGroupWaiting);
+  useEffect(() => {
+    const onWaiting = (e) => setGroupsWaiting(Number(e.detail) || 0);
+    window.addEventListener(BRAND_GROUP_WAITING_EVENT, onWaiting);
+    return () => window.removeEventListener(BRAND_GROUP_WAITING_EVENT, onWaiting);
+  }, []);
 
   // Remember the folded groups in this browser. A browser that refuses is fine:
   // the fold still works until the page is reloaded (lib/shellNav.js).
@@ -195,8 +214,8 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
     const isActive = activeTab === item.id;
     // #4270 (D20): the Work entry counts this person's own open cards due
     // today or overdue (useReviewCount().cards).
-    const waiting = item.id === "work-board" ? reviewCount.cards || 0 : 0;
-    const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} due` : item.label;
+    const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : 0;
+    const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} ${item.id === "brand-groups" ? "waiting" : "due"}` : item.label;
 
     return (
       <li key={item.id}>
@@ -207,20 +226,15 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
           aria-label={spokenLabel}
           title={rail ? spokenLabel : undefined}
           className={[
-            "relative flex h-[34px] w-full items-center gap-2.5 rounded-lg text-left text-[13.5px] font-medium",
+            // #4452 §7.1: items are 36 px, radius 10; the active item is an ink pill with an orange icon.
+            "relative flex h-9 w-full items-center gap-2.5 rounded-[10px] text-left text-[13.5px] font-medium",
             "transition-colors duration-150 cursor-pointer",
             rail ? "pl-3 pr-0" : "px-3",
             isActive
-              ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-text-active)]"
+              ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]"
               : "text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text-active)]",
           ].join(" ")}
         >
-          {isActive && (
-            <span
-              aria-hidden="true"
-              className="absolute -left-3 top-2 bottom-2 w-[3px] rounded-r-[3px] bg-[var(--sidebar-accent)]"
-            />
-          )}
           {Icon ? (
             <Icon
               aria-hidden="true"
@@ -230,7 +244,11 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
             <span aria-hidden="true" className="h-4 w-4 shrink-0" />
           )}
           <span className={rail ? "sr-only" : "min-w-0 truncate"}>{item.label}</span>
-          {waiting > 0 && <span aria-hidden="true" className={`${rail ? "absolute right-0.5" : "ml-auto"} inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--sidebar-active-bg)] px-1.5 text-[10.5px] font-semibold tabular-nums text-[var(--sidebar-accent)]`}>{waiting > 99 ? "99+" : waiting}</span>}
+          {/* #4452 §7.0: a New tag while the page is new (its newUntil date). */}
+          {!rail && NAV_NEW_UNTIL[item.id] && NAV_OPENED_AT < Date.parse(NAV_NEW_UNTIL[item.id]) && waiting === 0 && (
+            <span data-nav-new="" className="ml-auto rounded-full bg-[var(--sidebar-count-bg)] px-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--sidebar-count-text)]">New</span>
+          )}
+          {waiting > 0 && <span aria-hidden="true" className={`${rail ? "absolute right-0.5" : "ml-auto"} inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--sidebar-count-bg)] px-1.5 text-[10.5px] font-semibold tabular-nums text-[var(--sidebar-count-text)]`}>{waiting > 99 ? "99+" : waiting}</span>}
         </button>
       </li>
     );
@@ -287,7 +305,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
             return (
               <li key={group.label || `group-${gi}`}>
                 {hasLabel && !rail && !foldable && (
-                  <div className="px-3 pb-1.5 pt-3.5 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-[var(--sidebar-text-dim)]">
+                  <div className="px-3 pb-1.5 pt-3.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--sidebar-text-dim)]">
                     {group.label}
                   </div>
                 )}
@@ -299,7 +317,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
                     aria-controls={listId}
                     className={[
                       "flex w-full items-center justify-between rounded-md px-3 pb-1.5 pt-3.5",
-                      "text-[10.5px] font-semibold uppercase tracking-[0.09em]",
+                      "font-mono text-[10px] font-medium uppercase tracking-[0.14em]",
                       "text-[var(--sidebar-text-dim)] hover:text-[var(--sidebar-text-active)]",
                       "transition-colors duration-150 cursor-pointer",
                     ].join(" ")}

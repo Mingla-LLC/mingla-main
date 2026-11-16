@@ -347,7 +347,7 @@ describe("#3802 C-8: titles and role display names", () => {
     });
     assert.deepEqual(INVITABLE_ROLES, ["admin", "growth", "partner"]);
     // #4255: email_drafts (Email tab and sending) is a server area for every teammate.
-    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads", EMAIL_DRAFTS: "email_drafts" });
+    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads", EMAIL_DRAFTS: "email_drafts", WEBSITE: "website" });
   });
 
   it("team actions have plain-English labels in the activity list", () => {

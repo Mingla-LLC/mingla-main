@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "forms-automation-sender",
+  "verify_jwt": true,
+  "gateway_reason": "Service-role-only form automation sender (#4452): pg_cron posts with the vault service_role_key and the bearer is compared to SUPABASE_SERVICE_ROLE_KEY in code.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": ["FORMS_SENDER_PAUSED"],
+    "required_bundle_fields": {},
+    "required_top_level": ["RESEND_API_KEY", "UNSUBSCRIBE_TOKEN_SECRET"]
+  }
+}

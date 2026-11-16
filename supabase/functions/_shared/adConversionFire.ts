@@ -63,6 +63,7 @@ import {
   HOST_FUNNEL_EVENT_NAMES,
   HOST_FUNNEL_EVENT_TYPE,
   HOST_FUNNEL_GOOGLE_KIND,
+  HOST_FUNNEL_LABEL,
   type ServerHostFunnelKind,
 } from "./adEventCatalog.ts";
 import { identityHashes } from "./adIdentity.ts";
@@ -80,7 +81,9 @@ export type EventType =
   // #4238 W3-3: host-funnel kinds (ad_conversions.event_type, M-2).
   | "host_signup"
   | "host_first_publish"
-  | "host_first_sale";
+  | "host_first_sale"
+  // #4452: a booked call (the end goal), labelled like a Lead.
+  | "call_booked";
 export type Channel = "meta" | "tiktok" | "snap" | "reddit" | "google";
 
 /** The normalized conversion the senders POST. PII is already hashed (SC-9). */
@@ -98,6 +101,17 @@ export interface ConversionSendInput {
   hashedPhoneE164?: string | null;
   /** #4238 W5-1: SHA-256 of Google's normalised email (gmail rule, Z7). */
   hashedEmailGoogle?: string | null;
+  /**
+   * #4452 §4.2: the lead label (host_lead | creator_lead | local_lead, or
+   * host_call | creator_call | local_call for a booked call), its name and the
+   * Snap event tag. Set only for labelled host-funnel kinds; a purchase leaves
+   * them undefined so its payload stays byte-identical.
+   */
+  contentCategory?: string | null;
+  contentName?: string | null;
+  eventTag?: string | null;
+  /** #4452: `<form key>` | `book_a_call` | `tool:<tool>` (Meta custom property). */
+  leadSource?: string | null;
   fbc: string | null; // UNHASHED (Meta only)
   fbp: string | null; // UNHASHED (Meta only)
   externalId?: string | null; // SHA-256 buyer user id (all three ad platforms)
@@ -143,7 +157,13 @@ export type GoogleConversionKind =
   | "purchase"
   | "free_signup"
   | "host_lead"
-  | "host_signup";
+  | "host_signup"
+  // #4452 §4.3: one action per label; never a fallback to another kind.
+  | "creator_lead"
+  | "local_lead"
+  | "host_call_booked"
+  | "creator_call_booked"
+  | "local_call_booked";
 
 /**
  * #4238 W3-3: a host-funnel conversion (a host lead, sign-up, first publish or
@@ -160,6 +180,8 @@ export interface HostEventInput {
   brandId?: string | null;
   /** #4238 W3-5: the processor of a first sale (AppsFlyer event value). */
   provider?: "stripe" | "paystack" | null;
+  /** #4452: where the lead came from (`<form key>`, `book_a_call`, `tool:<tool>`). */
+  leadSource?: string | null;
 }
 
 export interface SenderDeps {
@@ -539,6 +561,9 @@ interface ConversionContext {
   buyerUserId?: string | null;
   /** #4238 W3-3: the host-funnel kind (catalogue event names). */
   hostKind?: ServerHostFunnelKind | null;
+  /** #4452: the label row (from the kind) and the lead source. */
+  leadLabel?: "host" | "creator" | "local" | null;
+  leadSource?: string | null;
   /**
    * #4238 W3-3: no web match context exists for this host subject (a native-
    * only host, or a lead with no browser data): every channel is terminally
@@ -617,6 +642,24 @@ function googleKindFor(
   if (eventType === "purchase") return "purchase";
   if (eventType === "reservation") return "free_signup";
   return null;
+}
+
+/**
+ * #4452 §4.2: the label fields a labelled host-funnel conversion sends. An
+ * unlabelled kind (or a purchase) returns {}, so its payload is unchanged.
+ */
+export function labelFields(ctx: {
+  hostKind?: ServerHostFunnelKind | null;
+  leadSource?: string | null;
+}): Pick<ConversionSendInput, "contentCategory" | "contentName" | "eventTag" | "leadSource"> {
+  const row = ctx.hostKind ? HOST_FUNNEL_LABEL[ctx.hostKind] : undefined;
+  if (!row) return {};
+  return {
+    contentCategory: row.value,
+    contentName: row.name,
+    eventTag: row.value,
+    ...(ctx.leadSource ? { leadSource: ctx.leadSource } : {}),
+  };
 }
 
 /** Build fbc from a raw fbclid + observation time (A2-5: fb.1.{tsMs}.{fbclid}). */
@@ -1068,6 +1111,27 @@ async function resolveHostContext(
   const eventId = host.eventId.trim();
   if (!eventId || !host.subjectId) return null;
   const eventType = HOST_FUNNEL_EVENT_TYPE[host.kind];
+  const isCall = eventType === "call_booked";
+  // #4452 §4.5: a booked call is tied to its lead's ad click. Its subject is the
+  // booking; a booking made from a form (form_submission_id, validated by
+  // growth-tools-book) reads that submission's match context, `form:<id>`.
+  let booking: Record<string, unknown> | null = null;
+  if (host.subjectType === "lead" && !host.subjectId.startsWith("form:") &&
+    !host.subjectId.startsWith("tool:")) {
+    try {
+      const { data } = await supabase
+        .from("book_call_leads")
+        .select("email,phone_e164,form_submission_id")
+        .eq("id", host.subjectId)
+        .maybeSingle();
+      booking = (data ?? null) as Record<string, unknown> | null;
+    } catch {
+      booking = null;
+    }
+  }
+  const matchSubject = isCall && typeof booking?.form_submission_id === "string"
+    ? `form:${booking.form_submission_id}`
+    : host.subjectId;
   let match: Record<string, unknown> | null = null;
   try {
     const { data } = await supabase
@@ -1076,7 +1140,7 @@ async function resolveHostContext(
         "click_id,fbp,fbc,ttp,scid,client_ip,client_user_agent,ad_tracking_opt_out,event_source_url,surface",
       )
       .eq("subject_type", host.subjectType)
-      .eq("subject_id", host.subjectId)
+      .eq("subject_id", matchSubject)
       .maybeSingle();
     match = (data ?? null) as Record<string, unknown> | null;
   } catch {
@@ -1117,14 +1181,20 @@ async function resolveHostContext(
         .maybeSingle();
       const lead = (data ?? {}) as Record<string, unknown>;
       email = typeof lead.email === "string" ? lead.email : null;
-    } else {
+    } else if (host.subjectId.startsWith("form:")) {
+      // #4452 §4.5: a form lead's identity (email and phone, hashed below).
       const { data } = await supabase
-        .from("book_call_leads")
-        .select("email")
-        .eq("id", host.subjectId)
+        .from("form_submissions")
+        .select("email,phone_e164")
+        .eq("id", host.subjectId.slice("form:".length))
         .maybeSingle();
-      const lead = (data ?? {}) as Record<string, unknown>;
+      const sub = (data ?? {}) as Record<string, unknown>;
+      email = typeof sub.email === "string" ? sub.email : null;
+      phone = typeof sub.phone_e164 === "string" ? sub.phone_e164 : null;
+    } else {
+      const lead = (booking ?? {}) as Record<string, unknown>;
       email = typeof lead.email === "string" ? lead.email : null;
+      phone = typeof lead.phone_e164 === "string" ? lead.phone_e164 : null;
     }
   } catch {
     // Identity is optional: the click id and cookies still match.
@@ -1142,6 +1212,8 @@ async function resolveHostContext(
     eventId,
     eventType,
     hostKind: host.kind,
+    leadLabel: HOST_FUNNEL_LABEL[host.kind]?.label ?? null,
+    leadSource: typeof host.leadSource === "string" ? host.leadSource.slice(0, 80) : null,
     valueCents,
     currency: isSale ? (host.currency ?? str(prior.currency)) : null,
     ...(await identityHashes(email, phone)),
@@ -2170,6 +2242,8 @@ export async function fireAdConversion(
       hashed_email: ctx.hashedEmail,
       hashed_phone: ctx.hashedPhone,
       shared_with_platforms: shareWithPlatforms,
+      // #4452 I-4452-LEAD-LABEL-REQUIRED: every labelled Lead / call row carries its label.
+      ...(ctx.leadLabel ? { lead_label: ctx.leadLabel } : {}),
     };
     await supabase
       .from("ad_conversions")
@@ -2315,6 +2389,7 @@ export async function fireAdConversion(
         hashedPhone: ctx.hashedPhone,
         hashedPhoneE164: ctx.hashedPhoneE164 ?? null,
         hashedEmailGoogle: ctx.hashedEmailGoogle ?? null,
+        ...labelFields(ctx),
         fbc: channel === "meta" ? (ctx.fbc ?? touch.fbc) : null,
         fbp: channel === "meta" ? ctx.fbp : null,
         externalId: ctx.externalId,

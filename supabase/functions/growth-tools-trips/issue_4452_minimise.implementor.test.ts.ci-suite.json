@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-trips/issue_4452_minimise.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4452-tools-minimise",
+  "profile": "deno-2-unit"
+}

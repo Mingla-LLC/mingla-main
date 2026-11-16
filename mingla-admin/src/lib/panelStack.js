@@ -194,7 +194,8 @@ export function sideCloseStep(pushesHere) {
 
 export function brandGroupSearch(search, patch) {
   const params = new URLSearchParams(typeof search === "string" ? search : "");
-  params.set("tab", "brand-groups");
+  // #4452 §7.2: Brand groups is its own screen now; no Community tab in the address.
+  params.delete("tab");
   for (const [k, v] of Object.entries(patch)) {
     if (k === "host" || k === "side") continue;
     if (k === "rail") {

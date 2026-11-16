@@ -1,319 +1,44 @@
-// Issue #4130 (Wave 4a) — Inbound leads (#/inbound): businesses that came to
-// us. Beta form requests and web free-tool leads in one list.
+// Issue #4452 A1.8 — Leads (#/inbound): every lead in one list — forms, Book a
+// call, free tools and beta — labelled, filterable and emailable. It replaced
+// the #4130 Inbound leads page; the id stays so old links keep working
+// (#/leads, #/beta-leads and #/tool-leads redirect here).
 //
-//   - Tool runs by signed-in hosts inside the Business app are product usage,
-//     not leads: the server never lists or counts them (admin_inbound_leads).
-//   - "No new lead in N days" warns when leads stop coming.
-//   - Staff and test rows are hidden; a switch shows them, marked.
-//   - Add to Hosts asks first, then uses the existing pipeline paths: a beta
-//     lead through crm_beta_lead_to_host, a tool lead as a new host card with
-//     its email as a contact detail. A lead already in Hosts opens its card.
-//   - Competitor Ops (it was a tab of Tool leads) moves to Settings
-//     (Wave 4b renders it; pages/ToolLeadsPage.jsx exports it).
-//   - Issue #4339 round A: every confirmed "Book a call" booking is a lead too.
-//     Its row shows what they run, their social as a profile link, their
-//     website and the call time; Add to Hosts makes a Prospect card with the
-//     email and social as contact details.
-//   - Issue #4339 Creators and Locals calls: a booking reads Host call,
-//     Creator call or Local call, with its city and what they make or their
-//     first place; a filter shows one audience's calls; only a Host call can
-//     go to Hosts. `?lead=<id>` (Open lead on the Calendar) marks that row.
+//   - One row per person (public.leads, fed by triggers on every source).
+//   - Full emails show to leads_can_view() members: emailing and replying
+//     need them (this replaces the old "never shows an email" rule).
+//   - Filters live in the address except the search text, which stays in
+//     component state (never in a URL).
+//   - "No new lead in N days" still warns when leads stop coming.
 // A failed load is an error with Retry, never an empty list or zeros.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { UserPlus } from "lucide-react";
+import { useCallback, useState } from "react";
 import { PageHeader } from "../components/ui/PageHeader";
-import { AlertCard, SectionCard } from "../components/ui/Card";
-import { Badge } from "../components/ui/Badge";
-import { Button } from "../components/ui/Button";
-import { Skeleton } from "../components/ui/Skeleton";
-import { Toggle } from "../components/ui/Input";
-import { LoadError } from "../components/ui/LoadError";
-import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
-import { useAuth } from "../context/AuthContext";
-import { useToast } from "../context/ToastContext";
-import { canOpenPage } from "../lib/access";
-import { errorWords } from "../lib/crmModel";
-import { formatDate, formatDateTime } from "../lib/formatters";
-import { LEAD_FILTERS, bookCallHostFields, filterLeads, leadView, quietWarning, toolLeadHostFields } from "../lib/inboundLeads";
-import { FilterSelect } from "../components/ui/FilterSelect";
+import { AlertCard } from "../components/ui/Card";
+import { LeadsList } from "../components/leads/LeadsList";
 import { useHashQuery } from "../hooks/useHashQuery";
-import { getBookCallLead, getToolLead, listInboundLeads } from "../services/dashboardService";
-import { betaLeadToHost, createRecord, newRequestKey } from "../services/crmService";
-import { useServerRead } from "../hooks/useServerRead";
-
-const hostHash = (id) => `#/outreach?tab=hosts&card=${encodeURIComponent(id)}`;
-
-function Kpi({ label, value, note, tone }) {
-  return (
-    <div className="flex min-h-[92px] min-w-0 flex-col justify-center rounded-xl border border-[var(--gray-200)] border-l-[3px] border-l-[var(--color-brand-500)] bg-[var(--color-background-primary)] p-4">
-      <span className="text-[13px] text-[var(--color-text-secondary)]">{label}</span>
-      <span className={`text-[26px] font-bold leading-tight tabular-nums ${tone === "bad" ? "text-[var(--color-error-700)]" : "text-[var(--color-text-primary)]"}`}>{value}</span>
-      {note ? <span className={`mt-1 text-xs ${tone === "bad" ? "text-[var(--color-error-700)]" : "text-[var(--color-text-tertiary)]"}`}>{note}</span> : null}
-    </div>
-  );
-}
-
-/** A Book a call row's details: what they run, their social, website and call time. */
-function BookingDetails({ booking }) {
-  const linkClass = "font-medium text-[var(--color-brand-700)] hover:underline";
-  return (
-    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs font-normal text-[var(--color-text-secondary)]" data-booking-details="">
-      {booking.icp && <span>Runs: {booking.icp}</span>}
-      {booking.city && <span data-booking-city="">City: {booking.city}</span>}
-      {booking.makes && <span>Makes: {booking.makes}</span>}
-      {booking.firstPlace && <span>First place: {booking.firstPlace}</span>}
-      {booking.socialUrl ? (
-        <a href={booking.socialUrl} target="_blank" rel="noopener noreferrer" className={linkClass} data-booking-social="">
-          {booking.socialLabel}: {booking.socialHandle || booking.socialUrl}
-        </a>
-      ) : null}
-      {booking.audience === "creator" ? (
-        booking.workUrl ? (
-          <a href={booking.workUrl} target="_blank" rel="noopener noreferrer" className={linkClass} data-booking-work="">
-            Best work
-          </a>
-        ) : null
-      ) : booking.audience === "local" ? null : booking.website ? (
-        <a href={booking.website} target="_blank" rel="noopener noreferrer" className={linkClass} data-booking-website="">
-          Website
-        </a>
-      ) : (
-        <span className="text-[var(--color-text-tertiary)]">No website</span>
-      )}
-      {booking.callAt && <span data-booking-call="" className={booking.status === "cancelled" || booking.status === "declined" ? "line-through" : undefined}>Call: {formatDateTime(booking.callAt)}</span>}
-      {/* #4339 calendar sync: the call's status from Google Calendar. */}
-      <span
-        data-booking-status={booking.status}
-        className={`rounded-full px-1.5 font-semibold ${booking.status === "booked" ? "bg-[var(--gray-100)] text-[var(--color-text-secondary)]" : booking.status === "moved" ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]" : "bg-[var(--color-error-50)] text-[var(--color-error-700)]"}`}
-      >
-        {booking.statusLabel}
-        {booking.status !== "booked" && booking.statusChangedAt ? ` ${formatDateTime(booking.statusChangedAt)}` : ""}
-      </span>
-      {booking.originalCallAt && <span data-booking-original="">Was: {formatDateTime(booking.originalCallAt)}</span>}
-      {booking.cameFrom && <span>From: {booking.cameFrom}</span>}
-    </div>
-  );
-}
+import { formatDate } from "../lib/formatters";
+import { quietWarning } from "../lib/inboundLeads";
 
 export function InboundLeadsPage() {
-  const { access } = useAuth();
-  const { addToast } = useToast();
-  const canAddHosts = canOpenPage(access, "hosts");
-  const [showTest, setShowTest] = useState(false);
-  const [confirm, setConfirm] = useState(null);
-  const [adding, setAdding] = useState(false);
-  const [addError, setAddError] = useState("");
   const [search, setSearch] = useHashQuery("inbound");
-  const query = useMemo(() => new URLSearchParams(search || ""), [search]);
-  const audience = LEAD_FILTERS.some((f) => f.value === query.get("audience")) ? query.get("audience") : "";
-  const focusLead = /^[0-9a-f-]{36}$/i.test(query.get("lead") || "") ? query.get("lead") : null;
-  const setAudience = (value) => {
-    const p = new URLSearchParams(search || "");
-    if (value) p.set("audience", value); else p.delete("audience");
-    setSearch(p.toString(), { replace: true });
-  };
-
-  const loadLeads = useCallback(() => listInboundLeads(showTest), [showTest]);
-  const state = useServerRead(loadLeads);
-  const load = state.retry;
-
-  const data = state.data;
-  const summary = data?.summary || null;
-  // #4339: the audience filter keeps each raw row beside what it shows.
-  const shown = useMemo(() => filterLeads(data?.rows, audience).map((raw) => ({ raw, lead: leadView(raw) })), [data, audience]);
-  useEffect(() => {
-    if (!focusLead || !shown.length) return;
-    document.querySelector(`[data-lead-id="${focusLead}"]`)?.scrollIntoView({ block: "center" });
-  }, [focusLead, shown.length]);
-  const quiet = quietWarning(summary);
-  const seesTools = !!data?.can_see?.tools;
-
-  const addToHosts = async () => {
-    const lead = confirm;
-    if (!lead) return;
-    setAdding(true);
-    setAddError("");
-    try {
-      let record;
-      let duplicate = false;
-      if (lead.raw.source === "beta") {
-        const res = await betaLeadToHost(lead.id);
-        record = res?.record || null;
-        duplicate = res?.status === "duplicate" || res?.status === "exists";
-      } else if (lead.raw.source === "book_a_call") {
-        const detail = await getBookCallLead(lead.id);
-        if (!detail) throw new Error("This booking could not be found.");
-        const res = await createRecord("hosts", bookCallHostFields(lead, detail), newRequestKey());
-        record = res?.status === "duplicate" ? res.existing : res?.record;
-        duplicate = res?.status === "duplicate";
-      } else {
-        const detail = await getToolLead(lead.id);
-        const fields = toolLeadHostFields(lead, Array.isArray(detail) ? detail[0] : detail);
-        const res = await createRecord("hosts", fields, newRequestKey());
-        record = res?.status === "duplicate" ? res.existing : res?.record;
-        duplicate = res?.status === "duplicate";
-      }
-      if (!record?.id) throw new Error("The server did not return the host card.");
-      setConfirm(null);
-      addToast({
-        variant: duplicate ? "info" : "success",
-        title: duplicate ? `${record.name || lead.business} is already in Hosts` : `${lead.business} added to Hosts at Prospect`,
-        action: { label: "Open host", onClick: () => { window.location.hash = hostHash(record.id); } },
-      });
-      load();
-    } catch (err) {
-      setAddError(errorWords(err));
-    } finally {
-      setAdding(false);
-    }
-  };
-
+  const [quiet, setQuiet] = useState(null);
+  const onCan = useCallback((_can, page) => {
+    // The quiet-leads warning reads as_of and the newest last_seen_at.
+    const rows = Array.isArray(page?.rows) ? page.rows : [];
+    const newest = rows.reduce((m, r) => (r.last_seen_at && (!m || r.last_seen_at > m) ? r.last_seen_at : m), null);
+    setQuiet(quietWarning({ last_lead_at: newest }, page?.as_of ? new Date(page.as_of) : new Date()));
+  }, []);
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
-        title="Inbound leads"
-        description="Businesses that came to us: calls booked on the website, free-tool users and early-access requests."
+        title="Leads"
+        description="Every lead in one list: forms, calls, free tools and beta. Labelled, filterable, emailable."
       />
-
-      {state.status === "error" && !state.data ? (
-        <LoadError title="Couldn’t load inbound leads" message={state.error?.message} onRetry={load} />
-      ) : !state.data ? (
-        <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading inbound leads">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[0, 1, 2, 3].map((i) => <Skeleton key={i} height={92} rounded="xl" />)}
-          </div>
-          <Skeleton height={240} rounded="xl" />
-        </div>
-      ) : (
-        <>
-          {state.status === "error" && (
-            <LoadError title="Couldn’t refresh inbound leads" message={state.error?.message} onRetry={load} />
-          )}
-          {quiet && (
-            <AlertCard variant="warning" title={quiet.days == null ? "No inbound lead has arrived yet." : `No new lead in ${quiet.days} days.`}>
-              {quiet.lastAt ? `The last one arrived on ${formatDate(quiet.lastAt)}. ` : ""}Check the free tools are still reachable and promoted.
-            </AlertCard>
-          )}
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi
-              label="Leads, all time"
-              value={Number(summary?.total || 0).toLocaleString()}
-              note={[
-                `${Number(summary?.book_a_call || 0)} call`,
-                seesTools ? `${Number(summary?.tools || 0)} tool` : null,
-                `${Number(summary?.beta || 0)} beta`,
-              ].filter(Boolean).join(" · ")}
-            />
-            <Kpi label="With an email" value={Number(summary?.with_email || 0).toLocaleString()} />
-            <Kpi
-              label="Added to Hosts"
-              value={Number(summary?.in_hosts || 0).toLocaleString()}
-              note={Number(summary?.total || 0) > 0 && Number(summary?.in_hosts || 0) === 0 ? "None converted yet" : undefined}
-              tone={Number(summary?.total || 0) > 0 && Number(summary?.in_hosts || 0) === 0 ? "bad" : undefined}
-            />
-            <Kpi
-              label="Last 30 days"
-              value={Number(summary?.last_30_days || 0).toLocaleString()}
-              tone={Number(summary?.last_30_days || 0) === 0 ? "bad" : undefined}
-            />
-          </div>
-
-          <SectionCard
-            title="Leads"
-            subtitle="Newest first"
-            action={
-              <div className="flex flex-wrap items-center gap-3">
-                <FilterSelect name="audience" label="Show" value={audience} options={LEAD_FILTERS} onChange={setAudience} />
-                {Number(summary?.test_hidden || 0) > 0 || showTest ? (
-                  <Toggle label={`Show staff and test rows (${Number(summary?.test_hidden || 0)})`} checked={showTest} onChange={setShowTest} />
-                ) : null}
-              </div>
-            }
-            noPadding
-          >
-            {shown.length === 0 ? (
-              <p className="p-5 text-sm text-[var(--color-text-secondary)]">
-                {audience
-                  ? `No ${LEAD_FILTERS.find((f) => f.value === audience).label.toLowerCase()} yet.`
-                  : "No inbound leads yet. Calls booked on the website, early-access requests and free-tool users show here."}
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-sm">
-                  <caption className="sr-only">Inbound leads, newest first</caption>
-                  <thead>
-                    <tr className="border-b border-[var(--gray-200)] text-left text-xs uppercase tracking-wide text-[var(--color-text-tertiary)]">
-                      <th scope="col" className="px-4 py-2.5 font-semibold sm:px-5">Received</th>
-                      <th scope="col" className="px-3 py-2.5 font-semibold">Source</th>
-                      <th scope="col" className="px-3 py-2.5 font-semibold">Business</th>
-                      <th scope="col" className="px-3 py-2.5 font-semibold">Tool</th>
-                      <th scope="col" className="px-3 py-2.5 font-semibold">City</th>
-                      <th scope="col" className="px-3 py-2.5 font-semibold">Email</th>
-                      <th scope="col" className="px-3 py-2.5 font-semibold">In Hosts?</th>
-                      <th scope="col" className="px-4 py-2.5 sm:px-5"><span className="sr-only">Action</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shown.map(({ raw, lead }) => {
-                      return (
-                        <tr key={`${raw.source}-${lead.id}`} data-lead-source={raw.source} data-lead-id={lead.id} data-lead-audience={lead.booking ? lead.booking.audience : undefined} aria-current={focusLead === lead.id ? "true" : undefined} className="border-b border-[var(--gray-100)] last:border-b-0 aria-[current=true]:bg-[var(--color-brand-50)]">
-                          <td className="whitespace-nowrap px-4 py-2.5 text-[var(--color-text-secondary)] sm:px-5">{formatDate(raw.created_at)}</td>
-                          <td className="px-3 py-2.5">
-                            {lead.source}
-                            {lead.isTest && <span className="ml-2"><Badge variant="outline">Test</Badge></span>}
-                          </td>
-                          <td className="px-3 py-2.5 font-medium text-[var(--color-text-primary)]">
-                            {lead.business || <span className="font-normal text-[var(--color-text-tertiary)]">No business name</span>}
-                            {lead.booking && <BookingDetails booking={lead.booking} />}
-                          </td>
-                          <td className="px-3 py-2.5 text-[var(--color-text-secondary)]">{lead.tool || "–"}</td>
-                          <td className="px-3 py-2.5 text-[var(--color-text-secondary)]">{lead.city || "–"}</td>
-                          <td className="px-3 py-2.5">{lead.hasEmail ? <span aria-label="Has an email">✓</span> : <span className="text-[var(--color-text-tertiary)]">No</span>}</td>
-                          <td className="px-3 py-2.5">
-                            {lead.host ? (
-                              <a href={hostHash(lead.host.id)} className="font-medium text-[var(--color-brand-700)] hover:underline">Yes, open</a>
-                            ) : (
-                              <Badge variant="default">No</Badge>
-                            )}
-                          </td>
-                          <td className="px-4 py-2.5 text-right sm:px-5">
-                            {canAddHosts && lead.canAdd && !lead.isTest ? (
-                              <Button variant="secondary" size="sm" icon={UserPlus} onClick={() => { setAddError(""); setConfirm({ ...lead, raw }); }}>
-                                Add to Hosts
-                              </Button>
-                            ) : null}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <p className="border-t border-[var(--gray-200)] px-4 py-3 text-xs text-[var(--color-text-tertiary)] sm:px-5">
-              Tool runs by signed-in hosts inside the app are product usage, so they are not counted here. Competitor Ops moved to Settings.
-              {data?.truncated ? " Showing the newest 500." : ""}
-            </p>
-          </SectionCard>
-        </>
+      {quiet && !search && (
+        <AlertCard variant="warning" title={quiet.days == null ? "No lead has arrived yet." : `No new lead in ${quiet.days} days.`}>
+          {quiet.lastAt ? `The last one arrived on ${formatDate(quiet.lastAt)}. ` : ""}Check the forms and free tools are still reachable and promoted.
+        </AlertCard>
       )}
-
-      <Modal open={!!confirm} onClose={adding ? () => {} : () => setConfirm(null)} title="Add to Hosts" size="sm">
-        <ModalBody>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            Add <span className="font-semibold text-[var(--color-text-primary)]">{confirm?.business}</span> to Hosts at Prospect?
-            {confirm?.raw?.source === "tool" && confirm?.hasEmail ? " Their email goes on the card as a contact detail." : ""}
-            {confirm?.raw?.source === "book_a_call" ? " Their email and social go on the card as contact details." : ""}
-            {" "}If it is already in Hosts, nothing new is made and you can open that card.
-          </p>
-          {addError && <p role="alert" className="mt-3 text-sm text-[var(--color-error-700)]">{addError}</p>}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" className="min-h-11" disabled={adding} onClick={() => setConfirm(null)}>Cancel</Button>
-          <Button className="min-h-11" loading={adding} onClick={addToHosts}>Add to Hosts</Button>
-        </ModalFooter>
-      </Modal>
+      <LeadsList search={search} onSearch={(next) => setSearch(next, { replace: true })} onCan={onCan} />
     </div>
   );
 }

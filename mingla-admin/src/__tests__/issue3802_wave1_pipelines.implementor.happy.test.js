@@ -368,7 +368,7 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
       // [TEST-MOD-APPROVED #3980] the Work board and Agent log open to both roles.
       // #4130: the boards and Beta leads open as tabs of Hosts and creators
       // and Inbound leads; Needs you (#/drafts) redirects to Work.
-      assert.deepEqual(open.sort(), ["agent", "agent-log", "content-calendar", "guide", "home", "inbound", "outreach", "work-board"], a.role);
+      assert.deepEqual(open.sort(), ["agent", "agent-log", "content-calendar", "forms", "guide", "home", "inbound", "outreach", "website-pages", "work-board"] /* #4452 §7.0 */, a.role);
     }
   });
   it("a page nobody listed is still closed to them", () => {
@@ -421,8 +421,9 @@ describe("#3802 P-7: the menu each role sees", () => {
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
     // #4130: Wave 0 menu — Work in Home; Hosts and creators, Inbound leads
     // and Calendar in Outreach; My agent and Guide in the header.
-    assert.deepEqual(ids(growth), ["home", "work-board", "outreach", "inbound", "content-calendar"]);
-    assert.deepEqual(ids(partner), ["home", "work-board", "outreach", "inbound", "content-calendar"]);
+    // #4452 §7.0: Forms (after Leads) and Website pages (Communications) are open to whoever works the pipelines or beta leads, view-only for them.
+    assert.deepEqual(ids(growth), ["home", "work-board", "outreach", "inbound", "forms", "content-calendar", "website-pages"]);
+    assert.deepEqual(ids(partner), ["home", "work-board", "outreach", "inbound", "forms", "content-calendar", "website-pages"]);
   });
   it("owner and admin see the Outreach group straight after Home", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: a "Team" group, second to last.
@@ -435,7 +436,7 @@ describe("#3802 P-7: the menu each role sees", () => {
       // #4130: the merge with #3872 puts the Creator Program pages (Creators,
       // Gigs, Mingla Locals, Disputes) right under Hosts and creators; owner
       // and admin open them by default, so they see them here.
-      assert.deepEqual(outreach.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["outreach:Hosts and creators:Handshake", "program-creators:Creators:BadgeCheck", "program-gigs:Gigs:Clapperboard", "program-locals:Mingla Locals:MapPin", "program-disputes:Disputes:Scale", "inbound:Inbound leads:Inbox", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
+      assert.deepEqual(outreach.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["outreach:Hosts and creators:Handshake", "program-creators:Creators:BadgeCheck", "program-gigs:Gigs:Clapperboard", "program-locals:Mingla Locals:MapPin", "program-disputes:Disputes:Scale", "inbound:Leads:Inbox", "forms:Forms:FileText", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
     }
     assert.ok(ids(owner).includes("admin"));
     // #4130 (Seth): Team and roles is the owner's again; an admin sees Careers.

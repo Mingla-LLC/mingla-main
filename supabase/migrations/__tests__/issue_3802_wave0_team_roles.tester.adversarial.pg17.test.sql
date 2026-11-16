@@ -722,9 +722,9 @@ begin
     -- admin_users; admin and partner hold team_manage; every role holds
     -- email_drafts.
     v_want_view := case
-      when v_live_after = 'full:admin:active'   then 'admin|true|true|true|false|admin:active:["admin_console", "team_manage", "crm", "beta_leads", "email_drafts"]'
+      when v_live_after = 'full:admin:active'   then 'admin|true|true|true|false|admin:active:["admin_console", "team_manage", "crm", "beta_leads", "email_drafts", "website"]'
       when v_live_after = 'full:admin:invited'  then '-|false|false|false|false|admin:invited:[]'
-      when v_live_after = 'full:partner:active' then 'partner|true|true|true|false|partner:active:["admin_console", "team_manage", "crm", "beta_leads", "email_drafts"]'
+      when v_live_after = 'full:partner:active' then 'partner|true|true|true|false|partner:active:["admin_console", "team_manage", "crm", "beta_leads", "email_drafts", "website"]'
       when v_live_after = 'full:partner:invited' then '-|false|false|false|false|partner:invited:[]'
       when v_live_after = 'team:growth:active'  then 'growth|false|false|false|true|growth:active:["role_home", "crm", "beta_leads", "email_drafts"]'
       when v_live_after = 'team:growth:invited' then '-|false|false|false|false|growth:invited:[]'

@@ -503,7 +503,20 @@ export function phase3dContractDigest(manifest) {
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 integration 3: merged origin/main f512401461 (#4438 #4430 local review owner-read pg17 suite kept beside the #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 experience venue-line privacy and Stay other-contact migrations listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "31081ba28b5fc49e611cc7458b57879fa173c0e9f32129292484dd9ab39204f4";
+// #4435 Phase 0 characterization: listed the four new pg17 suites and their sidecars in the #1931 and #2117 replay inventories beside the #4436 rows; re-sealed.
+// #4436 follow-up 20280708046436 (invited self-join, own prefs): listed the migration after the #4436 guard migration in the #1857, #1931 and #2117 lanes and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4435 W2: listed migrations 20280708054435 (group lifecycle) and 20280708064435 (chat reopen and clear) after 20280708046436 in the #1857, #1931 and #2117 lanes, and their four pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4435 W3c: registered the concurrent-add cap race suite (issue_4435_group_cap_race) and its sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4435 CI fix: re-sealed after skipping 20280708054435 by exact filename in the #1931 filtered replay; MANIFEST.json phase3eContractSha256 matches.
+// #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4452 rework 1: registered the tester adversarial pg17 suite and the rework SQL suite (with sidecars) in the #1931 and #2117 inventories; re-sealed.
+// #4452 retest 1: registered the tester rework adversarial pg17 suite (with its sidecar) in the #1931 and #2117 inventories; re-sealed.
+// #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
+// #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
+// #4420 merge of main after #4455: kept the #4420 Stay other-contact and experience venue-line privacy migrations after the #4452 migrations in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a8fc64072667f68bffb327d3c6bf806f619b842b7ce2d5354bec46e679f757c8";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

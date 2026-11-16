@@ -112,6 +112,10 @@ export async function sendSnapConversion(
     item_ids: input.contentId ? [input.contentId] : undefined,
     content_type: input.contentId ? "product" : undefined,
     brand_id: input.brandId ?? undefined,
+    // #4452 §4.2: Snap has no lead event; the label rides as content_category
+    // and event_tag. Unset on purchases.
+    content_category: input.contentCategory ?? undefined,
+    event_tag: input.eventTag ?? undefined,
   } as Record<string, unknown>);
 
   const event = definedOnly({

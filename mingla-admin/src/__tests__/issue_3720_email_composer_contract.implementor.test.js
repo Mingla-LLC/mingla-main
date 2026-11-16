@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
-const COMPOSER = read("src/components/email/EmailComposer.jsx");
+// #4452 §5.7: the body editor moved to EmailBodyEditor (shared with the forms automation step); the contract spans both.
+const COMPOSER = read("src/components/email/EmailComposer.jsx") + read("src/components/email/EmailBodyEditor.jsx");
 const PAGE = read("src/pages/EmailPage.jsx");
 
 describe("#3720 exact Admin email composer contract", () => {
