@@ -158,7 +158,7 @@ export default function StayStaffPaymentLinkRoute(): React.ReactElement {
     body = (
       <View style={styles.hero} testID="stay-pay-link-error">
         <View style={[styles.heroDisc, { backgroundColor: status.error.tint }]}>
-          <Icon name="x" size={30} color={status.error.text} />
+          <Icon name="close" size={30} color={status.error.text} />
         </View>
         <Text
           style={[styles.heroTitle, themeBoldFace(theme), { color: palette.primaryText }]}
@@ -323,7 +323,7 @@ export default function StayStaffPaymentLinkRoute(): React.ReactElement {
             palette={palette}
             theme={theme}
             title={totalLabel}
-            subtitle="Total · taxes and fees included"
+            subtitle="Taxes and fees included"
             ctaLabel={paying ? "Starting…" : `Pay ${totalLabel}`}
             onPress={() => void pay()}
             enabled={!paying}
