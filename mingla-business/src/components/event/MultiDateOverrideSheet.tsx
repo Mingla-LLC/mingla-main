@@ -602,8 +602,9 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
+  // #4420 (native run): no side padding here. Sheet's body already pads by
+  // SHEET_SIDE_GUTTER, so a second gutter pushed the content to 44pt.
   sheetContent: {
-    paddingHorizontal: space[4],
     paddingTop: space[2],
   },
   sheetTitle: {

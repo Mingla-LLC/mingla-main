@@ -1348,7 +1348,8 @@ const styles = StyleSheet.create({
   paidLine: { fontSize: 14, lineHeight: 20, color: color.textOnPhoto2, textAlign: "center" },
   paidLink: { fontSize: 14, lineHeight: 20, color: color.textStrong, textDecorationLine: "underline", paddingVertical: 12 },
   paidHint: { fontSize: 12, lineHeight: 16, color: color.textSelectedMeta, textAlign: "center" },
-  sheetBody: { paddingHorizontal: space[6], paddingTop: space[4], paddingBottom: space[6], gap: space[2] },
+  // #4420 (native run): Sheet's body owns the side gutter (SHEET_SIDE_GUTTER).
+  sheetBody: { paddingTop: space[4], paddingBottom: space[6], gap: space[2] },
   sheetTitle: { fontSize: 20, lineHeight: 26, fontWeight: "700", color: color.text1 },
   menuRow: {
     overflow: "hidden",
