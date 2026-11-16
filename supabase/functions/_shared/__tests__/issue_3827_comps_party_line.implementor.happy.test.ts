@@ -12,7 +12,11 @@ import { renderTicketBody } from "../email/ticketBody.ts";
 import type { TicketBodyInput } from "../email/types.ts";
 import { guestListPartyLine } from "../email/partyLine.ts";
 
-const PRE_3827_DIGEST = "81a4daf04489b49097f977653a377eead16d40386d993328bdd801be6c0f1e38";
+// #4452 §5.9 rebranded the shared email tokens (SHELL_TOKENS.BRAND_ORANGE_BUTTON is ink), which
+// the ticket body inlines, so the frozen digest moved with the approved frame. The #3827 rule is
+// unchanged: unset and null still render the same bytes as a body without a party line.
+// Before #4452: 81a4daf04489b49097f977653a377eead16d40386d993328bdd801be6c0f1e38.
+const PRE_3827_DIGEST = "611687922b5955fb4dd05b7789a3143029284a3d0b4c31afff40d6dafba22b65";
 
 function input(partyLine?: string | null): TicketBodyInput {
   const order: TicketBodyInput["order"] = {

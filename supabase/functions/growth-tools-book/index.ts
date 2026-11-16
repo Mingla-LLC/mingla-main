@@ -52,6 +52,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 // Branded email shell + senders + escape — reused by import (same infra the
 // grader gate uses to email the report). DO-NOT edit those modules here.
 import { renderShell, SHELL_TOKENS } from "../_shared/email/shell.ts";
+import { emailButton, renderBookingConfirmation } from "./bookingConfirmation.ts";
 import { escapeHtml } from "../_shared/email/escape.ts";
 import {
   type GrowthToolsEmail,
@@ -271,9 +272,6 @@ function formatLocal(ms: number, timeZone: string = TZ): string {
 
 const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED, BRAND_BORDER } = SHELL_TOKENS;
 
-function emailButton(href: string, label: string): string {
-  return `<a href="${escapeHtml(href)}" style="display:inline-block;background:${BRAND_ORANGE_BUTTON};color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:9999px;font-size:15px;">${escapeHtml(label)}</a>`;
-}
 
 // #4339 calendar sync — the send itself is shared with growth-tools-calendar-sync.
 async function sendResend(input: GrowthToolsEmail): Promise<boolean> {
@@ -285,7 +283,7 @@ async function sendResend(input: GrowthToolsEmail): Promise<boolean> {
 
 // Fire both emails. Never throws — a mail failure must not fail the booking
 // (the Google Calendar invite has already gone out via sendUpdates=all).
-async function sendBookingEmails(input: {
+export async function sendBookingEmails(input: {
   startMs: number;
   name: string;
   email: string;
@@ -310,21 +308,16 @@ async function sendBookingEmails(input: {
       footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
         "Mingla, hello@usemingla.com",
     });
-  const meetBtn = input.meetUrl
-    ? `<p style="margin:20px 0 0;">${emailButton(input.meetUrl, "Join the Google Meet")}</p>`
-    : "";
-
-  // 1) Confirmation to the booker.
-  const bookerBody = `
-    <h1 style="margin:0 0 8px;color:${BRAND_INK};font-size:22px;">You’re booked in ✅</h1>
-    <p style="margin:0 0 4px;color:${BRAND_INK};font-size:16px;">Your call with Mingla is confirmed for:</p>
-    <p style="margin:0 0 8px;color:${BRAND_INK};font-size:18px;font-weight:700;">${escapeHtml(when)}</p>
-    <p style="margin:0;color:${BRAND_MUTED};font-size:14px;">A Google Calendar invite with the Meet link is also on its way. Reply to this email if you need to move it.</p>
-    ${meetBtn}`;
-  const bookerText =
-    `You're booked in.\n\nYour call with Mingla is confirmed for ${when}.\n` +
-    `A Google Calendar invite with the Meet link is on its way.` +
-    (input.meetUrl ? `\n\nMeet: ${input.meetUrl}` : "");
+  // 1) Confirmation to the booker: the audience's bar with the app button only (#4452 SC-86).
+  const booker = renderBookingConfirmation({
+    when,
+    meetUrl: input.meetUrl,
+    audience: input.context.audience,
+    supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? REPLY_TO,
+    logoUrl: logo,
+    footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
+      "Mingla, hello@usemingla.com",
+  });
 
   // 2) Notification to Seth — reply-to is the lead so a reply reaches them.
   // #4339 §6 — their social (a working profile link) and website come FIRST, so
@@ -384,7 +377,7 @@ async function sendBookingEmails(input: {
   const ownerBody = `
     <h1 style="margin:0 0 12px;color:${BRAND_INK};font-size:22px;">${host ? "New call booked" : `New ${callLabel} booked`} 📅</h1>
     <p style="margin:0 0 14px;font-size:15px;">${contextLinks}</p>
-    <table style="border-collapse:collapse;font-size:15px;border-top:1px solid ${BRAND_BORDER};border-bottom:1px solid ${BRAND_BORDER};padding:8px 0;">${rows}</table>
+    <table role="presentation" style="border-collapse:collapse;font-size:15px;border-top:1px solid ${BRAND_BORDER};border-bottom:1px solid ${BRAND_BORDER};padding:8px 0;">${rows}</table>
     <p style="margin:18px 0 0;">${links}</p>`;
   const ownerText =
     (host ? `New Mingla call booked.\n\n` : `New Mingla ${callLabel} booked.\n\n`) +
@@ -403,8 +396,8 @@ async function sendBookingEmails(input: {
     sendResend({
       to: [input.email],
       subject: "You’re booked — your Mingla call",
-      html: shell(bookerBody, `Confirmed: ${when}`),
-      text: bookerText,
+      html: booker.html,
+      text: booker.text,
       replyTo: REPLY_TO,
     }),
     sendResend({
