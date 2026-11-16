@@ -16,7 +16,7 @@
  */
 
 import React from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View, type PressableStateCallbackType } from "react-native";
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, type PressableStateCallbackType } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 
 import { color, materials, radius, space, type } from "../../constants/designSystem";
@@ -119,6 +119,42 @@ export interface DesktopSidebarProps {
   testID?: string;
 }
 
+/**
+ * #4420 — the Mingla Host lockup at the kit's size (graphite-glass.css:
+ * `.sidebar .logo { width: 64px }`, rail 48 per kit2 conform.css). The master
+ * is a 2000 square with the lockup in the middle, so drawing the whole square
+ * in a 36 box left the mark about 24 wide and soft. The frame below crops to
+ * the lockup's measured bounds (x 307-1692, y 628-1371 of 2000). On web it
+ * draws the served vector master (public/brand, byte-identical to
+ * packages/brand-assets per the #1001 parity gate), so it is sharp at any
+ * density; native keeps the 2000px PNG master.
+ */
+const LOGO_MASTER = 2000;
+const LOGO_ART = { x: 307, y: 628, w: 1386, h: 744 } as const;
+const LOGO_WIDTH_SIDEBAR = 64;
+const LOGO_WIDTH_RAIL = 48;
+const LOGO_WEB_SOURCE = { uri: "/brand/mingla-business-logo.svg" };
+
+const HostLogo: React.FC<{ width: number }> = ({ width }) => {
+  const scale = width / LOGO_ART.w;
+  const full = LOGO_MASTER * scale;
+  return (
+    <View
+      style={[styles.logoCrop, { width, height: Math.round(LOGO_ART.h * scale) }]}
+      accessibilityRole="image"
+      accessibilityLabel="Mingla Host"
+      testID="desktop-sidebar-logo"
+    >
+      <Image
+        source={Platform.OS === "web" ? LOGO_WEB_SOURCE : MINGLA_BUSINESS_LOGO}
+        style={{ position: "absolute", width: full, height: full, left: -LOGO_ART.x * scale, top: -LOGO_ART.y * scale }}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+      />
+    </View>
+  );
+};
+
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail = false, testID }) => {
   const router = useRouter();
   const pathname = usePathname() ?? "";
@@ -142,7 +178,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
     return (
       <View testID={testID} style={[styles.sidebar, styles.rail]} accessibilityRole="tablist">
         <View style={styles.railLogo}>
-          <Image source={MINGLA_BUSINESS_LOGO} style={styles.logoMark} resizeMode="contain" accessibilityIgnoresInvertColors />
+          <HostLogo width={LOGO_WIDTH_RAIL} />
         </View>
         {railItems.map((item) => {
           const group = groups.find((g) => item.key.startsWith(`${g.key}:`));
@@ -187,7 +223,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
   return (
     <View testID={testID} style={[styles.sidebar, styles.expanded]} accessibilityRole="tablist">
       <View style={styles.brandRow}>
-        <Image source={MINGLA_BUSINESS_LOGO} style={styles.logoMark} resizeMode="contain" accessibilityIgnoresInvertColors />
+        <HostLogo width={LOGO_WIDTH_SIDEBAR} />
         <View style={styles.spacer} />
         <Pressable onPress={toggleCollapsed} accessibilityRole="button" accessibilityLabel="Collapse sidebar" hitSlop={8} style={styles.collapseButton}>
           <Icon name="chevL" size={16} color={color.text3} />
@@ -265,8 +301,8 @@ const styles = StyleSheet.create({
   },
   expanded: { width: DESKTOP_SIDEBAR_WIDTH, paddingVertical: space[4] },
   rail: { width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: space[5], gap: space[2] },
-  railLogo: { width: 40, height: 40, marginBottom: space[3], alignItems: "center", justifyContent: "center" },
-  logoMark: { width: 36, height: 36 },
+  railLogo: { marginBottom: space[3], alignItems: "center", justifyContent: "center" },
+  logoCrop: { overflow: "hidden" },
   brandRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: space[5], paddingBottom: space[4] },
   collapseButton: { width: 28, height: 28, borderRadius: radius.xs, alignItems: "center", justifyContent: "center" },
   groups: { flex: 1 },

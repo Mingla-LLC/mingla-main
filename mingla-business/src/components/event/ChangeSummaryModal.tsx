@@ -669,8 +669,13 @@ const styles = StyleSheet.create({
   stripeMaterial: {
     backgroundColor: color.warning,
   },
+  // #4420: every flex child of a diff row can shrink below its longest word
+  // (min-width:auto made an unbroken name push the old value to a sliver and
+  // run past the row edge); text then wraps at word boundaries and only breaks
+  // inside a word that is longer than the whole column.
   diffContent: {
     flex: 1,
+    minWidth: 0,
     padding: space[4],
     gap: space[1],
   },
@@ -701,6 +706,7 @@ const styles = StyleSheet.create({
   },
   oldValue: {
     flex: 1,
+    minWidth: 0,
     fontSize: 13,
     color: color.text3,
     textDecorationLine: "line-through",
@@ -712,6 +718,7 @@ const styles = StyleSheet.create({
   },
   newValue: {
     flex: 1,
+    minWidth: 0,
     fontSize: 13,
     color: color.text1,
     fontWeight: "500",

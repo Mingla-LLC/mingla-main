@@ -140,6 +140,7 @@ import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
 import { syncBusinessMediaLanguage } from "../src/i18n";
+import { installFieldFocusCss } from "../src/components/ui/fieldFocusCss";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -292,6 +293,10 @@ function RootLayoutInner(): React.ReactElement {
       captureHostPublicSearchPageView(pathname);
     });
   }, [pathname]);
+  // #4420: one focus ring per multiline field on web (fieldFocusCss.web.ts).
+  useEffect(() => {
+    installFieldFocusCss();
+  }, []);
   useEffect(() => {
     if (loading || !user?.id) return;
     let current = true;
