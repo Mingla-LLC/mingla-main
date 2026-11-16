@@ -392,7 +392,8 @@ export type HostAdSetSplit = {
       | null
       | "retarget_not_supported"
       | "budget_below_retarget_threshold"
-      | "retarget_audience_not_ready";
+      | "retarget_audience_not_ready"
+      | "retarget_needs_daily_budget";
   };
 };
 
@@ -401,6 +402,12 @@ export function hostAdSetSplit(
   spendCents: number,
   floorCents: number | null,
   readiness: HostRetargetReadiness | null,
+  /**
+   * #4238 W4a: a "total for the run" (lifetime) budget is the one-ad-set
+   * structure (lifetime budgets are pushed for one ad set only), so it never
+   * gets a retarget ad set.
+   */
+  budgetMode: "daily" | "lifetime" = "daily",
 ): HostAdSetSplit {
   const spend = Number.isSafeInteger(spendCents) && spendCents > 0
     ? spendCents
@@ -416,6 +423,7 @@ export function hostAdSetSplit(
   if (!HOST_RETARGET_PLATFORMS.has(platform)) {
     return one("retarget_not_supported");
   }
+  if (budgetMode === "lifetime") return one("retarget_needs_daily_budget");
   const floor = floorCents !== null && Number.isFinite(floorCents) &&
       floorCents > 0
     ? Math.ceil(floorCents)
@@ -490,4 +498,234 @@ export function hostPastGuestSeedKeys(input: {
     return extra.past_guest_seed_enabled === true;
   });
   return on ? [...new Set(input.readyListKeys)] : [];
+}
+
+/**
+ * #4238 W4a T-2 (create): the ad sets a Host plan's app is built with. The
+ * frozen split (canonical.retarget_by_platform) asks for one or two; the
+ * split is recomputed here from the same hostAdSetSplit with the audiences
+ * read at create. If anything changed (the audience shrank, the buyer list
+ * went away, the budget is lifetime) the plan folds back to ONE prospecting
+ * ad set: one ad set at the full spend is always at or above the floor
+ * preflight checked, so create never refuses a split preflight accepted.
+ *
+ * MINGLA-INVARIANT: I-4238-RETARGET-FOLDS-BACK | issue #4238 | hostAdSetUnits builds a retarget ad set only when the frozen split asked for it AND the create-time hostAdSetSplit still gives two ad sets each >= F; otherwise one prospecting ad set at the full daily spend.
+ */
+export type HostAdSetUnit = {
+  stage: "prospecting" | "retarget";
+  budgetCents: number;
+  targeting: Record<string, unknown>;
+  audienceCodes: string[];
+  audienceSizes: Record<string, number | null>;
+};
+
+type HostStagePlanLike = {
+  blocked: boolean;
+  stages: readonly {
+    stage: string;
+    executable: boolean;
+    includeAudienceIds: readonly string[];
+    excludeAudienceIds: readonly string[];
+    audienceCodes: readonly string[];
+    audienceSizes: Readonly<Record<string, number | null>>;
+  }[];
+};
+
+function idList(value: unknown, key?: string): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) =>
+    key && item && typeof item === "object"
+      ? String((item as Record<string, unknown>)[key] ?? "")
+      : String(item ?? "")
+  ).map((id) => id.trim()).filter(Boolean);
+}
+
+/** The retarget ad set's targeting: the warm audiences in, buyers out. */
+export function hostRetargetTargeting(
+  platform: string,
+  base: Record<string, unknown>,
+  include: readonly string[],
+  exclude: readonly string[],
+): Record<string, unknown> {
+  const unique = (values: string[]) => [...new Set(values)];
+  if (platform === "meta") {
+    const out = unique([
+      ...idList(base.excluded_custom_audiences, "id"),
+      ...exclude,
+    ]);
+    return {
+      ...base,
+      custom_audiences: unique([...include]).map((id) => ({ id })),
+      excluded_custom_audiences: out.map((id) => ({ id })),
+      // A warm audience is attached: Advantage+ must not widen past it.
+      targeting_automation: { advantage_audience: 0 },
+    };
+  }
+  if (platform === "snapchat") {
+    return {
+      ...base,
+      segment_include_ids: unique([...include]),
+      segment_exclude_ids: unique([
+        ...idList(base.segment_exclude_ids),
+        ...exclude,
+      ]),
+    };
+  }
+  if (platform === "tiktok") {
+    return {
+      ...base,
+      audience_ids: unique([...include]),
+      excluded_audience_ids: unique([
+        ...idList(base.excluded_audience_ids),
+        ...exclude,
+      ]),
+    };
+  }
+  throw new Error(`host_retarget_platform_unsupported:${platform}`);
+}
+
+export function hostAdSetUnits(input: {
+  platform: string;
+  frozen: unknown;
+  dailySpendCents: number;
+  floorCents: number | null;
+  budgetMode: "daily" | "lifetime";
+  stagePlan: HostStagePlanLike | null;
+  baseTargeting: Record<string, unknown>;
+}): { units: HostAdSetUnit[]; folded: string | null } {
+  const one: HostAdSetUnit[] = [{
+    stage: "prospecting",
+    budgetCents: input.dailySpendCents,
+    targeting: input.baseTargeting,
+    audienceCodes: [],
+    audienceSizes: {},
+  }];
+  const frozen = input.frozen && typeof input.frozen === "object"
+    ? input.frozen as Record<string, unknown>
+    : null;
+  if (!frozen || frozen.ad_sets !== 2) return { units: one, folded: null };
+  const split = hostAdSetSplit(
+    input.platform,
+    input.dailySpendCents,
+    input.floorCents,
+    hostRetargetReadiness(input.stagePlan),
+    input.budgetMode,
+  );
+  if (split.ad_sets !== 2 || !input.stagePlan) {
+    return {
+      units: one,
+      folded: split.retarget.reason ?? "retarget_audience_not_ready",
+    };
+  }
+  const warm = input.stagePlan.stages.filter((stage) =>
+    (stage.stage === "retarget" || stage.stage === "abandoners") &&
+    stage.executable
+  );
+  const include = [...new Set(warm.flatMap((stage) => stage.includeAudienceIds))];
+  const buyers = input.stagePlan.stages.find((stage) =>
+    stage.stage === "prospecting"
+  )?.excludeAudienceIds ?? [];
+  if (include.length === 0 || buyers.length === 0) {
+    return { units: one, folded: "retarget_audience_not_ready" };
+  }
+  return {
+    units: [
+      { ...one[0], budgetCents: split.prospecting_cents },
+      {
+        stage: "retarget",
+        budgetCents: split.retarget_cents,
+        targeting: hostRetargetTargeting(
+          input.platform,
+          input.baseTargeting,
+          include,
+          [...buyers],
+        ),
+        audienceCodes: warm.flatMap((stage) => [...stage.audienceCodes]),
+        audienceSizes: Object.assign(
+          {},
+          ...warm.map((stage) => ({ ...stage.audienceSizes })),
+        ),
+      },
+    ],
+    folded: null,
+  };
+}
+
+/**
+ * #4238 W4a T-2 (live edit): the budget each live Host ad set gets for a new
+ * daily spend S. The retarget ad set runs only while S >= 2F (R = max(F,
+ * floor(0.2·S)), prospecting S − R); below that it is paused and its budget
+ * moves to prospecting (retarget_removed); a rise back to 2F resumes it
+ * (retarget_added). Every running ad set is always >= F. Pure.
+ *
+ * MINGLA-INVARIANT: I-4238-LIVE-EDIT-NEVER-BELOW-AD-SET-FLOOR | issue #4238 | hostLiveAdSetBudgets never gives a running ad set less than the one-ad-set floor F; below 2F the retarget ad set is paused and prospecting carries the whole daily spend.
+ */
+export type HostLiveAdSet = {
+  id: string;
+  stage: "prospecting" | "retarget";
+  paused: boolean;
+};
+
+export type HostLiveAdSetBudget = {
+  id: string;
+  stage: "prospecting" | "retarget";
+  cents: number;
+  /** "pause" / "resume" the retarget ad set; null = keep its status. */
+  status: "pause" | "resume" | null;
+};
+
+export function hostLiveAdSetBudgets(input: {
+  platform: string;
+  dailySpendCents: number;
+  floorCents: number | null;
+  adSets: readonly HostLiveAdSet[];
+}): HostLiveAdSetBudget[] {
+  const prospecting = input.adSets.find((row) => row.stage === "prospecting");
+  const retarget = input.adSets.find((row) => row.stage === "retarget");
+  if (!prospecting) throw new Error("host_prospecting_ad_set_missing");
+  if (!retarget) {
+    return [{
+      id: prospecting.id,
+      stage: "prospecting",
+      cents: input.dailySpendCents,
+      status: null,
+    }];
+  }
+  // The retarget ad set already exists, so its audience was ready at create.
+  const split = hostAdSetSplit(
+    input.platform,
+    input.dailySpendCents,
+    input.floorCents,
+    { audienceReady: true, buyerExclusionReady: true },
+  );
+  if (split.ad_sets === 2) {
+    return [
+      {
+        id: prospecting.id,
+        stage: "prospecting",
+        cents: split.prospecting_cents,
+        status: null,
+      },
+      {
+        id: retarget.id,
+        stage: "retarget",
+        cents: split.retarget_cents,
+        status: retarget.paused ? "resume" : null,
+      },
+    ];
+  }
+  return [
+    {
+      id: prospecting.id,
+      stage: "prospecting",
+      cents: input.dailySpendCents,
+      status: null,
+    },
+    {
+      id: retarget.id,
+      stage: "retarget",
+      cents: 0,
+      status: retarget.paused ? null : "pause",
+    },
+  ];
 }

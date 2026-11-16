@@ -1704,6 +1704,7 @@ async function planAndRunLiveEdit(
     recordLiveEditProblem(db, { planId, versionId, brandId, actorId, editKey, rows, problem });
   return await runHostLiveEdit({ db, getAdapter, onProblem }, {
     plan: planned,
+    planId,
     versionId,
     planHash: String(version.plan_hash),
     campaigns: rows,

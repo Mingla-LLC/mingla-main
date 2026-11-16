@@ -94,7 +94,9 @@ import {
   buildAdStagePlan,
 } from "../_shared/adAudienceStages.ts";
 import {
+  HOST_LIFETIME_PLATFORMS,
   hostAdSetSplit,
+  hostBudgetModeFor,
   hostPastGuestSeedKeys,
   type HostRetargetReadiness,
   hostRetargetReadiness,
@@ -407,6 +409,8 @@ export async function buildHostBudgetGuidance(
     appChoice?: "mingla" | "host";
     /** #4238 T-2: retarget readiness per app (absent = not ready). */
     retargetReadiness?: Record<string, HostRetargetReadiness>;
+    /** #4238 W4a: "total for the run" was asked for. */
+    lifetime?: boolean;
   },
 ): Promise<Record<string, unknown>> {
   const { data: connections, error } = await db.from("ad_connections")
@@ -576,6 +580,10 @@ export async function buildHostBudgetGuidance(
       Number(shares[app.platform] ?? 0),
       app.minimum_daily_credit_cents,
       input.retargetReadiness?.[app.platform] ?? null,
+      // #4238 W4a: a lifetime run is the one-ad-set structure.
+      input.lifetime === true && HOST_LIFETIME_PLATFORMS.has(app.platform)
+        ? "lifetime"
+        : "daily",
     );
     return {
       ...app,
@@ -2265,6 +2273,7 @@ export async function handleAdPlan(
         ? body.occurrence_key
         : null,
       appChoice: body.app_choice === "mingla" ? "mingla" : "host",
+      lifetime,
       retargetReadiness: await loadHostRetargetReadiness(db, {
         platforms,
         countries: guidanceCountries,
@@ -3510,6 +3519,7 @@ export async function handleAdPlan(
                 optimization.map[platform] ?? "visits",
               ),
               retargetReadiness[platform] ?? null,
+              hostBudgetModeFor(platform, canonical),
             ),
           ];
         }),

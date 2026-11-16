@@ -81,10 +81,11 @@ import {
   REDDIT_CTA_MAP,
   TIKTOK_CTA_MAP,
 } from "../_shared/adChannel.ts";
-import type {
-  AdAudienceRow,
-  AdStage,
-  PaidSocialPlatform,
+import {
+  type AdAudienceRow,
+  type AdStage,
+  buildAdStagePlan,
+  type PaidSocialPlatform,
 } from "../_shared/adAudienceStages.ts";
 import {
   buildPaidSocialStageRuntime,
@@ -221,7 +222,10 @@ import {
 } from "../_shared/adHostGoal.ts";
 import {
   HOST_LIFETIME_PLATFORMS,
+  type HostAdSetUnit,
+  hostAdSetUnits,
   hostBudgetModeFor,
+  hostCreativeLibraryIds,
   hostFrequencyCap,
   hostMetaAdvantageAudience,
   paidSocialStagesApply,
@@ -710,6 +714,118 @@ async function preparePaidSocialStages(
   });
   if (!valid.ok) throw new Error(valid.detail);
   return { runtime, creativeRows: creativeRows ?? [] };
+}
+
+/**
+ * #4238 W4a (T-2 + 6b): what a Host/Ari plan's app is built with on Meta,
+ * Snapchat or TikTok — the ad sets (one prospecting, plus the retarget ad set
+ * the frozen split asked for while it still holds, else folded back to one)
+ * and one ad per frozen creative (1–5), every creative's media prepared for
+ * this app. Null = the plain one-ad-set, one-ad path (unchanged). Reads only
+ * the reviewed plan version and server tables, never the request body.
+ */
+type HostAdSetPreparation = {
+  units: HostAdSetUnit[];
+  creativeIds: string[];
+  media: Map<string, PaidSocialCreativeMedia>;
+  folded: string | null;
+};
+
+async function prepareHostAdSets(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  input: {
+    platform: PaidSocialPlatform;
+    connection: AdConnectionRow;
+    lane: "consumer" | "business";
+    canonicalPlan: Record<string, unknown> | null;
+    markets: string[];
+    brandId: string | null;
+    eventId: string | null;
+    dailySpendCents: number;
+    floorCents: number | null;
+    budgetMode: "daily" | "lifetime";
+    baseTargeting: Record<string, unknown>;
+  },
+): Promise<HostAdSetPreparation | null> {
+  const canonical = input.canonicalPlan ?? {};
+  const ids = hostCreativeLibraryIds(
+    canonical.creative_library_ids,
+    canonical.creative_library_id,
+  );
+  if (!ids.ok) throw new Error(ids.detail);
+  const frozen = objectRecord(canonical.retarget_by_platform)?.[
+    input.platform
+  ];
+  const wantsTwo = objectRecord(frozen)?.ad_sets === 2;
+  let stagePlan: ReturnType<typeof buildAdStagePlan> = null;
+  const market = input.markets.length === 1
+    ? input.markets[0].trim().toUpperCase()
+    : "";
+  if (
+    wantsTwo && /^[A-Z]{2}$/.test(market) && input.brandId && input.eventId
+  ) {
+    const { data, error } = await db.from("ad_audiences")
+      .select(
+        "id,platform,code,scope,market,brand_id,event_id,platform_audience_id,approx_size,status",
+      )
+      .eq("platform", input.platform).eq("market", market);
+    // Not ready is the safe side: one ad set, never a retarget without data.
+    if (!error) {
+      stagePlan = buildAdStagePlan({
+        platform: input.platform,
+        rows: (data ?? []) as AdAudienceRow[],
+        market,
+        brandId: input.brandId,
+        eventId: input.eventId,
+        totalBudgetCents: 0,
+      });
+    }
+  }
+  const built = hostAdSetUnits({
+    platform: input.platform,
+    frozen,
+    dailySpendCents: input.dailySpendCents,
+    floorCents: input.floorCents,
+    budgetMode: input.budgetMode,
+    stagePlan,
+    baseTargeting: input.baseTargeting,
+  });
+  if (built.units.length === 1 && ids.ids.length === 1 && !wantsTwo) {
+    return null;
+  }
+  const { data: rows, error: rowError } = await db.from("ad_creatives")
+    .select(
+      "id,brand_id,kind,name,status,purged_at,content_hash,source_url,poster_url,aspect_ratio,variants,duration_seconds,has_audio,ai_generated",
+    )
+    .in("id", ids.ids);
+  if (rowError) throw rowError;
+  const creativeRows = (rows ?? []) as Record<string, unknown>[];
+  for (const id of ids.ids) {
+    const row = creativeRows.find((item) => item.id === id);
+    if (!row || row.purged_at || (input.brandId && row.brand_id !== input.brandId)) {
+      throw new Error(`host_creative_not_found:${id}`);
+    }
+  }
+  let media: Map<string, PaidSocialCreativeMedia>;
+  try {
+    media = await resolvePaidSocialCreativeMedia(db, {
+      platform: input.platform,
+      connection: input.connection,
+      lane: input.lane,
+      creativeRows,
+      creativeIds: ids.ids,
+    });
+  } catch (error) {
+    // Every creative is prepared for this app at launch; one that isn't is
+    // refused by name, never silently dropped.
+    throw new Error(
+      `host_creative_not_prepared:${
+        (error instanceof Error ? error.message : String(error)).slice(0, 120)
+      }`,
+    );
+  }
+  return { units: built.units, creativeIds: ids.ids, media, folded: built.folded };
 }
 
 async function persistStageSnapshots(
@@ -6464,6 +6580,36 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  // #4238 W4a: Host ad sets (prospecting + retarget) and one ad per creative.
+  let hostMeta: HostAdSetPreparation | null = null;
+  if (requestedOwnerKind === "host" && !metaStages) {
+    try {
+      hostMeta = await prepareHostAdSets(supabase, {
+        platform: "meta",
+        connection,
+        lane,
+        canonicalPlan: boundCanonicalPlan,
+        markets: (countries as string[]).map((country) => String(country)),
+        brandId: boundPlanOwnership?.brand_id ?? null,
+        eventId: destEventId,
+        dailySpendCents: providerAmountCents,
+        floorCents,
+        budgetMode: budgetType,
+        baseTargeting: targeting as Record<string, unknown>,
+      });
+    } catch (error) {
+      return json({
+        error: "host_ad_set_preflight_failed",
+        detail: hostSafeDatabaseDetail(
+          error,
+          "admin-ad-create-campaign host ad sets",
+          "host_ad_set_preflight_failed",
+        ),
+      }, 422);
+    }
+  }
+  const hostMetaAbo = (hostMeta?.units.length ?? 0) > 1;
+
   // ── The atomic create (§4.4b — no orphans; everything PAUSED). ───────────────
   try {
     let externalCampaignId: string;
@@ -6541,6 +6687,74 @@ serve(async (req: Request): Promise<Response> => {
           })),
         };
       });
+    } else if (hostMeta) {
+      // #4238 W4a: CBO with one ad set; ABO (ad-set budgets) only with the
+      // retarget ad set, so both budgets are the reviewed split.
+      const plan = hostMeta;
+      const units = plan.units.map((unit) => ({
+        unit,
+        adSet: {
+          ...adSetInput,
+          name: `${name} — ${unit.stage}`,
+          targeting: unit.targeting,
+          ...(hostMetaAbo ? { budgetCents: unit.budgetCents } : {}),
+        } as CreateAdSetInput,
+      }));
+      const adName = (stage: string, index: number) =>
+        `${name} — ${stage} — ${index + 1}`;
+      const staged = await createStagedCampaignAtomic(adapter, connection, {
+        campaign: hostMetaAbo
+          ? {
+            name: campaignInput.name,
+            objective: campaignInput.objective,
+            bidStrategy: campaignInput.bidStrategy,
+            specialAdCategories: campaignInput.specialAdCategories,
+            specialAdCategoryCountry: campaignInput.specialAdCategoryCountry,
+          }
+          : campaignInput,
+        stages: units.map(({ unit, adSet }) => ({
+          key: unit.stage,
+          adSet,
+          ads: plan.creativeIds.map((creativeId, index) => {
+            const media = plan.media.get(creativeId);
+            if (!media?.metaPlacementAssets) {
+              throw new Error(`stage_creative_media_missing:${creativeId}`);
+            }
+            return {
+              creative: {
+                ...creativeInput,
+                imageUrl: undefined,
+                imageHash: undefined,
+                videoId: undefined,
+                videoThumbnailImageHash: undefined,
+                metaPlacementAssets: media.metaPlacementAssets,
+                aiGenerated: media.aiGenerated || creativeInput.aiGenerated,
+                adName: adName(unit.stage, index),
+              },
+              ad: { ...adInput, name: adName(unit.stage, index) },
+            };
+          }),
+        })),
+      });
+      externalCampaignId = staged.externalCampaignId;
+      createdUnits = staged.stages.map((stageResult) => {
+        const item = units.find(({ unit }) => unit.stage === stageResult.key)!;
+        return {
+          stage: item.unit.stage,
+          audienceCodes: item.unit.audienceCodes,
+          audienceSizes: item.unit.audienceSizes,
+          budgetCents: hostMetaAbo ? item.unit.budgetCents : null,
+          adSetInput: item.adSet,
+          externalAdSetId: stageResult.externalAdSetId,
+          ads: stageResult.ads.map((ad, index) => ({
+            creativeId: plan.creativeIds[index] ?? null,
+            name: adName(item.unit.stage, index),
+            externalCreativeId: ad.externalCreativeId,
+            externalAdId: ad.externalAdId,
+            reviewStatus: ad.reviewStatus,
+          })),
+        };
+      });
     } else {
       const created = await createFullCampaignAtomic(adapter, connection, {
         campaign: campaignInput,
@@ -6610,7 +6824,9 @@ serve(async (req: Request): Promise<Response> => {
         status: "PAUSED",
         // Staged paid social is ABO: the reviewed 70/20/10 money lives on
         // ad sets, never silently duplicated at campaign level.
-        daily_budget_cents: metaStages ? null : dailyBudgetForPersist,
+        daily_budget_cents: metaStages || hostMetaAbo
+          ? null
+          : dailyBudgetForPersist,
         delivery_status: deliveryStatus,
         status_synced_at: new Date().toISOString(),
         targeting,

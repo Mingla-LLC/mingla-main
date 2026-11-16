@@ -24,6 +24,7 @@ import type {
   Platform,
 } from "./adChannelCore.ts";
 import { proportionalSplit } from "./adBudgetChange.ts";
+import { hostLiveAdSetBudgets } from "./adHostPlanRules.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -76,6 +77,8 @@ export type HostLivePlanLine = {
   new_provider_budget_cents: number;
   new_provider_delivery_budget_cents: number;
   daily_changed: boolean;
+  /** #4238 W4a: the one-ad-set floor F in provider money (null = unknown). */
+  floor_cents?: number | null;
 };
 
 export type HostLivePlan =
@@ -305,6 +308,7 @@ export function planHostLiveEdit(input: {
       new_provider_budget_cents: newCap,
       new_provider_delivery_budget_cents: newDaily,
       daily_changed: dailyChanged,
+      floor_cents: minimum,
     });
   }
   return {
@@ -321,15 +325,28 @@ type Target = {
   externalId: string;
   previousCents: number;
   nextCents: number;
+  /** #4238 W4a: pause or resume the retarget ad set with this edit. */
+  status?: "pause" | "resume" | null;
+  /** The local ad_sets row (ad-set targets only). */
+  localId?: string;
+  stage?: "prospecting" | "retarget" | null;
 };
 
-async function dailyTargets(
+/**
+ * #4238 W4a T-2: a Meta campaign with ad-set budgets (ABO — the Host
+ * retarget structure) has no campaign daily budget, so its budget is pushed
+ * at ad-set level like Snapchat and TikTok. A Host campaign with a retarget
+ * ad set takes hostLiveAdSetBudgets: the retarget ad set runs only at 2F or
+ * more, every running ad set stays at or above F, and below 2F it is paused
+ * with its budget moved to prospecting.
+ */
+export async function dailyTargets(
   db: Db,
   campaign: Record<string, unknown>,
   line: HostLivePlanLine,
   previousDaily: number,
 ): Promise<Target[]> {
-  if (line.platform === "meta") {
+  const campaignTarget = (): Target[] => {
     const externalId = String(campaign.external_campaign_id ?? "");
     if (!externalId) throw new Error("campaign_budget_target_missing");
     return [{
@@ -338,24 +355,75 @@ async function dailyTargets(
       previousCents: previousDaily,
       nextCents: line.new_provider_delivery_budget_cents,
     }];
-  }
+  };
+  if (
+    line.platform === "meta" && campaign.daily_budget_cents !== null &&
+    campaign.daily_budget_cents !== undefined
+  ) return campaignTarget();
   const { data: adSets, error } = await db.from("ad_sets")
-    .select("id,external_adset_id,budget_cents").eq("campaign_id", campaign.id)
+    .select("id,external_adset_id,budget_cents,stage,status")
+    .eq("campaign_id", campaign.id)
     .order("id");
+  if (line.platform === "meta") {
+    // Meta is ABO only when its ad sets carry the budgets; otherwise the
+    // budget is on the campaign (CBO), as before.
+    const abo = !error && Array.isArray(adSets) &&
+      adSets.some((row: Record<string, unknown>) => Number(row.budget_cents) > 0);
+    if (!abo) return campaignTarget();
+  }
   if (error || !Array.isArray(adSets) || adSets.length === 0) {
     throw new Error("ad_set_budget_target_missing");
   }
-  const weights = adSets.map((row: Record<string, unknown>) => {
+  const rows = adSets as Record<string, unknown>[];
+  const retarget = rows.find((row) => row.stage === "retarget");
+  const prospecting = rows.find((row) => row.stage === "prospecting");
+  if (campaign.owner_kind === "host" && retarget && prospecting) {
+    // Paused by an earlier edit = the latest retarget event is a removal.
+    const { data: lastMove } = await db.from("ad_plan_automation_events")
+      .select("kind,created_at").eq("campaign_id", campaign.id)
+      .in("kind", ["retarget_added", "retarget_removed"])
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const paused = lastMove?.kind === "retarget_removed";
+    const before = (row: Record<string, unknown>) => {
+      const cents = Number(row.budget_cents);
+      return Number.isSafeInteger(cents) && cents > 0 ? cents : 0;
+    };
+    const next = hostLiveAdSetBudgets({
+      platform: line.platform,
+      dailySpendCents: line.new_provider_delivery_budget_cents,
+      floorCents: line.floor_cents ?? null,
+      adSets: [
+        { id: String(prospecting.id), stage: "prospecting", paused: false },
+        { id: String(retarget.id), stage: "retarget", paused },
+      ],
+    });
+    return next.map((item) => {
+      const row = item.stage === "retarget" ? retarget : prospecting;
+      return {
+        level: "ad_set" as const,
+        externalId: String(row.external_adset_id ?? ""),
+        previousCents: before(row),
+        // A paused retarget ad set keeps its last budget (never pushed 0).
+        nextCents: item.cents > 0 ? item.cents : before(row),
+        status: item.status,
+        localId: String(row.id),
+        stage: item.stage,
+      };
+    });
+  }
+  const weights = rows.map((row) => {
     const cents = Number(row.budget_cents);
     return Number.isSafeInteger(cents) && cents > 0 ? cents : 1;
   });
   const before = proportionalSplit(previousDaily, weights);
   const after = proportionalSplit(line.new_provider_delivery_budget_cents, weights);
-  return adSets.map((row: Record<string, unknown>, index: number) => ({
+  return rows.map((row, index: number) => ({
     level: "ad_set" as const,
     externalId: String(row.external_adset_id ?? ""),
     previousCents: before[index],
     nextCents: after[index],
+    localId: String(row.id),
+    stage: null,
   }));
 }
 
@@ -394,6 +462,8 @@ export async function runHostLiveEdit(
   },
   input: {
     plan: HostLivePlan & { ok: true };
+    /** #4238 W4a: retarget moves are recorded on the plan. */
+    planId?: string;
     versionId: string;
     planHash: string;
     campaigns: Record<string, unknown>[];
@@ -405,6 +475,13 @@ export async function runHostLiveEdit(
   const { db, getAdapter } = deps;
   const pushed: Array<{ platform: Platform; connection: AdConnectionRow; undo: () => Promise<void> }> = [];
   const evidence: Record<string, Record<string, unknown>> = {};
+  const retargetMoves: Array<{
+    campaign: Record<string, unknown>;
+    line: HostLivePlanLine;
+    kind: "retarget_added" | "retarget_removed";
+    target: Target;
+  }> = [];
+  const adSetBudgets: Target[] = [];
   const report = async (problem: HostLiveEditProblem) => {
     if (!deps.onProblem) return;
     try {
@@ -484,18 +561,49 @@ export async function runHostLiveEdit(
             throw new Error("provider_budget_readback_unavailable");
           }
           const confirmed = [];
-          for (const target of await dailyTargets(db, campaign, line, previousDaily)) {
-            await adapter.setBudget(connection, target.level, target.externalId, target.nextCents);
-            pushed.push({
-              platform: line.platform,
-              connection,
-              undo: () => adapter.setBudget(connection, target.level, target.externalId, target.previousCents),
-            });
-            const readback = await adapter.getBudget(connection, target.level, target.externalId);
-            if (readback.cents !== target.nextCents) {
-              throw new Error(`provider_budget_readback_mismatch:${target.nextCents}:${readback.cents}`);
+          const targets = await dailyTargets(db, campaign, line, previousDaily);
+          // #4238 W4a: pause the retarget ad set BEFORE prospecting takes its
+          // budget, and resume it only AFTER prospecting gave it back, so the
+          // apps never run above the new daily total in between.
+          const ordered = [
+            ...targets.filter((target) => target.status === "pause"),
+            ...targets.filter((target) => target.status !== "pause" && target.status !== "resume"),
+            ...targets.filter((target) => target.status === "resume"),
+          ];
+          for (const target of ordered) {
+            if (target.status === "pause") {
+              await adapter.setStatus(connection, target.level, target.externalId, "PAUSED");
+              pushed.push({
+                platform: line.platform,
+                connection,
+                undo: () => adapter.setStatus(connection, target.level, target.externalId, "ACTIVE"),
+              });
+              retargetMoves.push({ campaign, line, kind: "retarget_removed", target });
+              continue;
             }
-            confirmed.push({ level: target.level, external_id: target.externalId, daily_budget_cents: readback.cents });
+            if (target.nextCents !== target.previousCents) {
+              await adapter.setBudget(connection, target.level, target.externalId, target.nextCents);
+              pushed.push({
+                platform: line.platform,
+                connection,
+                undo: () => adapter.setBudget(connection, target.level, target.externalId, target.previousCents),
+              });
+              const readback = await adapter.getBudget(connection, target.level, target.externalId);
+              if (readback.cents !== target.nextCents) {
+                throw new Error(`provider_budget_readback_mismatch:${target.nextCents}:${readback.cents}`);
+              }
+              confirmed.push({ level: target.level, external_id: target.externalId, daily_budget_cents: readback.cents });
+            }
+            if (target.status === "resume") {
+              await adapter.setStatus(connection, target.level, target.externalId, "ACTIVE");
+              pushed.push({
+                platform: line.platform,
+                connection,
+                undo: () => adapter.setStatus(connection, target.level, target.externalId, "PAUSED"),
+              });
+              retargetMoves.push({ campaign, line, kind: "retarget_added", target });
+            }
+            if (target.localId && target.level === "ad_set") adSetBudgets.push(target);
           }
           evidence[line.campaign_id] = { confirmed, pushed_at: new Date().toISOString() };
         }
@@ -579,11 +687,50 @@ export async function runHostLiveEdit(
       // (the answer was lost). Check before undoing anything.
       return await recoverOrRevert(409, `record error: ${message.slice(0, 200)}`);
     }
+    await recordAdSetMoves();
     return succeeded(data);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[host-live-edit] interrupted", { detail: detail.slice(0, 300) });
     return await recoverOrRevert(502, `interrupted: ${detail.slice(0, 200)}`);
+  }
+
+  /**
+   * #4238 W4a: after the edit is recorded, keep Mingla's ad-set budgets in
+   * step (the next edit splits from them) and record each retarget move
+   * (retarget_added / retarget_removed). Best effort: the app already
+   * matches the recorded edit; a failure here is logged, never undone.
+   */
+  async function recordAdSetMoves(): Promise<void> {
+    try {
+      for (const target of adSetBudgets) {
+        await db.from("ad_sets").update({ budget_cents: target.nextCents })
+          .eq("id", target.localId);
+      }
+      if (retargetMoves.length > 0 && input.planId) {
+        const { error } = await db.from("ad_plan_automation_events").insert(
+          retargetMoves.map((move) => ({
+            plan_id: input.planId,
+            campaign_id: move.campaign.id,
+            platform: move.line.platform,
+            kind: move.kind,
+            status: "applied",
+            applied_at: new Date().toISOString(),
+            detail: {
+              idempotency_key: input.idempotencyKey,
+              external_adset_id: move.target.externalId,
+              daily_spend_cents: move.line.new_provider_delivery_budget_cents,
+              floor_cents: move.line.floor_cents ?? null,
+            },
+          })),
+        );
+        if (error) throw new Error(String(error.message ?? "insert"));
+      }
+    } catch (error) {
+      console.error("[host-live-edit] ad-set moves not recorded", {
+        detail: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+      });
+    }
   }
 
   function succeeded(edit: unknown, extra: Record<string, unknown> = {}): HostLiveEditResult {

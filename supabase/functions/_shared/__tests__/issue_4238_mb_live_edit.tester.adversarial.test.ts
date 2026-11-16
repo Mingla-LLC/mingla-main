@@ -148,7 +148,9 @@ function fakeDb(rpc: () => Promise<{ data: unknown; error: unknown }>, calls: st
 }
 
 const rows = [
-  { id: "m", platform: "meta", external_campaign_id: "meta-c", connection_id: "k1", provider_delivery_budget_cents: 500, provider_budget_cents: 5_000 },
+  // #4238 W4a: a Meta CBO campaign carries its daily budget on the campaign
+  // row (an ABO campaign, with budgets on its ad sets, has none).
+  { id: "m", platform: "meta", external_campaign_id: "meta-c", connection_id: "k1", daily_budget_cents: 500, provider_delivery_budget_cents: 500, provider_budget_cents: 5_000 },
   { id: "t", platform: "tiktok", external_campaign_id: "tt-c", connection_id: "k2", provider_delivery_budget_cents: 500, provider_budget_cents: 5_000 },
 ];
 

@@ -422,10 +422,13 @@ export async function runHostAdAutomation(deps: {
         if (!decision.promote) {
           report.ladder = decision.reason;
         } else {
-          const { data: sets } = await db.from("ad_sets")
-            .select("external_adset_id").eq("campaign_id", ctx.campaignId)
-            .limit(1)
-            .maybeSingle();
+          const { data: setRows } = await db.from("ad_sets")
+            .select("external_adset_id,stage").eq("campaign_id", ctx.campaignId);
+          // #4238 W4a: only the prospecting ad set climbs the ladder; a
+          // retarget ad set keeps its frozen goal. Older rows have no stage.
+          const allSets = (setRows ?? []) as Record<string, unknown>[];
+          const sets = allSets.find((row) => row.stage === "prospecting") ??
+            allSets.find((row) => row.stage !== "retarget") ?? null;
           const oldAdSet = String(sets?.external_adset_id ?? "");
           const started = oldAdSet
             ? await startGoalPromotion(
