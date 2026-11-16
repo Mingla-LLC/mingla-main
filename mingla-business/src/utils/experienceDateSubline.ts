@@ -17,6 +17,7 @@
 
 import { formatRecurrenceLabel } from "./recurrenceRule";
 import type { RecurrenceRule } from "../store/draftEventStore";
+import { normalizeCityCountry } from "@mingla/offering-rendering";
 
 export type ExperienceWhenMode = "single" | "recurring" | "multi_date";
 
@@ -68,6 +69,20 @@ function earliestIso(isos: string[]): string | null {
     .filter((x) => Number.isFinite(x.ms))
     .sort((a, b) => a.ms - b.ms);
   return all.length > 0 ? all[0].iso : null;
+}
+
+/**
+ * #4420 — the place line a BUYER sees before booking. The public experience
+ * page shows only the city and country (experienceOfferingAdapter
+ * `normalizeCityCountry(venueText)`): the exact stop addresses stay hidden
+ * until booking (hideAddressUntilTicket, default on; the public RPC nulls each
+ * stop's address). `venueText` can fall back to the first stop's full street
+ * address, so the checkout must show the same city line, never the street.
+ */
+export function experienceBuyerVenueLine(
+  venueText: string | null | undefined,
+): string | null {
+  return normalizeCityCountry(venueText);
 }
 
 export function formatExperienceDateSubline(

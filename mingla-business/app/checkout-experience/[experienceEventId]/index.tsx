@@ -25,7 +25,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { radius as radiusTokens, space, color } from "../../../src/constants/designSystem";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { formatCurrency } from "../../../src/utils/currency";
-import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
+import {
+  experienceBuyerVenueLine,
+  formatExperienceDateSubline,
+} from "../../../src/utils/experienceDateSubline";
 import type { PublicExperienceTicket } from "../../../src/services/publicExperienceService";
 import type {
   TicketAvailableAt,
@@ -372,7 +375,8 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   const qty = line?.quantity ?? 0;
   const continueLabel = totals.isFree ? "Reserve free spot" : "Continue";
   const subline = formatExperienceDateSubline({
-    venueText: experience.venueText,
+    // #4420 — city and country only before booking, like the public page.
+    venueText: experienceBuyerVenueLine(experience.venueText),
     dateStartIsos: dateIsos,
     whenMode: experience.whenMode,
     recurrenceRule: experience.recurrenceRule,
