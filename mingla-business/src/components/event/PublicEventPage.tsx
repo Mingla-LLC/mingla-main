@@ -1534,6 +1534,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const multiDateDayChooser = requiresMultiDatePurchase ? (
     <React.Suspense fallback={null}>
       <MultiDateDayChooser
+        framed
         timezone={event.timezone ?? "UTC"}
         palette={palette}
         fontFamily={boldFamily}
@@ -2631,7 +2632,9 @@ const styles = StyleSheet.create({
     zIndex: 7,
   },
   // issue #4420 — on desktop the notice sits over the bottom-right glass bar.
-  accessNoticeDesktop: { left: undefined, right: 28, width: 440, maxWidth: "90%" },
+  // `left: "auto"` (not undefined) so the phone inset of 16 is really dropped:
+  // a style merge ignores undefined, which pinned the notice bottom-left.
+  accessNoticeDesktop: { left: "auto", right: 28, width: 440, maxWidth: "90%" },
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 1 post-payment web return banner.
   // Pinned top, above the parallax chrome (zIndex 6 in the shell), dismissible.
   returnBannerWrap: {

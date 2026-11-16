@@ -969,7 +969,9 @@ export interface EventTicketBoxProps {
    * A FREE event passes null in both modes — there is no price to qualify.
    */
   pricingNote?: string | null;
-  /** issue #2399 — app-local content injected before ticket tiers. */
+  /** issue #2399 — app-local content injected before ticket tiers. Rendered
+   *  bare (issue #4420): the content draws its own card, so a child that
+   *  renders nothing leaves no empty frame behind. */
   leadingPurchaseSection?: React.ReactNode | null;
   /** issue #2399 — selected-day multiplier; defaults to the byte-identical 1. */
   priceMultiplier?: number;
@@ -1069,11 +1071,12 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
         </View>
       ) : (
         <View style={styles.ticketBox} testID="orch-1167-ticket-box">
-          {leadingPurchaseSection !== null ? (
-            <View style={[styles.leadingCard, surface.card]}>
-              {leadingPurchaseSection}
-            </View>
-          ) : null}
+          {/* issue #4420 — the slot is rendered bare: its content owns its own
+              card. A frame here cannot see whether its child renders (a lazy
+              chooser suspends with a null fallback; a chooser with nothing to
+              choose returns null), so it drew an EMPTY rounded bar under
+              "Tickets" on the public page. */}
+          {leadingPurchaseSection}
           {visibleTickets.map((t) => (
             <TicketStepperRow
               key={t.id}
@@ -1567,7 +1570,6 @@ const styles = StyleSheet.create({
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // ---- ticket box ----
   ticketBox: { gap: 12 },
-  leadingCard: { borderRadius: 18, padding: 14 },
   proceedCard: { borderRadius: 18, padding: 16 },
   tierCard: { borderRadius: 18, padding: 18 },
   tierTop: { flexDirection: "row", alignItems: "flex-start", gap: 14 },
