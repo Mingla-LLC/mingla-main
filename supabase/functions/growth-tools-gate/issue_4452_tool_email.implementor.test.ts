@@ -49,13 +49,13 @@ Deno.test("TE-1 SC-143 the subject and headline follow the result", () => {
 Deno.test("TE-2 SC-143 the button follows the scenario", () => {
   const cases: Array<[Parameters<typeof buildToolReportEmail>[0]["tool"], Record<string, unknown>, string, string]> = [
     ["venues", venue, "Open my full report", LINK],
-    ["venues", noSite, "Make my free Mingla page", "https://usemingla.com/host/get"],
+    ["venues", noSite, "Make my free Mingla Host page", "https://usemingla.com/host/get"],
     ["events", event, "Open my full forecast", LINK],
-    ["events", { ...event, followup: { reason: "free_rsvp", rsvp_goal: 400, no_shows: "few" } }, "Set up RSVPs on Mingla", "https://usemingla.com/host/get"],
+    ["events", { ...event, followup: { reason: "free_rsvp", rsvp_goal: 400, no_shows: "few" } }, "Set up RSVPs on Mingla Host", "https://usemingla.com/host/get"],
     ["trips", trip, "Open my full quote", LINK],
-    ["trips", { ...trip, followup: { reason: "group_over_15", coach: true, rooms: "twin" } }, "Turn this into a bookable trip", "https://usemingla.com/host/get"],
+    ["trips", { ...trip, followup: { reason: "group_over_15", coach: true, rooms: "twin" } }, "Turn this into a bookable trip on Mingla Host", "https://usemingla.com/host/get"],
     ["experiences", pricing, "Open my full audit", LINK],
-    ["experiences", { ...pricing, followup: { reason: "free_today", session_cost: 370, deposit: "not_sure" } }, "Start charging with Mingla", "https://usemingla.com/host/get"],
+    ["experiences", { ...pricing, followup: { reason: "free_today", session_cost: 370, deposit: "not_sure" } }, "Start charging with Mingla Host", "https://usemingla.com/host/get"],
   ];
   for (const [tool, report, want, href] of cases) {
     const e = buildToolReportEmail({ tool, report, reportLink: LINK, tips: false });

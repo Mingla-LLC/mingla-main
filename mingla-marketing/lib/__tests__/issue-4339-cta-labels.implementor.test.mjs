@@ -135,6 +135,12 @@ const EXPRESSIONS = {
   '{b0?.text ?? coded.app.text}': () => ['Get Mingla to join', 'Get Mingla to apply'],
   '{b0?.text}': () => ['Apply in 2 minutes'],
   '{b1?.text ?? coded.call.text}': () => ['Book a call'],
+  // #4452 §5 free tools: each report's scenario next step (lib/tools/scenarios.ts SCENARIO[tool].cta,
+  // a Host DeviceLink). The same strings are pinned in issue-4452-tool-adaptive (nextStepCta).
+  "{nextStepCta('venues', 'no_website')}": () => ['Make my free Mingla Host page'],
+  "{nextStepCta('events', 'free_rsvp')}": () => ['Set up RSVPs on Mingla Host'],
+  "{nextStepCta('trips', 'group_over_15')}": () => ['Turn this into a bookable trip on Mingla Host'],
+  "{nextStepCta('pricing', 'free_today')}": () => ['Start charging with Mingla Host'],
 }
 
 /** JSX children with every tag (and its attributes) dropped, text and `{…}` kept. */

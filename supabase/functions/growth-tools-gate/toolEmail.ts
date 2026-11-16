@@ -43,10 +43,10 @@ const BASE_CTA: Record<GateTool, string> = {
 };
 /** The scenario copy (design TSC): the reason, its CTA and its sub. */
 const SCENARIO: Record<GateTool, { reason: string; cta: string; sub: string }> = {
-  venues: { reason: "no_website", cta: "Make my free Mingla page", sub: "You don’t have a website yet. Here’s what that costs you." },
-  events: { reason: "free_rsvp", cta: "Set up RSVPs on Mingla", sub: "Free events fill differently. Here’s your plan." },
-  trips: { reason: "group_over_15", cta: "Turn this into a bookable trip", sub: "Big groups change the maths. Here’s your quote." },
-  experiences: { reason: "free_today", cta: "Start charging with Mingla", sub: "Free is costing you. Here’s what to charge." },
+  venues: { reason: "no_website", cta: "Make my free Mingla Host page", sub: "You don’t have a website yet. Here’s what that costs you." },
+  events: { reason: "free_rsvp", cta: "Set up RSVPs on Mingla Host", sub: "Free events fill differently. Here’s your plan." },
+  trips: { reason: "group_over_15", cta: "Turn this into a bookable trip on Mingla Host", sub: "Big groups change the maths. Here’s your quote." },
+  experiences: { reason: "free_today", cta: "Start charging with Mingla Host", sub: "Free is costing you. Here’s what to charge." },
 };
 /** §5.10: the host bar's call goes to /schedule?icp=<icp>. */
 export const TOOL_ICP: Record<GateTool, string> = { venues: "restaurants", events: "events", trips: "trips", experiences: "experiences" };

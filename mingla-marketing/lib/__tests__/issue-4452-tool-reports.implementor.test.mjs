@@ -164,11 +164,11 @@ test('TR-6 §6.7 the frame: hero, sections, offer, action bar, share links; situ
     assert.match(html, /<a class="a2" href="\/schedule\?icp=(restaurants|events|trips|experiences)"/)
   }
   const noSite = text(renderNew('venues', { ...VENUE, venue: { ...VENUE.venue, website: '' }, screenshot: { image_url: null, og_image_url: null, after_url: null }, site_signals: { checks: [] }, followup: { reason: 'no_website', found_via: 'instagram' } }))
-  assert.match(noSite, /Make my free Mingla page/)
+  assert.match(noSite, /Make my free Mingla Host page/)
   assert.match(noSite, /You told us: people find you on Instagram\./)
   assert.match(noSite, /No website on Google/)
   assert.match(text(renderNew('events', { ...EVENT, followup: { reason: 'free_rsvp', rsvp_goal: 400, no_shows: 'lots' } })), /Set up RSVPs on Mingla/)
   assert.match(text(renderNew('trips', { ...TRIP, followup: { reason: 'group_over_15', coach: true, rooms: 'twin' } })), /Turn this into a bookable trip/)
   assert.match(text(renderNew('pricing', { ...PRICING, followup: { reason: 'free_today', session_cost: 370, deposit: 'probably' } })), /Start charging with Mingla/)
-  assert.doesNotMatch(text(renderNew('venues', VENUE)), /Make my free Mingla page/, 'no situation, no scenario CTA')
+  assert.doesNotMatch(text(renderNew('venues', VENUE)), /Make my free Mingla Host page/, 'no situation, no scenario CTA')
 })

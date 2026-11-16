@@ -139,9 +139,11 @@ describe("#4339 BC-3: the page", () => {
     const drawer = stripComments(read("components/leads/LeadDrawer.jsx"));
     assert.match(read("services/dashboardService.js"), /export const getBookCallLead = \(id\) => rpc\("admin_book_call_lead_get", \{ p_id: id \}\);/);
     assert.match(drawer, /\{e\.booking && <BookingLine booking=\{e\.booking\} \/>\}/);
-    assert.match(drawer, /<a href=\{social\} target="_blank" rel="noopener noreferrer"/);
-    assert.match(drawer, /<a href=\{website\} target="_blank" rel="noopener noreferrer"/);
-    assert.match(drawer, /const social = safeLink\(booking\.social_url, false\);/);
+    // The booking line lives in components/leads/BookingLine.jsx (extracted from the drawer by #4452 A1.8).
+    const line = stripComments(read("components/leads/BookingLine.jsx"));
+    assert.match(line, /<a href=\{social\} target="_blank" rel="noopener noreferrer"/);
+    assert.match(line, /<a href=\{website\} target="_blank" rel="noopener noreferrer"/);
+    assert.match(line, /const social = safeLink\(booking\.social_url, false\);/);
     assert.match(drawer, /createRecord\(pipelineFor\(lead\), leadCardFields\(lead\), newRequestKey\(\)\)/);
   });
 });
