@@ -1,5 +1,6 @@
 import { isFontPairing, type FontPairing } from "./fontPairings";
 import { isFileVideoIntegrity } from "./generated/video.ts";
+import { isIanaTimeZone, isRegionCityTimeZone } from "./generated/safety.ts";
 
 const VIDEO_INTEGRITY_KEYS = ["bytes", "chunk_size", "chunk_digests", "duration_ms"];
 import {
@@ -211,31 +212,13 @@ export function isStatsIcon(value: unknown): value is StatsIcon {
 }
 
 /*
- * #3149 wave 4 — A CLOCK NEEDS A ZONE, AND THE ZONE IS AN IANA NAME.
- *
- * The live "open now, 22:03 in Lagos" line is a claim about a real moment in a
- * real city. An offset would drift across a daylight-saving boundary and a
- * display string ("WAT", "GMT+1") is not something a clock can be built from.
- *
- * Two checks, both needed. The shape test refuses anything that is not
- * `Region/City` (so a bare "UTC" or a stray path never reaches the formatter),
- * and then the platform is ASKED whether it knows the zone — `Intl` throws a
- * RangeError on one it cannot resolve, and a zone the renderer cannot format
- * would print the server's own time under a city's name, which is worse than
- * printing nothing.
+ * #3149 wave 4 / #4453 — timezone rules live in ONE place,
+ * packages/site-contracts/src/safety.ts, imported here from the generated
+ * copy. `hours_location` needs a real Region/City zone (a clock built from
+ * "open now, 22:03 in Lagos" must name a city), so it uses
+ * `isRegionCityTimeZone`; route tables accept the wider `isIanaTimeZone`
+ * (which also takes UTC and GMT).
  */
-export function isIanaTimeZone(value: unknown): value is string {
-  if (typeof value !== "string" || value.length > 60) return false;
-  if (!/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value)) {
-    return false;
-  }
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: value });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export function isSafeHref(value: unknown): value is string {
   if (typeof value !== "string" || value.length > 2048 || /[\u0000-\u001F\u007F]/.test(value)) return false;
@@ -718,7 +701,7 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     case "hours_location":
       valid = boundedText(block.heading, 120) &&
         boundedText(block.address, 300, true) && safeLink(block.map_url) &&
-        (block.timezone == null || isIanaTimeZone(block.timezone)) &&
+        (block.timezone == null || isRegionCityTimeZone(block.timezone)) &&
         (block.always_open == null ||
           typeof block.always_open === "boolean") &&
         exactRows(block.hours, 1, 7, ["day", "value"], (row) =>
