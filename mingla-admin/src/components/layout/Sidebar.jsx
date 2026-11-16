@@ -49,10 +49,13 @@ import {
   Link,
   // #4452 §7.2: Brand groups.
   Hand,
+  // #4452 §7.0: Forms and Website pages.
+  FileText,
+  LayoutTemplate,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { NAV_GROUPS } from "../../lib/constants";
+import { NAV_GROUPS, NAV_NEW_UNTIL } from "../../lib/constants";
 import { ROLE_LABELS, homePageFor, visibleNavGroups } from "../../lib/access";
 import {
   browserStorage,
@@ -74,6 +77,9 @@ import { BRAND_GROUP_WAITING_EVENT, brandGroupWaiting } from "../../lib/brandGro
 // src/__tests__/admin_shell_issue3802.implementor.happy.test.js fails
 // otherwise. There is no fallback icon, so a wrong name cannot ship looking
 // like the Dashboard.
+// #4452 §7.0: when this Admin tab opened (the New tags compare against it).
+const NAV_OPENED_AT = Date.now();
+
 const ICON_MAP = {
   Home,
   LayoutDashboard,
@@ -120,6 +126,8 @@ const ICON_MAP = {
   Newspaper,
   Link,
   Hand,
+  FileText,
+  LayoutTemplate,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"
@@ -236,6 +244,10 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
             <span aria-hidden="true" className="h-4 w-4 shrink-0" />
           )}
           <span className={rail ? "sr-only" : "min-w-0 truncate"}>{item.label}</span>
+          {/* #4452 §7.0: a New tag while the page is new (its newUntil date). */}
+          {!rail && NAV_NEW_UNTIL[item.id] && NAV_OPENED_AT < Date.parse(NAV_NEW_UNTIL[item.id]) && waiting === 0 && (
+            <span data-nav-new="" className="ml-auto rounded-full bg-[var(--sidebar-count-bg)] px-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--sidebar-count-text)]">New</span>
+          )}
           {waiting > 0 && <span aria-hidden="true" className={`${rail ? "absolute right-0.5" : "ml-auto"} inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--sidebar-count-bg)] px-1.5 text-[10.5px] font-semibold tabular-nums text-[var(--sidebar-count-text)]`}>{waiting > 99 ? "99+" : waiting}</span>}
         </button>
       </li>

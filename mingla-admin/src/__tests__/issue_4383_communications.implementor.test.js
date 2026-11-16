@@ -72,6 +72,7 @@ const COMMUNICATIONS = [
   ["links", "Links page", "Link"],
   // #4452 §7.2: Brand groups left Community for its own screen.
   ["brand-groups", "Brand groups", "Hand"],
+  ["website-pages", "Website pages", "LayoutTemplate"], // #4452 §7.0
 ];
 
 describe("C-1 the Communications menu group", () => {
@@ -81,7 +82,7 @@ describe("C-1 the Communications menu group", () => {
     const group = NAV_GROUPS.find((g) => g.label === "Communications");
     assert.deepEqual(group.items.map((item) => [item.id, item.label, item.icon]), COMMUNICATIONS);
     // #4255 W4 took Notifications out of the menu (Messages is in the top bar): 33 + 7.
-    assert.equal(NAV_ITEMS.length, 41, "33 entries + the eight Communications screens (#4452: + Brand groups)");
+    assert.equal(NAV_ITEMS.length, 43, "34 entries (#4452: + Forms) + the nine Communications screens (#4452: + Brand groups, + Website pages)");
   });
 
   it("each screen is a page App draws, and its icon is registered", () => {
@@ -247,7 +248,8 @@ describe("C-4 nobody gains or loses a panel (I-4383-COMMS-ACCESS-UNCHANGED)", ()
   it("the only menu change: growth no longer sees an empty Support entry", () => {
     const menu = (access) => visibleNavGroups(NAV_GROUPS, access).flatMap((g) => g.items.map((i) => i.id));
     assert.equal(menu(PERSONAS.growth).includes("support"), false);
-    assert.deepEqual(menu(PERSONAS.growth).filter((id) => COMMUNICATIONS.some(([c]) => c === id)), ["communications", "email", "blog"]);
+    // #4452 §7.0: + Website pages (view-only for growth).
+    assert.deepEqual(menu(PERSONAS.growth).filter((id) => COMMUNICATIONS.some(([c]) => c === id)), ["communications", "email", "blog", "website-pages"]);
     // #4452 §7.2: the Support area keeps Brand groups, now as its own screen.
     assert.deepEqual(menu(PERSONAS.supportOnly).filter((id) => COMMUNICATIONS.some(([c]) => c === id)), ["communications", "email", "blog", "links", "brand-groups"]);
     assert.deepEqual(menu(PERSONAS.communityOnly).filter((id) => COMMUNICATIONS.some(([c]) => c === id)), ["communications", "email", "blog"]);

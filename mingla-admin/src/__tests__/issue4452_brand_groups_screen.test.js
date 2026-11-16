@@ -45,7 +45,8 @@ describe("#4452 T-7.2 Brand groups is its own screen", () => {
     assert.match(page, /Notification settings/);
     assert.match(read("App.jsx"), /\n\s+"brand-groups": BrandGroupsPage,/);
     const comms = NAV_GROUPS.find((g) => g.label === "Communications").items.map((i) => i.id);
-    assert.equal(comms.at(-1), "brand-groups");
+    // Pass 2: Website pages (§7.0) follows Brand groups.
+    assert.equal(comms[comms.indexOf("brand-groups") + 1], "website-pages");
     assert.equal(comms[comms.indexOf("brand-groups") - 1], "links", "right after Links page");
   });
 

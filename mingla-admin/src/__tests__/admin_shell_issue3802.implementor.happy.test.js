@@ -62,10 +62,10 @@ const MENU = [
   // #4255 W4: Notifications left the menu for Messages in the top bar.
   ["Home", ["overview", "work-board"]],
   // #4130 + #3872: the four Creator Program pages sit under Hosts and creators.
-  ["Outreach", ["outreach", "program-creators", "program-gigs", "program-locals", "program-disputes", "inbound", "content-calendar", "team-dashboard"]],
+  ["Outreach", ["outreach", "program-creators", "program-gigs", "program-locals", "program-disputes", "inbound", "forms", "content-calendar", "team-dashboard"]], // #4452 §7.0: + Forms
   ["Support", ["support", "community"]],
   // #4383: what we tell hosts and explorers, each its own screen.
-  ["Communications", ["communications", "push", "announcements", "roadmap", "email", "blog", "links", "brand-groups"]], // #4452 §7.2: + Brand groups
+  ["Communications", ["communications", "push", "announcements", "roadmap", "email", "blog", "links", "brand-groups", "website-pages"]], // #4452 §7.2: + Brand groups; §7.0: + Website pages
   ["Business", ["people", "brands", "business-offerings"]],
   ["Money", ["mingla-money", "business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["placepool"]],
@@ -82,9 +82,9 @@ const LABELS = {
   outreach: "Hosts and creators",
   // #4130 + #3872: the Creator Program pages keep their #3872 labels.
   "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
-  inbound: "Leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard", // #4452 A1.8: Leads
+  inbound: "Leads", forms: "Forms", "content-calendar": "Calendar", "team-dashboard": "Team dashboard", // #4452 A1.8: Leads
   support: "Support", community: "Community",
-  communications: "Overview", push: "Push", announcements: "Announcements", roadmap: "Roadmap", email: "Email", blog: "Blog", links: "Links page", "brand-groups": "Brand groups",
+  communications: "Overview", push: "Push", announcements: "Announcements", roadmap: "Roadmap", email: "Email", blog: "Blog", links: "Links page", "brand-groups": "Brand groups", "website-pages": "Website pages",
   people: "People", brands: "Brands", "business-offerings": "Offerings",
   "mingla-money": "Mingla money", "business-payments": "Payments", "business-orders": "Orders", "business-money-ledger": "Money ledger",
   "refund-operations": "Refund operations", subscriptions: "Subscriptions", pricing: "Pricing and limits",
@@ -155,7 +155,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // #4255 W4: - Notifications (Messages is in the top bar).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(ids.length, 41); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups
+    assert.equal(ids.length, 43); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -195,7 +195,7 @@ describe("#3802 S-3: who may open what did not move", () => {
       guide: "crm",
     });
     // #4255: email_drafts (Email tab and sending) is a server area for every teammate.
-    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads", EMAIL_DRAFTS: "email_drafts" });
+    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads", EMAIL_DRAFTS: "email_drafts", WEBSITE: "website" });
   });
   it("every other page still needs the full admin console", () => {
     for (const item of NAV_ITEMS) {
@@ -211,12 +211,14 @@ describe("#3802 S-3: who may open what did not move", () => {
     // Inbound leads (their Beta leads tab) and Calendar; My agent and Guide
     // are in the header now. #4130 (Seth): Team and roles is the owner's
     // alone again; an admin sees Careers, its own page, instead.
-    assert.deepEqual(ids(growth), ["home", "work-board", "outreach", "inbound", "content-calendar"]);
-    assert.deepEqual(ids(partner), ["home", "work-board", "outreach", "inbound", "content-calendar"]);
+    // #4452 §7.0: Forms (after Leads) and Website pages (Communications) are open to whoever works the pipelines or beta leads, view-only for them.
+    assert.deepEqual(ids(growth), ["home", "work-board", "outreach", "inbound", "forms", "content-calendar", "website-pages"]);
+    assert.deepEqual(ids(partner), ["home", "work-board", "outreach", "inbound", "forms", "content-calendar", "website-pages"]);
     assert.deepEqual(ids(owner), NAV_ITEMS.map((i) => i.id));
     assert.deepEqual(ids(admin), NAV_ITEMS.map((i) => i.id).filter((id) => id !== "admin"));
     assert.deepEqual(visibleNavGroups(NAV_GROUPS, owner).map((g) => g.label), MENU.map(([label]) => label));
-    assert.deepEqual(visibleNavGroups(NAV_GROUPS, growth).map((g) => g.label), [null, "Home", "Outreach"]);
+    // #4452 §7.0: + Communications (Website pages, view-only).
+    assert.deepEqual(visibleNavGroups(NAV_GROUPS, growth).map((g) => g.label), [null, "Home", "Outreach", "Communications"]);
   });
 });
 
@@ -434,7 +436,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   const MIGRATED = [
     "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
-    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
+    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DraftsPage.jsx", "EmailPage.jsx", "FormsPage.jsx", "WebsitePagesPage.jsx",
     // [TEST-MOD-APPROVED #3980] the Work board and Agent log draw the one header.
     "WorkBoardPage.jsx", "AgentLogPage.jsx",
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
@@ -500,7 +502,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // #4130 (Wave 4a): Inbound leads page added (+1).
     // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
     // #4130 + #3872: + the four Creator Program pages = 51, the count of pages/*Page.jsx.
-    assert.equal(MIGRATED.length, 52); // #4276: Intelligence Trial and Signal Library pages retired; #4294: + Company tools; #4273: + SMS countries
+    assert.equal(MIGRATED.length, 54); // #4452: + Forms and Website pages; #4276: Intelligence Trial and Signal Library pages retired; #4294: + Company tools; #4273: + SMS countries
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -587,7 +589,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   // Hosts and Creators: the two exported pages each draw the one board page.
   // #4130 Wave 6: SupportPage and CommunityPage hand their page id to the
   // shared frame, SupportCommunityConsole, which draws every state.
-  const VIEWS = { "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"], "CommunitySupportPage.jsx": ["SupportCommunityConsole"], "ProgramCreatorsPage.jsx": ["CreatorBoard", "CreatorRecord"] }; // #4402: the board and the full-page creator record each draw the header.
+  const VIEWS = { "FormsPage.jsx": ["FormsList"] /* #4452: the list; the builder draws its own PageHeader */, "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"], "CommunitySupportPage.jsx": ["SupportCommunityConsole"], "ProgramCreatorsPage.jsx": ["CreatorBoard", "CreatorRecord"] }; // #4402: the board and the full-page creator record each draw the header.
 
   function pageReturns(file) {
     const names = VIEWS[file] ?? [null];
@@ -652,7 +654,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     // #4130 (Wave 4a): Inbound leads page added (+1).
     // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
     // #4130 + #3872: + the four Creator Program pages = 51, the count of pages/*Page.jsx.
-    assert.equal(MIGRATED.length, 52); // #4276: Intelligence Trial and Signal Library pages retired; #4294: + Company tools; #4273: + SMS countries
+    assert.equal(MIGRATED.length, 54); // #4276: Intelligence Trial and Signal Library pages retired; #4294: + Company tools; #4273: + SMS countries; #4452: + Forms, Website pages
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

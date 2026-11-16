@@ -43,6 +43,8 @@ import { EmailPage } from "./pages/EmailPage";
 import { BlogPage } from "./pages/communications/BlogPage";
 import { LinksPage } from "./pages/communications/LinksPage";
 import { BrandGroupsPage } from "./pages/communications/BrandGroupsPage";
+import { FormsPage } from "./pages/FormsPage";
+import { WebsitePagesPage } from "./pages/WebsitePagesPage";
 // ORCH-1273 — Business offerings console (READ-ONLY): Offerings
 // (#/business-offerings). Detail views deep-link via ?offeringId=. Venues now
 // open inside Brands (#4130).
@@ -133,6 +135,9 @@ const PAGES = {
   links: LinksPage,
   // #4452 §7.2: Brand groups left Community for its own screen.
   "brand-groups": BrandGroupsPage,
+  // #4452 §7.0
+  forms: FormsPage,
+  "website-pages": WebsitePagesPage,
   // ── Business ── #4130 Wave 3: People replaces Users + People; Brands holds
   // Brand Sites, Venues and Venue claims inside each brand.
   people: PeoplePage,

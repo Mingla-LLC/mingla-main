@@ -12,8 +12,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { FormRenderer, type RendererForm } from './form-renderer'
-import { SuccessScreen } from './success-screen'
+import { type RendererForm } from './form-renderer'
+import { PopupDialog, type CloseHow } from './popup-dialog'
 import { POPUP_OPEN_EVENT } from './popup-bus'
 import { virtualPageView } from './virtual-page'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
@@ -33,8 +33,6 @@ export interface PopupEntry {
   block: Block
   form: PublicForm
 }
-
-type CloseHow = 'close_button' | 'not_now' | 'esc' | 'scrim' | 'done'
 
 function storage(): Storage | null {
   try {
@@ -174,54 +172,21 @@ export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, Popup
 
   if (!entry || !open) return null
   const style = isPhone ? 'sheet' : entry.block.popup!.style
-  const photo = typeof entry.form.design?.photo_url === 'string' ? entry.form.design.photo_url : null
   return (
-    <div className="pu-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) close('scrim') }}>
-      <div ref={dialog} className={`pu pu-${style}`} role="dialog" aria-modal="true" aria-labelledby="pu-title" tabIndex={-1}>
-        {style === 'sheet' ? <span className="pu-grab" aria-hidden="true" /> : null}
-        {photo && style === 'centre' ? (
-          <div className="pu-photo" style={{ backgroundImage: `url(${photo})` }} aria-hidden="true" />
-        ) : null}
-        <div className="pu-pane">
-          <div className="pu-top">
-            <h2 id="pu-title" className="pu-title">
-              {entry.block.head ?? entry.form.name} {entry.block.em ? <em>{entry.block.em}</em> : null}
-            </h2>
-            <button type="button" className="pu-close" onClick={() => close('close_button')} aria-label="Close">
-              <span aria-hidden="true">✕</span> Close
-            </button>
-          </div>
-          {confirmClose ? (
-            <div className="pu-confirm" role="alert">
-              <p>Close the form? Your answers are kept on this device for 7 days.</p>
-              <button type="button" className="fk-send" autoFocus onClick={() => setConfirmClose(false)}>Keep going</button>
-              <button type="button" className="fk-link" onClick={() => close('close_button')}>Close</button>
-            </div>
-          ) : null}
-          <div className="pu-body">
-            {done ? (
-              <SuccessScreen audience={entry.form.audience} firstName={done.first} submissionId={done.id} preview={entry.form.preview} onClose={() => close('done')} />
-            ) : (
-              <FormRenderer
-                form={entry.form as unknown as RendererForm}
-                placement="popup"
-                blockId={entry.block.id}
-                sendLabel="Send application"
-                onDirty={(d) => { dirty.current = d }}
-                onDone={(o, first) => {
-                  setDone({ id: o.submissionId, first })
-                  virtualPageView(`/apply/${entry.form.slug ?? entry.form.key}/thanks`)
-                }}
-              />
-            )}
-          </div>
-          {!done ? (
-            <div className="pu-foot">
-              <button type="button" className="fk-link" onClick={() => close('not_now')}>Not now</button>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
+    <PopupDialog
+      dialogRef={dialog}
+      style={style}
+      form={entry.form as unknown as RendererForm & { name: string }}
+      block={entry.block}
+      confirmClose={confirmClose}
+      onKeepGoing={() => setConfirmClose(false)}
+      onClose={close}
+      done={done}
+      onDirty={(d) => { dirty.current = d }}
+      onDone={(o, first) => {
+        setDone({ id: o.submissionId, first })
+        virtualPageView(`/apply/${entry.form.slug ?? entry.form.key}/thanks`)
+      }}
+    />
   )
 }

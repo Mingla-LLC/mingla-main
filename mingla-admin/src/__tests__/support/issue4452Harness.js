@@ -46,7 +46,7 @@ export async function buildHarness(contents, { stubs = {}, name = "issue4452" } 
     jsx: "automatic",
     plugins: [stubPlugin],
     banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
-    logLevel: "silent",
+    logLevel: process.env.HARNESS_LOG || "silent",
     define: { "process.env.NODE_ENV": '"production"', "import.meta.env.VITE_SUPABASE_URL": '"http://stub.local"', "import.meta.env.VITE_SUPABASE_ANON_KEY": '"stub"' },
   });
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`)), "harness.mjs");

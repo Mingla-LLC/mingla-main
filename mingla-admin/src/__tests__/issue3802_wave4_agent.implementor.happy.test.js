@@ -120,7 +120,7 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
   it("sits in the header's profile menu, beside the ? Guide button, for each role that may open it", () => {
     const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "work-board", "outreach", "inbound", "content-calendar"], a.role);
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "work-board", "outreach", "inbound", "forms", "content-calendar", "website-pages"], a.role); // #4452 §7.0
     }
     for (const a of [owner, admin, growth, partner]) {
       assert.equal(groups(a).some((g) => g.items.some((i) => i.id === "agent" || i.id === "guide")), false, a.role);

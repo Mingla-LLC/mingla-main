@@ -85,8 +85,10 @@ test('T-2.4d SC-99 weekly: not again within 7 days of a close; a submit stops it
 })
 
 test('T-2.4e/f SC-100/101 the dialog: four ways to close, the keep-going prompt, a focus trap, role=dialog + aria-modal', () => {
-  const host = read('components/forms/popup-host.tsx')
-  for (const how of ["'close_button'", "'not_now'", "'esc'", "'scrim'"]) assert.ok(host.includes(`close(${how})`), how)
+  // #4452 pass 2: the dialog's markup moved to popup-dialog.tsx (shared with the builder's preview);
+  // the host keeps the triggers, Esc, the focus trap and the inert background.
+  const host = read('components/forms/popup-host.tsx') + read('components/forms/popup-dialog.tsx')
+  for (const how of ["'close_button'", "'not_now'", "'esc'", "'scrim'"]) assert.ok(host.includes(`close(${how})`) || host.includes(`onClose(${how})`), how)
   assert.match(host, /Close the form\? Your answers are kept on this device for 7 days\./)
   assert.match(host, /role="dialog" aria-modal="true" aria-labelledby="pu-title"/)
   assert.match(host, /e\.key === 'Tab'/)
