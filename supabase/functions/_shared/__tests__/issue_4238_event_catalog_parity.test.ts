@@ -53,12 +53,27 @@ Deno.test("#4238 T-CAT the browser host-funnel rows equal the server catalogue",
   }
 });
 
-Deno.test("#4238 T-CAT the usemingla.com host-lead row equals the server catalogue", async () => {
+// #4452 SC-59 (extended, not weakened): usemingla.com now fires every labelled
+// lead kind and the three booked-call kinds; each row equals the server row.
+Deno.test("#4238 T-CAT the usemingla.com lead and call rows equal the server catalogue", async () => {
   const rows = browserRows(
     await Deno.readTextFile(MARKETING),
     "MARKETING_HOST_FUNNEL_PIXEL_EVENTS",
     "} as const",
   );
-  assertEquals(Object.keys(rows), ["host_lead"]);
-  assertEquals(rows.host_lead, HOST_FUNNEL_EVENT_NAMES.host_lead);
+  assertEquals(Object.keys(rows), [
+    "host_lead",
+    "creator_lead",
+    "local_lead",
+    "host_call_booked",
+    "creator_call_booked",
+    "local_call_booked",
+  ]);
+  for (const [kind, row] of Object.entries(rows)) {
+    assertEquals(
+      row,
+      HOST_FUNNEL_EVENT_NAMES[kind as keyof typeof HOST_FUNNEL_EVENT_NAMES],
+      `${kind} differs between usemingla.com and the server`,
+    );
+  }
 });

@@ -25,6 +25,12 @@ import {
   type FireAdConversionResult,
   type HostEventInput,
 } from "./adConversionFire.ts";
+import {
+  CALL_KIND_FOR_LABEL,
+  HOST_FUNNEL_EVENT_ID_PREFIX,
+  LEAD_KIND_FOR_LABEL,
+  type LeadLabel,
+} from "./adEventCatalog.ts";
 
 /** The senders' own timeout; a caller never waits longer for the fire. */
 export const HOST_FUNNEL_FIRE_BOUND_MS = 8_000;
@@ -255,26 +261,101 @@ function edgeWaitUntil(): WaitUntil | null {
  * event_id `lead:<subjectId>`. Only called when the browser sent an `ad`
  * object (the marketing site's sender side ships separately). Returns the
  * event id the browser fires its Lead twin with. Never throws.
+ *
+ * #4452: a wrapper over recordLabelledLead with label 'host', so its callers
+ * and their ids are byte-identical.
  */
 export async function recordHostLead(
   supabase: SupabaseClient,
-  input: { subjectId: string; ad: HostAdContext },
+  input: { subjectId: string; ad: HostAdContext; source?: string | null },
   deps: FireAdConversionDeps = {},
 ): Promise<string | null> {
-  const eventId = `lead:${input.subjectId}`;
+  return await recordLabelledLead(supabase, {
+    label: "host",
+    subjectId: input.subjectId,
+    ad: input.ad,
+    source: input.source ?? null,
+  }, deps);
+}
+
+/** Ads unknown (no `ad` object sent): treated as off. Nothing but the opt-out is kept. */
+export const OPTED_OUT_CONTEXT: HostAdContext = {
+  clickId: null,
+  fbp: null,
+  fbc: null,
+  ttp: null,
+  scid: null,
+  trackingOptOut: true,
+  pageUrl: null,
+  clientIpAddress: null,
+  clientUserAgent: null,
+};
+
+/** #4452 §4.5: the lead event id of a label: `lead:` (host), `creator_lead:`, `local_lead:`. */
+export function labelledLeadEventId(label: LeadLabel, subjectId: string): string {
+  return `${HOST_FUNNEL_EVENT_ID_PREFIX[LEAD_KIND_FOR_LABEL[label]]}${subjectId}`;
+}
+
+/** #4452 §4.5: the call-booked event id: `host_call:`, `creator_call:`, `local_call:` + booking id. */
+export function callBookedEventId(label: LeadLabel, bookingId: string): string {
+  return `${HOST_FUNNEL_EVENT_ID_PREFIX[CALL_KIND_FOR_LABEL[label]]}${bookingId}`;
+}
+
+/**
+ * #4452 §4.5 (I-4452-LEAD-LABEL-REQUIRED): record a lead's context and fire
+ * its labelled Lead (`<label>_lead`). The subject is the lead row the caller
+ * wrote: a booking id, `tool:<id>` or `form:<submission id>`. Returns the
+ * event id the browser twin uses. Never throws.
+ */
+export async function recordLabelledLead(
+  supabase: SupabaseClient,
+  input: { label: LeadLabel; subjectId: string; ad: HostAdContext | null; source?: string | null },
+  deps: FireAdConversionDeps = {},
+): Promise<string | null> {
+  const kind = LEAD_KIND_FOR_LABEL[input.label];
+  if (!kind || !input.subjectId) return null;
+  const eventId = labelledLeadEventId(input.label, input.subjectId);
   const stored = await upsertAdMatchContext(supabase, {
     subjectType: "lead",
     subjectId: input.subjectId,
     surface: "web",
-    ad: input.ad,
+    ad: input.ad ?? OPTED_OUT_CONTEXT,
   });
   if (!stored.ok) return null;
   await scheduleHostFunnelTask(
     fireHostFunnelConversion(supabase, {
-      kind: "host_lead",
+      kind,
       eventId,
       subjectType: "lead",
       subjectId: input.subjectId,
+      leadSource: input.source ?? null,
+    }, deps),
+  );
+  return eventId;
+}
+
+/**
+ * #4452 §4.5: fire the `<label>_call_booked` end goal for a booking. Its event
+ * id is `<prefix><booking id>`; its subject is the booking, and
+ * adConversionFire reads the lead's own match context (the form submission's
+ * when the booking came from a form), so the call is credited to the same ad
+ * click. A direct booking's context was stored by its Lead just before. Never throws.
+ */
+export async function recordCallBooked(
+  supabase: SupabaseClient,
+  input: { label: LeadLabel; bookingId: string; source?: string | null },
+  deps: FireAdConversionDeps = {},
+): Promise<string | null> {
+  const kind = CALL_KIND_FOR_LABEL[input.label];
+  if (!kind || !input.bookingId) return null;
+  const eventId = callBookedEventId(input.label, input.bookingId);
+  await scheduleHostFunnelTask(
+    fireHostFunnelConversion(supabase, {
+      kind,
+      eventId,
+      subjectType: "lead",
+      subjectId: input.bookingId,
+      leadSource: input.source ?? null,
     }, deps),
   );
   return eventId;
