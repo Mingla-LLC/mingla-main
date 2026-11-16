@@ -155,7 +155,8 @@ describe("#4402 profile step", () => {
     mockSaveProfile.mockRejectedValue(new ProgramActionError("creator_account_required"));
     const r = await mount(React.createElement(CreatorProfileStep));
     const save = button(r.root, "Save and continue");
-    expect(save.props.disabled).toBe(false);
+    // #4445: Save is always tappable (a refused tap shows the errors), so it is never disabled.
+    expect(save.props.disabled).not.toBe(true);
     await press(save);
 
     const footer = only(r.root, "ScreenFooter");

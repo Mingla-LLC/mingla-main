@@ -1604,6 +1604,20 @@ test('AX-F3 — everything ELSE in useAuthSimple.ts is byte-identical to origin/
     '      // #4202 [explorer-account-deletion] — begin synchronous intent capture.',
     '      // #4202 [explorer-account-deletion] — end synchronous intent capture.',
   )
+  // #4445 [signed-out-profile-read] adds a sign-out race guard to the profile-load
+  // error path after #1875 shipped. Excise only its declared import and region.
+  residue = residue.replace(
+    '// #4445 [signed-out-profile-read] — sign-out race guard helper.\nimport { isSignedOutProfileError } from "../utils/signedOutProfileError";\n',
+    '',
+  )
+  {
+    const start4445 = '              // #4445 [signed-out-profile-read] — begin sign-out race guard.\n'
+    const end4445 = '              // #4445 [signed-out-profile-read] — end sign-out race guard.\n'
+    const at = residue.indexOf(start4445)
+    const endAt = residue.indexOf(end4445, at)
+    assert.ok(at > -1 && endAt > at, 'AX-F #4445 declared region missing')
+    residue = residue.slice(0, at) + residue.slice(endAt + end4445.length)
+  }
   const issue4202Start = '            // #4202 [explorer-account-deletion] — begin explicit reactivation gate.\n'
   const issue4202End = '            // #4202 [explorer-account-deletion] — end explicit reactivation gate.\n'
   const issue4202At = residue.indexOf(issue4202Start)
