@@ -27,7 +27,10 @@ import {
   type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
-import { formatExperienceDateSubline } from "../../utils/experienceDateSubline";
+import {
+  experienceBuyerVenueLine,
+  formatExperienceDateSubline,
+} from "../../utils/experienceDateSubline";
 import type {
   PublicExperience,
   PublicExperienceBrand,
@@ -116,7 +119,8 @@ export const ExperienceCheckoutFlow: React.FC<ExperienceCheckoutFlowProps> = ({
           </Text>
           <Text style={styles.ticketSubline} numberOfLines={1}>
             {formatExperienceDateSubline({
-              venueText: experience.venueText,
+              // #4420 — city and country only before booking, like the public page.
+              venueText: experienceBuyerVenueLine(experience.venueText),
               dateStartIsos: dateIsos,
               whenMode: experience.whenMode,
               recurrenceRule: experience.recurrenceRule,

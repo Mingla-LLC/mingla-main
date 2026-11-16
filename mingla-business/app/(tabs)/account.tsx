@@ -414,10 +414,7 @@ export default function AccountTab(): React.ReactElement {
                   a sub-page card, never a bottom tab). */}
               {supportStaff.isStaff ? (
                 <View style={styles.section}>
-                  <AccountSectionHead
-                    title="Support — Live Chats"
-                    sub="You're a Mingla support staffer. Answer live chats, set your availability, and claim tickets here."
-                  />
+                  <AccountSectionHead title="Support — Live Chats" />
                   <GlassCard variant="base" padding={0}>
                     <SettingsNavRow
                       icon="inbox"

@@ -19,6 +19,7 @@ import { Plus } from "./LucideIcons";
 import type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
 import type { TripOfferingDay } from "./tripOfferingTypes";
 import { useReduceMotionPreference } from "./useReduceMotionPreference";
+import { formatTripDayDate } from "./tripDayDate";
 
 const LONG_ITINERARY_THRESHOLD = 5;
 const COLLAPSED_DAY_COUNT = 2;
@@ -104,7 +105,9 @@ export const DayByDay: React.FC<DayByDayProps> = ({
                   <Text style={[styles.dayNarr, surface.secondaryText]}>
                     {hasDate ? (
                       <Text style={[styles.dayDate, surface.tertiaryText]}>
-                        {hasNarrative ? `${day.date} · ` : day.date}
+                        {hasNarrative
+                          ? `${formatTripDayDate(day.date as string)} · `
+                          : formatTripDayDate(day.date as string)}
                       </Text>
                     ) : null}
                     {hasNarrative ? day.narrative : null}

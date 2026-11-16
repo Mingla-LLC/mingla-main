@@ -22,6 +22,7 @@ import {
 } from "../../constants/designSystem";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Pill } from "../ui/Pill";
+import { formatTripCalendarRange } from "../../utils/tripCalendarDates";
 
 interface HomeTripRowProps {
   trip: Trip;
@@ -31,20 +32,13 @@ interface HomeTripRowProps {
 }
 
 function formatTripDateLine(trip: Trip): string {
-  const startStr = trip.businessTrip.startAt;
-  const endStr = trip.businessTrip.endAt;
-  if (startStr === null) return "Dates to be confirmed";
-  const start = new Date(startStr);
-  const opts: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-  };
-  const startLabel = start.toLocaleDateString("en-GB", opts);
-  if (endStr === null) return startLabel;
-  const end = new Date(endStr);
-  const endLabel = end.toLocaleDateString("en-GB", opts);
-  if (startLabel === endLabel) return startLabel;
-  return `${startLabel} – ${endLabel}`;
+  // #4420 — calendar dates read at UTC (src/utils/tripCalendarDates.ts).
+  const line = formatTripCalendarRange(
+    trip.businessTrip.startAt,
+    trip.businessTrip.endAt,
+    "en-GB",
+  );
+  return line.length > 0 ? line : "Dates to be confirmed";
 }
 
 export const HomeTripRow: React.FC<HomeTripRowProps> = ({ trip, status, onPress }) => {

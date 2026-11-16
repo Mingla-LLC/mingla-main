@@ -10,7 +10,6 @@ import {
   Animated,
   Easing,
   Platform,
-  Alert,
   BackHandler,
   AccessibilityInfo,
   Keyboard,
@@ -64,9 +63,34 @@ const WELCOME_DESKTOP_BREAKPOINT = 768;
 const WELCOME_DESKTOP_PANEL_WIDTH = 560;
 const WEB_LOGO_SRC = "/brand/mingla-wordmark.png";
 
+/**
+ * #4420 — a sign-in failure the screen shows inline. `Alert.alert` is a no-op
+ * on react-native-web, so a failed web sign-in showed nothing at all; the
+ * inline error renders on every platform.
+ */
+export interface WelcomeAuthError {
+  title: string;
+  body: string;
+}
+
+const PROVIDER_SIGN_IN_FAILED: WelcomeAuthError = {
+  title: "Couldn't sign you in",
+  body: "Something didn't connect. Give it another tap.",
+};
+
+const isCancelledSignIn = (err: { message?: string; code?: string } | null | undefined): boolean =>
+  err?.message?.includes("cancelled") === true ||
+  err?.message?.includes("canceled") === true ||
+  err?.code === "ERR_REQUEST_CANCELED";
+
 export interface BusinessWelcomeScreenProps {
-  onGoogleSignIn: () => Promise<void>;
-  onAppleSignIn: () => Promise<void>;
+  /**
+   * #4420 — may resolve `{ error }`. On web the provider redirect reports its
+   * failure that way and nothing else shows it, so the screen does. On native
+   * AuthContext has already shown its own alert for a returned error.
+   */
+  onGoogleSignIn: () => Promise<void | { error: Error | null }>;
+  onAppleSignIn: () => Promise<void | { error: Error | null }>;
   /**
    * Cycle 15 — additive email + 6-digit OTP sign-in (DEC-097).
    * Step 1: send code to email. Caller transitions to OTP-input mode on success.
@@ -107,6 +131,7 @@ export default function BusinessWelcomeScreen({
 
   // Cycle 15 — email + 6-digit OTP state machine (DEC-097).
   const [mode, setMode] = useState<WelcomeMode>("idle");
+  const [authError, setAuthError] = useState<WelcomeAuthError | null>(null);
   const [emailInput, setEmailInput] = useState("");
   const [otpInput, setOtpInput] = useState("");
   const [submittingEmail, setSubmittingEmail] = useState(false);
@@ -324,23 +349,17 @@ export default function BusinessWelcomeScreen({
 
     HapticFeedback.buttonPress();
     setIsGoogleSignInInProgress(true);
+    setAuthError(null);
     fireHostSignUpStarted();
     try {
-      await onGoogleSignIn();
-    } catch (error: unknown) {
-      const err = error as { message?: string; code?: string };
-      if (
-        err?.message?.includes("cancelled") ||
-        err?.message?.includes("canceled") ||
-        err?.code === "ERR_REQUEST_CANCELED"
-      ) {
-        return;
+      const result = await onGoogleSignIn();
+      const returned = result ? result.error : null;
+      if (Platform.OS === "web" && returned && !isCancelledSignIn(returned as { message?: string; code?: string })) {
+        setAuthError(PROVIDER_SIGN_IN_FAILED);
       }
-      Alert.alert(
-        "Couldn't sign you in",
-        "Something didn't connect. Give it another tap.",
-        [{ text: "Got it" }]
-      );
+    } catch (error: unknown) {
+      if (isCancelledSignIn(error as { message?: string; code?: string })) return;
+      setAuthError(PROVIDER_SIGN_IN_FAILED);
     } finally {
       setIsGoogleSignInInProgress(false);
     }
@@ -351,23 +370,17 @@ export default function BusinessWelcomeScreen({
 
     HapticFeedback.buttonPress();
     setIsAppleSignInInProgress(true);
+    setAuthError(null);
     fireHostSignUpStarted();
     try {
-      await onAppleSignIn();
-    } catch (error: unknown) {
-      const err = error as { message?: string; code?: string };
-      if (
-        err?.message?.includes("cancelled") ||
-        err?.message?.includes("canceled") ||
-        err?.code === "ERR_REQUEST_CANCELED"
-      ) {
-        return;
+      const result = await onAppleSignIn();
+      const returned = result ? result.error : null;
+      if (Platform.OS === "web" && returned && !isCancelledSignIn(returned as { message?: string; code?: string })) {
+        setAuthError(PROVIDER_SIGN_IN_FAILED);
       }
-      Alert.alert(
-        "Couldn't sign you in",
-        "Something didn't connect. Give it another tap.",
-        [{ text: "Got it" }]
-      );
+    } catch (error: unknown) {
+      if (isCancelledSignIn(error as { message?: string; code?: string })) return;
+      setAuthError(PROVIDER_SIGN_IN_FAILED);
     } finally {
       setIsAppleSignInInProgress(false);
     }
@@ -376,6 +389,7 @@ export default function BusinessWelcomeScreen({
   // Cycle 15 — email + OTP handlers (DEC-097).
   const handleStartEmailFlow = useCallback((): void => {
     HapticFeedback.buttonPress();
+    setAuthError(null);
     setMode("email-input");
     setEmailInput("");
     setOtpInput("");
@@ -385,11 +399,12 @@ export default function BusinessWelcomeScreen({
     if (submittingEmail || !emailInput.trim()) return;
     HapticFeedback.buttonPress();
     setSubmittingEmail(true);
+    setAuthError(null);
     fireHostSignUpStarted();
     try {
       const { error } = await onEmailSignIn(emailInput);
       if (error) {
-        Alert.alert("Couldn't send code", error.message, [{ text: "Got it" }]);
+        setAuthError({ title: "Couldn't send code", body: error.message });
         return;
       }
       setMode("otp-input");
@@ -405,11 +420,12 @@ export default function BusinessWelcomeScreen({
       if (submittingOtp) return;
       HapticFeedback.buttonPress();
       setSubmittingOtp(true);
+      setAuthError(null);
       setMode("otp-verifying");
       try {
         const { error } = await onVerifyEmailOtp(emailInput, code);
         if (error) {
-          Alert.alert("Couldn't sign in", error.message, [{ text: "Got it" }]);
+          setAuthError({ title: "Couldn't sign in", body: error.message });
           setMode("otp-input");
           setOtpInput("");
           return;
@@ -441,12 +457,11 @@ export default function BusinessWelcomeScreen({
     if (submittingEmail || resendSecondsLeft > 0) return;
     HapticFeedback.buttonPress();
     setSubmittingEmail(true);
+    setAuthError(null);
     try {
       const { error } = await onEmailSignIn(emailInput);
       if (error) {
-        Alert.alert("Couldn't resend code", error.message, [
-          { text: "Got it" },
-        ]);
+        setAuthError({ title: "Couldn't resend code", body: error.message });
         return;
       }
       setResendCooldownEnd(Date.now() + RESEND_COOLDOWN_MS);
@@ -457,12 +472,14 @@ export default function BusinessWelcomeScreen({
 
   const handleEditEmail = useCallback((): void => {
     HapticFeedback.buttonPress();
+    setAuthError(null);
     setMode("email-input");
     setOtpInput("");
   }, []);
 
   const handleBackToIdle = useCallback((): void => {
     HapticFeedback.buttonPress();
+    setAuthError(null);
     Keyboard.dismiss();
     setMode("idle");
     setEmailInput("");
@@ -539,8 +556,23 @@ export default function BusinessWelcomeScreen({
     </Animated.Text>
   );
 
+  // #4420 — the sign-in error, inline above the controls on every platform.
+  const renderAuthError = () =>
+    authError === null ? null : (
+      <View
+        style={styles.authError}
+        accessibilityRole="alert"
+        accessibilityLiveRegion="polite"
+        testID="welcome-auth-error"
+      >
+        <Text style={styles.authErrorTitle}>{authError.title}</Text>
+        <Text style={styles.authErrorBody}>{authError.body}</Text>
+      </View>
+    );
+
   const renderIdleAuthGroup = () => (
     <View style={[styles.authGroup, desktop && styles.authGroupDesktop]}>
+      {renderAuthError()}
       {(Platform.OS === "ios" || Platform.OS === "web") && (
         <Animated.View
           style={[
@@ -744,6 +776,7 @@ export default function BusinessWelcomeScreen({
             },
           ]}
         >
+          {mode === "email-input" || mode === "otp-input" ? renderAuthError() : null}
           {/* Cycle 15 — email input mode (DEC-097 + SPEC §3.5.4). */}
           {mode === "email-input" && (
             <View style={styles.modeWrapper}>
@@ -1150,6 +1183,27 @@ const styles = StyleSheet.create({
   modeSubtextEmail: {
     fontWeight: fontWeights.semibold,
     color: color.textOnPhoto,
+  },
+  authError: {
+    width: "100%",
+    maxWidth: 400,
+    alignSelf: "center",
+    gap: space[1],
+    paddingVertical: space[3],
+    paddingHorizontal: space[4],
+    marginBottom: space[3],
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.errorLine,
+    backgroundColor: color.errorTint,
+  },
+  authErrorTitle: {
+    ...type.row,
+    color: color.errorText,
+  },
+  authErrorBody: {
+    ...type.small,
+    color: color.errorText,
   },
   modeWrapper: {
     width: "100%",

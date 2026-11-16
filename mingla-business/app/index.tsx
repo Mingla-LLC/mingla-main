@@ -91,8 +91,8 @@ export default function Index() {
   if (!user) {
     return (
       <BusinessWelcomeScreen
-        onGoogleSignIn={async () => { await signInWithGoogle(); }}
-        onAppleSignIn={async () => { await signInWithApple(); }}
+        onGoogleSignIn={signInWithGoogle}
+        onAppleSignIn={signInWithApple}
         onEmailSignIn={signInWithEmail}
         onVerifyEmailOtp={verifyEmailOtp}
       />

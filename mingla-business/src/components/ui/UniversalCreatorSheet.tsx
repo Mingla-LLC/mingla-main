@@ -346,7 +346,6 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
               </Pressable>
             ) : null}
             <Text style={styles.headerTitle}>Create an event</Text>
-            <Text style={styles.headerSubtitle}>Pick how guests join.</Text>
           </View>
           <View style={styles.rows}>
             {EVENT_OPTIONS.map((option) => (
@@ -460,11 +459,6 @@ const styles = StyleSheet.create({
     lineHeight: type.h1.lineHeight,
     fontWeight: type.h1.fontWeight,
     color: color.text1,
-  },
-  headerSubtitle: {
-    fontSize: type.body.fontSize,
-    lineHeight: type.body.lineHeight,
-    color: color.text2,
   },
   backRow: {
     flexDirection: "row",

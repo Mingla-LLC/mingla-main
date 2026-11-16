@@ -490,6 +490,8 @@ const BOUNDARY: Record<string, () => unknown> = {
   lazySettingsSteps: () => ({ CreatorStep6SettingsLazy: leaf("CreatorStep6Settings"), RsvpStep5SetupLazy: leaf("RsvpStep5Setup") }),
   // issue #3827 going-box — the wizard's extras copy + error matcher (pure; real module).
   guestListPrivacy: () => jest.requireActual("../../constants/guestListPrivacy"),
+  // #4420 — the unsaved-changes dialog copy and rules (pure; real module).
+  unsavedChangesGuard: () => jest.requireActual("../../utils/unsavedChangesGuard"),
   offeringTheme: () => ({
     normalizeThemeOverrides: (value: unknown) => value ?? null,
     patchOfferingTheme: asyncNoop,

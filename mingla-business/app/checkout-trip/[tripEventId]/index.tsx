@@ -18,7 +18,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirroring /checkout/[eventId]/index.tsx; insets.bottom IS applied (bottom dock) for home-indicator clearance; the top status-bar overlap with back arrow / "Reserve your spot" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0876 mirror of ORCH-0859 [Tr2] REWORK 5b operator design ruling.
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -28,6 +28,7 @@ import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
+import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 // ORCH-1181 — the shared per-package installment sub-line copy (business + web +
 // consumer identical). The deposit-due-today still comes from the existing
@@ -121,29 +122,16 @@ const isTripPast = (endAtIso: string | null): boolean => {
   return Number.isFinite(end) && end + 24 * 60 * 60 * 1000 < Date.now();
 };
 
+// #4420 — trip dates are calendar dates; read at UTC like the public page.
 const formatTripDateLine = (
   startAtIso: string | null,
   endAtIso: string | null,
-): string => {
-  if (startAtIso === null) return "";
-  try {
-    const fmt = new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-    const start = fmt.format(new Date(startAtIso));
-    if (endAtIso !== null) {
-      const end = fmt.format(new Date(endAtIso));
-      return `${start} – ${end}`;
-    }
-    return start;
-  } catch {
-    return "";
-  }
-};
+): string => formatTripCalendarRange(startAtIso, endAtIso);
 
 export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  // issue #4420 audit — the sticky bar's real height pads the scroll.
+  const [barHeight, setBarHeight] = useState(0);
   // #4304 — wide desktop: tickets left, a static order summary right.
   const wide = useCheckoutWideLayout();
   const router = useRouter();
@@ -618,7 +606,11 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: wide ? space[7] : insets.bottom + 140 },
+            {
+              paddingBottom: wide
+                ? space[7]
+                : Math.max(insets.bottom + 140, barHeight + space[4]),
+            },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -715,7 +707,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         </ScrollView>
 
         {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
-        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom}>
+        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom} onBarHeight={setBarHeight}>
           <React.Suspense fallback={null}>
             <CheckoutDiscountCodeField
               collapsible={!wide}

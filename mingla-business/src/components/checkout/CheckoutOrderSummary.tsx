@@ -63,6 +63,12 @@ export interface CheckoutOrderSummaryProps {
   /** Narrow only: the safe-area bottom inset the sticky bar pads by. */
   bottomInset: number;
   children: React.ReactNode;
+  /**
+   * issue #4420 audit — narrow only: the sticky bar's measured height, so the
+   * route pads its scroll by the real bar (a fixed 140 left the last ticket
+   * tier under the bar, out of reach).
+   */
+  onBarHeight?: (height: number) => void;
 }
 
 function QuoteLines(): React.ReactElement | null {
@@ -134,11 +140,20 @@ export const CheckoutOrderSummary: React.FC<CheckoutOrderSummaryProps> = ({
   wide,
   bottomInset,
   children,
+  onBarHeight,
 }) => {
   if (!wide) {
     const pad: ViewStyle = { paddingBottom: bottomInset + space[4] };
     return (
-      <View style={[styles.bottomBar, pad]} testID="checkout-bottom-bar">
+      <View
+        style={[styles.bottomBar, pad]}
+        testID="checkout-bottom-bar"
+        onLayout={
+          onBarHeight === undefined
+            ? undefined
+            : (e) => onBarHeight(Math.ceil(e.nativeEvent.layout.height))
+        }
+      >
         {children}
       </View>
     );
@@ -174,7 +189,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingTop: space[4],
     paddingHorizontal: space[6],
-    backgroundColor: materials.chrome.glassFill,
+    // issue #4420 audit — opaque: there is no blur behind this bar, and the
+    // translucent glass let the ticket rows scrolling under it show through.
+    backgroundColor: materials.chrome.solidFill,
     borderTopWidth: 1,
     borderTopColor: color.line,
   },

@@ -83,7 +83,7 @@ import {
   type ThemePalette,
 } from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
-import { OfferingFactRows } from "./OfferingFactRows";
+import { OfferingFactRows, sameLine } from "./OfferingFactRows";
 import {
   PresentedByFollowerCount,
   type FollowerCountLabels,
@@ -2722,11 +2722,18 @@ export const RsvpOfferingBody: React.FC<
                   {event.venueName}
                 </Text>
               ) : null}
-              <Text style={[styles.venueAddr, surface.secondaryText]}>
-                {venueAddressLabel.length > 0
+              {sameLine(
+                venueAddressLabel.length > 0
                   ? venueAddressLabel
-                  : (cityCountry ?? venueAddressLabel)}
-              </Text>
+                  : (cityCountry ?? venueAddressLabel),
+                event.venueName,
+              ) ? null : (
+                <Text style={[styles.venueAddr, surface.secondaryText]}>
+                  {venueAddressLabel.length > 0
+                    ? venueAddressLabel
+                    : (cityCountry ?? venueAddressLabel)}
+                </Text>
+              )}
               {addressUnlockCaption !== null ? (
                 <Text
                   style={[styles.venueUnlockCaption, surface.tertiaryText]}

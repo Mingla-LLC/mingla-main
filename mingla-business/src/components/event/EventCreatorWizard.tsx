@@ -106,6 +106,7 @@ import { OfferingRefundTermsError } from "../../utils/refundPolicyTerms";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { UNSAVED_AUTOSAVE_FAILED_DIALOG } from "../../utils/unsavedChangesGuard";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
@@ -403,6 +404,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const [pendingErrors, setPendingErrors] = useState<ValidationError[]>([]);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
+  // #4420 — edit mode, last autosave failed: confirm before leaving.
+  const [autosaveLeaveVisible, setAutosaveLeaveVisible] = useState<boolean>(false);
   const [coverVideoProcessing, setCoverVideoProcessing] =
     useState<boolean>(false);
   const coverIntentVersionRef = useRef(0);
@@ -876,11 +879,16 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         setDiscardError(null);
         setDiscardDialogVisible(true);
       }
+    } else if (serverSaveState?.hasError === true) {
+      // #4420 — edit mode autosaves, so leaving loses nothing, unless the
+      // last autosave failed: then ask before the unsaved edits are dropped.
+      setAutosaveLeaveVisible(true);
     } else {
       // Edit mode: auto-save semantics — simple exit, no dialog.
       onExit("abandoned");
     }
   }, [
+    serverSaveState?.hasError,
     isCreateMode,
     isDraftPristine,
     discardDraft,
@@ -901,7 +909,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   useWizardHardwareBack({
     isFirstStep,
     busy: isPublishing || checkingInvitePublish || isDiscarding || isAutosaving,
-    exitSurfaced: discardDialogVisible || toast.visible,
+    exitSurfaced: discardDialogVisible || autosaveLeaveVisible || toast.visible,
     onStepBack: handleStepBack,
     onExit: handleClose,
   });
@@ -1518,6 +1526,20 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       </View>
 
       {/* Overlays — at root for I-13 portal contract */}
+      <ConfirmDialog
+        visible={autosaveLeaveVisible}
+        onClose={() => setAutosaveLeaveVisible(false)}
+        onConfirm={() => {
+          setAutosaveLeaveVisible(false);
+          onExit("abandoned");
+        }}
+        title={UNSAVED_AUTOSAVE_FAILED_DIALOG.title}
+        description={UNSAVED_AUTOSAVE_FAILED_DIALOG.description}
+        confirmLabel={UNSAVED_AUTOSAVE_FAILED_DIALOG.confirmLabel}
+        cancelLabel={UNSAVED_AUTOSAVE_FAILED_DIALOG.cancelLabel}
+        destructive
+        testID="wizard-autosave-failed-leave-dialog"
+      />
       <ConfirmDialog
         visible={discardDialogVisible}
         onClose={handleCloseDiscardDialog}

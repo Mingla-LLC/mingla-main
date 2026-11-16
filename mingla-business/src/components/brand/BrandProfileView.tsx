@@ -114,7 +114,7 @@ const DeferredMeasuredTextDisclosure = React.lazy(loadMeasuredTextDisclosure);
 interface OperationsRow {
   icon: IconName;
   label: string;
-  sub: string;
+  sub?: string;
   /** Tap handler — navigation to the linked surface. */
   onPress: () => void;
 }
@@ -594,10 +594,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         // #3872 round 2 (H1.1) — distinct icons: Team is a person.
         icon: "user",
         label: "Team & permissions",
-        // Cycle 13a: brand.members is dropped (DEC-092). Member count now lives
-        // in brandTeamStore + useCurrentBrandRole synthesis; the row caption is
-        // a static prompt rather than a live count to avoid an extra hook here.
-        sub: "Invite team members and set roles",
         onPress: () => {
           if (brand !== null) onTeam(brand.id);
         },
@@ -628,7 +624,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       rows.push({
         icon: "shield",
         label: "Audit log",
-        sub: "Recent actions on this brand",
         onPress: () => {
           if (brand !== null) onAuditLog(brand.id);
         },
@@ -1203,7 +1198,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
                 </View>
                 <View style={styles.opsTextCol}>
                   <Text style={styles.opsLabel}>{row.label}</Text>
-                  <Text style={styles.opsSub}>{row.sub}</Text>
+                  {row.sub !== undefined ? (
+                    <Text style={styles.opsSub}>{row.sub}</Text>
+                  ) : null}
                 </View>
                 <Icon name="chevR" size={16} color={color.text3} />
               </Pressable>

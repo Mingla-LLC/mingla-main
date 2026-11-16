@@ -28,7 +28,6 @@ import {
   space,
 } from "../../../../../src/constants/designSystem";
 import type {
-  OrderRecord,
   OrderStatus,
   RefundRecord,
 } from "../../../../../src/store/orderStore";
@@ -61,31 +60,15 @@ import {
 import { usePublicEventById } from "../../../../../src/hooks/usePublicEvents";
 import { resolveOrderRefundStartAt } from "../../../../../src/utils/refundPolicyPrefill";
 import { CancelOrderDialog } from "../../../../../src/components/orders/CancelOrderDialog";
+// A cash or manual door sale refunds only through the door refund RPC; the
+// provider refund-order path is refused for it (door_sale_refund_path_required).
+import { deriveActionFlags } from "../../../../../src/utils/orderRefundActions";
+import { LazyDoorRefundSheet } from "../../../../../src/components/door/LazyDoorRefundSheet";
+import { useEventDoorSales } from "../../../../../src/hooks/useEventDoorSales";
+import type { DoorSaleRecord } from "../../../../../src/types/doorSales";
 
 const loadDiscountService = () =>
   import("../../../../../src/services/discountService");
-
-// ORCH-0787: derive primary-action visibility per Cycle 9c §3.4.2.
-// Replaces the hardcoded `const showRefundFull = false; ...` stub.
-const deriveActionFlags = (
-  order: OrderRecord,
-  canRefund: boolean,
-): {
-  showRefundFull: boolean;
-  showRefundPartialAgain: boolean;
-  showCancelOrder: boolean;
-  showSecondaryPartialFromFull: boolean;
-} => {
-  const paid = order.status === "paid";
-  const partial = order.status === "refunded_partial";
-  const isFree = order.paymentMethod === "free";
-  return {
-    showRefundFull: canRefund && !isFree && paid,
-    showRefundPartialAgain: canRefund && !isFree && partial,
-    showCancelOrder: canRefund && isFree && paid,
-    showSecondaryPartialFromFull: canRefund && !isFree && paid,
-  };
-};
 
 const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   card: "Card",
@@ -216,6 +199,17 @@ export default function OrderDetailRoute(): React.ReactElement {
     typeof orderId === "string" ? orderId : null,
   );
   const order = orderQuery.data ?? null;
+  // A cash or manual door sale is read from the door sales list (the same
+  // record the door sale screen refunds), and only when the order is one.
+  const isDoorSaleOrder = order?.source === "door_sale";
+  const doorSalesQuery = useEventDoorSales(
+    isDoorSaleOrder && typeof eventId === "string" ? eventId : null,
+  );
+  const doorSale: DoorSaleRecord | null =
+    isDoorSaleOrder && order !== null
+      ? (doorSalesQuery.data?.find((sale) => sale.id === order.id) ?? null)
+      : null;
+  const [doorRefundOpen, setDoorRefundOpen] = useState<boolean>(false);
   const paymentRole = useCurrentBrandRole(order?.brandId ?? null);
   const payoutScreen = useBrandPayoutScreen(
     canViewBrandPayments({
@@ -522,11 +516,29 @@ export default function OrderDetailRoute(): React.ReactElement {
   // computed at the top of the component before any early returns. Free orders use
   // the cancel path; paid orders use the refund path (Q-1 collapse).
   const {
+    refundRail,
     showRefundFull,
     showRefundPartialAgain,
     showCancelOrder,
     showSecondaryPartialFromFull,
   } = deriveActionFlags(order, canRefund);
+  // A door sale opens the door refund sheet (it picks the seats itself);
+  // every other paid order opens the provider refund sheet.
+  const doorRefundLoading =
+    refundRail === "door_sale" && doorSale === null && doorSalesQuery.isPending;
+  const openRefund = (mode: "full" | "partial"): void => {
+    if (refundRail === "door_sale") {
+      if (doorSale !== null) {
+        setDoorRefundOpen(true);
+      } else {
+        // The door list could not be read here: the door sale screen reads it
+        // again and offers the same refund.
+        router.push(`/event/${order.eventId}/door/${order.id}` as never);
+      }
+      return;
+    }
+    setRefundSheetMode(mode);
+  };
 
   const feesAndTaxCents = (order.buyerFeesCents ?? 0) + (order.taxCents ?? 0);
   const buyerTotalCents =
@@ -804,10 +816,12 @@ export default function OrderDetailRoute(): React.ReactElement {
             <>
               <Button
                 label="Refund order"
-                onPress={() => setRefundSheetMode("full")}
+                onPress={() => openRefund("full")}
                 variant="destructive"
                 size="lg"
                 fullWidth
+                loading={doorRefundLoading}
+                disabled={doorRefundLoading}
                 accessibilityLabel="Refund order"
               />
               {showSecondaryPartialFromFull ? (
@@ -826,10 +840,12 @@ export default function OrderDetailRoute(): React.ReactElement {
           {showRefundPartialAgain ? (
             <Button
               label="Refund again"
-              onPress={() => setRefundSheetMode("partial")}
+              onPress={() => openRefund("partial")}
               variant="destructive"
               size="lg"
               fullWidth
+              loading={doorRefundLoading}
+              disabled={doorRefundLoading}
               accessibilityLabel="Refund again"
             />
           ) : null}
@@ -888,6 +904,24 @@ export default function OrderDetailRoute(): React.ReactElement {
             deferAfterDismiss(() =>
               showToast(
                 `Refunded ${order.currency === null ? "—" : formatCurrency(amountGbp, order.currency)}`,
+              ),
+            );
+          }}
+        />
+      ) : null}
+
+      {doorSale !== null ? (
+        <LazyDoorRefundSheet
+          visible={doorRefundOpen}
+          sale={doorSale}
+          onClose={() => setDoorRefundOpen(false)}
+          onSuccess={(updated) => {
+            setDoorRefundOpen(false);
+            const refunded =
+              updated.refunds[updated.refunds.length - 1]?.amountGbp ?? 0;
+            deferAfterDismiss(() =>
+              showToast(
+                `Refunded ${formatCurrency(refunded, updated.currency)}. Buyer stays checked in.`,
               ),
             );
           }}

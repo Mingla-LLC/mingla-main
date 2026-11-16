@@ -76,7 +76,7 @@ import {
 } from "./themePalette";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { Globe, Minus, Plus } from "./LucideIcons";
-import { OfferingFactRows, type OfferingFact } from "./OfferingFactRows";
+import { OfferingFactRows, sameLine, type OfferingFact } from "./OfferingFactRows";
 import { OfferingGlassBar } from "./OfferingGlassBar";
 import { OfferingSectionTitle } from "./OfferingSectionTitle";
 import {
@@ -673,6 +673,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           theme={theme}
           socialProof={renderedSocialProof ?? socialProof}
           onSeeWhosGoing={acquisitionClosed ? undefined : onSeeWhosGoing}
+          ended={variant === "past"}
           testID="orch-1339-momentum-event"
         />
       ) : null}
@@ -798,9 +799,11 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               >
                 {event.venueName}
               </Text>
-              <Text style={[styles.venueAddr, surface.secondaryText]}>
-                {venueAddressLabel}
-              </Text>
+              {sameLine(venueAddressLabel, event.venueName) ? null : (
+                <Text style={[styles.venueAddr, surface.secondaryText]}>
+                  {venueAddressLabel}
+                </Text>
+              )}
               {addressUnlockCaption !== null ? (
                 <Text
                   style={[styles.venueUnlockCaption, surface.tertiaryText]}

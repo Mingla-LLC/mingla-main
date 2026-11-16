@@ -72,12 +72,8 @@ export default function AuthIndex() {
   return (
     <BusinessWelcomeScreen
       onBack={() => router.back()}
-      onGoogleSignIn={async () => {
-        await signInWithGoogle();
-      }}
-      onAppleSignIn={async () => {
-        await signInWithApple();
-      }}
+      onGoogleSignIn={signInWithGoogle}
+      onAppleSignIn={signInWithApple}
       onEmailSignIn={signInWithEmail}
       onVerifyEmailOtp={verifyEmailOtp}
     />

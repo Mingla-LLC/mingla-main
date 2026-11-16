@@ -719,9 +719,6 @@ export function VenueReservationsModule({
           <Text style={styles.title} accessibilityRole="header">
             Reservations
           </Text>
-          <Text style={styles.subtitle}>
-            Bookings from Mingla and your own — all in one list.
-          </Text>
         </View>
         {canMutate ? (
           <Button
@@ -1016,10 +1013,6 @@ const styles = StyleSheet.create({
   title: {
     ...type.h1,
     color: color.text1,
-  },
-  subtitle: {
-    ...type.small,
-    color: color.text2,
   },
   newButtonTarget: {
     minHeight: reservationCalendarLayout.entryMinTarget,

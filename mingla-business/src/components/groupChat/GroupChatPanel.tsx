@@ -182,9 +182,6 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
           <Text style={styles.title} numberOfLines={1}>
             {chat.conversation?.event_name ?? "Group chat"}
           </Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            Read, reply, and moderate buyer chat
-          </Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -425,11 +422,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: color.text1,
-  },
-  subtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    color: color.text3,
   },
   state: {
     flex: 1,
