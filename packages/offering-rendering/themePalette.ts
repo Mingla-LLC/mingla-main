@@ -503,3 +503,74 @@ export const themeTextAccent = (palette: ThemePalette): string => {
   }
   return best;
 };
+
+// =====================================================================
+// issue #4420 wave 2 — derived neutrals and status colours for public pages
+// and checkout. Pure functions of the palette; they are NOT fields on
+// `ThemePalette`, so the RT-1 parity snapshot is untouched. The literals are
+// copied from mingla-business designSystem.ts (I-MOR-0827-PACKAGE-ISOLATION
+// forbids importing it): dark = color.errorText / errorTint / errorLine /
+// successText / successTint / warningText / warningTint; light =
+// color.onPaper.* (paperStatus).
+const isDarkPalette = (palette: ThemePalette): boolean =>
+  palette.primaryText === "#ffffff";
+
+/** Input, card and tier borders, summary dividers. */
+export const neutralHair = (palette: ThemePalette): string =>
+  isDarkPalette(palette) ? "rgba(255,255,255,0.12)" : "rgba(16,20,31,0.12)";
+
+/** Stepper rings, ghost buttons, input outlines (3:1 boundary). */
+export const neutralControl = (palette: ThemePalette): string =>
+  isDarkPalette(palette) ? "rgba(255,255,255,0.34)" : "rgba(16,20,31,0.34)";
+
+export interface StatusTone {
+  text: string;
+  tint: string;
+  line: string;
+}
+
+export interface StatusTones {
+  error: StatusTone;
+  success: StatusTone;
+  warning: StatusTone;
+}
+
+const DARK_STATUS: StatusTones = {
+  error: {
+    text: "#f87171",
+    tint: "rgba(248,113,113,0.14)",
+    line: "rgba(248,113,113,0.45)",
+  },
+  success: {
+    text: "#5ee08f",
+    tint: "rgba(34,197,94,0.12)",
+    line: "rgba(94,224,143,0.45)",
+  },
+  warning: {
+    text: "#fbbf24",
+    tint: "rgba(245,158,11,0.14)",
+    line: "rgba(251,191,36,0.45)",
+  },
+};
+
+const LIGHT_STATUS: StatusTones = {
+  error: {
+    text: "#b91c1c",
+    tint: "rgba(185,28,28,0.07)",
+    line: "rgba(185,28,28,0.45)",
+  },
+  success: {
+    text: "#17623a",
+    tint: "rgba(23,98,58,0.08)",
+    line: "rgba(23,98,58,0.45)",
+  },
+  warning: {
+    text: "#6d3908",
+    tint: "#fff8ed",
+    line: "rgba(109,57,8,0.40)",
+  },
+};
+
+/** Error / success / warning colours readable on this palette's page. */
+export const statusOn = (palette: ThemePalette): StatusTones =>
+  isDarkPalette(palette) ? DARK_STATUS : LIGHT_STATUS;

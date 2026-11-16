@@ -14,6 +14,15 @@ import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { accentFill, themeFontFace } from "./themeAccentStyle";
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 
+/**
+ * issue #4420 audit — the phone cover clamps the title to 3 lines. At the
+ * cover's 40pt display size a phone line holds roughly 15 characters, so a
+ * title longer than this may be cut; the page body then prints it in full.
+ */
+export const COVER_TITLE_FULL_TEXT_MIN_CHARS = 45;
+export const coverTitleMayClamp = (title: string): boolean =>
+  title.trim().length >= COVER_TITLE_FULL_TEXT_MIN_CHARS;
+
 export interface OfferingCoverIdentityData {
   /** Short facts joined with dots ("Sat 19 Dec", "Lagos"). Blank parts drop. */
   eyebrow: readonly (string | null | undefined)[];
@@ -26,6 +35,12 @@ export interface OfferingCoverIdentityData {
    * "Open now"). Plain data, so a surface passes only what is true.
    */
   live?: string | null;
+  /**
+   * issue #4420 wave 2 — the brand page's avatar above the eyebrow (60 on
+   * the cover, 64 on desktop) in an accent / gradient ring. Offering pages
+   * pass nothing and render exactly as before.
+   */
+  avatar?: { photo?: string | null; initial: string; label?: string } | null;
 }
 
 export interface OfferingCoverIdentityProps extends OfferingCoverIdentityData {
@@ -41,6 +56,7 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
   presenter = null,
   extra = null,
   live = null,
+  avatar = null,
   palette,
   theme,
   variant,
@@ -54,8 +70,55 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
   const ink = onCover ? "#FFFFFF" : palette.primaryText;
   const soft = onCover ? "rgba(255,255,255,0.86)" : palette.secondaryText;
   const initial = (presenter?.name.trim()[0] ?? "•").toUpperCase();
+  const avatarSize = onCover ? 60 : 64;
   return (
     <View style={styles.wrap} testID={testID}>
+      {avatar !== null ? (
+        <View
+          style={[
+            styles.brandAvatarRing,
+            accentFill(palette),
+            { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 },
+          ]}
+          testID={`${testID}-avatar`}
+        >
+          <ThemeAccentGradientLayer
+            theme={theme}
+            palette={palette}
+            borderRadius={avatarSize / 2}
+          />
+          <View
+            testID={`${testID}-avatar-clip`}
+            style={[
+              styles.brandAvatarInner,
+              {
+                borderRadius: (avatarSize - 6) / 2,
+                borderColor: onCover ? "rgba(0,0,0,0.35)" : palette.page,
+                backgroundColor: palette.panelStrong,
+              },
+            ]}
+          >
+            {avatar.photo != null && avatar.photo.length > 0 ? (
+              <Image
+                source={{ uri: avatar.photo }}
+                style={styles.avatarPhoto}
+                accessibilityLabel={avatar.label}
+                accessibilityIgnoresInvertColors
+              />
+            ) : (
+              <Text
+                style={[
+                  styles.brandAvatarInitial,
+                  { color: onCover ? "#FFFFFF" : palette.primaryText },
+                  face,
+                ]}
+              >
+                {(avatar.initial.trim()[0] ?? "?").toUpperCase()}
+              </Text>
+            )}
+          </View>
+        </View>
+      ) : null}
       {parts.length > 0 ? (
         <Text
           // issue #4420 audit — the small eyebrow washed out over bright
@@ -176,6 +239,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarPhoto: { width: "100%", height: "100%" },
+  brandAvatarRing: {
+    padding: 3,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandAvatarInner: {
+    flex: 1,
+    alignSelf: "stretch",
+    borderWidth: 3,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandAvatarInitial: { fontSize: 24, fontWeight: "700" },
   avatarInitial: { fontSize: 13, fontWeight: "700" },
   bylineText: { fontSize: 13.5, fontWeight: "600", flexShrink: 1 },
 });

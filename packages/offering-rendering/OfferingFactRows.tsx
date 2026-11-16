@@ -20,11 +20,17 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { ResolvedTheme } from "./designTokens";
-import { Calendar, Clock, Globe, MapPin, Users } from "./LucideIcons";
+import { Calendar, Clock, Globe, MapPin, Tag, Users } from "./LucideIcons";
 import { themeFontFace } from "./themeAccentStyle";
 import { boldFontFamily, themeTextAccent, type ThemePalette } from "./themePalette";
 
-export type OfferingFactIcon = "calendar" | "clock" | "pin" | "globe" | "people";
+export type OfferingFactIcon =
+  | "calendar"
+  | "clock"
+  | "pin"
+  | "globe"
+  | "people"
+  | "price";
 
 export interface OfferingFact {
   /** Stable key (also the testID suffix). */
@@ -74,6 +80,8 @@ const FactGlyph: React.FC<{ icon: OfferingFactIcon; color: string }> = ({
       return <Globe size={ICON_SIZE} color={color} strokeWidth={1.7} />;
     case "people":
       return <Users size={ICON_SIZE} color={color} strokeWidth={1.7} />;
+    case "price":
+      return <Tag size={ICON_SIZE} color={color} strokeWidth={1.7} />;
     default: {
       const never: never = icon;
       return never;
