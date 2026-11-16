@@ -17,7 +17,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirroring /checkout-trip/[tripEventId]/index.tsx; insets.bottom IS applied (bottom dock); the top status-bar overlap with the banner header is the intended buyer aesthetic.
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -95,6 +95,8 @@ const allDatesPast = (isos: string[], nowMs: number = Date.now()): boolean => {
 
 export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  // issue #4420 audit — the sticky bar's real height pads the scroll.
+  const [barHeight, setBarHeight] = useState(0);
   // #4304 — wide desktop: tickets left, a static order summary right.
   const wide = useCheckoutWideLayout();
   const router = useRouter();
@@ -389,7 +391,11 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: wide ? space[7] : insets.bottom + 140 },
+            {
+              paddingBottom: wide
+                ? space[7]
+                : Math.max(insets.bottom + 140, barHeight + space[4]),
+            },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -440,7 +446,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
         </ScrollView>
 
         {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
-        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom}>
+        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom} onBarHeight={setBarHeight}>
           <React.Suspense fallback={null}>
             <CheckoutDiscountCodeField
               collapsible={!wide}
