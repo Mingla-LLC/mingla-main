@@ -22,9 +22,9 @@
 --   U4. unsend_messages(ids): the author unsends their own messages (no time
 --       limit, Seth 2026-11-16), a group admin removes someone else's. One to
 --       ten ids from one chat (an album is one call).
---   U5. Delete for me: message_hidden_for (per user, synced), the
---       hide_messages_for_me / unhide_messages_for_me RPCs and a restrictive
---       read rule.
+--   U5. Delete for me: message_hidden_for (per user, synced; clients read
+--       their own rows), written only by the hide_messages_for_me /
+--       unhide_messages_for_me RPCs, and a restrictive read rule.
 --   U6. Chat files: a participant reads a file only while a live message
 --       points at it; an unsent message's file is readable by the server only.
 --       The hourly media sweep deletes it after 30 days ('unsent_retention'),
@@ -452,15 +452,16 @@ CREATE TABLE IF NOT EXISTS public.message_hidden_for (
 );
 CREATE INDEX IF NOT EXISTS message_hidden_for_message_idx ON public.message_hidden_for (message_id);
 ALTER TABLE public.message_hidden_for ENABLE ROW LEVEL SECURITY;
+-- Clients read their own rows; writes go through the two RPCs below (the
+-- #1856 grant guard: no client write privilege on a table without a reason).
 REVOKE ALL ON TABLE public.message_hidden_for FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, DELETE ON TABLE public.message_hidden_for TO authenticated;
+GRANT SELECT ON TABLE public.message_hidden_for TO authenticated;
 GRANT ALL ON TABLE public.message_hidden_for TO service_role;
 
 DROP POLICY IF EXISTS message_hidden_for_select ON public.message_hidden_for;
 CREATE POLICY message_hidden_for_select ON public.message_hidden_for
   FOR SELECT TO authenticated USING (user_id = (SELECT auth.uid()));
--- Only a message in a chat the person is in. A definer check, because the
--- messages read rules themselves read this table.
+-- Only a message in a chat the person is in.
 CREATE OR REPLACE FUNCTION public.issue_4456_can_hide_message(p_message_id uuid, p_user uuid)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -476,19 +477,8 @@ BEGIN
   );
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4456_can_hide_message(uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.issue_4456_can_hide_message(uuid, uuid) TO authenticated, service_role;
-
-DROP POLICY IF EXISTS message_hidden_for_insert ON public.message_hidden_for;
-CREATE POLICY message_hidden_for_insert ON public.message_hidden_for
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    user_id = (SELECT auth.uid())
-    AND public.issue_4456_can_hide_message(message_id, (SELECT auth.uid()))
-  );
-DROP POLICY IF EXISTS message_hidden_for_delete ON public.message_hidden_for;
-CREATE POLICY message_hidden_for_delete ON public.message_hidden_for
-  FOR DELETE TO authenticated USING (user_id = (SELECT auth.uid()));
+REVOKE ALL ON FUNCTION public.issue_4456_can_hide_message(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4456_can_hide_message(uuid, uuid) TO service_role;
 
 -- I-4456-HIDE-IS-PER-USER.
 DROP POLICY IF EXISTS messages_hidden_for_me ON public.messages;
@@ -501,7 +491,7 @@ CREATE POLICY messages_hidden_for_me ON public.messages AS RESTRICTIVE FOR SELEC
 CREATE OR REPLACE FUNCTION public.hide_messages_for_me(p_message_ids uuid[])
 RETURNS jsonb
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
 DECLARE
@@ -517,9 +507,11 @@ BEGIN
   IF cardinality(v_ids) < 1 OR cardinality(v_ids) > 50 THEN
     RAISE EXCEPTION 'invalid_input' USING ERRCODE = '22023';
   END IF;
-  -- The SELECT runs under the caller's read rules: only messages they can see.
+  -- Only messages in chats the caller is in; the row is always the caller's own.
   INSERT INTO public.message_hidden_for(user_id, message_id)
-  SELECT v_uid, m.id FROM public.messages m WHERE m.id = ANY(v_ids)
+  SELECT v_uid, m.id FROM public.messages m
+   WHERE m.id = ANY(v_ids)
+     AND public.issue_4456_can_hide_message(m.id, v_uid)
   ON CONFLICT DO NOTHING;
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN jsonb_build_object('count', v_count);
@@ -531,7 +523,7 @@ GRANT EXECUTE ON FUNCTION public.hide_messages_for_me(uuid[]) TO authenticated;
 CREATE OR REPLACE FUNCTION public.unhide_messages_for_me(p_message_ids uuid[])
 RETURNS jsonb
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
 DECLARE

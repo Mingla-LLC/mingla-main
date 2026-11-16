@@ -458,11 +458,17 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM pg_temp.ok('D-OUTSIDER hiding a message in a chat I''m not in inserts nothing', (r ->> 'count')::int = 0);
   v_res := pg_temp.try_as('eve', format('INSERT INTO public.message_hidden_for(user_id, message_id) VALUES (%L, %L)', pg_temp.u('eve'), v_out));
-  PERFORM pg_temp.ok('D-DIRECT a direct insert for an unreadable message is refused (' || v_res || ')', v_res LIKE '42501%');
+  PERFORM pg_temp.ok('D-DIRECT a direct insert is refused (' || v_res || ')', v_res LIKE '42501%');
   v_res := pg_temp.try_as('eve', format('INSERT INTO public.message_hidden_for(user_id, message_id) VALUES (%L, %L)', pg_temp.u('ben'), v_m));
   PERFORM pg_temp.ok('D-DIRECT nobody hides for someone else (' || v_res || ')', v_res LIKE '42501%');
   v_res := pg_temp.try_as('ana', format('UPDATE public.message_hidden_for SET user_id = %L', pg_temp.u('ben')));
   PERFORM pg_temp.ok('D-DIRECT hide rows cannot be moved (' || v_res || ')', v_res LIKE '42501%');
+  v_res := pg_temp.try_as('ana', 'DELETE FROM public.message_hidden_for');
+  PERFORM pg_temp.ok('D-DIRECT hide rows are removed only through Undo (' || v_res || ')', v_res LIKE '42501%');
+  PERFORM pg_temp.ok('T-CATALOG clients only read their hide rows',
+    has_table_privilege('authenticated', 'public.message_hidden_for', 'SELECT')
+    AND NOT has_table_privilege('authenticated', 'public.message_hidden_for', 'INSERT')
+    AND NOT has_table_privilege('authenticated', 'public.message_hidden_for', 'DELETE'));
 END $hide$;
 
 -- ── Chat files ────────────────────────────────────────────────────────────
