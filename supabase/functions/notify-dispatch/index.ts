@@ -2,6 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveOneSignalApp, sendPush } from "../_shared/push-utils.ts";
 import { getTranslatedNotification } from "../_shared/push-translations.ts";
+import {
+  HOST_AD_NOTICE_TYPES,
+  type HostAdNoticeType,
+} from "../_shared/hostAdNotices.ts";
 // META-ORCH-1161 transitional: v2 dispatch core ({category_key,...} contract).
 // The legacy type-based path below is left BYTE-IDENTICAL — the v2 branch is an
 // early, additive return. Exit condition: when all senders migrate onto v2 and
@@ -404,12 +408,21 @@ type BusinessPreferenceType =
   | "business.account_status_changed"
   | "business.new_review"
   | "business.claim_decision"
-  | "business.team_member_joined";
+  | "business.team_member_joined"
+  // #4238 W4b: Host ad notices (push + in-app on by default).
+  | HostAdNoticeType;
 
 interface BusinessChannelDefaults {
   push: boolean;
   in_app: boolean;
 }
+
+// #4238 W4b: the nine Host ad notice types, push and in-app on by default
+// (amendment B decision 1). Spread in as a computed block so the #1614
+// literal-default census keeps proving its original contract.
+const HOST_AD_NOTICE_CHANNEL_DEFAULTS = Object.fromEntries(
+  HOST_AD_NOTICE_TYPES.map((type) => [type, { push: true, in_app: true }]),
+) as Record<HostAdNoticeType, BusinessChannelDefaults>;
 
 // Kept as computed keys so the legacy #1614 literal-default census continues
 // to prove its original 15-type contract while these additive payout events
@@ -444,6 +457,7 @@ const BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS: Record<
   "business.new_review": { push: true, in_app: true },
   "business.claim_decision": { push: true, in_app: true },
   "business.team_member_joined": { push: false, in_app: true },
+  ...HOST_AD_NOTICE_CHANNEL_DEFAULTS,
 };
 
 function isBusinessPreferenceType(

@@ -68,6 +68,16 @@ import {
 import { loadHostLiveSinceMs } from "../_shared/adHostLiveEdit.ts";
 import { parseMetaAdMetrics } from "../_shared/adCreativeFatigue.ts";
 import { markPlanPaused } from "../_shared/adPlanPauseTransition.ts";
+import {
+  dispatchNotification,
+  formatMoneyCents,
+} from "../_shared/stripeEdgeAuth.ts";
+import {
+  notifyHostAdCreditLow,
+  notifyHostAdEnded,
+  notifyHostAdPause,
+  notifyHostAdSignals,
+} from "../_shared/hostAdNotices.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -416,6 +426,14 @@ async function pauseCampaignForReason(
       if (!planPause.ok) {
         return { ok: false, detail: planPause.detail };
       }
+      // #4238 W4b: the true pause reason, to the Host team (Host lane only:
+      // the loader returns nothing for an Admin plan). Keyed by this pause's
+      // ad_status_events row. Never blocks the sweep.
+      await notifyHostAdPause(supabase, {
+        planVersionId: { planId },
+        campaignId: target.id,
+        reason,
+      }, dispatchNotification);
     }
     return { ok: true };
   } catch (err) {
@@ -676,7 +694,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id, owner_kind, created_at, plan_version:ad_plan_versions(plan_id, canonical_plan)",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id, owner_kind, brand_id, created_at, plan_version:ad_plan_versions(plan_id, canonical_plan)",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -1088,6 +1106,24 @@ serve(async (req: Request): Promise<Response> => {
         cumulative.cents,
       )
       : null;
+    // #4238 W4b: "your ad has ended" only once the drain has settled the
+    // plan's hold (notifyHostAdEnded re-checks the hold and its ledger row).
+    if (
+      row.owner_kind === "host" &&
+      (settlementResult as { settlement?: unknown } | null)?.settlement ===
+        "settled"
+    ) {
+      const endedPlanId =
+        (row.plan_version as { plan_id?: unknown } | null)?.plan_id;
+      if (typeof endedPlanId === "string") {
+        await notifyHostAdEnded(
+          supabase,
+          { planId: endedPlanId },
+          dispatchNotification,
+          formatMoneyCents,
+        );
+      }
+    }
 
     // Fail closed on any spend-fetch outage for capped ACTIVE campaigns:
     // stale ad_spend_daily must not keep delivery alive without a fresh read.
@@ -1212,6 +1248,12 @@ serve(async (req: Request): Promise<Response> => {
           occurrenceKey,
           destination: resolvedDestination,
         });
+        // #4238 W4b: slow sales, tired creative and last-tickets offers the
+        // automation just recorded, to the Host team once each.
+        await notifyHostAdSignals(supabase, {
+          planId: planVersion.plan_id,
+          sinceIso: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+        }, dispatchNotification);
       }
       results.push({
         campaign_id: target.id,
@@ -1227,6 +1269,22 @@ serve(async (req: Request): Promise<Response> => {
       // Rotate the 80-row sweep: every attempted row advances the watermark.
       await touchSpendSyncWatermark(supabase, target.id);
     }
+  }
+
+  // #4238 W4b: credit low, once per brand with a live Host ad this sweep.
+  const hostBrandIds = new Set(
+    ((campaigns ?? []) as Record<string, unknown>[])
+      .filter((row) => row.owner_kind === "host" && row.status === "ACTIVE")
+      .map((row) => String(row.brand_id ?? ""))
+      .filter((id) => UUID_REGEX.test(id)),
+  );
+  for (const brandId of hostBrandIds) {
+    await notifyHostAdCreditLow(
+      supabase,
+      { brandId, now: new Date() },
+      dispatchNotification,
+      formatMoneyCents,
+    );
   }
 
   return json({

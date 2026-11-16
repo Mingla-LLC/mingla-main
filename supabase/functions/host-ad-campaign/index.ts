@@ -55,6 +55,8 @@ import {
   runHostLiveEdit,
 } from "../_shared/adHostLiveEdit.ts";
 import { providerDailyMinimumCents } from "../_shared/adHostPlanRules.ts";
+import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
+import { notifyHostAdPause } from "../_shared/hostAdNotices.ts";
 import {
   HOST_AD_CLICK_WINDOW_DAYS,
   HOST_AD_RESULTS_COPY,
@@ -1200,6 +1202,15 @@ serve(async (req: Request): Promise<Response> => {
             .eq("state", "pause_requested");
         }
       }
+      // #4238 W4b: the rest of the team hears that a teammate paused it
+      // (the person who paused does not). Never blocks the pause.
+      await notifyHostAdPause(supabase, {
+        planVersionId: camp.plan_version_id,
+        campaignId,
+        reason: "host_paused",
+        pauseRef: `host:${idem || `${campaignId}:${new Date().toISOString()}`}`,
+        actorId: user.id,
+      }, dispatchNotification);
       return json({
         ok: true,
         campaign_id: campaignId,
