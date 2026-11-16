@@ -68,6 +68,19 @@ export type AdCreditCurrency = keyof typeof AD_CREDIT_TOP_UP_LIMITS_CENTS;
 
 export type AdCreditEntryKind = "top_up" | "withdraw" | "unspend_return";
 
+/**
+ * #4238 F-1 / R-1: an ad-spend (credit) amount in what the Host pays, the fee
+ * included: ceil(credit / (1 - HOST_FEE_RATIO)). The ONE place the Host-facing
+ * minimum, recommended and expected-results amounts are grossed up; no other
+ * copy of the rate exists. A 100-cent provider floor is 118 pay cents.
+ */
+export function hostMinimumPayCents(creditCents: number): number {
+  if (!Number.isSafeInteger(creditCents) || creditCents <= 0) return 0;
+  // Integer maths so 100 / 0.85 never lands a float epsilon above 117.647.
+  const keep = Math.round((1 - HOST_FEE_RATIO) * 10_000);
+  return Math.ceil((creditCents * 10_000) / keep);
+}
+
 /** Credit that lands in the wallet after the 15% fee is taken at top-up. */
 export function creditCentsFromPay(payCents: number): number {
   if (!Number.isInteger(payCents) || payCents <= 0) return 0;

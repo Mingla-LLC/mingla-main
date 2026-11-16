@@ -1,6 +1,6 @@
 // Issue #4238 Fix 1 — Meta's minimum follows the billing event, the real
-// TikTok / Snapchat per-ad-set limits (D-1), and the Host minimum covers
-// staged ad sets (X-1 / SC-9).
+// TikTok / Snapchat per-ad-set limits (D-1). W1: the Host minimum is one ad
+// set (item 6b), so the X-1 / SC-9 staged worst case is removed.
 //
 // @invariant I-4238-META-FLOOR-FOLLOWS-BILLING
 //   owner: supabase/functions/_shared/adChannelCore.ts metaBudgetCategoryForBillingEvent
@@ -15,14 +15,8 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { metaBudgetCategoryForBillingEvent } from "../adChannelCore.ts";
 import {
-  type AdAudienceRow,
-  type AdStage,
-  buildAdStagePlan,
-} from "../adAudienceStages.ts";
-import {
   hostDailyMinimumCents,
   providerDailyMinimumCents,
-  stagedDailyMinimumCents,
 } from "../adHostPlanRules.ts";
 import { AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY } from "../adMoney.ts";
 
@@ -157,171 +151,47 @@ Deno.test("SC-3/SC-5 the create gate picks the category from billing_event, at c
   );
 });
 
-// ── SC-9: the Host minimum covers staged ad sets ──────────────────────────────
+// ── W1 (6b): the staged Host minimum is gone ─────────────────────────────────
+// Item 1 shipped a staged worst case (991 / 4991 / 19991) because Host event
+// ads were staged at create. Item 6b makes Host and Ari ads one ad set, and
+// the binding floor rule removes the staged figure. The full floor lock lives
+// in issue_4238_host_floor_lock.test.ts.
 
-const BRAND = "4238f100-0000-4000-8000-000000000001";
-const EVENT = "4238f100-0000-4000-8000-000000000002";
-const CODES: Record<
-  "meta" | "tiktok" | "snapchat",
-  { retarget: string; checkout: string; buyer: string }
-> = {
-  meta: { retarget: "M1", checkout: "M5", buyer: "M6" },
-  tiktok: { retarget: "T1", checkout: "T3", buyer: "T4" },
-  snapchat: { retarget: "S1", checkout: "S3", buyer: "S4" },
-};
-const row = (
-  platform: "meta" | "tiktok" | "snapchat",
-  code: string,
-): AdAudienceRow => ({
-  id: `${platform}-${code}`,
-  platform,
-  code,
-  scope: "event",
-  market: "US",
-  brand_id: BRAND,
-  event_id: EVENT,
-  platform_audience_id: `pa-${code}`,
-  approx_size: 50_000,
-  status: "ready",
-});
-
-/** The stage budgets the create path would send, for one audience mix. */
-function createStageBudgets(
-  platform: "meta" | "tiktok" | "snapchat",
-  total: number,
-  stages: { retarget: boolean; abandoners: boolean },
-): number[] {
-  const codes = CODES[platform];
-  const rows = [row(platform, codes.buyer)];
-  if (stages.retarget) rows.push(row(platform, codes.retarget));
-  if (stages.abandoners) rows.push(row(platform, codes.checkout));
-  const plan = buildAdStagePlan({
-    platform,
-    rows,
-    market: "US",
-    brandId: BRAND,
-    eventId: EVENT,
-    totalBudgetCents: total,
-  });
-  assert(plan && !plan.blocked);
-  return plan.stages.filter((stage) => stage.enabled && stage.executable)
-    .map((stage) => stage.budgetCents);
-}
-
-const MIXES = [
-  { retarget: false, abandoners: false },
-  { retarget: true, abandoners: false },
-  { retarget: false, abandoners: true },
-  { retarget: true, abandoners: true },
-];
-
-Deno.test("SC-9 every total at or above the staged minimum clears every stage, for every audience mix", () => {
-  for (
-    const [platform, floor] of [
-      ["meta", 100],
-      ["snapchat", 500],
-      ["tiktok", 2000],
-    ] as const
-  ) {
-    const minimum = stagedDailyMinimumCents(floor);
-    for (let total = minimum; total <= minimum + 3 * floor; total += 1) {
-      for (const mix of MIXES) {
-        for (const budget of createStageBudgets(platform, total, mix)) {
-          assert(
-            budget >= floor,
-            `${platform} total ${total} ${
-              JSON.stringify(mix)
-            }: stage ${budget} < ${floor}`,
-          );
-        }
-      }
-    }
-  }
-});
-
-Deno.test("SC-9 one cent under the staged minimum, some audience mix is refused at create", () => {
-  for (const floor of [100, 500, 2000, 4000]) {
-    const minimum = stagedDailyMinimumCents(floor);
-    const refused = MIXES.some((mix) =>
-      createStageBudgets("meta", minimum - 1, mix).some((budget) =>
-        budget < floor
-      )
+Deno.test("W1 the Host minimum is one ad set on every page, for every goal", () => {
+  for (const goal of ["visits", "sales"] as const) {
+    assertEquals(hostDailyMinimumCents("meta", META_USD, goal), 100);
+    assertEquals(
+      hostDailyMinimumCents("tiktok", { currency: "USD" }, goal),
+      2000,
     );
-    assert(refused, `floor ${floor}: ${minimum - 1} must fail one stage`);
+    assertEquals(
+      hostDailyMinimumCents("snapchat", { currency: "USD" }, goal),
+      500,
+    );
   }
-  // The worst case is three stages: the 10% abandoners stage binds.
-  assertEquals(stagedDailyMinimumCents(100), 991);
-  assertEquals(stagedDailyMinimumCents(500), 4991);
-  assertEquals(stagedDailyMinimumCents(2000), 19991);
-});
-
-Deno.test("SC-9 the Host minimum: staged on event pages for Meta, TikTok and Snapchat only", () => {
-  const staged = { staged: true };
-  const single = { staged: false };
-  assertEquals(hostDailyMinimumCents("meta", META_USD, "sales", single), 100);
-  assertEquals(hostDailyMinimumCents("meta", META_USD, "sales", staged), 991);
   assertEquals(
-    hostDailyMinimumCents("tiktok", { currency: "USD" }, "visits", staged),
-    19991,
-  );
-  assertEquals(
-    hostDailyMinimumCents("snapchat", { currency: "USD" }, "visits", staged),
-    4991,
-  );
-  assertEquals(
-    hostDailyMinimumCents("reddit", { currency: "USD" }, "visits", staged),
+    hostDailyMinimumCents("reddit", { currency: "USD" }, "visits"),
     500,
-    "Reddit is never staged",
   );
   assertEquals(
-    hostDailyMinimumCents("google", { currency: "USD" }, "visits", staged),
+    hostDailyMinimumCents("google", { currency: "USD" }, "visits"),
     0,
   );
   assertEquals(
-    hostDailyMinimumCents(
-      "meta",
-      { ...META_USD, currency: "EUR" },
-      "sales",
-      staged,
-    ),
+    hostDailyMinimumCents("meta", { ...META_USD, currency: "EUR" }, "sales"),
     null,
   );
 });
 
-Deno.test("SC-9 ad-plan setup shows the staged worst case and preflight stages event pages", async () => {
+Deno.test("W1 ad-plan setup and preflight no longer use a staged minimum", async () => {
   const source = await Deno.readTextFile(
     new URL("../../ad-plan/index.ts", import.meta.url),
   );
-  const setup = source.slice(
-    source.indexOf("async function hostDailyMinimums("),
+  assert(!source.includes("staged: true"), "setup staged worst case removed");
+  assert(!source.includes("destinationIsStaged"), "preflight staging removed");
+  const rules = await Deno.readTextFile(
+    new URL("../adHostPlanRules.ts", import.meta.url),
   );
-  assert(
-    setup.slice(0, 900).includes("{ staged: true }"),
-    "setup minimums use the staged worst case",
-  );
-  assert(
-    source.includes("{ staged: destinationIsStaged }"),
-    "preflight stages by destination",
-  );
-  assert(source.includes('typeof resolvedDestination.event_id === "string"'));
-  // Same rule the create path uses: stages run when the destination has an event.
-  const create = await Deno.readTextFile(
-    new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
-  );
-  assert(create.includes("const destEventId = resolvedDestination.event_id;"));
-  assert(create.includes("if (destEventId) {"));
-});
-
-Deno.test("SC-9 the stage list the Host minimum assumes is the create path's", () => {
-  const stages: AdStage[] = ["prospecting", "retarget", "abandoners"];
-  const plan = buildAdStagePlan({
-    platform: "meta",
-    rows: [row("meta", "M6")],
-    market: "US",
-    brandId: BRAND,
-    eventId: EVENT,
-    totalBudgetCents: 1000,
-  });
-  assertEquals(plan?.stages.map((stage) => stage.stage), stages);
-  assertEquals(plan?.stages.map((stage) => stage.budgetPercent), [70, 20, 10]);
+  assert(!rules.includes("stagedDailyMinimumCents"));
+  assert(!rules.includes("HOST_STAGED_PLATFORMS"));
 });

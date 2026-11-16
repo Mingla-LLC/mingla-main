@@ -217,6 +217,7 @@ import {
   hostGoalBodyError,
   hostOptimizationFor,
 } from "../_shared/adHostGoal.ts";
+import { paidSocialStagesApply } from "../_shared/adHostPlanRules.ts";
 import { PURCHASE_SIGNAL_MIN_28D } from "../_shared/adSalesReadiness.ts";
 import {
   frozenAudienceBinding,
@@ -3447,7 +3448,8 @@ serve(async (req: Request): Promise<Response> => {
 
     let snapStages: PaidSocialStagePreparation | null = null;
     let snapStageMedia = new Map<string, PaidSocialCreativeMedia>();
-    if (destEventIdS) {
+    // #4238 6b / I-4238-HOST-ONE-ADSET: Host and Ari ads are one ad set.
+    if (paidSocialStagesApply(requestedOwnerKind, destEventIdS)) {
       if (countryCodesS.length !== 1 || !/^[A-Z]{2}$/.test(countryCodesS[0])) {
         return json({
           error: "validation_error",
@@ -4343,6 +4345,14 @@ serve(async (req: Request): Promise<Response> => {
         detail: landingCheckT.message,
       }, 422);
     }
+    // #4238 6b: Spark Ads exist only on Admin's staged path; a Host ad is one
+    // ad set built from the brand's own video, so a Host Spark plan is refused.
+    if (usesTikTokSparkT && requestedOwnerKind === "host") {
+      return json({
+        error: "validation_error",
+        detail: "tiktok_spark_admin_only",
+      }, 422);
+    }
     if (usesTikTokSparkT && !destEventIdT) {
       return json({
         error: "validation_error",
@@ -4603,7 +4613,8 @@ serve(async (req: Request): Promise<Response> => {
       let tiktokStages: PaidSocialStagePreparation | null = null;
       let tiktokStageMedia = new Map<string, PaidSocialCreativeMedia>();
       let tiktokSparkPostIds: string[] = [];
-      if (destEventIdT) {
+      // #4238 6b / I-4238-HOST-ONE-ADSET: Host and Ari ads are one ad set.
+      if (paidSocialStagesApply(requestedOwnerKind, destEventIdT)) {
         if (
           countryCodesT.length !== 1 ||
           !/^[A-Z]{2}$/.test(countryCodesT[0])
@@ -6297,7 +6308,8 @@ serve(async (req: Request): Promise<Response> => {
 
   let metaStages: PaidSocialStagePreparation | null = null;
   let metaStageMedia = new Map<string, PaidSocialCreativeMedia>();
-  if (destEventId) {
+  // #4238 6b / I-4238-HOST-ONE-ADSET: Host and Ari ads are one ad set.
+  if (paidSocialStagesApply(requestedOwnerKind, destEventId)) {
     const marketCodes = (countries as string[]).map((country) =>
       country.trim().toUpperCase()
     );

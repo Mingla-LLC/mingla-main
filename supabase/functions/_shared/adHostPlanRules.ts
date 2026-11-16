@@ -1,5 +1,4 @@
 import { metaBudgetCategoryForBillingEvent } from "./adChannelCore.ts";
-import { type AdStage, stageBudgetShares } from "./adAudienceStages.ts";
 import { hostAdGoalFields } from "./adHostGoal.ts";
 import { AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY } from "./adMoney.ts";
 
@@ -121,74 +120,37 @@ export function providerDailyMinimumCents(
   return null;
 }
 
-/** The apps whose event ads are built as staged ad sets at create. */
-export const HOST_STAGED_PLATFORMS: readonly string[] = [
-  "meta",
-  "tiktok",
-  "snapchat",
-];
-
-const STAGE_CONFIGURATIONS: readonly Record<AdStage, boolean>[] = (() => {
-  const out: Record<AdStage, boolean>[] = [];
-  for (const prospecting of [true, false]) {
-    for (const retarget of [true, false]) {
-      for (const abandoners of [true, false]) {
-        if (prospecting || retarget || abandoners) {
-          out.push({ prospecting, retarget, abandoners });
-        }
-      }
-    }
-  }
-  return out;
-})();
-
-function everyStageClears(totalCents: number, perStageCents: number): boolean {
-  for (const executable of STAGE_CONFIGURATIONS) {
-    const shares = stageBudgetShares(executable, executable, totalCents);
-    for (const stage of ["prospecting", "retarget", "abandoners"] as const) {
-      if (executable[stage] && shares[stage] < perStageCents) return false;
-    }
-  }
-  return true;
-}
-
 /**
- * #4238 X-1 / SC-9: the smallest daily total from which EVERY total clears
- * the per-stage floor on EVERY stage, for every stage set the create path can
- * build (prospecting, retargeting and abandoners each on or folded away by
- * audience size). The create gate (admin-ad-create-campaign
- * stage_budget_below_platform_minimum) checks each 70/20/10 share against the
- * floor, and which stages run is only known at create, so this is the worst
- * case. The 10% stage gets at least a tenth of the total, so 10 × floor
- * always clears; below that the rounding is checked total by total.
+ * #4238 item 6b / I-4238-HOST-ONE-ADSET: Host and Ari ads (owner_kind
+ * "host") are built as ONE ad set / ad group / ad squad per app. Only Admin
+ * (owner_kind "mingla") event ads are split into staged ad sets at create.
+ * admin-ad-create-campaign calls this at every paid-social stage branch.
  */
-export function stagedDailyMinimumCents(perStageCents: number): number {
-  if (!Number.isSafeInteger(perStageCents) || perStageCents <= 0) {
-    return perStageCents;
-  }
-  const ceiling = perStageCents * 10;
-  for (let total = ceiling; total >= perStageCents; total -= 1) {
-    if (!everyStageClears(total, perStageCents)) return total + 1;
-  }
-  return perStageCents;
+export function paidSocialStagesApply(
+  ownerKind: string,
+  eventId: unknown,
+): boolean {
+  return ownerKind !== "host" && typeof eventId === "string" &&
+    eventId.trim() !== "";
 }
 
 /**
- * #4238 X-1: the daily minimum a Host plan must clear on one app. An event
- * page on Meta, TikTok or Snapchat becomes staged ad sets at create, so the
- * minimum is the staged worst case; anything else is one ad set.
+ * #4238 binding floor rule (16 Nov): the daily minimum a Host plan must clear
+ * on one app is the price of ONE ad set, in the provider account's money
+ * (ad credit, after the fee). Nothing is added on top: no staged worst case
+ * (Host ads are one ad set, paidSocialStagesApply) and no retargeting share.
+ * The pay-terms figure the Host sees is hostMinimumPayCents of this.
  */
 export function hostDailyMinimumCents(
   platform: string,
   connection: { currency?: unknown; extra?: unknown },
-  optimization: "visits" | "sales",
-  options: { staged: boolean },
+  optimization: "visits" | "sales" | "signups",
 ): number | null {
-  const perAdSet = providerDailyMinimumCents(platform, connection, optimization);
-  if (perAdSet === null) return null;
-  return options.staged && HOST_STAGED_PLATFORMS.includes(platform)
-    ? stagedDailyMinimumCents(perAdSet)
-    : perAdSet;
+  return providerDailyMinimumCents(
+    platform,
+    connection,
+    optimization === "visits" ? "visits" : "sales",
+  );
 }
 
 /** The first allocation whose provider daily budget is under its app minimum. */

@@ -76,6 +76,7 @@ import {
   validateHostOptimization,
 } from "../_shared/adHostGoal.ts";
 import { cachedSalesReadiness } from "../_shared/adSalesReadiness.ts";
+import { hostMinimumPayCents } from "../_shared/adMoney.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   audienceCountryMismatch,
@@ -197,11 +198,20 @@ function targetingCityKey(city: Record<string, unknown>): string | null {
  * #4238 P1: each connected app's daily minimum converted to the brand's
  * currency with the active FX rate, rounded up. Visits and sales minimums
  * are both given; an app whose minimum can't be worked out is left out.
- * #4238 X-1: the page is not chosen yet, so Meta, TikTok and Snapchat show
- * the staged worst case (an event page becomes staged ad sets at create and
- * every stage must clear the app's floor).
+ *
+ * #4238 binding floor rule: the minimum is the price of ONE ad set (Host and
+ * Ari ads are never staged, paidSocialStagesApply). Units, confirmed by trace
+ * (W1): the Host budget the clients send (host_delivery_budget_cents) is ad
+ * CREDIT, the amount the apps spend after the fee — ad_plan_quote_for_brand
+ * converts it 1:1 to the provider budget. So `<goal>_daily_minimum_cents`
+ * stays in credit terms (what the split and the server check compare), and
+ * `<goal>_daily_minimum_pay_cents` is the same minimum in what the Host
+ * pays (F-1: grossed up by HOST_FEE_RATIO through hostMinimumPayCents).
  */
-async function hostDailyMinimums(
+/** The Host goals setup.minimums carries a minimum for. */
+const HOST_MINIMUM_GOALS = ["visits", "sales"] as const;
+
+export async function hostDailyMinimums(
   db: Db,
   connections: AdConnectionRow[],
   hostCurrency: string,
@@ -212,29 +222,31 @@ async function hostDailyMinimums(
   const out: Record<string, unknown>[] = [];
   for (const connection of connections) {
     const row: Record<string, unknown> = { platform: connection.platform };
-    for (const goal of ["visits", "sales"] as const) {
+    for (const goal of HOST_MINIMUM_GOALS) {
       const provider = hostDailyMinimumCents(
         connection.platform,
         connection as unknown as Record<string, unknown>,
         goal,
-        { staged: true },
       );
       if (provider === null) continue;
+      let credit: number | null = null;
       if (connection.currency === hostCurrency) {
-        row[`${goal}_daily_minimum_cents`] = provider;
-        continue;
+        credit = provider;
+      } else if (snapshot?.id) {
+        const { data: converted, error } = await db.rpc("fx_convert_minor", {
+          p_amount: provider,
+          p_source: connection.currency,
+          p_target: hostCurrency,
+          p_snapshot: snapshot.id,
+        });
+        if (!error && Number.isSafeInteger(converted)) {
+          // A 2% margin so a small rate move before checking doesn't refuse it.
+          credit = Math.ceil(Number(converted) * 1.02);
+        }
       }
-      if (!snapshot?.id) continue;
-      const { data: converted, error } = await db.rpc("fx_convert_minor", {
-        p_amount: provider,
-        p_source: connection.currency,
-        p_target: hostCurrency,
-        p_snapshot: snapshot.id,
-      });
-      if (!error && Number.isSafeInteger(converted)) {
-        // A 2% margin so a small rate move before checking doesn't refuse it.
-        row[`${goal}_daily_minimum_cents`] = Math.ceil(Number(converted) * 1.02);
-      }
+      if (credit === null) continue;
+      row[`${goal}_daily_minimum_cents`] = credit;
+      row[`${goal}_daily_minimum_pay_cents`] = hostMinimumPayCents(credit);
     }
     out.push(row);
   }
@@ -2189,6 +2201,13 @@ export async function handleAdPlan(
         detail: spark.detail,
       }, 422);
     }
+    // #4238 6b: Host and Ari ads are one ad set; Spark Ads are Admin-only.
+    if (plan.owner_kind === "host" && spark.present) {
+      return json({
+        error: "plan_preflight_failed",
+        detail: "tiktok_spark_admin_only",
+      }, 422);
+    }
     const sparkOnly = spark.present &&
       requested.every((allocation) => allocation.platform === "tiktok");
     const creativeId = typeof canonicalInput.creative_library_id === "string"
@@ -2448,9 +2467,6 @@ export async function handleAdPlan(
       }
       // #4238 I-4238-APP-MINIMUM-BEFORE-HOLD: every app's daily budget clears
       // its own minimum before any money is set aside.
-      const destinationIsStaged =
-        typeof resolvedDestination.event_id === "string" &&
-        resolvedDestination.event_id.trim() !== "";
       const { data: minimumConnections, error: minimumError } = await db
         .from("ad_connections").select("id,platform,currency,extra")
         .in("id", normalized.rows.map((row) => String(row.connection_id)));
@@ -2464,15 +2480,12 @@ export async function handleAdPlan(
           provider_delivery_budget_cents: Number(
             row.provider_delivery_budget_cents,
           ),
-          // #4238 X-1: an event page is staged at create, so each stage
-          // must clear the floor; the staged worst case is checked here.
+          // #4238 binding floor rule: one ad set per app (Host and Ari are
+          // never staged), compared in credit terms like the budget itself.
           minimum_cents: hostDailyMinimumCents(
             String(row.platform),
             connection,
-            optimization.map[String(row.platform)] === "sales"
-              ? "sales"
-              : "visits",
-            { staged: destinationIsStaged },
+            optimization.map[String(row.platform)] ?? "visits",
           ),
         };
       }));
