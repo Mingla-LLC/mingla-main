@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { PastTripForm } from "../../plan/ProofPart";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useWebsite } from "../WebsiteContext";
@@ -22,6 +23,21 @@ export function PastTripsSection(): React.ReactElement {
   const hide = useSetPastTripHidden(controller.siteId);
   const canHide = past.data?.can_hide === true;
   const trips = past.data?.trips ?? [];
+  // #4453 (spec v1 §3.5) — "Add a trip you ran before Mingla" (brand admins and owners; Core checks).
+  const [addingPast, setAddingPast] = useState(false);
+  const addPastTrip = canHide ? (
+    <Card testID="past-add-before-mingla">
+      {addingPast ? (
+        <PastTripForm
+          brandId={ctx.brandId}
+          onDone={() => { setAddingPast(false); void past.refetch(); toast("Trip added. It shows as ended, never bookable.", "success"); }}
+          onCancel={() => setAddingPast(false)}
+        />
+      ) : (
+        <WButton label="Add a trip you ran before Mingla" onPress={() => setAddingPast(true)} testID="past-add-before-mingla-open" />
+      )}
+    </Card>
+  ) : null;
 
   const toggle = (trip: PastTrip) => {
     if (!past.data?.revision) return;
@@ -59,6 +75,7 @@ export function PastTripsSection(): React.ReactElement {
           <CardTitle style={styles.center}>No past trips yet</CardTitle>
           <Body style={styles.emptyBody}>When a Mingla trip ends, it moves here and onto your &quot;Trips we&apos;ve run&quot; section by itself.</Body>
         </Card>
+        {addPastTrip}
       </View>
     );
   }
@@ -66,6 +83,7 @@ export function PastTripsSection(): React.ReactElement {
     <View testID="website-past">
       <SectionHead ref={headingRef} phone={phone} title="Past trips" subtitle={"These come from your ended Mingla trips and show in “Trips we've run”."} />
       <Banner tone="info" icon="lock" title="Read-only here · Mingla trips are the one source of truth, so the website, your Mingla page and the apps always agree." body="Hide a trip here to leave it off your website. To change its details, edit the trip." />
+      {addPastTrip}
       <ListBox>
         {trips.map((trip) => (
           <Row key={trip.id} testID={`past-row-${trip.id}`}>

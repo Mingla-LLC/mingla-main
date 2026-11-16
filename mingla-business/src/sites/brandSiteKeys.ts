@@ -21,6 +21,10 @@ export const brandSiteKeys = {
   enquiries: (siteId: string | null) =>
     ["brand-sites", siteId, "enquiries"] as const,
   plan: (brandId: string) => ["brand-sites", brandId, "plan"] as const,
+  /** #4453 — the setup part's staged reviews, destinations and stories. */
+  setupContent: (brandId: string) => ["brand-sites", brandId, "plan", "setup-content"] as const,
+  /** #4453 — each page's Draft sections ("N sections to review"). */
+  reviewStatus: (siteId: string | null) => ["brand-sites", siteId, "review-status"] as const,
   /** #2829 W9a — the Home to-do row derived from the plan (refreshed with it). */
   planTodo: (brandId: string) => ["brand-sites", brandId, "plan", "todo"] as const,
   /** #2830 — who is on Website setup right now (flow_setup_state). */
