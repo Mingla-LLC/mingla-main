@@ -9,7 +9,6 @@ import { MenuNeutral } from "../../../components/v2/neutral/RestaurantNeutral";
 import { StoryGrid } from "../../../components/v2/neutral/CollectionBlocks";
 import { ContactFormBlock } from "../../../components/v2/neutral/FormBlocks";
 import { ContactDetailsNeutral } from "../../../components/v2/neutral/BasicBlocks";
-import { hrefForPage } from "../../../lib/pageRouting";
 import { playableVideoUrl } from "../../../lib/siteVideo";
 import { ActionButton, Blk, Label, Photo, rows, SecHead, sectionId, text, type SharedBlockProps } from "../parts";
 import { galleryImages } from "../data";
@@ -216,7 +215,7 @@ export function ContactFormBasic({ block, index, ctx }: SharedBlockProps) {
   if (!ctx.forms) return null;
   return (
     <div className="mg-blk mg-basic mg-basic--form">
-      <div className="mg-wrap"><ContactFormBlock block={block} artifact={ctx.artifact} forms={ctx.forms} pagePath={hrefForPage(ctx.page)} blockIndex={index} /></div>
+      <div className="mg-wrap"><ContactFormBlock block={block} artifact={ctx.artifact} forms={ctx.forms} pagePath={ctx.page.path} blockIndex={index} /></div>
     </div>
   );
 }

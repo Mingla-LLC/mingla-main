@@ -79,7 +79,7 @@
 
 /* type and quiet chrome */
 [data-design="maison"] .mg-page :is(.mg-blk, .mg-hero, .mg-pinned, .mg-nl-photo, .mg-mq) { font-weight: 300; }
-[data-design="maison"] .mg-page :is(.mg-blk, .mg-hero, .mg-foot, .mg-pmenu) h3 { font-weight: 400; text-transform: uppercase; }
+[data-design="maison"] .mg-page :is(.mg-blk, .mg-hero, .mg-foot, .mg-pmenu) h3 { font-weight: 400; text-transform: var(--display-case, uppercase); }
 [data-design="maison"] .mg-page .mg-sec-head { flex-direction: column; align-items: center; text-align: center; gap: 22px; }
 [data-design="maison"] .mg-page .mg-sec-head__main { max-width: 980px; }
 [data-design="maison"] .mg-page .mg-sec-intro { max-width: 520px; font-size: 16px; }

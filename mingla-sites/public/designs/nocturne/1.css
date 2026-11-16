@@ -78,7 +78,7 @@
 [data-design="nocturne"] .mg-page :is(.mg-hero-full, .mg-hero-ed)::after { background: radial-gradient(120% 90% at 50% 40%, transparent 30%, rgb(var(--mg-scrim) / .55)), linear-gradient(180deg, rgb(var(--mg-scrim) / .35), rgb(var(--mg-scrim) / .88)); }
 
 /* type */
-[data-design="nocturne"] .mg-page :is(h2, .mg-phd__h) { font-stretch: 62%; text-transform: uppercase; }
+[data-design="nocturne"] .mg-page :is(h2, .mg-phd__h) { font-stretch: 62%; text-transform: var(--display-case, uppercase); }
 [data-design="nocturne"] .mg-page .mg-h1 { font-family: var(--display); font-style: italic; font-weight: 400; text-transform: none; }
 /* the tight headline leading would clip descenders inside each line's reveal mask: give the mask room */
 [data-design="nocturne"] .mg-page .mg-h1 .mg-ln { padding-bottom: .14em; margin-bottom: -.14em; }
@@ -87,6 +87,8 @@
 [data-design="nocturne"] .mg-page .mg-label { display: flex; align-items: center; gap: 14px; font-stretch: 125%; }
 [data-design="nocturne"] .mg-page .mg-label::before { content: ""; width: 40px; height: 1px; background: currentColor; flex: none; }
 [data-design="nocturne"] .mg-page :is(.mg-hd, .mg-center, .mg-rv-wall) .mg-label::before { display: none; }
+/* the hero kicker is candle gold, as in the gallery (gold on the scrimmed photo, ≥ 4.5:1 against the scrim's copy zone) */
+[data-design="nocturne"] .mg-page .mg-hero .mg-label { color: var(--c-accent-400); }
 [data-design="nocturne"] .mg-page .mg-btn { font: 800 12px/1 var(--body); letter-spacing: .2em; text-transform: uppercase; font-stretch: 125%; }
 [data-design="nocturne"] .mg-page .mg-btn--accent { background: var(--c-action); color: var(--c-canvas); }
 [data-design="nocturne"] .mg-page .mg-btn--accent:hover { background: var(--c-accent-400); color: var(--c-accent-ink); }
