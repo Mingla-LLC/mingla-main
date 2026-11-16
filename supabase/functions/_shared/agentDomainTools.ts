@@ -4923,7 +4923,7 @@ const approveAdPlan = writeTool(
       plan_hash: args.plan_hash,
       phrase: "LAUNCH",
     });
-    const creativeId = String(
+    const firstCreativeId = String(
       aggregate.version.canonical_plan.creative_library_id ?? "",
     );
     const selectedPlatforms = new Set(
@@ -4931,6 +4931,14 @@ const approveAdPlan = writeTool(
         String(allocation.platform)
       ),
     );
+    // #4238 W4a (6b): one ad per frozen creative, each prepared per app.
+    const frozenCreativeIds = aggregate.version.canonical_plan
+      .creative_library_ids;
+    const creativeIds = Array.isArray(frozenCreativeIds) &&
+        frozenCreativeIds.length > 0
+      ? [...new Set(frozenCreativeIds.map((id) => String(id)))]
+      : [firstCreativeId];
+    for (const creativeId of creativeIds) {
     for (const platform of ARI_AD_PREPARATION_ORDER) {
       if (!selectedPlatforms.has(platform)) continue;
       let action: "start" | "status" | "retry" = "status";
@@ -4991,6 +4999,7 @@ const approveAdPlan = writeTool(
         });
         throw cause;
       }
+    }
     }
     for (const allocation of aggregate.provider_allocations) {
       const platform = String(allocation.platform);

@@ -1244,15 +1244,22 @@ async function recordCreateFailure(
 async function prepareBoundVideoPlatforms(
   aggregate: HostAdPlanAggregate,
 ): Promise<void> {
-  const creativeId = String(
+  const first = String(
     aggregate.version.canonical_plan.creative_library_id ?? "",
   );
-  if (!creativeId) {
+  if (!first) {
     throw new HostAdPlanError(
       "creative_required",
       HOST_AD_OWNED_ERROR_COPY.noVideo,
     );
   }
+  // #4238 W4a (6b): one ad per frozen creative, so every one is prepared on
+  // every app before create (the server refuses an unprepared one by name).
+  const frozenIds = aggregate.version.canonical_plan.creative_library_ids;
+  const creativeIds = Array.isArray(frozenIds) && frozenIds.length > 0
+    ? [...new Set(frozenIds.map((id) => String(id)))]
+    : [first];
+  for (const creativeId of creativeIds) {
   for (const allocation of aggregate.provider_allocations) {
     const platform = String(allocation.platform);
     if (!PREPARED_VIDEO_PLATFORMS.has(platform)) continue;
@@ -1302,6 +1309,7 @@ async function prepareBoundVideoPlatforms(
       await recordCreateFailure(aggregate, platform, cause);
       throw cause;
     }
+  }
   }
 }
 

@@ -831,12 +831,17 @@ export async function freezeHostW2Fields(
 
 /**
  * #4238 T-9 (decision 9): apps whose Host create path takes a photo from the
- * creative library. Meta takes the hosted image at create. TikTok (Pangle
- * only) and Google (Demand Gen video) stay video-only. Snapchat (per-image
- * media upload in the launch) and Reddit (the library-image create path) are
- * carried to W4 — the spec's "ship without it" fallback.
+ * creative library. Meta takes the hosted image at create. Snapchat (W4a)
+ * takes the image's READY Snap media ref, uploaded per image by the launch's
+ * prepare step (admin-ad-creative-prepare, image on Snapchat). TikTok
+ * (Pangle only) and Google (Demand Gen video) stay video-only. Reddit's image
+ * create path reads a request image URL the Host plan never freezes, so it
+ * stays video-only for Hosts (decision 9's fallback; recorded on #4238).
  */
-export const HOST_IMAGE_PLATFORMS: ReadonlySet<string> = new Set(["meta"]);
+export const HOST_IMAGE_PLATFORMS: ReadonlySet<string> = new Set([
+  "meta",
+  "snapchat",
+]);
 
 /** #4238 T-9: the first app in the plan that can't take a photo. */
 export function hostImageRefusedPlatform(
