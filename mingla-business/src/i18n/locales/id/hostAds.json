@@ -501,7 +501,9 @@
         "back2": "Kembali ke Promosikan",
         "tileTickets": "Tiket",
         "tileSignups": "Pendaftaran",
-        "tileVisits": "Kunjungan halaman"
+        "tileVisits": "Kunjungan halaman",
+        "notOnTeam": "Kamu bukan anggota tim brand ini",
+        "notOnTeamBody": "Minta pemilik brand menambahkanmu, lalu buka pemberitahuan ini lagi."
       },
       "confirm": {
         "pauseTitle": "Jeda iklan ini?",
@@ -544,7 +546,10 @@
         "cancel": "Batal",
         "saved": "Iklanmu sudah diperbarui.",
         "atMinimum": "Tidak bisa lebih rendah: {{amount}} sudah terpakai.",
-        "appMinimum": "{{app}} butuh minimal {{amount}} per hari. Pilih total lebih tinggi atau tanggal akhir lebih cepat."
+        "appMinimum": "{{app}} butuh minimal {{amount}} per hari. Pilih total lebih tinggi atau tanggal akhir lebih cepat.",
+        "daily": "Kamu bayar per hari",
+        "runTotal": "{{amount}} total selama {{days}} hari",
+        "atMinimumDaily": "Tidak bisa lebih rendah: {{amount}} per hari adalah minimum untuk iklan ini."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Kredit sesudahnya",
         "error": "Tidak bisa dimuat. Coba lagi.",
         "done": "Selesai",
-        "back": "Kembali"
+        "back": "Kembali",
+        "ad": "Iklan"
       },
       "compare": {
         "title": "Bandingkan iklanmu",

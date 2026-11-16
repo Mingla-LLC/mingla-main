@@ -501,7 +501,9 @@
         "back2": "Koma Tallata",
         "tileTickets": "Tikiti",
         "tileSignups": "Rajista",
-        "tileVisits": "Ziyarar shafi"
+        "tileVisits": "Ziyarar shafi",
+        "notOnTeam": "Ba ka cikin ƙungiyar wannan brand ɗin",
+        "notOnTeamBody": "Ka roƙi mai brand ɗin ya ƙara ka, sannan ka buɗe wannan sanarwa kuma."
       },
       "confirm": {
         "pauseTitle": "A dakatar da wannan tallan?",
@@ -544,7 +546,10 @@
         "cancel": "Soke",
         "saved": "An sabunta tallanka.",
         "atMinimum": "Ba zai iya ƙasa da haka ba: an riga an kashe {{amount}}.",
-        "appMinimum": "{{app}} yana buƙatar aƙalla {{amount}} kowace rana. Zaɓi jimla mafi girma ko ranar ƙarshe mafi kusa."
+        "appMinimum": "{{app}} yana buƙatar aƙalla {{amount}} kowace rana. Zaɓi jimla mafi girma ko ranar ƙarshe mafi kusa.",
+        "daily": "Kana biya kowace rana",
+        "runTotal": "{{amount}} gaba ɗaya a cikin kwanaki {{days}}",
+        "atMinimumDaily": "Ba zai iya sauka ba: {{amount}} a rana shi ne mafi ƙaranci da wannan talla zai iya gudana."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Kuɗi bayan haka",
         "error": "Ba a iya lodawa ba. Sake gwadawa.",
         "done": "An gama",
-        "back": "Koma baya"
+        "back": "Koma baya",
+        "ad": "Talla"
       },
       "compare": {
         "title": "Kwatanta tallace-tallacenka",

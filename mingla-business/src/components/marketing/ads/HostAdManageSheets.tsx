@@ -30,8 +30,10 @@ import { hostAdDayBoundaryIso, hostAdDayOf } from "./hostAdBuilderRules";
 import { hm, hostAdUnit } from "./hostAdManageCopy";
 import {
   type HostAdCompareRow,
-  hostAdEditMoney,
+  hostAdEditDailyMoney,
+  hostAdEditMinDailyPay,
   hostAdEditStep,
+  hostAdRunDaysFromBudget,
   hostAdStatementMonth,
   hostAdSuggestionMoneyRows,
   hostAdWithdrawLines,
@@ -103,6 +105,10 @@ export function HostAdEditBudgetSheet(props: {
   currency: string;
   money: Money;
   capCredit: number;
+  /** W6c: what the apps spend a day now (credit), all apps added up. */
+  dailyCredit: number;
+  /** W6c: the apps' one-ad-set daily minimum in pay terms; null = unknown. */
+  minDailyPay: number | null;
   spentCredit: number | null;
   walletCredit: number | null;
   currentEndsAt: string | null;
@@ -119,29 +125,41 @@ export function HostAdEditBudgetSheet(props: {
   onClose: () => void;
   onSubmit: (input: HostAdEditSubmit) => void;
 }): React.ReactElement {
-  const startPay = useMemo(() => hostAdPayFromCredit(props.capCredit), [props.capCredit]);
-  const [totalPay, setTotalPay] = useState(startPay);
+  const startDaily = useMemo(() => hostAdPayFromCredit(props.dailyCredit), [props.dailyCredit]);
+  const runDays = useMemo(
+    () => hostAdRunDaysFromBudget(props.capCredit, props.dailyCredit),
+    [props.capCredit, props.dailyCredit],
+  );
+  const [dailyPay, setDailyPay] = useState(startDaily);
   const startDay = hostAdDayOf(props.currentEndsAt, props.timezone);
   const [endDay, setEndDay] = useState(startDay);
   useEffect(() => {
     if (!props.visible) return;
-    setTotalPay(startPay);
+    setDailyPay(startDaily);
     setEndDay(startDay);
-  }, [props.visible, startPay, startDay]);
-  const step = hostAdEditStep(startPay);
-  const m = hostAdEditMoney({
-    newTotalPay: totalPay,
+  }, [props.visible, startDaily, startDay]);
+  const step = hostAdEditStep(startDaily);
+  const minDaily = hostAdEditMinDailyPay({
+    appsMinimumDailyPay: props.minDailyPay,
+    spentCredit: props.spentCredit,
+    runDays,
+    step,
+  });
+  const m = hostAdEditDailyMoney({
+    dailyPay,
+    startDailyPay: startDaily,
+    runDays,
     capCredit: props.capCredit,
     spentCredit: props.spentCredit,
     walletCredit: props.walletCredit,
     learning: props.learning,
     step,
   });
-  const budgetChanged = totalPay !== startPay;
+  const budgetChanged = m.dailyChanged;
   const endChanged = endDay !== "" && endDay !== startDay;
   const changed = budgetChanged || endChanged;
   const short = m.topUpPay > 0;
-  const atMinimum = totalPay - step < m.minimumPay;
+  const atMinimum = dailyPay - step < minDaily;
   const warnLearning = props.learning && (m.restartsLearning || endChanged);
   const confirmMode = props.needsLearningConfirm;
   const submit = (ack: boolean): void =>
@@ -178,12 +196,12 @@ export function HostAdEditBudgetSheet(props: {
         </View>
       }
     >
-      <BuilderLabel>{hm("edit.total")}</BuilderLabel>
+      <BuilderLabel>{hm("edit.daily")}</BuilderLabel>
       <View style={s.stepper}>
         <Pressable
           style={[s.stepBtn, atMinimum && s.stepOff]}
           disabled={atMinimum}
-          onPress={() => setTotalPay((v) => Math.max(m.minimumPay, v - step))}
+          onPress={() => setDailyPay((v) => Math.max(minDaily, v - step))}
           accessibilityRole="button"
           accessibilityState={{ disabled: atMinimum }}
           accessibilityLabel={hm("edit.lower", { amount: props.money(step) })}
@@ -196,11 +214,11 @@ export function HostAdEditBudgetSheet(props: {
           accessibilityLiveRegion="polite"
           testID="host-ad-edit-total"
         >
-          {props.money(totalPay)}
+          {props.money(dailyPay)}
         </Text>
         <Pressable
           style={s.stepBtn}
-          onPress={() => setTotalPay((v) => v + step)}
+          onPress={() => setDailyPay((v) => v + step)}
           accessibilityRole="button"
           accessibilityLabel={hm("edit.raise", { amount: props.money(step) })}
           testID="host-ad-edit-raise"
@@ -208,12 +226,15 @@ export function HostAdEditBudgetSheet(props: {
           <Text style={s.stepText}>+</Text>
         </Pressable>
       </View>
+      <Text style={[bs.small, s.center]} testID="host-ad-edit-run-total">
+        {hm("edit.runTotal", { amount: props.money(m.runTotalPay), days: runDays })}
+      </Text>
       <Text style={[bs.small, s.center]} testID="host-ad-edit-to-ads">
         {hm("edit.toAds", { amount: props.money(m.newCredit) })}
       </Text>
       {atMinimum ? (
         <Text style={[bs.caption, s.center]}>
-          {hm("edit.atMinimum", { amount: props.money(m.minimumPay - step) })}
+          {hm("edit.atMinimumDaily", { amount: props.money(minDaily) })}
         </Text>
       ) : null}
       <DateField
@@ -562,6 +583,7 @@ export function HostAdReceiptsSheet(props: {
           {receipt.mingla_fee_cents !== null ? (
             <Kv label={hm("receipts.fees")} value={props.money(receipt.mingla_fee_cents)} testID="host-ad-receipt-fee" />
           ) : null}
+          {receipt.ad_name?.trim() ? <Kv label={hm("receipts.ad")} value={receipt.ad_name.trim()} testID="host-ad-receipt-ad" /> : null}
           <Kv label={hm("receipts.credit")} value={props.money(receipt.ad_credit_cents)} />
           {receipt.refunded_cents !== null ? <Kv label={hm("receipts.refunded")} value={props.money(receipt.refunded_cents)} /> : null}
           <Kv label={hm("receipts.balance")} value={props.money(receipt.balance_after_cents)} total />
@@ -579,8 +601,8 @@ export function HostAdReceiptsSheet(props: {
           {statement.spend_by_ad.length > 0 ? (
             <View style={bs.kv}>
               <BuilderLabel>{hm("receipts.perAd")}</BuilderLabel>
-              {statement.spend_by_ad.map((row, index) => (
-                <Kv key={row.ad_key} label={`${hm("detail.title")} ${index + 1}`} value={props.money(Math.abs(row.net_cents))} />
+              {statement.spend_by_ad.map((row) => (
+                <Kv key={row.ad_key} label={row.ad_name?.trim() || hm("receipts.ad")} value={props.money(Math.abs(row.net_cents))} />
               ))}
             </View>
           ) : null}

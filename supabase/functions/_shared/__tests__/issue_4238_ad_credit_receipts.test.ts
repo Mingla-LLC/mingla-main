@@ -97,6 +97,7 @@ Deno.test("statement: opening, top-ups, spend per ad, returns, withdrawals; clos
   assertEquals(statement.fees_cents, 375_000);
   assertEquals(statement.spend_by_ad, [{
     ad_key: "plan-a",
+    ad_name: null,
     held_cents: 1_000_000,
     returned_cents: 250_000,
     net_cents: 750_000,

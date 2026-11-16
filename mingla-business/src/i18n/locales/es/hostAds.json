@@ -501,7 +501,9 @@
         "back2": "Volver a Promocionar",
         "tileTickets": "Entradas",
         "tileSignups": "Registros",
-        "tileVisits": "Visitas a la página"
+        "tileVisits": "Visitas a la página",
+        "notOnTeam": "No formas parte del equipo de esta marca",
+        "notOnTeamBody": "Pide al propietario de la marca que te añada y vuelve a abrir este aviso."
       },
       "confirm": {
         "pauseTitle": "¿Pausar este anuncio?",
@@ -544,7 +546,10 @@
         "cancel": "Cancelar",
         "saved": "Tu anuncio está actualizado.",
         "atMinimum": "No puede bajar más: ya se gastaron {{amount}}.",
-        "appMinimum": "{{app}} necesita al menos {{amount}} al día. Elige un total mayor o una fecha de fin más cercana."
+        "appMinimum": "{{app}} necesita al menos {{amount}} al día. Elige un total mayor o una fecha de fin más cercana.",
+        "daily": "Pagas cada día",
+        "runTotal": "{{amount}} en total durante {{days}} días",
+        "atMinimumDaily": "No puede bajar más: {{amount}} al día es lo mínimo para este anuncio."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Crédito después",
         "error": "No pudimos cargar esto. Inténtalo de nuevo.",
         "done": "Listo",
-        "back": "Atrás"
+        "back": "Atrás",
+        "ad": "Anuncio"
       },
       "compare": {
         "title": "Compara tus anuncios",

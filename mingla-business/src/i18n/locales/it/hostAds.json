@@ -501,7 +501,9 @@
         "back2": "Torna a Promuovi",
         "tileTickets": "Biglietti",
         "tileSignups": "Iscrizioni",
-        "tileVisits": "Visite alla pagina"
+        "tileVisits": "Visite alla pagina",
+        "notOnTeam": "Non fai parte del team di questo brand",
+        "notOnTeamBody": "Chiedi al proprietario del brand di aggiungerti, poi riapri questa notifica."
       },
       "confirm": {
         "pauseTitle": "Mettere in pausa questo annuncio?",
@@ -544,7 +546,10 @@
         "cancel": "Annulla",
         "saved": "Il tuo annuncio è aggiornato.",
         "atMinimum": "Non può scendere oltre: {{amount}} è già stato speso.",
-        "appMinimum": "{{app}} richiede almeno {{amount}} al giorno. Scegli un totale più alto o una data di fine più vicina."
+        "appMinimum": "{{app}} richiede almeno {{amount}} al giorno. Scegli un totale più alto o una data di fine più vicina.",
+        "daily": "Paghi ogni giorno",
+        "runTotal": "{{amount}} in totale per {{days}} giorni",
+        "atMinimumDaily": "Non può scendere oltre: {{amount}} al giorno è il minimo per questo annuncio."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Credito dopo",
         "error": "Impossibile caricare. Riprova.",
         "done": "Fatto",
-        "back": "Indietro"
+        "back": "Indietro",
+        "ad": "Annuncio"
       },
       "compare": {
         "title": "Confronta i tuoi annunci",

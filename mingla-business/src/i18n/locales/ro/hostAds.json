@@ -501,7 +501,9 @@
         "back2": "Înapoi la Promovează",
         "tileTickets": "Bilete",
         "tileSignups": "Înscrieri",
-        "tileVisits": "Vizite pe pagină"
+        "tileVisits": "Vizite pe pagină",
+        "notOnTeam": "Nu faci parte din echipa acestui brand",
+        "notOnTeamBody": "Cere proprietarului brandului să te adauge, apoi deschide din nou această notificare."
       },
       "confirm": {
         "pauseTitle": "Pui pe pauză această reclamă?",
@@ -544,7 +546,10 @@
         "cancel": "Anulează",
         "saved": "Reclama ta e actualizată.",
         "atMinimum": "Nu poate scădea mai mult: {{amount}} e deja cheltuit.",
-        "appMinimum": "{{app}} are nevoie de cel puțin {{amount}} pe zi. Alege un total mai mare sau o dată de final mai apropiată."
+        "appMinimum": "{{app}} are nevoie de cel puțin {{amount}} pe zi. Alege un total mai mare sau o dată de final mai apropiată.",
+        "daily": "Plătești pe zi",
+        "runTotal": "{{amount}} în total pentru {{days}} zile",
+        "atMinimumDaily": "Nu poate scădea mai mult: {{amount}} pe zi este minimul pentru acest anunț."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Credit după",
         "error": "Nu am putut încărca. Încearcă din nou.",
         "done": "Gata",
-        "back": "Înapoi"
+        "back": "Înapoi",
+        "ad": "Anunț"
       },
       "compare": {
         "title": "Compară reclamele",

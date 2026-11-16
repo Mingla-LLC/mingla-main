@@ -501,7 +501,9 @@
         "back2": "返回推广",
         "tileTickets": "票",
         "tileSignups": "报名",
-        "tileVisits": "页面访问"
+        "tileVisits": "页面访问",
+        "notOnTeam": "你不在这个品牌的团队里",
+        "notOnTeamBody": "请让品牌所有者把你加进来，然后再打开这条通知。"
       },
       "confirm": {
         "pauseTitle": "暂停此广告？",
@@ -544,7 +546,10 @@
         "cancel": "取消",
         "saved": "你的广告已更新。",
         "atMinimum": "不能再低了：已经花费 {{amount}}。",
-        "appMinimum": "{{app}} 每天至少需要 {{amount}}。请选择更高的总额或更早的结束日期。"
+        "appMinimum": "{{app}} 每天至少需要 {{amount}}。请选择更高的总额或更早的结束日期。",
+        "daily": "你每天支付",
+        "runTotal": "{{days}} 天共 {{amount}}",
+        "atMinimumDaily": "不能再低了：这条广告每天至少需要 {{amount}}。"
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "之后的余额",
         "error": "无法加载。请重试。",
         "done": "完成",
-        "back": "返回"
+        "back": "返回",
+        "ad": "广告"
       },
       "compare": {
         "title": "比较你的广告",

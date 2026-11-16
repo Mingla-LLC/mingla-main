@@ -30,7 +30,11 @@ import { IconChrome } from "../../components/ui/IconChrome";
 import { color, radius, space, type } from "../../constants/designSystem";
 import { useAdCreditWallet } from "../../hooks/marketing/useAdCreditWallet";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useBrandListState } from "../../hooks/useBrandListShim";
 import { useHostAdPermissions } from "../../hooks/useHostAdPermissions";
+import { useCurrentBrandStore } from "../../store/currentBrandStore";
+import { cachedHostAdSetup } from "../../components/marketing/ads/hostAdSetupCache";
+import { loadHostAdPlanService } from "./hostAdKitService";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
@@ -79,6 +83,7 @@ import {
 } from "../../components/marketing/ads/hostAdManageCopy";
 import {
   hostAdAppMinimumFromDetail,
+  hostAdBrandLinkDecision,
   hostAdBudgetCard,
   hostAdCreativeRejected,
   hostAdGoalFromResult,
@@ -101,7 +106,7 @@ import {
 import { HostAdTopUpSheet } from "../../components/marketing/ads/HostAdTopUpSheet";
 import { randomId, randomUuid } from "../../utils/randomId";
 import { hostAdGoalName } from "../../components/marketing/ads/hostAdBuilderCopy";
-import { hostAdPayFromCredit } from "../../components/marketing/ads/hostAdBuilderModel";
+import { hostAdMinimumPayCents, hostAdPayFromCredit } from "../../components/marketing/ads/hostAdBuilderModel";
 
 function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
@@ -150,7 +155,21 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const brandId = brand?.id ?? null;
   const permissions = useHostAdPermissions(brandId);
   const wallet = useAdCreditWallet(brandId);
-  const params = useLocalSearchParams<{ id?: string | string[]; by?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; by?: string | string[]; brand?: string | string[] }>();
+  const linkBrandId = firstParam(params.brand);
+  const brandList = useBrandListState();
+  const setCurrentBrandId = useCurrentBrandStore((st) => st.setCurrentBrandId);
+  // W6c: a notice for another brand switches to it (when the person is on
+  // that brand's team) before the ad is looked up; otherwise it says so.
+  const linkDecision = hostAdBrandLinkDecision({
+    linkBrandId,
+    currentBrandId: brandId,
+    memberBrandIds: brandList.brands.map((item) => item.id),
+    listStatus: brandList.isLoading ? "loading" : brandList.status === "ready" ? "ready" : "error",
+  });
+  useEffect(() => {
+    if (linkDecision === "switch" && linkBrandId) setCurrentBrandId(linkBrandId);
+  }, [linkBrandId, linkDecision, setCurrentBrandId]);
   const routeId = firstParam(params.id);
   const byPlan = firstParam(params.by) === "plan";
   const router = useRouter();
@@ -175,10 +194,33 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const [shareVisible, setShareVisible] = useState(false);
   const editAttempt = useRef<HostAdLiveEditAttempt | null>(null);
   const inFlight = useRef(false);
+  // W6c: the apps' one-ad-set minimum (pay terms) for the edit sheet's floor.
+  const [appsMinimumDailyPay, setAppsMinimumDailyPay] = useState<number | null>(null);
+  const editApps = (payload?.plan_campaigns ?? []).map((row) => String(row.platform));
+  const editAppsKey = editApps.join(",");
+  const editGoal = hostAdGoalFromResult(String(payload?.measurement?.manifest?.result_hierarchy?.[0] ?? ""));
+  useEffect(() => {
+    if (!editVisible || brandId === null || editAppsKey === "") return;
+    let live = true;
+    loadHostAdPlanService()
+      .then(({ loadHostAdSetup }) => cachedHostAdSetup(brandId, loadHostAdSetup))
+      .then((setup) => {
+        if (!live) return;
+        const rows = editAppsKey.split(",").map((app) => hostAdMinimumPayCents(setup.minimums, app, editGoal));
+        // One unknown app means the floor is unknown: the server still checks.
+        setAppsMinimumDailyPay(rows.some((value) => value === null) ? null : rows.reduce<number>((sum, value) => sum + (value ?? 0), 0));
+      })
+      .catch(() => {
+        if (live) setAppsMinimumDailyPay(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [brandId, editAppsKey, editGoal, editVisible]);
 
   // A notice links to the plan; find its campaign once.
   useEffect(() => {
-    if (!byPlan || brandId === null || routeId === null || !permissions.canRead) return;
+    if (!byPlan || brandId === null || routeId === null || !permissions.canRead || linkDecision !== "stay") return;
     let live = true;
     resolveHostAdCampaignForPlan(brandId, routeId)
       .then((id) => {
@@ -192,7 +234,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
     return () => {
       live = false;
     };
-  }, [brandId, byPlan, permissions.canRead, routeId, router]);
+  }, [brandId, byPlan, linkDecision, permissions.canRead, routeId, router]);
 
   const load = useCallback(async () => {
     if (brandId === null || campaignId === null || !permissions.canRead) return;
@@ -359,6 +401,18 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
   const shell = (child: React.ReactElement): React.ReactElement => <View style={styles.host}>{child}</View>;
 
+  if (linkDecision === "notMember") {
+    return shell(
+      <EmptyState illustration="users" title={hm("detail.notOnTeam")} description={hm("detail.notOnTeamBody")} testID="ads-detail-not-on-team" />,
+    );
+  }
+  if (linkDecision === "wait" || linkDecision === "switch") {
+    return (
+      <View style={styles.host} testID="ads-detail-switching-brand">
+        <ActivityIndicator color={color.text2} />
+      </View>
+    );
+  }
   if (brandId === null || routeId === null) {
     return shell(
       <EmptyState illustration="users" title={hm("detail.notFound")} description={hm("detail.notFoundBody")} testID="ads-detail-missing" />,
@@ -929,6 +983,8 @@ export default function HostAdDetailRoute(): React.ReactElement {
           currency={currency}
           money={money}
           capCredit={capCredit}
+          dailyCredit={dailyCredit}
+          minDailyPay={appsMinimumDailyPay}
           spentCredit={spentCredit}
           walletCredit={wallet.data?.wallet?.balance_cents ?? null}
           currentEndsAt={endsAt}

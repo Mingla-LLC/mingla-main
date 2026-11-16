@@ -501,7 +501,9 @@
         "back2": "Padà sí Polowo",
         "tileTickets": "Tíkẹ́ẹ̀tì",
         "tileSignups": "Ìforúkọsílẹ̀",
-        "tileVisits": "Ìbẹ̀wò ojú-ìwé"
+        "tileVisits": "Ìbẹ̀wò ojú-ìwé",
+        "notOnTeam": "Kò sí ní ẹgbẹ́ brand yìí",
+        "notOnTeamBody": "Ní kí olùdá brand náà fi ọ́ kún, lẹ́yìn náà ṣí ìkìlọ̀ yìí lẹ́ẹ̀kan sí i."
       },
       "confirm": {
         "pauseTitle": "Ṣé kí a dá ìpolówó yìí dúró?",
@@ -544,7 +546,10 @@
         "cancel": "Fagilé",
         "saved": "A ti ṣe àtúnṣe ìpolówó rẹ.",
         "atMinimum": "Kò lè dín ju bẹ́ẹ̀ lọ: a ti ná {{amount}} tẹ́lẹ̀.",
-        "appMinimum": "{{app}} nílò ó kéré tán {{amount}} lójoojúmọ́. Yan àpapọ̀ tó ga jù tàbí ọjọ́ ìparí tó súnmọ́."
+        "appMinimum": "{{app}} nílò ó kéré tán {{amount}} lójoojúmọ́. Yan àpapọ̀ tó ga jù tàbí ọjọ́ ìparí tó súnmọ́.",
+        "daily": "O ń san ní ojoojúmọ́",
+        "runTotal": "{{amount}} lápapọ̀ fún ọjọ́ {{days}}",
+        "atMinimumDaily": "Kò lè lọ sílẹ̀ jù bẹ́ẹ̀ lọ: {{amount}} lójoojúmọ́ ni ó kéré jù fún ìpolówó yìí."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Kírẹ́dìtì lẹ́yìn náà",
         "error": "A kò lè gbé e wá. Gbìyànjú lẹ́ẹ̀kan sí i.",
         "done": "Ó ti parí",
-        "back": "Padà"
+        "back": "Padà",
+        "ad": "Ìpolówó"
       },
       "compare": {
         "title": "Fi àwọn ìpolówó rẹ wé ara wọn",

@@ -20,6 +20,12 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ id: "camp-1" }),
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
 }));
+jest.mock("../../../hooks/useBrandListShim", () => ({
+  useBrandListState: () => ({ brands: [{ id: "brand-1" }], status: "ready", isLoading: false }),
+}));
+jest.mock("../../../store/currentBrandStore", () => ({
+  useCurrentBrandStore: (select: (state: { setCurrentBrandId: () => void }) => unknown) => select({ setCurrentBrandId: () => undefined }),
+}));
 jest.mock("../../../hooks/useCurrentBrand", () => ({ useCurrentBrand: () => ({ id: "brand-1" }) }));
 jest.mock("../../../hooks/useHostAdPermissions", () => ({
   useHostAdPermissions: () => ({

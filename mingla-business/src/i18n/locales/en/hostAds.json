@@ -501,7 +501,9 @@
         "back2": "Back to Promote",
         "tileTickets": "Tickets",
         "tileSignups": "Sign-ups",
-        "tileVisits": "Page visits"
+        "tileVisits": "Page visits",
+        "notOnTeam": "You're not on this brand's team",
+        "notOnTeamBody": "Ask the brand's owner to add you, then open this notice again."
       },
       "confirm": {
         "pauseTitle": "Pause this ad?",
@@ -544,7 +546,10 @@
         "cancel": "Cancel",
         "saved": "Your ad is updated.",
         "atMinimum": "It can't go lower: {{amount}} is already spent.",
-        "appMinimum": "{{app}} needs at least {{amount}} a day. Pick a higher total or a sooner end date."
+        "appMinimum": "{{app}} needs at least {{amount}} a day. Pick a higher total or a sooner end date.",
+        "daily": "You pay each day",
+        "runTotal": "{{amount}} in total over {{days}} days",
+        "atMinimumDaily": "It can't go lower: {{amount}} a day is the least this ad can run on."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Credit after",
         "error": "Couldn't load this. Try again.",
         "done": "Done",
-        "back": "Back"
+        "back": "Back",
+        "ad": "Ad"
       },
       "compare": {
         "title": "Compare your ads",

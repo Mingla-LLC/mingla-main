@@ -96,6 +96,15 @@ const BRAND_ENQUIRY_PUSH_TYPES = new Set([
 ]);
 
 /**
+ * #4238 W6c — an ad's own screen. The brand rides along so the detail screen
+ * can switch to it (when the person is on that team) or say they are not.
+ */
+function adTarget(planId: string, brandId: unknown): BusinessNavTarget {
+  const brand = typeof brandId === "string" && UUID_RE.test(brandId) ? `&brand=${brandId}` : "";
+  return `/(tabs)/marketing/ads/${planId}?by=plan${brand}`;
+}
+
+/**
  * Parse a `mingla-business://…` deep link into an expo-router path.
  * Returns null when the URI is unrecognized (caller falls back to
  * NAV_TARGETS by type). Pure + synchronous.
@@ -128,7 +137,7 @@ export function parseBusinessDeepLink(
       if (sub === "ads") {
         const planId = rest[2]?.split("?", 1)[0] ?? "";
         return UUID_RE.test(planId)
-          ? `/(tabs)/marketing/ads/${planId}?by=plan`
+          ? adTarget(planId, brandId)
           : "/(tabs)/marketing/ads";
       }
       if (sub === "listing") return `/brand/${brandId}/listing`;
@@ -262,7 +271,7 @@ export function resolveBusinessNavTarget(
   if (type.startsWith("business.ad_")) {
     const planId = (data.planId ?? data.plan_id) as string | undefined;
     return typeof planId === "string" && UUID_RE.test(planId)
-      ? `/(tabs)/marketing/ads/${planId}?by=plan`
+      ? adTarget(planId, data.brandId ?? data.brand_id)
       : "/(tabs)/marketing/ads";
   }
 

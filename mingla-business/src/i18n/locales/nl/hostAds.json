@@ -501,7 +501,9 @@
         "back2": "Terug naar Promoten",
         "tileTickets": "Tickets",
         "tileSignups": "Aanmeldingen",
-        "tileVisits": "Paginabezoeken"
+        "tileVisits": "Paginabezoeken",
+        "notOnTeam": "Je zit niet in het team van dit merk",
+        "notOnTeamBody": "Vraag de eigenaar van het merk om je toe te voegen en open deze melding daarna opnieuw."
       },
       "confirm": {
         "pauseTitle": "Deze advertentie pauzeren?",
@@ -544,7 +546,10 @@
         "cancel": "Annuleren",
         "saved": "Je advertentie is bijgewerkt.",
         "atMinimum": "Lager kan niet: {{amount}} is al uitgegeven.",
-        "appMinimum": "{{app}} heeft minstens {{amount}} per dag nodig. Kies een hoger totaal of een eerdere einddatum."
+        "appMinimum": "{{app}} heeft minstens {{amount}} per dag nodig. Kies een hoger totaal of een eerdere einddatum.",
+        "daily": "Je betaalt per dag",
+        "runTotal": "{{amount}} in totaal over {{days}} dagen",
+        "atMinimumDaily": "Lager kan niet: {{amount}} per dag is het minimum voor deze advertentie."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Tegoed daarna",
         "error": "Dit kon niet worden geladen. Probeer het opnieuw.",
         "done": "Klaar",
-        "back": "Terug"
+        "back": "Terug",
+        "ad": "Advertentie"
       },
       "compare": {
         "title": "Vergelijk je advertenties",

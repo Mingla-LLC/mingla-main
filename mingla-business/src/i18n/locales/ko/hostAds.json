@@ -501,7 +501,9 @@
         "back2": "홍보로 돌아가기",
         "tileTickets": "티켓",
         "tileSignups": "신청",
-        "tileVisits": "페이지 방문"
+        "tileVisits": "페이지 방문",
+        "notOnTeam": "이 브랜드 팀에 속해 있지 않아요",
+        "notOnTeamBody": "브랜드 소유자에게 추가해 달라고 요청한 뒤 이 알림을 다시 열어 주세요."
       },
       "confirm": {
         "pauseTitle": "이 광고를 일시 중지할까요?",
@@ -544,7 +546,10 @@
         "cancel": "취소",
         "saved": "광고가 업데이트됐어요.",
         "atMinimum": "더 낮출 수 없어요: 이미 {{amount}}을 썼어요.",
-        "appMinimum": "{{app}}은 하루 최소 {{amount}}이 필요해요. 총액을 늘리거나 종료일을 앞당기세요."
+        "appMinimum": "{{app}}은 하루 최소 {{amount}}이 필요해요. 총액을 늘리거나 종료일을 앞당기세요.",
+        "daily": "하루에 내는 금액",
+        "runTotal": "{{days}}일 동안 총 {{amount}}",
+        "atMinimumDaily": "더 낮출 수 없어요. 이 광고는 하루 {{amount}}가 최소예요."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "이후 크레딧",
         "error": "불러오지 못했어요. 다시 시도하세요.",
         "done": "완료",
-        "back": "뒤로"
+        "back": "뒤로",
+        "ad": "광고"
       },
       "compare": {
         "title": "광고 비교하기",

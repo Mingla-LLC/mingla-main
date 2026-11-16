@@ -250,6 +250,8 @@ export type AdCreditReceipt = {
   mingla_fee_cents: number | null;
   mingla_fee_rate: number | null;
   ad_credit_cents: number;
+  /** #4238 W6c: the ad this row belongs to, by name (null when none/unknown). */
+  ad_name?: string | null;
   refunded_cents: number | null;
   balance_after_cents: number;
 };
@@ -263,6 +265,8 @@ export type AdCreditStatement = {
   fees_cents: number;
   spend_by_ad: {
     ad_key: string;
+    /** #4238 W6c: the ad's name; null/absent when it cannot be found. */
+    ad_name?: string | null;
     held_cents: number;
     returned_cents: number;
     net_cents: number;

@@ -501,7 +501,9 @@
         "back2": "Retour à Promouvoir",
         "tileTickets": "Billets",
         "tileSignups": "Inscriptions",
-        "tileVisits": "Visites de la page"
+        "tileVisits": "Visites de la page",
+        "notOnTeam": "Tu ne fais pas partie de l'équipe de cette marque",
+        "notOnTeamBody": "Demande au propriétaire de la marque de t'ajouter, puis rouvre cette notification."
       },
       "confirm": {
         "pauseTitle": "Mettre cette pub en pause ?",
@@ -544,7 +546,10 @@
         "cancel": "Annuler",
         "saved": "Votre pub est à jour.",
         "atMinimum": "Impossible de baisser davantage : {{amount}} est déjà dépensé.",
-        "appMinimum": "{{app}} demande au moins {{amount}} par jour. Choisissez un total plus élevé ou une date de fin plus proche."
+        "appMinimum": "{{app}} demande au moins {{amount}} par jour. Choisissez un total plus élevé ou une date de fin plus proche.",
+        "daily": "Tu paies chaque jour",
+        "runTotal": "{{amount}} au total sur {{days}} jours",
+        "atMinimumDaily": "Impossible de descendre plus bas : {{amount}} par jour est le minimum pour cette annonce."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Crédit après",
         "error": "Impossible de charger ceci. Réessayez.",
         "done": "Terminé",
-        "back": "Retour"
+        "back": "Retour",
+        "ad": "Annonce"
       },
       "compare": {
         "title": "Comparer vos pubs",

@@ -501,7 +501,9 @@
         "back2": "Kembali ke Promosi",
         "tileTickets": "Tiket",
         "tileSignups": "Pendaftaran",
-        "tileVisits": "Lawatan halaman"
+        "tileVisits": "Lawatan halaman",
+        "notOnTeam": "Anda bukan dalam pasukan jenama ini",
+        "notOnTeamBody": "Minta pemilik jenama menambah anda, kemudian buka pemberitahuan ini semula."
       },
       "confirm": {
         "pauseTitle": "Jeda iklan ini?",
@@ -544,7 +546,10 @@
         "cancel": "Batal",
         "saved": "Iklan anda sudah diperbarui.",
         "atMinimum": "Tidak dapat lebih rendah: {{amount}} sudah digunakan.",
-        "appMinimum": "{{app}} perlu minimal {{amount}} per hari. Pilih total lebih tinggi atau tarikh akhir lebih cepat."
+        "appMinimum": "{{app}} perlu minimal {{amount}} per hari. Pilih total lebih tinggi atau tarikh akhir lebih cepat.",
+        "daily": "Anda bayar setiap hari",
+        "runTotal": "{{amount}} jumlah untuk {{days}} hari",
+        "atMinimumDaily": "Tidak boleh lebih rendah: {{amount}} sehari ialah minimum untuk iklan ini."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Kredit sesudahnya",
         "error": "Tidak dapat dimuatkan. Cuba lagi.",
         "done": "Selesai",
-        "back": "Kembali"
+        "back": "Kembali",
+        "ad": "Iklan"
       },
       "compare": {
         "title": "Bandingkan iklan anda",

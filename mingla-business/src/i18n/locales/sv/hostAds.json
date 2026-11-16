@@ -501,7 +501,9 @@
         "back2": "Tillbaka till Marknadsför",
         "tileTickets": "Biljetter",
         "tileSignups": "Anmälningar",
-        "tileVisits": "Sidbesök"
+        "tileVisits": "Sidbesök",
+        "notOnTeam": "Du är inte med i det här varumärkets team",
+        "notOnTeamBody": "Be varumärkets ägare lägga till dig och öppna sedan den här aviseringen igen."
       },
       "confirm": {
         "pauseTitle": "Pausa den här annonsen?",
@@ -544,7 +546,10 @@
         "cancel": "Avbryt",
         "saved": "Din annons är uppdaterad.",
         "atMinimum": "Lägre går inte: {{amount}} är redan spenderat.",
-        "appMinimum": "{{app}} behöver minst {{amount}} per dag. Välj ett högre totalbelopp eller ett tidigare slutdatum."
+        "appMinimum": "{{app}} behöver minst {{amount}} per dag. Välj ett högre totalbelopp eller ett tidigare slutdatum.",
+        "daily": "Du betalar per dag",
+        "runTotal": "{{amount}} totalt under {{days}} dagar",
+        "atMinimumDaily": "Lägre går inte: {{amount}} per dag är minimum för den här annonsen."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Kredit efter",
         "error": "Det gick inte att läsa in. Försök igen.",
         "done": "Klar",
-        "back": "Tillbaka"
+        "back": "Tillbaka",
+        "ad": "Annons"
       },
       "compare": {
         "title": "Jämför dina annonser",

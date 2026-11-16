@@ -501,7 +501,9 @@
         "back2": "Laghachi na Kwalite",
         "tileTickets": "Tiketi",
         "tileSignups": "Ndebanye aha",
-        "tileVisits": "Nleta peeji"
+        "tileVisits": "Nleta peeji",
+        "notOnTeam": "Ị nọghị n'otu brand a",
+        "notOnTeamBody": "Rịọ onye nwe brand ka o tinye gị, wee meghee ọkwa a ọzọ."
       },
       "confirm": {
         "pauseTitle": "Kwụsịtụ mgbasa ozi a?",
@@ -544,7 +546,10 @@
         "cancel": "Kagbuo",
         "saved": "Emelitela mgbasa ozi gị.",
         "atMinimum": "Ọ gaghị agbada karịa: emefuolarị {{amount}}.",
-        "appMinimum": "{{app}} chọrọ opekata mpe {{amount}} kwa ụbọchị. Họrọ ngụkọta dị elu ma ọ bụ ụbọchị njedebe dị nso."
+        "appMinimum": "{{app}} chọrọ opekata mpe {{amount}} kwa ụbọchị. Họrọ ngụkọta dị elu ma ọ bụ ụbọchị njedebe dị nso.",
+        "daily": "I na-akwụ ụgwọ kwa ụbọchị",
+        "runTotal": "{{amount}} n'ime ụbọchị {{days}}",
+        "atMinimumDaily": "Ọ pụghị ibelata ọzọ: {{amount}} n'ụbọchị bụ nke kacha nta maka mgbasa ozi a."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Kredit mgbe nke ahụ gasịrị",
         "error": "Anyị enweghị ike ibudata ya. Nwaa ọzọ.",
         "done": "O mechaala",
-        "back": "Laghachi"
+        "back": "Laghachi",
+        "ad": "Mgbasa ozi"
       },
       "compare": {
         "title": "Tụnyere mgbasa ozi gị",

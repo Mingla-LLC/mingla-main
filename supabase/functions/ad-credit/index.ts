@@ -18,6 +18,8 @@
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import {
   buildAdCreditReceipt,
+  loadAdNames,
+  type NameQuery,
   buildAdCreditStatement,
   type LedgerRow,
   statementMonthBounds,
@@ -146,6 +148,17 @@ function buildAdCreditCheckoutReturnUrls(
     cancelUrl: cancel.toString(),
   };
 }
+
+/** Adapter so the shared name lookup never sees the supabase client types. */
+// deno-lint-ignore no-explicit-any
+type NameDb = { from: (table: string) => any };
+const nameQuery = (db: NameDb): NameQuery =>
+async (table, columns, column, values) => {
+  const { data } = await db.from(table).select(columns).in(column, values) as {
+    data: unknown;
+  };
+  return Array.isArray(data) ? data : null;
+};
 
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
@@ -297,7 +310,8 @@ serve(async (req: Request): Promise<Response> => {
         return json({ error: "internal_error" }, 500);
       }
       if (!row) return json({ error: "not_found" }, 404);
-      return json({ receipt: buildAdCreditReceipt(row as LedgerRow) });
+      const names = await loadAdNames(nameQuery(supabase), [row as LedgerRow]);
+      return json({ receipt: buildAdCreditReceipt(row as LedgerRow, names) });
     }
     const bounds = statementMonthBounds(body.month);
     if (!bounds) {
@@ -320,11 +334,13 @@ serve(async (req: Request): Promise<Response> => {
       );
       return json({ error: "internal_error" }, 500);
     }
+    const names = await loadAdNames(nameQuery(supabase), (rows ?? []) as LedgerRow[]);
     return json({
       statement: buildAdCreditStatement({
         month: String(body.month),
         before: (before ?? null) as LedgerRow | null,
         rows: (rows ?? []) as LedgerRow[],
+        names,
       }),
     });
   }

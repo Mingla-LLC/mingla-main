@@ -501,7 +501,9 @@
         "back2": "宣伝に戻る",
         "tileTickets": "チケット",
         "tileSignups": "登録",
-        "tileVisits": "ページ訪問"
+        "tileVisits": "ページ訪問",
+        "notOnTeam": "このブランドのチームに入っていません",
+        "notOnTeamBody": "ブランドのオーナーにメンバーへの追加を頼んでから、この通知をもう一度開いてください。"
       },
       "confirm": {
         "pauseTitle": "この広告を一時停止しますか？",
@@ -544,7 +546,10 @@
         "cancel": "キャンセル",
         "saved": "広告を更新しました。",
         "atMinimum": "これ以上下げられません：すでに {{amount}} 使っています。",
-        "appMinimum": "{{app}} には1日あたり最低 {{amount}} が必要です。合計を増やすか、終了日を早めてください。"
+        "appMinimum": "{{app}} には1日あたり最低 {{amount}} が必要です。合計を増やすか、終了日を早めてください。",
+        "daily": "1日あたりのお支払い",
+        "runTotal": "{{days}}日間で合計{{amount}}",
+        "atMinimumDaily": "これ以上は下げられません。この広告は1日{{amount}}が最低額です。"
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "その後のクレジット",
         "error": "読み込めませんでした。もう一度お試しください。",
         "done": "完了",
-        "back": "戻る"
+        "back": "戻る",
+        "ad": "広告"
       },
       "compare": {
         "title": "広告を比較",

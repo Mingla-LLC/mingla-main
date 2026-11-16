@@ -501,7 +501,9 @@
         "back2": "Về Quảng bá",
         "tileTickets": "Vé",
         "tileSignups": "Lượt đăng ký",
-        "tileVisits": "Lượt xem trang"
+        "tileVisits": "Lượt xem trang",
+        "notOnTeam": "Bạn không thuộc nhóm của thương hiệu này",
+        "notOnTeamBody": "Hãy nhờ chủ thương hiệu thêm bạn, rồi mở lại thông báo này."
       },
       "confirm": {
         "pauseTitle": "Tạm dừng quảng cáo này?",
@@ -544,7 +546,10 @@
         "cancel": "Hủy",
         "saved": "Quảng cáo đã được cập nhật.",
         "atMinimum": "Không thể giảm thêm: đã chi {{amount}}.",
-        "appMinimum": "{{app}} cần ít nhất {{amount}} mỗi ngày. Chọn tổng cao hơn hoặc ngày kết thúc sớm hơn."
+        "appMinimum": "{{app}} cần ít nhất {{amount}} mỗi ngày. Chọn tổng cao hơn hoặc ngày kết thúc sớm hơn.",
+        "daily": "Bạn trả mỗi ngày",
+        "runTotal": "Tổng {{amount}} trong {{days}} ngày",
+        "atMinimumDaily": "Không thể thấp hơn: {{amount}} mỗi ngày là mức tối thiểu cho quảng cáo này."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Tín dụng sau đó",
         "error": "Không tải được. Hãy thử lại.",
         "done": "Xong",
-        "back": "Quay lại"
+        "back": "Quay lại",
+        "ad": "Quảng cáo"
       },
       "compare": {
         "title": "So sánh quảng cáo",

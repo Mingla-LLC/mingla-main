@@ -501,7 +501,9 @@
         "back2": "Wróć do Promuj",
         "tileTickets": "Bilety",
         "tileSignups": "Zapisy",
-        "tileVisits": "Odwiedziny strony"
+        "tileVisits": "Odwiedziny strony",
+        "notOnTeam": "Nie jesteś w zespole tej marki",
+        "notOnTeamBody": "Poproś właściciela marki, aby cię dodał, a potem otwórz to powiadomienie ponownie."
       },
       "confirm": {
         "pauseTitle": "Wstrzymać tę reklamę?",
@@ -544,7 +546,10 @@
         "cancel": "Anuluj",
         "saved": "Reklama została zaktualizowana.",
         "atMinimum": "Niżej się nie da: wydano już {{amount}}.",
-        "appMinimum": "{{app}} potrzebuje co najmniej {{amount}} dziennie. Wybierz wyższą kwotę łączną lub wcześniejszą datę końca."
+        "appMinimum": "{{app}} potrzebuje co najmniej {{amount}} dziennie. Wybierz wyższą kwotę łączną lub wcześniejszą datę końca.",
+        "daily": "Płacisz każdego dnia",
+        "runTotal": "{{amount}} łącznie za {{days}} dni",
+        "atMinimumDaily": "Niżej się nie da: {{amount}} dziennie to minimum dla tej reklamy."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Środki potem",
         "error": "Nie udało się wczytać. Spróbuj ponownie.",
         "done": "Gotowe",
-        "back": "Wstecz"
+        "back": "Wstecz",
+        "ad": "Reklama"
       },
       "compare": {
         "title": "Porównaj swoje reklamy",

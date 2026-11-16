@@ -501,7 +501,9 @@
         "back2": "Tanıt'a dön",
         "tileTickets": "Biletler",
         "tileSignups": "Kayıtlar",
-        "tileVisits": "Sayfa ziyaretleri"
+        "tileVisits": "Sayfa ziyaretleri",
+        "notOnTeam": "Bu markanın ekibinde değilsin",
+        "notOnTeamBody": "Marka sahibinden seni eklemesini iste, sonra bu bildirimi tekrar aç."
       },
       "confirm": {
         "pauseTitle": "Bu reklam duraklatılsın mı?",
@@ -544,7 +546,10 @@
         "cancel": "İptal",
         "saved": "Reklamın güncellendi.",
         "atMinimum": "Daha aşağı inemez: {{amount}} zaten harcandı.",
-        "appMinimum": "{{app}} günde en az {{amount}} ister. Daha yüksek bir toplam ya da daha yakın bir bitiş tarihi seç."
+        "appMinimum": "{{app}} günde en az {{amount}} ister. Daha yüksek bir toplam ya da daha yakın bir bitiş tarihi seç.",
+        "daily": "Günlük ödediğin tutar",
+        "runTotal": "{{days}} gün için toplam {{amount}}",
+        "atMinimumDaily": "Daha aşağı inemez: bu reklamın çalışması için günde en az {{amount}} gerekir."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Sonraki kredi",
         "error": "Yüklenemedi. Tekrar dene.",
         "done": "Bitti",
-        "back": "Geri"
+        "back": "Geri",
+        "ad": "Reklam"
       },
       "compare": {
         "title": "Reklamlarını karşılaştır",

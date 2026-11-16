@@ -501,7 +501,9 @@
         "back2": "Werriẹ ye Ru ọ ye ẹvbo",
         "tileTickets": "Tiketi",
         "tileSignups": "Emwa ne ọ ya eni ye",
-        "tileVisits": "Emwa ne ọ ghe ehe"
+        "tileVisits": "Emwa ne ọ ghe ehe",
+        "notOnTeam": "Iran ọ rre otu brand na ra",
+        "notOnTeamBody": "Mu ọgọdọ brand na ru ọ ta wẹ gha rre, fi notice nii dẹ ọkpa."
       },
       "confirm": {
         "pauseTitle": "Mu ẹkpẹti na mudia?",
@@ -544,7 +546,10 @@
         "cancel": "Gbe ẹre fua",
         "saved": "A werriẹ ẹkpẹti ruẹ.",
         "atMinimum": "Ọ i sẹtin kpa sẹ ọna: a loo {{amount}} fo.",
-        "appMinimum": "{{app}} gualọ {{amount}} ẹdẹ ọkpa. Họn igho ne ọ kpọlọ sẹ ọna, ra ẹdẹ ne ọ kẹ."
+        "appMinimum": "{{app}} gualọ {{amount}} ẹdẹ ọkpa. Họn igho ne ọ kpọlọ sẹ ọna, ra ẹdẹ ne ọ kẹ.",
+        "daily": "I vbe rhie evbo ọbọ ọbọ",
+        "runTotal": "{{amount}} ghi ma {{days}} ẹbọ",
+        "atMinimumDaily": "E ma sẹ rhiọ: {{amount}} ẹbọ ọbọ ne ọ gha mu ẹse ne ad nii."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Igho vbe ọni gberra",
         "error": "Ma sẹtin re ẹre. Tobọ ẹre.",
         "done": "Ọ fo",
-        "back": "Werriẹ"
+        "back": "Werriẹ",
+        "ad": "Ad"
       },
       "compare": {
         "title": "Mu ẹkpẹti ruẹ dọ ẹdẹ",

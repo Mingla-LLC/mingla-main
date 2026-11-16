@@ -11,6 +11,7 @@
 import {
   hostAdCreditFromPay,
   hostAdPayFromCredit,
+  hostAdPlanBudget,
   type HostAdGoal,
 } from "./hostAdBuilderModel";
 
@@ -240,6 +241,8 @@ export type HostAdEditMoney = {
  */
 export function hostAdEditMoney(input: {
   newTotalPay: number;
+  /** W6c: the new total in credit when the Host stepped the daily amount. */
+  newCreditOverride?: number;
   capCredit: number;
   spentCredit: number | null;
   walletCredit: number | null;
@@ -248,7 +251,10 @@ export function hostAdEditMoney(input: {
 }): HostAdEditMoney {
   const cap = Math.max(0, Math.trunc(input.capCredit));
   const spent = Math.max(0, Math.trunc(input.spentCredit ?? 0));
-  const newCredit = hostAdCreditFromPay(Math.max(0, Math.trunc(input.newTotalPay)));
+  const newCredit =
+    input.newCreditOverride !== undefined
+      ? Math.max(0, Math.trunc(input.newCreditOverride))
+      : hostAdCreditFromPay(Math.max(0, Math.trunc(input.newTotalPay)));
   const extraCredit = newCredit - cap;
   const freeCredit = Math.max(0, Math.trunc(input.walletCredit ?? 0));
   const shortCredit = Math.max(0, extraCredit - freeCredit);
@@ -457,4 +463,81 @@ export function hostAdCompareRows(
 export function hostAdStatementMonth(iso: string): string {
   const date = new Date(iso);
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+// ── Edit budget sheet, in the DAILY amount the Host pays (W6c) ───────────
+
+/** The days a live ad's cap covers: cap ÷ daily, at least 1. */
+export function hostAdRunDaysFromBudget(capCredit: number, dailyCredit: number): number {
+  if (!(capCredit > 0) || !(dailyCredit > 0)) return 1;
+  return Math.max(1, Math.round(capCredit / dailyCredit));
+}
+
+/**
+ * The daily amount the sheet steps (pay terms, 15% fee inside) and every
+ * number under it. The server still receives a TOTAL in credit: the new
+ * daily pay goes through `hostAdPlanBudget` (the one pay→credit conversion)
+ * for the run's days. An untouched daily amount sends nothing, so rounding
+ * never edits a budget the Host did not change.
+ */
+export function hostAdEditDailyMoney(input: {
+  dailyPay: number;
+  startDailyPay: number;
+  runDays: number;
+  capCredit: number;
+  spentCredit: number | null;
+  walletCredit: number | null;
+  learning: boolean;
+  step: number;
+}): HostAdEditMoney & { runTotalPay: number; dailyChanged: boolean } {
+  const dailyChanged = input.dailyPay !== input.startDailyPay;
+  const plan = hostAdPlanBudget({ dailyPayCents: input.dailyPay, runDays: input.runDays });
+  const base = hostAdEditMoney({
+    newTotalPay: 0,
+    newCreditOverride: dailyChanged ? plan.capCreditCents : Math.max(0, Math.trunc(input.capCredit)),
+    capCredit: input.capCredit,
+    spentCredit: input.spentCredit,
+    walletCredit: input.walletCredit,
+    learning: input.learning,
+    step: input.step,
+  });
+  return { ...base, runTotalPay: plan.holdPayCents, dailyChanged };
+}
+
+/**
+ * The lowest daily amount the sheet lets the Host pick (pay terms): never
+ * below the apps' one-ad-set minimum, never so low that the run's total
+ * falls under what is already spent. Unknown minimum: one step.
+ */
+export function hostAdEditMinDailyPay(input: {
+  appsMinimumDailyPay: number | null;
+  spentCredit: number | null;
+  runDays: number;
+  step: number;
+}): number {
+  const spentPay = hostAdPayFromCredit(Math.max(0, Math.trunc(input.spentCredit ?? 0)));
+  const bySpend = Math.ceil(spentPay / Math.max(1, input.runDays));
+  const floor = input.appsMinimumDailyPay !== null && input.appsMinimumDailyPay > 0 ? input.appsMinimumDailyPay : input.step;
+  return Math.max(floor, bySpend);
+}
+
+// ── An ad notice that belongs to another brand (W6c) ─────────────────────
+
+export type HostAdBrandLinkDecision = "stay" | "wait" | "switch" | "notMember";
+
+/**
+ * A notice names its brand. Same brand (or no brand named): stay. Another
+ * brand the person is on: switch to it, then open the ad. Another brand they
+ * are not on: say so (never "Ad not found"). The list still loading: wait.
+ */
+export function hostAdBrandLinkDecision(input: {
+  linkBrandId: string | null;
+  currentBrandId: string | null;
+  memberBrandIds: readonly string[];
+  listStatus: "loading" | "ready" | "error";
+}): HostAdBrandLinkDecision {
+  if (!input.linkBrandId || input.linkBrandId === input.currentBrandId) return "stay";
+  if (input.memberBrandIds.includes(input.linkBrandId)) return "switch";
+  if (input.listStatus === "loading") return "wait";
+  return input.listStatus === "ready" ? "notMember" : "stay";
 }

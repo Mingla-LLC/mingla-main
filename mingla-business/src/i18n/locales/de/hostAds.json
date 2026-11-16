@@ -501,7 +501,9 @@
         "back2": "Zurück zu Bewerben",
         "tileTickets": "Tickets",
         "tileSignups": "Anmeldungen",
-        "tileVisits": "Seitenbesuche"
+        "tileVisits": "Seitenbesuche",
+        "notOnTeam": "Du gehörst nicht zum Team dieser Marke",
+        "notOnTeamBody": "Bitte den Inhaber der Marke, dich hinzuzufügen, und öffne diese Mitteilung dann erneut."
       },
       "confirm": {
         "pauseTitle": "Diese Anzeige pausieren?",
@@ -544,7 +546,10 @@
         "cancel": "Abbrechen",
         "saved": "Deine Anzeige ist aktualisiert.",
         "atMinimum": "Niedriger geht es nicht: {{amount}} ist schon ausgegeben.",
-        "appMinimum": "{{app}} braucht mindestens {{amount}} pro Tag. Wähle einen höheren Gesamtbetrag oder ein früheres Enddatum."
+        "appMinimum": "{{app}} braucht mindestens {{amount}} pro Tag. Wähle einen höheren Gesamtbetrag oder ein früheres Enddatum.",
+        "daily": "Du zahlst pro Tag",
+        "runTotal": "{{amount}} insgesamt für {{days}} Tage",
+        "atMinimumDaily": "Weniger geht nicht: {{amount}} pro Tag ist das Minimum für diese Anzeige."
       },
       "ari": {
         "who": "Ari",
@@ -614,7 +619,8 @@
         "balance": "Guthaben danach",
         "error": "Das konnte nicht geladen werden. Versuch es erneut.",
         "done": "Fertig",
-        "back": "Zurück"
+        "back": "Zurück",
+        "ad": "Anzeige"
       },
       "compare": {
         "title": "Deine Anzeigen vergleichen",
