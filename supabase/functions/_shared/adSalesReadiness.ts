@@ -85,6 +85,46 @@ export function googleSalesReadiness(
     : { ready: false, reason: "needs_setup" };
 }
 
+/**
+ * #4238 W7: Google sign-ups delivery for a free event (a Google bid on the
+ * free_signup conversion action) shares Z-4: the Google create path is
+ * maximize-clicks only (targetSpend, GR-55) and the conversion bidding flip
+ * is not confirmed by the docs check. Until it is, Google is never "ready"
+ * for sign-ups, even with the action, so a sign-ups plan never runs Google
+ * as page visits.
+ */
+export const GOOGLE_HOST_SIGNUPS_CONFIRMED = false;
+
+/**
+ * #4238 W7 (I-4238-GOOGLE-ACTION-PER-KIND): the Google free sign-up action
+ * (free RSVPs and free ticket orders upload to it, adConversionFire
+ * googleKindFor). Per kind, no fallback: the purchase action or the
+ * conversion_action_resource alias never stands in for it.
+ */
+export function googleSignupActionResource(
+  conn: Pick<AdConnectionRow, "extra">,
+): string | null {
+  const extra = conn.extra && typeof conn.extra === "object"
+    ? conn.extra as Record<string, unknown>
+    : {};
+  const actions = extra.conversion_actions &&
+      typeof extra.conversion_actions === "object"
+    ? extra.conversion_actions as Record<string, unknown>
+    : {};
+  const value = actions.free_signup;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** #4238 W7: Google is ready for sign-ups only with the action AND Z-4. */
+export function googleSignupsReadiness(
+  conn: Pick<AdConnectionRow, "extra">,
+  confirmed: boolean = GOOGLE_HOST_SIGNUPS_CONFIRMED,
+): SalesReadiness {
+  return googleSignupActionResource(conn) !== null && confirmed
+    ? { ready: true, reason: "ready" }
+    : { ready: false, reason: "needs_setup" };
+}
+
 export type SalesSignalProbes = {
   metaHasSignal(conn: AdConnectionRow): Promise<boolean>;
   snapchatPurchases28d(conn: AdConnectionRow, pixelId: string): Promise<number>;
@@ -220,7 +260,13 @@ export async function cachedSalesReadiness(
 }
 
 /** #4238 item 3: platforms with a sign-ups optimisation path (= adHostGoal). */
-export const HOST_SIGNUPS_PLATFORMS = ["meta", "snapchat"] as const;
+export const HOST_SIGNUPS_PLATFORMS = [
+  "meta",
+  "snapchat",
+  // #4238 W7: reported so a sign-ups plan can show "Needs setup"; it is
+  // "ready" only through googleSignupsReadiness.
+  "google",
+] as const;
 
 /**
  * #4238 item 3: whether an account can optimise a Host ad for sign-ups.
@@ -252,6 +298,7 @@ export async function signupsReadiness(
         ? { ready: true, reason: "ready" }
         : { ready: false, reason: "no_pixel" };
     }
+    if (conn.platform === "google") return googleSignupsReadiness(conn);
     return { ready: false, reason: "not_supported" };
   } catch (err) {
     console.warn("[ad-sales-readiness] sign-up signal unreadable", {

@@ -310,10 +310,12 @@ export function validateHostOptimization(
   }
   // #4238 W4b §6: on a ticket-sales plan Google must be set up for sales.
   // It can never fall back to page visits quietly, and the visits
-  // acknowledgement does not apply to it.
+  // acknowledgement does not apply to it. #4238 W7: the same for a sign-ups
+  // plan (a free event): Google needs its free_signup action and Z-4.
   if (
-    requested === "sales" && platforms.includes("google") &&
-    context.ready?.google?.sales !== true
+    (requested === "sales" || requested === "signups") &&
+    platforms.includes("google") &&
+    context.ready?.google?.[requested] !== true
   ) {
     return {
       ok: false,

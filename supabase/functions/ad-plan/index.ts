@@ -297,10 +297,11 @@ async function hostGoalReadiness(
   const map = { ...(asRecord(requestedMap) ?? {}) };
   // #4238 W4b §6: on a sales plan Google's sales readiness is always read,
   // whatever goal the map gives it (it may never fall back to visits).
+  // #4238 W7: the same on a sign-ups plan, with Google's sign-ups readiness.
   if (
-    requestedGoal === "sales" &&
+    (requestedGoal === "sales" || requestedGoal === "signups") &&
     allocations.some((row) => row.platform === "google")
-  ) map.google = "sales";
+  ) map.google = requestedGoal;
   const wanted = allocations.filter((row) =>
     map[row.platform] === "sales" || map[row.platform] === "signups"
   );

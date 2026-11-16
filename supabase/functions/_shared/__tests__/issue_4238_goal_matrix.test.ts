@@ -213,7 +213,12 @@ Deno.test("SC-3.5 every (page x platform x goal) cell matches the matrix", () =>
   assertEquals(hostAdGoalFields("google", "signups"), null);
   assertEquals(hostAdGoalFields("google", "sales"), null);
   assertEquals(hostAdGoalFields("reddit", "sales"), null);
-  assertEquals([...HOST_SIGNUPS_PLATFORMS], [...HOST_SIGNUPS_GOAL_PLATFORMS]);
+  // #4238 W7: Google is reported for sign-ups (to show "Needs setup") but
+  // is never a sign-ups goal platform until googleSignupsReadiness passes.
+  assertEquals(
+    HOST_SIGNUPS_PLATFORMS.filter((p) => p !== "google"),
+    [...HOST_SIGNUPS_GOAL_PLATFORMS],
+  );
 });
 
 // #4238 W4b §6: Google may no longer fall back on a sales plan (see
