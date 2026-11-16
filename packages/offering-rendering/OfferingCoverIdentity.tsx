@@ -58,7 +58,9 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
     <View style={styles.wrap} testID={testID}>
       {parts.length > 0 ? (
         <Text
-          style={[styles.eyebrow, { color: soft }]}
+          // issue #4420 audit — the small eyebrow washed out over bright
+          // photos (a sunlit sky); it gets the title's shadow on the cover.
+          style={[styles.eyebrow, { color: soft }, onCover ? styles.titleShadow : null]}
           numberOfLines={2}
           testID={`${testID}-eyebrow`}
         >

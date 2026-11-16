@@ -43,6 +43,8 @@ Deno.test("A-3 a trip day's calendar date is formatted, never raw ISO", () => {
 Deno.test("A-4 cover eyebrow keeps short facts on one line", () => {
   const identity = read("../OfferingCoverIdentity.tsx");
   assertStringIncludes(identity, 'p.length <= 28 ? p.replace(/ /g, "\\u00A0") : p');
+  // and stays readable over a bright photo
+  assertStringIncludes(identity, "{ color: soft }, onCover ? styles.titleShadow : null]");
 });
 
 Deno.test("A-5 an ended event's going box speaks in the past tense", () => {
