@@ -1363,7 +1363,11 @@ DECLARE
   v_run   uuid := NULL;
   v_existing uuid;
 BEGIN
-  -- Step 5: idempotency (the column and the side table).
+  -- Step 5: idempotency (the column and the side table). #4452 rework 1 (P2-9):
+  -- concurrent retries with one key serialise on a per-key lock first, so the
+  -- second sees the first's committed row and replays it (no unique violation,
+  -- no double-counted resubmit).
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('forms_submit_key:' || v_key::text, 0));
   SELECT id INTO v_existing FROM public.form_submissions WHERE idempotency_key = v_key;
   IF NOT FOUND THEN
     SELECT submission_id INTO v_existing FROM public.form_submission_keys WHERE idempotency_key = v_key;
@@ -1391,6 +1395,13 @@ BEGIN
    WHERE form_id = v_form.id AND email = v_email AND created_at > now() - interval '24 hours' AND NOT is_test
    ORDER BY created_at DESC LIMIT 1;
   IF FOUND AND NOT v_test THEN
+    -- The key claims this resubmit exactly once (the conflict target is the key).
+    INSERT INTO public.form_submission_keys (idempotency_key, submission_id) VALUES (v_key, v_prev.id)
+    ON CONFLICT (idempotency_key) DO NOTHING;
+    IF NOT FOUND THEN
+      RETURN jsonb_build_object('replay', true, 'submission_id', v_prev.id, 'lead_event_id', v_prev.lead_event_id,
+                                'deduped', true, 'lead_label', v_prev.lead_label);
+    END IF;
     UPDATE public.form_submissions SET
       answers = v_check->'values',
       name = COALESCE(v_check->>'name', name),
@@ -1410,7 +1421,6 @@ BEGIN
       last_resubmitted_at = now(),
       updated_at = now()
      WHERE id = v_prev.id;
-    INSERT INTO public.form_submission_keys (idempotency_key, submission_id) VALUES (v_key, v_prev.id);
     IF v_prev.crm_record_id IS NOT NULL THEN
       INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body, occurred_at, created_at)
       VALUES (v_prev.crm_record_id, 'note', 'forms@usemingla.com', left('form-' || v_form.key, 40),

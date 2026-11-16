@@ -114,7 +114,11 @@ CREATE TABLE public.lead_ingest_failures (
   source_table text NOT NULL, source_id uuid NOT NULL,
   reason text NOT NULL CHECK (reason IN ('invalid_email','error')),
   sqlstate text CHECK (sqlstate IS NULL OR sqlstate ~ '^[0-9A-Z]{5}$'),
-  created_at timestamptz NOT NULL DEFAULT now()
+  -- #4452 rework 1 (P3-16): one row per source row; a repeat failure counts up.
+  attempts integer NOT NULL DEFAULT 1 CHECK (attempts >= 1),
+  last_failed_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (source_table, source_id)
 );
 
 -- A frozen audience handed from Leads to the Email composer.
@@ -214,6 +218,17 @@ BEGIN
 END;
 $fn$;
 
+-- #4452 rework 1 (P3-16): record an ingest failure once per source row (an upsert
+-- with a count), so a row that keeps failing never grows the table each run.
+CREATE FUNCTION public.lead_note_failure(p_table text, p_id uuid, p_reason text, p_sqlstate text) RETURNS void
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $$
+  INSERT INTO public.lead_ingest_failures AS f (source_table, source_id, reason, sqlstate)
+  VALUES (p_table, p_id, p_reason, p_sqlstate)
+  ON CONFLICT (source_table, source_id) DO UPDATE
+    SET attempts = f.attempts + 1, reason = EXCLUDED.reason, sqlstate = EXCLUDED.sqlstate, last_failed_at = now()
+$$;
+
 -- p: {source, source_table, source_id, email, label, form_id, page_path, utm_source, utm_medium,
 --     utm_campaign, click_source, marketing_consent, is_test, summary, occurred_at}
 CREATE FUNCTION public.lead_upsert_event(p jsonb) RETURNS uuid
@@ -227,8 +242,7 @@ DECLARE
 BEGIN
   -- 1. An email the leads list cannot hold is recorded, never guessed at.
   IF v_key = '' OR length(v_key) > 254 OR v_key !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' THEN
-    INSERT INTO public.lead_ingest_failures (source_table, source_id, reason)
-    VALUES (p->>'source_table', (p->>'source_id')::uuid, 'invalid_email');
+    PERFORM public.lead_note_failure(p->>'source_table', (p->>'source_id')::uuid, 'invalid_email', NULL);
     RETURN NULL;
   END IF;
   -- 2. One writer per person at a time.
@@ -367,8 +381,7 @@ BEGIN
       PERFORM public.lead_ingest(TG_TABLE_NAME, v_id);
     END IF;
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO public.lead_ingest_failures (source_table, source_id, reason, sqlstate)
-    VALUES (TG_TABLE_NAME, v_id, 'error', SQLSTATE);
+    PERFORM public.lead_note_failure(TG_TABLE_NAME, v_id, 'error', SQLSTATE);
   END;
   RETURN NULL;
 END;
@@ -388,32 +401,38 @@ CREATE TRIGGER lead_forget AFTER DELETE ON public.tool_leads
   FOR EACH ROW EXECUTE FUNCTION public.lead_ingest_trigger();
 
 -- Ingest every source row that has no event yet (one anti-join per table), then clear repaired failures.
+-- #4452 rework 1 (P2-10): each row is its own subtransaction. A row whose ingest
+-- keeps failing is recorded in lead_ingest_failures and the run moves on, so one
+-- bad row never stops the repair (or the M5 backfill) for everyone else.
 CREATE FUNCTION public.lead_reconcile() RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
   v_n integer := 0;
+  v_t text;
   v_id uuid;
 BEGIN
-  FOR v_id IN SELECT s.id FROM public.form_submissions s WHERE NOT EXISTS
-      (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'form_submissions' AND e.source_id = s.id) LOOP
-    IF public.lead_ingest('form_submissions', v_id) IS NOT NULL THEN v_n := v_n + 1; END IF;
-  END LOOP;
-  FOR v_id IN SELECT k.id FROM public.book_call_leads k WHERE NOT EXISTS
-      (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'book_call_leads' AND e.source_id = k.id) LOOP
-    IF public.lead_ingest('book_call_leads', v_id) IS NOT NULL THEN v_n := v_n + 1; END IF;
-  END LOOP;
-  FOR v_id IN SELECT t.id FROM public.tool_leads t WHERE t.lane = 'web' AND t.email IS NOT NULL AND NOT EXISTS
-      (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'tool_leads' AND e.source_id = t.id) LOOP
-    IF public.lead_ingest('tool_leads', v_id) IS NOT NULL THEN v_n := v_n + 1; END IF;
-  END LOOP;
-  FOR v_id IN SELECT b.id FROM public.beta_access_leads b WHERE NOT EXISTS
-      (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'beta_access_leads' AND e.source_id = b.id) LOOP
-    IF public.lead_ingest('beta_access_leads', v_id) IS NOT NULL THEN v_n := v_n + 1; END IF;
-  END LOOP;
-  FOR v_id IN SELECT x.id FROM public.explorer_app_leads x WHERE NOT EXISTS
-      (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'explorer_app_leads' AND e.source_id = x.id) LOOP
-    IF public.lead_ingest('explorer_app_leads', v_id) IS NOT NULL THEN v_n := v_n + 1; END IF;
+  FOR v_t, v_id IN
+      SELECT 'form_submissions'::text, s.id FROM public.form_submissions s WHERE NOT EXISTS
+        (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'form_submissions' AND e.source_id = s.id)
+      UNION ALL
+      SELECT 'book_call_leads', k.id FROM public.book_call_leads k WHERE NOT EXISTS
+        (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'book_call_leads' AND e.source_id = k.id)
+      UNION ALL
+      SELECT 'tool_leads', t.id FROM public.tool_leads t WHERE t.lane = 'web' AND t.email IS NOT NULL AND NOT EXISTS
+        (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'tool_leads' AND e.source_id = t.id)
+      UNION ALL
+      SELECT 'beta_access_leads', b.id FROM public.beta_access_leads b WHERE NOT EXISTS
+        (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'beta_access_leads' AND e.source_id = b.id)
+      UNION ALL
+      SELECT 'explorer_app_leads', x.id FROM public.explorer_app_leads x WHERE NOT EXISTS
+        (SELECT 1 FROM public.lead_events e WHERE e.source_table = 'explorer_app_leads' AND e.source_id = x.id)
+  LOOP
+    BEGIN
+      IF public.lead_ingest(v_t, v_id) IS NOT NULL THEN v_n := v_n + 1; END IF;
+    EXCEPTION WHEN OTHERS THEN
+      PERFORM public.lead_note_failure(v_t, v_id, 'error', SQLSTATE);
+    END;
   END LOOP;
   DELETE FROM public.lead_ingest_failures f
    WHERE EXISTS (SELECT 1 FROM public.lead_events e WHERE e.source_table = f.source_table AND e.source_id = f.source_id);
@@ -422,7 +441,8 @@ END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.lead_recompute(uuid), public.lead_upsert_event(jsonb), public.lead_forget(text, uuid),
-  public.lead_ingest(text, uuid), public.lead_ingest_trigger(), public.lead_reconcile() FROM PUBLIC, anon, authenticated;
+  public.lead_ingest(text, uuid), public.lead_ingest_trigger(), public.lead_reconcile(),
+  public.lead_note_failure(text, uuid, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.lead_recompute(uuid), public.lead_upsert_event(jsonb), public.lead_forget(text, uuid),
   public.lead_ingest(text, uuid), public.lead_reconcile() TO service_role;
 
