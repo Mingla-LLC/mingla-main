@@ -228,6 +228,7 @@ import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
 import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
 import { themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { premiumDesktopBarDockStyle } from "@mingla/offering-rendering/offeringFrameMetrics";
 
 interface PublicEventPageAdapterProps {
   event: LiveEvent;
@@ -2393,10 +2394,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       acquisitionState.kind === "current" &&
       floatingPillVisible ? (
         <View
-          style={[
-            isDesktop ? styles.floatWrapDesktop : styles.floatWrap,
-            { bottom: (isDesktop ? 22 : 12) + insets.bottom },
-          ]}
+          style={
+            // issue #4420 audit — on desktop the bar docks inside the left
+            // flyer column, so it never covers the right column's text.
+            isDesktop
+              ? premiumDesktopBarDockStyle(22 + insets.bottom)
+              : [styles.floatWrap, { bottom: 12 + insets.bottom }]
+          }
           pointerEvents="box-none"
         >
           <EventOfferingFloatingBar
@@ -2579,14 +2583,6 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     bottom: 24,
-    zIndex: 6,
-  },
-  // issue #4420 — on desktop the glass bar sits bottom-right, 440 wide.
-  floatWrapDesktop: {
-    position: "absolute",
-    right: 28,
-    width: 440,
-    maxWidth: "90%",
     zIndex: 6,
   },
   flyerActionRow: { flexDirection: "row", gap: 8 },

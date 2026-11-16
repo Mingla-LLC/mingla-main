@@ -303,6 +303,8 @@ const renderPublicEventPage = (
       // [TEST-MOD-APPROVED #1023] Harness registration only: the gradient-aware
       // accent helpers, real; no close assertion changed.
       case "@mingla/offering-rendering/themeAccentStyle":
+      // issue #4420 audit — the desktop bar's flyer-column dock (pure).
+      case "@mingla/offering-rendering/offeringFrameMetrics":
         return require(request);
       case "./FoundationEventPreview":
         return { FoundationEventPreview: "FoundationEventPreview" };
