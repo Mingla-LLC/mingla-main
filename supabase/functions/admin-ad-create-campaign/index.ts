@@ -1167,10 +1167,13 @@ serve(async (req: Request): Promise<Response> => {
         planHash: body.plan_hash,
         creativeId: hostCreativeId,
       });
-    // #4238 T-9: a Host photo runs on Meta only (ad-plan create_version
-    // refused it elsewhere; HOST_IMAGE_PLATFORMS); every other app is video.
+    // #4238 T-9 (W4a): a Host photo runs on Meta and Snapchat (Snapchat
+    // through the image's READY media ref from the launch's prepare step;
+    // ad-plan create_version refused it elsewhere, HOST_IMAGE_PLATFORMS);
+    // every other app is video.
     const hostKindAllowed = hostCreativeRow.kind === "video" ||
-      (hostCreativeRow.kind === "image" && platform === "meta");
+      (hostCreativeRow.kind === "image" &&
+        (platform === "meta" || platform === "snapchat"));
     if (
       !hostKindAllowed ||
       creativeSelectionError(hostCreativeRow, { frozen: hostCreativeFrozen })

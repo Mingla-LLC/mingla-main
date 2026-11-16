@@ -278,7 +278,8 @@ Deno.test("create_version freezes the same split, never a client one; the seed o
   const at = src.indexOf("delete canonical.retarget_by_platform;");
   assertEquals(at > 0, true);
   const block = src.slice(at, src.indexOf("canonical.audience_choice =", at));
-  assertEquals(block.includes("hostAdSetSplit("), true);
+  // W4a: the same split, limited to the apps whose create builds it.
+  assertEquals(block.includes("hostAdSetSplitAsBuilt("), true);
   assertEquals(block.includes("hostDailyMinimumCents("), true);
   assertEquals(src.includes("canonicalInput.retarget_by_platform"), false);
   // The only path a list key is added without the Host's pick.
@@ -290,7 +291,7 @@ Deno.test("create_version freezes the same split, never a client one; the seed o
   );
   assertEquals(
     create.includes(
-      '(hostCreativeRow.kind === "image" && platform === "meta")',
+      '(platform === "meta" || platform === "snapchat"));',
     ),
     true,
   );
