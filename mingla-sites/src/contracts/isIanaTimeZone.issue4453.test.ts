@@ -1,8 +1,7 @@
 /*
  * #4453 Part 1 — a trip stored in UTC must reach the site.
- *
- * INVARIANT I-SITES-TZ-ONE-SOURCE: isIanaTimeZone exists only in packages/site-contracts/src/safety.ts; consumers import the generated copy (#4453).
  */
+// MINGLA-INVARIANT: I-SITES-TZ-ONE-SOURCE | issue #4453 | isIanaTimeZone is defined only in packages/site-contracts/src/safety.ts; every consumer imports a generated copy
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
