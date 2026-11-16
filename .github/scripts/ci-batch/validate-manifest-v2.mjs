@@ -518,7 +518,8 @@ export function phase3dContractDigest(manifest) {
 // #4420 merge of main after #4455: kept the #4420 Stay other-contact and experience venue-line privacy migrations after the #4452 migrations in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 Stay other-contact recovery migration 20280721004420 and its pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 experience stop-detail visibility migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ce70f8acae9a7695cb1e85290ff59e5a7d1b2da71bb7ec5cbc7081c3aa97c6b9";
+// #4420 discovery coarse-point migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "59b2ec61d3dd19281ed14670dc286d8f23ef60bd6ddedb970c4c39e4f5211608";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

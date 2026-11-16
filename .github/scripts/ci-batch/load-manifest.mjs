@@ -307,7 +307,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4420 merge of main after #4455: kept the #4420 Stay other-contact and experience venue-line privacy migrations after the #4452 migrations in the #1857, #1931 and #2117 lanes, and the #4420 venue-line privacy skip after the #4452 skips in the #1931 filtered replay; re-sealed.
 // #4420 Stay other-contact recovery: listed migration 20280721004420 (recovery view + rate-limited resend) after 20280719004420 in the #1857, #1931 and #2117 lanes, and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4420 experience stop-detail visibility migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
-export const BOOTSTRAP_SHA256 = "ef1a1ffd0622a6a6618ab86f104b7e59e368075fbb5c2dad262ef4f90c192c9c";
+// #4420 discovery coarse-point migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
+export const BOOTSTRAP_SHA256 = "f681c19b17b9e558d4775cb07de3c32fb5831b67da71e0a9591f60fd9339f9fd";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -102,14 +102,14 @@ $$;
 -- Observe every path as each caller.
 -- ---------------------------------------------------------------------------
 CREATE TEMP TABLE t4420s_obs(who text, path text, k text, payload text);
-GRANT ALL ON t4420s_obs TO anon, authenticated;
+GRANT ALL ON t4420s_obs TO anon, authenticated, service_role;
 
-CREATE FUNCTION pg_temp.t4420s_observe(p_who text)
+-- The deck reader at the exact pin: a wide radius (payload) and a 100 m one (filter).
+-- 20280723004420: anon holds no EXECUTE on it; for a signed-out caller the
+-- discover-cards edge function calls it with the service role (see the anon run below).
+CREATE FUNCTION pg_temp.t4420s_observe_deck(p_who text)
 RETURNS void LANGUAGE plpgsql AS $$
-DECLARE
-  k text;
 BEGIN
-  -- The deck reader at the exact pin: a wide radius (payload) and a 100 m one (filter).
   INSERT INTO pg_temp.t4420s_obs
     SELECT p_who, 'deck', replace(d.event_slug, 'i4420s-', ''), row_to_json(d)::text
       FROM public.pg_eligible_experiences_for_deck(35.7796123, -78.6382456, 50000, ARRAY['group-fun'],
@@ -120,6 +120,17 @@ BEGIN
       FROM public.pg_eligible_experiences_for_deck(35.7796123, -78.6382456, 100, ARRAY['group-fun'],
              now(), ARRAY[]::uuid[], 30) d
      WHERE d.event_slug LIKE 'i4420s-%';
+END
+$$;
+
+CREATE FUNCTION pg_temp.t4420s_observe(p_who text)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+  k text;
+BEGIN
+  IF current_user <> 'anon' THEN
+    PERFORM pg_temp.t4420s_observe_deck(p_who);
+  END IF;
 
   FOREACH k IN ARRAY ARRAY['hid', 'leg', 'vis'] LOOP
     -- The table, as a client select and as a WHERE filter on the pin.
@@ -155,6 +166,9 @@ $$;
 
 SET LOCAL ROLE anon;
 SELECT pg_temp.t4420s_observe('anon');
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT pg_temp.t4420s_observe_deck('anon');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
@@ -298,11 +312,11 @@ SELECT pg_temp.t4420s_check(
   AND NOT has_function_privilege('authenticated', 'public.issue_4420_backfill_experience_venue_text()', 'EXECUTE'),
   'G-ACL the #4420 helpers are not callable by app clients');
 SELECT pg_temp.t4420s_check(
-  has_function_privilege('anon', 'public.pg_eligible_experiences_for_deck(double precision,double precision,double precision,text[],timestamp with time zone,uuid[],integer)', 'EXECUTE')
+  NOT has_function_privilege('anon', 'public.pg_eligible_experiences_for_deck(double precision,double precision,double precision,text[],timestamp with time zone,uuid[],integer)', 'EXECUTE')
   AND has_function_privilege('service_role', 'public.pg_eligible_experiences_for_deck(double precision,double precision,double precision,text[],timestamp with time zone,uuid[],integer)', 'EXECUTE')
   AND has_function_privilege('anon', 'public.links_page_week()', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.biz_create_experience(uuid,jsonb,boolean)', 'EXECUTE'),
-  'G-ACL the readers and writers keep their grants');
+  'G-ACL the readers and writers keep their grants (the deck reader is service-role and authenticated only, 20280723004420)');
 
 DO $$
 DECLARE v_failures text := NULLIF(current_setting('t4420s.failures', true), '');

@@ -3111,6 +3111,26 @@ function substituteString(
     .replace(/\{\{event:(?:\|(?:compact|medium|large))?\}\}/g, "");
 }
 
+/**
+ * #4420 — the location line on an embedded event card. A marketing email reaches
+ * people who have not booked, so while the host hides the address until booking
+ * (theme.business_event.hideAddressUntilTicket true, or absent: the
+ * issue_2489_address_withheld rule) the card shows no location line.
+ */
+export function embeddedEventLocationLabel(row: {
+  location_text: string | null;
+  theme?: unknown;
+}): string | null {
+  const businessEvent = row.theme !== null && typeof row.theme === "object"
+    ? (row.theme as Record<string, unknown>).business_event
+    : null;
+  const hide = businessEvent !== null && typeof businessEvent === "object"
+    ? (businessEvent as Record<string, unknown>).hideAddressUntilTicket
+    : undefined;
+  const withheld = typeof hide === "boolean" ? hide : true;
+  return withheld ? null : row.location_text;
+}
+
 async function loadEmbeddedEvents(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -3123,7 +3143,7 @@ async function loadEmbeddedEvents(
   const { data: eventsData, error: eventsErr } = await supabase
     .from("events_with_master_date_view")
     .select(
-      "id, title, location_text, cover_media_url, cover_media_type, master_start_at, master_end_at, master_timezone, slug, brand_id",
+      "id, title, location_text, theme, cover_media_url, cover_media_type, master_start_at, master_end_at, master_timezone, slug, brand_id",
     )
     .in("id", ids);
   if (eventsErr) throw new Error(`events_load:${eventsErr.message}`);
@@ -3131,6 +3151,7 @@ async function loadEmbeddedEvents(
     id: string;
     title: string | null;
     location_text: string | null;
+    theme: unknown;
     cover_media_url: string | null;
     cover_media_type: string | null;
     master_start_at: string | null;
@@ -3200,7 +3221,7 @@ async function loadEmbeddedEvents(
         r.master_end_at,
         r.master_timezone,
       ),
-      location_label: r.location_text,
+      location_label: embeddedEventLocationLabel(r),
       cover_image_url: r.cover_media_url,
       cover_media_type: coverType,
       url,
