@@ -111,11 +111,17 @@ const TaxonomyPill: React.FC<TaxonomyPillProps> = ({
     {emoji !== undefined ? (
       <Text style={styles.taxonomyPillEmoji}>{emoji}</Text>
     ) : null}
+    {/* #4420 (device round 2, Android): one weight in both states and one
+      line with simple breaking. Selecting bumped the label from 500 to 600;
+      Android kept the 500 measurement and wrapped the bolder text, so
+      "Themed Party" drew as "Themed" in a pill sized for both words. */}
     <Text
       style={[
         styles.taxonomyPillLabel,
         selected && styles.taxonomyPillLabelActive,
       ]}
+      numberOfLines={1}
+      textBreakStrategy="simple"
     >
       {label}
     </Text>
@@ -486,9 +492,10 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: color.text1,
   },
+  // Selected reads from the fill and border; the weight stays put so the
+  // label never re-measures (see TaxonomyPill).
   taxonomyPillLabelActive: {
     color: color.text1,
-    fontWeight: "600",
   },
 });
 

@@ -556,7 +556,8 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
 
 const styles = StyleSheet.create({
   section: { paddingHorizontal: space[4], marginBottom: space[4] },
-  sectionNarrow: { paddingHorizontal: space[2] + space[1] },
+  // #4420 (device round 2): one gutter with the rest of Home (section's space[4]).
+  sectionNarrow: {},
   summary: {
     minHeight: 72,
     paddingHorizontal: space[6],

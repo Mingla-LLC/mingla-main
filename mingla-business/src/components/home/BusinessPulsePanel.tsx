@@ -956,9 +956,11 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
 
 const styles = StyleSheet.create({
   root: { paddingHorizontal: space[4], marginBottom: space[4] },
+  // #4420 (device round 2): the phone keeps the page's one gutter (root's
+  // space[4]); the old 12 made these cards 4pt wider than the top bar and
+  // the To-do card on each side.
   rootNarrow: {
     width: "100%",
-    paddingHorizontal: space[2] + space[1],
   },
   liveCardGlow: {
     shadowColor: color.errorLine,

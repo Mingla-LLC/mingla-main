@@ -26,4 +26,15 @@ describe("#4420 Home on Android", () => {
       /<Text style=\{styles\.followerPillText\} numberOfLines=\{1\} textBreakStrategy="simple">/,
     );
   });
+
+  // [TEST-MOD-APPROVED #4420] device round 2: one Home gutter.
+  test("the pulse and ads cards keep the page's one gutter on phones", () => {
+    const panel = read("src/components/home/BusinessPulsePanel.tsx");
+    const ads = read("src/components/home/HomeAdsSection.tsx");
+    const block = (src: string, name: string): string => src.match(new RegExp(`\\n  ${name}: \\{[^}]*\\}`))?.[0] ?? "";
+    expect(block(panel, "rootNarrow")).not.toContain("paddingHorizontal");
+    expect(block(ads, "sectionNarrow")).not.toContain("paddingHorizontal");
+    expect(block(panel, "root")).toContain("paddingHorizontal: space[4]");
+    expect(block(ads, "section")).toContain("paddingHorizontal: space[4]");
+  });
 });
