@@ -14,7 +14,7 @@
 
 const noopVoid = (..._args: unknown[]): void => {};
 
-export const initWebAnalytics = async (): Promise<void> => {};
+export const initWebAnalytics = async (_pathname?: string): Promise<void> => {};
 // #2331 — the privacy bar is web-only; native consent is asked in onboarding.
 export interface PrivacyChoice {
   analytics: boolean;
@@ -122,3 +122,11 @@ export const postAttributionConversion = noopVoid;
 // ISSUE-855 PR-2 — referrer host is a web-only concept; native has no
 // document.referrer. No-op keeps the .web/.native export surface at parity.
 export const readReferrerHost = (): string | null => null;
+// #4238 W3-2 / W3-3 / W3-4 — host web only; native keeps the export surface.
+export const adoptHandoffClickId = (): string | null => null;
+export const fireHostFunnelBrowserEvent = async (
+  _kind: "host_signup_started" | "host_signup",
+  _eventId: string,
+): Promise<void> => {};
+export const markHostKnownAccount = (): void => {};
+export const fireHostSignUpStarted = (): string | null => null;

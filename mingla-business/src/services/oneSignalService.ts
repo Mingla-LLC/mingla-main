@@ -80,6 +80,8 @@ export function initializeOneSignal(): void {
     OneSignal!.Debug.setLogLevel(__DEV__ ? LogLevel!.Verbose : LogLevel!.Warn);
     OneSignal!.initialize(ONESIGNAL_APP_ID!);
     _initialized = true;
+    // #4238 W6-5 — hand the push token to listeners registered before init.
+    attachPushTokenListeners();
     // #3720: the SDK's native bridge can surface a notification click during
     // cold startup. Keep the capture attached independently of React/auth so a
     // tap cannot be lost between native launch and the root layout subscribing.
@@ -93,6 +95,80 @@ export function initializeOneSignal(): void {
   } catch (e) {
     console.warn("[OneSignal] init failed:", e);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #4238 W6-5 — the device push token, for AppsFlyer uninstall measurement
+// ─────────────────────────────────────────────────────────────────────────────
+
+type PushTokenListener = (token: string | null) => void;
+const _pushTokenListeners: PushTokenListener[] = [];
+let _pushTokenAttached = false;
+
+function emitPushToken(token: unknown): void {
+  const value = typeof token === "string" && token.length > 0 ? token : null;
+  for (const listener of _pushTokenListeners) {
+    try {
+      listener(value);
+    } catch (e) {
+      console.warn("[OneSignal] push token listener threw:", e);
+    }
+  }
+}
+
+/**
+ * OneSignal v5 `User.pushSubscription`: the current token (APNs hex on iOS,
+ * FCM on Android) once, then every change. Guarded so a partial native module
+ * never throws.
+ */
+function attachPushTokenListeners(): void {
+  if (_pushTokenAttached || !_initialized || _pushTokenListeners.length === 0) {
+    return;
+  }
+  const sub = OneSignal?.User?.pushSubscription as
+    | {
+        getTokenAsync?: () => Promise<string | null>;
+        addEventListener?: (
+          event: "change",
+          cb: (e: { current?: { token?: string | null } }) => void,
+        ) => void;
+      }
+    | undefined;
+  if (!sub) return;
+  _pushTokenAttached = true;
+  try {
+    if (typeof sub.getTokenAsync === "function") {
+      void sub.getTokenAsync().then(emitPushToken).catch((e: unknown) => {
+        console.warn("[OneSignal] getTokenAsync failed:", e);
+      });
+    }
+    if (typeof sub.addEventListener === "function") {
+      sub.addEventListener("change", (e) => emitPushToken(e?.current?.token));
+    }
+  } catch (e) {
+    console.warn("[OneSignal] push token watch failed:", e);
+  }
+}
+
+/** #4238 W6-5: receive the push token now (when ready) and on every change. */
+export function onPushSubscriptionToken(listener: PushTokenListener): void {
+  _pushTokenListeners.push(listener);
+  if (_pushTokenAttached) {
+    const sub = OneSignal?.User?.pushSubscription as
+      | { getTokenAsync?: () => Promise<string | null> }
+      | undefined;
+    if (typeof sub?.getTokenAsync === "function") {
+      void sub.getTokenAsync().then((t) => {
+        try {
+          listener(typeof t === "string" && t.length > 0 ? t : null);
+        } catch (e) {
+          console.warn("[OneSignal] push token listener threw:", e);
+        }
+      }).catch(() => {});
+    }
+    return;
+  }
+  attachPushTokenListeners();
 }
 
 /** Returns true if the SDK has been successfully initialized. */

@@ -9,7 +9,12 @@
  * ORCH-1150: do NOT merge back into the event/ticket service path. See SPEC §5.1.
  */
 
+import { Platform } from "react-native";
 import { supabase } from "./supabase";
+import {
+  getStoredAdMatchData,
+  getStoredClickAttribution,
+} from "../analytics/webAnalytics";
 import {
   parseRsvpErrorCode,
   readRsvpErrorCode,
@@ -174,6 +179,20 @@ export interface SubmitPublicRsvpResult {
   claim: { shortUrl: string | null; code: string | null } | null;
 }
 
+/** #4238 W2-5: stored browser ad context for the server RSVP sign-up. */
+const rsvpAdContext = (): Record<string, unknown> => {
+  const match = getStoredAdMatchData();
+  return {
+    clickId: getStoredClickAttribution().clickId,
+    fbp: match.fbp,
+    fbc: match.fbc,
+    scid: match.scid,
+    ttp: match.ttp,
+    clientUserAgent: match.clientUserAgent,
+    trackingOptOut: match.trackingOptOut,
+  };
+};
+
 export const submitPublicRsvp = async (
   input: SubmitPublicRsvpInput,
 ): Promise<SubmitPublicRsvpResult> => {
@@ -189,6 +208,10 @@ export const submitPublicRsvp = async (
         guestPhoneCountryIso: input.guestPhoneCountryIso,
         plusCount: input.plusCount ?? 0,
         guests: input.guests ?? [],
+        // #4238 W2-5: the browser's ad match keys + click id, web only, so the
+        // server's free sign-up pairs with the browser's (event_id = rsvpId).
+        // Native sends none and the server reports nothing (D20).
+        ...(Platform.OS === "web" ? { ad_context: rsvpAdContext() } : {}),
       },
     },
   );

@@ -8,9 +8,13 @@
 //   - turning analytics off stops PostHog/GA and stays off after a reload;
 //   - Turn off all silences every vendor, across a reload;
 //   - /links shows the bar.
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test'
 
 const BUSINESS = 'http://127.0.0.1:43172'
+// #4238 W2-4 (I-4238-NO-BUYER-PIXEL-ON-HOST-ROUTES): buyer ad pixels boot only
+// on a public buyer page, never on the host dashboard root. The Business/Buyer
+// arrival is therefore measured on a public event page.
+const BUSINESS_BUYER_PAGE = `${BUSINESS}/e/issue2771/arrival`
 const MARKETING = 'http://127.0.0.1:43171'
 const PRIVACY_KEY = 'mingla_privacy_v2'
 
@@ -24,9 +28,26 @@ interface TrackingRequests {
   ads: string[]
 }
 
+/**
+ * #4238 W2-4: the buyer page is served the way production serves it to a cold
+ * SPA visit (vercel.json rewrites a public path to the app document). The
+ * static `expo serve` used here 404s every dynamic route, so the document
+ * request for the buyer page is answered with the export's own index.html.
+ */
+async function serveBuyerPageDocument(route: Route): Promise<boolean> {
+  const request = route.request()
+  if (request.resourceType() !== 'document') return false
+  const url = new URL(request.url())
+  if (!url.pathname.startsWith('/e/issue2771/')) return false
+  const response = await route.fetch({ url: `${url.origin}/` })
+  await route.fulfill({ response })
+  return true
+}
+
 async function observe(page: Page): Promise<TrackingRequests> {
   const requests: TrackingRequests = { analytics: [], ads: [] }
   await page.route('**/*', async (route) => {
+    if (await serveBuyerPageDocument(route)) return
     const url = route.request().url()
     // This analytics oracle must not inherit the live backend's Stripe mode
     // (#3988): the boot handshake is fail-soft when this transport aborts.
@@ -61,7 +82,7 @@ async function openChoices(page: Page): Promise<void> {
 }
 
 const SURFACES = [
-  { name: 'Business/Buyer', url: BUSINESS, arrivalAds: true, waitsForNetworkIdle: false },
+  { name: 'Business/Buyer', url: BUSINESS_BUYER_PAGE, arrivalAds: true, waitsForNetworkIdle: false },
   { name: 'Marketing', url: MARKETING, arrivalAds: false, waitsForNetworkIdle: true },
 ] as const
 
@@ -126,6 +147,18 @@ test.describe('#2771 → #2331 actual network and storage boundary (on unless tu
       await context.close()
     })
   }
+
+  test('#4238 W2-4: the host root starts analytics but never a buyer ad pixel', async ({ browser }) => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    const requests = await observe(page)
+    await page.goto(BUSINESS, { waitUntil: 'domcontentloaded' })
+    await expect(page.getByTestId('privacy-strip')).toBeVisible()
+    await expect.poll(() => requests.analytics.length).toBeGreaterThan(0)
+    await page.waitForTimeout(1_500)
+    expect(requests.ads.filter((url) => !/attribution-capture/i.test(url))).toEqual([])
+    await context.close()
+  })
 
   test('Marketing /links shows the privacy bar and starts analytics on arrival', async ({ browser }) => {
     const context = await browser.newContext()

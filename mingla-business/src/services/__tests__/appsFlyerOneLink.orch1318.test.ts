@@ -128,27 +128,29 @@ describe("ORCH-1318 business OneLink service (B1)", () => {
       }),
     ).toEqual({ kind: "referral", referralCode: "REF-1" });
 
-    // content/entity link piggybacking a referral in af_sub1 → referral
+    // [#4238 W4-3 + W6-8] content links now open a screen (the B2 routing
+    // shipped), and af_sub1 is a referral only as `ref:<code>`: a bare value
+    // is a campaign tag. A content link keeps a `ref:` referral alongside.
     expect(
       resolveBusinessOneLinkDestination({
         deep_link_value: "event",
         deep_link_sub1: "sunset-collective",
         deep_link_sub2: "rooftop-nye",
-        af_sub1: "REF9",
+        af_sub1: "ref:REF9",
       }),
-    ).toEqual({ kind: "referral", referralCode: "REF9" });
+    ).toEqual({ kind: "content", target: "/(tabs)/home", referralCode: "REF9" });
 
     // universal-download (no discriminator, no referral) → no-op landing
     expect(resolveBusinessOneLinkDestination({})).toEqual({ kind: "download" });
 
-    // content link with NO referral → no-op landing (per-entity routing is B2)
+    // an unknown content value with no referral → Home
     expect(
       resolveBusinessOneLinkDestination({
         deep_link_value: "trip",
         deep_link_sub1: "brand",
         deep_link_sub2: "trip",
       }),
-    ).toEqual({ kind: "download" });
+    ).toEqual({ kind: "content", target: "/(tabs)/home", referralCode: null });
 
     // empty / missing payload → null
     expect(resolveBusinessOneLinkDestination(undefined)).toBeNull();

@@ -9,11 +9,13 @@
 //   - /links shows the bar for every unsaved state and stays dark for a
 //     saved turn-off;
 //   - the real public-venue reservation action stays usable with the bar shown.
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type Browser, type BrowserContext, type Page, type Route } from '@playwright/test'
 import { execFileSync, spawn } from 'node:child_process'
 
 const BUSINESS = 'http://127.0.0.1:43172'
 const BUSINESS_ALIAS = 'http://localhost:43172'
+// #4238 W2-4: buyer pixels boot only on a public buyer page (never the host root).
+const BUYER_PAGE = '/e/issue2771/arrival'
 const MARKETING = 'http://127.0.0.1:43171'
 const PRIVACY_KEY = 'mingla_privacy_v2'
 const LEGACY_KEY = 'mingla_consent_v1'
@@ -31,9 +33,26 @@ interface RequestOracle {
   bodies: string[]
 }
 
+/**
+ * #4238 W2-4: the buyer page is served the way production serves it to a cold
+ * SPA visit (vercel.json rewrites a public path to the app document). The
+ * static `expo serve` used here 404s every dynamic route, so the document
+ * request for the buyer page is answered with the export's own index.html.
+ */
+async function serveBuyerPageDocument(route: Route): Promise<boolean> {
+  const request = route.request()
+  if (request.resourceType() !== 'document') return false
+  const url = new URL(request.url())
+  if (!url.pathname.startsWith('/e/issue2771/')) return false
+  const response = await route.fetch({ url: `${url.origin}/` })
+  await route.fulfill({ response })
+  return true
+}
+
 async function installOracle(page: Page): Promise<RequestOracle> {
   const oracle: RequestOracle = { urls: [], bodies: [] }
   await page.route('**/*', async (route) => {
+    if (await serveBuyerPageDocument(route)) return
     const request = route.request()
     if (/\/functions\/v1\/stripe-mode(?:[/?#]|$)/.test(request.url())) {
       await route.abort()
@@ -139,7 +158,7 @@ function pageviewOccurrences(bodies: string[]): number {
 }
 
 const SURFACES = [
-  { name: 'Business', url: BUSINESS, arrivalPixels: true, waitsForNetworkIdle: false },
+  { name: 'Business', url: `${BUSINESS}${BUYER_PAGE}`, arrivalPixels: true, waitsForNetworkIdle: false },
   { name: 'Marketing', url: MARKETING, arrivalPixels: false, waitsForNetworkIdle: true },
 ] as const
 
@@ -183,14 +202,14 @@ test.describe('#2771 → #2331 independent browser privacy boundary', () => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const off = await context.newPage()
     await installOracle(off)
-    await off.goto(BUSINESS, { waitUntil: 'domcontentloaded' })
+    await off.goto(`${BUSINESS}${BUYER_PAGE}`, { waitUntil: 'domcontentloaded' })
     await off.getByTestId('privacy-bar-options').click()
     await off.getByTestId('privacy-bar-off-all').click()
     await expect.poll(() => off.evaluate((key) => localStorage.getItem(key), PRIVACY_KEY)).toContain('"analytics":false')
 
     const isolated = await context.newPage()
     const isolatedOracle = await installOracle(isolated)
-    await isolated.goto(`${BUSINESS_ALIAS}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
+    await isolated.goto(`${BUSINESS_ALIAS}${BUYER_PAGE}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
     await expect(isolated.getByTestId('privacy-bar')).toBeVisible()
     expect(await isolated.evaluate((key) => localStorage.getItem(key), PRIVACY_KEY)).toBeNull()
     await expect.poll(() => requestIndexes(isolatedOracle, ANALYTICS_REQUEST).length).toBeGreaterThan(0)

@@ -48,6 +48,7 @@ import {
   type SearchEventName,
   type SearchMeasurementProperties,
 } from "@mingla/search-measurement";
+import { isSignInRoute } from "../utils/coldLoadAuthGates";
 
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
 // literal here so the strict-grep gate sees it at the init site.
@@ -89,7 +90,12 @@ export interface PrivacySnapshot {
 function sanitizeLegacyPageview(
   event: CaptureResult | null,
 ): CaptureResult | null {
-  if (event === null || event.event !== LEGACY_PAGEVIEW_EVENT) return event;
+  if (event === null) return null;
+  // #4238 P1-5: no PostHog event carries a buyer return page's private keys.
+  // The scrub (privacy guards) loads before init; without it, send nothing.
+  if (privacyGuards === null) return null;
+  event = privacyGuards.stripPrivateEventUrls(event);
+  if (event.event !== LEGACY_PAGEVIEW_EVENT) return event;
   const properties = { ...(event.properties ?? {}) } as Record<string, unknown>;
   for (const key of [
     "$current_url",
@@ -248,6 +254,61 @@ function resolveAdPixelIds(): void {
 
 function hasWindow(): boolean {
   return typeof window !== "undefined";
+}
+
+/**
+ * #4238 W2-4: the live route. A browser always has location.pathname; a
+ * partial test shell without one returns null (treated as a buyer page, the
+ * behaviour before route gating).
+ */
+function currentPathname(): string | null {
+  if (!hasWindow()) return null;
+  const location = (window as unknown as {
+    location?: { pathname?: unknown; href?: unknown };
+  }).location;
+  if (typeof location?.pathname === "string") return location.pathname;
+  if (typeof location?.href === "string") {
+    try {
+      return new URL(location.href).pathname;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * #4238: the privacy guards (private-token documents, buyer pixel routes, GA4
+ * page fields) arrive in their own small chunk, awaited before any pixel,
+ * PostHog or GA4 boots. Until it has loaded nothing pixel-side runs.
+ */
+let privacyGuards: typeof import("./webPrivacyGuards.web") | null = null;
+let privacyGuardsPromise: Promise<typeof import("./webPrivacyGuards.web")> | null =
+  null;
+
+/** Never throws: a failed load leaves the guards unset (fail closed), retried next call. */
+async function loadPrivacyGuards(): Promise<void> {
+  if (privacyGuards !== null) return;
+  try {
+    privacyGuardsPromise ??= import("./webPrivacyGuards.web");
+    privacyGuards = await privacyGuardsPromise;
+  } catch (err) {
+    privacyGuardsPromise = null;
+    console.warn("[webAnalytics] privacy guards failed to load (pixels stay off):", err);
+  }
+}
+
+/** Fail closed: a document is treated as private until the guards say otherwise. */
+function privateTokenDocument(): boolean {
+  return privacyGuards === null || privacyGuards.privateTokenDocument();
+}
+
+function pixelRouteAllowed(pathname: string | null): boolean {
+  return privacyGuards !== null && privacyGuards.pixelRouteAllowed(pathname);
+}
+
+function refreshGaPageFields(): void {
+  privacyGuards?.refreshGaPageFields();
 }
 
 function isPrivacyChoice(value: unknown): value is PrivacyChoice {
@@ -482,7 +543,11 @@ function loadGa4(measurementId: string): void {
     ad_personalization: isAdsOn() ? "granted" : "denied",
   });
   window.gtag("js", new Date());
-  window.gtag("config", measurementId, { send_page_view: false });
+  // #4238 P1-5: sanitized page_location / page_referrer for every hit,
+  // automatic ones included (a buyer return page's address carries tokens).
+  const pageFields = privacyGuards?.gaPageFields() ?? {};
+  if (Object.keys(pageFields).length > 0) window.gtag("set", pageFields);
+  window.gtag("config", measurementId, { send_page_view: false, ...pageFields });
 
   // Load the gtag script AFTER the consent default + config are queued on
   // dataLayer, so order (consent → config) is guaranteed.
@@ -590,11 +655,15 @@ function stopAnalytics(): void {
  */
 async function bootAnalytics(): Promise<void> {
   if (!isAnalyticsOn()) return;
+  // #4238 P1-5: GA4's page fields come from the privacy guards.
+  if (hasWindow()) await loadPrivacyGuards();
+  if (!isAnalyticsOn()) return;
   const posthogKey = readEnv("EXPO_PUBLIC_POSTHOG_KEY");
   const posthogHost = readEnv("EXPO_PUBLIC_POSTHOG_HOST") ?? POSTHOG_US_HOST;
   gaMeasurementId = readEnv("EXPO_PUBLIC_GA4_MEASUREMENT_ID") ?? null;
 
-  if (gaMeasurementId !== null && gaMeasurementId.length > 0) {
+  // Fail closed: without the guards GA4 could read a private address.
+  if (gaMeasurementId !== null && gaMeasurementId.length > 0 && privacyGuards !== null) {
     try {
       (window as unknown as Record<string, unknown>)[`ga-disable-${gaMeasurementId}`] = false;
       loadGa4(gaMeasurementId);
@@ -623,6 +692,10 @@ async function bootAnalytics(): Promise<void> {
   try {
     const { default: posthog } = await import("posthog-js");
     if (!isAnalyticsOn()) return;
+    // #4238 P1-5: the private-URL scrub (privacy guards, loaded above) must be
+    // in place before init; without it PostHog is not started.
+    const privacy = privacyGuards;
+    if (privacy === null) return;
     posthog.init(posthogKey, {
       api_host: posthogHost,
       // Issue #2795: privacy choices are origin-local. Never let a public
@@ -635,6 +708,16 @@ async function bootAnalytics(): Promise<void> {
       capture_pageview: false,
       capture_pageleave: false,
       before_send: sanitizeLegacyPageview,
+      // #4238 P1-R4: posthog-js builds the stored first-page address
+      // ($initial_person_info), the per-session first page
+      // ($client_session_props) and every event's $current_url with these
+      // keys masked ("bst=<masked>"). That stored address is sent as person
+      // properties with the /flags request, which never passes through
+      // before_send. posthog-js applies the custom list only while
+      // mask_personal_data_properties is on, which also masks its own
+      // ad click ids (gclid, fbclid, ...) inside PostHog.
+      mask_personal_data_properties: true,
+      custom_personal_data_properties: [...privacy.PRIVATE_URL_QUERY_KEYS],
       // I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES: PostHog stores nothing and
       // captures nothing until opt_in_capturing() below, which runs only while
       // analytics is on for this visitor.
@@ -653,6 +736,7 @@ async function bootAnalytics(): Promise<void> {
         sampleRate: SESSION_REPLAY_SAMPLE_RATE,
       },
     });
+    privacy.scrubPostHogInitialPersonInfo(posthog);
     if (!isAnalyticsOn()) {
       posthogClient = posthog;
       posthogOptedOut = false;
@@ -663,6 +747,10 @@ async function bootAnalytics(): Promise<void> {
     // Manual compatibility event: automatic pageviews remain disabled, and
     // before_send reduces this event to origin-only before transport.
     posthog.capture(LEGACY_PAGEVIEW_EVENT);
+    // #4238 P1-R4: a first visit stores the first page's address inside that
+    // first capture(), not during init, so scrub again now (belt to the
+    // masking above; also strips a private key carried in the hash).
+    privacy.scrubPostHogInitialPersonInfo(posthog);
     posthogClient = posthog;
     posthogOptedOut = false;
   } catch (err) {
@@ -678,14 +766,34 @@ function ensureAnalyticsBoot(): Promise<void> {
   return bootPromise;
 }
 
-export async function initWebAnalytics(): Promise<void> {
+export async function initWebAnalytics(pathname?: string): Promise<void> {
   if (!hasWindow()) return;
   resolveAdPixelIds();
-  if (window.__minglaAdPixelsBootstrapped === true) {
-    adPixelsBootstrapped = true;
-  }
-  if (isAdsOn()) await bootstrapAdPixels();
+  // #4238: the privacy guards decide below; nothing boots before they load.
+  await loadPrivacyGuards();
+  // #4238 W2-1: a server-rendered page may already have booted the pixels.
+  // bootstrapAdPixels still loads the runtime and adopts them; it never
+  // treats the page's flag as "this app's runtime is ready".
+  // #4238 W2-4: pixels boot only on a buyer pixel route. Host sign-in loads
+  // the runtime code without booting a pixel or sending PageView, so the
+  // explicit host-funnel events can use it.
+  const route = pathname ?? currentPathname();
+  // #4238 W3-2: a hand-off from usemingla.com or a Mingla Site carries its
+  // first-party click id as ?mc_click=; adopt it before anything else runs.
+  adoptHandoffClickId();
+  if (privateTokenDocument()) {
+    // #4238 P1-5: a tab that reached a token page with pixels already booted
+    // (no current flow does: every token page is a cold provider return)
+    // tears them down rather than let them see the address.
+    if (adPixelsBootstrapped || window.__minglaAdPixelsBootstrapped === true) {
+      stopAdPixels();
+    }
+  } else if (isAdsOn() && !pixelRouteAllowed(route)) {
+    if (route !== null && isSignInRoute(route)) await loadAdPixelRuntime();
+  } else if (isAdsOn()) await bootstrapAdPixels();
   if (isAnalyticsOn()) await ensureAnalyticsBoot();
+  // #4238 P1-5: the sanitized address for this route (no-op without GA4).
+  refreshGaPageFields();
 }
 
 /** Fire a custom PostHog event + (optionally) a GA4 event. No-op if gated. */
@@ -720,6 +828,7 @@ export function captureWeb(
 export function gaEvent(name: string, params?: Record<string, unknown>): void {
   if (isAnalyticsOn() && hasWindow() && window.gtag) {
     try {
+      refreshGaPageFields();
       window.gtag("event", name, params ?? {});
     } catch (err) {
       console.warn(`[webAnalytics] gaEvent("${name}") failed:`, err);
@@ -838,18 +947,38 @@ let adPixelRuntimePromise: Promise<
 > | null = null;
 let adPixelRuntime: typeof import("./adPixelRuntime.web") | null = null;
 
+/** #4238 W2-4: load the runtime code only (no provider boot, no PageView). */
+async function loadAdPixelRuntime(): Promise<
+  typeof import("./adPixelRuntime.web")
+> {
+  adPixelRuntimePromise ??= import("./adPixelRuntime.web");
+  return await adPixelRuntimePromise;
+}
+
 /** Load the provider shims on arrival without placing them in the eager chunk. */
-async function bootstrapAdPixels(): Promise<void> {
+async function bootstrapAdPixels(
+  pathname: string | null = currentPathname(),
+): Promise<void> {
   // Jest/SSR can execute consent actions without a browser global. Keep the
   // web-only runtime out of that path just as initWebAnalytics already does.
   if (!hasWindow() || !isAdsOn() || adPixelsBootstrapped) return;
-  adPixelRuntimePromise ??= import("./adPixelRuntime.web");
-  const runtime = await adPixelRuntimePromise;
+  await loadPrivacyGuards();
+  // #4238 W2-4: never boot buyer pixels on a host or staff route.
+  if (!pixelRouteAllowed(pathname)) return;
+  const runtime = await loadAdPixelRuntime();
+  // #4238 W2-1 (I-4238-SPA-PIXEL-RUNTIME-ALWAYS-LOADS): the runtime is
+  // assigned before any early return, so a server-booted page never leaves
+  // every browser conversion a silent no-op.
   adPixelRuntime = runtime;
   // A visitor can turn ads off, or an SSR/test browser shim can disappear,
   // while the small runtime chunk is loading.
   if (!hasWindow() || !isAdsOn() || adPixelsBootstrapped) return;
-  runtime.bootstrapAdPixels(adPixelIds);
+  if (privateTokenDocument()) return;
+  if (window.__minglaAdPixelsBootstrapped === true) {
+    runtime.adoptBootedPixels(adPixelIds);
+  } else {
+    runtime.bootstrapAdPixels(adPixelIds);
+  }
   adPixelsBootstrapped = window.__minglaAdPixelsBootstrapped === true;
 }
 
@@ -889,6 +1018,9 @@ function stopAdPixels(): void {
 /** Public-page view — PageView across the four pixels. No-op until bootstrapped. */
 export function fireAdPageView(): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  // #4238 W2-4: a tab that booted on /e/... and moved into the dashboard
+  // sends no buyer PageView there.
+  if (!pixelRouteAllowed(currentPathname())) return;
   adPixelRuntime?.fireAdPageView();
 }
 
@@ -906,6 +1038,7 @@ export function fireAdViewContent(
   },
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  if (!pixelRouteAllowed(currentPathname())) return;
   adPixelRuntime?.fireAdViewContent(props);
 }
 
@@ -920,6 +1053,8 @@ export function fireAdPurchase(
   props: AdCommerceEventProps,
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  // #4238 P1-5: the confirm pages carry tokens; CAPI sends this Purchase.
+  if (privateTokenDocument()) return;
   adPixelRuntime?.fireAdPurchase(eventId, props);
 }
 
@@ -935,6 +1070,7 @@ export function fireAdReservation(
   props: AdCommerceEventProps = {},
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  if (privateTokenDocument()) return;
   adPixelRuntime?.fireAdReservation(eventId, props);
 }
 
@@ -944,6 +1080,7 @@ export function fireAdInitiateCheckout(
   props: AdCommerceEventProps = {},
 ): void {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  if (privateTokenDocument()) return;
   adPixelRuntime?.fireAdInitiateCheckout(eventId, props);
 }
 
@@ -953,6 +1090,7 @@ export async function identifyAdBuyer(input: {
   phone?: string | null;
 }): Promise<void> {
   if (!isAdsOn() || !adPixelsBootstrapped) return;
+  if (privateTokenDocument()) return;
   await adPixelRuntime?.identifyAdBuyer(input);
 }
 
@@ -1093,6 +1231,9 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     const ttclid = params.get("ttclid");
     const sccid = params.get("sccid") ?? params.get("ScCid");
     const gclid = params.get("gclid");
+    // #4238 W2-6: Google's iOS / privacy-limited click ids.
+    const gbraid = params.get("gbraid");
+    const wbraid = params.get("wbraid");
     const rdtCid = params.get("rdt_cid");
     const afCId = params.get("af_c_id") ?? params.get("c_id");
     // ISSUE-865 PR1 WP-1 — first-party campaign param. Forwarded to
@@ -1115,29 +1256,35 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       const v = params.get(k);
       if (v !== null && v.length > 0) utm[k] = v;
     }
-    const external = fbclid ?? ttclid ?? sccid ?? gclid ?? rdtCid ?? null;
+    // #4238 W2-6 (I-4238-CLICK-ID-TYPED): one touch per landing, precedence
+    // fbclid, ttclid, sccid, rdt_cid, gclid, gbraid, wbraid. The id, its
+    // network and its URL parameter always come from the same entry.
+    const clickCandidates: Array<[string | null, string, string]> = [
+      [fbclid, "meta", "fbclid"],
+      [ttclid, "tiktok", "ttclid"],
+      [sccid, "snapchat", "sccid"],
+      [rdtCid, "reddit", "rdt_cid"],
+      [gclid, "google", "gclid"],
+      [gbraid, "google", "gbraid"],
+      [wbraid, "google", "wbraid"],
+    ];
+    const click = clickCandidates.find(([value]) => value !== null && value !== "");
+    const external = click?.[0] ?? null;
+    const externalClickIdType = click?.[2] ?? null;
     const utmSource = (utm.utm_source ?? "").toLowerCase();
-    const network = fbclid
-      ? "meta"
-      : ttclid
-        ? "tiktok"
-        : sccid
-          ? "snapchat"
-          : rdtCid
-            ? "reddit"
-            : gclid
-              ? "google"
-              : utmSource === "facebook" || utmSource === "meta"
-                ? "meta"
-                : utmSource === "tiktok"
-                  ? "tiktok"
-                  : utmSource === "snapchat" || utmSource === "snap"
-                    ? "snapchat"
-                    : utmSource === "reddit"
-                      ? "reddit"
-                      : utmSource === "google"
-                        ? "google"
-                        : "other";
+    const network = click
+      ? click[1]
+      : utmSource === "facebook" || utmSource === "meta"
+        ? "meta"
+        : utmSource === "tiktok"
+          ? "tiktok"
+          : utmSource === "snapchat" || utmSource === "snap"
+            ? "snapchat"
+            : utmSource === "reddit"
+              ? "reddit"
+              : utmSource === "google"
+                ? "google"
+                : "other";
     // Referrer host enriches entry_source while analytics is on (ISSUE-855 PR-2).
     const refHost = readReferrerHost();
     const hasAdSignal =
@@ -1177,6 +1324,7 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     void postAttributionTouch({
       network,
       externalClickId: external,
+      externalClickIdType,
       afCId,
       mcId,
       adSetId,
@@ -1204,6 +1352,82 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
   }
 }
 
+// ── #4238 W3-2: the first-party click id handed over by usemingla.com / Sites ─
+
+/** A first-party click id (attribution-capture mints a UUID). */
+const HANDOFF_CLICK_ID_RE = /^[A-Za-z0-9_-]{8,200}$/;
+
+/**
+ * #4238 W3-2 (I-4238-CLICK-ID-KEEPS-NETWORK): `?mc_click=<click id>` on a host
+ * web landing is the first-party click id the sending site already recorded
+ * (its network id travels under its own name next to it). When no click id is
+ * stored yet, it becomes this browser's first touch, so sign-up and checkout
+ * carry it. A forged or unknown value resolves to no touch on the server and
+ * can never attribute anything. Ads off: nothing is stored. Never throws.
+ */
+export function adoptHandoffClickId(): string | null {
+  if (!hasWindow() || !isAdsOn()) return null;
+  try {
+    const value = new URLSearchParams(window.location.search).get("mc_click");
+    if (value === null || !HANDOFF_CLICK_ID_RE.test(value)) return null;
+    if (getStoredClickAttribution().clickId !== null) return null;
+    storeClickId(value);
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+// ── #4238 W3-3 / W3-4: host-funnel browser events (host web only) ───────────
+
+type HostFunnelBrowserKind = "host_signup_started" | "host_signup";
+
+/** Fire one host-funnel pixel event (ads on only). Never throws. */
+export async function fireHostFunnelBrowserEvent(
+  kind: HostFunnelBrowserKind,
+  eventId: string,
+): Promise<void> {
+  if (!hasWindow() || !isAdsOn() || !eventId) return;
+  try {
+    resolveAdPixelIds();
+    await loadPrivacyGuards();
+    const runtime = await loadAdPixelRuntime();
+    if (!isAdsOn() || privateTokenDocument()) return;
+    runtime.fireHostFunnelPixel(kind, eventId, adPixelIds);
+  } catch (err) {
+    console.warn("[webAnalytics] host-funnel pixel failed (non-fatal):", err);
+  }
+}
+
+/** Remember that this browser has signed in to a host account. */
+export function markHostKnownAccount(): void {
+  if (!hasWindow()) return;
+  if (privacyGuards !== null) {
+    privacyGuards.markHostKnownAccount();
+    return;
+  }
+  void loadPrivacyGuards().then(() => privacyGuards?.markHostKnownAccount());
+}
+
+/**
+ * #4238 W3-4: the first sign-in attempt of a browser that has never signed in
+ * to a host account fires HostSignUpStarted once per 24 h (browser only; the
+ * rule lives in webPrivacyGuards.web.ts). Returns the minted `hss:<uuid>` id,
+ * or null when nothing fired now. The guards load at app start; a tap that
+ * beats them still fires once they arrive.
+ */
+export function fireHostSignUpStarted(): string | null {
+  if (!hasWindow() || !isAdsOn()) return null;
+  const fire = (eventId: string): void => {
+    void fireHostFunnelBrowserEvent("host_signup_started", eventId);
+  };
+  if (privacyGuards !== null) return privacyGuards.fireHostSignUpStarted(fire);
+  void loadPrivacyGuards().then(() => {
+    if (isAdsOn()) privacyGuards?.fireHostSignUpStarted(fire);
+  });
+  return null;
+}
+
 // ── attribution-capture POSTs (first-party, fire-and-forget, no PII egress) ───
 
 /**
@@ -1225,6 +1449,8 @@ export function readReferrerHost(): string | null {
 interface PostTouchInput {
   network: string;
   externalClickId: string | null;
+  /** #4238 W2-6: the URL parameter the click id came from. */
+  externalClickIdType?: string | null;
   afCId: string | null;
   mcId?: string | null;
   adSetId?: string | null;
@@ -1258,6 +1484,7 @@ export async function postAttributionTouch(
         lane: "consumer",
         network: input.network,
         external_click_id: input.externalClickId,
+        external_click_id_type: input.externalClickIdType ?? null,
         af_c_id: input.afCId,
         mc_id: input.mcId ?? null,
         ad_set_id: input.adSetId ?? null,
