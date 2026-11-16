@@ -200,6 +200,7 @@ import {
   validateSnapchatOptimizationGoal,
   validateSnapchatVideoDuration,
   validateSnapchatWebViewUrl,
+  SNAPCHAT_FREQUENCY_CAP_GOALS,
 } from "../_shared/snapchat.ts";
 import {
   AdDestinationError,
@@ -221,6 +222,7 @@ import {
 import {
   HOST_LIFETIME_PLATFORMS,
   hostBudgetModeFor,
+  hostFrequencyCap,
   hostMetaAdvantageAudience,
   paidSocialStagesApply,
 } from "../_shared/adHostPlanRules.ts";
@@ -3457,6 +3459,18 @@ serve(async (req: Request): Promise<Response> => {
       optimizationGoal: optimizationGoalS,
       billingEvent: "IMPRESSION",
       ...(budgetLevelS === "adset" ? { budgetCents: providerAmountCents } : {}),
+      // #4238 6c: Host visits-type ad squads take 3 per 7 days; never on a
+      // conversion goal (Snap refuses it there). Admin is unchanged.
+      ...(requestedOwnerKind === "host"
+        ? (() => {
+          const cap = hostFrequencyCap(
+            "snapchat",
+            optimizationGoalS,
+            SNAPCHAT_FREQUENCY_CAP_GOALS,
+          );
+          return cap ? { frequencyCap: cap } : {};
+        })()
+        : {}),
       targeting: {
         countries: countryCodesS,
         demographics: demographicsS,

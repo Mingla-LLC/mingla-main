@@ -193,16 +193,23 @@ export function splitDailyWithMinimums(
 }
 
 /** Split a total in proportion to weights (largest remainder, exact sum). */
-export function splitProportional(total: number, weights: readonly number[]): number[] {
+export function splitProportional(
+  total: number,
+  weights: readonly number[],
+): number[] {
   const sum = weights.reduce((a, b) => a + b, 0);
   if (weights.length === 0 || total <= 0 || sum <= 0) {
     const base = weights.length ? Math.floor(total / weights.length) : 0;
-    return weights.map((_, i) => base + (i < total - base * weights.length ? 1 : 0));
+    return weights.map((_, i) =>
+      base + (i < total - base * weights.length ? 1 : 0)
+    );
   }
   const raw = weights.map((w) => (total * w) / sum);
   const out = raw.map(Math.floor);
   let rest = total - out.reduce((a, b) => a + b, 0);
-  raw.map((v, i) => ({ i, f: v - out[i] })).sort((a, b) => b.f - a.f || a.i - b.i)
+  raw.map((v, i) => ({ i, f: v - out[i] })).sort((a, b) =>
+    b.f - a.f || a.i - b.i
+  )
     .forEach(({ i }) => {
       if (rest > 0) {
         out[i] += 1;
@@ -220,7 +227,9 @@ export function minimumsFromSetup(
   const out: Record<string, number> = {};
   if (!Array.isArray(rows)) return out;
   for (const raw of rows) {
-    const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const row = raw && typeof raw === "object"
+      ? raw as Record<string, unknown>
+      : {};
     const platform = String(row.platform ?? "");
     const goal = goals[platform];
     const value = goal === "sales" || goal === "signups"
@@ -325,4 +334,20 @@ export function hostBudgetModeFor(
       HOST_LIFETIME_PLATFORMS.has(platform)
     ? "lifetime"
     : "daily";
+}
+
+/**
+ * #4238 6c: frequency caps only where the app accepts them on the goal used.
+ * Meta, TikTok and Snap refuse caps on conversion goals (Spec v2 correction),
+ * so the only Host cap is Snap visits-type goals: 3 impressions per 7 days.
+ * `capGoals` is the adapter's own list (SNAPCHAT_FREQUENCY_CAP_GOALS).
+ */
+export function hostFrequencyCap(
+  platform: string,
+  optimizationGoal: string,
+  capGoals: readonly string[],
+): { impressions: number; days: number } | null {
+  return platform === "snapchat" && capGoals.includes(optimizationGoal)
+    ? { impressions: 3, days: 7 }
+    : null;
 }

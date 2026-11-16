@@ -11,10 +11,12 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   hostCreativeLibraryIds,
+  hostFrequencyCap,
   hostMetaAdvantageAudience,
   paidSocialStagesApply,
 } from "../adHostPlanRules.ts";
 import { freezeHostW2Fields } from "../../ad-plan/index.ts";
+import { SNAPCHAT_FREQUENCY_CAP_GOALS } from "../snapchat.ts";
 
 const ID = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -289,4 +291,31 @@ Deno.test("wiring: create_version freezes the W2 fields; create applies Advantag
     ),
   );
   assert(create.includes("advantage_audience: hostMetaAdvantageAudience({"));
+});
+
+Deno.test("6c: frequency caps only on Snap visits-type goals (3 per 7 days), never on conversions or other apps", () => {
+  assertEquals(
+    hostFrequencyCap("snapchat", "SWIPES", SNAPCHAT_FREQUENCY_CAP_GOALS),
+    { impressions: 3, days: 7 },
+  );
+  assertEquals(
+    hostFrequencyCap(
+      "snapchat",
+      "PIXEL_PURCHASE",
+      SNAPCHAT_FREQUENCY_CAP_GOALS,
+    ),
+    null,
+  );
+  assertEquals(
+    hostFrequencyCap("snapchat", "PIXEL_SIGNUP", SNAPCHAT_FREQUENCY_CAP_GOALS),
+    null,
+  );
+  assertEquals(
+    hostFrequencyCap("meta", "LINK_CLICKS", SNAPCHAT_FREQUENCY_CAP_GOALS),
+    null,
+  );
+  assertEquals(
+    hostFrequencyCap("tiktok", "SWIPES", SNAPCHAT_FREQUENCY_CAP_GOALS),
+    null,
+  );
 });
