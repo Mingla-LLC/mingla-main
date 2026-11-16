@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-dispatch/__tests__/issue_4435_app_notices.implementor.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-4435-notify-dispatch-app-notices",
+  "profile": "deno-1.46-notification"
+}

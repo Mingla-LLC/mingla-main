@@ -32,9 +32,11 @@ Deno.test("F-1 the chat-list lifecycle listener has its own channel, apart from 
   const combined = between(hook, ".channel(`social-realtime-", ".subscribe();");
   const lifecycle = between(hook, ".channel(`chat-lifecycle-", ".subscribe();");
   assert(!/conversation_participant_lifecycle/.test(combined), "lifecycle is not on the combined channel");
+  // #4435 leftovers (#4275): the three unpublished tables are no longer bound
+  // anywhere (they silenced the whole social channel); see
+  // issue_4435_social_realtime.implementor.test.ts.
   for (const table of ["friend_requests", "pending_invites", "message_reads"]) {
-    assert(combined.includes(`table: "${table}"`), `${table} stays where it was`);
-    assert(!lifecycle.includes(`table: "${table}"`), `${table} is not on the lifecycle channel`);
+    assert(!hook.includes(`table: "${table}"`), `${table} is not bound on any channel`);
   }
   assert(/table: "conversation_participant_lifecycle",\s*filter: `user_id=eq\.\$\{userId\}`/.test(lifecycle), "my rows only");
   assert(/invalidateQueries\(\{ queryKey: chatListKeys\.all \}\)/.test(lifecycle), "the Chats list refetches");

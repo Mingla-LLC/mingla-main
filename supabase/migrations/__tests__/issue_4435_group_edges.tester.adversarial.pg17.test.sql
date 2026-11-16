@@ -272,11 +272,14 @@ BEGIN
   PERFORM pg_temp.ok('E-ADMIN the creator left; b is the only admin', NOT pg_temp.accepted(v_s, 'a') AND pg_temp.admin(v_s, 'b')
     AND NOT pg_temp.admin(v_s, 'c') AND NOT pg_temp.admin(v_s, 'd'));
   v_err := pg_temp.try_as('b', format($$SELECT public.set_group_admin(%L, %L, false)$$, v_conv, pg_temp.u('b')));
-  PERFORM pg_temp.ok('E-ADMIN the last admin cannot demote themself', v_err LIKE '42501:last_admin%' AND pg_temp.admin(v_s, 'b'));
+  -- #4435 leftovers: b also inherited the creator's role, so b's step-down is
+  -- refused as the creator's (the last-admin rule: issue_4435_leftovers L-LAST-ADMIN).
+  PERFORM pg_temp.ok('E-ADMIN the last admin cannot demote themself', v_err LIKE '42501:creator_protected%' AND pg_temp.admin(v_s, 'b'));
   v_err := pg_temp.try_as('b', format($$SELECT public.remove_group_member(%L, %L)$$, v_conv, pg_temp.u('b')));
   PERFORM pg_temp.ok('E-ADMIN an admin cannot remove themself (they leave instead)', v_err LIKE '22023:%' AND pg_temp.accepted(v_s, 'b'));
   v_err := pg_temp.try_as('b', format($$SELECT public.remove_group_member(%L, %L)$$, v_conv, pg_temp.u('a')));
-  PERFORM pg_temp.ok('E-ADMIN the creator who left still cannot be removed or touched', v_err LIKE '42501:creator_protected%');
+  -- #4435 leftovers: a creator who left is an ordinary non-member (nothing to remove).
+  PERFORM pg_temp.ok('E-ADMIN the creator who left still cannot be removed or touched', v_err LIKE 'P0002:%');
   v_err := pg_temp.try_as('b', format($$SELECT public.set_group_admin(%L, %L, true)$$, v_conv, pg_temp.u('a')));
   PERFORM pg_temp.ok('E-ADMIN a creator who left cannot be made admin while out', v_err LIKE 'P0002:%');
   v_err := pg_temp.try_as('c', format($$SELECT public.set_group_admin(%L, %L, true)$$, v_conv, pg_temp.u('c')));
@@ -285,7 +288,11 @@ BEGIN
   PERFORM pg_temp.ok('E-ADMIN the creator who left cannot add people', v_err LIKE '42501:not_allowed%');
   PERFORM pg_temp.try_as('b', format($$SELECT public.set_group_admin(%L, %L, true)$$, v_conv, pg_temp.u('c')));
   v_err := pg_temp.try_as('b', format($$SELECT public.set_group_admin(%L, %L, false)$$, v_conv, pg_temp.u('b')));
-  PERFORM pg_temp.ok('E-ADMIN with a second admin the first may step down', v_err = 'ok' AND NOT pg_temp.admin(v_s, 'b') AND pg_temp.admin(v_s, 'c'));
+  -- #4435 leftovers: b is the creator now, so b stays an admin (creator
+  -- protection); c, made admin, steps down instead while b remains.
+  PERFORM pg_temp.ok('E-ADMIN with a second admin the first may step down', v_err LIKE '42501:creator_protected%' AND pg_temp.admin(v_s, 'b') AND pg_temp.admin(v_s, 'c')
+    AND pg_temp.try_as('c', format($$SELECT public.set_group_admin(%L, %L, false)$$, v_conv, pg_temp.u('c'))) = 'ok' AND NOT pg_temp.admin(v_s, 'c'));
+  PERFORM pg_temp.try_as('b', format($$SELECT public.set_group_admin(%L, %L, true)$$, v_conv, pg_temp.u('c')));
   PERFORM pg_temp.try_as('c', format($$SELECT public.leave_group_conversation(%L)$$, v_conv));
   PERFORM pg_temp.ok('E-ADMIN when the last admin leaves the longest-standing member (b, not d) inherits',
     pg_temp.admin(v_s, 'b') AND NOT pg_temp.admin(v_s, 'd')

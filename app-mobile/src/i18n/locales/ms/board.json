@@ -61,8 +61,6 @@
     "searchPlaceholder": "Cari rakan...", "loadingFriends": "Memuatkan rakan...", "noUsersFound": "Tiada pengguna dijumpai",
     "allFriendsInBoard": "Semua rakan sudah berada dalam papan ini", "noFriendsAvailable": "Tiada rakan tersedia",
     "tryDifferentName": "Cuba nama atau nama pengguna lain", "addMoreFriends": "Tambah lagi rakan untuk dijemput",
-    "sendInvites": "Hantar Jemputan ({{count}})", "invitesSent": "Jemputan Dihantar",
-    "invitesSentMsg": "Berjaya menjemput {{count}} rakan{{plural}} ke \"{{name}}\".",
     "errorSendInvites": "Gagal menghantar jemputan. Sila cuba lagi.", "error": "Ralat",
     "addPeople": "Tambah ({{count}})",
     "peopleAdded": "Ditambah",

@@ -270,10 +270,11 @@ BEGIN
   v_err := pg_temp.try_as('a', format($$SELECT public.rpc_admin_lock_and_schedule_card(%L, %L, now() + interval '2 days', 60)$$, v_s, gen_random_uuid()));
   PERFORM pg_temp.ok('Q-CREATOR a member creator passes the lock-and-schedule check (no such card)', v_err LIKE '%card not found%');
 
-  -- the creator leaves; b inherits admin
+  -- the creator leaves; b inherits admin and (#4435 leftovers, Seth's decision)
+  -- the creator's role
   v_err := pg_temp.try_as('a', format($$SELECT public.leave_group_conversation(%L)$$, v_conv));
-  PERFORM pg_temp.ok('Q-CREATOR the creator leaves and the group stays', v_err = 'ok'
-    AND pg_temp.n_accepted(v_s) = 2 AND EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s AND created_by = pg_temp.u('a')));
+  PERFORM pg_temp.ok('Q-CREATOR the creator leaves and the group stays, with b as its creator', v_err = 'ok'
+    AND pg_temp.n_accepted(v_s) = 2 AND EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s AND created_by = pg_temp.u('b')));
   PERFORM pg_temp.ok('Q-CREATOR a creator who left is no longer the creator or a group admin',
     NOT public.is_session_creator(v_s, pg_temp.u('a')) AND NOT public.chat_group_is_admin(v_conv, pg_temp.u('a')));
   v_n := pg_temp.rows_as('a', format($$DELETE FROM public.session_participants WHERE session_id = %L AND user_id = %L$$, v_s, pg_temp.u('c')));
@@ -281,15 +282,18 @@ BEGIN
   v_n := pg_temp.rows_as('a', format($$UPDATE public.session_participants SET is_admin = true WHERE session_id = %L AND user_id = %L$$, v_s, pg_temp.u('c')));
   PERFORM pg_temp.ok('Q-CREATOR a creator who left cannot change admins',
     v_n <= 0 AND NOT (SELECT is_admin FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('c')));
+  -- #4435 leftovers: the creator's role passed to b, so a is an ordinary
+  -- non-member: row security hides the group from a's writes (no row changes,
+  -- no error) instead of the guard refusing them.
   v_err := pg_temp.try_as('a', format($$UPDATE public.collaboration_sessions SET max_participants = 50 WHERE id = %L$$, v_s));
   PERFORM pg_temp.ok('Q-CREATOR a creator who left cannot change creator-only settings',
-    v_err LIKE '42501:%' AND (SELECT max_participants FROM public.collaboration_sessions WHERE id = v_s) = 15);
+    v_err = 'ok' AND (SELECT max_participants FROM public.collaboration_sessions WHERE id = v_s) = 15);
   v_err := pg_temp.try_as('a', format($$UPDATE public.collaboration_sessions SET name = 'taken back' WHERE id = %L$$, v_s));
   PERFORM pg_temp.ok('Q-CREATOR a creator who left cannot rename the group',
-    v_err LIKE '42501:%' AND (SELECT name FROM public.collaboration_sessions WHERE id = v_s) = 'q8 cr renamed');
+    v_err = 'ok' AND (SELECT name FROM public.collaboration_sessions WHERE id = v_s) = 'q8 cr renamed');
   v_err := pg_temp.try_as('a', format($$DELETE FROM public.collaboration_sessions WHERE id = %L$$, v_s));
   PERFORM pg_temp.ok('Q-CREATOR a creator who left cannot delete the group',
-    v_err LIKE '42501:%' AND EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s));
+    v_err = 'ok' AND EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s));
   v_err := pg_temp.try_as('a', format($$INSERT INTO public.session_participants(session_id, user_id, has_accepted, joined_at, is_admin) VALUES (%L, %L, true, now(), true)$$, v_s, pg_temp.u('a')));
   PERFORM pg_temp.ok('Q-CREATOR a creator who left cannot put themself back', v_err LIKE '42501:%' AND NOT pg_temp.accepted(v_s, 'a'));
   v_err := pg_temp.try_as('a', format($$INSERT INTO public.collaboration_invites(session_id, inviter_id, invited_user_id, status) VALUES (%L, %L, %L, 'accepted')$$, v_s, pg_temp.u('x'), pg_temp.u('a')));

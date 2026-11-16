@@ -40,6 +40,13 @@ import { trustedReservationManageCta } from "../_shared/venueReservationManageLi
 import { transactionalConsentSourceForCategory } from "../_shared/issue4111EnquiryNotifications.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import {
+  authorizeAppCaller,
+  isMissingFunctionError,
+  isServerCaller,
+  sessionFactsFromTables,
+  waitForSessionGone,
+} from "./appCallerGate.ts";
+import {
   isQuietHours,
   LEGACY_QUIET_HOURS_CATEGORY,
   nextQuietHoursEnd,
@@ -511,7 +518,97 @@ serve(async (req) => {
     });
 
     // ── Parse & validate input ──────────────────────────────────────────────
-    const payload = await req.json();
+    const requestPayload = await req.json();
+
+    // ── Who may send what (appCallerGate.ts) ─────────────────────────────────
+    // Server callers keep every option. A signed-in app may send only its
+    // group notices, to people in that group; everything else is refused.
+    // Relies on verify_jwt = true for this function (see isServerCaller).
+    let payload = requestPayload;
+    if (!isServerCaller(authHeader, SUPABASE_SERVICE_ROLE_KEY)) {
+      const decision = await authorizeAppCaller(
+        authHeader,
+        requestPayload && typeof requestPayload === "object" ? requestPayload : {},
+        {
+          userIdForToken: async (token) => {
+            const { data, error } = await adminClient.auth.getUser(token);
+            return error || !data?.user?.id ? null : data.user.id;
+          },
+          sessionFacts: async (sessionId, senderId, recipientId) => {
+            const { data, error } = await adminClient.rpc(
+              "issue_4435_session_notice_check",
+              { p_session_id: sessionId, p_sender: senderId, p_recipient: recipientId },
+            );
+            if (isMissingFunctionError(error)) {
+              // [TRANSITIONAL] until 20280710004435 is applied (appCallerGate.ts).
+              return await sessionFactsFromTables({
+                sessionExists: async (id) => {
+                  const r = await adminClient.from("collaboration_sessions").select("id").eq("id", id).maybeSingle();
+                  return r.error ? null : Boolean(r.data);
+                },
+                participant: async (id, user) => {
+                  const r = await adminClient.from("session_participants").select("has_accepted")
+                    .eq("session_id", id).eq("user_id", user).maybeSingle();
+                  return r.error ? undefined : (r.data as { has_accepted: boolean | null } | null);
+                },
+              }, sessionId, senderId, recipientId);
+            }
+            if (error || !data || typeof data !== "object") {
+              if (error) console.warn("[notify-dispatch] session check failed:", error.message);
+              return null;
+            }
+            const facts = data as Record<string, unknown>;
+            return {
+              session_exists: facts.session_exists === true,
+              sender_member: facts.sender_member === true,
+              recipient_member: facts.recipient_member === true,
+            };
+          },
+        },
+      );
+      if (!decision.allowed) {
+        return jsonResponse({ success: false, reason: decision.reason }, decision.status);
+      }
+      if (decision.waitForSessionGone) {
+        // A "deleted" notice is true only once the group is gone: wait for
+        // it, then send it as a server notice. A group that stays (someone
+        // left instead) gets no notice.
+        const sessionId = decision.sessionId;
+        const notice = decision.payload;
+        const task = (async () => {
+          const gone = await waitForSessionGone(
+            async () => {
+              const { data, error } = await adminClient
+                .from("collaboration_sessions")
+                .select("id")
+                .eq("id", sessionId)
+                .maybeSingle();
+              return error ? null : Boolean(data);
+            },
+            (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          );
+          if (!gone) {
+            console.info("[notify-dispatch] group still exists; deleted notice dropped");
+            return;
+          }
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-dispatch`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify(notice),
+          });
+          if (!res.ok) console.warn("[notify-dispatch] deferred notice failed:", res.status);
+        })().catch((err) => console.warn("[notify-dispatch] deferred notice error:", err));
+        const edgeRuntime = (globalThis as {
+          EdgeRuntime?: { waitUntil(promise: Promise<unknown>): void };
+        }).EdgeRuntime;
+        edgeRuntime?.waitUntil(task);
+        return jsonResponse({ success: true, pushSent: false, reason: "deferred" }, 202);
+      }
+      payload = decision.payload;
+    }
 
     // ── META-ORCH-1161 transitional: v2 ({category_key,...}) branch ──────────
     // ADDITIVE — a caller that sends `category_key` opts into the unified

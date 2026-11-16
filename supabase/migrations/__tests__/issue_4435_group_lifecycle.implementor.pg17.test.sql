@@ -268,7 +268,11 @@ BEGIN
     (SELECT is_admin FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('b'))
     AND NOT (SELECT is_admin FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('c')));
   v_err := pg_temp.try_as('b', format($$SELECT public.set_group_admin(%L, %L, false)$$, v_conv, pg_temp.u('b')));
-  PERFORM pg_temp.ok('C-ADMIN the last admin cannot be demoted', v_err LIKE '42501:last_admin%');
+  -- #4435 leftovers: b also inherited the creator's role, so the refusal is
+  -- the creator's protection. The last-admin rule itself is pinned by
+  -- issue_4435_leftovers.implementor (L-LAST-ADMIN, a group with no creator).
+  PERFORM pg_temp.ok('C-ADMIN the last admin cannot be demoted', v_err LIKE '42501:creator_protected%'
+    AND (SELECT created_by FROM public.collaboration_sessions WHERE id = v_s) = pg_temp.u('b'));
   -- b leaves; c inherits
   DELETE FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('b');
   PERFORM pg_temp.ok('C-HANDOVER the last person inherits admin and the group stays',
