@@ -10,6 +10,7 @@ import {
   runBusinessSideDeletion,
   shouldDeleteAuthUser,
 } from "../_shared/accountDeletionSides.ts";
+import { handOverOwnedSessions } from "./sessionHandover.ts";
 import {
   clearExplorerPhoneForReuse,
   ExplorerPhoneReleaseError,
@@ -36,8 +37,9 @@ function parseSide(body: unknown): DeletionSide {
 }
 
 /**
- * Transfers ownership of collaboration sessions the user created
- * to the oldest accepted participant. Deletes solo sessions (where
+ * Transfers ownership of collaboration sessions the user created to the
+ * heir the database picks (#4435: the longest-standing admin, else the
+ * longest-standing member). Deletes solo sessions (where
  * the user is the only participant) to prevent orphans.
  * Must run BEFORE deleteUser() because after auth deletion, the FK
  * SET NULL fires and created_by becomes NULL.
@@ -96,20 +98,19 @@ async function handleSessionCleanup(
     }
   });
 
-  if (transfers.size > 0) {
-    await Promise.allSettled(
-      [...transfers.entries()].map(([sessionId, newOwner]) =>
-        adminClient
-          .from("collaboration_sessions")
-          .update({ created_by: newOwner })
-          .eq("id", sessionId)
-          .then(({ error }) => {
-            if (error) console.warn(`[delete-user] Session ${sessionId} transfer failed:`, error.message);
-          })
-      ),
-    );
-    console.log(`[delete-user] Transferred ${transfers.size} session(s)`);
-  }
+  // #4435: the database picks the heir (one owner of the handover rule).
+  const handed = await handOverOwnedSessions(
+    {
+      rpc: (fn, args) => adminClient.rpc(fn, args),
+      updateCreator: (sessionId, newOwner) =>
+        adminClient.from("collaboration_sessions").update({ created_by: newOwner }).eq("id", sessionId),
+    },
+    userId,
+    ownedSessions.map((s: { id: string }) => s.id),
+    transfers,
+    (message) => console.warn(message),
+  );
+  if (handed > 0) console.log(`[delete-user] Transferred ${handed} session(s)`);
 }
 
 async function runExplorerPreDeleteBatch(

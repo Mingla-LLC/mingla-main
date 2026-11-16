@@ -7,6 +7,7 @@
         "supabase/functions/_shared/accountDeletionSides.ts",
         "supabase/functions/_shared/explorerPhoneRelease.ts",
         "supabase/functions/delete-user/index.ts",
+        "supabase/functions/delete-user/sessionHandover.ts",
         "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql",
         "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
         "supabase/migrations/20280218004202_issue_4202_explorer_phone_rpc_null.sql",
@@ -617,6 +618,8 @@
         "app-mobile/src/i18n/locales/zh/chat.json",
         "app-mobile/src/i18n/locales/zh/connections.json",
         "supabase/migrations/20280709004435_issue_4435_group_qa_fixes.sql",
+        "supabase/migrations/20280710004435_issue_4435_leftovers.sql",
+        "supabase/functions/notify-dispatch/appCallerGate.ts",
         "app-mobile/src/hooks/useBoardSession.ts"
       ]
     },

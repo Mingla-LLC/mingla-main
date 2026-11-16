@@ -180,13 +180,8 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     fetchTeamBrandIds: async () => { log.push("teams:start"); return []; },
     fetchSessions: async () => {
       log.push("sessions:start");
-      return [{
-        id: "s1", name: "Brunch", created_by: ME, status: "pending",
-        session_participants: [{ user_id: ME, has_accepted: true }, { user_id: BEN, has_accepted: false }],
-        collaboration_invites: [{ id: "ci1", invited_user_id: DEE, status: "pending", created_at: null }],
-      }];
+      return [{ id: "s1", name: "Brunch", created_by: ME, status: "pending" }];
     },
-    fetchSessionPhoneInvites: async () => { log.push("phone:start"); return []; },
     fetchEventMeta: async () => { log.push("events:start"); return new Map(); },
     fetchProfiles: async (ids: string[]) => {
       log.push("profiles:start");
@@ -219,17 +214,20 @@ Deno.test("#4265 pending invites and brand teams start with the conversations re
   eq(data.conversations.map((c) => c.id), ["pending-invite-i1"], "the invite row still leads the list");
 });
 
-Deno.test("#4265 one profiles read covers participants, senders and inviters; a second only for missed session people", async () => {
+// #4435 leftovers: the session phone-invite read and the follow-up profiles
+// read for session people were removed (no row rendered them): one profiles
+// read, no phone-invite read.
+Deno.test("#4265 one profiles read covers participants, senders and inviters, and it is the only one", async () => {
   const { deps, log, profileReads } = makeDeps();
   const data = await loadChatList(ME, deps);
   eq(profileReads[0], [ME, AMY, BEN, CAL].sort(), "participants ∪ last-message senders ∪ inviters, in one read");
-  eq(profileReads[1], [DEE], "the follow-up read is only for the session invitee nobody else covered");
-  eq(profileReads.length, 2, "never more than that");
+  eq(profileReads.length, 1, "never a second profiles read");
+  assert(!log.includes("phone:start"), "no session phone-invite read");
+  assert(!("fetchSessionPhoneInvites" in deps), "the loader asks for no phone-invite reader");
   assert(log.includes("senders:23"), "sender names warm the messaging cache from the same read");
   const firstProfiles = log.indexOf("profiles:start");
   const sessions = log.indexOf("sessions:start");
-  assert(firstProfiles > -1 && sessions > -1 && log.slice(Math.min(firstProfiles, sessions)).indexOf("phone:start") > -1,
-    "sessions, phone invites and profiles run in one wave");
+  assert(firstProfiles > -1 && sessions > -1, "sessions and profiles run in one wave");
 
   const [invite, direct, group] = data.conversations;
   eq(invite.id, "pending-invite-i1", "pending invites first");

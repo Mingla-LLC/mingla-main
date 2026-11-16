@@ -428,24 +428,8 @@ const chatListDeps: ChatListLoadDeps<BusinessEventCard> = {
   fetchSessions: async (sessionIds) => {
     const { data, error } = await supabase
       .from("collaboration_sessions")
-      .select(`
-        id,
-        name,
-        created_by,
-        status,
-        session_participants(user_id, has_accepted),
-        collaboration_invites(id, invited_user_id, status, created_at)
-      `)
+      .select("id, name, created_by, status")
       .in("id", sessionIds);
-    if (error) throw error;
-    return data ?? [];
-  },
-  fetchSessionPhoneInvites: async (sessionIds) => {
-    const { data, error } = await supabase
-      .from("pending_session_invites")
-      .select("id, session_id, phone_e164, status, created_at")
-      .in("session_id", sessionIds)
-      .eq("status", "pending");
     if (error) throw error;
     return data ?? [];
   },
