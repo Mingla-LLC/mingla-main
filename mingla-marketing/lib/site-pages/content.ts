@@ -5,6 +5,7 @@
 // A failed call renders nothing: every page shows as designed, and a
 // console.error with no payload is logged. Preview content (one-hour token)
 // is set per request by app/site-preview/[token] through previewSlot().
+import { mergePreview } from './preview'
 import { cache } from 'react'
 import { unstable_cache } from 'next/cache'
 import { EMPTY_CONTENT, type SiteContent } from './model'
@@ -46,7 +47,13 @@ export function siteBlocksOn(): boolean {
 }
 
 /** Per-request preview content (set by the preview route before it renders the page). */
-export const previewSlot = cache((): { value: (SiteContent & { pageKey: string; changes: number }) | null } => ({ value: null }))
+export const previewSlot = cache((): { value: (SiteContent & { pageKey: string; changes: number; editor?: { origin: string } | null }) | null } => ({ value: null }))
+
+/** #4452 §7.6: inside the Website pages editor's preview, the Admin origin markers talk to; else null. */
+export function editorMode(): { origin: string; pageKey: string } | null {
+  const v = previewSlot().value
+  return v?.editor ? { origin: v.editor.origin, pageKey: v.pageKey } : null
+}
 
 export async function siteContent(): Promise<SiteContent> {
   const preview = previewSlot().value
@@ -66,16 +73,9 @@ export async function sitePreview(token: string): Promise<(SiteContent & { pageK
     const raw = (await rpc('site_public_preview', { p_token: token })) as Record<string, unknown> | null
     if (!raw || typeof raw.page_key !== 'string') return null
     const live = await liveContent().catch(() => EMPTY_CONTENT)
-    const forms = { ...live.forms, ...((raw.forms ?? {}) as SiteContent['forms']) }
-    return {
-      pages: { ...live.pages, [raw.page_key]: raw.content as SiteContent['pages'][string] },
-      forms,
-      form_pages: live.form_pages,
-      pageKey: raw.page_key,
-      changes: Number(raw.changes ?? 0),
-      expiresAt: String(raw.expires_at ?? ''),
-    }
+    return mergePreview(live, raw as { page_key: string; content: unknown; forms?: unknown; changes?: unknown; expires_at?: unknown })
   } catch {
     return null
   }
 }
+

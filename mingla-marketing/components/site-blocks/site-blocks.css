@@ -10,3 +10,11 @@
 @media (max-width: 860px) { .sb-form { grid-template-columns: 1fr; padding: 24px; gap: 20px; } }
 .sb-form-copy h2 { font-family: var(--font-landing-serif, 'Instrument Serif', Georgia, serif); font-weight: 400; font-size: clamp(32px, 4vw, 48px); line-height: 1; margin: 0 0 12px; }
 .sb-form-card { background: #fff; border-radius: 22px; padding: 24px; }
+/* #4452 §7.6 — the Website pages editor's markers (only in /site-preview/…?editor=1). */
+.ed-spot { margin: 16px auto; max-width: 1100px; padding: 0 20px; }
+.ed-add { width: 100%; min-height: 56px; border: 2px dashed #eb7825; border-radius: 16px; background: rgba(235, 120, 37, 0.08); color: #9a4810; font: 600 15px/1.2 Geist, Helvetica, Arial, sans-serif; cursor: pointer; }
+.ed-add:hover, .ed-add:focus-visible { background: rgba(235, 120, 37, 0.16); outline: none; }
+.ed-block, .ed-hero { position: relative; outline: 2px solid #eb7825; outline-offset: 4px; border-radius: 12px; }
+.ed-tag { position: absolute; top: -14px; left: 12px; z-index: 5; min-height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: #eb7825; color: #111110; font: 600 13px/28px Geist, Helvetica, Arial, sans-serif; cursor: pointer; }
+.ed-bar { position: sticky; top: 41px; z-index: 98; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; padding: 8px 16px; background: #fff4ea; color: #9a4810; font: 600 13px/1.3 Geist, Helvetica, Arial, sans-serif; border-bottom: 1px solid #f0d9c4; }
+.ed-bar button { min-height: 32px; padding: 0 12px; border: 1.5px solid #eb7825; border-radius: 999px; background: #fff; color: #9a4810; font: inherit; cursor: pointer; }

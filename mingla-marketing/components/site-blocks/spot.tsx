@@ -3,9 +3,10 @@
 // It renders null unless live (or preview) content has a block for it, so a
 // page with no blocks is byte-identical to before.
 // MINGLA-INVARIANT: I-4452-NO-BLOCKS-NO-CHANGE | issue #4452 | with no published content a page's HTML is unchanged (Spot returns null; lib/__tests__/issue-4452-site-blocks.implementor.test.mjs).
-import { siteContent } from '@/lib/site-pages/content'
+import { editorMode, siteContent } from '@/lib/site-pages/content'
 import { blockForSpot, destHref } from '@/lib/site-pages/model'
-import { HOST_ICP_KEYS } from '@/lib/site-pages/registry'
+import { HOST_ICP_KEYS, SITE_PAGES } from '@/lib/site-pages/registry'
+import { AddHere, BlockOutline } from './editor-bridge'
 import { BannerBlock } from './banner'
 import { ButtonRow } from './button-row'
 import { FormBlock } from './form-block'
@@ -14,7 +15,19 @@ export async function Spot({ page, id }: { page: string; id: string }) {
   const content = await siteContent()
   const host = HOST_ICP_KEYS.includes(page)
   const block = blockForSpot(content, page, id, host)
+  // #4452 §7.6: in the editor's preview every spot is marked: "Add here" when
+  // empty, an outline that opens the block when filled. Never on the live site.
+  const editor = editorMode()
+  if (editor && editor.pageKey === page) {
+    const label = SITE_PAGES.find((p) => p.key === page)?.spots?.find((s) => s.key === id)?.label ?? id.replace(/-/g, ' ')
+    if (!block) return <AddHere page={page} spot={id} label={label} />
+    return <BlockOutline page={page} spot={id} block={block.id} label={label}>{await renderBlock(block, content, host)}</BlockOutline>
+  }
   if (!block) return null
+  return renderBlock(block, content, host)
+}
+
+async function renderBlock(block: NonNullable<ReturnType<typeof blockForSpot>>, content: Awaited<ReturnType<typeof siteContent>>, host: boolean) {
   if (block.type === 'form' && block.form_id) {
     const form = content.forms[block.form_id]
     return <FormBlock form={form} block={block} pagePath={null} />

@@ -5,7 +5,8 @@
 import Link from 'next/link'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { PageHero } from '@/components/site/site-page'
-import { siteContent } from '@/lib/site-pages/content'
+import { editorMode, siteContent } from '@/lib/site-pages/content'
+import { HeroOutline } from './editor-bridge'
 import { destHref } from '@/lib/site-pages/model'
 
 export interface CodedHero {
@@ -18,15 +19,15 @@ export interface CodedHero {
 
 export async function HeroWords({ page, coded }: { page: 'creators' | 'locals'; coded: CodedHero }) {
   const content = await siteContent()
-  const hero = content.pages[page]?.hero ?? null
-  const title = hero ? hero.h1 : coded.h1
-  const em = hero ? hero.em ?? '' : coded.em
-  const lead = hero ? hero.lead ?? coded.lead : coded.lead
-  const b0 = hero?.buttons?.[0]
-  const b1 = hero?.buttons?.[1]
+  const edit = content.pages[page]?.hero ?? null
+  const title = edit ? edit.h1 : coded.h1
+  const em = edit ? edit.em ?? '' : coded.em
+  const lead = edit ? edit.lead ?? coded.lead : coded.lead
+  const b0 = edit?.buttons?.[0]
+  const b1 = edit?.buttons?.[1]
   const b0Href = b0 && b0.to.kind !== 'app' ? destHref(b0.to, content) : null
   const b1Href = b1 ? destHref(b1.to, content) : null
-  return (
+  const hero = (
     <PageHero
       title={
         // One text node then the <em>, exactly as the coded hero renders (byte-identical HTML).
@@ -55,4 +56,6 @@ export async function HeroWords({ page, coded }: { page: 'creators' | 'locals'; 
       </div>
     </PageHero>
   )
+  // #4452 §7.6: the editor's preview outlines the hero so a click opens the hero editor.
+  return editorMode()?.pageKey === page ? <HeroOutline page={page}>{hero}</HeroOutline> : hero
 }
