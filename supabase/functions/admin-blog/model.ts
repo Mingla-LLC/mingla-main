@@ -31,6 +31,25 @@ export function linksRevalidateRequest(origin: string, secret: string): { url: s
   };
 }
 
+/** #4452 §2.10: the same route refreshes the site pages (blocks, form pages, forms) with {"tag":"pages"}. */
+export function pagesRevalidateRequest(origin: string, secret: string): { url: string; init: RequestInit } {
+  return {
+    url: `${origin}${MARKETING_REVALIDATE_PATH}`,
+    init: {
+      method: "POST",
+      headers: { "x-mingla-revalidate-secret": secret, "Content-Type": "application/json" },
+      body: JSON.stringify({ tag: "pages" }),
+    },
+  };
+}
+
+/** True only for the route's exact success answer for the pages tag (the site-pages cache tag). */
+export function isPagesRevalidated(status: number, payload: unknown): boolean {
+  if (status !== 200 || typeof payload !== "object" || payload === null) return false;
+  const body = payload as Record<string, unknown>;
+  return body.revalidated === true && body.tag === "site-pages";
+}
+
 /** True only for the route's exact success answer for the links tag. */
 export function isLinksRevalidated(status: number, payload: unknown): boolean {
   if (status !== 200 || typeof payload !== "object" || payload === null) return false;
