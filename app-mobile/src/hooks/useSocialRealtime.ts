@@ -12,9 +12,8 @@ let nextSocialRealtimeOwner = 0;
  * Subscribes to realtime changes on social tables and invalidates
  * the appropriate React Query caches.
  *
- * Tables subscribed (all server-side filtered):
- *   - friend_requests (receiver_id = userId)
- *   - pending_invites (inviter_id = userId)
+ * Tables subscribed (all server-side filtered, all in the production
+ * supabase_realtime publication):
  *   - conversation_participant_lifecycle (user_id = userId, UPDATE: a removed
  *     chat coming back), on its own channel (see below)
  *   - conversation_participants (user_id = userId)
@@ -23,11 +22,25 @@ let nextSocialRealtimeOwner = 0;
  *   - pair_requests (receiver_id = userId — incoming requests)
  *   - pair_requests (sender_id = userId, UPDATE only — outgoing status changes)
  *   - pairings (user_a_id = userId OR user_b_id = userId, via 2 listeners)
+ *
+ * Issue #4435 / #4275: friend_requests, pending_invites and message_reads are
+ * NOT in the publication, and one binding the server cannot serve makes the
+ * whole channel deliver nothing. Those three bindings never delivered an event
+ * in production and are not bound. Do not add a binding here for a table that
+ * is not in supabase_realtime (check pg_publication_tables first); it would
+ * silence every listener on this channel.
  */
+export const SOCIAL_REALTIME_TABLES: readonly string[] = [
+  "conversation_participants",
+  "friends",
+  "calendar_entries",
+  "pair_requests",
+  "pairings",
+];
+export const CHAT_LIFECYCLE_REALTIME_TABLES: readonly string[] = ["conversation_participant_lifecycle"];
 export function useSocialRealtime(
   userId: string | undefined,
   callbacks?: {
-    onFriendRequestChange?: () => void;
     onFriendListChange?: () => void;
     onPairRequestChange?: () => void;
   }
@@ -45,33 +58,6 @@ export function useSocialRealtime(
 
     const channel = supabase
       .channel(`social-realtime-${userId}:${ownerRef.current}:${channelEpoch}`)
-      // friend_requests: incoming requests
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "friend_requests",
-          filter: `receiver_id=eq.${userId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["friends"] });
-          callbacksRef.current?.onFriendRequestChange?.();
-        }
-      )
-      // pending_invites
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "pending_invites",
-          filter: `inviter_id=eq.${userId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["friends"] });
-        }
-      )
       // conversation_participants
       .on(
         "postgres_changes",
@@ -222,28 +208,14 @@ export function useSocialRealtime(
           });
         }
       )
-      // message_reads: DM unread count updates when a message is marked as read
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "message_reads",
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['conversations'] });
-        }
-      )
       .subscribe();
 
     // Issue #4435: my own chat-list state, on its OWN channel. When a removed
     // chat comes back (anyone writes in it) the server clears hidden_at on my
     // row; the Chats list refetches so the row returns live. Owner-only RLS
-    // limits this to my rows. It cannot share the channel above: that channel
-    // also binds friend_requests, pending_invites and message_reads, which are
-    // not in the supabase_realtime publication, and a channel with a binding
-    // the server cannot serve delivers no events at all (QA F-1 on #4435).
+    // limits this to my rows. Kept on its own channel so a fault in any other
+    // binding can never silence it again (QA F-1 on #4435: a channel with a
+    // binding the server cannot serve delivers no events at all).
     const lifecycleChannel = supabase
       .channel(`chat-lifecycle-${userId}:${ownerRef.current}:${channelEpoch}`)
       .on(

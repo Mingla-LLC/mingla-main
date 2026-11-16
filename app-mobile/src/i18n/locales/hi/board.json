@@ -61,8 +61,6 @@
     "searchPlaceholder": "दोस्त खोजें...", "loadingFriends": "दोस्त लोड हो रहे हैं...", "noUsersFound": "कोई उपयोगकर्ता नहीं मिला",
     "allFriendsInBoard": "सभी दोस्त पहले से इस बोर्ड में हैं", "noFriendsAvailable": "कोई दोस्त उपलब्ध नहीं",
     "tryDifferentName": "कोई अलग नाम या यूजरनेम आज़माएं", "addMoreFriends": "आमंत्रित करने के लिए और दोस्त जोड़ें",
-    "sendInvites": "आमंत्रण भेजें ({{count}})", "invitesSent": "आमंत्रण भेजे गए",
-    "invitesSentMsg": "\"{{name}}\" में {{count}} दोस्त{{plural}} को सफलतापूर्वक आमंत्रित किया गया।",
     "errorSendInvites": "आमंत्रण भेजना विफल। कृपया फिर से प्रयास करें।", "error": "त्रुटि",
     "addPeople": "जोड़ें ({{count}})",
     "peopleAdded": "जोड़ दिए गए",

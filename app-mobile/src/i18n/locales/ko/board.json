@@ -61,8 +61,6 @@
     "searchPlaceholder": "친구 검색...", "loadingFriends": "친구 불러오는 중...", "noUsersFound": "사용자를 찾을 수 없음",
     "allFriendsInBoard": "모든 친구가 이미 이 보드에 있습니다", "noFriendsAvailable": "사용 가능한 친구 없음",
     "tryDifferentName": "다른 이름이나 사용자명을 시도해 보세요", "addMoreFriends": "초대할 친구를 더 추가하세요",
-    "sendInvites": "초대 보내기 ({{count}})", "invitesSent": "초대가 전송되었습니다",
-    "invitesSentMsg": "\"{{name}}\"에 {{count}}명의 친구{{plural}}를 성공적으로 초대했습니다.",
     "errorSendInvites": "초대 전송에 실패했습니다. 다시 시도해 주세요.", "error": "오류",
     "addPeople": "추가 ({{count}})",
     "peopleAdded": "추가됨",

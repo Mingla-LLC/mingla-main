@@ -61,8 +61,6 @@
     "searchPlaceholder": "Cari teman...", "loadingFriends": "Memuat teman...", "noUsersFound": "Tidak ada pengguna ditemukan",
     "allFriendsInBoard": "Semua teman sudah ada di papan ini", "noFriendsAvailable": "Tidak ada teman tersedia",
     "tryDifferentName": "Coba nama atau username lain", "addMoreFriends": "Tambah lebih banyak teman untuk diundang",
-    "sendInvites": "Kirim Undangan ({{count}})", "invitesSent": "Undangan Terkirim",
-    "invitesSentMsg": "Berhasil mengundang {{count}} teman{{plural}} ke \"{{name}}\".",
     "errorSendInvites": "Gagal mengirim undangan. Silakan coba lagi.", "error": "Kesalahan",
     "addPeople": "Tambah ({{count}})",
     "peopleAdded": "Ditambahkan",
