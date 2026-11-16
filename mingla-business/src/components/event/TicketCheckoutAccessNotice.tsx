@@ -120,6 +120,10 @@ export const TicketCheckoutAccessNotice: React.FC<
 const styles = StyleSheet.create({
   host: {
     borderRadius: radiusTokens.md,
+    // issue #4420 — the notice floats over the page (absolute wrap), so it
+    // needs its own opaque surface: without one its text sat on top of the
+    // event copy scrolling beneath it.
+    backgroundColor: color.card2,
     borderWidth: 1,
     borderColor: color.lineStrong,
     paddingHorizontal: space[4],
