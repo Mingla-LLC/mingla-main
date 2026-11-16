@@ -1,4 +1,5 @@
 import type { PayloadRequest } from "payload";
+import { assertNoUnreviewedSections } from "./reviewStamp";
 import { cmsConfig } from "./config";
 import { emitCmsObservation } from "./observability";
 import { hmac, sha256 } from "./crypto";
@@ -247,6 +248,12 @@ export async function buildPublicationArtifact(
      * points outside Mingla. Set by publish; a private preview still renders.
      */
     enforceActionLinks?: boolean;
+    /**
+     * #4453 (spec v1 §4.3) — refuse the build with UNREVIEWED_SECTIONS while
+     * an enabled page holds a Draft section. Set by publish; a private
+     * preview still renders the draft.
+     */
+    enforceReview?: boolean;
     /**
      * #4453 PR 2 — the Core advertised `booking_identity` (it signs the
      * brand's identity in). Without it the identity checks are shape-only,
@@ -1355,6 +1362,19 @@ export async function buildPublicationArtifact(
    * advertised `booking_identity` (see bookingLock.ts), failing closed then.
    */
   if (input.enforceActionLinks) assertNoOutboundActionLinks(artifact, { coreSendsIdentity: input.coreSendsIdentity === true });
+  /*
+   * #4453 I-SITES-DRAFT-NEVER-PUBLISHED — no Draft section goes live. The
+   * stamp itself never reaches the artifact: shapeBlock copies named fields
+   * only (pinned by reviewStamp.issue4453.test.ts).
+   */
+  if (input.enforceReview) {
+    assertNoUnreviewedSections(renderedPages.map(({ page, path, enabled }) => ({
+      path,
+      title: typeof page.title === "string" ? page.title : "Page",
+      enabled,
+      blocks: Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : [],
+    })));
+  }
   const serialized = stable(artifact);
   // The public contract (assertArtifactV2) is enforced where it always was:
   // the runtime's candidate probe validates these exact bytes before Core

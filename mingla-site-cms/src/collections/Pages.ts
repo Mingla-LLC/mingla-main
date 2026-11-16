@@ -5,6 +5,7 @@ import {
   type CollectionConfig,
 } from "payload";
 import { siteBlocks } from "../blocks/siteBlocks";
+import { stampBlockReview } from "../lib/reviewStamp";
 import {
   enforceLiveStudioWrite,
   tenantRead,
@@ -158,7 +159,8 @@ export const Pages: CollectionConfig = {
   versions: { drafts: { autosave: false }, maxPerDoc: 50 },
   hooks: {
     beforeOperation: [enforceLiveStudioWrite],
-    beforeChange: [enforcePage, bindRequestTenant],
+    // #4453 — the Draft stamp runs last, on the blocks being stored.
+    beforeChange: [enforcePage, bindRequestTenant, stampBlockReview],
     beforeDelete: [protectPage],
   },
   fields: [

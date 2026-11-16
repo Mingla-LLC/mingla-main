@@ -143,7 +143,7 @@ export function editorCoreUserId(user: unknown): string | null {
   return null;
 }
 
-const SYSTEM_STAMPS = ["updated_by", "confirmed_by", "confirmed_at", "drafted_by"] as const;
+const SYSTEM_STAMPS = ["updated_by", "confirmed_by", "confirmed_at", "drafted_by", "setup_ref"] as const;
 
 /**
  * Runs FIRST on every write: a caller never sets who edited or who confirmed
@@ -173,6 +173,25 @@ const stampAriDraft: CollectionBeforeChangeHook = ({ data, operation, originalDo
     return { ...data, drafted_by: "ari" };
   }
   return originalDoc?.drafted_by === "ari" ? { ...data, drafted_by: "ari" } : data;
+};
+
+/*
+ * #4453 — the Website-setup entry this was created from: set once, on the
+ * signed Build path (Core sent the staged entry), never by a caller.
+ */
+const setupRefField = (): Field => ({
+  name: "setup_ref",
+  type: "text",
+  maxLength: 64,
+  admin: { hidden: true },
+});
+
+const stampSetupRef: CollectionBeforeChangeHook = ({ data, operation, originalDoc, req }) => {
+  const ref = req.context?.minglaSetupRef;
+  if (operation === "create" && req.context?.minglaSignedCore === true && typeof ref === "string" && /^[0-9a-f-]{36}$/i.test(ref)) {
+    return { ...data, setup_ref: ref.toLowerCase() };
+  }
+  return typeof originalDoc?.setup_ref === "string" ? { ...data, setup_ref: originalDoc.setup_ref } : data;
 };
 
 /** Stamps `updated_by` on every write. */
@@ -255,6 +274,7 @@ export const Destinations: CollectionConfig = {
       sessionTenantOnly,
       stripSystemStamps,
       stampAriDraft,
+      stampSetupRef,
       uniqueSlug("destinations"),
       readyMedia(() => Destinations.fields),
       stampEditor,
@@ -307,6 +327,7 @@ export const Destinations: CollectionConfig = {
     sortField(),
     updatedByField(),
     draftedByField(),
+    setupRefField(),
   ],
 };
 
@@ -328,7 +349,7 @@ export const Stories: CollectionConfig = {
   versions: { drafts: { autosave: false }, maxPerDoc: 50 },
   hooks: {
     beforeOperation: [enforceLiveStudioWrite],
-    beforeChange: [sessionTenantOnly, stripSystemStamps, stampAriDraft, uniqueSlug("stories"), readyMedia(() => Stories.fields), stampEditor],
+    beforeChange: [sessionTenantOnly, stripSystemStamps, stampAriDraft, stampSetupRef, uniqueSlug("stories"), readyMedia(() => Stories.fields), stampEditor],
   },
   fields: [
     text("title", "Title", 160, true),
@@ -357,6 +378,7 @@ export const Stories: CollectionConfig = {
     sortField(),
     updatedByField(),
     draftedByField(),
+    setupRefField(),
   ],
 };
 
@@ -399,7 +421,7 @@ export const Testimonials: CollectionConfig = {
   admin: { useAsTitle: "reviewer", hideAPIURL: true, defaultColumns: ["reviewer", "review_date", "trip_name", "confirmed_real", "enabled"] },
   access: access(),
   versions: { drafts: { autosave: false }, maxPerDoc: 50 },
-  hooks: { beforeOperation: [enforceLiveStudioWrite], beforeChange: [sessionTenantOnly, stripSystemStamps, stampAriDraft, reviewConfirmation, stampEditor] },
+  hooks: { beforeOperation: [enforceLiveStudioWrite], beforeChange: [sessionTenantOnly, stripSystemStamps, stampAriDraft, stampSetupRef, reviewConfirmation, stampEditor] },
   fields: [
     area("quote", "Review, word for word", MAX_TESTIMONIAL_QUOTE, true, "Copy it exactly, typos included. Do not shorten it or join two reviews."),
     text("reviewer", "Reviewer", 80, true, "Exactly as they are shown where they left the review."),
@@ -442,6 +464,7 @@ export const Testimonials: CollectionConfig = {
     sortField(),
     updatedByField(),
     draftedByField(),
+    setupRefField(),
   ],
 };
 

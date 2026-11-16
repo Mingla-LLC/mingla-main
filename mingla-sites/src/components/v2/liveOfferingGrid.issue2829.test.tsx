@@ -110,9 +110,14 @@ describe("#2829 live offering grid", () => {
     expect(none).toMatch(/<form class="offering-filters"[^>]*method="get"/);
   });
 
-  it("an empty grid is honest, never padded", async () => {
-    expect(await render({ kind: "trip", mode: "upcoming", empty_text: "New dates soon." }, await live([]))).toContain("New dates soon.");
-    expect(await render({ kind: "event", mode: "upcoming" }, undefined)).toContain("No events to show right now.");
+  // #4453 (SC-4.4, I-SITES-NO-PUBLIC-EMPTY-STATE) — this used to print the
+  // empty message; spec v1 §4.2.3 leaves an empty grid out of the page entirely.
+  it("an empty grid is left out: no heading, no message, no wrapper", async () => {
+    const empty = await render({ kind: "trip", mode: "upcoming", heading: "Upcoming trips", empty_text: "New dates soon." }, await live([]));
+    expect(empty).not.toContain("New dates soon.");
+    expect(empty).not.toContain("Upcoming trips");
+    expect(empty).not.toContain("offering-grid");
+    expect(await render({ kind: "event", mode: "upcoming" }, undefined)).not.toContain("No events to show right now.");
   });
 
   it("an original v1 grid still renders its fixed list unchanged under atelier", () => {

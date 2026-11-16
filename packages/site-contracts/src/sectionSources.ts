@@ -5,8 +5,8 @@
  * a section out when its live data is empty. All three read this file.
  *
  * invariant: I-SITES-SECTION-NEEDS-CONTENT — a section is placed only when
- * its source holds real content (test: packages/site-contracts/src/
- * sectionSources.issue4453.test.ts).
+ * its source holds real content (test:
+ * mingla-site-cms/src/lib/sectionSources.issue4453.test.ts).
  *
  * The inventory is counts and booleans only, computed server-side from the
  * brand's own data and the owner's own answers; nothing here holds copy.

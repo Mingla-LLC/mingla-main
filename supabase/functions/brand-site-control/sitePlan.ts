@@ -8,6 +8,9 @@
  *   POST /v1/brands/<id>/site-plan/design           pre-draft design choice (rank 50)
  *   POST /v1/brands/<id>/site-start-request         "Ask an admin to start it" (rank 20 / 40)
  *   POST /v1/brands/<id>/site/compose-from-plan     "Create website draft" (rank 50)
+ *   GET  /v1/brands/<id>/setup-content              #4453 staged reviews, destinations, stories (rank 20)
+ *   POST /v1/brands/<id>/setup-content              #4453 create / update / delete one (reviews rank 50)
+ *   POST /v1/brands/<id>/past-trips                 #4453 a trip run before Mingla (rank 50)
  *
  * Every check is Core's (the RPCs re-derive the caller's rank from the user
  * JWT); this module only maps routes and refusals. "Create website draft" is
@@ -38,6 +41,11 @@ export type PlanFailureCode =
   | "PLAN_PAUSED"
   | "INVALID_STATE"
   | "NO_ADMIN"
+  | "NOT_FOUND"
+  | "USE_WEBSITE_CONTENT"
+  | "REVIEW_NOT_CONFIRMED"
+  | "PAST_TRIP_NOT_ENDED"
+  | "SETUP_LIMIT_REACHED"
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 const MESSAGES: Record<PlanFailureCode, string> = {
@@ -50,6 +58,11 @@ const MESSAGES: Record<PlanFailureCode, string> = {
   PLAN_PAUSED: "Your website is paused by Mingla, so the plan is paused too.",
   INVALID_STATE: "Your website draft isn't ready for that step yet.",
   NO_ADMIN: "This brand has no admin to ask yet.",
+  NOT_FOUND: "That entry isn't there any more. Here is the latest.",
+  USE_WEBSITE_CONTENT: "Your website draft exists, so add these in Website: Reviews, Destinations and Stories.",
+  REVIEW_NOT_CONFIRMED: "Tick \"This is a real review from a real guest\" to save it.",
+  PAST_TRIP_NOT_ENDED: "Past trips must have ended. Add upcoming trips from Create.",
+  SETUP_LIMIT_REACHED: "You've added the most this part takes. Add more in Website once your draft exists.",
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
 
@@ -99,6 +112,14 @@ export function planFailureFromRpc(message: string, operationId: string | null =
     ["sites_invalid_state", "INVALID_STATE", 409],
     ["sites_no_admin", "NO_ADMIN", 409],
     ["sites_validation_failed", "VALIDATION_FAILED", 400],
+    // #4453 — the setup part "What guests say and where you've been".
+    ["sites_not_found", "NOT_FOUND", 404],
+    ["sites_use_website_content", "USE_WEBSITE_CONTENT", 409],
+    ["sites_setup_content_materialized", "USE_WEBSITE_CONTENT", 409],
+    ["sites_review_not_confirmed", "REVIEW_NOT_CONFIRMED", 400],
+    ["historical_trip_not_ended", "PAST_TRIP_NOT_ENDED", 400],
+    ["historical_trip_invalid", "VALIDATION_FAILED", 400],
+    ["sites_setup_limit_reached", "SETUP_LIMIT_REACHED", 409],
   ];
   const hit = table.find(([needle]) => message.includes(needle));
   return hit ? planFailure(hit[1], hit[2], operationId) : planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
@@ -147,7 +168,9 @@ export async function handleSitePlanRoute(
   const plan = path.match(/^\/v1\/brands\/([^/]+)\/site-plan(?:\/(heartbeat|take-over|design))?$/);
   const start = path.match(/^\/v1\/brands\/([^/]+)\/site-start-request$/);
   const compose = path.match(/^\/v1\/brands\/([^/]+)\/site\/compose-from-plan$/);
-  const brandId = (plan ?? start ?? compose)?.[1];
+  const setupContent = path.match(/^\/v1\/brands\/([^/]+)\/setup-content$/);
+  const pastTrips = path.match(/^\/v1\/brands\/([^/]+)\/past-trips$/);
+  const brandId = (plan ?? start ?? compose ?? setupContent ?? pastTrips)?.[1];
   if (brandId === undefined) return null;
   if (!UUID.test(brandId)) return planFailure("VALIDATION_FAILED", 400);
 
@@ -226,6 +249,7 @@ export async function handleSitePlanRoute(
       ? planFailureFromRpc(joined.error.message)
       : sitesJson({ ok: true, data: joined.data });
   }
+  if (setupContent || pastTrips) return handleSetupProofRoute(Boolean(pastTrips), brandId, method, input, ctx);
   if (start && method === "POST") {
     const { data, error } = await ctx.userRpc("brand_site_request_start", { p_brand_id: brandId });
     return error ? planFailureFromRpc(error.message) : sitesJson({ ok: true, data });
@@ -243,6 +267,10 @@ export async function handleSitePlanRoute(
       return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
     }
     const brand = (inputs.brand ?? {}) as JsonObject;
+    // #4453 — the owner's staged setup entries go to Studio with Build, and
+    // composed sections start Draft while SITES_PROOF_PART is on.
+    const proof = await proofForCompose(ctx, brandId);
+    if (proof.error) return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
     const words = splitBrandDescription(typeof brand.description === "string" ? brand.description : null);
     const cms = await ctx.callCms({
       siteId,
@@ -269,10 +297,21 @@ export async function handleSitePlanRoute(
           city: typeof brand.city === "string" && brand.city.trim() ? brand.city.trim().slice(0, 120) : null,
           ...(brandCoverPhotoPath(brand) ? { cover_photo_path: brandCoverPhotoPath(brand) } : {}),
         },
+        ...(proof.reviewDrafts ? { review_drafts: true } : {}),
+        ...(proof.rows.length ? { setup_content: proof.rows } : {}),
       },
     });
     if (!cms.ok) return cms;
-    const composed = ((await cms.json()) as { data?: { pages?: unknown } }).data ?? {};
+    const composed = ((await cms.json()) as { data?: { pages?: unknown; materialized?: unknown } }).data ?? {};
+    // #4453 — stamp each staged entry Studio created (idempotent in Core).
+    const materialized = materializedRows(composed.materialized, proof.rows);
+    if (materialized.length) {
+      const stamped = await ctx.serviceRpc("brand_site_setup_content_mark_materialized", {
+        p_brand_id: brandId,
+        p_rows: materialized,
+      });
+      if (stamped.error) return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
+    }
     const pages = Array.isArray(composed.pages)
       ? composed.pages.filter((page): page is string => typeof page === "string" && STUDIO_PAGES.has(page))
       : [];
@@ -287,4 +326,119 @@ export async function handleSitePlanRoute(
     return sitesJson({ ok: true, data: { ...composed, site_id: siteId, pages } });
   }
   return planFailure("VALIDATION_FAILED", 405);
+}
+
+/*
+ * #4453 (spec v1 §3.3-3.4) — the setup part "What guests say and where
+ * you've been". Core is the gate: each RPC re-derives the member's rank
+ * (reviews need a brand admin or owner, who confirms they are real), and
+ * once a site exists the workspace is the only home (USE_WEBSITE_CONTENT).
+ * Every value is the owner's own words; this module only shapes the call.
+ */
+const SETUP_KINDS = new Set(["review", "destination", "story"]);
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+async function handleSetupProofRoute(
+  pastTrip: boolean,
+  brandId: string,
+  method: string,
+  input: JsonObject,
+  ctx: SitePlanContext,
+): Promise<Response> {
+  if (pastTrip) {
+    if (method !== "POST") return planFailure("VALIDATION_FAILED", 405);
+    const field = (key: string, max: number): string | null =>
+      typeof input[key] === "string" && (input[key] as string).length <= max ? (input[key] as string) : null;
+    const start = field("start_date", 10);
+    const end = field("end_date", 10);
+    const title = field("title", 200);
+    const where = field("where", 200);
+    const timezone = field("timezone", 64);
+    const description = input.description === undefined || input.description === null ? null : field("description", 1000);
+    if (!title || !where || !timezone || !start || !end || !DATE.test(start) || !DATE.test(end) ||
+      (input.description !== undefined && input.description !== null && description === null)) {
+      return planFailure("VALIDATION_FAILED", 400);
+    }
+    const { data, error } = await ctx.serviceRpc("brand_site_setup_add_past_trip", {
+      p_brand_id: brandId,
+      p_user_id: ctx.userId,
+      p_title: title,
+      p_start_date: start,
+      p_end_date: end,
+      p_timezone: timezone,
+      p_location: where,
+      p_description: description,
+    });
+    return error ? planFailureFromRpc(error.message) : sitesJson({ ok: true, data });
+  }
+  if (method === "GET") {
+    const { data, error } = await ctx.serviceRpc("brand_site_setup_content_list", { p_brand_id: brandId, p_user_id: ctx.userId });
+    return error ? planFailureFromRpc(error.message) : sitesJson({ ok: true, data });
+  }
+  if (method !== "POST") return planFailure("VALIDATION_FAILED", 405);
+  const kind = input.kind;
+  const id = input.id === undefined || input.id === null ? null : input.id;
+  const remove = input.delete === true;
+  if (typeof kind !== "string" || !SETUP_KINDS.has(kind) || (id !== null && (typeof id !== "string" || !UUID.test(id)))) {
+    return planFailure("VALIDATION_FAILED", 400);
+  }
+  const payload = input.payload;
+  if (!remove && (!payload || typeof payload !== "object" || Array.isArray(payload))) return planFailure("VALIDATION_FAILED", 400);
+  const expected = typeof input.updated_at === "string" ? input.updated_at : null;
+  const { data, error } = await ctx.serviceRpc("brand_site_setup_content_save", {
+    p_brand_id: brandId,
+    p_user_id: ctx.userId,
+    p_kind: kind,
+    p_id: id,
+    p_payload: remove ? {} : payload,
+    p_confirmed_real: input.confirmed_real === true,
+    p_expected_updated_at: expected,
+    p_delete: remove,
+  });
+  if (error) {
+    // A teammate saved first: the caller gets the latest list, never a silent overwrite.
+    if (error.message.includes("sites_revision_conflict")) {
+      const latest = await ctx.serviceRpc("brand_site_setup_content_list", { p_brand_id: brandId, p_user_id: ctx.userId });
+      return sitesJson({
+        ok: false,
+        error: { code: "REVISION_CONFLICT", message: MESSAGES.REVISION_CONFLICT, retryable: false, operation_id: null },
+        latest: latest.error ? null : latest.data,
+      }, 409);
+    }
+    return planFailureFromRpc(error.message);
+  }
+  return sitesJson({ ok: true, data });
+}
+
+type StagedRow = { id: string; kind: string; payload: JsonObject; confirmed_real_by: string | null };
+
+/** What Build sends Studio: SITES_PROOF_PART and the unmaterialised staged rows. */
+async function proofForCompose(ctx: SitePlanContext, brandId: string): Promise<{ error: boolean; reviewDrafts: boolean; rows: StagedRow[] }> {
+  const flag = await ctx.serviceRpc("brand_site_proof_part_enabled", {});
+  // Before the migration is applied the flag reads as off (Build is unchanged).
+  if (flag.error || flag.data !== true) return { error: false, reviewDrafts: false, rows: [] };
+  const pending = await ctx.serviceRpc("brand_site_setup_content_pending", { p_brand_id: brandId });
+  if (pending.error || !Array.isArray(pending.data)) return { error: true, reviewDrafts: true, rows: [] };
+  const rows = (pending.data as JsonObject[]).flatMap((row) => {
+    if (!row || typeof row.id !== "string" || !UUID.test(row.id) || typeof row.kind !== "string" || !SETUP_KINDS.has(row.kind)) return [];
+    if (!row.payload || typeof row.payload !== "object" || Array.isArray(row.payload)) return [];
+    const confirmer = typeof row.confirmed_real_by === "string" && UUID.test(row.confirmed_real_by) ? row.confirmed_real_by : null;
+    // Constitution rule 9: a review without its confirmer never leaves Core.
+    if (row.kind === "review" && !confirmer) return [];
+    return [{ id: row.id, kind: row.kind, payload: row.payload as JsonObject, confirmed_real_by: confirmer }];
+  });
+  return { error: false, reviewDrafts: true, rows };
+}
+
+/** Studio's answer, kept only for rows Core sent (never an id it made up). */
+export function materializedRows(value: unknown, sent: readonly StagedRow[]): { id: string; entry_id: string }[] {
+  if (!Array.isArray(value)) return [];
+  const ids = new Set(sent.map((row) => row.id));
+  return value.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const record = row as JsonObject;
+    const id = typeof record.id === "string" ? record.id.toLowerCase() : "";
+    const entry = typeof record.entry_id === "string" || typeof record.entry_id === "number" ? String(record.entry_id) : "";
+    return ids.has(id) && entry.length > 0 && entry.length <= 80 ? [{ id, entry_id: entry }] : [];
+  });
 }
