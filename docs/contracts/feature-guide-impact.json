@@ -2100,7 +2100,8 @@
         "app-mobile/src/components/profile/ProfileInterestsSection.tsx",
         "app-mobile/src/components/profile/ProfileSectionSkeleton.tsx",
         "app-mobile/src/components/profile/profileFreshness.ts",
-        "app-mobile/src/hooks/useUserPreferences.ts"
+        "app-mobile/src/hooks/useUserPreferences.ts",
+        "app-mobile/src/components/profile/EditBioSheet.tsx"
       ]
     },
     {
