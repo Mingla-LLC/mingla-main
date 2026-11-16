@@ -77,6 +77,12 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
+import {
+  hasUnsavedTripEdits,
+  shouldConfirmLeave,
+  UNSAVED_CHANGES_DIALOG,
+} from "../../utils/unsavedChangesGuard";
 // issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
 // LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
 // route chunks (Event, Trip and Experience management), so a static import
@@ -783,6 +789,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     [trip],
   );
   const [editState, setEditState] = useState<LocalTripEditState>(initialState);
+  // #4420 — the state the editor was last seeded with (see the close guard).
+  const seededEditStateRef = useRef<LocalTripEditState>(initialState);
 
   // Issue #3291 — rank-only proximity for both address fields. A published
   // trip already holds its own departure + destination points (publish
@@ -842,7 +850,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   const prevTripIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (prevTripIdRef.current !== trip.id) {
-      setEditState(tripToLocalEditState(trip));
+      const reseeded = tripToLocalEditState(trip);
+      seededEditStateRef.current = reseeded;
+      setEditState(reseeded);
       prevTripIdRef.current = trip.id;
     }
   }, [trip]);
@@ -1629,7 +1639,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   }, [submitting]);
 
   // ---- Back/close ----
-  const handleBack = useCallback((): void => {
+  const leaveEdit = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -1637,6 +1647,27 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       router.replace(`/trip/${trip.id}` as never);
     }
   }, [router, trip.id]);
+
+  // #4420 — a published trip edit is not saved until Save, so closing with
+  // pending changes asks first (close control, Android back, web reload).
+  const [discardOpen, setDiscardOpen] = useState<boolean>(false);
+  // Both: the host changed something since the seed AND it would be saved.
+  const editedSinceSeed = useMemo(
+    () => JSON.stringify(editState) !== JSON.stringify(seededEditStateRef.current),
+    [editState],
+  );
+  const hasUnsavedEdits = shouldConfirmLeave({
+    dirty: editedSinceSeed && hasUnsavedTripEdits(computed),
+    busy: submitting,
+  });
+  const handleBack = useCallback((): void => {
+    if (hasUnsavedEdits) {
+      setDiscardOpen(true);
+      return;
+    }
+    leaveEdit();
+  }, [hasUnsavedEdits, leaveEdit]);
+  useUnsavedChangesGuard({ dirty: hasUnsavedEdits, onRequestLeave: handleBack });
 
   // ---- Section body renderer ----
   const renderSectionBody = useCallback(
@@ -2330,6 +2361,23 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         confirmLabel={rejectDialog?.primaryLabel ?? "OK"}
         cancelLabel="Close"
         variant="simple"
+      />
+
+      {/* #4420 — unsaved changes on close */}
+      <ConfirmDialog
+        visible={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={() => {
+          setDiscardOpen(false);
+          leaveEdit();
+        }}
+        title={UNSAVED_CHANGES_DIALOG.title}
+        description={UNSAVED_CHANGES_DIALOG.description}
+        confirmLabel={UNSAVED_CHANGES_DIALOG.confirmLabel}
+        cancelLabel={UNSAVED_CHANGES_DIALOG.cancelLabel}
+        variant="simple"
+        destructive
+        testID="edit-published-trip-discard-dialog"
       />
 
       {/* Toast */}

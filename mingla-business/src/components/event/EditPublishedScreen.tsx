@@ -110,6 +110,11 @@ import type { DraftEvent } from "../../store/draftEventStore";
 
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
+import {
+  shouldConfirmLeave,
+  UNSAVED_CHANGES_DIALOG,
+} from "../../utils/unsavedChangesGuard";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Toast } from "../ui/Toast";
@@ -488,6 +493,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     [liveEvent],
   );
   const [editState, setEditState] = useState<DraftEvent>(initialEditState);
+  // #4420 — the state the editor was last seeded with. Unsaved = editState
+  // differs from it (field diffs alone can be non-empty on a fresh open when
+  // a stored value normalises differently, which must never prompt).
+  const seededEditStateRef = useRef<DraftEvent>(initialEditState);
 
   // ORCH-1172 R4 — guarded re-seed key. The editor seeds editState ONCE on mount
   // (useState above). When the route mounts this screen with a STALE prop (e.g.
@@ -753,7 +762,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     if (nextKey === hydratedKeyRef.current) return;
     if (fieldDiffs.length > 0) return;
     hydratedKeyRef.current = nextKey;
-    setEditState(liveEventToEditableDraft(liveEvent));
+    const reseeded = liveEventToEditableDraft(liveEvent);
+    seededEditStateRef.current = reseeded;
+    setEditState(reseeded);
   }, [liveEvent, fieldDiffs.length]);
   const currentPatch = useMemo(
     () => editableDraftToPatch(liveEvent, editState),
@@ -1741,7 +1752,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   }, [submitting]);
 
   // ---- Back/discard ----
-  const handleBack = useCallback((): void => {
+  const leaveEdit = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -1749,6 +1760,26 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       router.replace(`/event/${liveEvent.id}` as never);
     }
   }, [router, liveEvent.id]);
+
+  // #4420 — a published edit is not saved until Save, so closing with
+  // pending changes asks first (close control, Android back, web reload).
+  const [discardOpen, setDiscardOpen] = useState<boolean>(false);
+  const editedSinceSeed = useMemo(
+    () => JSON.stringify(editState) !== JSON.stringify(seededEditStateRef.current),
+    [editState],
+  );
+  const hasUnsavedEdits = shouldConfirmLeave({
+    dirty: editedSinceSeed,
+    busy: submitting,
+  });
+  const handleBack = useCallback((): void => {
+    if (hasUnsavedEdits) {
+      setDiscardOpen(true);
+      return;
+    }
+    leaveEdit();
+  }, [hasUnsavedEdits, leaveEdit]);
+  useUnsavedChangesGuard({ dirty: hasUnsavedEdits, onRequestLeave: handleBack });
 
   // ---- Section body renderer ----
   const renderSectionBody = useCallback(
@@ -2177,6 +2208,23 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         cancelLabel="Close"
         variant={rejectDialog?.variant ?? "simple"}
         destructive={rejectDialog?.destructive ?? false}
+      />
+
+      {/* #4420 — unsaved changes on close */}
+      <ConfirmDialog
+        visible={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={() => {
+          setDiscardOpen(false);
+          leaveEdit();
+        }}
+        title={UNSAVED_CHANGES_DIALOG.title}
+        description={UNSAVED_CHANGES_DIALOG.description}
+        confirmLabel={UNSAVED_CHANGES_DIALOG.confirmLabel}
+        cancelLabel={UNSAVED_CHANGES_DIALOG.cancelLabel}
+        variant="simple"
+        destructive
+        testID="edit-published-discard-dialog"
       />
 
       {/* Toast (self-positioning portal) */}

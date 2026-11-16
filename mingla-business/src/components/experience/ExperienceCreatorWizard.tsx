@@ -91,6 +91,17 @@ import {
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
+import {
+  shouldConfirmLeave,
+  UNSAVED_CHANGES_DIALOG,
+} from "../../utils/unsavedChangesGuard";
+// #4420 — loaded when the discard dialog first opens: ConfirmDialog pulls
+// reanimated, which the node render suites that mount this wizard cannot parse.
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
 import { CreatorStep2When } from "../event/LazyCreatorStep2When";
 import { ExperienceCoverStep } from "./ExperienceCoverStep";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -957,17 +968,27 @@ export const ExperienceCreatorWizard: React.FC<
     return steps.length - 1;
   }, [stepIsValid, steps.length]);
 
+  // #4420 — this wizard keeps every field on screen until Save draft /
+  // Publish / Save changes (no field autosave), so closing step 1 with edits
+  // asks first. `hasUnsavedEditsRef` is filled below, once the payload exists.
+  const hasUnsavedEditsRef = useRef(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const goBack = useCallback((): void => {
     if (step === 6 && inviteNavigation?.phase === "saving") return;
-    if (step === 1) onCancel?.();
-    else setStep((prev) => Math.max(1, prev - 1) as StepIndex);
+    if (step === 1) {
+      if (hasUnsavedEditsRef.current) {
+        setDiscardOpen(true);
+        return;
+      }
+      onCancel?.();
+    } else setStep((prev) => Math.max(1, prev - 1) as StepIndex);
   }, [inviteNavigation?.phase, onCancel, step]);
 
   // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
   useWizardHardwareBack({
     isFirstStep: step === 1,
     busy: submitting || checkingInvitePublish || creatingDraft,
-    exitSurfaced: false,
+    exitSurfaced: discardOpen,
     onStepBack: goBack,
     onExit: goBack,
   });
@@ -1080,6 +1101,33 @@ export const ExperienceCreatorWizard: React.FC<
       cover,
     ],
   );
+
+  // #4420 — dirty = the payload differs from the one the wizard opened with.
+  // Until the host first touches the form, the baseline follows the payload,
+  // so seeds and late reads (brand currency, venue default) never count.
+  const payloadKey = useMemo(
+    () => JSON.stringify(buildPayload(false)),
+    [buildPayload],
+  );
+  const payloadBaselineRef = useRef<string | null>(null);
+  const formTouchedRef = useRef(false);
+  useEffect(() => {
+    if (payloadBaselineRef.current === null || !formTouchedRef.current) {
+      payloadBaselineRef.current = payloadKey;
+    }
+  }, [payloadKey]);
+  const hasUnsavedEdits = shouldConfirmLeave({
+    dirty:
+      payloadBaselineRef.current !== null &&
+      payloadKey !== payloadBaselineRef.current,
+    busy: submitting,
+  });
+  hasUnsavedEditsRef.current = hasUnsavedEdits;
+  useUnsavedChangesGuard({
+    dirty: hasUnsavedEdits,
+    onRequestLeave: goBack,
+    hardwareBack: false,
+  });
 
   // META-ORCH-1059 Sub-B — create the server draft row up front (returns its
   // events-row id) so the Cover step's video-capable picker has a real id.
@@ -1846,7 +1894,13 @@ export const ExperienceCreatorWizard: React.FC<
         );
       }}
     >
-    <View style={styles.host}>
+    <View
+      style={styles.host}
+      onStartShouldSetResponderCapture={() => {
+        formTouchedRef.current = true;
+        return false;
+      }}
+    >
       {isWideDesktop ? (
       <View style={styles.header}>
         <Pressable
@@ -2386,6 +2440,25 @@ export const ExperienceCreatorWizard: React.FC<
             maybeOpenIntelGate();
           }} />
       {organiserTermsGateElement}
+      {discardOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => setDiscardOpen(false)}
+            onConfirm={() => {
+              setDiscardOpen(false);
+              onCancel?.();
+            }}
+            title={UNSAVED_CHANGES_DIALOG.title}
+            description={UNSAVED_CHANGES_DIALOG.description}
+            confirmLabel={UNSAVED_CHANGES_DIALOG.confirmLabel}
+            cancelLabel={UNSAVED_CHANGES_DIALOG.cancelLabel}
+            variant="simple"
+            destructive
+            testID="experience-wizard-discard-dialog"
+          />
+        </React.Suspense>
+      ) : null}
     </View>
     </LazyTurnoutIntelProvider>
   );
