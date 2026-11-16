@@ -69,8 +69,12 @@ const HOST_AD_FILES = [
   "src/components/marketing/ads/hostAdCreativeRules.ts",
   "src/components/marketing/ads/HostAdLiveEditCard.tsx",
   "src/components/marketing/ads/hostAdAlerts.ts",
-  "src/components/marketing/AdCreditLedgerRow.tsx",
-  "src/components/marketing/AdCreditQuoteSheet.tsx",
+  // #4238 W6b: ad detail and Promote home sheets, rules and words, and the
+  // Ari ad card lines (AdCreditQuoteSheet / AdCreditLedgerRow were removed).
+  "src/components/marketing/ads/HostAdManageSheets.tsx",
+  "src/components/marketing/ads/hostAdManageModel.ts",
+  "src/components/marketing/ads/hostAdManageCopy.ts",
+  "src/components/ari/AriAdCardExtras.tsx",
   "src/services/hostAdPlanService.ts",
   "src/services/hostAdCampaignService.ts",
   "src/services/hostAdLifecycle.ts",
@@ -388,9 +392,12 @@ function main() {
   if (service !== null && !service.includes('phrase: "LAUNCH"')) {
     fail('hostAdPlanService no longer sends the confirm_launch constant phrase: "LAUNCH"');
   }
+  // #4238 W6b (design v9, the same one-confirm rule as question 8): pause,
+  // end and cancel each ask once, naming the money that stays held or comes
+  // back; the server takes no typed phrase for them.
   if (detail !== null) {
-    for (const needle of ['confirmText={destructiveAction === "end" ? "END" : "CANCEL"}', "Type END to stop your ad on every app."]) {
-      if (!detail.includes(needle)) fail(`[id].tsx lost the typed confirmation ${JSON.stringify(needle)}`);
+    for (const needle of ['hm("confirm.endBody", { amount: money(held) })', 'hm("confirm.cancelBody", { amount: money(budget.totalPay) })', 'hm("confirm.pauseBody", { amount: money(held) })', "onConfirm={onStop}"]) {
+      if (!detail.includes(needle)) fail(`[id].tsx lost the one money confirm ${JSON.stringify(needle)}`);
     }
   }
 

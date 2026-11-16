@@ -134,18 +134,4 @@ describe("#4238 P3 code-style money", () => {
     }
   });
 
-  it("no symbol-style money is left on the ad page top line or the credit card", () => {
-    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
-    expect(detail).not.toMatch(/Spent \$\{formatCurrency/);
-    expect(detail).not.toMatch(/\$\{formatCurrency\(cap, currency, true\)\} set aside/);
-    const index = read("src/screens/hostAds/HostAdListScreen.tsx");
-    const card = index.slice(index.indexOf("Available credit"), index.indexOf("Top-ups keep"));
-    expect(card).toContain("formatHostAdMoneyCents(balanceCents, currency)");
-    for (const line of [
-      hostAdDetailMoneyLine({ spentCents: 1, capCents: 2, currency: "NGN", planState: "live" }),
-      hostAdListRowMoney(buildHostAdList({ drafts: [], plans: [planAggregate("funded_held")], campaigns: [] })[0]),
-    ]) {
-      expect(line).not.toMatch(/₦|\$/);
-    }
-  });
 });

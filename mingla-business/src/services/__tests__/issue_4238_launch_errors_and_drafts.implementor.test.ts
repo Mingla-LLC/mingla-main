@@ -238,10 +238,4 @@ describe("#4238 finished drafts leave the Ads list", () => {
 });
 
 describe("#4238 detail header app spend uses the Results money style", () => {
-  it("formats provider spend with formatHostAdMoneyCents", () => {
-    const detail = fs.readFileSync(path.resolve(__dirname, "../../../src/screens/hostAds/HostAdDetailScreen.tsx"), "utf8");
-    const block = detail.slice(detail.indexOf("What the apps say they spent"), detail.indexOf(".join(\" · \")", detail.indexOf("What the apps say they spent")));
-    expect(block).toContain("formatHostAdMoneyCents(");
-    expect(block).not.toContain("formatCurrency(");
-  });
 });

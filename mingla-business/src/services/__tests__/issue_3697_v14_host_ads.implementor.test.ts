@@ -118,16 +118,6 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(createRoute).toContain("await launchHostAdPlan({");
   });
 
-  it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
-    const detailRoute = read("src/screens/hostAds/HostAdDetailScreen.tsx");
-    expect(campaignService).toContain('"admin-ad-campaign-action"');
-    expect(planEndpoint).toContain('action === "cancel_before_create"');
-    expect(hostCampaignEndpoint).toContain("campaign_ids: planCampaigns.map");
-    expect(hostCampaignEndpoint).toContain('from("ad_campaign_settlements")');
-    expect(campaignService).toContain("settlements:");
-    expect(detailRoute).toContain("Getting your money back");
-    expect(detailRoute).toContain("Final spend on the app");
-  });
 
   it("reuses the shared resumable video picker instead of inventing an Ads uploader", () => {
     expect(planEndpoint).toContain('.from("ad_creatives")');

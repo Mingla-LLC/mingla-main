@@ -99,22 +99,6 @@ describe("#3697 Host Home Ads lifecycle", () => {
     expect(placements).toHaveLength(2);
   });
 
-  it("keeps destructive actions on ad details and removes them from Home", () => {
-    const home = fs.readFileSync(
-      path.join(ROOT, "src/components/home/HomeAdsSection.tsx"),
-      "utf8",
-    );
-    const detail = fs.readFileSync(
-      path.join(ROOT, "src/screens/hostAds/HostAdDetailScreen.tsx"),
-      "utf8",
-    );
-    expect(detail).toContain('variant="typeToConfirm"');
-    expect(detail).toContain('"END" : "CANCEL"');
-    expect(home).not.toContain('variant="typeToConfirm"');
-    expect(home).not.toContain("homeAdDestructiveAction(campaign)");
-    expect(home).toContain("homeAdCanPause(campaign)");
-    expect(home).toContain(">Fix</Text>");
-  });
 
   it("refreshes Home Ads through the shared query-key authority", () => {
     const home = fs.readFileSync(

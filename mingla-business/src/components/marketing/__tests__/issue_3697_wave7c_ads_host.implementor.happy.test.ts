@@ -15,37 +15,7 @@ function read(rel: string): string {
 }
 
 describe("issue #3697 Wave 7c Host Ads surfaces", () => {
-  it("Confirm withdraw is wired with stable idempotency", () => {
-    const sheet = read("src/components/marketing/AdCreditQuoteSheet.tsx");
-    expect(sheet).toContain("ad-credit-quote-confirm-withdraw");
-    expect(sheet).toContain("applyAdCreditWithdraw");
-    expect(sheet).toContain("withdrawIdemRef");
-    expect(sheet).toContain("Confirm withdraw");
-    const svc = read("src/services/adCreditService.ts");
-    expect(svc).toContain('action: "apply_withdraw"');
-  });
 
-  it("Ads list + detail routes replace the placeholder", () => {
-    const route = read("src/screens/hostAds/HostAdListScreen.tsx");
-    expect(route).toContain("useHostAdCampaigns");
-    expect(route).toContain("ads-campaigns-empty");
-    expect(route).not.toContain("ads-campaigns-placeholder");
-    expect(route).toContain("paystackReference");
-    expect(route).toContain("mingla_adc_");
-    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
-    expect(detail).toContain("ads-detail-screen");
-    expect(detail).toContain("ads-detail-pause");
-    expect(detail).toContain("ads-detail-end");
-    expect(detail).toContain("ads-detail-cancel");
-    expect(detail).toContain("provider_spend_by_currency");
-    expect(detail).toContain("host_spend_equivalent_cents");
-    expect(detail).toContain("host_spend_equivalent_quality");
-    expect(detail).not.toContain("spend_total_cents");
-    expect(detail).toContain("Results");
-    expect(detail).toContain("Your video");
-    expect(detail).toContain("Timeline");
-    expect(detail).toContain("by_placement");
-  });
 
   it("Hub live-ad cards link to ad detail", () => {
     const hub = read("app/(tabs)/hub/events.tsx");

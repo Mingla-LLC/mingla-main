@@ -14,7 +14,8 @@
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -72,6 +73,10 @@ type Overlay = "topUp" | "withdraw" | "receipts" | "compare" | null;
 /** The status chip's words and tone for one row (true reason when paused). */
 export function hostAdRowStatus(item: HostAdListItem): { label: string; tone: string } {
   const reason = item.lifecycle === "paused" ? hostAdReasonFromCode(item.pauseReason ?? null) : null;
+  // A plainer server-side label ("Ready to start") wins, except where a pause has its true reason.
+  if (item.statusLabel && reason === null && item.lifecycle !== "paused") {
+    return { label: item.statusLabel, tone: item.lifecycle === "live" ? color.successText : color.infoText };
+  }
   switch (item.lifecycle) {
     case "live":
       return { label: hm("status.running"), tone: color.successText };

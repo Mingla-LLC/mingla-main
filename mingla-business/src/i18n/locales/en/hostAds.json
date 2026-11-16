@@ -328,11 +328,9 @@
         "toAds": "{{amount}} of it goes to the ads after the 15% Mingla fee",
         "topUp": "Top up",
         "withdraw": "Withdraw",
-        "team": "Only the owner or someone with Finance access can add or withdraw credit. Ask {{name}}.",
         "teamNoName": "Only the owner or someone with Finance access can add or withdraw credit. Ask the brand owner.",
         "setup": "Ads credit opens once this brand's payments are set up, with one currency. Finish payments setup first.",
         "error": "Couldn't load your Ads credit. Your ads keep running.",
-        "low": "Credit is low: {{amount}} left. Running ads pause when it runs out.",
         "added": "Ads credit added.",
         "notAdded": "Your payment came back but the credit wasn't added yet. Try again, or get help.",
         "cancelled": "Payment cancelled. No credit was added."
@@ -374,7 +372,6 @@
         "colResults": "Results",
         "colEach": "Each",
         "open": "Open {{name}}",
-        "drafts": "Drafts",
         "draftLine": "Saved draft · pick up where you left off"
       },
       "unit": {
@@ -499,10 +496,12 @@
         "notFound": "Ad not found",
         "notFoundBody": "Open it again from Promote.",
         "noAccess": "Ads access needed",
-        "noAccessBody": "Ask {{name}} to give you Ads access for this brand.",
         "noAccessNoName": "Ask the brand owner to give you Ads access for this brand.",
         "copyFailed": "We couldn't copy this ad just now. Try again in a minute.",
-        "back2": "Back to Promote"
+        "back2": "Back to Promote",
+        "tileTickets": "Tickets",
+        "tileSignups": "Sign-ups",
+        "tileVisits": "Page visits"
       },
       "confirm": {
         "pauseTitle": "Pause this ad?",
@@ -545,8 +544,7 @@
         "cancel": "Cancel",
         "saved": "Your ad is updated.",
         "atMinimum": "It can't go lower: {{amount}} is already spent.",
-        "appMinimum": "{{app}} needs at least {{amount}} a day. Pick a higher total or a sooner end date.",
-        "noChange": "Change the total or the end date to save."
+        "appMinimum": "{{app}} needs at least {{amount}} a day. Pick a higher total or a sooner end date."
       },
       "ari": {
         "who": "Ari",
@@ -584,9 +582,7 @@
       },
       "withdraw": {
         "title": "Withdraw unused credit",
-        "credit": "Free Ads credit",
         "held": "Held for running ads",
-        "can": "You can withdraw",
         "back": "You get back",
         "feeBack": "This includes the {{fee}} Mingla fee on it. It goes back to how you paid, in {{currency}}, oldest payment first.",
         "keep": "Keep it",
@@ -600,14 +596,12 @@
         "title": "Receipts and statements",
         "topUp": "Top-up · {{amount}}",
         "withdrawal": "Withdrawal · {{amount}}",
-        "feeOf": "Mingla fee {{amount}}",
         "receipt": "Receipt",
         "statement": "Monthly statement",
         "statementSub": "{{month}} · spend per ad, fees and credit",
         "opening": "Credit at the start",
         "topUps": "Top-ups",
         "fees": "Mingla fees",
-        "spent": "Used by ads",
         "returns": "Came back from ads",
         "withdrawals": "Withdrawn",
         "closing": "Credit at the end",
@@ -637,6 +631,24 @@
         "soldOut": "{{event}} sold out: {{result}} through Mingla.",
         "go": "Share",
         "failed": "Couldn't open sharing on this device."
+      },
+      "reject": {
+        "text_heavy": "The picture has too much text.",
+        "text_heavyFix": "Use a video that opens on people and the place.",
+        "alcohol": "It shows or mentions alcohol.",
+        "alcoholFix": "Take drinks out of the words and picture.",
+        "personal_attributes": "The words point at who the reader is.",
+        "personal_attributesFix": "Describe the event, not the person reading.",
+        "misleading": "The words promise more than the event gives.",
+        "misleadingFix": "Keep the words to what people really get.",
+        "landing_page": "The app couldn't open your page, or it didn't match the ad.",
+        "landing_pageFix": "Check the page is public and matches the ad.",
+        "low_quality": "The video or photo is too low quality.",
+        "low_qualityFix": "Use a sharper video or photo.",
+        "identity": "The app needs proof you can use this name or picture.",
+        "identityFix": "Use your own brand name and media you own.",
+        "prohibited": "It shows something the app doesn't allow.",
+        "prohibitedFix": "Remove that part of the picture or words."
       }
     }
   }
