@@ -136,6 +136,8 @@ export function BuyerStayGuestExperience({
         countryCode={args.countryCode}
         onChangePhone={(raw: string) => args.onChangeRawValue(raw, resolveUserPhoneE164(raw, args.countryCode))}
         onChangeCountry={(iso: string) => args.onChangeCountry(iso, resolveUserPhoneE164(args.rawValue, iso))}
+        onBlur={args.onBlur}
+        reserveErrorSpace
         error={args.invalid ? "Select a country and enter a valid phone number." : null}
         disabled={args.disabled}
         theme={phoneTheme}

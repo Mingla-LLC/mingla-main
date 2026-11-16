@@ -86,6 +86,8 @@ export interface StayGuestBookingProps {
     onChangeCountry: (iso: string, resolvedE164: string | null) => void;
     invalid: boolean;
     disabled: boolean;
+    /** #4420 — the host calls this from the field's blur to reveal an error. */
+    onBlur?: () => void;
   }) => BrandRenderingReactElement;
   onConfirmQuote?: () => void | Promise<void>;
   onEditQuote?: () => void;
@@ -144,6 +146,9 @@ export function StayGuestBooking({
   const [phoneRawValue, setPhoneRawValue] = useState("");
   const [phoneCountryIso, setPhoneCountryIso] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  // #4420 — Constitution 12: the phone error shows after blur or "Confirm",
+  // never while the guest is still typing, and clears as soon as it is valid.
+  const [phoneErrorRevealed, setPhoneErrorRevealed] = useState<boolean>(false);
   // Issue #1563 — the band the guest is standing in, held as the band's own
   // VALUE (`"lt:30000"`), never its index. A refetch can drop a room that has
   // sold out, and an index-based selection would silently snap back to "show
@@ -455,6 +460,7 @@ export function StayGuestBooking({
       return;
     }
     if (phoneRawValue.trim().length > 0 && cleanPhone.length === 0) {
+      setPhoneErrorRevealed(true);
       setValidationError("Select a country and enter a valid phone number.");
       return;
     }
@@ -703,15 +709,28 @@ export function StayGuestBooking({
             onChangeRawValue: (raw, resolvedE164) => {
               setPhoneRawValue(raw);
               setPhone(resolvedE164 ?? "");
-              if (validationError === "Select a country and enter a valid phone number.") {
+              const nowValid = raw.trim().length === 0 || resolvedE164 !== null;
+              if (nowValid) setPhoneErrorRevealed(false);
+              if (nowValid && validationError === "Select a country and enter a valid phone number.") {
                 setValidationError(null);
               }
             },
             onChangeCountry: (iso, resolvedE164) => {
               setPhoneCountryIso(iso);
               setPhone(resolvedE164 ?? "");
+              if (phoneRawValue.trim().length === 0 || resolvedE164 !== null) {
+                setPhoneErrorRevealed(false);
+              }
             },
-            invalid: phoneRawValue.trim().length > 0 && phone.trim().length === 0,
+            onBlur: () => {
+              setPhoneErrorRevealed(
+                phoneRawValue.trim().length > 0 && phone.trim().length === 0,
+              );
+            },
+            invalid:
+              phoneErrorRevealed &&
+              phoneRawValue.trim().length > 0 &&
+              phone.trim().length === 0,
             disabled: submitting,
           }) : (
             <Field

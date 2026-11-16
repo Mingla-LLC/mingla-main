@@ -24,7 +24,6 @@
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -60,7 +59,6 @@ import {
   awaitTicketConfirmation,
   confirmTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
-import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
 import {
@@ -462,14 +460,6 @@ function CheckoutTripConfirmScreenInner({
     router.replace("/(tabs)/home" as never);
   }, [router, trip]);
 
-  const claimCode = result?.claim?.code ?? null;
-  const claimHandoff = useMemo(
-    () =>
-      claimCode !== null && claimCode.trim().length > 0
-        ? { mint: () => mintClaimLinkHandoff(claimCode) }
-        : null,
-    [claimCode],
-  );
 
   if (result === null) {
     // issue #2198 — a verified terminal outcome outranks the calm spinner.
@@ -579,7 +569,9 @@ function CheckoutTripConfirmScreenInner({
           email={result.buyerContact?.email ?? null}
           phoneLast4={result.buyerContact?.phoneLast4 ?? null}
           shortUrl={result.claim?.shortUrl ?? null}
-          handoff={claimHandoff}
+          // #4420 — Seth's call: the confirmation QR is the store-routing
+          // download link, which always works (no minted code to fail).
+          handoff={null}
           textSent={
             result.buyerContact?.phoneLast4 !== null &&
             result.buyerContact?.phoneLast4 !== undefined &&

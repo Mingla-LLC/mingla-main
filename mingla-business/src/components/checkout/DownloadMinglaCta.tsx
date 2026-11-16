@@ -60,7 +60,15 @@ import {
   buyerSignInCopy,
   type BuyerClaimNoun,
 } from "../../constants/buyerClaimCopy";
-import { radius, color, space } from "../../constants/designSystem";
+import { radius, space } from "../../constants/designSystem";
+// #4420 — the claim card wears the host's colours on the confirmation page
+// (spec D-C1); with no host palette active it falls back to Graphite.
+import {
+  checkoutAccentFill,
+  checkoutOnAccent,
+  checkoutStyles,
+  color,
+} from "./checkoutTheme";
 import {
   detectClientPlatform,
   openAppScheme,
@@ -153,6 +161,13 @@ const useReducedMotionOnWeb = (): boolean => {
 };
 
 type BuyerClaimVariant = "auto" | "phone" | "desktop";
+
+// #4420 spec §4.2 Confirm — a 168 white tile, radius 16. The 12px of white
+// around the code is the quiet zone that keeps it scannable on dark host
+// colours.
+const CLAIM_QR_TILE = 168;
+const CLAIM_QR_PADDING = 12;
+const CLAIM_QR_SIZE = CLAIM_QR_TILE - CLAIM_QR_PADDING * 2;
 type BuyerClaimCardKind = Exclude<BuyerClaimNoun, "receipt">;
 
 export type BuyerClaimHandoffMintResult =
@@ -380,15 +395,21 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
     return () => clearTimeout(timer);
   }, [analyticsSurface, kind, scan]);
 
+  /**
+   * #4420 — Seth's call: on a phone the ONE button opens THAT phone's store
+   * (the OneLink once it is live, which routes the same way). The ticket is
+   * reconnected after install by `attendance-claim-identity`, which matches
+   * the account's own verified email or phone against the order (#2217), so
+   * nothing rides this URL and nothing is lost by skipping the claim page.
+   */
   const open = (): void => {
     if (device === null) return;
-    const target =
-      shortUrl ?? resolveConfirmationAppTarget(fallbackEntity, device).ctaUrl;
+    const target = resolveConfirmationAppTarget(fallbackEntity, device).ctaUrl;
     captureBuyerClaim("buyer_claim_cta_tapped", {
       surface: analyticsSurface,
       kind,
       platform: device,
-      target: shortUrl === null ? "store_fallback" : "short_url",
+      target: "store",
     });
     if (Platform.OS === "web") openExternal(target);
     else void Linking.openURL(target);
@@ -398,7 +419,19 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
     display === "desktop" && textSent
       ? buyerDesktopTextFallback(cleanLast4)
       : null;
-  const buttonLabel = BUYER_CLAIM_COPY.button[kind];
+  const buttonLabel =
+    device === "android"
+      ? BUYER_CLAIM_COPY.storeButton.android
+      : BUYER_CLAIM_COPY.storeButton.ios;
+  // The desktop QR that always works: the device-routing download URL, so the
+  // phone that scans it lands on its own store. A minted hand-off QR (when a
+  // surface passes `handoff`) replaces it only while that code is live; every
+  // failure falls back here instead of to a dead end.
+  const storeQrUrl = resolveConfirmationAppTarget(fallbackEntity, "other").qrUrl;
+  const showStoreQr =
+    scan.phase === "idle" ||
+    scan.phase === "error" ||
+    scan.phase === "rate_limited";
 
   return (
     <View
@@ -417,7 +450,7 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
         <>
           <Pressable
             accessibilityRole="link"
-            accessibilityLabel={`${buttonLabel}, opens the Mingla app or the app store`}
+            accessibilityLabel={buttonLabel}
             style={({
               pressed,
               hovered,
@@ -468,7 +501,7 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
                 accessibilityRole="image"
                 accessibilityLabel={`${BUYER_CLAIM_COPY.scanInstruction[kind]} This is not your ticket.`}
               >
-                <GateQr value={scan.handoffUrl} size={220} />
+                <GateQr value={scan.handoffUrl} size={CLAIM_QR_SIZE} />
               </View>
               <Text style={styles.claimScanInstruction}>
                 {BUYER_CLAIM_COPY.scanInstruction[kind]}
@@ -497,22 +530,19 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
                 </Text>
               </Pressable>
             </View>
-          ) : scan.phase === "rate_limited" ? (
-            <Text
-              style={styles.claimScanStatus}
-              accessibilityLiveRegion="polite"
-              role="status"
-            >
-              {BUYER_CLAIM_COPY.scanRateLimited}
-            </Text>
-          ) : scan.phase === "error" ? (
-            <Text
-              style={styles.claimScanStatus}
-              accessibilityLiveRegion="polite"
-              role="status"
-            >
-              {BUYER_CLAIM_COPY.scanError}
-            </Text>
+          ) : showStoreQr ? (
+            <View style={styles.claimQrGroup} testID="buyer-claim-store-qr">
+              <View
+                style={styles.claimQrPlate}
+                accessibilityRole="image"
+                accessibilityLabel={BUYER_CLAIM_COPY.storeScanInstruction}
+              >
+                <GateQr value={storeQrUrl} size={CLAIM_QR_SIZE} />
+              </View>
+              <Text style={styles.claimScanInstruction}>
+                {BUYER_CLAIM_COPY.storeScanInstruction}
+              </Text>
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -733,7 +763,7 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   claimCard: {
     gap: space[2],
     padding: space[4],
@@ -764,8 +794,9 @@ const styles = StyleSheet.create({
     color: color.text3,
   },
   claimDesktop: {
-    gap: space[2],
-    alignItems: "center",
+    gap: space[3],
+    marginTop: space[2],
+    alignItems: "flex-start",
   },
   claimTextFallback: {
     alignSelf: "stretch",
@@ -773,37 +804,37 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: color.text3,
   },
+  // #4420 — every line in the card shares the card's left edge; a centred
+  // status line inside a left-aligned card read as a layout bug.
   claimScanState: {
     gap: space[2],
-    alignItems: "center",
+    alignItems: "flex-start",
   },
   claimScanStatus: {
     fontSize: 14,
     lineHeight: 20,
-    textAlign: "center",
     color: color.text2,
   },
   claimQrGroup: {
     gap: space[2],
-    alignItems: "center",
+    alignItems: "flex-start",
   },
   claimQrPlate: {
-    width: 220,
-    height: 220,
-    padding: 0,
+    width: CLAIM_QR_TILE,
+    height: CLAIM_QR_TILE,
+    padding: CLAIM_QR_PADDING,
+    borderRadius: 16,
     backgroundColor: color.paper,
   },
   claimScanInstruction: {
     fontSize: 14,
     lineHeight: 20,
-    textAlign: "center",
     fontWeight: "700",
     color: color.text1,
   },
   claimScanDisclaimer: {
     fontSize: 13,
     lineHeight: 18,
-    textAlign: "center",
     color: color.text3,
   },
   card: {
@@ -845,7 +876,7 @@ const styles = StyleSheet.create({
     gap: space[2],
     paddingHorizontal: space[4],
     borderRadius: radius.md,
-    backgroundColor: color.accent,
+    ...checkoutAccentFill(),
   },
   primaryBadgeHovered: {
     opacity: 0.94,
@@ -860,7 +891,7 @@ const styles = StyleSheet.create({
     outlineOffset: 2,
   },
   primaryBadgeText: {
-    color: color.textStrong,
+    color: checkoutOnAccent(),
     fontWeight: "700",
   },
   claimNoteRow: {
@@ -884,6 +915,6 @@ const styles = StyleSheet.create({
     color: color.text1,
     fontWeight: "700",
   },
-});
+}));
 
 export default DownloadMinglaCta;

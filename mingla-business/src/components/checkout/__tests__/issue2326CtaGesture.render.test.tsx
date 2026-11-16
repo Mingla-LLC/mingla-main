@@ -94,6 +94,19 @@ jest.mock("../../../services/postHogService", () => ({
   postHogService: { capture: jest.fn() },
 }));
 
+// #4420 — the card now reads the host palette from checkoutTheme, which pulls
+// the whole offering-rendering package; this gesture harness only needs the
+// Graphite defaults, so it gets the plain design-system colours.
+jest.mock("../checkoutTheme", () => {
+  const { color } = jest.requireActual("../../../constants/designSystem");
+  return {
+    color,
+    checkoutStyles: <T,>(factory: () => T): T => factory(),
+    checkoutAccentFill: () => ({ backgroundColor: color.accent }),
+    checkoutOnAccent: () => color.textStrong,
+  };
+});
+
 import { DownloadMinglaCta } from "../DownloadMinglaCta";
 import {
   APP_STORE_URL,

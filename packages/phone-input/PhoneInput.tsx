@@ -118,6 +118,12 @@ export interface PhoneInputProps {
   onFocus?: () => void;
   onBlur?: () => void;
   /**
+   * #4420 — keep one line of space under the field whether or not an error is
+   * showing, so the form below never jumps when the error appears or clears.
+   * Off by default: existing hosts keep their layout.
+   */
+  reserveErrorSpace?: boolean;
+  /**
    * Optional host-owned native text input. Bottom-sheet hosts pass their
    * keyboard-aware input here so focus, blur, and sheet restoration stay on
    * the same interaction rail. Ordinary hosts keep the native TextInput.
@@ -177,6 +183,7 @@ export const PhoneInput = ({
   maxLength,
   onFocus,
   onBlur,
+  reserveErrorSpace = false,
   inputComponent,
   smartEntry = false,
   metrics,
@@ -218,8 +225,11 @@ export const PhoneInput = ({
 
   // Trigger shake animation when error appears, unless the platform's reduced
   // motion setting asks us to present the border and alert copy immediately.
+  // #4420 — only when an error APPEARS (none → some). A host that refines the
+  // message as the person types (wrong country, too short, too long) used to
+  // shake the field on every keystroke, which read as the form glitching.
   useEffect(() => {
-    if (error && error !== prevError.current && !reduceMotion) {
+    if (error && !prevError.current && !reduceMotion) {
       Animated.sequence([
         Animated.timing(shakeAnim, {
           toValue: -10,
@@ -480,13 +490,15 @@ export const PhoneInput = ({
 
       {error ? (
         <Text
-          style={errorTextStyle}
+          style={[errorTextStyle, reserveErrorSpace ? styles.errorSlotText : null]}
           accessibilityRole="alert"
           aria-live="polite"
           testID={testID ? `${testID}-error` : undefined}
         >
           {error}
         </Text>
+      ) : reserveErrorSpace ? (
+        <View style={styles.errorSlot} testID={testID ? `${testID}-error-slot` : undefined} />
       ) : null}
 
       {pickerVisible ? (
@@ -571,6 +583,13 @@ const styles = StyleSheet.create({
     ...typography.sm,
     marginTop: spacing.xs,
     paddingLeft: spacing.xs,
+  },
+  // One error line: typography.sm's lineHeight, plus its marginTop when empty.
+  errorSlot: {
+    minHeight: 20 + spacing.xs,
+  },
+  errorSlotText: {
+    minHeight: 20,
   },
   accessoryBar: {
     flexDirection: "row",
