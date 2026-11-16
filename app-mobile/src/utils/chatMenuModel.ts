@@ -28,7 +28,8 @@ export type FriendMenuItemId =
   | "unpair"
   | "removeFriend"
   | "report"
-  | "block";
+  | "block"
+  | "clearChat";
 
 export interface FriendMenuItem {
   id: FriendMenuItemId;
@@ -72,6 +73,8 @@ export const FRIEND_MENU_ORDER: readonly FriendMenuItemId[] = [
   "removeFriend",
   "report",
   "block",
+  // Issue #4435: appended after today's items.
+  "clearChat",
 ];
 
 const ITEMS: Record<FriendMenuItemId, Omit<FriendMenuItem, "id">> = {
@@ -89,6 +92,7 @@ const ITEMS: Record<FriendMenuItemId, Omit<FriendMenuItem, "id">> = {
   removeFriend: { labelKey: "chat:menuRemoveFriend", icon: "person-remove-outline", tone: "danger" },
   report: { labelKey: "chat:menuReport", icon: "flag-outline", tone: "danger" },
   block: { labelKey: "chat:menuBlock", icon: "ban-outline", tone: "danger" },
+  clearChat: { labelKey: "chat:menuClearChat", icon: "trash-outline", tone: "danger" },
 };
 
 function included(id: FriendMenuItemId, ctx: FriendMenuContext): boolean {
@@ -119,6 +123,9 @@ function included(id: FriendMenuItemId, ctx: FriendMenuContext): boolean {
     case "report":
     case "block":
       return true;
+    case "clearChat":
+      // Issue #4435: Clear chat for me only, in the 1:1 thread's ⋯.
+      return ctx.surface === "chat" && ctx.hasConversation;
     default: {
       const never: never = id;
       return never;

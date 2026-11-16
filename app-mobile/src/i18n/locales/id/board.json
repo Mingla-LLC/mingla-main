@@ -63,7 +63,12 @@
     "tryDifferentName": "Coba nama atau username lain", "addMoreFriends": "Tambah lebih banyak teman untuk diundang",
     "sendInvites": "Kirim Undangan ({{count}})", "invitesSent": "Undangan Terkirim",
     "invitesSentMsg": "Berhasil mengundang {{count}} teman{{plural}} ke \"{{name}}\".",
-    "errorSendInvites": "Gagal mengirim undangan. Silakan coba lagi.", "error": "Kesalahan"
+    "errorSendInvites": "Gagal mengirim undangan. Silakan coba lagi.", "error": "Kesalahan",
+    "addPeople": "Tambah ({{count}})",
+    "peopleAdded": "Ditambahkan",
+    "peopleAddedMsg": "{{count}} ditambahkan ke \"{{name}}\". Mereka langsung masuk.",
+    "noneAdded": "Tidak ada yang ditambahkan. Mungkin mereka sudah di grup.",
+    "groupFull": "Grup muat sampai 15 orang. Pilih lebih sedikit teman."
   },
   "manageBoardModal": {
     "manageBoard": "Kelola Papan", "members": "Anggota", "admin": "Admin", "creator": "Pembuat", "you": "(Anda)",

@@ -141,7 +141,12 @@
     "invitesSent": "הזמנות נשלחו",
     "invitesSentMsg": "הוזמנו בהצלחה {{count}} חבר{{plural}} ל-\"{{name}}\".",
     "errorSendInvites": "שליחת ההזמנות נכשלה. נסה שוב.",
-    "error": "שגיאה"
+    "error": "שגיאה",
+    "addPeople": "הוספה ({{count}})",
+    "peopleAdded": "נוספו",
+    "peopleAddedMsg": "{{count}} נוספו ל\"{{name}}\". הם בפנים מיד.",
+    "noneAdded": "אף אחד לא נוסף. אולי הם כבר בקבוצה.",
+    "groupFull": "בקבוצה יש מקום ל-15 אנשים. בחרו פחות חברים."
   },
   "manageBoardModal": {
     "manageBoard": "ניהול לוח",

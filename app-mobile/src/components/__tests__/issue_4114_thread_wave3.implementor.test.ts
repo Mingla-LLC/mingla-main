@@ -60,14 +60,15 @@ Deno.test("W3 no success toast before the confirm settles", async () => {
   assert(/settleReport\(true\)/.test(page) && /settleReport\(false\)/.test(page), "report settles both ways");
 });
 
-Deno.test("W3 the session-less group ⋯ opens group info (was a dead tap)", async () => {
+// #4435 (spec part 3, flow 3): session groups now open group info too, with
+// roles; the chat no longer renders BoardSettingsDropdown (board screens keep it).
+Deno.test("W3 every group ⋯ opens group info (was a dead tap; #4435: session groups too)", async () => {
   const chat = strip(await read("components/MessageInterface.tsx"));
   const more = body(chat, /const handleHeaderMorePress = \(\) =>/);
-  assert(/if \(isGroupChat && !friend\.sessionId\) \{[\s\S]*setShowGroupInfo\(true\)/.test(more), "⋯ opens group info");
-  assert(/<GroupInfoSheet[\s\S]{0,200}visible=\{Boolean\(isGroupChat && !friend\.sessionId && !isTripEventGroupChat && showGroupInfo\)\}/.test(chat),
-    "group info mounts for session-less groups");
-  assert(/<BoardSettingsDropdown[\s\S]{0,120}isGroupChat && showMoreOptionsMenu && friend\.sessionId/.test(chat),
-    "session groups keep BoardSettingsDropdown");
+  assert(/if \(isGroupChat\) \{[\s\S]*setShowGroupInfo\(true\)/.test(more), "⋯ opens group info");
+  assert(/<GroupInfoSheet[\s\S]{0,200}visible=\{Boolean\(isGroupChat && !isTripEventGroupChat && showGroupInfo\)\}/.test(chat),
+    "group info mounts for every group but event and trip chats");
+  assert(!/<BoardSettingsDropdown/.test(chat), "#4435: the chat no longer uses BoardSettingsDropdown");
   const sheet = strip(await read("components/chat/GroupInfoSheet.tsx"));
   assert(/setConversationMuted\(/.test(sheet) && /leaveGroupConversation\(/.test(sheet), "group info mutes and leaves");
 });

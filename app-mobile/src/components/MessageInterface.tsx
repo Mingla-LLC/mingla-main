@@ -79,7 +79,22 @@ import {
 import { DmCollabStartFailure, endDmCollab, startDmCollab } from "../services/dmCollabService";
 import { acceptCollaborationInvite, declineCollaborationInvite } from "../services/collaborationInviteService";
 import { ChatActionList } from "./chat/ChatActionList";
-import { GroupInfoSheet } from "./chat/GroupInfoSheet";
+import { GroupInfoSheet, type SessionGroupInfo } from "./chat/GroupInfoSheet";
+
+/** #4435: the session_participants row shape useBoardSession loads (with profiles). */
+interface SessionParticipantRow {
+  user_id: string;
+  has_accepted?: boolean | null;
+  is_admin?: boolean | null;
+  joined_at?: string | null;
+  profiles?: {
+    username?: string | null;
+    display_name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    avatar_url?: string | null;
+  } | null;
+}
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import { ChatAttachSheet } from "./chat/ChatAttachSheet";
 import { InAppBrowserProvider, useOpenInMingla } from "./InAppBrowserProvider";
@@ -99,11 +114,11 @@ import {
 import { openViewOnceMedia, peekChatMediaUrl, resolveChatMediaUrl } from "../services/chatMediaUploadService";
 import { SavedCardPicker } from "./chat/SavedCardPicker";
 import { buildFriendMenu, type FriendMenuItemId } from "../utils/chatMenuModel";
+import { useShareGroupLink } from "../hooks/useGroupLink";
 import {
   getCollabChatHeaderActions,
   type CollabChatHeaderActionId,
 } from "./connections/collabChatHeaderUtils";
-import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
 import type { Participant } from "./board/ParticipantAvatars";
@@ -189,6 +204,7 @@ import {
   planQuoteFallbackKey,
   planQuoteNote,
   viewerQuoteSnapshot,
+  clearOpenPlanCards,
   type PlanCommentReply,
 } from "./chat/planModel";
 import { PlanPlaceSuggestSheet } from "./chat/PlanPlaceSuggestSheet";
@@ -444,6 +460,8 @@ interface MessageInterfaceProps {
    * reported" toast fires only on `true`, never before the confirm.
    */
   onRemoveFriend?: (friend: any, onSettled?: (removed: boolean) => void) => void;
+  /** Issue #4435: Clear chat for me only; resolves true when the server cleared it. */
+  onClearChat?: (conversationId: string) => Promise<boolean>;
   onBlockUser?: (friend: any, onSettled?: (blocked: boolean) => void) => void;
   onReportUser?: (friend: any, onSettled?: (reported: boolean) => void) => void;
   /** Issue #4114 Wave 3: 1:1 mute (per person). Resolves true once saved. */
@@ -547,6 +565,7 @@ function MessageInterfaceInner({
   onOpenAddToBoardModal,
   onShareSavedCard,
   onRemoveFriend,
+  onClearChat,
   onBlockUser,
   onReportUser,
   accountPreferences,
@@ -750,6 +769,8 @@ function MessageInterfaceInner({
   const openingViewOnceRef = useRef<string | null>(null);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  // #4435: the deck's "Add people" opens group info straight on Add people.
+  const [groupInfoStartsOnAdd, setGroupInfoStartsOnAdd] = useState(false);
   const [showMediaSheet, setShowMediaSheet] = useState(false);
   // Issue #4114 Wave 7: an album opens the lightbox on all its photos at the tapped one.
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
@@ -806,38 +827,54 @@ function MessageInterfaceInner({
   // Stable for the thread's renderItem and bubble handlers.
   const openCollabPlanCardRef = useRef(openCollabPlanCard);
   openCollabPlanCardRef.current = openCollabPlanCard;
-  const { session: collabSession } = useBoardSession(
-    collabSessionId ?? undefined,
-  );
-  const groupSettingsParticipants = useMemo(() => {
-    const collabParticipants = (collabSession?.participants as any[] | undefined) ?? [];
-    if (isCollabSessionGroupChat && collabParticipants.length > 0) {
-      return collabParticipants;
-    }
-
-    return headerParticipants.map((participant) => ({
-      user_id: participant.id,
-      session_id: friend.sessionId ?? "",
-      has_accepted: true,
-      is_admin: participant.id === friend.sessionCreatorId,
-      notifications_muted: participant.id === currentUserId
-        ? friend.notificationsMuted ?? false
-        : false,
-      profiles: {
-        id: participant.id,
-        username: participant.username,
-        display_name: participant.name,
-        avatar_url: participant.avatar_url,
+  const {
+    session: collabSession,
+    loading: collabSessionLoading,
+    error: collabSessionError,
+    loadSession: loadCollabSession,
+  } = useBoardSession(collabSessionId ?? undefined);
+  // Issue #4435: session groups open GroupInfoSheet with roles. Members are
+  // the session's accepted rows (useBoardSession keeps them live).
+  const sessionGroupInfo: SessionGroupInfo | null = useMemo(() => {
+    if (!isCollabSessionGroupChat || !friend.sessionId) return null;
+    const creatorId = (collabSession?.created_by as string | undefined) ?? friend.sessionCreatorId ?? null;
+    const rows = ((collabSession?.participants as SessionParticipantRow[] | undefined) ?? []).filter(
+      (row) => row.has_accepted === true && typeof row.user_id === "string",
+    );
+    return {
+      sessionId: friend.sessionId,
+      creatorId,
+      members: rows.map((row) => ({
+        userId: row.user_id,
+        isCreator: row.user_id === creatorId,
+        isAdmin: row.is_admin === true || row.user_id === creatorId,
+        joinedAt: row.joined_at ?? null,
+        name: getDisplayName(row.profiles ?? undefined, row.profiles?.username || "?"),
+        username: row.profiles?.username ?? null,
+        avatarUrl: row.profiles?.avatar_url ?? null,
+      })),
+      loading: collabSessionLoading,
+      error: Boolean(collabSessionError),
+      onRetry: () => void loadCollabSession(friend.sessionId as string),
+      onChanged: () => {
+        void loadCollabSession(friend.sessionId as string);
+        onGroupParticipantsChange?.();
       },
-    }));
+      onRenamed: (newName: string) => onSessionNameUpdated?.(friend.sessionId as string, newName),
+      onDeleted: () => onGroupSessionDeleted?.(friend.sessionId as string),
+    };
   }, [
+    collabSession?.created_by,
     collabSession?.participants,
-    currentUserId,
-    friend.notificationsMuted,
+    collabSessionError,
+    collabSessionLoading,
     friend.sessionCreatorId,
     friend.sessionId,
-    headerParticipants,
     isCollabSessionGroupChat,
+    loadCollabSession,
+    onGroupParticipantsChange,
+    onGroupSessionDeleted,
+    onSessionNameUpdated,
   ]);
   const queryClient = useQueryClient();
   // Amendment 1 (B-4): a "joined" / "added" group row arriving refetches who is in the chat.
@@ -2052,6 +2089,47 @@ function MessageInterfaceInner({
 
   // Present-after-dismiss: iOS shows one RN Modal at a time, so a row that
   // opens another sheet or an alert waits for the menu to finish leaving.
+  // Issue #4435: the deck's group-of-one state shares the group link.
+  const { share: shareGroupLinkFromDeck } = useShareGroupLink(isGroupChat ? conversationId : null, headerTitle);
+
+  // ── Issue #4435: Clear chat (for me only) ──────────────────────────────
+  const [isClearingChat, setIsClearingChat] = useState(false);
+  const [clearedAt, setClearedAt] = useState<string | null>(null);
+  useEffect(() => {
+    setClearedAt(null);
+    if (!conversationId || !currentUserId) return;
+    let live = true;
+    void messagingService.getClearedAt(conversationId, currentUserId).then((value) => {
+      if (live) setClearedAt(value);
+    });
+    return () => {
+      live = false;
+    };
+  }, [conversationId, currentUserId]);
+  const handleClearChat = () => {
+    if (!conversationId || !onClearChat || isClearingChat) return;
+    const otherName = cleanName(friend.name).split(" ")[0] || cleanName(friend.name);
+    Alert.alert(
+      t("chat:clear_confirm_title"),
+      isGroupChat ? t("chat:clear_confirm_body_group") : t("chat:clear_confirm_body_dm", { name: otherName }),
+      [
+        { text: t("common:cancel"), style: "cancel" },
+        {
+          text: t("chat:clear_action"),
+          style: "destructive",
+          onPress: () => {
+            setIsClearingChat(true);
+            void onClearChat(conversationId)
+              .then((cleared) => {
+                if (cleared) setClearedAt(new Date().toISOString());
+              })
+              .finally(() => setIsClearingChat(false));
+          },
+        },
+      ],
+    );
+  };
+
   const afterMenuCloses = (run: () => void) => {
     setShowMoreOptionsMenu(false);
     setTimeout(run, MENU_PRESENT_AFTER_DISMISS_MS);
@@ -2097,6 +2175,9 @@ function MessageInterfaceInner({
       case "endCollab":
         afterMenuCloses(handleEndDmCollab);
         return;
+      case "clearChat":
+        afterMenuCloses(handleClearChat);
+        return;
       case "sendPair":
       case "pairPending":
       case "unpair":
@@ -2110,35 +2191,6 @@ function MessageInterfaceInner({
     }
   };
 
-  const handleExitGroupSession = useCallback(() => {
-    if (!friend.sessionId || !currentUserId) return;
-
-    Alert.alert(
-      t("social:leaveSessionConfirmTitle"),
-      t("social:leaveSessionConfirmBody"),
-      [
-        { text: t("common:cancel"), style: "cancel" },
-        {
-          text: t("social:leaveSessionMenuItem"),
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from("session_participants")
-                .delete()
-                .eq("session_id", friend.sessionId)
-                .eq("user_id", currentUserId);
-              if (error) throw error;
-              onGroupSessionExited?.(friend.sessionId!);
-            } catch (error: any) {
-              console.error("[MessageInterface] Failed to leave group session:", error);
-              Alert.alert("Could not leave session", error?.message || "Please try again.");
-            }
-          },
-        },
-      ],
-    );
-  }, [currentUserId, friend.sessionId, onGroupSessionExited, t]);
 
   // ORCH-0620 / #4187 composer position:
   //   - Closed: clear the actual rendered floating-nav capsule by 8pt. The old
@@ -2220,9 +2272,9 @@ function MessageInterfaceInner({
       : t('chat:eventChannelLine', { brand: channelBrand });
 
   // Issue #4114 Wave 3: every chat's ⋯ opens something. Event and trip chats
-  // open their audience; session groups their settings (BoardSettingsDropdown);
-  // a group with no session (it used to be a dead tap) its group info; a 1:1
-  // chat the one shared action menu.
+  // open their audience; every other group its group info (#4435: session
+  // groups too, with roles; the chat no longer uses BoardSettingsDropdown);
+  // a 1:1 chat the one shared action menu.
   const handleHeaderMorePress = () => {
     if (isTripEventGroupChat) {
       setShowMoreOptionsMenu(false);
@@ -2231,8 +2283,9 @@ function MessageInterfaceInner({
       setShowEventAudienceSheet(true);
       return;
     }
-    if (isGroupChat && !friend.sessionId) {
+    if (isGroupChat) {
       setShowMoreOptionsMenu(false);
+      setGroupInfoStartsOnAdd(false);
       setShowGroupInfo(true);
       return;
     }
@@ -2472,9 +2525,22 @@ function MessageInterfaceInner({
     // cleanName / getHeaderParticipantName are pure helpers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId, currentUserName, headerParticipants, participantsQuery.data, t]);
+  // Issue #4435 (decision 5): a vote or RSVP from someone no longer in the
+  // group (they stay on locked plans) reads "{name} (left)".
+  const memberListLoaded = Boolean(participantsQuery.data);
+  // Decision F: opened plan cards stay open for the life of this open chat.
+  useEffect(() => {
+    if (!conversationId) return;
+    return () => clearOpenPlanCards(conversationId);
+  }, [conversationId]);
   const planNameOf = useCallback(
-    (userId: string | null): string => resolveMemberName(userId) ?? t('chat:planSetBySomeone'),
-    [resolveMemberName, t],
+    (userId: string | null): string => {
+      const current = resolveMemberName(userId);
+      if (current) return current;
+      if (!userId || !isGroupChat || !memberListLoaded) return t('chat:planSetBySomeone');
+      return t('chat:plan_member_left', { name: messagingService.cachedSenderName(userId) ?? t('chat:planSetBySomeone') });
+    },
+    [isGroupChat, memberListLoaded, resolveMemberName, t],
   );
   const [planCommentsFor, setPlanCommentsFor] = useState<ChatPlan | null>(null);
 
@@ -3319,6 +3385,15 @@ function MessageInterfaceInner({
             >
               <ActivityIndicator size="small" color={chatTokens.textSoft} />
             </View>
+          ) : (isClearingChat || clearedAt) && !isTripEventGroupChat ? (
+            // Issue #4435 QA: a chat I cleared (nothing new since) says so,
+            // instead of "Start your conversation".
+            <View style={styles.clearedNotice} accessibilityRole="text" testID="chat-thread-cleared">
+              {isClearingChat ? <ActivityIndicator size="small" color={colors.gray400} /> : null}
+              <Text style={styles.clearedNoticeText}>
+                {isClearingChat ? t("chat:clearing") : t("chat:cleared_notice")}
+              </Text>
+            </View>
           ) : (
           <View style={styles.emptyState}>
             <View style={styles.emptyStateIcon}>
@@ -3375,6 +3450,15 @@ function MessageInterfaceInner({
                 accessibilityLabel={t('chat:loadingOlderMessages')}
               >
                 <ActivityIndicator size="small" color={colors.gray400} />
+              </View>
+            ) : isClearingChat ? (
+              <View style={styles.clearedNotice} accessibilityRole="progressbar" accessibilityLabel={t("chat:clearing")}>
+                <ActivityIndicator size="small" color={colors.gray400} />
+                <Text style={styles.clearedNoticeText}>{t("chat:clearing")}</Text>
+              </View>
+            ) : clearedAt && !hasOlderMessages ? (
+              <View style={styles.clearedNotice} accessibilityRole="text">
+                <Text style={styles.clearedNoticeText}>{t("chat:cleared_notice")}</Text>
               </View>
             ) : null
           }
@@ -3488,6 +3572,7 @@ function MessageInterfaceInner({
             conversationId={planConversationId}
             senderId={currentUserId}
             chatName={headerTitle}
+            memberCount={chatPlansPayload?.memberCount ?? 2}
           />
           <PlanActionsMenu
             plan={planMenuFor}
@@ -4021,6 +4106,10 @@ function MessageInterfaceInner({
           onAddToCalendar={onAddToCalendar}
           onPurchaseComplete={onPurchaseComplete}
           onOpenPreferences={onOpenPreferences}
+          onShareGroupLink={conversationId ? () => { void shareGroupLinkFromDeck(); } : undefined}
+          // #4435 QA F-2: the deck closes itself and calls this only after its
+          // full-screen modal is gone (no timer racing the iOS dismissal).
+          onAddGroupPeople={friend.sessionId ? () => { setGroupInfoStartsOnAdd(true); setShowGroupInfo(true); } : undefined}
         />
       ) : null}
 
@@ -4078,29 +4167,6 @@ function MessageInterfaceInner({
         </>
       ) : null}
 
-      <BoardSettingsDropdown
-        visible={Boolean(isGroupChat && showMoreOptionsMenu && friend.sessionId)}
-        theme="dark"
-        onClose={() => setShowMoreOptionsMenu(false)}
-        sessionId={friend.sessionId ?? ""}
-        sessionName={headerTitle}
-        // Issue #4261: the group link section (Wave B1) reads the chat id.
-        conversationId={conversationId ?? undefined}
-        sessionCreatorId={friend.sessionCreatorId ?? undefined}
-        currentUserId={currentUserId ?? undefined}
-        isAdmin={friend.isSessionAdmin ?? (!!currentUserId && friend.sessionCreatorId === currentUserId)}
-        notificationsMuted={friend.notificationsMuted ?? false}
-        participants={groupSettingsParticipants}
-        onExitBoard={handleExitGroupSession}
-        onSessionDeleted={() => {
-          setShowMoreOptionsMenu(false);
-          if (friend.sessionId) onGroupSessionDeleted?.(friend.sessionId);
-        }}
-        onSessionNameUpdated={(newName) => {
-          if (friend.sessionId) onSessionNameUpdated?.(friend.sessionId, newName);
-        }}
-        onParticipantsChange={onGroupParticipantsChange}
-      />
 
       {/* More options bottom sheet — ORCH-0435. META-ORCH-0991 Wave B Batch 5:
           BaseBottomSheet, fixed ['45%'] snap, wrapInRNModal. Issue #4114 Wave 3:
@@ -4129,8 +4195,11 @@ function MessageInterfaceInner({
       </BaseBottomSheet>
 
       <GroupInfoSheet
-        visible={Boolean(isGroupChat && !friend.sessionId && !isTripEventGroupChat && showGroupInfo)}
-        onClose={() => setShowGroupInfo(false)}
+        visible={Boolean(isGroupChat && !isTripEventGroupChat && showGroupInfo)}
+        onClose={() => {
+          setShowGroupInfo(false);
+          setGroupInfoStartsOnAdd(false);
+        }}
         conversationId={conversationId}
         currentUserId={currentUserId}
         name={headerTitle}
@@ -4138,9 +4207,15 @@ function MessageInterfaceInner({
         initiallyMuted={friend.notificationsMuted ?? false}
         onOpenProfile={onViewProfile}
         onOpenMedia={() => setShowMediaSheet(true)}
-        onLeft={() => onGroupConversationLeft?.()}
+        onLeft={() => {
+          if (isCollabSessionGroupChat && friend.sessionId) onGroupSessionExited?.(friend.sessionId);
+          else onGroupConversationLeft?.();
+        }}
         onError={(message) => showNotification(message, "", "error")}
         managed={isProgramChat}
+        onClearChat={onClearChat && conversationId ? () => { setShowGroupInfo(false); setTimeout(handleClearChat, MENU_PRESENT_AFTER_DISMISS_MS); } : undefined}
+        session={sessionGroupInfo}
+        startWithAddPeople={groupInfoStartsOnAdd}
       />
 
       <ChatMediaSheet
@@ -4220,6 +4295,17 @@ const styles = StyleSheet.create({
     backgroundColor: chatTokens.surfaceRaised,
   },
   neutralBannerText: {
+    color: chatTokens.textSecondary,
+  },
+  clearedNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+  },
+  clearedNoticeText: {
+    fontSize: 12,
     color: chatTokens.textSecondary,
   },
   groupTyping: {

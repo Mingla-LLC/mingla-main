@@ -7,16 +7,26 @@
  * minted when the form opened (a retry never doubles the plan), closes on
  * success with "Posted to {chat}. Everyone gets a notification." and keeps the
  * form (with the mapped error toast) on failure.
+ *
+ * Issue #4435 (design v4 flow 5): one sheet. Only the picked Where (Place,
+ * Link, None) and When (Set a time, Let the group vote) open their fields; the
+ * note is one tap away, folded; Post is pinned at the bottom with a plain
+ * "what's missing" line; a time vote says when a plan locks in by itself (only
+ * with 2 or more people; a group of one locks it in themselves). The server
+ * payload is unchanged (planCreateInput).
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { toastManager } from "../ui/Toast";
 import { chatTokens } from "../../constants/chatTokens";
 import { createClientMessageId } from "../../utils/mergeMessages";
 import { useCreatePlan } from "../../hooks/useChatPlans";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
+import { KEYBOARD_TOOLBAR_HEIGHT } from "../../wrappers/keyboardConstants";
 import {
   blankPlanForm,
   canPostPlan,
@@ -25,6 +35,7 @@ import {
   linkDomainOf,
   normalisedLinkUrl,
   planCreateInput,
+  planFormMissing,
   placeLinkInvalid,
   PLAN_FORM_MAX_TIMES,
   PLAN_NOTE_MAX,
@@ -40,12 +51,30 @@ import { PlanPlacePicker } from "./PlanPlacePicker";
 
 const SNAP_POINTS = ["92%"];
 
+/** #4435 QA: a raised sheet stops 8pt below the status bar (breathing room). */
+export function planSheetTopInset(safeTop: number): number {
+  return Math.max(0, safeTop) + 8;
+}
+
+/**
+ * #4435 QA: while the keyboard is up, its Done bar (KEYBOARD_TOOLBAR_HEIGHT)
+ * sits on top of the keyboard, over the sheet's bottom edge. This spacer
+ * lifts Post above it. It renders inside the sheet's own window, so it reads
+ * that window's keyboard state.
+ */
+function KeyboardToolbarSpacer(): React.ReactElement | null {
+  const keyboardUp = useKeyboardIsVisible();
+  return keyboardUp ? <View style={styles.toolbarSpacer} testID="plan-form-toolbar-spacer" /> : null;
+}
+
 interface PlanFormSheetProps {
   visible: boolean;
   onClose: () => void;
   conversationId: string;
   senderId: string | null | undefined;
   chatName: string;
+  /** Accepted members right now (auto-lock needs 2 or more). */
+  memberCount?: number;
 }
 
 function Segmented<T extends string>({
@@ -82,12 +111,14 @@ function Segmented<T extends string>({
   );
 }
 
-export function PlanFormSheet({ visible, onClose, conversationId, senderId, chatName }: PlanFormSheetProps): React.ReactElement {
+export function PlanFormSheet({ visible, onClose, conversationId, senderId, chatName, memberCount = 2 }: PlanFormSheetProps): React.ReactElement {
   const { t, i18n } = useTranslation(["chat"]);
+  const insets = useSafeAreaInsets();
   const [form, setForm] = useState<PlanFormDraft>(blankPlanForm);
   const [clientId, setClientId] = useState<string>(() => createClientMessageId());
   const [sessionToken, setSessionToken] = useState<string>(() => createClientMessageId());
   const [query, setQuery] = useState("");
+  const [noteOpen, setNoteOpen] = useState(false);
   const createPlan = useCreatePlan(conversationId, senderId);
 
   // A fresh form, client id and Google session every time the sheet opens.
@@ -97,10 +128,12 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
     setClientId(createClientMessageId());
     setSessionToken(createClientMessageId());
     setQuery("");
+    setNoteOpen(false);
   }, [visible]);
 
   const patch = (next: Partial<PlanFormDraft>) => setForm((current) => ({ ...current, ...next }));
   const canPost = canPostPlan(form);
+  const missing = planFormMissing(form);
   const posting = createPlan.isPending;
   const days = useMemo(() => quickDays(new Date()), [visible]); // eslint-disable-line react-hooks/exhaustive-deps
   const weekday = (date: string) => {
@@ -160,23 +193,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
         <Text style={styles.cancelText}>{t("chat:plan_form_cancel")}</Text>
       </TouchableOpacity>
       <Text style={styles.headerTitle} accessibilityRole="header">{t("chat:plan_form_title")}</Text>
-      <View style={[styles.headerSide, styles.headerRight]}>
-        <TouchableOpacity
-          style={[styles.post, canPost ? styles.postOn : styles.postOff]}
-          onPress={post}
-          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-          accessibilityRole="button"
-          accessibilityLabel={t("chat:plan_form_post")}
-          accessibilityState={{ disabled: !canPost, busy: posting }}
-          testID="plan-form-post"
-        >
-          {posting ? (
-            <ActivityIndicator size="small" color={chatTokens.textPrimary} />
-          ) : (
-            <Text style={[styles.postText, !canPost && styles.postTextOff]}>{t("chat:plan_form_post")}</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      <View style={styles.headerSide} />
     </View>
   );
 
@@ -194,6 +211,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
       onClose={posting ? () => undefined : onClose}
       theme="dark"
       snapPoints={SNAP_POINTS}
+      topInset={planSheetTopInset(insets.top)}
       scrollMode="scroll"
       wrapInRNModal
       keyboardBehavior="interactive"
@@ -201,6 +219,30 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
       android_keyboardInputMode="adjustResize"
       backgroundStyle={styles.sheetBackground}
       header={header}
+      stickyFooter={
+        <View style={styles.stickyFooter}>
+          {missing ? (
+            <Text style={styles.missing} accessibilityLiveRegion="polite" testID="plan-form-missing">
+              {t(`chat:plan_missing_${missing}`)}
+            </Text>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.postWide, canPost ? styles.postOn : styles.postOff]}
+            onPress={post}
+            accessibilityRole="button"
+            accessibilityLabel={t("chat:plan_form_post")}
+            accessibilityState={{ disabled: !canPost, busy: posting }}
+            testID="plan-form-post"
+          >
+            {posting ? (
+              <ActivityIndicator size="small" color={chatTokens.textPrimary} />
+            ) : (
+              <Text style={[styles.postText, !canPost && styles.postTextOff]}>{t("chat:plan_form_post")}</Text>
+            )}
+          </TouchableOpacity>
+          <KeyboardToolbarSpacer />
+        </View>
+      }
       scrollProps={{ keyboardShouldPersistTaps: "handled", contentContainerStyle: styles.body }}
       accessibilityLabel={t("chat:plan_form_title")}
     >
@@ -227,7 +269,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
           options={[
             { value: "place", label: t("chat:plan_where_place") },
             { value: "link", label: t("chat:plan_where_link") },
-            { value: "none", label: t("chat:plan_where_skip") },
+            { value: "none", label: t("chat:plan_where_none") },
           ]}
         />
         {form.where === "place" ? (
@@ -375,22 +417,44 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
               />
             </View>
             <Text style={styles.subLabel}>{t("chat:plan_vote_helper")}</Text>
+            <View style={styles.autoLock} testID="plan-form-auto-lock">
+              <Icon name="lock-closed" size={14} color={chatTokens.textSoft} />
+              <Text style={styles.autoLockText}>
+                {memberCount >= 2 ? t("chat:plan_auto_lock_group") : t("chat:plan_auto_lock_solo")}
+              </Text>
+            </View>
           </View>
         )}
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.label}>{t("chat:plan_note_label")}</Text>
-        <BottomSheetTextInput
-          value={form.note}
-          onChangeText={(note) => patch({ note })}
-          maxLength={PLAN_NOTE_MAX}
-          multiline
-          placeholderTextColor={chatTokens.textMuted}
-          style={[styles.input, styles.noteInput]}
-          accessibilityLabel={t("chat:plan_note_label")}
-          testID="plan-form-note"
-        />
+        {noteOpen || form.note ? (
+          <>
+            <Text style={styles.label}>{t("chat:plan_note_label")}</Text>
+            <BottomSheetTextInput
+              value={form.note}
+              onChangeText={(note) => patch({ note })}
+              maxLength={PLAN_NOTE_MAX}
+              multiline
+              autoFocus={noteOpen && !form.note}
+              placeholderTextColor={chatTokens.textMuted}
+              style={[styles.input, styles.noteInput]}
+              accessibilityLabel={t("chat:plan_note_label")}
+              testID="plan-form-note"
+            />
+          </>
+        ) : (
+          <TouchableOpacity
+            style={styles.addNote}
+            onPress={() => setNoteOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t("chat:plan_add_note")}
+            testID="plan-form-add-note"
+          >
+            <Icon name="add" size={16} color={chatTokens.tagDeck} />
+            <Text style={styles.addNoteText}>{t("chat:plan_add_note")}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <Text style={styles.footer}>{t("chat:plan_footer_helper", { chatName })}</Text>
@@ -416,6 +480,32 @@ const styles = StyleSheet.create({
   postOn: { backgroundColor: chatTokens.accent },
   postOff: { backgroundColor: chatTokens.strip },
   postText: { color: chatTokens.textPrimary, fontSize: 15, fontWeight: "700" },
+  postWide: { minHeight: 48, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  stickyFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 28,
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: chatTokens.hairline,
+    backgroundColor: chatTokens.surface,
+  },
+  toolbarSpacer: { height: KEYBOARD_TOOLBAR_HEIGHT },
+  missing: { color: chatTokens.textSoft, fontSize: 13, textAlign: "center" },
+  autoLock: { flexDirection: "row", alignItems: "center", gap: 6 },
+  autoLockText: { flex: 1, color: chatTokens.textSoft, fontSize: 12, lineHeight: 17 },
+  addNote: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: chatTokens.hairline,
+    paddingHorizontal: 12,
+  },
+  addNoteText: { color: chatTokens.tagDeck, fontSize: 14, fontWeight: "600" },
   postTextOff: { color: chatTokens.textMuted },
   body: { padding: 16, gap: 20, paddingBottom: 32 },
   section: { gap: 8 },

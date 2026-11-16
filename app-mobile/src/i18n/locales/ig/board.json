@@ -141,7 +141,12 @@
     "invitesSent": "Ezipụla Ọkpụkpọ",
     "invitesSentMsg": "Akpọọla ndị enyi {{count}}{{plural}} na \"{{name}}\" nke ọma.",
     "errorSendInvites": "Enweghị ike izipu ọkpụkpọ. Biko nwaa ọzọ.",
-    "error": "Njehie"
+    "error": "Njehie",
+    "addPeople": "Tinye ({{count}})",
+    "peopleAdded": "Agbakwunyere",
+    "peopleAddedMsg": "Agbakwunyere {{count}} na \"{{name}}\". Ha abanyela ozugbo.",
+    "noneAdded": "Ọ dịghị onye agbakwunyere. Ma eleghị anya ha nọlarị n'otu.",
+    "groupFull": "Otu nwere ike ịnwe ruo mmadụ 15. Họrọ ndị enyi ole na ole."
   },
   "manageBoardModal": {
     "manageBoard": "Jikwaa Bọọdụ",

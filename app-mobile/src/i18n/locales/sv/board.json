@@ -141,7 +141,12 @@
     "invitesSent": "Bjud ins Sent",
     "invitesSentMsg": "Successfully invited {{count}} friend{{plural}} to \"{{name}}\".",
     "errorSendInvites": "Failed to send invites. Please try again.",
-    "error": "Fel"
+    "error": "Fel",
+    "addPeople": "Lägg till ({{count}})",
+    "peopleAdded": "Tillagda",
+    "peopleAddedMsg": "{{count}} tillagda i ”{{name}}”. De är med direkt.",
+    "noneAdded": "Ingen lades till. De kanske redan är med i gruppen.",
+    "groupFull": "En grupp har plats för 15 personer. Välj färre vänner."
   },
   "manageBoardModal": {
     "manageBoard": "Manage Board",

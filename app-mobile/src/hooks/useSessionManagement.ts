@@ -214,7 +214,8 @@ export const useSessionManagementController = () => {
           // Total "members" = real participants + pending phone invites (non-Mingla users)
           const totalMembers = sessionParticipants.length + sessionPhoneInvites.length;
 
-          if (totalMembers < 2) {
+          // Issue #4435: a group of one is a live group (decision Q6).
+          if (totalMembers < 1) {
             return false;
           }
 
@@ -239,7 +240,8 @@ export const useSessionManagementController = () => {
           });
 
           const userParticipation = userParticipations?.find(up => up.session_id === session.id);
-          const allAccepted = participants.length >= 2 && participants.every(p => p.hasAccepted);
+          // Issue #4435: "active" = I accepted and every row is accepted, with 1+ members.
+          const allAccepted = participants.length >= 1 && participants.every(p => p.hasAccepted);
           
           // Determine status based on acceptance and session state
           let status: 'pending' | 'active' | 'dormant' = 'dormant';
@@ -249,11 +251,11 @@ export const useSessionManagementController = () => {
             status = 'pending';
           } 
           // Check if all participants have accepted (active session)  
-          else if (allAccepted && participants.length >= 2) {
+          else if (allAccepted) {
             status = 'active';
-          } 
+          }
           // User accepted but waiting for others (dormant)
-          else if (userParticipation?.has_accepted && participants.length >= 2) {
+          else if (userParticipation?.has_accepted) {
             status = 'dormant';
           }
 
@@ -271,7 +273,7 @@ export const useSessionManagementController = () => {
             name: session.name,
             participants,
             createdAt: session.created_at,
-            isActive: allAccepted && participants.length >= 2,
+            isActive: allAccepted,
             boardId: session.board_id ?? undefined,
             status,
             invitedBy: session.created_by || '',
@@ -347,27 +349,10 @@ export const useSessionManagementController = () => {
         return s?.name?.toLowerCase() === resolvedName.toLowerCase();
       });
 
-      // For each matching session, check if it's a real session (2+ real participants)
-      // or a limbo session (only the creator). Limbo sessions get cleaned up, not blocked.
-      for (const match of matchingParticipations) {
-        const { data: sessionMembers } = await supabase
-          .from('session_participants')
-          .select('user_id')
-          .eq('session_id', match.session_id);
-
-        const realMemberCount = sessionMembers?.length || 0;
-
-        if (realMemberCount >= 2) {
-          // Real session with 2+ participants — block as duplicate
-          throw new Error('A collaboration session already exists with that name.');
-        } else {
-          // Limbo session (creator only, phone invites don't count as real participants yet)
-          // Clean it up so the user can recreate it properly
-          await supabase
-            .from('collaboration_sessions')
-            .delete()
-            .eq('id', match.session_id);
-        }
+      // Issue #4435: a same-name group is a duplicate whatever its size; nothing
+      // is ever deleted here (a group only ends when its last member leaves).
+      if (matchingParticipations.length > 0) {
+        throw new Error('A collaboration session already exists with that name.');
       }
 
       // Clean up any ghost sessions with this name (created by user but no participant record at all)

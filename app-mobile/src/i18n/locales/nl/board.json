@@ -141,7 +141,12 @@
     "invitesSent": "Uitnodigingen verstuurd",
     "invitesSentMsg": "{{count}} vriend{{plural}} succesvol uitgenodigd voor \"{{name}}\".",
     "errorSendInvites": "Uitnodigingen versturen mislukt. Probeer het opnieuw.",
-    "error": "Fout"
+    "error": "Fout",
+    "addPeople": "Toevoegen ({{count}})",
+    "peopleAdded": "Toegevoegd",
+    "peopleAddedMsg": "{{count}} toegevoegd aan \"{{name}}\". Ze zitten er meteen in.",
+    "noneAdded": "Niemand is toegevoegd. Misschien zitten ze al in de groep.",
+    "groupFull": "Een groep heeft plek voor 15 mensen. Kies minder vrienden."
   },
   "manageBoardModal": {
     "manageBoard": "Bord beheren",

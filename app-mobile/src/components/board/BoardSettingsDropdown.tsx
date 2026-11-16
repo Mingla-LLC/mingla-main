@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
+import { removeGroupMember, resolveSessionConversationId, setGroupAdmin } from "../../services/groupChatService";
 import { useTranslation } from "react-i18next";
 import { getDisplayName } from "../../utils/getDisplayName";
 import { truncateString } from "../../utils/general";
@@ -486,12 +487,9 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
               style: "destructive",
               onPress: async () => {
                 try {
-                  const { error } = await supabase
-                    .from("session_participants")
-                    .update({ is_admin: false })
-                    .eq("session_id", sessionId)
-                    .eq("user_id", memberUserId);
-                  if (error) throw error;
+                  // Issue #4435: server-checked (any admin; the creator and the last admin stay).
+                  const groupConversationId = conversationId ?? await resolveSessionConversationId(sessionId);
+                  await setGroupAdmin(groupConversationId, memberUserId, false);
                   setAdminUsers((prev) => {
                     const s = new Set(prev);
                     s.delete(memberUserId);
@@ -508,12 +506,9 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         );
       } else {
         try {
-          const { error } = await supabase
-            .from("session_participants")
-            .update({ is_admin: true })
-            .eq("session_id", sessionId)
-            .eq("user_id", memberUserId);
-          if (error) throw error;
+          // Issue #4435: server-checked (any admin).
+          const groupConversationId = conversationId ?? await resolveSessionConversationId(sessionId);
+          await setGroupAdmin(groupConversationId, memberUserId, true);
           setAdminUsers((prev) => new Set([...prev, memberUserId]));
           onParticipantsChange?.();
         } catch (err: any) {
@@ -522,7 +517,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         }
       }
     },
-    [currentUserId, sessionId, sessionCreatorId, onParticipantsChange, t]
+    [currentUserId, sessionId, sessionCreatorId, conversationId, onParticipantsChange, t]
   );
 
   const handleRemoveMember = useCallback(
@@ -554,18 +549,11 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
             style: "destructive",
             onPress: async () => {
               try {
-                await supabase
-                  .from("collaboration_invites")
-                  .delete()
-                  .eq("session_id", sessionId)
-                  .eq("invited_user_id", memberUserId);
-
-                const { error } = await supabase
-                  .from("session_participants")
-                  .delete()
-                  .eq("session_id", sessionId)
-                  .eq("user_id", memberUserId);
-                if (error) throw error;
+                // Issue #4435: server-checked remove (any admin; never the creator).
+                // The server deletes the member row and their invite and posts the
+                // "removed" line, so the success alert below is always true.
+                const groupConversationId = conversationId ?? await resolveSessionConversationId(sessionId);
+                await removeGroupMember(groupConversationId, memberUserId);
 
                 notifyMemberLeft({
                   sessionId,
@@ -585,7 +573,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         ]
       );
     },
-    [currentUserId, sessionId, sessionCreatorId, sessionName, onParticipantsChange, t]
+    [currentUserId, sessionId, sessionCreatorId, sessionName, conversationId, onParticipantsChange, t]
   );
 
   const handleRevokePendingInvite = useCallback(

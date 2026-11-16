@@ -122,7 +122,11 @@ export const useBoardSession = (sessionId?: string) => {
               .eq("session_id", id),
           ]);
 
-        if (didTimeout || loadSessionIdRef.current !== loadId) return;
+        // #4435 QA (Group info "Couldn't load" on the first open): an answer
+        // that lands after the 10s cutoff is still the newest load, so it is
+        // applied and clears the timeout error instead of being thrown away
+        // (which left the error up until a manual Retry).
+        if (loadSessionIdRef.current !== loadId) return;
 
         if (sessionResult.error) throw sessionResult.error;
 
@@ -164,6 +168,7 @@ export const useBoardSession = (sessionId?: string) => {
           ...sessionResult.data,
           participants: participantsResult.data || [],
         } as BoardSession);
+        setError(null);
 
         if (userPrefs) {
           setPreferences(userPrefs as BoardSessionPreferences);
@@ -203,7 +208,7 @@ export const useBoardSession = (sessionId?: string) => {
         console.error("Error loading session:", err);
       } finally {
         clearTimeout(timeoutTimer);
-        if (!didTimeout && loadSessionIdRef.current === loadId) {
+        if (loadSessionIdRef.current === loadId) {
           setLoading(false);
         }
       }

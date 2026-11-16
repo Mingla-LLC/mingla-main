@@ -833,6 +833,9 @@ interface SwipeableCardsProps {
   onResetCards?: () => void;
   onOpenPreferences?: () => void;
   onOpenCollabPreferences?: () => void;
+  /** Issue #4435: a group of one invites people from the deck's waiting state. */
+  onShareGroupLink?: () => void;
+  onAddGroupPeople?: () => void;
   /**
    * ORCH-1059: invoked by the collab deck ONLY after a successful "Notify the
    * group" post (a real banner row landed). The owning CollabDeckSheet uses this
@@ -1033,6 +1036,8 @@ export default function SwipeableCards({
   removedCardIds = [],
   onResetCards,
   onOpenPreferences,
+  onShareGroupLink,
+  onAddGroupPeople,
   onOpenCollabPreferences,
   onAfterNotify,
   sessionIdOverride,
@@ -3261,10 +3266,29 @@ export default function SwipeableCards({
       return (
         <View style={styles.noCardsContainer}>
           <Icon name="people-outline" size={48} color="#9CA3AF" />
-          <Text style={styles.noCardsTitle}>Waiting for friends to join</Text>
-          <Text style={styles.noCardsSubtitle}>
-            Once someone accepts your invite, the deck will load automatically.
-          </Text>
+          <Text style={styles.noCardsTitle}>{t('cards:swipeable.solo_title')}</Text>
+          {onShareGroupLink ? (
+            <TouchableOpacity
+              style={styles.emptyPoolButton}
+              onPress={onShareGroupLink}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('cards:swipeable.solo_share_link')}
+            >
+              <Text style={styles.emptyPoolButtonText}>{t('cards:swipeable.solo_share_link')}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {onAddGroupPeople ? (
+            <TouchableOpacity
+              style={styles.soloSecondaryButton}
+              onPress={onAddGroupPeople}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('cards:swipeable.solo_add_people')}
+            >
+              <Text style={styles.soloSecondaryButtonText}>{t('cards:swipeable.solo_add_people')}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       );
 
@@ -4733,6 +4757,21 @@ const styles = StyleSheet.create({
   },
   emptyPoolButtonText: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  // #4435 QA F-4: the deck sits on black, so the outline button reads as
+  // white text with a light outline (21:1 text, 14:1 outline; WCAG AA).
+  soloSecondaryButton: {
+    marginTop: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+  },
+  soloSecondaryButtonText: {
+    color: colors.text.inverse,
     fontSize: 15,
     fontWeight: '600',
   },

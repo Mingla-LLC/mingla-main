@@ -82,7 +82,6 @@ export type ChatListItemConversation = Conversation & {
   /** Issue #4114 Wave 6: set on a folded brand channel row (brandChannelModel). */
   __brandChannel?: BrandChannel;
   brandChannelLastEventTitle?: string | null;
-  isPendingCreatorCollab?: boolean;
   pinned_at?: string | null;
   marked_unread_at?: string | null;
   /** Reserved for #4111 enquiry threads: renders the Enquiry tag. */
@@ -181,7 +180,6 @@ function ChatListItemImpl({
     // Issue #4114 Wave 6: an event chat with nothing in it says so (it used to
     // read "Event chat ready", or "Event broadcast ready" in older builds).
     if (isEvent) return t('connections:preview_no_messages');
-    if (conversation.isPendingCreatorCollab) return t('connections:preview_pending_collab');
     if (isGroup) {
       return conversation.participants.length > 1
         ? t('connections:preview_group_people', { count: conversation.participants.length })

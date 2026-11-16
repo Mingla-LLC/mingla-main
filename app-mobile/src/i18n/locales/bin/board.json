@@ -141,7 +141,12 @@
     "invitesSent": "A Ti\u1eb9 Ik\u1ecdl\u1ecd",
     "invitesSentMsg": "A k\u1ecdl\u1ecd enyi {{count}}{{plural}} rrie \"{{name}}\" khian.",
     "errorSendInvites": "A i gha h\u1ecdo gha ti\u1eb9 ik\u1ecdl\u1ecd. Gha gb\u1eb9r\u1eb9.",
-    "error": "As\u1ecdk\u1ecdr\u1eb9"
+    "error": "As\u1ecdk\u1ecdr\u1eb9",
+    "addPeople": "Add ({{count}})",
+    "peopleAdded": "Added",
+    "peopleAddedMsg": "{{count}} added to \"{{name}}\". They're in straight away.",
+    "noneAdded": "Nobody was added. They may already be in the group.",
+    "groupFull": "A group holds up to 15 people. Pick fewer friends."
   },
   "manageBoardModal": {
     "manageBoard": "Kh\u1ecde Ib\u1ecddi",

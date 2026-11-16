@@ -63,7 +63,12 @@
     "tryDifferentName": "Thử tên hoặc tên người dùng khác", "addMoreFriends": "Thêm bạn bè để mời",
     "sendInvites": "Gửi lời mời ({{count}})", "invitesSent": "Đã gửi lời mời",
     "invitesSentMsg": "Đã mời thành công {{count}} bạn bè{{plural}} vào \"{{name}}\".",
-    "errorSendInvites": "Gửi lời mời thất bại. Vui lòng thử lại.", "error": "Lỗi"
+    "errorSendInvites": "Gửi lời mời thất bại. Vui lòng thử lại.", "error": "Lỗi",
+    "addPeople": "Thêm ({{count}})",
+    "peopleAdded": "Đã thêm",
+    "peopleAddedMsg": "Đã thêm {{count}} người vào \"{{name}}\". Họ vào nhóm ngay.",
+    "noneAdded": "Không ai được thêm. Có thể họ đã ở trong nhóm.",
+    "groupFull": "Một nhóm có tối đa 15 người. Hãy chọn ít bạn hơn."
   },
   "manageBoardModal": {
     "manageBoard": "Quản lý bảng", "members": "Thành viên", "admin": "Quản trị viên", "creator": "Người tạo", "you": "(Bạn)",
