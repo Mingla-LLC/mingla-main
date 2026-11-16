@@ -296,7 +296,30 @@ export interface PublicVenueThemedContext {
  * #2) and is exactly how a sheet gets stuck open. The buyer-web host ignores
  * it: its body IS the form.
  */
+/**
+ * issue #4420 wave 2 (D-V3) — the live reserve bar on the Reservations tab.
+ * The inline booking body reports what the guest has picked so far and the
+ * one next step ("Continue", then "Confirm & pay"); the page draws it in the
+ * same glass bar (phone) or flyer dock (desktop) as Reserve elsewhere.
+ */
+export interface PublicVenueReservationBar {
+  /** "Fri 20 Nov · 7:30 PM", "$63.90 today", or the day when nothing is open. */
+  title: string;
+  /** "4 guests · Date night", "Deposit · …", "No tables this day". */
+  subtitle: string | null;
+  ctaLabel: string;
+  /** false greys the button out (no time picked, details missing, in flight). */
+  enabled: boolean;
+  onPress: () => void;
+}
+
 export type PublicVenueBookingSlotContext = PublicVenueThemedContext & {
+  /**
+   * issue #4420 wave 2 (D-V3) — set only on the Reservations tab's inline
+   * body (never the sheet copy): report the live bar, or null to hand the
+   * bar back. A body that never calls it keeps its own in-body button.
+   */
+  onReservationBarChange?: (bar: PublicVenueReservationBar | null) => void;
   /**
    * Raise the reservation sheet from inside the booking body. No-op when the
    * page is not reservable or the sheet is already open — the same fail-closed
@@ -1461,6 +1484,9 @@ export const PublicVenueScreen = ({
 
   // ── Issue #1793 — the guest-ordering slot, resolved ONCE. ────────────────
   const [orderingOwnsBar, setOrderingOwnsBar] = useState<boolean>(false);
+  // #4420 D-V3 — the inline booking body's live bar (Reservations tab only).
+  const [liveReservationBar, setLiveReservationBar] =
+    useState<PublicVenueReservationBar | null>(null);
   const orderingSlotContext: PublicVenueOrderingSlotContext = {
     palette,
     surface,
@@ -1483,6 +1509,14 @@ export const PublicVenueScreen = ({
   const showPersistentReserveCta =
     showReserveCta &&
     !(orderingOwnsBar && normalizedReservationUiState.activeTab === "menu");
+  // #4420 D-V3 — on the Reservations tab the bar stays, reading the guest's
+  // live pick and walking Continue → Confirm & pay.
+  const reservationTabBar =
+    normalizedReservationUiState.activeTab === "reservations" &&
+    !normalizedReservationUiState.reservationSheetOpen
+      ? liveReservationBar
+      : null;
+  const showReserveBar = showPersistentReserveCta || reservationTabBar !== null;
 
   // ── #1562 §6.5 the venue's own clock, resolved ONCE ──────────────────────
   //
@@ -1973,8 +2007,11 @@ export const PublicVenueScreen = ({
     openReservationSheet: handleOpenReservationSheetFromBody,
     reserveAction: profile.reserveAction,
   };
-  const reservationBodies: Record<VenueBookingBody, () => BrandRenderingReactNode> = {
-    stay: () => (
+  const reservationBodies: Record<
+    VenueBookingBody,
+    (inline: boolean) => BrandRenderingReactNode
+  > = {
+    stay: (inline: boolean) => (
       <React.Suspense
         fallback={
           <View style={styles.reservationState}>
@@ -1986,6 +2023,7 @@ export const PublicVenueScreen = ({
       >
         {bookingBody({
           ...bookingSlotBase,
+          ...(inline ? { onReservationBarChange: setLiveReservationBar } : {}),
           kind: "stay",
           venueId: venue.id,
           brandId: venue.brandId,
@@ -1994,7 +2032,7 @@ export const PublicVenueScreen = ({
         })}
       </React.Suspense>
     ),
-    table: () =>
+    table: (inline: boolean) =>
       reservabilityState === "loading" ? (
         <View style={styles.reservationState} accessibilityLiveRegion="polite">
           <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
@@ -2020,6 +2058,7 @@ export const PublicVenueScreen = ({
       ) : reservable?.reservable === true && reservable.venueId !== null ? (
         bookingBody({
           ...bookingSlotBase,
+          ...(inline ? { onReservationBarChange: setLiveReservationBar } : {}),
           kind: "table",
           venueId: reservable.venueId,
           brandId: venue.brandId,
@@ -2033,7 +2072,9 @@ export const PublicVenueScreen = ({
         </View>
       ),
   };
-  const reservationsBlock = reservationBodies[profile.bookingBody]();
+  const reservationsBlock = reservationBodies[profile.bookingBody](true);
+  // The sheet's copy never drives the page bar (it sits under the sheet).
+  const reservationsSheetBlock = reservationBodies[profile.bookingBody](false);
 
   // issue #4420 — the phone reserve bar is the shared glass bar (design
   // file → venueDef.bar): the venue on the left with what is true right now
@@ -2060,7 +2101,7 @@ export const PublicVenueScreen = ({
   // #4420 — desktop has no boxed panel: Reserve lives in the same glass bar,
   // docked in the left flyer column so it never covers the reading column.
   const reserveBar =
-    showPersistentReserveCta ? (
+    showReserveBar ? (
       <View
         testID="issue-2729-reserve-bar"
         style={
@@ -2079,11 +2120,18 @@ export const PublicVenueScreen = ({
         <OfferingGlassBar
           palette={palette}
           theme={resolvedTheme}
-          title={reserveBarTitle}
-          subtitle={reserveBarSubtitle}
-          ctaLabel={profile.reserveAction}
-          onPress={handleReserve}
-          ctaAccessibilityLabel={profile.reserveAction}
+          title={reservationTabBar?.title ?? reserveBarTitle}
+          subtitle={
+            reservationTabBar !== null
+              ? reservationTabBar.subtitle
+              : reserveBarSubtitle
+          }
+          ctaLabel={reservationTabBar?.ctaLabel ?? profile.reserveAction}
+          onPress={reservationTabBar?.onPress ?? handleReserve}
+          enabled={reservationTabBar?.enabled ?? true}
+          ctaAccessibilityLabel={
+            reservationTabBar?.ctaLabel ?? profile.reserveAction
+          }
           testID="issue-4420-venue-glass-bar"
           actionTestID="issue-2729-reserve-cta"
         />
@@ -2094,7 +2142,7 @@ export const PublicVenueScreen = ({
     // #4420 D-V2 — the docked basket bar is fixed, not in flow: clear it.
     orderingOwnsBar && Platform.OS === "web" && !isDesktop
       ? 68 + 12 + insets.bottom + 16
-      : showPersistentReserveCta && !isDesktop
+      : showReserveBar && !isDesktop
         ? Platform.OS === "web"
           ? 0
           : 68 + 8 + insets.bottom + 12 + 8
@@ -2460,7 +2508,7 @@ export const PublicVenueScreen = ({
         // field as the CTA above, so a Stay guest can no longer tap "Reserve
         // this Stay" and land on a sheet headed "Reserve a table".
         title: profile.reserveAction,
-        children: reservationsBlock,
+        children: reservationsSheetBlock,
       })}
       {overlays}
     </View>

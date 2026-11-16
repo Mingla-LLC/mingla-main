@@ -30,6 +30,7 @@ import {
   resolvePhoneStartCountry,
 } from "@mingla/phone-input/phoneNumber";
 import { type ThemePalette } from "@mingla/offering-rendering";
+import type { PublicVenueReservationBar } from "@mingla/brand-rendering/PublicVenueScreen";
 import {
   radius,
   space,
@@ -45,6 +46,7 @@ import {
   type GuestReservationPreview,
 } from "../../services/venueGuestReservationService";
 import { guestReservationFailureCopy } from "./venueGuestReservationErrorCopy";
+import { venueBarDayLabel, venueReservationBarCopy } from "./venueReservationBar";
 import {
   captureVenueOrganicEvent,
   getVenueOrganicJourneyToken,
@@ -106,6 +108,13 @@ interface GuestVenueReservationProps {
    * ignored.
    */
   palette: ThemePalette;
+  /**
+   * issue #4420 wave 2 (D-V3) — set by the page's Reservations tab. The page's
+   * glass bar then carries the live pick and the one next step: Continue
+   * (pick → your details), then Confirm & pay. Without it (the reserve sheet,
+   * the host preview) the form keeps its own in-body button.
+   */
+  onReservationBarChange?: (bar: PublicVenueReservationBar | null) => void;
 }
 const INVALID_PHONE_COPY = "Enter a valid phone number.";
 const INVALID_NAME_COPY = "Enter your name.";
@@ -213,8 +222,13 @@ function GuestVenueReservationBody({
   countryCode = null,
   analyticsSurface,
   palette,
+  onReservationBarChange,
 }: GuestVenueReservationProps): React.ReactElement {
   const dates = useMemo(dateOptions, []);
+  // issue #4420 wave 2 (D-V3) — with the page's bar, the booking walks two
+  // steps: pick (date, party, time, occasion), then your details.
+  const barOwned = onReservationBarChange !== undefined;
+  const [step, setStep] = useState<"pick" | "details">("pick");
   // issue #1564 — derived from the page's palette, byte-for-byte the mapping
   // `PublicEventPage.phoneFieldTheme` already uses, so the two themed phone
   // fields in this app cannot drift. `#ef4444` stays literal on both error
@@ -436,6 +450,12 @@ function GuestVenueReservationBody({
     if (currentSelectedSlot?.isFull !== false) setSelectedUtc(null);
   }, [availabilitySettled, currentSelectedSlot?.isFull, selectedUtc]);
 
+  // #4420 D-V3 — losing the time (date or party changed, the slot filled)
+  // returns the guest to the pick step.
+  useEffect(() => {
+    if (selectedUtc === null && step === "details") setStep("pick");
+  }, [selectedUtc, step]);
+
   useEffect(() => {
     if (availability.data === undefined) return;
     captureWeb("venue_availability_result_viewed", {
@@ -568,6 +588,61 @@ function GuestVenueReservationBody({
     }
   };
 
+  // ── #4420 D-V3 — report the live bar to the page (Reservations tab). ──
+  const barStep: "pick" | "details" =
+    step === "details" && selectedSlot !== undefined ? "details" : "pick";
+  const barCopy = venueReservationBarCopy({
+    step: barStep,
+    dayLabel: date === null ? "Pick a date" : venueBarDayLabel(date),
+    timeLabel: selectedSlot?.slotLocalLabel ?? null,
+    partySize,
+    occasion,
+    noTables: availabilitySettled && slots.length === 0,
+    totalLabel:
+      activePreview?.requiresPayment === true
+        ? formatMoney(activePreview.totalCents, activePreview.currency)
+        : null,
+    requiresPayment: activePreview?.requiresPayment ?? null,
+    reviewing: reviewQuote !== null,
+  });
+  const barEnabled =
+    barStep === "details"
+      ? !submitting && !contactInvalid && availabilitySettled
+      : availabilitySettled && selectedSlot !== undefined;
+  const barActionRef = useRef<() => void>(() => undefined);
+  barActionRef.current =
+    barStep === "details"
+      ? () => void submit()
+      : () => {
+          if (selectedSlot !== undefined) setStep("details");
+        };
+  const barHidden = handoff !== null || completed !== null;
+  useEffect(() => {
+    if (onReservationBarChange === undefined) return;
+    onReservationBarChange(
+      barHidden
+        ? null
+        : {
+            title: barCopy.title,
+            subtitle: barCopy.subtitle,
+            ctaLabel: barCopy.ctaLabel,
+            enabled: barEnabled,
+            onPress: () => barActionRef.current(),
+          },
+    );
+  }, [
+    onReservationBarChange,
+    barHidden,
+    barCopy.title,
+    barCopy.subtitle,
+    barCopy.ctaLabel,
+    barEnabled,
+  ]);
+  useEffect(
+    () => () => onReservationBarChange?.(null),
+    [onReservationBarChange],
+  );
+
   if (handoff !== null) {
     return (
       <SecurePaymentHandoff
@@ -608,8 +683,41 @@ function GuestVenueReservationBody({
     );
   }
 
+  const showDetails = barOwned
+    ? barStep === "details"
+    : selectedSlot !== undefined;
   return (
     <View style={styles.host}>
+      {barOwned && barStep === "details" && selectedSlot !== undefined ? (
+        <View
+          style={[
+            styles.yourTable,
+            { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+          ]}
+          testID="issue-4420-venue-your-table"
+        >
+          <View style={styles.yourTableCopy}>
+            <OfferingSubLabel palette={palette}>Your table</OfferingSubLabel>
+            <Text style={[styles.yourTableTitle, { color: palette.primaryText }]}>
+              {`${date === null ? "" : `${venueBarDayLabel(date)} · `}${selectedSlot.slotLocalLabel} · ${partySize} ${partySize === 1 ? "guest" : "guests"}`}
+            </Text>
+            {occasion.trim().length > 0 ? (
+              <Text style={[styles.body, { color: palette.secondaryText }]}>
+                {occasion.trim()}
+              </Text>
+            ) : null}
+          </View>
+          <Button
+            label="Change"
+            variant="secondary"
+            size="sm"
+            accessibilityLabel="Change your table"
+            onPress={() => setStep("pick")}
+          />
+        </View>
+      ) : null}
+      {barOwned && barStep === "details" ? null : (
+      <>
       {/* issue #4420 — the booking reads date, party size, time, then an
           optional occasion (design file → venueDef "Book"). Same state, same
           availability query, same slot guard and analytics; only the
@@ -743,7 +851,9 @@ function GuestVenueReservationBody({
           />
         ))}
       </OfferingChipRow>
-      {selectedSlot !== undefined ? (
+      </>
+      )}
+      {showDetails && selectedSlot !== undefined ? (
         <View style={styles.form}>
           <Text style={[styles.label, { color: palette.tertiaryText }]}>
             NAME · REQUIRED
@@ -1056,6 +1166,7 @@ function GuestVenueReservationBody({
               {error}
             </Text>
           ) : null}
+          {barOwned ? null : (
           <Button
             label={
               activePreview?.requiresPayment
@@ -1074,6 +1185,7 @@ function GuestVenueReservationBody({
             disabled={submitting || contactInvalid || !availabilitySettled}
             onPress={() => void submit()}
           />
+          )}
         </View>
       ) : null}
     </View>
@@ -1083,6 +1195,17 @@ function GuestVenueReservationBody({
 const styles = StyleSheet.create({
   partyPanel: { marginTop: 18, marginBottom: 18 },
   occasionLabel: { marginTop: 18 },
+  yourTable: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  yourTableCopy: { flex: 1, minWidth: 0, gap: 2 },
+  yourTableTitle: { fontSize: 16, fontWeight: "700" },
   host: { gap: space[2] },
   title: { ...type.h1 },
   body: { ...type.small },
