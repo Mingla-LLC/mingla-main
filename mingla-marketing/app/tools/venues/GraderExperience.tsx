@@ -2,18 +2,21 @@
 // #1003 [Venue Website Grader — growth tools, test cut] — the client state
 // machine: intake → running → report.
 //
-// INTAKE — one "YOUR PLACE" field with a debounced (350ms, ≥2 chars) typeahead
-// against growth-tools-run {action:'search'}; a selection shows an editable
-// summary chip + the always-required Website field; a manual path reveals
-// City + Website. RUNNING — progress theater (staged status lines on a timer,
-// never a bare spinner) while the run request is in flight. REPORT — the
-// parchment document (ReportView).
+// INTAKE — one "Your place" field with a debounced (350ms, ≥2 chars) Google
+// place search against growth-tools-run {action:'search'}; a pick fills the
+// name, city and website (shown as the place card); a manual path reveals City
+// + Website. RUNNING — the research screen. REPORT — the gated preview (web
+// lane) or the full report (app lane).
+//
+// #4452 §6.1–6.3: on the paper template (design ch. 4c). When the Google pick
+// has no website, the grader asks "Where do people find you today?" (asked
+// because Google lists no website) and runs without one; the report and fixes
+// are then about getting a page.
 
 import { useEffect, useRef, useState } from 'react'
 import { PreviewGate } from '../_preview/PreviewGate'
+import { Choice, FollowupBlock, ResearchScreen, RunError, StillNeed, ToolField, ToolPage } from '../_template/ToolPage'
 import type { ToolPreview } from '@/lib/growth-tools-submit'
-import { cn } from '@/lib/cn'
-import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
 import {
   runVenueGrader,
@@ -22,11 +25,13 @@ import {
   type GrowthToolsError,
   type GrowthToolsSearchResult,
 } from '@/lib/growth-tools-submit'
+import { followupActive, followupBody, followupMissing, SCENARIO, type FollowupAnswers } from '@/lib/tools/scenarios'
 import { ReportView } from './ReportView'
 
 type Phase = 'intake' | 'running' | 'report'
 /** search = typing/typeahead; selected = a search result chip; manual = typed-in place. */
 type IntakeMode = 'search' | 'selected' | 'manual'
+type FoundVia = 'instagram' | 'whatsapp' | 'google_only'
 
 /** URL-ish check: add https:// when missing; require a dotted hostname. */
 function normalizeWebsite(raw: string): string | null {
@@ -42,7 +47,7 @@ function normalizeWebsite(raw: string): string | null {
   }
 }
 
-/** Display host ("yoursite.com") for theater lines + chips. */
+/** Display host ("yoursite.com") for the place card. */
 function hostOf(website: string): string {
   const normalized = normalizeWebsite(website)
   if (!normalized) return website.trim()
@@ -63,111 +68,11 @@ function collectUtm(): Record<string, string> {
   return utm
 }
 
-const MICRO_LABEL =
-  'block text-xs font-semibold uppercase tracking-[0.16em] text-white/60'
-const FIELD_INPUT =
-  'min-h-12 w-full rounded-2xl border border-white/14 bg-black/30 px-4 text-base text-white placeholder:text-white/35 focus-ring'
-
-// ─── Progress theater ───────────────────────────────────────────────────────
-
-const THEATER_LINES = [
-  'Taking a look at your site',
-  'Running 11 automated site-health checks',
-  'Reading your menu like a first-timer',
-  'Checking how you look on a Friday night',
-  'Ranking you against every venue in your city',
-  'Sizing up your competition',
-  'Building your head-to-head scorecard',
-  'Writing your fixes',
-] as const
-
-function RunningTheater({
-  host,
-  error,
-  onRetry,
-  onBack,
-}: {
-  host: string
-  error: GrowthToolsError | null
-  onRetry: () => void
-  onBack: () => void
-}) {
-  // Number of lines revealed. The last revealed line stays "active" (pulsing);
-  // everything before it gets a ✓. Timer-driven so it never sits on a bare spinner.
-  const [revealed, setRevealed] = useState(0)
-  useEffect(() => {
-    if (error) return
-    if (revealed >= THEATER_LINES.length) return
-    const timer = setTimeout(
-      () => setRevealed((count) => Math.min(count + 1, THEATER_LINES.length)),
-      revealed === 0 ? 400 : 2400,
-    )
-    return () => clearTimeout(timer)
-  }, [revealed, error])
-
-  if (error) {
-    const rateLimited = error === 'rate_limited'
-    return (
-      <div className="rounded-md glass-soft p-6 md:p-8" role="alert">
-        <p className="font-display text-2xl text-white">
-          {rateLimited ? 'You’ve hit today’s limit' : 'That didn’t work — try again'}
-        </p>
-        <p className="mt-3 text-sm leading-relaxed text-white/70 md:text-base">
-          {rateLimited
-            ? 'The free grader is capped per day while it’s in test. Come back tomorrow — your report will be here.'
-            : 'Something broke on our side while grading your site. Give it another go — it usually works the second time.'}
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          {!rateLimited ? (
-            <button type="button" onClick={onRetry} className={buttonClasses({ variant: 'primary' })}>
-              Try again
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex min-h-11 items-center rounded-full border border-white/14 bg-white/8 px-5 text-sm font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
-          >
-            Back
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-md glass-soft p-6 md:p-8">
-      <p className="font-display text-2xl text-white md:text-3xl">
-        Reading <span className="break-words text-warm">{host}</span>…
-      </p>
-      <ul className="mt-6 space-y-3" aria-live="polite">
-        {THEATER_LINES.slice(0, Math.max(revealed, 1)).map((line, i) => {
-          const isActive = i === Math.max(revealed, 1) - 1
-          return (
-            <li key={line} className="flex items-center gap-3 text-sm text-white/80 md:text-base">
-              {isActive ? (
-                <span
-                  aria-hidden="true"
-                  className="size-2 shrink-0 animate-pulse rounded-full bg-warm"
-                />
-              ) : (
-                <span aria-hidden="true" className="shrink-0 font-semibold text-warm">
-                  ✓
-                </span>
-              )}
-              <span className={cn(isActive ? 'text-white' : 'text-white/60')}>{line}…</span>
-            </li>
-          )
-        })}
-      </ul>
-      <p className="mt-6 text-xs text-white/45">
-        This takes about a minute — we read the site the way a first-timer would.
-      </p>
-    </div>
-  )
-}
-
-// ─── The experience ─────────────────────────────────────────────────────────
+const FOUND_VIA: ReadonlyArray<{ value: FoundVia; label: string }> = [
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'google_only', label: 'Google only' },
+]
 
 export function GraderExperience({ embedded = false }: { readonly embedded?: boolean } = {}) {
   const [phase, setPhase] = useState<Phase>('intake')
@@ -177,11 +82,13 @@ export function GraderExperience({ embedded = false }: { readonly embedded?: boo
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<GrowthToolsSearchResult[]>([])
   const [searching, setSearching] = useState(false)
-  const [inputFocused, setInputFocused] = useState(false)
+  const [active, setActive] = useState(0)
   const [selected, setSelected] = useState<GrowthToolsSearchResult | null>(null)
   const [name, setName] = useState('')
   const [city, setCity] = useState('')
   const [website, setWebsite] = useState('')
+  const [editWebsite, setEditWebsite] = useState(false)
+  const [foundVia, setFoundVia] = useState<FoundVia | null>(null)
 
   // Run state.
   const [runError, setRunError] = useState<GrowthToolsError | null>(null)
@@ -189,6 +96,7 @@ export function GraderExperience({ embedded = false }: { readonly embedded?: boo
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<GraderReport | null>(null)
   const [preview, setPreview] = useState<ToolPreview | null>(null)
+  const [ranNoSite, setRanNoSite] = useState(false)
 
   const searchAbort = useRef<AbortController | null>(null)
 
@@ -211,6 +119,7 @@ export function GraderExperience({ embedded = false }: { readonly embedded?: boo
         if (controller.signal.aborted) return
         setSearching(false)
         setResults(res.ok ? res.results : [])
+        setActive(0)
       } catch {
         // Aborted by a newer keystroke — the newer request owns the state.
       }
@@ -218,15 +127,24 @@ export function GraderExperience({ embedded = false }: { readonly embedded?: boo
     return () => clearTimeout(timer)
   }, [query, mode])
 
+  // #4452 §6.2: the Google pick lists no website (and none was typed).
+  const facts = { tool: 'venues' as const, googlePick: mode === 'selected' && selected !== null, googleWebsite: selected?.website ?? '', typedWebsite: website }
+  const noSite = followupActive(facts)
+  const answers: FollowupAnswers = { tool: 'venues', found_via: foundVia }
+  const body = followupBody(facts, answers)
+  const followup = body && 'found_via' in body ? body : null
+
   const effectiveName = (mode === 'manual' ? query : name).trim()
   const effectiveCity = city.trim()
   const normalizedWebsite = normalizeWebsite(website)
   const websiteInvalid = website.trim().length > 0 && normalizedWebsite === null
-  const canRun =
-    (mode === 'selected' || mode === 'manual') &&
-    effectiveName.length > 0 &&
-    effectiveCity.length > 0 &&
-    normalizedWebsite !== null
+  const missing: string[] = []
+  if (mode === 'search') missing.push('pick your place from Google')
+  if (mode !== 'search' && effectiveName.length === 0) missing.push('the name')
+  if (mode !== 'search' && effectiveCity.length === 0) missing.push('the city')
+  if (mode !== 'search' && !noSite && normalizedWebsite === null) missing.push('your website')
+  if (noSite) missing.push(...followupMissing(answers))
+  const canRun = missing.length === 0
 
   function selectResult(result: GrowthToolsSearchResult) {
     setSelected(result)
@@ -234,6 +152,7 @@ export function GraderExperience({ embedded = false }: { readonly embedded?: boo
     setName(result.name)
     setCity(result.city ?? '')
     setWebsite(result.website ?? '')
+    setEditWebsite(false)
     setQuery(result.name)
     setResults([])
     setSearching(false)
@@ -258,17 +177,21 @@ export function GraderExperience({ embedded = false }: { readonly embedded?: boo
   }
 
   async function handleRun() {
-    if (!canRun || normalizedWebsite === null) return
+    if (!canRun) return
+    if (!followup && normalizedWebsite === null) return
     captureMarketing('tool_run_started', { tool: 'venues' })
     setRunError(null)
     setAttempt((n) => n + 1)
+    setRanNoSite(followup !== null)
     setPhase('running')
     const res = await runVenueGrader(
       {
         name: effectiveName,
         city: effectiveCity,
-        website: normalizedWebsite,
+        website: followup ? '' : (normalizedWebsite as string),
         ...(mode === 'selected' && selected ? { place_id: selected.id } : {}),
+        // #4452 §6.2: only when asked and answered (otherwise the body is today's).
+        ...(followup ? { followup } : {}),
       },
       { pid: 'tool_venues', utm: collectUtm() },
     )
@@ -289,42 +212,35 @@ export function GraderExperience({ embedded = false }: { readonly embedded?: boo
     setPhase('intake')
   }
 
-  const showDropdown =
-    mode === 'search' && inputFocused && query.trim().length >= 2 && (searching || results.length > 0)
-
   // ── REPORT ────────────────────────────────────────────────────────────────
   if (phase === 'report' && preview && !report && runId) {
     return (
-      <PreviewGate
-        tool="venues"
-        preview={preview}
-        runId={runId}
-        resetLabel="← Grade another website"
-        onReset={() => {
-          setPhase('intake')
-          setPreview(null)
-          setRunId(null)
-        }}
-      />
+      <ToolPage tool="venues" embedded={embedded} active={ranNoSite} left={(
+        <PreviewGate
+          tool="venues"
+          preview={preview}
+          runId={runId}
+          resetLabel="← Grade another place"
+          onReset={() => {
+            setPhase('intake')
+            setPreview(null)
+            setRunId(null)
+          }}
+        />
+      )} />
     )
   }
   if (phase === 'report' && report && runId) {
     return (
-      <div className={embedded ? 'p-0' : 'px-4 py-10 sm:px-6 md:px-10 md:py-16 [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))]'}>
-        <div className="mx-auto max-w-3xl">
-          <button
-            type="button"
-            onClick={() => {
-              setPhase('intake')
-              setReport(null)
-              setRunId(null)
-            }}
-            className="mb-6 inline-flex min-h-10 items-center rounded-full border border-white/12 bg-white/8 px-4 text-sm font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
-          >
-            ← Grade another website
+      <div className="tp-report">
+        {embedded ? (
+          null
+        ) : (
+          <button type="button" className="tp-ghost" onClick={() => { setPhase('intake'); setReport(null); setRunId(null) }}>
+            ← Grade another place
           </button>
-          <ReportView report={report} runId={runId} />
-        </div>
+        )}
+        <ReportView report={report} runId={runId} />
       </div>
     )
   }
@@ -332,227 +248,132 @@ export function GraderExperience({ embedded = false }: { readonly embedded?: boo
   // ── RUNNING ───────────────────────────────────────────────────────────────
   if (phase === 'running') {
     return (
-      <div className={embedded ? 'p-0' : 'px-6 py-16 md:px-10 md:py-24 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]'}>
-        <div className="mx-auto max-w-xl">
-          <RunningTheater
-            key={attempt}
-            host={hostOf(website)}
-            error={runError}
-            onRetry={handleRun}
-            onBack={resetToIntake}
-          />
-        </div>
-      </div>
+      <ToolPage tool="venues" embedded={embedded} active={ranNoSite} left={(
+        <ResearchScreen
+          key={attempt}
+          tool="venues"
+          active={ranNoSite}
+          error={runError ? (
+            <RunError
+              error={runError}
+              limitTitle="You’ve hit today’s limit"
+              limitBody="The free grader is capped per day while it’s in test. Come back tomorrow and your report will be here."
+              failBody="Something broke on our side while grading your place. Give it another go: it usually works the second time."
+              onRetry={handleRun}
+              onBack={resetToIntake}
+            />
+          ) : undefined}
+        />
+      )} />
     )
   }
 
   // ── INTAKE ────────────────────────────────────────────────────────────────
+  const showList = mode === 'search' && query.trim().length >= 2 && (searching || results.length > 0)
+  const siteHost = selected?.website ? hostOf(selected.website) : ''
   return (
-    <div className={embedded ? 'p-0' : 'px-6 py-14 md:px-10 md:py-20 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]'}>
-      <div className="mx-auto max-w-2xl">
-        <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
-          Venue Website Grader
-        </span>
-        {embedded ? (
-          <h3 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">Your website is costing you customers.</h3>
-        ) : (
-          <h1 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">Your website is costing you customers.</h1>
-        )}
-        <p className="mt-4 max-w-xl text-base leading-relaxed text-white/72 md:text-lg">
-          See exactly how — free, in 60 seconds. For restaurants, bars, cafés,
-          clubs and activity spaces.
-        </p>
+    <ToolPage tool="venues" embedded={embedded} active={noSite} left={(
+      <form className="tp-card" onSubmit={(e) => { e.preventDefault(); void handleRun() }} noValidate>
+        <ToolField label="Your place" htmlFor="grader-place" tag="Google search">
+          <input
+            id="grader-place"
+            className="fk-input"
+            type="text"
+            role="combobox"
+            aria-expanded={showList}
+            aria-autocomplete="list"
+            aria-controls="grader-place-list"
+            autoComplete="off"
+            spellCheck={false}
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, results.length - 1)) }
+              if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
+              if (e.key === 'Enter' && mode === 'search' && results[active]) { e.preventDefault(); selectResult(results[active]) }
+            }}
+            placeholder="Start typing your place’s name…"
+          />
+          {showList ? (
+            <div className="tp-results" id="grader-place-list">
+              {searching && results.length === 0 ? (
+                <p className="fk-help" aria-live="polite" style={{ padding: 8 }}>Searching…</p>
+              ) : (
+                <ul role="listbox" aria-label="Places">
+                  {results.map((result, i) => (
+                    <li key={result.id} role="option" aria-selected={i === active}>
+                      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => selectResult(result)}>
+                        {result.photo_url ? <img src={result.photo_url} alt="" /> : <span className="ini" aria-hidden="true">{result.name.slice(0, 1).toUpperCase()}</span>}
+                        <span>
+                          {result.name}
+                          <small>{[result.city, result.website ? hostOf(result.website) : 'no website on Google'].filter(Boolean).join(' · ')}</small>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
+        </ToolField>
 
-        <div className="mt-10 rounded-md glass-soft p-5 sm:p-6 md:p-8">
-          {/* YOUR PLACE — search-first field */}
-          <div className="relative">
-            <label htmlFor="grader-place" className={MICRO_LABEL}>
-              Your place <span aria-hidden="true" className="text-warm">*</span>
-            </label>
-            <input
-              id="grader-place"
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              value={query}
-              onChange={(e) => handleQueryChange(e.target.value)}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              placeholder="Start typing your place's name…"
-              aria-expanded={showDropdown}
-              aria-autocomplete="list"
-              className={cn(FIELD_INPUT, 'mt-2')}
-            />
-
-            {showDropdown ? (
-              <div className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-white/14 bg-[#0d0d10]/97 shadow-[0_24px_64px_rgba(0,0,0,0.55)]">
-                {searching && results.length === 0 ? (
-                  <p className="px-4 py-3 text-sm text-white/55">Searching…</p>
-                ) : (
-                  <ul>
-                    {results.map((result) => (
-                      <li key={result.id}>
-                        <button
-                          type="button"
-                          // onMouseDown so selection fires before the input blur.
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            selectResult(result)
-                          }}
-                          className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-white/8 focus-ring"
-                        >
-                          {result.photo_url ? (
-                            <img
-                              src={result.photo_url}
-                              alt=""
-                              className="size-10 shrink-0 rounded-sm object-cover"
-                            />
-                          ) : (
-                            <span
-                              aria-hidden="true"
-                              className="grid size-10 shrink-0 place-items-center rounded-sm bg-warm/15 font-display text-sm text-warm"
-                            >
-                              {result.name.slice(0, 1).toUpperCase()}
-                            </span>
-                          )}
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-semibold text-white">
-                              {result.name}
-                            </span>
-                            <span className="block truncate text-xs text-white/55">
-                              {[result.city, result.website ? hostOf(result.website) : null]
-                                .filter(Boolean)
-                                .join(' · ')}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ) : null}
+        {mode === 'selected' && selected ? (
+          <div className="tp-placecard">
+            {selected.photo_url ? <img className="im" src={selected.photo_url} alt="" /> : <span className="im" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>}
+            <span>
+              <b>{name}</b>
+              <span>{city}</span>
+              <br />
+              <span>{siteHost ? `Website found: ${siteHost}` : 'No website on Google'}</span>
+            </span>
+            <button type="button" className="tp-link" onClick={switchToManual}>Edit</button>
           </div>
+        ) : null}
+        {mode === 'selected' ? (
+          <p className="fk-help">We fill in the address and website from Google, so there&rsquo;s nothing else to type.</p>
+        ) : null}
 
-          {/* Selected summary chip — editable */}
-          {mode === 'selected' && selected ? (
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-warm/40 bg-warm/10 p-4">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-white">{name}</p>
-                <p className="mt-0.5 truncate text-xs text-white/60">
-                  {[city, website ? hostOf(website) : 'no website on file']
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={switchToManual}
-                className="shrink-0 rounded-full border border-white/14 bg-white/8 px-3 py-1.5 text-xs font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
-              >
-                Edit details
-              </button>
-            </div>
-          ) : null}
+        {mode === 'selected' && (editWebsite || (siteHost === '' && website.trim() !== '')) ? (
+          <ToolField label="Website" htmlFor="grader-website" optional={siteHost === ''}>
+            <input id="grader-website" className="fk-input" type="url" inputMode="url" autoComplete="url" value={website}
+              onChange={(e) => setWebsite(e.target.value)} placeholder="yourplace.com" aria-invalid={websiteInvalid} />
+          </ToolField>
+        ) : mode === 'selected' ? (
+          <button type="button" className="tp-link" onClick={() => setEditWebsite(true)}>
+            {siteHost ? 'Not your website? Change it' : 'Have a website Google doesn’t know? Add it'}
+          </button>
+        ) : null}
 
-          {/* Manual reveal — City + Website */}
-          {mode === 'manual' ? (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="grader-city" className={MICRO_LABEL}>
-                  City <span aria-hidden="true" className="text-warm">*</span>
-                </label>
-                <input
-                  id="grader-city"
-                  type="text"
-                  autoComplete="address-level2"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="e.g. London"
-                  className={cn(FIELD_INPUT, 'mt-2')}
-                />
-              </div>
-              <div>
-                <label htmlFor="grader-website-manual" className={MICRO_LABEL}>
-                  Website <span aria-hidden="true" className="text-warm">*</span>
-                </label>
-                <input
-                  id="grader-website-manual"
-                  type="url"
-                  inputMode="url"
-                  autoComplete="url"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  placeholder="yourplace.com"
-                  aria-invalid={websiteInvalid}
-                  className={cn(
-                    FIELD_INPUT,
-                    'mt-2',
-                    websiteInvalid && 'border-red-400/60',
-                  )}
-                />
-              </div>
-            </div>
-          ) : null}
+        {noSite ? (
+          <FollowupBlock tool="venues">
+            <ToolField label="Where do people find you today?" why={SCENARIO.venues.tag} id="grader-found-label">
+              <Choice chips options={FOUND_VIA} value={foundVia} onChange={setFoundVia} labelledBy="grader-found-label" />
+            </ToolField>
+          </FollowupBlock>
+        ) : null}
 
-          {/* Website — always required once a place is selected */}
-          {mode === 'selected' ? (
-            <div className="mt-4">
-              <label htmlFor="grader-website" className={MICRO_LABEL}>
-                Website <span aria-hidden="true" className="text-warm">*</span>
-              </label>
-              <input
-                id="grader-website"
-                type="url"
-                inputMode="url"
-                autoComplete="url"
-                value={website}
-                onChange={(e) => setWebsite(e.target.value)}
-                placeholder="yourplace.com"
-                aria-invalid={websiteInvalid}
-                className={cn(FIELD_INPUT, 'mt-2', websiteInvalid && 'border-red-400/60')}
-              />
-            </div>
-          ) : null}
+        {mode === 'manual' ? (
+          <div className="tp-two">
+            <ToolField label="City" htmlFor="grader-city">
+              <input id="grader-city" className="fk-input" type="text" autoComplete="address-level2" value={city}
+                onChange={(e) => setCity(e.target.value)} placeholder="e.g. London" />
+            </ToolField>
+            <ToolField label="Website" htmlFor="grader-website-manual">
+              <input id="grader-website-manual" className="fk-input" type="url" inputMode="url" autoComplete="url" value={website}
+                onChange={(e) => setWebsite(e.target.value)} placeholder="yourplace.com" aria-invalid={websiteInvalid} />
+            </ToolField>
+          </div>
+        ) : null}
+        {websiteInvalid ? <p className="fk-error" role="alert">Enter a valid website, like yourplace.com</p> : null}
 
-          {websiteInvalid ? (
-            <p className="mt-2 text-xs text-red-300">
-              Enter a valid website — e.g. yourplace.com
-            </p>
-          ) : null}
+        {mode === 'search' ? (
+          <button type="button" className="tp-link" onClick={switchToManual}>Can&rsquo;t find your place? Add it yourself</button>
+        ) : null}
 
-          {/* Manual escape hatch (search mode only) */}
-          {mode === 'search' ? (
-            <button
-              type="button"
-              onClick={switchToManual}
-              className="mt-4 rounded-sm text-sm font-semibold text-warm underline-offset-4 transition hover:underline focus-ring"
-            >
-              Can&rsquo;t find your place? Add it manually
-            </button>
-          ) : null}
-
-          {mode === 'selected' || mode === 'manual' ? (
-            <button
-              type="button"
-              onClick={handleRun}
-              disabled={!canRun}
-              className={buttonClasses({
-                variant: 'primary',
-                size: 'lg',
-                className: 'mt-6 w-full sm:w-auto',
-              })}
-            >
-              Run my free report
-            </button>
-          ) : null}
-        </div>
-
-        <p className="mt-4 text-xs text-white/45">
-          Free while in test. No account needed — we grade the live site, nothing
-          is installed or changed.
-        </p>
-      </div>
-    </div>
+        <button type="submit" className="tp-go" disabled={!canRun}>Grade my website →</button>
+        <StillNeed missing={mode === 'search' ? [] : missing} />
+        <p className="tp-tiny">Free. No account. We never change your site or post anything.</p>
+      </form>
+    )} />
   )
 }

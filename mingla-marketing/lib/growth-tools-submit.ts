@@ -139,15 +139,26 @@ export interface GraderReport {
   head_to_head?: GraderHeadToHead
   where_you_win?: string[]
   offer?: { per_person_from: string }
-  meta?: { fetch_failed?: boolean; competition_source?: GraderCompetitionSource }
+  meta?: { fetch_failed?: boolean; competition_source?: GraderCompetitionSource; generated_at?: string }
+  followup?: ToolSituation
 }
 
 export interface GraderRunInput {
   name: string
   city: string
+  /** "" only with the no-website follow-up (#4452 §6.2). */
   website: string
   place_id?: string
+  /** #4452 §6.2: sent only when asked and answered, so the body is otherwise today's. */
+  followup?: { found_via: 'instagram' | 'whatsapp' | 'google_only' }
 }
+
+/** #4452 §6.2/§6.9: the situation a report was run for (absent = today's report). */
+export type ToolSituation =
+  | { reason: 'no_website'; found_via: 'instagram' | 'whatsapp' | 'google_only' }
+  | { reason: 'free_rsvp'; rsvp_goal: number; no_shows: 'lots' | 'few' }
+  | { reason: 'group_over_15'; coach: boolean; rooms: 'twin' | 'single' }
+  | { reason: 'free_today'; session_cost: number; deposit: 'probably' | 'not_sure' }
 
 // ─── Result unions ──────────────────────────────────────────────────────────
 
@@ -315,6 +326,8 @@ export interface EventRunInput {
   audience_size: number | null
   lineup: string | null
   currency: string
+  /** #4452 §6.2: "Free, RSVP only" answers; sent only when asked and answered. */
+  followup?: { rsvp_goal: number; no_shows: 'lots' | 'few' }
 }
 
 export interface EventForecast {
@@ -442,6 +455,8 @@ export interface EventReport {
   offer?: { per_person_from: string }
   narrative: string
   meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+  /** #4452 §6.2/§6.9: the situation it was run for (absent = today's report). */
+  followup?: ToolSituation
 }
 
 export type EventRunResponse =
@@ -555,6 +570,8 @@ export interface TripRunInput {
   vibe_note: string | null
   includes: { stay: boolean; activities: boolean; meals: boolean; transport: boolean }
   currency: string
+  /** #4452 §6.2: groups of 16 or more; sent only when asked and answered. */
+  followup?: { coach: boolean; rooms: 'twin' | 'single' }
 }
 
 export interface TripCostLine {
@@ -695,6 +712,8 @@ export interface TripReport {
   price_basis: { note: string; checked_on: string }
   offer?: { per_person_from: string }
   meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+  /** #4452 §6.2/§6.9: the situation it was run for (absent = today's report). */
+  followup?: ToolSituation
 }
 
 export type TripRunResponse =
@@ -792,6 +811,8 @@ export interface PricingRunInput {
   materials_cost: number | null
   own_hours: number | null
   hourly_rate: number | null
+  /** #4452 §6.2: "Free right now" answers; sent only when asked and answered. */
+  followup?: { session_cost: number; deposit: 'probably' | 'not_sure' }
 }
 
 export interface PricingCostLine {
@@ -872,6 +893,8 @@ export interface PricingReport {
   price_basis: { note: string; checked_on: string }
   offer?: { per_person_from: string }
   meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+  /** #4452 §6.2/§6.9: the situation it was run for (absent = today's report). */
+  followup?: ToolSituation
 }
 
 export type PricingRunResponse =

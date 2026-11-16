@@ -56,6 +56,8 @@ import {
 // issue #3526 M-4 — Layer-C passive health observation for the GEMINI_API_KEY
 // surface, which recorded nothing at all before this change.
 import { recordApiCall } from "../_shared/apiHealthLog.ts";
+// #4452 §6.2 — the adaptive follow-up answers (validated here, passed to the prompts).
+import { type EventFollowup, followupPromptLines, parseToolFollowup } from "../_shared/growthToolFollowups.ts";
 // ISSUE-1734 — the SINGLE shared app-lane auth/quota/cache/budget module (P-6).
 import {
   type AppLaneAuth,
@@ -209,6 +211,8 @@ interface EventInput {
   audience_size: number | null;
   lineup: string | null;
   currency: string; // ISO 4217-ish, display only
+  /** #4452 §6.2: the "Free, RSVP only" answers; null = not asked (today's behaviour). */
+  followup: EventFollowup | null;
 }
 
 function asStr(v: unknown): string {
@@ -244,7 +248,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const INOUT = new Set(["indoor", "outdoor", "mixed"]);
 
-function validateEventInput(
+export function validateEventInput(
   raw: unknown,
 ): { ok: true; input: EventInput } | { ok: false; fields: string[] } {
   const fields: string[] = [];
@@ -302,12 +306,17 @@ function validateEventInput(
   const cur = asStr(r.currency).trim().toUpperCase().slice(0, 3);
   const currency = /^[A-Z]{3}$/.test(cur) ? cur : "USD";
 
+  // #4452 §6.2: only a free event may carry the RSVP answers.
+  const fu = parseToolFollowup("events", r.followup, { ticketPrice: ticket_price });
+  if (!fu.ok) fields.push("followup");
+  const followup = fu.ok ? fu.value as EventFollowup | null : null;
+
   if (fields.length > 0) return { ok: false, fields };
   return {
     ok: true,
     input: {
       title, category, city, venue_name, date, start_time, indoor_outdoor,
-      ticket_price, capacity, budget, audience_size, lineup, currency,
+      ticket_price, capacity, budget, audience_size, lineup, currency, followup,
     },
   };
 }
@@ -703,7 +712,7 @@ interface EventResearch {
   cpc_note: string;
 }
 
-function buildResearchPrompt(input: EventInput): string {
+export function buildResearchPrompt(input: EventInput): string {
   const { weekday, leadDays } = eventTiming(input.date);
   return [
     "Research this upcoming event and return findings as a raw JSON object.",
@@ -718,6 +727,7 @@ function buildResearchPrompt(input: EventInput): string {
     `Ticket price: ${input.ticket_price} ${input.currency}${input.ticket_price === 0 ? " (free)" : ""}`,
     `Capacity: ${input.capacity}`,
     input.lineup ? `Lineup / host: ${input.lineup}` : "",
+    ...followupPromptLines(input.followup),
     "</untrusted_event_data>",
     "",
     "Use Google Search. Return EXACTLY this JSON shape:",
@@ -950,7 +960,7 @@ interface Synthesis {
   listing_preview: { title: string; tagline: string; vibe_tags: string[]; why_go: string[]; best_for: string[] };
 }
 
-function buildSynthesisPrompt(
+export function buildSynthesisPrompt(
   input: EventInput,
   research: EventResearch,
 ): string {
@@ -974,6 +984,7 @@ function buildSynthesisPrompt(
     `Capacity: ${input.capacity}`,
     input.audience_size !== null ? `Organiser audience size: ${input.audience_size}` : "Organiser audience size: (not given)",
     input.lineup ? `Lineup / host: ${input.lineup}` : "",
+    ...followupPromptLines(input.followup),
     "</untrusted_event_data>",
     "",
     "External research (from live search):",
@@ -1227,6 +1238,8 @@ async function handleRun(
     capacity: input.capacity, budget: input.budget,
     audience_size: input.audience_size, lineup: input.lineup,
     currency: input.currency,
+    // #4452 §6.2: present only when asked, so a run without it hashes and persists as today.
+    ...(input.followup ? { followup: input.followup } : {}),
   };
 
   let ipHash: string | null = null;
@@ -1425,6 +1438,8 @@ async function handleRun(
     listing_preview: { ...synth.listing_preview, cover_url: coverUrl },
     offer: { per_person_from: "$3.99" },
     narrative: synth.narrative,
+    // #4452 §6.2/§6.9: the situation the page and the email adapt to (absent = today).
+    ...(input.followup ? { followup: input.followup } : {}),
     meta: {
       generated_at: new Date().toISOString(),
       model: GEMINI_MODEL_ID,
