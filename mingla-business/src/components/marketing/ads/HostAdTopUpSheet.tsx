@@ -37,10 +37,18 @@ export function HostAdTopUpSheet(props: {
   money: (cents: number) => string;
   onClose: () => void;
   onApplied: () => void;
+  /**
+   * #4238 W6b: false where no amount is "needed" (Promote home, a paused
+   * ad): the first tile is a suggestion, not labelled "What you need".
+   */
+  showNeed?: boolean;
+  /** #4238 W6b: the amount tiles on Promote home (pay terms). */
+  options?: readonly number[];
 }): React.ReactElement {
   const presentPay = useAdCreditTopUpPay();
   const larger = hostAdCeilMajor(Math.max(props.neededCents * 2, props.neededCents + 100_00));
-  const options = [props.neededCents, larger];
+  const options = props.options && props.options.length > 0 ? [...props.options] : [props.neededCents, larger];
+  const showNeed = props.showNeed !== false && !props.options;
   const [picked, setPicked] = useState<number | "other">(props.neededCents);
   const [otherText, setOtherText] = useState("");
   const [phase, setPhase] = useState<"pick" | "paying">("pick");
@@ -129,7 +137,7 @@ export function HostAdTopUpSheet(props: {
                     testID={`host-ad-topup-amount-${index}`}
                   >
                     <Text style={s.amtText}>{props.money(value)}</Text>
-                    {index === 0 ? <Text style={bs.caption}>{hb("topUp.need")}</Text> : null}
+                    {index === 0 && showNeed ? <Text style={bs.caption}>{hb("topUp.need")}</Text> : null}
                   </Pressable>
                 );
               })}

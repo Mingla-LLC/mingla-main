@@ -122,6 +122,15 @@ export function parseBusinessDeepLink(
       const [sub, query] = rest[1]?.split("?", 2) ?? [];
       if (!brandId) return null;
       if (sub === "team") return `/brand/${brandId}/team`;
+      // #4238 W6b — mingla-business://brand/{id}/ads[/{planId}] (the nine
+      // business.ad_* notices). A plan opens its ad (the detail screen finds
+      // the plan's campaign); no plan, or a bad id, opens Promote.
+      if (sub === "ads") {
+        const planId = rest[2]?.split("?", 1)[0] ?? "";
+        return UUID_RE.test(planId)
+          ? `/(tabs)/marketing/ads/${planId}?by=plan`
+          : "/(tabs)/marketing/ads";
+      }
       if (sub === "listing") return `/brand/${brandId}/listing`;
       // #2829 W9r — mingla-business://brand/{id}/website[/{section}]
       // (business.site_admin_requested). An unknown section opens Overview.
@@ -247,6 +256,15 @@ export function resolveBusinessNavTarget(
   const paymentsTarget = brandId
     ? `/brand/${brandId}/payments`
     : ACCOUNT_FALLBACK;
+
+  // #4238 W6b — an ad notice without its deep link still opens Promote, or
+  // the ad itself when the payload names the plan.
+  if (type.startsWith("business.ad_")) {
+    const planId = (data.planId ?? data.plan_id) as string | undefined;
+    return typeof planId === "string" && UUID_RE.test(planId)
+      ? `/(tabs)/marketing/ads/${planId}?by=plan`
+      : "/(tabs)/marketing/ads";
+  }
 
   if (type.startsWith("business.discount_")) {
     const discountId = (data.discountId ?? data.relatedId) as

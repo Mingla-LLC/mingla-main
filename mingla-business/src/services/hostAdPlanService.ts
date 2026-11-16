@@ -1663,7 +1663,16 @@ export async function changeHostAdLive(input: {
   newBudgetCents?: number | null;
   newEndsAt?: string | null;
   idempotencyKey: string;
+  /** #4238 W6b: the Host confirmed a change that restarts learning. */
+  acknowledgeLearningReset?: boolean;
+  /**
+   * #4238 W6b: apply Ari's one suggestion. Only its id goes to the server
+   * (never an amount); the server recomputes the change from it.
+   */
+  suggestionId?: string | null;
 }): Promise<{ daily_not_pushed: string[]; end_not_pushed: string[] }> {
+  const fromSuggestion =
+    typeof input.suggestionId === "string" && input.suggestionId.length > 0;
   const result = await invoke<{
     daily_not_pushed?: string[];
     end_not_pushed?: string[];
@@ -1671,14 +1680,39 @@ export async function changeHostAdLive(input: {
     action: "change_live",
     brand_id: input.brandId,
     plan_id: input.planId,
-    ...(input.newBudgetCents ? { new_budget_cents: input.newBudgetCents } : {}),
-    ...(input.newEndsAt ? { new_ends_at: input.newEndsAt } : {}),
+    ...(fromSuggestion
+      ? { suggestion_id: input.suggestionId }
+      : {
+          ...(input.newBudgetCents ? { new_budget_cents: input.newBudgetCents } : {}),
+          ...(input.newEndsAt ? { new_ends_at: input.newEndsAt } : {}),
+          ...(input.acknowledgeLearningReset === true
+            ? { acknowledge_learning_reset: true }
+            : {}),
+        }),
     idempotency_key: input.idempotencyKey,
   });
   return {
     daily_not_pushed: result.daily_not_pushed ?? [],
     end_not_pushed: result.end_not_pushed ?? [],
   };
+}
+
+/**
+ * #4238 W6b: the Host says yes to the "Last tickets" ad the server offered.
+ * The suggestion id, when the offer came as Ari's one suggestion, is checked
+ * by the server; the words were approved at create time.
+ */
+export async function acceptHostAdLastTickets(input: {
+  brandId: string;
+  planId: string;
+  suggestionId?: string | null;
+}): Promise<void> {
+  await invoke<Record<string, unknown>>("host-ad-campaign", {
+    action: "accept_last_tickets",
+    brand_id: input.brandId,
+    plan_id: input.planId,
+    ...(input.suggestionId ? { suggestion_id: input.suggestionId } : {}),
+  });
 }
 
 /**

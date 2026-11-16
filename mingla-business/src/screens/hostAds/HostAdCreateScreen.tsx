@@ -102,6 +102,7 @@ import {
 } from "../../components/marketing/ads/HostAdBuilderBits";
 import { HostAdTopUpSheet } from "../../components/marketing/ads/HostAdTopUpSheet";
 import { HostAdWordsSheet } from "../../components/marketing/ads/HostAdWordsSheet";
+import { hm } from "../../components/marketing/ads/hostAdManageCopy";
 import { Sheet } from "../../components/ui/Sheet";
 import { Icon } from "../../components/ui/Icon";
 import { Material } from "../../components/ui/Material";
@@ -2868,6 +2869,16 @@ export default function HostAdCreateRoute(): React.ReactElement {
           }
           onPress={() => setSheet("words")}
           testID="host-ad-words-row"
+        />
+        {/* #4238 W6b: Ari writes the ad from the page only (no made-up people
+            or places); its plan comes back as a proposal card to confirm. */}
+        <ValueRow
+          divider
+          icon="sparkle"
+          label={hm("ari.draft")}
+          value={hm("ari.draftSub")}
+          onPress={() => router.push(`/(tabs)/ari?brandId=${encodeURIComponent(brandId ?? "")}` as never)}
+          testID="host-ad-draft-with-ari"
         />
       </BuilderList>
       <View style={bs.stack}>
