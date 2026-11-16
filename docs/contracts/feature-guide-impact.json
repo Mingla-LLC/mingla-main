@@ -1238,7 +1238,8 @@
         "supabase/functions/admin-send-email/model.ts",
         "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
         "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
-        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
+        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql",
+        "mingla-marketing/public/brand/mingla-logo-pill.png"
       ]
     },
     {
