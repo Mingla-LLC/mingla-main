@@ -1303,6 +1303,39 @@ export const metaAdapter: ChannelAdapter = {
     });
   },
 
+  // #4238 W4a (5a): a Host "total for the run" ad is a CBO lifetime budget on
+  // the campaign; a live edit raises or lowers it to the new provider cap.
+  setLifetimeBudget: async (conn, level, externalId, cents) => {
+    if (level !== "campaign") {
+      throw new AdApiError({
+        platform: "meta",
+        code: "unsupported_level",
+        message: "Host lifetime budgets live on the Meta campaign (CBO).",
+      });
+    }
+    const client = resolveMetaClient(conn);
+    await metaGraph(client, "POST", externalId, {
+      lifetime_budget: centsToPlatformBudget("meta", cents),
+    });
+  },
+
+  getLifetimeBudget: async (conn, _level, externalId) => {
+    const client = resolveMetaClient(conn);
+    const payload = await metaGraph(client, "GET", externalId, {
+      fields: "lifetime_budget",
+    });
+    const cents = Number(payload.lifetime_budget);
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      throw new AdApiError({
+        platform: "meta",
+        code: "budget_readback_invalid",
+        message:
+          "Meta did not return an exact positive lifetime_budget after the update.",
+      });
+    }
+    return { cents, field: "lifetime_budget" };
+  },
+
   // #4238: Host live edit — the ad set's end_time (ISO 8601). Unverified
   // against a live write; the request is Graph's standard field update.
   setEndTime: async (conn, level, externalId, endIso) => {

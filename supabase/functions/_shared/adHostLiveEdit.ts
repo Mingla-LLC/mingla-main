@@ -39,6 +39,9 @@ export const HOST_LIVE_EDIT_STATES = new Set([
   "partially_live",
 ]);
 
+/** #4238 W4a (5a): apps whose LIFETIME budget Mingla pushes on a live edit. */
+export const HOST_LIVE_LIFETIME_PUSH: ReadonlySet<Platform> = new Set(["meta"]);
+
 /** Apps whose daily budget Mingla can push today. */
 export const HOST_LIVE_DAILY_PUSH: ReadonlySet<Platform> = new Set([
   "meta",
@@ -65,8 +68,8 @@ export type HostLiveCampaign = {
    * #4238 5a: the campaign runs on a lifetime (total) budget. Its daily
    * amount is never pushed (the app has none); the new total is enforced by
    * Mingla's spend sync at the new cap.
-   * [TRANSITIONAL] the lifetime amount itself is not pushed to the app yet —
-   * exit: W4 (live-edit limits) pushes Meta's campaign lifetime_budget.
+   * W4a: on Meta the new provider cap is pushed as the campaign's
+   * lifetime_budget (HOST_LIVE_LIFETIME_PUSH), never above the new total.
    */
   lifetime?: boolean;
 };
@@ -79,6 +82,12 @@ export type HostLivePlanLine = {
   daily_changed: boolean;
   /** #4238 W4a: the one-ad-set floor F in provider money (null = unknown). */
   floor_cents?: number | null;
+  /**
+   * #4238 W4a (5a): a lifetime campaign whose provider total moves to the
+   * new cap (Meta). The cap is the new total in provider money, so the app
+   * can never spend more than the Host's new total.
+   */
+  lifetime_changed?: boolean;
 };
 
 export type HostLivePlan =
@@ -309,6 +318,9 @@ export function planHostLiveEdit(input: {
       new_provider_delivery_budget_cents: newDaily,
       daily_changed: dailyChanged,
       floor_cents: minimum,
+      lifetime_changed: row.lifetime === true &&
+        HOST_LIVE_LIFETIME_PUSH.has(row.platform) &&
+        newCap !== row.current_cap_cents,
     });
   }
   return {
@@ -548,7 +560,7 @@ export async function runHostLiveEdit(
           campaign.provider_delivery_budget_cents,
       );
       const needsEnd = line.platform === "meta" && input.plan.newEndsAt !== null;
-      if (!line.daily_changed && !needsEnd) continue;
+      if (!line.daily_changed && !needsEnd && line.lifetime_changed !== true) continue;
       const { data: connection } = await db.from("ad_connections").select("*")
         .eq("id", campaign.connection_id).maybeSingle();
       if (!connection?.connected || connection.status !== "connected") {
@@ -606,6 +618,34 @@ export async function runHostLiveEdit(
             if (target.localId && target.level === "ad_set") adSetBudgets.push(target);
           }
           evidence[line.campaign_id] = { confirmed, pushed_at: new Date().toISOString() };
+        }
+        if (line.lifetime_changed === true) {
+          if (
+            typeof adapter.setLifetimeBudget !== "function" ||
+            typeof adapter.getLifetimeBudget !== "function"
+          ) {
+            throw new Error("provider_lifetime_budget_unavailable");
+          }
+          const externalId = String(campaign.external_campaign_id ?? "");
+          if (!externalId) throw new Error("campaign_budget_target_missing");
+          const previousCap = Number(
+            campaign.amended_provider_budget_cents ?? campaign.provider_budget_cents,
+          );
+          await adapter.setLifetimeBudget(connection, "campaign", externalId, line.new_provider_budget_cents);
+          pushed.push({
+            platform: line.platform,
+            connection,
+            undo: () => adapter.setLifetimeBudget!(connection, "campaign", externalId, previousCap),
+          });
+          const readback = await adapter.getLifetimeBudget(connection, "campaign", externalId);
+          if (readback.cents !== line.new_provider_budget_cents) {
+            throw new Error(`provider_budget_readback_mismatch:${line.new_provider_budget_cents}:${readback.cents}`);
+          }
+          evidence[line.campaign_id] = {
+            ...(evidence[line.campaign_id] ?? {}),
+            lifetime_budget_cents: readback.cents,
+            pushed_at: new Date().toISOString(),
+          };
         }
         if (needsEnd && typeof adapter.setEndTime === "function") {
           const { data: adSets } = await db.from("ad_sets")

@@ -612,6 +612,23 @@ export interface ChannelAdapter {
   ): Promise<{ cents: number; field: string }>;
 
   /**
+   * #4238 W4a (5a): set and read back a campaign's LIFETIME budget (Host
+   * live edit of a "total for the run" ad). Only Meta (CBO lifetime_budget)
+   * implements it today.
+   */
+  setLifetimeBudget?(
+    conn: AdConnectionRow,
+    level: Exclude<EntityLevel, "ad">,
+    externalId: string,
+    cents: number,
+  ): Promise<void>;
+  getLifetimeBudget?(
+    conn: AdConnectionRow,
+    level: Exclude<EntityLevel, "ad">,
+    externalId: string,
+  ): Promise<{ cents: number; field: string }>;
+
+  /**
    * #4238: move an ad set's end time (Host live edit). Only apps whose create
    * path set an end time need it (Meta's ad set end_time); the others run
    * until Mingla's spend sync stops them at ads_campaigns.ends_at.
