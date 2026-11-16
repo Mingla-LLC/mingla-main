@@ -3625,6 +3625,7 @@
         "mingla-marketing/app/tools/_template/ReportShell.tsx",
         "mingla-marketing/app/tools/_template/ToolPage.tsx",
         "mingla-marketing/app/tools/_template/tools.css",
+        "mingla-marketing/app/tools/_template/share-link.ts",
         "mingla-marketing/app/tools/events/EventPredictorExperience.tsx",
         "mingla-marketing/app/tools/events/report/EventReportPageClient.tsx",
         "mingla-marketing/app/tools/events/report/page.tsx",
