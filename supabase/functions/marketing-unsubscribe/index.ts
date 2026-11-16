@@ -89,6 +89,18 @@ serve(async (req) => {
     );
   }
 
+  // #4452: a platform token (Mingla's own form follow-ups, brand_id null) is
+  // honoured by self-serve-unsubscribe, never here: this endpoint writes
+  // brand-scoped rows, so it accepts only a token bound to a brand.
+  if (payload.brand_id === null) {
+    return htmlError(
+      "This unsubscribe link is invalid or expired",
+      "Please email support@usemingla.com from the address you want " +
+        "unsubscribed and we'll honour it manually.",
+      400,
+    );
+  }
+
   // ?scope=global escalates from brand-scope to global suppression.
   const scopeParam = url.searchParams.get("scope");
   const scope: "brand" | "global" = scopeParam === "global" ? "global" : "brand";

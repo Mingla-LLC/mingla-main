@@ -51,7 +51,7 @@ export async function handler(req: Request): Promise<Response> {
     },
     env: staticEnv({ UNSUBSCRIBE_TOKEN_SECRET: Deno.env.get("UNSUBSCRIBE_TOKEN_SECRET") }),
     trackBase: `${url}/functions/v1/forms-track`,
-    signUnsubscribe: (e, k) => signUnsubscribeToken({ recipient_email: e, campaign_id: `form:${k}`, brand_id: null as unknown as string }),
+    signUnsubscribe: (e, k) => signUnsubscribeToken({ recipient_email: e, campaign_id: `form:${k}`, brand_id: null }),
   });
 }
 

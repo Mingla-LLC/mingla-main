@@ -93,7 +93,7 @@ function jsonResponse(body: unknown, status: number): Response {
   });
 }
 
-serve(async (req: Request): Promise<Response> => {
+export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -196,4 +196,9 @@ serve(async (req: Request): Promise<Response> => {
     console.error("[self-serve-unsubscribe] suppression write failed", message);
     return jsonResponse({ error: "suppression_write_failed" }, 500);
   }
-});
+}
+
+// #4452: exported so the one-click path is driven end to end in tests.
+if (import.meta.main) {
+  serve(handler);
+}

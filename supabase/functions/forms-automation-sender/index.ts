@@ -55,7 +55,7 @@ export async function handler(req: Request): Promise<Response> {
     }),
     trackBase: `${url}/functions/v1/forms-track`,
     signUnsubscribe: (email, formKey) =>
-      signUnsubscribeToken({ recipient_email: email, campaign_id: `form:${formKey}`, brand_id: null as unknown as string }),
+      signUnsubscribeToken({ recipient_email: email, campaign_id: `form:${formKey}`, brand_id: null }),
   });
 }
 

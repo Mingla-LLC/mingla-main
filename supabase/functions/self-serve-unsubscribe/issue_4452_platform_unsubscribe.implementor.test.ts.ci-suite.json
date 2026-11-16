@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/self-serve-unsubscribe/issue_4452_platform_unsubscribe.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4452-platform-unsubscribe",
+  "profile": "deno-2-unit"
+}

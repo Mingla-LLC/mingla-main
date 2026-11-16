@@ -4,7 +4,7 @@
  */
 import {
   signUnsubscribeToken,
-  verifyUnsubscribeToken,
+  verifyBrandUnsubscribeToken,
 } from "./marketingTokens.ts";
 
 export type WebFollowEmailKind = "confirm" | "invite";
@@ -57,7 +57,7 @@ export async function verifyWebFollowEmailToken(
   token: string,
   options: { nowSeconds?: number } = {},
 ): Promise<WebFollowEmailTokenPayload> {
-  const raw = await verifyUnsubscribeToken(token, {
+  const raw = await verifyBrandUnsubscribeToken(token, {
     secretEnvKey: secretEnvKey(),
     nowSeconds: options.nowSeconds,
   });

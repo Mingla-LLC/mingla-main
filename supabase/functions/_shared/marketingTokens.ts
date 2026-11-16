@@ -26,10 +26,29 @@
 export interface UnsubscribeTokenPayload {
   campaign_id: string;
   recipient_email: string;
-  brand_id: string;
+  /**
+   * The sending brand. Null ONLY for a platform-level (Mingla's own) email
+   * whose campaign_id is `form:<form key>` (#4452 form and free-tool
+   * follow-ups): see PLATFORM_UNSUB_CAMPAIGN_RE. Every other token carries a
+   * string brand, and brand consumers use verifyBrandUnsubscribeToken.
+   */
+  brand_id: string | null;
   /** Unix seconds. */
   exp: number;
 }
+
+/** A token bound to a brand (brand-scoped suppression, follow tokens). */
+export interface BrandUnsubscribeTokenPayload extends UnsubscribeTokenPayload {
+  brand_id: string;
+}
+
+/**
+ * #4452 — the only campaign ids that may carry a null brand: Mingla's own form
+ * and free-tool follow-ups (`form:<forms.key>`; the key shape mirrors the
+ * forms.key CHECK). A null brand with any other campaign id is invalid, so a
+ * brand email can never be minted or accepted without its brand.
+ */
+export const PLATFORM_UNSUB_CAMPAIGN_RE = /^form:[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$/;
 
 const UNSUB_DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 90; // 90 days
 const ENCODER = new TextEncoder();
@@ -90,6 +109,9 @@ export async function signUnsubscribeToken(
   payload: Omit<UnsubscribeTokenPayload, "exp"> & { exp?: number },
   options: { secretEnvKey?: string; ttlSeconds?: number } = {},
 ): Promise<string> {
+  if (payload.brand_id === null && !PLATFORM_UNSUB_CAMPAIGN_RE.test(payload.campaign_id)) {
+    throw new Error("unsubscribe_token_brand_required");
+  }
   const secret = requireSecret(options.secretEnvKey ?? "UNSUBSCRIBE_TOKEN_SECRET");
   const exp = payload.exp ??
     Math.floor(Date.now() / 1000) +
@@ -149,7 +171,10 @@ export async function verifyUnsubscribeToken(
   if (
     typeof payload.campaign_id !== "string" ||
     typeof payload.recipient_email !== "string" ||
-    typeof payload.brand_id !== "string" ||
+    !(
+      typeof payload.brand_id === "string" ||
+      (payload.brand_id === null && PLATFORM_UNSUB_CAMPAIGN_RE.test(payload.campaign_id))
+    ) ||
     typeof payload.exp !== "number"
   ) {
     throw new Error("unsubscribe_token_payload_invalid");
@@ -159,6 +184,22 @@ export async function verifyUnsubscribeToken(
     throw new Error("unsubscribe_token_expired");
   }
   return payload;
+}
+
+/**
+ * The brand-scoped verifier: everything verifyUnsubscribeToken checks, and the
+ * brand must be present. Brand consumers (marketing-unsubscribe, follow tokens)
+ * use this, so a platform token can never reach a brand-scoped write.
+ */
+export async function verifyBrandUnsubscribeToken(
+  token: string,
+  options: { secretEnvKey?: string; nowSeconds?: number } = {},
+): Promise<BrandUnsubscribeTokenPayload> {
+  const payload = await verifyUnsubscribeToken(token, options);
+  if (typeof payload.brand_id !== "string") {
+    throw new Error("unsubscribe_token_payload_invalid");
+  }
+  return payload as BrandUnsubscribeTokenPayload;
 }
 
 // ---------------------------------------------------------------------------
