@@ -386,6 +386,17 @@ export interface PublicVenueOrderingSlotContext
   extends PublicVenueThemedContext {
   /** The venue's menu, so the ordering renderer draws from the SAME payload. */
   menu: PublicMenuGroup[];
+  /**
+   * issue #4420 D-V2 — the basket bar docks at the bottom of the screen like
+   * every offering page's glass bar. These let the slot place it (desktop
+   * docks in the flyer column; the safe area clears the home bar) and tell
+   * the screen it owns that edge, so the reserve bar steps aside on the Menu
+   * tab instead of two bars stacking. Optional for hosts that keep the bar
+   * in the pane (Explorer, whose venue page has its own bottom bar).
+   */
+  isDesktop?: boolean;
+  bottomInset?: number;
+  onBottomBarChange?: (owned: boolean) => void;
 }
 
 export interface PublicVenueOrderingSlots {
@@ -1449,11 +1460,15 @@ export const PublicVenueScreen = ({
   );
 
   // ── Issue #1793 — the guest-ordering slot, resolved ONCE. ────────────────
+  const [orderingOwnsBar, setOrderingOwnsBar] = useState<boolean>(false);
   const orderingSlotContext: PublicVenueOrderingSlotContext = {
     palette,
     surface,
     theme: resolvedTheme,
     menu,
+    isDesktop,
+    bottomInset: insets.bottom,
+    onBottomBarChange: setOrderingOwnsBar,
   };
   const orderingMenuBody = ordering?.menuBody?.(orderingSlotContext) ?? null;
 
@@ -1464,7 +1479,10 @@ export const PublicVenueScreen = ({
   // #2331 — the buyer-web privacy bar no longer competes for this edge: the
   // app root ends above it (I-PRIVACY-BAR-NEVER-OCCLUDES), so the reserve bar
   // always shows.
-  const showPersistentReserveCta = showReserveCta;
+  // #4420 D-V2 — on the Menu tab an open ordering basket owns the bottom edge.
+  const showPersistentReserveCta =
+    showReserveCta &&
+    !(orderingOwnsBar && normalizedReservationUiState.activeTab === "menu");
 
   // ── #1562 §6.5 the venue's own clock, resolved ONCE ──────────────────────
   //
@@ -2073,11 +2091,14 @@ export const PublicVenueScreen = ({
     ) : null;
 
   const reserveBarClearance =
-    showPersistentReserveCta && !isDesktop
-      ? Platform.OS === "web"
-        ? 0
-        : 68 + 8 + insets.bottom + 12 + 8
-      : insets.bottom + 24;
+    // #4420 D-V2 — the docked basket bar is fixed, not in flow: clear it.
+    orderingOwnsBar && Platform.OS === "web" && !isDesktop
+      ? 68 + 12 + insets.bottom + 16
+      : showPersistentReserveCta && !isDesktop
+        ? Platform.OS === "web"
+          ? 0
+          : 68 + 8 + insets.bottom + 12 + 8
+        : insets.bottom + 24;
 
   // #4347 wave 4 — a host bar replaces the shared reserve bar at every width.
   const hostActionBar =

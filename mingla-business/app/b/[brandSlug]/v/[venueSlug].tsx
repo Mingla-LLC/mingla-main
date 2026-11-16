@@ -758,6 +758,10 @@ function PublicVenueRouteBody(): React.ReactElement {
               timezone={venue.timezone}
               // issue #3380 — "Who's ordering?" starts on the venue's country.
               countryCode={venue.countryCode}
+              // issue #4420 D-V2 — the basket bar docks at the screen's foot.
+              isDesktop={context.isDesktop ?? false}
+              bottomInset={context.bottomInset ?? 0}
+              onBottomBarChange={context.onBottomBarChange}
             />
           </React.Suspense>
         ),

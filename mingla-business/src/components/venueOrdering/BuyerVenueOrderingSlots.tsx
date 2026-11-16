@@ -14,7 +14,7 @@
  */
 
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -85,6 +85,13 @@ export interface BuyerVenueOrderingSlotProps {
   countryCode?: string | null;
 }
 
+/** issue #4420 D-V2 — where the basket bar docks, from the screen's slot context. */
+export interface BuyerVenueOrderingBarPlacement {
+  isDesktop?: boolean;
+  bottomInset?: number;
+  onBottomBarChange?: (owned: boolean) => void;
+}
+
 /** The venue's OWN clock — never the visitor's. */
 function localClock(timezone: string | null): {
   isoDayOfWeek: number;
@@ -122,6 +129,54 @@ export const BuyerVenueOrderingNotice: React.FC<
       ? `Ordering for ${ordering.config.spot.label}`
       : "Order & collect from the counter";
   return <VenueOrderingSpotChip label={label} palette={palette} />;
+};
+
+/**
+ * issue #4420 — the order review's frame: the app's bottom sheet on phone (a
+ * 560 dialog on desktop web), loaded on the first review rather than at module
+ * scope, the same as the phone field below: the sheet's animation stack would
+ * otherwise ride every menu visit (and every suite that mounts the menu). Once
+ * opened it stays mounted, so closing animates and reopening is instant.
+ */
+const BuyerVenueOrderReviewSheet: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  background: string;
+  children: React.ReactNode;
+}> = ({ open, onClose, background, children }) => {
+  const [mounted, setMounted] = React.useState<boolean>(open);
+  React.useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
+  if (!mounted && !open) return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Sheet } = require("../ui/Sheet") as typeof import("../ui/Sheet");
+  return (
+    <Sheet
+      visible={open}
+      onClose={onClose}
+      snapPoint="full"
+      presentation="modal"
+      panelBackground={background}
+      testID="issue-4420-venue-order-review-sheet"
+    >
+      {children}
+    </Sheet>
+  );
+};
+
+/** The review body scrolls; "Pay {total}" stays pinned in the sheet's footer. */
+const ReviewSheetLayout: React.FC<{
+  footer: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ footer, children }) => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { SheetScrollLayout } = require("../ui/SheetScrollLayout") as typeof import("../ui/SheetScrollLayout");
+  return (
+    <SheetScrollLayout keyboardAware footer={footer}>
+      {children}
+    </SheetScrollLayout>
+  );
 };
 
 /**
@@ -171,60 +226,6 @@ export const BuyerVenueOrderingMenu: React.FC<
     );
   }
 
-  if (ordering.cart.state.view === "review") {
-    return (
-      <VenueOrderReviewPane
-        palette={palette}
-        surface={surface}
-        config={ordering.config}
-        cart={ordering.cart.state.lines}
-        notesAllowedByItemId={notesAllowedByItemId}
-        preview={ordering.preview}
-        previewStatus={ordering.previewStatus}
-        previewError={ordering.previewError}
-        discountCode={ordering.discountCode ?? ""}
-        onDiscountCodeChange={ordering.setDiscountCode ?? (() => undefined)}
-        tip={ordering.cart.state.tip}
-        tipRemembered={ordering.tipRemembered}
-        onTipChange={ordering.cart.setTip}
-        partySize={ordering.cart.state.partySize}
-        askPartySize={ordering.askPartySize}
-        onPartySizeChange={ordering.cart.setPartySize}
-        buyer={ordering.cart.state.buyer}
-        onBuyerChange={ordering.cart.patchBuyer}
-        onSetQuantity={ordering.cart.setQuantity}
-        onSetNotes={ordering.cart.setNotes}
-        // issue #3380 — the country picker instead of a free-text box.
-        renderPhoneField={(args) => {
-          // Required here, not at module scope: only the review step needs the
-          // picker, and a module-scope import would load its keyboard stack for
-          // every menu visit (and every suite that mounts the menu).
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const { BuyerVenueOrderPhoneField } = require("./BuyerVenueOrderPhoneField") as typeof import("./BuyerVenueOrderPhoneField");
-          return (
-            <BuyerVenueOrderPhoneField
-              args={args}
-              palette={palette}
-              theme={theme}
-              countryCode={countryCode}
-            />
-          );
-        }}
-        phoneFailure={
-          buyerOrderPhoneFailure(
-            ordering.cart.state.buyer.phone,
-            ordering.cart.state.buyer.phoneCountryIso ??
-              buyerOrderPhoneStartCountry(countryCode),
-          )?.message ?? null
-        }
-        submitting={ordering.submitting}
-        submitError={ordering.submitError}
-        onSubmit={ordering.submit}
-        onBack={() => ordering.cart.setView("browse")}
-      />
-    );
-  }
-
   const groups = venueOrderingMenuGroups({
     groups: menu,
     windowsByMenuId: menuWindows,
@@ -244,8 +245,76 @@ export const BuyerVenueOrderingMenu: React.FC<
       />
     );
   }
+  // issue #4420 — the review is a sheet over the menu: close or the scrim
+  // returns to browsing, and the menu stays where the guest left it.
+  const reviewOpen = ordering.cart.state.view === "review";
+  const reviewSheet = (
+    <BuyerVenueOrderReviewSheet
+      open={reviewOpen}
+      onClose={() => ordering.cart.setView("browse")}
+      background={palette.page}
+    >
+      {reviewOpen ? (
+          <VenueOrderReviewPane
+            palette={palette}
+            surface={surface}
+            config={ordering.config}
+            cart={ordering.cart.state.lines}
+            notesAllowedByItemId={notesAllowedByItemId}
+            preview={ordering.preview}
+            previewStatus={ordering.previewStatus}
+            previewError={ordering.previewError}
+            discountCode={ordering.discountCode ?? ""}
+            onDiscountCodeChange={ordering.setDiscountCode ?? (() => undefined)}
+            tip={ordering.cart.state.tip}
+            tipRemembered={ordering.tipRemembered}
+            onTipChange={ordering.cart.setTip}
+            partySize={ordering.cart.state.partySize}
+            askPartySize={ordering.askPartySize}
+            onPartySizeChange={ordering.cart.setPartySize}
+            buyer={ordering.cart.state.buyer}
+            onBuyerChange={ordering.cart.patchBuyer}
+            onSetQuantity={ordering.cart.setQuantity}
+            onSetNotes={ordering.cart.setNotes}
+            // issue #3380 — the country picker instead of a free-text box.
+            renderPhoneField={(args) => {
+              // Required here, not at module scope: only the review step needs the
+              // picker, and a module-scope import would load its keyboard stack for
+              // every menu visit (and every suite that mounts the menu).
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              const { BuyerVenueOrderPhoneField } = require("./BuyerVenueOrderPhoneField") as typeof import("./BuyerVenueOrderPhoneField");
+              return (
+                <BuyerVenueOrderPhoneField
+                  args={args}
+                  palette={palette}
+                  theme={theme}
+                  countryCode={countryCode}
+                />
+              );
+            }}
+            phoneFailure={
+              buyerOrderPhoneFailure(
+                ordering.cart.state.buyer.phone,
+                ordering.cart.state.buyer.phoneCountryIso ??
+                  buyerOrderPhoneStartCountry(countryCode),
+              )?.message ?? null
+            }
+            submitting={ordering.submitting}
+            submitError={ordering.submitError}
+            onSubmit={ordering.submit}
+            onBack={() => ordering.cart.setView("browse")}
+            // issue #4420 — a bottom sheet on phone (a 560 dialog on desktop)
+            // with "Pay {total}" pinned in its footer; contents unchanged.
+            layout={(body, payButton) => (
+              <ReviewSheetLayout footer={payButton}>{body}</ReviewSheetLayout>
+            )}
+          />
+      ) : null}
+    </BuyerVenueOrderReviewSheet>
+  );
   return (
     <View style={styles.menuWrap}>
+      {reviewSheet}
       <VenueOrderingMenuList
         groups={groups}
         modifiersByItemId={ordering.modifiersByItemId}
@@ -293,7 +362,7 @@ export const BuyerVenueOrderingSurface: React.FC<{
   timezone: string | null;
   /** issue #3380 — the venue's country, for the guest's phone picker. */
   countryCode?: string | null;
-}> = ({
+} & BuyerVenueOrderingBarPlacement> = ({
   palette,
   surface,
   theme,
@@ -304,6 +373,9 @@ export const BuyerVenueOrderingSurface: React.FC<{
   menu,
   timezone,
   countryCode = null,
+  isDesktop = false,
+  bottomInset = 0,
+  onBottomBarChange,
 }) => {
   /**
    * The service WINDOWS are read HERE rather than by the route, and that is not
@@ -367,7 +439,12 @@ export const BuyerVenueOrderingSurface: React.FC<{
   return (
     <View style={styles.surface}>
       <BuyerVenueOrderingNotice {...slotProps} />
-      <BuyerVenueOrderingBar {...slotProps} />
+      <BuyerVenueOrderingBar
+        {...slotProps}
+        isDesktop={isDesktop}
+        bottomInset={bottomInset}
+        onBottomBarChange={onBottomBarChange}
+      />
       {canOrder ? (
         <BuyerVenueOrderingMenu
           {...slotProps}
@@ -433,13 +510,29 @@ export const BuyerVenueOrderStatusView: React.FC<{
   />
 );
 
-/** The action bar. Null unless there is a basket to look at, on the browse step. */
-export const BuyerVenueOrderingBar: React.FC<BuyerVenueOrderingSlotProps> = ({
-  ordering,
-  palette,
-}) => {
-  if (ordering.cart.count === 0) return null;
-  if (ordering.cart.state.view !== "browse") return null;
+/**
+ * The basket bar, on the browse step while the venue takes orders.
+ *
+ * issue #4420 D-V2 — on web it docks at the bottom of the screen (the flyer
+ * column on desktop), like every offering page's glass bar, and tells the
+ * screen it owns that edge so the reserve bar steps aside on the Menu tab.
+ * An empty basket still shows the bar ("Order from your table · Add
+ * something to start", no button), so the guest knows ordering is open.
+ */
+export const BuyerVenueOrderingBar: React.FC<
+  BuyerVenueOrderingSlotProps & BuyerVenueOrderingBarPlacement
+> = ({ ordering, palette, isDesktop = false, bottomInset = 0, onBottomBarChange }) => {
+  const shown =
+    venueOrderingCanOrder(ordering.config) && ordering.cart.state.view === "browse";
+  const docked = shown && Platform.OS === "web";
+  React.useEffect(() => {
+    if (onBottomBarChange === undefined) return undefined;
+    onBottomBarChange(docked);
+    return () => onBottomBarChange(false);
+  }, [docked, onBottomBarChange]);
+  if (!shown) return null;
+  const spotLabel =
+    ordering.config.spotState === "ok" ? ordering.config.spot?.label ?? null : null;
   return (
     <VenueOrderingStickyBar
       count={ordering.cart.count}
@@ -451,6 +544,10 @@ export const BuyerVenueOrderingBar: React.FC<BuyerVenueOrderingSlotProps> = ({
       currency={ordering.preview?.currency ?? null}
       palette={palette}
       onPress={() => ordering.cart.setView("review")}
+      spotLabel={spotLabel}
+      placement="screen"
+      isDesktop={isDesktop}
+      bottomInset={bottomInset}
     />
   );
 };
