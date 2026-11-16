@@ -61,6 +61,7 @@ import {
   space,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { hideModalFocusBrackets } from "./hideModalFocusBrackets";
 import { useEscapeLayer } from "./escapeLayerStack";
 import { useSheetGone } from "./useSheetGone";
 
@@ -295,6 +296,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
       statusBarTranslucent
     >
       <View
+        ref={hideModalFocusBrackets}
         pointerEvents={visible ? "auto" : "none"}
         style={StyleSheet.absoluteFill}
         testID={testID}

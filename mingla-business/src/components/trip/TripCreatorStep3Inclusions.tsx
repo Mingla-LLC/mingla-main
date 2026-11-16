@@ -83,10 +83,6 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
 
   return (
     <View style={styles.host}>
-      <Text style={styles.helper}>
-        What&rsquo;s included in the price, and what isn&rsquo;t.
-      </Text>
-
       {/* Included list */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>What&rsquo;s included</Text>
@@ -218,11 +214,6 @@ const styles = StyleSheet.create({
     paddingTop: space[2],
     paddingBottom: space[6],
     gap: space[6],
-  },
-  helper: {
-    fontSize: type.small.fontSize,
-    lineHeight: type.small.lineHeight,
-    color: color.text2,
   },
   section: {
     gap: space[2],

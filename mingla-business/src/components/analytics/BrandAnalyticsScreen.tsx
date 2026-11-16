@@ -278,9 +278,6 @@ const TrafficBrandAnalyticsScreen: React.FC<
           <Text style={styles.screenTitle} accessibilityRole="header">
             Analytics
           </Text>
-          <Text style={styles.intro}>
-            See how people reach your pages and take action.
-          </Text>
           <View
             accessibilityLiveRegion="polite"
             testID="analytics-refresh-announcement"
@@ -428,12 +425,6 @@ const styles = StyleSheet.create({
     fontSize: type.title.fontSize,
     lineHeight: type.title.lineHeight,
     fontWeight: type.title.fontWeight,
-  },
-  intro: {
-    color: color.text2,
-    fontSize: type.body.fontSize,
-    lineHeight: type.body.lineHeight,
-    marginTop: space[1],
   },
   updating: {
     color: color.text2,

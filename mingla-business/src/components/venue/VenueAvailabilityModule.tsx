@@ -825,9 +825,6 @@ export const VenueAvailabilityModule = forwardRef<
     <View style={styles.host} testID={testID ?? "venue-availability-module"}>
       <View style={styles.headerText} testID="venue-avail-heading-copy">
         <Text style={styles.title}>Availability</Text>
-        <Text style={styles.subtitle}>
-          Set when guests can book, how long a table turns, and any closures.
-        </Text>
       </View>
 
       {/* Timezone — issue #1586. Derived automatically; correctable here. */}
@@ -1253,10 +1250,6 @@ const styles = StyleSheet.create({
   title: {
     ...type.h1,
     color: color.text1,
-  },
-  subtitle: {
-    ...type.small,
-    color: color.text2,
   },
   section: {
     gap: space[2],

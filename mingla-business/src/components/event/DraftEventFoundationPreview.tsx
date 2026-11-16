@@ -171,6 +171,7 @@ export const DraftEventFoundationPreview: React.FC<
   const dayChooser = requiresMultiDatePurchase ? (
     <React.Suspense fallback={null}>
       <MultiDateDayChooser
+        framed
         timezone={occurrences[0]?.timezone ?? "UTC"}
         palette={palette}
         fontFamily={boldFamily}
