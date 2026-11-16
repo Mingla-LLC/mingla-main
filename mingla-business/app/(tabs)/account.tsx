@@ -293,13 +293,18 @@ export default function AccountTab(): React.ReactElement {
           leftKind="brand"
           onBrandTap={handleOpenSwitcher}
           extraRightSlot={
-            <IconChrome
-              icon="plus"
-              size={36}
-              onPress={() => setIsUniversalCreatorOpen(true)}
-              accessibilityLabel="Create event, experience, or trip"
-              testID="account-universal-creator-button"
-            />
+            // #4420 B5 — phone: Create is the centre BottomNav button, so the
+            // tab-root trailing slot is only chat, bell and profile. Desktop
+            // web keeps the top-bar Create (I-DESKTOP-GATE-VIA-HOOK).
+            isWideDesktop ? (
+              <IconChrome
+                icon="plus"
+                size={36}
+                onPress={() => setIsUniversalCreatorOpen(true)}
+                accessibilityLabel="Create event, experience, or trip"
+                testID="account-universal-creator-button"
+              />
+            ) : undefined
           }
         />
       </View>
