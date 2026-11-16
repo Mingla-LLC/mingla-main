@@ -60,6 +60,14 @@ export type HostLiveCampaign = {
    * (providerDailyMinimumCents); null or absent = no known minimum.
    */
   provider_daily_minimum_cents?: number | null;
+  /**
+   * #4238 5a: the campaign runs on a lifetime (total) budget. Its daily
+   * amount is never pushed (the app has none); the new total is enforced by
+   * Mingla's spend sync at the new cap.
+   * [TRANSITIONAL] the lifetime amount itself is not pushed to the app yet —
+   * exit: W4 (live-edit limits) pushes Meta's campaign lifetime_budget.
+   */
+  lifetime?: boolean;
 };
 
 export type HostLivePlanLine = {
@@ -79,7 +87,17 @@ export type HostLivePlan =
     /** Apps that keep their daily amount (Mingla can't push it there). */
     dailyNotPushed: Platform[];
   }
-  | { ok: false; error: string; detail?: string };
+  | {
+    ok: false;
+    error: string;
+    detail?: string;
+    /** host_ad_live_edit_learning_reset: what the Host is asked to confirm. */
+    learning?: { change_pct: number | null; days_live: number; learning_until: string };
+  };
+
+/** #4238 6a: the learning window and the budget change it tolerates. */
+export const HOST_LEARNING_WINDOW_DAYS = 7;
+export const HOST_LEARNING_MAX_CHANGE = 0.2;
 
 const positive = (value: unknown): number | null => {
   const number = Number(value);
@@ -105,6 +123,13 @@ export function planHostLiveEdit(input: {
   lastBookableAt: string | null;
   hostSpendCents: number;
   campaigns: HostLiveCampaign[];
+  /**
+   * #4238 6a: when the ad first went live (ms); null = not live yet. Inside
+   * the first 7 days a budget change over 20% or any end-date change resets
+   * the apps' learning, so it needs `acknowledgeLearningReset: true`.
+   */
+  liveSinceMs?: number | null;
+  acknowledgeLearningReset?: boolean;
 }): HostLivePlan {
   if (!HOST_LIVE_EDIT_STATES.has(input.planState)) {
     return { ok: false, error: "host_ad_live_edit_state_invalid" };
@@ -141,6 +166,34 @@ export function planHostLiveEdit(input: {
   }
   if (budget === null && endsAt === null) {
     return { ok: false, error: "host_ad_live_edit_empty" };
+  }
+  // #4238 6a (I-4238-LEARNING-CONFIRM): server-side, never only a client
+  // warning. Exactly 20% passes; more needs the explicit acknowledgement.
+  const liveSince = input.liveSinceMs ?? null;
+  if (
+    liveSince !== null && Number.isFinite(liveSince) &&
+    input.nowMs - liveSince < HOST_LEARNING_WINDOW_DAYS * 86_400_000 &&
+    input.acknowledgeLearningReset !== true
+  ) {
+    const current = input.currentHostBudgetCents;
+    const changePct = budget !== null && current > 0
+      ? Math.abs(budget - current) / current
+      : null;
+    const endChanged = endsAt !== null &&
+      Date.parse(endsAt) !== Date.parse(input.currentEndsAt ?? "");
+    if ((changePct !== null && changePct > HOST_LEARNING_MAX_CHANGE) || endChanged) {
+      return {
+        ok: false,
+        error: "host_ad_live_edit_learning_reset",
+        learning: {
+          change_pct: changePct === null ? null : Math.round(changePct * 1000) / 10,
+          days_live: Math.floor((input.nowMs - liveSince) / 86_400_000) + 1,
+          learning_until: new Date(
+            liveSince + HOST_LEARNING_WINDOW_DAYS * 86_400_000,
+          ).toISOString(),
+        },
+      };
+    }
   }
   const newBudget = budget ?? input.currentHostBudgetCents;
   // #4238 r8 P1-1: a total at or under the spend so far leaves nothing to
@@ -184,7 +237,7 @@ export function planHostLiveEdit(input: {
     // An app with nothing spent and a share under one cent has no cap that
     // fits inside the total: too little is left to keep it running.
     if (newCap < 1) return { ok: false, error: "host_ad_live_edit_below_spend" };
-    const canPush = HOST_LIVE_DAILY_PUSH.has(row.platform);
+    const canPush = HOST_LIVE_DAILY_PUSH.has(row.platform) && row.lifetime !== true;
     let newDaily = hostDailies === null
       ? row.current_daily_cents
       : Math.max(1, Math.floor(hostDailies[index] * dailyRatio));
@@ -550,4 +603,26 @@ export async function runHostLiveEdit(
     }
     return await failure(status, "host_ad_live_edit_not_recorded");
   }
+}
+
+/**
+ * #4238 6a / item 4: when a Host ad first went live — the earliest ACTIVE
+ * status event of its campaigns, else the earliest campaign create time (the
+ * launch). Null when nothing is known (never guessed as "long ago").
+ */
+export async function loadHostLiveSinceMs(
+  db: Db,
+  campaigns: readonly Record<string, unknown>[],
+): Promise<number | null> {
+  const ids = campaigns.map((row) => String(row.id ?? "")).filter(Boolean);
+  if (ids.length === 0) return null;
+  const { data, error } = await db.from("ad_status_events")
+    .select("created_at").in("campaign_id", ids).eq("to_status", "ACTIVE")
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  const active = !error && data ? Date.parse(String(data.created_at ?? "")) : NaN;
+  if (Number.isFinite(active)) return active;
+  const created = campaigns
+    .map((row) => Date.parse(String(row.created_at ?? "")))
+    .filter((ms) => Number.isFinite(ms));
+  return created.length > 0 ? Math.min(...created) : null;
 }

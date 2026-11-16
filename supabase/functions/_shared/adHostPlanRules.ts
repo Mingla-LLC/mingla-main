@@ -230,3 +230,99 @@ export function minimumsFromSetup(
   }
   return out;
 }
+
+/** #4238 6b: a Host or Ari ad set carries 1–5 videos (photos come in W3). */
+export const HOST_CREATIVES_MAX = 5;
+/** The builder suggests at least this many videos (the creatives_hint). */
+export const HOST_CREATIVES_SUGGESTED = 3;
+
+const CREATIVE_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #4238 6b: the canonical creative list. Absent = the single
+ * `creative_library_id` (older clients). Present = 1–5 distinct ids, and
+ * `creative_library_id` (kept for older readers) must be the first.
+ */
+export function hostCreativeLibraryIds(
+  raw: unknown,
+  first: unknown,
+): { ok: true; ids: string[] } | { ok: false; detail: string } {
+  const single = typeof first === "string" ? first : "";
+  if (raw === undefined || raw === null) {
+    return CREATIVE_UUID.test(single)
+      ? { ok: true, ids: [single] }
+      : { ok: false, detail: "creative_library_id_required" };
+  }
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, detail: "creative_library_ids_invalid" };
+  }
+  if (raw.length > HOST_CREATIVES_MAX) {
+    return { ok: false, detail: "creative_library_ids_too_many" };
+  }
+  const ids: string[] = [];
+  for (const value of raw) {
+    if (typeof value !== "string" || !CREATIVE_UUID.test(value)) {
+      return { ok: false, detail: "creative_library_ids_invalid" };
+    }
+    if (ids.includes(value)) {
+      return { ok: false, detail: "creative_library_ids_duplicate" };
+    }
+    ids.push(value);
+  }
+  if (single && single !== ids[0]) {
+    return { ok: false, detail: "creative_library_id_not_first" };
+  }
+  return { ok: true, ids };
+}
+
+/**
+ * #4238 6c + amendment A decision 4: Meta's Advantage+ audience is on for a
+ * Host ad set unless a list or lookalike audience is attached, or the Host
+ * set a top age, a gender or a language (their explicit choice is kept).
+ * The age minimum stays a hard limit either way.
+ */
+export function hostMetaAdvantageAudience(input: {
+  listOrLookalikeAttached: boolean;
+  targeting: Record<string, unknown> | null | undefined;
+}): 0 | 1 {
+  if (input.listOrLookalikeAttached) return 0;
+  const t = input.targeting ?? {};
+  // Meta keeps only a minimum age up to 25 as a hard limit under Advantage+.
+  const ageMin = Number(t.age_min);
+  if (Number.isFinite(ageMin) && ageMin > 25) return 0;
+  const ageMax = Number(t.age_max);
+  if (Number.isFinite(ageMax) && ageMax > 0 && ageMax < 65) return 0;
+  const genders = t.genders;
+  if (Array.isArray(genders) && genders.length > 0 && genders.length < 2) {
+    return 0;
+  }
+  const locales = t.locales ?? t.languages;
+  if (Array.isArray(locales) && locales.length > 0) return 0;
+  return 1;
+}
+
+/**
+ * #4238 5a: apps whose create path sends a lifetime (total-for-the-run)
+ * budget for the one-ad-set structure. Every other app runs daily plus
+ * Mingla's cap (the spend sync stops it at the total).
+ *
+ * Meta only in W2: the Meta adapter and create path already send a CBO
+ * `lifetime_budget` with the ad set end time. TikTok's adapter knows
+ * BUDGET_MODE_TOTAL and Snap's knows lifetime_budget_micro (Z-2 confirmed),
+ * but admin-ad-create-campaign still hard-codes daily on both paths and the
+ * live edit can't push a lifetime amount yet — carried to W4 (live-edit
+ * code). A "total" never becomes a per-day budget of the total.
+ */
+export const HOST_LIFETIME_PLATFORMS: ReadonlySet<string> = new Set(["meta"]);
+
+/** The provider budget mode a Host plan's app runs on. */
+export function hostBudgetModeFor(
+  platform: string,
+  canonicalPlan: Record<string, unknown> | null | undefined,
+): "daily" | "lifetime" {
+  return canonicalPlan?.budget_mode === "total" &&
+      HOST_LIFETIME_PLATFORMS.has(platform)
+    ? "lifetime"
+    : "daily";
+}

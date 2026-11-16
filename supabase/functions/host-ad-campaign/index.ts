@@ -49,6 +49,7 @@ import {
   type HostLiveCampaign,
   HOST_LIVE_DAILY_PUSH,
   type HostLiveEditProblem,
+  loadHostLiveSinceMs,
   planHostLiveEdit,
   runHostLiveEdit,
 } from "../_shared/adHostLiveEdit.ts";
@@ -1651,6 +1652,7 @@ async function planAndRunLiveEdit(
       current_cap_cents: Number(row.amended_provider_budget_cents ?? row.provider_budget_cents),
       current_daily_cents: Number(row.amended_provider_delivery_budget_cents ?? row.provider_delivery_budget_cents),
       provider_spend_cents: providerSpend,
+      lifetime: Number(row.lifetime_budget_cents ?? 0) > 0,
       provider_daily_minimum_cents: providerDailyMinimumCents(
         String(row.platform),
         connection,
@@ -1670,11 +1672,22 @@ async function planAndRunLiveEdit(
     lastBookableAt: typeof destination?.last_bookable_at === "string" ? destination.last_bookable_at : null,
     hostSpendCents: hostSpend,
     campaigns: lines,
+    // #4238 6a: the learning-reset guard needs the live date and the Host's
+    // explicit acknowledgement (only the literal true counts).
+    liveSinceMs: await loadHostLiveSinceMs(db, rows),
+    acknowledgeLearningReset: body.acknowledge_learning_reset === true,
   });
   if (!planned.ok) {
     return {
-      status: planned.error === "host_ad_live_edit_once_a_day" ? 409 : 422,
-      body: planned.detail ? { error: planned.error, detail: planned.detail } : { error: planned.error },
+      status: planned.error === "host_ad_live_edit_once_a_day" ||
+          planned.error === "host_ad_live_edit_learning_reset"
+        ? 409
+        : 422,
+      body: {
+        error: planned.error,
+        ...(planned.detail ? { detail: planned.detail } : {}),
+        ...(planned.learning ? planned.learning : {}),
+      },
     };
   }
   const onProblem = (problem: HostLiveEditProblem): Promise<void> =>

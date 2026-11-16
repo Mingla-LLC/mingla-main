@@ -23,6 +23,8 @@ import {
   type CountryAvailabilityRow,
   countriesAppCannotRunIn,
   allocationBelowMinimum,
+  HOST_CREATIVES_SUGGESTED,
+  hostCreativeLibraryIds,
   hostDailyMinimumCents,
   reachCacheKey,
   reachMeter,
@@ -86,6 +88,8 @@ import {
   OWN_RESULTS_MIN,
   typicalPaidPriceCents,
 } from "../_shared/adResultEstimate.ts";
+import { parseOfferingStock } from "../_shared/adDestination.ts";
+import { hostSalesLadderStart } from "../_shared/adGoalLadder.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   audienceCountryMismatch,
@@ -381,6 +385,7 @@ export async function buildHostBudgetGuidance(
     platforms: Platform[];
     destination: Record<string, unknown> | null;
     runDays: number | null;
+    occurrenceKey?: string | null;
   },
 ): Promise<Record<string, unknown>> {
   const { data: connections, error } = await db.from("ad_connections")
@@ -433,6 +438,13 @@ export async function buildHostBudgetGuidance(
       }
     }
   }
+  const stock = input.goal === "visits"
+    ? { remaining: null, known: false }
+    : await loadOfferingStockCap(
+      db,
+      input.destination?.event_id,
+      input.occurrenceKey ?? null,
+    );
   const own = await hostOwnCostPerResult(db, {
     brandId: input.brandId,
     countryCode: input.countryCode,
@@ -447,12 +459,215 @@ export async function buildHostBudgetGuidance(
     priceUsd,
     apps,
     own,
-    // [TRANSITIONAL] stock is unknown until W2 adds ad_offering_stock (item 5);
-    // exit: W2 passes {remaining, runDays} from that function.
-    stock: { remaining: null, runDays: input.runDays },
+    stock: { remaining: stock.remaining, runDays: input.runDays },
   });
   if (!guidance.ok) return { ok: false, status: 422, detail: guidance.detail };
-  return { ...guidance, stock_known: false };
+  return { ...guidance, stock_known: stock.known };
+}
+
+/**
+ * #4238 W2: what is left to sell (ad_offering_stock), for the guidance cap.
+ * Unlimited or unknown stock is no cap; a read failure is "not known" (never
+ * a cap of zero).
+ */
+export async function loadOfferingStockCap(
+  db: Db,
+  eventId: unknown,
+  occurrenceKey: string | null,
+): Promise<{ remaining: number | null; known: boolean }> {
+  if (typeof eventId !== "string" || !UUID_RE.test(eventId)) {
+    return { remaining: null, known: false };
+  }
+  const { data, error } = await db.rpc("ad_offering_stock", {
+    p_event_id: eventId,
+    p_occurrence_key: occurrenceKey,
+  });
+  const stock = error ? null : parseOfferingStock(data);
+  if (!stock) return { remaining: null, known: false };
+  return { remaining: stock.unlimited ? null : stock.remaining, known: true };
+}
+
+/**
+ * #4238 W2: the Host fields frozen into the plan hash at create_version.
+ *   6b  creative_library_ids: 1–5 brand-owned active videos (the first is
+ *       also creative_library_id, for older readers).
+ *   5e  occurrence_key: one date of a series (null = all dates); the run must
+ *       end by that date's last bookable moment.
+ *   5c  copy.last_tickets: the last-tickets words (drafted from the title when
+ *       absent), length-checked like the rest of the copy. Ticket pages only.
+ *   4   sales_ladder_by_platform + guidance_snapshot: server-computed from the
+ *       budget guidance (a client value is always replaced).
+ */
+export async function freezeHostW2Fields(
+  db: Db,
+  input: {
+    plan: Plan;
+    canonical: Record<string, unknown>;
+    canonicalInput: Record<string, unknown>;
+    platforms: Platform[];
+    destination: Record<string, unknown>;
+    optimizationMap: Record<string, string>;
+    rows: Record<string, unknown>[];
+    hostCurrency: string;
+  },
+): Promise<
+  | { ok: true }
+  | { ok: false; detail?: string; database?: { message?: string; code?: string } }
+> {
+  const { canonical, canonicalInput } = input;
+  // Never client-authored.
+  delete canonical.sales_ladder_by_platform;
+  delete canonical.guidance_snapshot;
+
+  // 6b — the creative list.
+  const list = hostCreativeLibraryIds(
+    canonicalInput.creative_library_ids,
+    canonicalInput.creative_library_id,
+  );
+  if (!list.ok) return { ok: false, detail: list.detail };
+  for (const id of list.ids.slice(1)) {
+    const { data: creative, error } = await db.from("ad_creatives")
+      .select("id,brand_id,kind,status,source,source_brand_id,purged_at")
+      .eq("id", id).maybeSingle();
+    if (error) return { ok: false, database: error };
+    const selection = creativeSelectionError(creative, { frozen: false });
+    if (selection || !creative) {
+      return { ok: false, detail: selection?.error ?? "creative_not_reusable" };
+    }
+    if (creative.kind !== "video") {
+      return { ok: false, detail: "host_video_creative_required" };
+    }
+    const ownership = adCreativeOwnershipError({
+      ownerKind: input.plan.owner_kind,
+      planBrandId: input.plan.brand_id,
+      creativeBrandId: creative.brand_id,
+      creativeSource: creative.source,
+      creativeSourceBrandId: creative.source_brand_id,
+    });
+    if (ownership) return { ok: false, detail: ownership };
+  }
+  canonical.creative_library_ids = list.ids;
+  canonical.creative_library_id = list.ids[0];
+
+  // 5e — one date of a series.
+  const rawKey = canonicalInput.occurrence_key;
+  if (rawKey === undefined || rawKey === null || rawKey === "") {
+    canonical.occurrence_key = null;
+  } else {
+    const eventId = input.destination.event_id;
+    if (typeof rawKey !== "string" || typeof eventId !== "string") {
+      return { ok: false, detail: "occurrence_key_invalid" };
+    }
+    const { data: date, error } = await db.from("event_dates")
+      .select("start_at,end_at,status,cancelled_at")
+      .eq("event_id", eventId).eq("occurrence_key", rawKey)
+      .is("cancelled_at", null).maybeSingle();
+    if (error) return { ok: false, database: error };
+    const bookable = date
+      ? (input.destination.page_type === "trip" ? date.start_at : date.end_at)
+      : null;
+    const bookableMs = Date.parse(String(bookable ?? ""));
+    if (
+      !date || (date.status ?? "active") !== "active" ||
+      !Number.isFinite(bookableMs) || bookableMs <= Date.now()
+    ) {
+      return { ok: false, detail: "occurrence_key_invalid" };
+    }
+    const schedule = asRecord(canonicalInput.schedule);
+    const endsMs = Date.parse(String(schedule?.ends_at ?? ""));
+    if (Number.isFinite(endsMs) && endsMs > bookableMs) {
+      return { ok: false, detail: "schedule_after_date_end" };
+    }
+    canonical.occurrence_key = rawKey;
+  }
+
+  // 5c — last-tickets words, ticket pages only.
+  const copy = asRecord(canonical.copy) ?? {};
+  if (input.destination.result_kind === "tickets") {
+    const title = String(input.destination.title ?? "").trim();
+    const given = typeof copy.last_tickets === "string"
+      ? copy.last_tickets.trim()
+      : "";
+    const lastTickets = given || (title ? `Last tickets for ${title}` : "Last tickets");
+    const tooLong = hostCopyTooLong(input.platforms, { primary: lastTickets });
+    if (tooLong) {
+      return {
+        ok: false,
+        detail: `copy_too_long:${tooLong.platform}:last_tickets:${tooLong.max}`,
+      };
+    }
+    canonical.copy = { ...copy, last_tickets: lastTickets };
+  } else if ("last_tickets" in copy) {
+    const { last_tickets: _drop, ...rest } = copy;
+    canonical.copy = rest;
+  }
+
+  // 4 — the ladder start and the guidance snapshot (nudge + ladder).
+  const salesApps = input.platforms.filter((platform) =>
+    input.optimizationMap[platform] === "sales"
+  );
+  const goalApps = input.platforms.filter((platform) =>
+    input.optimizationMap[platform] === "sales" ||
+    input.optimizationMap[platform] === "signups"
+  );
+  if (goalApps.length > 0 && input.plan.brand_id) {
+    const totalCredit = input.rows.reduce(
+      (sum, row) => sum + Number(row.host_delivery_budget_cents ?? 0),
+      0,
+    );
+    const goal = salesApps.length > 0 ? "sales" : "signups";
+    const apps = goal === "sales" ? salesApps : goalApps;
+    const { data: brand } = await db.from("brands").select("country_code")
+      .eq("id", input.plan.brand_id).maybeSingle();
+    const country = String(brand?.country_code ?? "").trim().toUpperCase();
+    const schedule = asRecord(canonicalInput.schedule);
+    const endsAt = typeof schedule?.ends_at === "string" ? schedule.ends_at : null;
+    const startsAt = typeof schedule?.starts_at === "string"
+      ? schedule.starts_at
+      : null;
+    const guidance = Number.isSafeInteger(totalCredit) && totalCredit > 0
+      ? await buildHostBudgetGuidance(db, {
+        brandId: input.plan.brand_id,
+        currency: input.hostCurrency,
+        countryCode: /^[A-Z]{2}$/.test(country) ? country : null,
+        goal,
+        dailyPayCents: hostMinimumPayCents(totalCredit),
+        platforms: apps,
+        destination: input.destination,
+        runDays: endsAt ? calendarDaysBetween(startsAt, endsAt) : null,
+        occurrenceKey: (canonical.occurrence_key as string | null) ?? null,
+      })
+      : { ok: false };
+    const perApp = guidance.ok === true && Array.isArray(guidance.per_app)
+      ? guidance.per_app as Record<string, unknown>[]
+      : [];
+    const mid: Record<string, number | null> = {};
+    const snapshot: Record<string, Record<string, number>> = {};
+    for (const app of perApp) {
+      const platform = String(app.platform);
+      const week = asRecord(app.expected_week);
+      const midValue = Number(app.expected_week_mid);
+      mid[platform] = Number.isFinite(midValue) ? midValue : null;
+      snapshot[platform] = {
+        week_low: Number(week?.low ?? 0),
+        week_mid: Number.isFinite(midValue) ? midValue : 0,
+      };
+    }
+    // Unknown guidance (no FX rate, a lookup failure): the ladder starts on
+    // started checkouts — the safe side for a small budget — and promotes
+    // itself once the ad has enough purchases.
+    canonical.sales_ladder_by_platform = hostSalesLadderStart({
+      platforms: input.platforms,
+      optimizationByPlatform: input.optimizationMap,
+      expectedPurchasesWeekMid: mid,
+    });
+    canonical.guidance_snapshot = {
+      goal,
+      known: guidance.ok === true,
+      per_app: snapshot,
+    };
+  }
+  return { ok: true };
 }
 
 /** The Host goals setup.minimums carries a minimum for. */
@@ -1720,6 +1935,9 @@ export async function handleAdPlan(
       platforms,
       destination,
       runDays,
+      occurrenceKey: typeof body.occurrence_key === "string"
+        ? body.occurrence_key
+        : null,
     });
     if (result.ok !== true) {
       return json({
@@ -1727,7 +1945,13 @@ export async function handleAdPlan(
         detail: result.detail,
       }, Number(result.status ?? 422));
     }
-    return json(result);
+    // #4238 6b: fewer than 3 videos gives the apps less to rotate.
+    const creativeCount = Number(body.creative_count);
+    return json(
+      Number.isSafeInteger(creativeCount) && creativeCount >= 0
+        ? { ...result, creatives_hint: creativeCount < HOST_CREATIVES_SUGGESTED }
+        : result,
+    );
   }
 
   if (action === "host_setup") {
@@ -2869,6 +3093,21 @@ export async function handleAdPlan(
           error: "plan_preflight_failed",
           detail: `budget_below_app_minimum:${below.platform}`,
         }, 422);
+      }
+      const w2 = await freezeHostW2Fields(db, {
+        plan,
+        canonical,
+        canonicalInput,
+        platforms,
+        destination: resolvedDestination,
+        optimizationMap: optimization.map,
+        rows: normalized.rows,
+        hostCurrency: normalized.hostCurrency,
+      });
+      if (!w2.ok) {
+        return w2.database
+          ? databaseFailure(w2.database)
+          : json({ error: "plan_preflight_failed", detail: w2.detail }, 422);
       }
     }
     const paidSocialPlatforms = platforms.filter((platform) =>

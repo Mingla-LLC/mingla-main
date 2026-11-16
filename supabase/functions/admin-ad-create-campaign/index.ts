@@ -218,7 +218,16 @@ import {
   hostGoalBodyError,
   hostOptimizationFor,
 } from "../_shared/adHostGoal.ts";
-import { paidSocialStagesApply } from "../_shared/adHostPlanRules.ts";
+import {
+  HOST_LIFETIME_PLATFORMS,
+  hostBudgetModeFor,
+  hostMetaAdvantageAudience,
+  paidSocialStagesApply,
+} from "../_shared/adHostPlanRules.ts";
+import {
+  ladderMetaCustomEventType,
+  ladderStageFor,
+} from "../_shared/adGoalLadder.ts";
 import { PURCHASE_SIGNAL_MIN_28D } from "../_shared/adSalesReadiness.ts";
 import {
   frozenAudienceBinding,
@@ -960,7 +969,11 @@ serve(async (req: Request): Promise<Response> => {
 
   // #4238 item 3: the Meta conversion event a Host goal optimises for
   // (PURCHASE for sales, COMPLETE_REGISTRATION for sign-ups); null = Admin.
-  let hostMetaCustomEvent: "PURCHASE" | "COMPLETE_REGISTRATION" | null = null;
+  let hostMetaCustomEvent:
+    | "PURCHASE"
+    | "INITIATE_CHECKOUT"
+    | "COMPLETE_REGISTRATION"
+    | null = null;
   if (requestedOwnerKind === "host") {
     let hostDestination;
     try {
@@ -1107,6 +1120,14 @@ serve(async (req: Request): Promise<Response> => {
     hostMetaCustomEvent = hostOptimization
       ? hostMetaCustomEventType(hostOptimization)
       : null;
+    // #4238 item 4: a sales app frozen on the ladder's first step optimises
+    // for started checkouts until the sweep switches it (one new ad set).
+    if (
+      hostMetaCustomEvent === "PURCHASE" &&
+      ladderStageFor(hostCanonical, platform) === "checkout_first"
+    ) {
+      hostMetaCustomEvent = ladderMetaCustomEventType("checkout_first");
+    }
     // #4238 P1: the Host's button comes from the plan, mapped to this app's
     // own value; a client value is never used for a Host ad.
     const frozenCta = hostCanonical.call_to_action;
@@ -1172,7 +1193,8 @@ serve(async (req: Request): Promise<Response> => {
       detail: "budget_type_unsupported",
     }, 422);
   }
-  const budgetType = budgetTypeRaw as BudgetMode;
+  // #4238 5a: a bound Host plan may switch this to lifetime (see below).
+  let budgetType = budgetTypeRaw as BudgetMode;
   const amountCents = budget.amount_cents;
   if (!Number.isInteger(amountCents) || (amountCents as number) <= 0) {
     return json({
@@ -1203,7 +1225,7 @@ serve(async (req: Request): Promise<Response> => {
   // Lifetime is Meta-only until Google/Snap/TikTok/Reddit adapters send a
   // lifetime provider budget AND the spend feed covers those platforms. A
   // "$350 total" must never become $350/day with no working cap.
-  if (budgetType === "lifetime" && platform !== "meta") {
+  if (budgetType === "lifetime" && !HOST_LIFETIME_PLATFORMS.has(platform)) {
     return json({
       error: "validation_error",
       detail: "lifetime_budget_meta_only",
@@ -1279,6 +1301,8 @@ serve(async (req: Request): Promise<Response> => {
   }
   let customerCurrency = providerCurrency;
   let providerAmountCents = amountCents as number;
+  // #4238 5a: the Host cap a Host lifetime budget carries (brand money).
+  let hostLifetimeCapCents: number | null = null;
   let frozenExecutionTargeting: Record<string, unknown> | null = null;
   let boundPlanVersionId: string | null = null;
   let boundCanonicalPlan: Record<string, unknown> | null = null;
@@ -1532,6 +1556,27 @@ serve(async (req: Request): Promise<Response> => {
       planHash,
       providerDeliveryBudgetCents: providerAmountCents,
     });
+    // #4238 5a: a Host "total for the whole run" plan runs on a lifetime
+    // budget (the frozen cap) where the app supports it for one ad set; the
+    // daily delivery amount stays the recorded pace.
+    if (
+      boundPlanOwnership.owner_kind === "host" &&
+      hostBudgetModeFor(platform, canonicalPlan) === "lifetime"
+    ) {
+      if (!schedule.ends_at || schedule.days == null) {
+        return json({
+          error: "plan_conflict",
+          detail: "lifetime_budget_requires_valid_schedule",
+        }, 409);
+      }
+      const providerCap = Number(allocation.provider_budget_cents);
+      if (!Number.isSafeInteger(providerCap) || providerCap <= 0) {
+        return json({ error: "plan_conflict", detail: "plan_budget_mismatch" }, 409);
+      }
+      budgetType = "lifetime";
+      providerAmountCents = providerCap;
+      hostLifetimeCapCents = capCents;
+    }
   } else {
     // #4238 (I-4238-AUDIENCE-SERVER-BOUND): validate_only runs the same
     // frozen-audience binding guard before any provider call.
@@ -1568,7 +1613,7 @@ serve(async (req: Request): Promise<Response> => {
     owner_kind: requestedOwnerKind,
     cap_cents: capCents,
     lifetime_budget_cents: budgetType === "lifetime"
-      ? amountCents as number
+      ? hostLifetimeCapCents ?? amountCents as number
       : null,
     starts_at: schedule.starts_at,
     ends_at: schedule.ends_at,
@@ -6073,6 +6118,19 @@ serve(async (req: Request): Promise<Response> => {
   };
   if (specialAdCategories.length > 0) {
     targeting = applySpecialAdCategoryRestrictions(targeting);
+  }
+  // #4238 6c + amendment A decision 4: a Host ad set lets Meta widen the
+  // audience (Advantage+) unless a list or lookalike is attached or the Host
+  // set a top age, a gender or a language. Admin keeps its own rule.
+  if (requestedOwnerKind === "host" && specialAdCategories.length === 0) {
+    targeting.targeting_automation = {
+      advantage_audience: hostMetaAdvantageAudience({
+        listOrLookalikeAttached: boundProspectingAudienceIds.length > 0 ||
+          (Array.isArray(targetingInput.custom_audiences) &&
+            targetingInput.custom_audiences.length > 0),
+        targeting: targetingInput,
+      }),
+    };
   }
 
   // ── 4. Per-category budget floor (A4.g / PROOF M-P8 — never hardcoded). ──────
