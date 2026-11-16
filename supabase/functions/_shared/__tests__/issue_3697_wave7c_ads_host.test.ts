@@ -29,6 +29,7 @@ Deno.test("Wave 7c: Paystack reference prefix mingla_adc_", () => {
   const ref = buildAdCreditPaystackReference({
     brandId: "11111111-1111-4111-8111-111111111111",
     clientIdem: "abc-def-123",
+    payCents: 500_000,
   });
   assert(ref.startsWith(AD_CREDIT_PAYSTACK_REF_PREFIX));
   assertEquals(isAdCreditPaystackReference(ref), true);

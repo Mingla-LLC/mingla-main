@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} potrzebuje co najmniej {{amount}} dziennie. Wybierz wyższą kwotę łączną lub wcześniejszą datę końca.",
         "daily": "Płacisz każdego dnia",
         "runTotal": "{{amount}} łącznie za {{days}} dni",
-        "atMinimumDaily": "Niżej się nie da: {{amount}} dziennie to minimum dla tej reklamy."
+        "atMinimumDaily": "Niżej się nie da: {{amount}} dziennie to minimum dla tej reklamy.",
+        "runTotalLeft": "Łącznie {{amount}}, zostało {{days}} dni",
+        "dailyUnknown": "Nie można teraz pokazać dziennej kwoty tej reklamy. Nadal możesz zmienić datę zakończenia."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Użyj własnej nazwy marki i swoich materiałów.",
         "prohibited": "Pokazuje coś, na co aplikacja nie pozwala.",
         "prohibitedFix": "Usuń tę część z obrazu lub tekstu."
+      },
+      "summary": {
+        "line": "W tym miesiącu: {{spent}} z {{budget}} · {{results}}",
+        "lineNoBudget": "W tym miesiącu: {{spent}} · {{results}}",
+        "lineNoSpend": "W tym miesiącu: {{results}}",
+        "results": "Wyniki: {{count}}",
+        "resultOne": "Wynik: {{count}}",
+        "chartLabel": "Ile zapłacono w ostatnich 30 dniach. {{line}}.",
+        "last30": "Ostatnie 30 dni"
       }
     }
   }

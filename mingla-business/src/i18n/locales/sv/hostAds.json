@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} behöver minst {{amount}} per dag. Välj ett högre totalbelopp eller ett tidigare slutdatum.",
         "daily": "Du betalar per dag",
         "runTotal": "{{amount}} totalt under {{days}} dagar",
-        "atMinimumDaily": "Lägre går inte: {{amount}} per dag är minimum för den här annonsen."
+        "atMinimumDaily": "Lägre går inte: {{amount}} per dag är minimum för den här annonsen.",
+        "runTotalLeft": "{{amount}} totalt, {{days}} dagar kvar",
+        "dailyUnknown": "Dagsbeloppet för den här annonsen kan inte visas just nu. Du kan fortfarande ändra slutdatumet."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Använd ditt eget varumärkesnamn och media du äger.",
         "prohibited": "Den visar något som appen inte tillåter.",
         "prohibitedFix": "Ta bort den delen ur bilden eller texten."
+      },
+      "summary": {
+        "line": "Den här månaden: {{spent}} av {{budget}} · {{results}}",
+        "lineNoBudget": "Den här månaden: {{spent}} · {{results}}",
+        "lineNoSpend": "Den här månaden: {{results}}",
+        "results": "{{count}} resultat",
+        "resultOne": "{{count}} resultat",
+        "chartLabel": "Det du betalat de senaste 30 dagarna. {{line}}.",
+        "last30": "Senaste 30 dagarna"
       }
     }
   }

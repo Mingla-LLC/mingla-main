@@ -137,6 +137,66 @@ export function hostLiveEditUnknownField(
   return null;
 }
 
+/**
+ * #4238 rework 1 (tester P1-2 / P1-3): what a Host plan's apps spend a day,
+ * in the BRAND's money (Ads credit), for the detail page and the edit sheet.
+ *
+ * Never `ad_campaigns.daily_budget_cents`: that column is null whenever the
+ * budget sits on the ad group / ad squad (TikTok, Snapchat, Reddit, Meta with
+ * a retarget ad set) or on a run total, and it is in the ad ACCOUNT's money.
+ * The plan's frozen allocation holds the daily per app in both moneys
+ * (host_delivery_budget_cents / provider_delivery_budget_cents); a live edit
+ * records the new provider daily as amended_provider_delivery_budget_cents,
+ * converted back at the same frozen ratio the edit used. Any app without a
+ * readable allocation makes the answer unknown (null), never a 0.
+ *
+ * MINGLA-INVARIANT: I-4238-PLAN-DAILY-IN-BRAND-MONEY | issue #4238 | The Host ad detail's daily amount comes from the plan allocation (amendment-aware, frozen-rate converted to the brand's money), never from ad_campaigns.daily_budget_cents; an unreadable app gives null, never 0.
+ */
+export function hostPlanDailyCreditCents(input: {
+  campaigns: readonly Record<string, unknown>[];
+  allocations: readonly Record<string, unknown>[];
+}): number | null {
+  if (input.campaigns.length === 0) return null;
+  let total = 0;
+  for (const campaign of input.campaigns) {
+    const allocation = input.allocations.find((row) =>
+      row.platform === campaign.platform
+    );
+    if (!allocation) return null;
+    const host = Number(allocation.host_delivery_budget_cents);
+    const provider = Number(allocation.provider_delivery_budget_cents);
+    if (
+      !Number.isSafeInteger(host) || host <= 0 ||
+      !Number.isSafeInteger(provider) || provider <= 0
+    ) return null;
+    const amendedRaw = campaign.amended_provider_delivery_budget_cents;
+    const amended = amendedRaw === null || amendedRaw === undefined
+      ? null
+      : Number(amendedRaw);
+    if (amended === null) {
+      total += host;
+      continue;
+    }
+    if (!Number.isSafeInteger(amended) || amended <= 0) return null;
+    total += provider === host
+      ? amended
+      : Math.floor((amended * host) / provider);
+  }
+  return total;
+}
+
+/**
+ * #4238 rework 1 (tester P1-1): the public page a Host ad promoted, from the
+ * plan's frozen destination, so "Share results" goes through the sanctioned
+ * share helper with a real link. Only a clean https URL (no query, no
+ * fragment, no tracking tags) is returned; anything else is null.
+ */
+export function hostPlanPublicPageUrl(snapshot: unknown): string | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const url = (snapshot as Record<string, unknown>).canonical_url;
+  return typeof url === "string" && /^https:\/\/[^\s?#]+$/.test(url) ? url : null;
+}
+
 /** #4238 6a: the learning window and the budget change it tolerates. */
 export const HOST_LEARNING_WINDOW_DAYS = 7;
 export const HOST_LEARNING_MAX_CHANGE = 0.2;

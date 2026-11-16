@@ -427,6 +427,7 @@ serve(async (req: Request): Promise<Response> => {
       const reference = buildAdCreditPaystackReference({
         brandId,
         clientIdem,
+        payCents: quoted.pay_cents,
       });
       try {
         const init = await paystackInitializeTransaction({

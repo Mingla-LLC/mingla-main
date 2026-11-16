@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} günde en az {{amount}} ister. Daha yüksek bir toplam ya da daha yakın bir bitiş tarihi seç.",
         "daily": "Günlük ödediğin tutar",
         "runTotal": "{{days}} gün için toplam {{amount}}",
-        "atMinimumDaily": "Daha aşağı inemez: bu reklamın çalışması için günde en az {{amount}} gerekir."
+        "atMinimumDaily": "Daha aşağı inemez: bu reklamın çalışması için günde en az {{amount}} gerekir.",
+        "runTotalLeft": "Toplam {{amount}}, {{days}} gün kaldı",
+        "dailyUnknown": "Bu reklamın günlük tutarı şu anda gösterilemiyor. Bitiş tarihini yine de değiştirebilirsin."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Kendi marka adını ve sana ait medyayı kullan.",
         "prohibited": "Uygulamanın izin vermediği bir şey gösteriyor.",
         "prohibitedFix": "O kısmı görselden veya yazıdan çıkar."
+      },
+      "summary": {
+        "line": "Bu ay: {{budget}} içinden {{spent}} · {{results}}",
+        "lineNoBudget": "Bu ay: {{spent}} · {{results}}",
+        "lineNoSpend": "Bu ay: {{results}}",
+        "results": "{{count}} sonuç",
+        "resultOne": "{{count}} sonuç",
+        "chartLabel": "Son 30 günde ödediğin tutar. {{line}}.",
+        "last30": "Son 30 gün"
       }
     }
   }

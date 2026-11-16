@@ -86,6 +86,7 @@ import {
   hostAdBrandLinkDecision,
   hostAdBudgetCard,
   hostAdCreativeRejected,
+  hostAdDetailDailyCredit,
   hostAdGoalFromResult,
   hostAdHostCanResume,
   hostAdLatestStopCode,
@@ -507,7 +508,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
     conversions: payload.results?.conversions,
     salesValue: currency ? payload.results?.value_cents?.[currency] ?? null : null,
   });
-  const dailyCredit = payload.plan_campaigns.reduce((sum, row) => sum + Number(row.daily_budget_cents ?? 0), 0);
+  // #4238 rework 1 (tester P1-2/P1-3): the plan's daily in the brand's money
+  // (server plan_daily_credit_cents), never a sum of the campaigns' raw
+  // daily_budget_cents (null for ad-group budgets, and in the ad account's money).
+  const dailyCredit = hostAdDetailDailyCredit(payload.plan_daily_credit_cents);
   const budget = hostAdBudgetCard({ dailyCredit, capCredit, spentCredit });
   const endsAt =
     payload.plan_campaigns
@@ -516,6 +520,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
       .sort()
       .pop() ?? null;
   const tz = payload.time_zone ?? null;
+  const publicPageUrl = typeof payload.public_page_url === "string" && payload.public_page_url ? payload.public_page_url : null;
   const dateText = (iso: string): string =>
     new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", ...(tz ? { timeZone: tz } : {}) });
   const apps = platformNames(payload.plan_campaigns.map((row) => String(row.platform)));
@@ -635,7 +640,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           <Text style={bs.caption} testID="ads-detail-counting">
             {`${hostAdCountingLine(goal)} ${hm("detail.toAds", { amount: money(results.spentCredit) })}`}
           </Text>
-          {ended && results.count > 0 ? (
+          {ended && results.count > 0 && publicPageUrl ? (
             <View style={bs.actions}>
               <Button label={hm("detail.share")} variant="secondary" size="md" onPress={() => setShareVisible(true)} testID="ads-detail-share" />
             </View>
@@ -665,10 +670,12 @@ export default function HostAdDetailRoute(): React.ReactElement {
       <BuilderCard accessibilityLabel={hm("detail.budget")} testID="ads-detail-budget">
         <BuilderLabel>{hm("detail.budget")}</BuilderLabel>
         <View style={bs.kv}>
-          <View style={bs.kvRow}>
-            <Text style={bs.kvKey}>{hm("detail.payADay")}</Text>
-            <Text style={bs.kvVal} testID="ads-detail-pay-a-day">{money(budget.dailyPay)}</Text>
-          </View>
+          {budget.dailyPay !== null ? (
+            <View style={bs.kvRow}>
+              <Text style={bs.kvKey}>{hm("detail.payADay")}</Text>
+              <Text style={bs.kvVal} testID="ads-detail-pay-a-day">{money(budget.dailyPay)}</Text>
+            </View>
+          ) : null}
           <View style={bs.kvRow}>
             <Text style={bs.kvKey}>{hm("detail.payTotal")}</Text>
             <Text style={bs.kvVal}>{money(budget.totalPay)}</Text>
@@ -682,7 +689,9 @@ export default function HostAdDetailRoute(): React.ReactElement {
             <Text style={bs.kvVal} testID="ads-detail-held">{money(held)}</Text>
           </View>
         </View>
-        <Text style={bs.caption}>{hm("detail.aDayToAds", { amount: money(budget.dailyToAds) })}</Text>
+        {budget.dailyToAds !== null ? (
+          <Text style={bs.caption}>{hm("detail.aDayToAds", { amount: money(budget.dailyToAds) })}</Text>
+        ) : null}
         {payload.plan_id ? (
           editBlock.blocked ? (
             <Text style={bs.caption} testID="ads-detail-edit-blocked">
@@ -832,7 +841,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
       <Button label={hm("detail.resume")} variant="primary" fullWidth disabled={busy || offline} onPress={() => setResumeVisible(true)} testID="ads-detail-resume" />
     </View>
   ) : paused && reason === "creditOut" && wallet.canView ? (
-    <Button label={hm("detail.topUp")} variant="primary" fullWidth disabled={offline} onPress={() => setTopUpCents(budget.dailyPay)} testID="ads-detail-topup" />
+    <Button label={hm("detail.topUp")} variant="primary" fullWidth disabled={offline} onPress={() => setTopUpCents(budget.dailyPay ?? budget.totalPay)} testID="ads-detail-topup" />
   ) : allRejected ? (
     <View style={bs.actions}>
       <Button label={hm("detail.askAri")} variant="secondary" style={styles.flex} onPress={() => router.push(`/(tabs)/ari?brandId=${encodeURIComponent(brandId)}` as never)} testID="ads-detail-ask-ari" />
@@ -1033,11 +1042,15 @@ export default function HostAdDetailRoute(): React.ReactElement {
           }}
         />
       ) : null}
-      <HostAdShareSheet
-        visible={shareVisible}
-        message={hostAdShareMessage({ event: name, goal, count: results.count, soldOut: reason === "soldOut" })}
-        onClose={() => setShareVisible(false)}
-      />
+      {publicPageUrl ? (
+        <HostAdShareSheet
+          visible={shareVisible}
+          url={publicPageUrl}
+          title={name}
+          message={hostAdShareMessage({ event: name, goal, count: results.count, soldOut: reason === "soldOut" })}
+          onClose={() => setShareVisible(false)}
+        />
+      ) : null}
     </View>
   );
 }

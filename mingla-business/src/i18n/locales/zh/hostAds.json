@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} 每天至少需要 {{amount}}。请选择更高的总额或更早的结束日期。",
         "daily": "你每天支付",
         "runTotal": "{{days}} 天共 {{amount}}",
-        "atMinimumDaily": "不能再低了：这条广告每天至少需要 {{amount}}。"
+        "atMinimumDaily": "不能再低了：这条广告每天至少需要 {{amount}}。",
+        "runTotalLeft": "共 {{amount}}，还剩 {{days}} 天",
+        "dailyUnknown": "目前无法显示这则广告的每日金额。你仍然可以更改结束日期。"
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "使用你自己的品牌名和属于你的素材。",
         "prohibited": "展示了应用不允许的内容。",
         "prohibitedFix": "从图片或文字中去掉那部分。"
+      },
+      "summary": {
+        "line": "本月：{{spent}} / {{budget}} · {{results}}",
+        "lineNoBudget": "本月：{{spent}} · {{results}}",
+        "lineNoSpend": "本月：{{results}}",
+        "results": "{{count}} 个结果",
+        "resultOne": "{{count}} 个结果",
+        "chartLabel": "过去 30 天你支付的金额。{{line}}。",
+        "last30": "过去 30 天"
       }
     }
   }

@@ -401,6 +401,32 @@ function main() {
     }
   }
 
+  // 7. #4238 rework 1 — structural money and wiring rules re-homed here from
+  // Jest readFileSync pins (I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN): the
+  // builder does no money maths of its own; the detail page's daily is the
+  // server's plan figure (never ad_campaigns.daily_budget_cents, tester P1-2 /
+  // P1-3); a notice for another brand switches before the ad is looked up;
+  // Share results never calls Share.share directly (#1615, tester P1-1).
+  if (create !== null) {
+    for (const needle of ["hostAdPlanBudget({", "hostAdMinimumPayCents(setup?.minimums, platform", "hostAdLaunchBlocker({", "disabled={blocker !== null}"]) {
+      if (!create.includes(needle)) fail(`create.tsx no longer uses the money model ${JSON.stringify(needle)}`);
+    }
+    if (/\* 0\.85|0\.85 \*|\/ 0\.85/.test(create)) fail("create.tsx does its own 0.85 money maths again");
+  }
+  if (detail !== null) {
+    if (/daily_budget_cents/.test(detail.replace(/\/\/[^\n]*/g, ""))) {
+      fail("[id].tsx reads daily_budget_cents again (use the server's plan_daily_credit_cents)");
+    }
+    for (const needle of ["hostAdDetailDailyCredit(payload.plan_daily_credit_cents)", "setCurrentBrandId(linkBrandId)", 'testID="ads-detail-not-on-team"', 'linkDecision !== "stay"']) {
+      if (!detail.includes(needle)) fail(`[id].tsx lost ${JSON.stringify(needle)}`);
+    }
+  }
+  const sheets = read("src/components/marketing/ads/HostAdManageSheets.tsx");
+  if (sheets !== null) {
+    if (/\bShare\.share\s*\(/.test(sheets.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, ""))) fail("HostAdManageSheets calls Share.share directly (use sharePublicUrl)");
+    if (!sheets.includes("row.ad_name?.trim()")) fail("HostAdManageSheets no longer names statement rows by the ad's name");
+  }
+
   if (failures.length) {
     console.error(`FAIL [${TAG}]: Host ad copy uses internal words or lost a structural rule (issue #4238).`);
     for (const f of failures) console.error(`  x ${f}`);

@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} precisa de pelo menos {{amount}} por dia. Escolha um total maior ou uma data de término mais próxima.",
         "daily": "Você paga por dia",
         "runTotal": "{{amount}} no total em {{days}} dias",
-        "atMinimumDaily": "Não dá para baixar mais: {{amount}} por dia é o mínimo para este anúncio."
+        "atMinimumDaily": "Não dá para baixar mais: {{amount}} por dia é o mínimo para este anúncio.",
+        "runTotalLeft": "{{amount}} no total, faltam {{days}} dias",
+        "dailyUnknown": "O valor diário deste anúncio não pode ser mostrado agora. Você ainda pode mudar a data de término."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Use o nome da sua marca e mídias que sejam suas.",
         "prohibited": "Mostra algo que o app não permite.",
         "prohibitedFix": "Tire essa parte da imagem ou do texto."
+      },
+      "summary": {
+        "line": "Este mês: {{spent}} de {{budget}} · {{results}}",
+        "lineNoBudget": "Este mês: {{spent}} · {{results}}",
+        "lineNoSpend": "Este mês: {{results}}",
+        "results": "{{count}} resultados",
+        "resultOne": "{{count}} resultado",
+        "chartLabel": "O que você pagou nos últimos 30 dias. {{line}}.",
+        "last30": "Últimos 30 dias"
       }
     }
   }

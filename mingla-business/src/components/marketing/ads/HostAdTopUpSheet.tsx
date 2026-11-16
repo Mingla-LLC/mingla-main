@@ -53,14 +53,18 @@ export function HostAdTopUpSheet(props: {
   const [otherText, setOtherText] = useState("");
   const [phase, setPhase] = useState<"pick" | "paying">("pick");
   const [error, setError] = useState<string | null>(null);
-  const idemRef = useRef("");
+  // #4238 rework 1 (tester P2-3): one payment attempt key per amount. A
+  // cancel, a failed payment or a new amount starts a NEW attempt (a new
+  // payment reference), so a cancelled Naira payment never blocks the next
+  // one; a transport retry of the same amount keeps the same key.
+  const idemRef = useRef<{ amount: number; key: string } | null>(null);
   useEffect(() => {
     if (!props.visible) return;
     setPicked(props.neededCents);
     setOtherText("");
     setPhase("pick");
     setError(null);
-    idemRef.current = "";
+    idemRef.current = null;
   }, [props.visible, props.neededCents]);
   const amount =
     picked === "other"
@@ -74,7 +78,10 @@ export function HostAdTopUpSheet(props: {
     setError(null);
     setPhase("paying");
     try {
-      if (idemRef.current === "") idemRef.current = randomId();
+      if (idemRef.current === null || idemRef.current.amount !== amount) {
+        idemRef.current = { amount, key: randomId() };
+      }
+      const attemptKey = idemRef.current.key;
       await quoteAdCreditTopUp(props.brandId, amount);
       const returnUrl =
         Platform.OS === "web" && typeof window !== "undefined" && window.location?.origin
@@ -84,16 +91,18 @@ export function HostAdTopUpSheet(props: {
         brandId: props.brandId,
         payCents: amount,
         returnUrl,
-        idempotencyKey: idemRef.current,
+        idempotencyKey: attemptKey,
       });
       const outcome = await presentPay(started);
       if (outcome.outcome === "redirected") return;
       if (outcome.outcome === "canceled") {
+        idemRef.current = null;
         setPhase("pick");
         setError(hb("topUp.cancelled"));
         return;
       }
       if (outcome.outcome === "failed") {
+        idemRef.current = null;
         setPhase("pick");
         setError(hb("topUp.failed"));
         return;
@@ -103,7 +112,7 @@ export function HostAdTopUpSheet(props: {
         paymentRef: outcome.paymentIntentId,
         idempotencyKey: `top_up:${outcome.paymentIntentId}`,
       });
-      idemRef.current = "";
+      idemRef.current = null;
       props.onApplied();
     } catch (cause) {
       setPhase("pick");

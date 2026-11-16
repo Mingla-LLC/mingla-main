@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} yana buƙatar aƙalla {{amount}} kowace rana. Zaɓi jimla mafi girma ko ranar ƙarshe mafi kusa.",
         "daily": "Kana biya kowace rana",
         "runTotal": "{{amount}} gaba ɗaya a cikin kwanaki {{days}}",
-        "atMinimumDaily": "Ba zai iya sauka ba: {{amount}} a rana shi ne mafi ƙaranci da wannan talla zai iya gudana."
+        "atMinimumDaily": "Ba zai iya sauka ba: {{amount}} a rana shi ne mafi ƙaranci da wannan talla zai iya gudana.",
+        "runTotalLeft": "{{amount}} gaba ɗaya, saura kwana {{days}}",
+        "dailyUnknown": "Ba za a iya nuna kuɗin kowace rana na wannan talla yanzu ba. Har yanzu za ka iya canza ranar ƙarshe."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Yi amfani da sunan alamarka da kayanka na kanka.",
         "prohibited": "Yana nuna abin da manhajar ba ta yarda da shi ba.",
         "prohibitedFix": "Cire wannan ɓangaren daga hoto ko rubutu."
+      },
+      "summary": {
+        "line": "Wannan wata: {{spent}} cikin {{budget}} · {{results}}",
+        "lineNoBudget": "Wannan wata: {{spent}} · {{results}}",
+        "lineNoSpend": "Wannan wata: {{results}}",
+        "results": "Sakamako {{count}}",
+        "resultOne": "Sakamako {{count}}",
+        "chartLabel": "Abin da ka biya a kwanaki 30 da suka wuce. {{line}}.",
+        "last30": "Kwanaki 30 da suka wuce"
       }
     }
   }

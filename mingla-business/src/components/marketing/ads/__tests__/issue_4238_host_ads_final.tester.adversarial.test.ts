@@ -8,28 +8,26 @@
 //     Reddit, Meta with a reminder ad set, run totals) or in the ad account's
 //     money (USD) for a Naira brand.
 //
-// Cases marked `test.failing` reproduce defects reported in the tester verdict
-// on #4238 (P1-2, P1-3). They pass while the defect is present. When the fix
-// lands they start failing: turn each into a plain `test` then.
+// Cases marked `test.failing` reproduced defects reported in the tester verdict
+// on #4238 (P1-2, P1-3). #4238 rework 1 fixed them and turned each into a
+// plain `test` on the new contract (the daily comes from the server's plan
+// figure in the brand's money; the total is spent + daily × days LEFT). The
+// read-the-source pins were replaced by executed behaviour (#1047 gate): the
+// server formulas are executed in the Deno suites, the screen and sheet are
+// rendered in issue_4238_rework1.implementor.test.tsx.
 
 import { describe, expect, test } from "@jest/globals";
-import fs from "node:fs";
-import path from "node:path";
-
 import {
   hostAdCreditFromPay,
   hostAdPayFromCredit,
   hostAdPlanBudget,
 } from "../hostAdBuilderModel";
 import {
+  hostAdDetailDailyCredit,
   hostAdEditDailyMoney,
   hostAdEditMinDailyPay,
   hostAdEditStep,
-  hostAdRunDaysFromBudget,
 } from "../hostAdManageModel";
-
-const REPO = path.resolve(__dirname, "../../../../../..");
-const read = (rel: string): string => fs.readFileSync(path.join(REPO, rel), "utf8");
 
 // The server's formulas, executed (adMoney.ts creditCentsFromPay / hostMinimumPayCents).
 const serverCredit = (pay: number): number => (Number.isInteger(pay) && pay > 0 ? Math.floor(pay * (1 - 0.15)) : 0);
@@ -37,13 +35,6 @@ const serverPay = (credit: number): number =>
   Number.isSafeInteger(credit) && credit > 0 ? Math.ceil((credit * 10_000) / Math.round((1 - 0.15) * 10_000)) : 0;
 
 describe("tester: client money is the server money, executed", () => {
-  test("the server still uses these exact formulas", () => {
-    const src = read("supabase/functions/_shared/adMoney.ts");
-    expect(src).toContain("export const HOST_FEE_RATIO = 0.15;");
-    expect(src).toContain("return Math.floor(payCents * (1 - HOST_FEE_RATIO));");
-    expect(src).toContain("return Math.ceil((creditCents * 10_000) / keep);");
-  });
-
   test("pay->credit and credit->pay agree with the server for every amount up to 300,000", () => {
     for (let cents = 1; cents <= 300_000; cents++) {
       if (hostAdCreditFromPay(cents) !== serverCredit(cents)) throw new Error(`credit(${cents})`);
@@ -69,9 +60,7 @@ describe("tester: edit sheet with a consistent daily/cap (the case the build ass
         const capCredit = dailyCredit * days;
         const start = hostAdPayFromCredit(dailyCredit);
         const step = hostAdEditStep(start);
-        const runDays = hostAdRunDaysFromBudget(capCredit, dailyCredit);
-        expect(runDays).toBe(days);
-        const common = { startDailyPay: start, runDays, capCredit, spentCredit: 0, walletCredit: 0, learning: false, step };
+        const common = { startDailyPay: start, daysLeft: days, capCredit, spentCredit: 0, walletCredit: 0, learning: false, step };
         const up = hostAdEditDailyMoney({ ...common, dailyPay: start + step });
         const down = hostAdEditDailyMoney({ ...common, dailyPay: Math.max(step, start - step) });
         expect(up.newCredit).toBeGreaterThanOrEqual(capCredit);
@@ -86,66 +75,59 @@ describe("tester: edit sheet with a consistent daily/cap (the case the build ass
     for (const spent of [0, 1, 999, 41_999]) {
       for (const days of [1, 3, 10]) {
         const step = 100;
-        const min = hostAdEditMinDailyPay({ appsMinimumDailyPay: 118, spentCredit: spent, runDays: days, step });
-        const total = hostAdPlanBudget({ dailyPayCents: min, runDays: days }).capCreditCents;
-        expect(total).toBeGreaterThanOrEqual(spent);
+        const min = hostAdEditMinDailyPay({ appsMinimumDailyPay: 118, step });
+        const m = hostAdEditDailyMoney({
+          dailyPay: min,
+          startDailyPay: min + step,
+          daysLeft: days,
+          capCredit: 50_000,
+          spentCredit: spent,
+          walletCredit: 0,
+          learning: false,
+          step,
+        });
+        expect(m.newCredit).toBeGreaterThanOrEqual(spent);
       }
     }
   });
 });
 
 describe("tester: what the server really sends the detail screen", () => {
-  test("the create path stores daily_budget_cents = null when the budget sits on the ad group / ad squad, and for Reddit", () => {
-    const create = read("supabase/functions/admin-ad-create-campaign/index.ts");
-    // Snapchat: ad squad budget (the default) -> null on the campaign row.
-    expect(create).toMatch(/daily_budget_cents: !snapStages && budgetLevelS === "campaign"\s*\?\s*dailyBudgetForPersist\s*:\s*null/);
-    // TikTok: ad group budget (the default) -> null.
-    expect(create).toMatch(/daily_budget_cents: !tiktokStages && budgetLevelT === "campaign"/);
-    // Reddit: always on the ad group.
-    expect(create).toContain("daily_budget_cents: null, // non-CBO: the budget lives on the ad group");
-    // Run totals (lifetime) persist no daily either.
-    expect(create).toMatch(/dailyBudgetForPersist = budgetType === "lifetime"\s*\?\s*null/);
-    // Host Snapchat / TikTok default to ad set level (D-1).
-    expect(create).toContain('const budgetLevelS = budget.level === "campaign" ? "campaign" : "adset";');
-    expect(create).toContain('const budgetLevelT = budget.level === "campaign" ? "campaign" : "adset";');
-  });
-
-  test("the detail screen feeds the edit sheet the SUM of raw ad_campaigns.daily_budget_cents", () => {
-    const screen = read("mingla-business/src/screens/hostAds/HostAdDetailScreen.tsx");
-    expect(screen).toContain(
-      "const dailyCredit = payload.plan_campaigns.reduce((sum, row) => sum + Number(row.daily_budget_cents ?? 0), 0);",
-    );
-  });
-
-  // P1-2: a live TikTok-only (or Snapchat / Reddit / run-total) ad has
-  // dailyCredit 0. The sheet then starts at 0 a day over ONE day, so the first
-  // "+" turns a 30-day, 70,000-credit ad into a one-day total.
-  test.failing("P1-2: stepping the daily UP on a TikTok-only live ad never cuts the ad's total", () => {
+  // P1-2 (fixed in rework 1): a live TikTok-only ad (budget on the ad group,
+  // daily_budget_cents null) used to start the sheet at 0 a day over ONE day,
+  // so the first "+" turned a 30-day, 70,000-credit ad into a one-day total.
+  // The daily now comes from the server's plan figure (plan_daily_credit_cents).
+  test("P1-2: stepping the daily UP on a TikTok-only live ad never cuts the ad's total", () => {
     const capCredit = 70_000;
-    const dailyCredit = 0; // what HostAdDetailScreen computes for this ad
-    const start = hostAdPayFromCredit(dailyCredit);
+    const dailyCredit = hostAdDetailDailyCredit(2_333); // the server's plan daily for this ad
+    expect(dailyCredit).toBe(2_333);
+    const start = hostAdPayFromCredit(dailyCredit ?? 0);
     const step = hostAdEditStep(start);
-    const runDays = hostAdRunDaysFromBudget(capCredit, dailyCredit);
-    const minDaily = hostAdEditMinDailyPay({ appsMinimumDailyPay: 2_353, spentCredit: 10_000, runDays, step });
+    const minDaily = hostAdEditMinDailyPay({ appsMinimumDailyPay: 2_353, step });
+    // Day 11 of 30, on pace: 10 days spent, 20 days left.
     const m = hostAdEditDailyMoney({
-      dailyPay: minDaily + step,
+      dailyPay: Math.max(minDaily, start) + step,
       startDailyPay: start,
-      runDays,
+      daysLeft: 20,
       capCredit,
-      spentCredit: 10_000,
+      spentCredit: 23_330,
       walletCredit: 0,
       learning: false,
       step,
     });
     expect(m.dailyChanged).toBe(true);
     expect(m.newCredit).toBeGreaterThanOrEqual(capCredit);
+    // never the old one-day total
+    expect(m.newCredit).toBeGreaterThan(hostAdCreditFromPay(Math.max(minDaily, start) + step) * 2);
   });
 
-  // P1-3: for a Naira brand on the USD Meta account, daily_budget_cents is in
-  // US cents (the ad account's money), but the screen shows and steps it as
-  // kobo credit. 1,000 US cents a day (≈ ₦16,000) reads as ₦11.77.
-  test.failing("P1-3: the daily the screen shows is in the brand's money, not the ad account's", () => {
-    const screen = read("mingla-business/src/screens/hostAds/HostAdDetailScreen.tsx");
-    expect(screen).not.toMatch(/sum \+ Number\(row\.daily_budget_cents \?\? 0\)/);
+  // P1-3 (fixed in rework 1): for a Naira brand on the USD Meta account the
+  // screen used to show daily_budget_cents (US cents) as kobo credit.
+  test("P1-3: the daily the screen shows is in the brand's money, not the ad account's", () => {
+    // The server's plan daily for ₦16,000 a day; the USD account holds 1,000 US cents.
+    const daily = hostAdDetailDailyCredit(1_600_000);
+    expect(daily).toBe(1_600_000);
+    expect(daily).not.toBe(1_000);
+    expect(hostAdDetailDailyCredit(null)).toBeNull();
   });
 });

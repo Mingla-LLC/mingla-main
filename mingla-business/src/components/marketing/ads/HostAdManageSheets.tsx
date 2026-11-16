@@ -6,7 +6,7 @@
  * way money moves is described by currency, never by a provider's name.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../ui/Button";
 import { DateField } from "../../ui/DateField";
@@ -24,6 +24,7 @@ import {
 import { mapAdCreditQuoteError } from "../../../services/adCreditQuoteErrors";
 import type { HostAdSuggestion } from "../../../services/hostAdCampaignService";
 import { randomId } from "../../../utils/randomId";
+import { sharePublicUrl } from "../../../utils/sharePublicUrl";
 import { builderStyles as bs, BuilderCard, BuilderLabel, BuilderList, Note, ValueRow } from "./HostAdBuilderBits";
 import { type HostAdGoal, hostAdPayFromCredit } from "./hostAdBuilderModel";
 import { hostAdDayBoundaryIso, hostAdDayOf } from "./hostAdBuilderRules";
@@ -32,8 +33,8 @@ import {
   type HostAdCompareRow,
   hostAdEditDailyMoney,
   hostAdEditMinDailyPay,
+  hostAdDaysLeft,
   hostAdEditStep,
-  hostAdRunDaysFromBudget,
   hostAdStatementMonth,
   hostAdSuggestionMoneyRows,
   hostAdWithdrawLines,
@@ -105,8 +106,12 @@ export function HostAdEditBudgetSheet(props: {
   currency: string;
   money: Money;
   capCredit: number;
-  /** W6c: what the apps spend a day now (credit), all apps added up. */
-  dailyCredit: number;
+  /**
+   * W6c: what the apps spend a day now (credit), all apps added up, from the
+   * plan (#4238 rework 1: server plan_daily_credit_cents). null = unknown:
+   * the daily stepper is hidden and only the end date can change.
+   */
+  dailyCredit: number | null;
   /** W6c: the apps' one-ad-set daily minimum in pay terms; null = unknown. */
   minDailyPay: number | null;
   spentCredit: number | null;
@@ -125,10 +130,10 @@ export function HostAdEditBudgetSheet(props: {
   onClose: () => void;
   onSubmit: (input: HostAdEditSubmit) => void;
 }): React.ReactElement {
-  const startDaily = useMemo(() => hostAdPayFromCredit(props.dailyCredit), [props.dailyCredit]);
-  const runDays = useMemo(
-    () => hostAdRunDaysFromBudget(props.capCredit, props.dailyCredit),
-    [props.capCredit, props.dailyCredit],
+  const dailyKnown = props.dailyCredit !== null && props.dailyCredit > 0;
+  const startDaily = useMemo(
+    () => (props.dailyCredit !== null && props.dailyCredit > 0 ? hostAdPayFromCredit(props.dailyCredit) : 0),
+    [props.dailyCredit],
   );
   const [dailyPay, setDailyPay] = useState(startDaily);
   const startDay = hostAdDayOf(props.currentEndsAt, props.timezone);
@@ -138,25 +143,25 @@ export function HostAdEditBudgetSheet(props: {
     setDailyPay(startDaily);
     setEndDay(startDay);
   }, [props.visible, startDaily, startDay]);
+  const endChanged = endDay !== "" && endDay !== startDay;
+  // #4238 rework 1: the days LEFT to the (new) end date, the server's rule.
+  const endIso = endChanged ? hostAdDayBoundaryIso(endDay, "end", props.timezone) : props.currentEndsAt;
+  const daysLeft = hostAdDaysLeft(props.nowIso, endIso) ?? 1;
   const step = hostAdEditStep(startDaily);
-  const minDaily = hostAdEditMinDailyPay({
-    appsMinimumDailyPay: props.minDailyPay,
-    spentCredit: props.spentCredit,
-    runDays,
-    step,
-  });
+  const minDaily = hostAdEditMinDailyPay({ appsMinimumDailyPay: props.minDailyPay, step });
   const m = hostAdEditDailyMoney({
     dailyPay,
     startDailyPay: startDaily,
-    runDays,
+    daysLeft,
+    endChanged: dailyKnown && endChanged,
     capCredit: props.capCredit,
     spentCredit: props.spentCredit,
     walletCredit: props.walletCredit,
     learning: props.learning,
     step,
   });
-  const budgetChanged = m.dailyChanged;
-  const endChanged = endDay !== "" && endDay !== startDay;
+  // An unknown daily never sends a total built on it (only the end date moves).
+  const budgetChanged = dailyKnown && m.newCredit !== Math.max(0, Math.trunc(props.capCredit));
   const changed = budgetChanged || endChanged;
   const short = m.topUpPay > 0;
   const atMinimum = dailyPay - step < minDaily;
@@ -196,47 +201,53 @@ export function HostAdEditBudgetSheet(props: {
         </View>
       }
     >
-      <BuilderLabel>{hm("edit.daily")}</BuilderLabel>
-      <View style={s.stepper}>
-        <Pressable
-          style={[s.stepBtn, atMinimum && s.stepOff]}
-          disabled={atMinimum}
-          onPress={() => setDailyPay((v) => Math.max(minDaily, v - step))}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: atMinimum }}
-          accessibilityLabel={hm("edit.lower", { amount: props.money(step) })}
-          testID="host-ad-edit-lower"
-        >
-          <Text style={s.stepText}>−</Text>
-        </Pressable>
-        <Text
-          style={[bs.statXl, s.stepValue]}
-          accessibilityLiveRegion="polite"
-          testID="host-ad-edit-total"
-        >
-          {props.money(dailyPay)}
-        </Text>
-        <Pressable
-          style={s.stepBtn}
-          onPress={() => setDailyPay((v) => v + step)}
-          accessibilityRole="button"
-          accessibilityLabel={hm("edit.raise", { amount: props.money(step) })}
-          testID="host-ad-edit-raise"
-        >
-          <Text style={s.stepText}>+</Text>
-        </Pressable>
-      </View>
-      <Text style={[bs.small, s.center]} testID="host-ad-edit-run-total">
-        {hm("edit.runTotal", { amount: props.money(m.runTotalPay), days: runDays })}
-      </Text>
-      <Text style={[bs.small, s.center]} testID="host-ad-edit-to-ads">
-        {hm("edit.toAds", { amount: props.money(m.newCredit) })}
-      </Text>
-      {atMinimum ? (
-        <Text style={[bs.caption, s.center]}>
-          {hm("edit.atMinimumDaily", { amount: props.money(minDaily) })}
-        </Text>
-      ) : null}
+      {dailyKnown ? (
+        <>
+          <BuilderLabel>{hm("edit.daily")}</BuilderLabel>
+          <View style={s.stepper}>
+            <Pressable
+              style={[s.stepBtn, atMinimum && s.stepOff]}
+              disabled={atMinimum}
+              onPress={() => setDailyPay((v) => Math.max(minDaily, v - step))}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: atMinimum }}
+              accessibilityLabel={hm("edit.lower", { amount: props.money(step) })}
+              testID="host-ad-edit-lower"
+            >
+              <Text style={s.stepText}>−</Text>
+            </Pressable>
+            <Text
+              style={[bs.statXl, s.stepValue]}
+              accessibilityLiveRegion="polite"
+              testID="host-ad-edit-total"
+            >
+              {props.money(dailyPay)}
+            </Text>
+            <Pressable
+              style={s.stepBtn}
+              onPress={() => setDailyPay((v) => v + step)}
+              accessibilityRole="button"
+              accessibilityLabel={hm("edit.raise", { amount: props.money(step) })}
+              testID="host-ad-edit-raise"
+            >
+              <Text style={s.stepText}>+</Text>
+            </Pressable>
+          </View>
+          <Text style={[bs.small, s.center]} testID="host-ad-edit-run-total">
+            {hm("edit.runTotalLeft", { amount: props.money(m.runTotalPay), days: m.daysLeft })}
+          </Text>
+          <Text style={[bs.small, s.center]} testID="host-ad-edit-to-ads">
+            {hm("edit.toAds", { amount: props.money(m.newCredit) })}
+          </Text>
+          {atMinimum ? (
+            <Text style={[bs.caption, s.center]}>
+              {hm("edit.atMinimumDaily", { amount: props.money(minDaily) })}
+            </Text>
+          ) : null}
+        </>
+      ) : (
+        <Note tone="info" text={hm("edit.dailyUnknown")} testID="host-ad-edit-daily-unknown" />
+      )}
       <DateField
         label={hm("edit.ends")}
         value={endDay}
@@ -701,9 +712,18 @@ export function hostAdShareMessage(input: {
     : hm("share.line", { event: input.event, result });
 }
 
+/**
+ * #4238 rework 1 (tester P1-1): sharing goes through the sanctioned
+ * `sharePublicUrl` helper (the #1615 content-share gate), with the promoted
+ * page's public link and the results line as its text. Never a direct
+ * Share.share call. No public link: the screen hides Share.
+ */
 export function HostAdShareSheet(props: {
   visible: boolean;
   message: string;
+  /** The ad's public page (server public_page_url). */
+  url: string;
+  title: string;
   onClose: () => void;
 }): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
@@ -720,7 +740,9 @@ export function HostAdShareSheet(props: {
           fullWidth
           onPress={() => {
             setError(null);
-            Share.share({ message: props.message }).catch(() => setError(hm("share.failed")));
+            sharePublicUrl({ title: props.title, url: props.url, description: props.message }).catch(() =>
+              setError(hm("share.failed")),
+            );
           }}
           testID="host-ad-share-go"
         />

@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} cần ít nhất {{amount}} mỗi ngày. Chọn tổng cao hơn hoặc ngày kết thúc sớm hơn.",
         "daily": "Bạn trả mỗi ngày",
         "runTotal": "Tổng {{amount}} trong {{days}} ngày",
-        "atMinimumDaily": "Không thể thấp hơn: {{amount}} mỗi ngày là mức tối thiểu cho quảng cáo này."
+        "atMinimumDaily": "Không thể thấp hơn: {{amount}} mỗi ngày là mức tối thiểu cho quảng cáo này.",
+        "runTotalLeft": "Tổng {{amount}}, còn {{days}} ngày",
+        "dailyUnknown": "Hiện chưa thể hiển thị số tiền mỗi ngày của quảng cáo này. Bạn vẫn có thể đổi ngày kết thúc."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Dùng tên thương hiệu của bạn và nội dung của bạn.",
         "prohibited": "Có thứ ứng dụng không cho phép.",
         "prohibitedFix": "Bỏ phần đó khỏi hình hoặc chữ."
+      },
+      "summary": {
+        "line": "Tháng này: {{spent}} trên {{budget}} · {{results}}",
+        "lineNoBudget": "Tháng này: {{spent}} · {{results}}",
+        "lineNoSpend": "Tháng này: {{results}}",
+        "results": "{{count}} kết quả",
+        "resultOne": "{{count}} kết quả",
+        "chartLabel": "Số tiền bạn đã trả trong 30 ngày qua. {{line}}.",
+        "last30": "30 ngày qua"
       }
     }
   }

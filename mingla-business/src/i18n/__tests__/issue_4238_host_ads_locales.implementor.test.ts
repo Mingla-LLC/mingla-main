@@ -5,13 +5,12 @@
  * group, or writing a provider name into any locale fails below.
  */
 import { describe, expect, test } from "@jest/globals";
-import fs from "node:fs";
-import path from "node:path";
-
 import { hostAdCopyIsPlain } from "../../components/marketing/ads/hostAdCopy";
+import groupA from "../brandGroupMediaLocalesA";
+import groupB from "../brandGroupMediaLocalesB";
+import groupC from "../brandGroupMediaLocalesC";
 
 const LANGUAGES = "ar bin bn de el en es fr ha he hi id ig it ja ko ms nl pl pt ro ru sv th tr uk vi yo zh".split(" ");
-const LOCALES = path.resolve(__dirname, "../locales");
 const PLURAL = /_(zero|one|two|few|many|other)$/;
 type Tree = { [key: string]: string | Tree };
 function flatten(value: Tree, prefix = "", out: Record<string, string> = {}): Record<string, string> {
@@ -22,8 +21,12 @@ function flatten(value: Tree, prefix = "", out: Record<string, string> = {}): Re
   }
   return out;
 }
-const read = (language: string): Record<string, string> =>
-  flatten(JSON.parse(fs.readFileSync(path.join(LOCALES, language, "hostAds.json"), "utf8")) as Tree);
+// #4238 rework 1: the locale files are LOADED as modules (executed), not read
+// as text (I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN).
+const loadLocale = (language: string): Tree =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require(`../locales/${language}/hostAds.json`) as Tree;
+const read = (language: string): Record<string, string> => flatten(loadLocale(language));
 const placeholders = (s: string): string[] => [...s.matchAll(/{{(\w+)}}/g)].map((m) => m[1]).sort();
 const english = read("en");
 const englishKeys = Object.keys(english).sort();
@@ -68,12 +71,12 @@ describe("#4238 W6a Promote builder words in every Host language", () => {
   });
 
   test("the lazy language groups load hostAds.json for every non-English language", () => {
-    const groups = ["A", "B", "C"]
-      .map((part) => fs.readFileSync(path.resolve(__dirname, `../brandGroupMediaLocales${part}.ts`), "utf8"))
-      .join("\n");
+    const groups = { ...groupA, ...groupB, ...groupC } as Record<string, Tree>;
     for (const language of LANGUAGES.filter((l) => l !== "en")) {
-      expect(groups).toContain(`from "./locales/${language}/hostAds.json";`);
-      expect(groups).toMatch(new RegExp(`\\b${language}: \\{[^}]*Ads \\}`));
+      const loaded = groups[language];
+      expect({ language, wired: loaded !== undefined }).toEqual({ language, wired: true });
+      // Every hostAds string of this language is what the group serves.
+      expect((loaded as Tree).hostAds).toEqual(loadLocale(language).hostAds);
     }
   });
 

@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} gualọ {{amount}} ẹdẹ ọkpa. Họn igho ne ọ kpọlọ sẹ ọna, ra ẹdẹ ne ọ kẹ.",
         "daily": "I vbe rhie evbo ọbọ ọbọ",
         "runTotal": "{{amount}} ghi ma {{days}} ẹbọ",
-        "atMinimumDaily": "E ma sẹ rhiọ: {{amount}} ẹbọ ọbọ ne ọ gha mu ẹse ne ad nii."
+        "atMinimumDaily": "E ma sẹ rhiọ: {{amount}} ẹbọ ọbọ ne ọ gha mu ẹse ne ad nii.",
+        "runTotalLeft": "{{amount}} vbe ọ ghi rre, ẹdẹ {{days}} ọ kẹ",
+        "dailyUnknown": "Ima sẹtin rhie igho ẹdẹ ẹdẹ ọ ad na ma nia. Ẹ sẹtin gha fiwerriẹ ẹdẹ ne ọ ghi gbe."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Loo eni brand ruẹ kevbe emwi ne ọ re ruẹ.",
         "prohibited": "Ọ rhie emwi ne app na i rhie uhunmwu.",
         "prohibitedFix": "Rhie ẹgbẹ na vbe foto ra ẹmwẹ."
+      },
+      "summary": {
+        "line": "Ukpẹ na: {{spent}} vbe {{budget}} · {{results}}",
+        "lineNoBudget": "Ukpẹ na: {{spent}} · {{results}}",
+        "lineNoSpend": "Ukpẹ na: {{results}}",
+        "results": "{{count}} emwi ne ọ ladian",
+        "resultOne": "{{count}} emwi ne ọ ladian",
+        "chartLabel": "Ne u hwẹ vbe ẹdẹ 30 ne ọ gberra. {{line}}.",
+        "last30": "Ẹdẹ 30 ne ọ gberra"
       }
     }
   }

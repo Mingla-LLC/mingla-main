@@ -5,8 +5,6 @@
  * pending / failed / unanswered check each fails a case below.
  */
 import { describe, expect, test } from "@jest/globals";
-import fs from "node:fs";
-import path from "node:path";
 
 import {
   HOST_AD_FEE_RATIO,
@@ -25,14 +23,9 @@ import {
   hostAdBuilderStepId,
 } from "../hostAdBuilderModel";
 
-const REPO = path.resolve(__dirname, "../../../../../..");
 
 describe("#4238 W6a money: one unit (what the Host pays)", () => {
-  test("the fee ratio is the server's one HOST_FEE_RATIO", () => {
-    const server = fs.readFileSync(path.join(REPO, "supabase/functions/_shared/adMoney.ts"), "utf8");
-    const match = /export const HOST_FEE_RATIO = ([0-9.]+);/.exec(server);
-    expect(match).not.toBeNull();
-    expect(HOST_AD_FEE_RATIO).toBe(Number(match?.[1]));
+  test("the fee ratio is 15% (the server's HOST_FEE_RATIO, executed in issue_4238_rework1.implementor.test.ts on the same table)", () => {
     expect(HOST_AD_FEE_RATIO).toBe(0.15);
   });
 
@@ -146,18 +139,6 @@ describe("#4238 W6a builder rules", () => {
     expect(hostAdBuilderStepId("form")).toBeNull();
   });
 });
-
-describe("#4238 W6a the screen uses the model, never its own money maths", () => {
-  const screen = fs.readFileSync(
-    path.join(REPO, "mingla-business/src/screens/hostAds/HostAdCreateScreen.tsx"),
-    "utf8",
-  );
-  test("pay → credit only through hostAdPlanBudget; minimums only through the pay figure", () => {
-    expect(screen).toContain("hostAdPlanBudget({");
-    expect(screen).toContain("hostAdMinimumPayCents(setup?.minimums, platform");
-    expect(screen).not.toMatch(/\* 0\.85|0\.85 \*|\/ 0\.85/);
-    expect(screen).not.toContain("hostAdRecommendedDaily");
-    expect(screen).toContain("hostAdLaunchBlocker({");
-    expect(screen).toContain("disabled={blocker !== null}");
-  });
-});
+// The screen's "no money maths of its own" rule moved to the strict-grep gate
+// .github/scripts/strict-grep/issue-4238-host-ad-plain-language.mjs (section 7,
+// #4238 rework 1), its home under I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN.

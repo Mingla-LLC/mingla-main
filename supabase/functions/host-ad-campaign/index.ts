@@ -51,6 +51,8 @@ import {
   hostLiveEditUnknownField,
   type HostLiveEditProblem,
   HOST_LEARNING_WINDOW_DAYS,
+  hostPlanDailyCreditCents,
+  hostPlanPublicPageUrl,
   loadHostLiveSinceMs,
   planHostLiveEdit,
   runHostLiveEdit,
@@ -469,6 +471,8 @@ serve(async (req: Request): Promise<Response> => {
     // total (after any live edit) and when it last changed.
     let planId: string | null = null;
     let lastLiveEditAt: string | null = null;
+    // #4238 rework 1: the frozen destination's public link (Share results).
+    let publicPageUrl: string | null = null;
     if (
       typeof data.plan_version_id === "string" &&
       typeof data.plan_hash === "string"
@@ -488,12 +492,12 @@ serve(async (req: Request): Promise<Response> => {
         supabase.from("ad_plans").select("id,state")
           .eq("current_version_id", data.plan_version_id).maybeSingle(),
         supabase.from("ad_plan_versions")
-          .select("host_currency,host_budget_cents,canonical_plan")
+          .select("host_currency,host_budget_cents,canonical_plan,destination_snapshot")
           .eq("id", data.plan_version_id)
           .eq("plan_hash", data.plan_hash).maybeSingle(),
         supabase.from("ad_plan_provider_allocations")
           .select(
-            "platform,host_currency,provider_currency,host_budget_cents,provider_budget_cents,fx_snapshot_id",
+            "platform,host_currency,provider_currency,host_budget_cents,provider_budget_cents,host_delivery_budget_cents,provider_delivery_budget_cents,fx_snapshot_id",
           )
           .eq("plan_version_id", data.plan_version_id),
       ]);
@@ -507,6 +511,7 @@ serve(async (req: Request): Promise<Response> => {
       planCapCents = typeof version?.host_budget_cents === "number"
         ? version.host_budget_cents
         : planCapCents;
+      publicPageUrl = hostPlanPublicPageUrl(version?.destination_snapshot);
       const canonical = version?.canonical_plan &&
           typeof version.canonical_plan === "object"
         ? version.canonical_plan as Record<string, unknown>
@@ -879,6 +884,16 @@ serve(async (req: Request): Promise<Response> => {
       plan_state: planState,
       plan_currency: planCurrency,
       plan_cap_cents: planCapCents,
+      // #4238 rework 1 (tester P1-2/P1-3): the apps' daily amount in the
+      // brand's money, from the plan allocation (amendment-aware). Null when
+      // unknown (no plan, or an app without a readable allocation).
+      plan_daily_credit_cents: typeof data.plan_version_id === "string"
+        ? hostPlanDailyCreditCents({
+          campaigns: planCampaigns,
+          allocations: providerAllocations,
+        })
+        : null,
+      public_page_url: publicPageUrl,
       provider_spend_by_currency: providerSpendByCurrency,
       host_spend_equivalent_cents: hostSpendEquivalentCents,
       host_spend_equivalent_quality: hostSpendEquivalentCents === null

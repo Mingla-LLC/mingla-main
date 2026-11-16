@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} chọrọ opekata mpe {{amount}} kwa ụbọchị. Họrọ ngụkọta dị elu ma ọ bụ ụbọchị njedebe dị nso.",
         "daily": "I na-akwụ ụgwọ kwa ụbọchị",
         "runTotal": "{{amount}} n'ime ụbọchị {{days}}",
-        "atMinimumDaily": "Ọ pụghị ibelata ọzọ: {{amount}} n'ụbọchị bụ nke kacha nta maka mgbasa ozi a."
+        "atMinimumDaily": "Ọ pụghị ibelata ọzọ: {{amount}} n'ụbọchị bụ nke kacha nta maka mgbasa ozi a.",
+        "runTotalLeft": "{{amount}} n'ozuzu, ụbọchị {{days}} fọdụrụ",
+        "dailyUnknown": "Enweghị ike igosi ego kwa ụbọchị maka mgbasa ozi a ugbu a. Ị ka nwere ike ịgbanwe ụbọchị ọ ga-akwụsị."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Jiri aha akara gị na ihe ndị bụ nke gị.",
         "prohibited": "Ọ na-egosi ihe ngwa ahụ anaghị ekwe.",
         "prohibitedFix": "Wepụ akụkụ ahụ na foto ma ọ bụ ederede."
+      },
+      "summary": {
+        "line": "Ọnwa a: {{spent}} n'ime {{budget}} · {{results}}",
+        "lineNoBudget": "Ọnwa a: {{spent}} · {{results}}",
+        "lineNoSpend": "Ọnwa a: {{results}}",
+        "results": "Nsonaazụ {{count}}",
+        "resultOne": "Nsonaazụ {{count}}",
+        "chartLabel": "Ihe ị kwụrụ n'ime ụbọchị 30 gara aga. {{line}}.",
+        "last30": "Ụbọchị 30 gara aga"
       }
     }
   }

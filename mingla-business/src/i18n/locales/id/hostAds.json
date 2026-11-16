@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} butuh minimal {{amount}} per hari. Pilih total lebih tinggi atau tanggal akhir lebih cepat.",
         "daily": "Kamu bayar per hari",
         "runTotal": "{{amount}} total selama {{days}} hari",
-        "atMinimumDaily": "Tidak bisa lebih rendah: {{amount}} per hari adalah minimum untuk iklan ini."
+        "atMinimumDaily": "Tidak bisa lebih rendah: {{amount}} per hari adalah minimum untuk iklan ini.",
+        "runTotalLeft": "Total {{amount}}, sisa {{days}} hari",
+        "dailyUnknown": "Jumlah harian iklan ini belum bisa ditampilkan. Kamu tetap bisa mengubah tanggal berakhirnya."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Pakai nama brand-mu sendiri dan media milikmu.",
         "prohibited": "Menampilkan sesuatu yang tidak diizinkan aplikasi.",
         "prohibitedFix": "Hapus bagian itu dari gambar atau teks."
+      },
+      "summary": {
+        "line": "Bulan ini: {{spent}} dari {{budget}} · {{results}}",
+        "lineNoBudget": "Bulan ini: {{spent}} · {{results}}",
+        "lineNoSpend": "Bulan ini: {{results}}",
+        "results": "{{count}} hasil",
+        "resultOne": "{{count}} hasil",
+        "chartLabel": "Yang kamu bayar dalam 30 hari terakhir. {{line}}.",
+        "last30": "30 hari terakhir"
       }
     }
   }

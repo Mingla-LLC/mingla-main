@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} heeft minstens {{amount}} per dag nodig. Kies een hoger totaal of een eerdere einddatum.",
         "daily": "Je betaalt per dag",
         "runTotal": "{{amount}} in totaal over {{days}} dagen",
-        "atMinimumDaily": "Lager kan niet: {{amount}} per dag is het minimum voor deze advertentie."
+        "atMinimumDaily": "Lager kan niet: {{amount}} per dag is het minimum voor deze advertentie.",
+        "runTotalLeft": "{{amount}} in totaal, nog {{days}} dagen",
+        "dailyUnknown": "Het dagbedrag van deze advertentie kan nu niet worden getoond. Je kunt de einddatum nog steeds wijzigen."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Gebruik je eigen merknaam en media die van jou zijn.",
         "prohibited": "Hij toont iets wat de app niet toestaat.",
         "prohibitedFix": "Haal dat deel uit het beeld of de tekst."
+      },
+      "summary": {
+        "line": "Deze maand: {{spent}} van {{budget}} · {{results}}",
+        "lineNoBudget": "Deze maand: {{spent}} · {{results}}",
+        "lineNoSpend": "Deze maand: {{results}}",
+        "results": "{{count}} resultaten",
+        "resultOne": "{{count}} resultaat",
+        "chartLabel": "Wat je de afgelopen 30 dagen hebt betaald. {{line}}.",
+        "last30": "Afgelopen 30 dagen"
       }
     }
   }

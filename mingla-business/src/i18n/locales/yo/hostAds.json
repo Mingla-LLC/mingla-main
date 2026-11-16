@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} nílò ó kéré tán {{amount}} lójoojúmọ́. Yan àpapọ̀ tó ga jù tàbí ọjọ́ ìparí tó súnmọ́.",
         "daily": "O ń san ní ojoojúmọ́",
         "runTotal": "{{amount}} lápapọ̀ fún ọjọ́ {{days}}",
-        "atMinimumDaily": "Kò lè lọ sílẹ̀ jù bẹ́ẹ̀ lọ: {{amount}} lójoojúmọ́ ni ó kéré jù fún ìpolówó yìí."
+        "atMinimumDaily": "Kò lè lọ sílẹ̀ jù bẹ́ẹ̀ lọ: {{amount}} lójoojúmọ́ ni ó kéré jù fún ìpolówó yìí.",
+        "runTotalLeft": "{{amount}} lápapọ̀, ọjọ́ {{days}} ló kù",
+        "dailyUnknown": "A kò lè fi iye owó ojoojúmọ́ ìpolówó yìí hàn báyìí. O ṣì lè yí ọjọ́ ìparí padà."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Lo orúkọ àmì-ìdámọ̀ rẹ àti àwọn ohun tí ó jẹ́ tìrẹ.",
         "prohibited": "Ó ń fi ohun tí ohun èlò náà kò gbà láàyè hàn.",
         "prohibitedFix": "Yọ apá yẹn kúrò nínú àwòrán tàbí ọ̀rọ̀."
+      },
+      "summary": {
+        "line": "Oṣù yìí: {{spent}} nínú {{budget}} · {{results}}",
+        "lineNoBudget": "Oṣù yìí: {{spent}} · {{results}}",
+        "lineNoSpend": "Oṣù yìí: {{results}}",
+        "results": "Èsì {{count}}",
+        "resultOne": "Èsì {{count}}",
+        "chartLabel": "Ohun tí o san ní ọjọ́ 30 sẹ́yìn. {{line}}.",
+        "last30": "Ọjọ́ 30 sẹ́yìn"
       }
     }
   }

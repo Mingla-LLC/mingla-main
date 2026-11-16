@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} are nevoie de cel puțin {{amount}} pe zi. Alege un total mai mare sau o dată de final mai apropiată.",
         "daily": "Plătești pe zi",
         "runTotal": "{{amount}} în total pentru {{days}} zile",
-        "atMinimumDaily": "Nu poate scădea mai mult: {{amount}} pe zi este minimul pentru acest anunț."
+        "atMinimumDaily": "Nu poate scădea mai mult: {{amount}} pe zi este minimul pentru acest anunț.",
+        "runTotalLeft": "{{amount}} în total, mai sunt {{days}} zile",
+        "dailyUnknown": "Suma zilnică pentru acest anunț nu poate fi afișată acum. Poți schimba în continuare data de încheiere."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Folosește numele brandului tău și materiale care îți aparțin.",
         "prohibited": "Arată ceva ce aplicația nu permite.",
         "prohibitedFix": "Scoate acea parte din imagine sau text."
+      },
+      "summary": {
+        "line": "Luna aceasta: {{spent}} din {{budget}} · {{results}}",
+        "lineNoBudget": "Luna aceasta: {{spent}} · {{results}}",
+        "lineNoSpend": "Luna aceasta: {{results}}",
+        "results": "{{count}} rezultate",
+        "resultOne": "{{count}} rezultat",
+        "chartLabel": "Cât ai plătit în ultimele 30 de zile. {{line}}.",
+        "last30": "Ultimele 30 de zile"
       }
     }
   }

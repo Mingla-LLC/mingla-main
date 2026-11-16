@@ -199,13 +199,69 @@ export async function startGoalPromotion(deps: {
       try {
         await graph("POST", newAdSetId, { status: "PAUSED" });
       } catch (pauseError) {
-        return await fail(
-          `${message(error)}; new_adset_pause_failed: ${message(pauseError)}`,
-        );
+        // #4238 rework 1 (tester P2-4): the new ad set may still be ACTIVE.
+        // Never mark the row failed (a failed row is re-claimed a day later
+        // and would create a THIRD ad set). Keep it pending with the new ad
+        // set's id and cleanup_required, so the next sweep's finish step
+        // pauses it again (and never the old one) before anything else.
+        const detail = `${message(error)}; new_adset_pause_failed: ${
+          message(pauseError)
+        }`;
+        await db.from("ad_plan_automation_events").update({
+          status: "pending",
+          detail: {
+            ...baseDetail,
+            new_adset_id: newAdSetId,
+            cleanup_required: true,
+            error: detail,
+          },
+        }).eq("id", rowId);
+        return { state: "failed", detail };
       }
     }
     return await fail(message(error));
   }
+}
+
+/**
+ * #4238 rework 1 (tester P2-4): a new ad set whose pause failed is paused
+ * again on the next sweep. Paused: the row becomes failed (the normal retry
+ * rule applies from then on). Still not paused: the row stays pending, so
+ * no new ad set is ever created while one may be running.
+ *
+ * MINGLA-INVARIANT: I-4238-GOAL-SWITCH-AT-MOST-ONE-EXTRA | issue #4238 | A goal-ladder switch whose new ad set could not be paused stays pending with cleanup_required (never failed, so it is never re-claimed) until a later sweep pauses that ad set; the old ad set is never paused on that path.
+ */
+async function cleanUpNewAdSet(
+  db: Db,
+  graph: Graph,
+  row: PromotionRow,
+  newAdSetId: string,
+  reason: string,
+): Promise<"failed" | "waiting"> {
+  const detail = row.detail ?? {};
+  try {
+    await graph("POST", newAdSetId, { status: "PAUSED" });
+  } catch (error) {
+    await db.from("ad_plan_automation_events").update({
+      status: "pending",
+      detail: {
+        ...detail,
+        cleanup_required: true,
+        error: typeof detail.error === "string" ? detail.error : reason,
+        cleanup_error: message(error),
+      },
+    }).eq("id", row.id);
+    return "waiting";
+  }
+  await db.from("ad_plan_automation_events").update({
+    status: "failed",
+    detail: {
+      ...detail,
+      cleanup_required: false,
+      error: typeof detail.error === "string" ? detail.error : reason,
+    },
+  }).eq("id", row.id);
+  return "failed";
 }
 
 /**
@@ -230,6 +286,9 @@ export async function finishGoalPromotion(deps: {
     ? detail.old_adset_id
     : "";
   if (!newAdSetId || !oldAdSetId) return "not_started";
+  if (detail.cleanup_required === true) {
+    return await cleanUpNewAdSet(db, graph, input.row, newAdSetId, "cleanup");
+  }
   let status = "";
   try {
     const read = await graph("GET", newAdSetId, { fields: "effective_status" });
@@ -238,16 +297,18 @@ export async function finishGoalPromotion(deps: {
     return "waiting";
   }
   if (REFUSED.has(status)) {
-    try {
-      await graph("POST", newAdSetId, { status: "PAUSED" });
-    } catch {
-      // The row still says failed; staff see new_adset_id in the detail.
-    }
-    await db.from("ad_plan_automation_events").update({
-      status: "failed",
-      detail: { ...detail, error: `new_adset_${status.toLowerCase()}` },
-    }).eq("id", input.row.id);
-    return "failed";
+    // #4238 rework 1: a refused ad set that can't be paused stays pending
+    // (cleanup_required) instead of failed, so no third ad set is made.
+    return await cleanUpNewAdSet(
+      db,
+      graph,
+      {
+        ...input.row,
+        detail: { ...detail, error: `new_adset_${status.toLowerCase()}` },
+      },
+      newAdSetId,
+      `new_adset_${status.toLowerCase()}`,
+    );
   }
   if (!READY.has(status)) return "waiting";
   try {

@@ -194,16 +194,37 @@ export function hostAdResults(input: {
 
 // ── Budget card ──────────────────────────────────────────────────────────
 
+/**
+ * #4238 rework 1 (tester P1-2 / P1-3): the daily amount the detail page and
+ * the edit sheet use is the server's `plan_daily_credit_cents` (the plan's
+ * allocation, in the brand's money). Anything else is unknown: null, never
+ * 0, and never ad_campaigns.daily_budget_cents.
+ */
+export function hostAdDetailDailyCredit(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number.NaN;
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+/** Whole days left until `endsAtIso` (at least 1), the server's own rule; null with no end. */
+export function hostAdDaysLeft(nowIso: string, endsAtIso: string | null): number | null {
+  if (!endsAtIso) return null;
+  const end = Date.parse(endsAtIso);
+  const now = Date.parse(nowIso);
+  if (!Number.isFinite(end) || !Number.isFinite(now)) return null;
+  return Math.max(1, Math.ceil((end - now) / 86_400_000));
+}
+
 /** The budget card: what the Host pays a day, and what is still held. */
 export function hostAdBudgetCard(input: {
-  dailyCredit: number;
+  /** null = unknown (the card shows no daily line). */
+  dailyCredit: number | null;
   capCredit: number;
   spentCredit: number | null;
-}): { dailyPay: number; dailyToAds: number; stillHeldPay: number; totalPay: number } {
-  const daily = Math.max(0, Math.trunc(input.dailyCredit));
+}): { dailyPay: number | null; dailyToAds: number | null; stillHeldPay: number; totalPay: number } {
+  const daily = input.dailyCredit === null ? null : Math.max(0, Math.trunc(input.dailyCredit));
   const held = Math.max(0, Math.trunc(input.capCredit) - Math.max(0, Math.trunc(input.spentCredit ?? 0)));
   return {
-    dailyPay: hostAdPayFromCredit(daily),
+    dailyPay: daily === null ? null : hostAdPayFromCredit(daily),
     dailyToAds: daily,
     stillHeldPay: hostAdPayFromCredit(held),
     totalPay: hostAdPayFromCredit(Math.max(0, Math.trunc(input.capCredit))),
@@ -467,58 +488,58 @@ export function hostAdStatementMonth(iso: string): string {
 
 // ── Edit budget sheet, in the DAILY amount the Host pays (W6c) ───────────
 
-/** The days a live ad's cap covers: cap ÷ daily, at least 1. */
-export function hostAdRunDaysFromBudget(capCredit: number, dailyCredit: number): number {
-  if (!(capCredit > 0) || !(dailyCredit > 0)) return 1;
-  return Math.max(1, Math.round(capCredit / dailyCredit));
-}
-
 /**
  * The daily amount the sheet steps (pay terms, 15% fee inside) and every
- * number under it. The server still receives a TOTAL in credit: the new
- * daily pay goes through `hostAdPlanBudget` (the one pay→credit conversion)
- * for the run's days. An untouched daily amount sends nothing, so rounding
- * never edits a budget the Host did not change.
+ * number under it. #4238 rework 1 (tester P1-2): the new TOTAL is what is
+ * already spent plus the new daily (in credit, via `hostAdPlanBudget`, the
+ * one pay→credit conversion) times the days LEFT, from the end date. Never
+ * daily = total, never days from cap ÷ daily. The server then spreads what
+ * is left over the same days left, so it runs at the daily the Host picked.
+ * Nothing changed (same daily, same end) sends the cap as it is.
  */
 export function hostAdEditDailyMoney(input: {
   dailyPay: number;
   startDailyPay: number;
-  runDays: number;
+  /** Days left to the (new) end date; at least 1. */
+  daysLeft: number;
+  /** The end date moved: the total follows the daily over the new days left. */
+  endChanged?: boolean;
   capCredit: number;
   spentCredit: number | null;
   walletCredit: number | null;
   learning: boolean;
   step: number;
-}): HostAdEditMoney & { runTotalPay: number; dailyChanged: boolean } {
+}): HostAdEditMoney & { runTotalPay: number; dailyChanged: boolean; daysLeft: number } {
   const dailyChanged = input.dailyPay !== input.startDailyPay;
-  const plan = hostAdPlanBudget({ dailyPayCents: input.dailyPay, runDays: input.runDays });
+  const daysLeft = Math.max(1, Math.trunc(input.daysLeft));
+  const spent = Math.max(0, Math.trunc(input.spentCredit ?? 0));
+  const cap = Math.max(0, Math.trunc(input.capCredit));
+  const plan = hostAdPlanBudget({ dailyPayCents: input.dailyPay, runDays: daysLeft });
+  const moved = dailyChanged || input.endChanged === true;
+  const newCredit = moved ? spent + plan.capCreditCents : cap;
   const base = hostAdEditMoney({
     newTotalPay: 0,
-    newCreditOverride: dailyChanged ? plan.capCreditCents : Math.max(0, Math.trunc(input.capCredit)),
+    newCreditOverride: newCredit,
     capCredit: input.capCredit,
     spentCredit: input.spentCredit,
     walletCredit: input.walletCredit,
     learning: input.learning,
     step: input.step,
   });
-  return { ...base, runTotalPay: plan.holdPayCents, dailyChanged };
+  return { ...base, runTotalPay: hostAdPayFromCredit(newCredit), dailyChanged, daysLeft };
 }
 
 /**
  * The lowest daily amount the sheet lets the Host pick (pay terms): never
- * below the apps' one-ad-set minimum, never so low that the run's total
- * falls under what is already spent. Unknown minimum: one step.
+ * below the apps' one-ad-set minimum. Unknown minimum: one step. (The new
+ * total is spent + daily × days left, so it can never fall under what is
+ * already spent.)
  */
 export function hostAdEditMinDailyPay(input: {
   appsMinimumDailyPay: number | null;
-  spentCredit: number | null;
-  runDays: number;
   step: number;
 }): number {
-  const spentPay = hostAdPayFromCredit(Math.max(0, Math.trunc(input.spentCredit ?? 0)));
-  const bySpend = Math.ceil(spentPay / Math.max(1, input.runDays));
-  const floor = input.appsMinimumDailyPay !== null && input.appsMinimumDailyPay > 0 ? input.appsMinimumDailyPay : input.step;
-  return Math.max(floor, bySpend);
+  return input.appsMinimumDailyPay !== null && input.appsMinimumDailyPay > 0 ? input.appsMinimumDailyPay : input.step;
 }
 
 // ── An ad notice that belongs to another brand (W6c) ─────────────────────

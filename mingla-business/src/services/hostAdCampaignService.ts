@@ -131,6 +131,14 @@ export type HostAdCampaignDetail = {
   plan_state: string | null;
   plan_currency: string | null;
   plan_cap_cents: number | null;
+  /**
+   * #4238 rework 1: what the apps spend a day, in the brand's money (Ads
+   * credit), from the plan allocation (amendment-aware). Null = unknown;
+   * never read ad_campaigns.daily_budget_cents for this.
+   */
+  plan_daily_credit_cents?: number | null;
+  /** #4238 rework 1: the promoted public page (Share results), or null. */
+  public_page_url?: string | null;
   provider_spend_by_currency: {
     currency: string;
     spend_cents: number;

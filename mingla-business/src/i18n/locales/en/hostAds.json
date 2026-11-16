@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} needs at least {{amount}} a day. Pick a higher total or a sooner end date.",
         "daily": "You pay each day",
         "runTotal": "{{amount}} in total over {{days}} days",
-        "atMinimumDaily": "It can't go lower: {{amount}} a day is the least this ad can run on."
+        "atMinimumDaily": "It can't go lower: {{amount}} a day is the least this ad can run on.",
+        "runTotalLeft": "{{amount}} in total, with {{days}} days left",
+        "dailyUnknown": "The daily amount for this ad can't be shown right now. You can still change the end date."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "Use your own brand name and media you own.",
         "prohibited": "It shows something the app doesn't allow.",
         "prohibitedFix": "Remove that part of the picture or words."
+      },
+      "summary": {
+        "line": "This month: {{spent}} of {{budget}} · {{results}}",
+        "lineNoBudget": "This month: {{spent}} · {{results}}",
+        "lineNoSpend": "This month: {{results}}",
+        "results": "{{count}} results",
+        "resultOne": "{{count}} result",
+        "chartLabel": "What you paid over the last 30 days. {{line}}.",
+        "last30": "Last 30 days"
       }
     }
   }

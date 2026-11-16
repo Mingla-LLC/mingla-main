@@ -549,7 +549,9 @@
         "appMinimum": "{{app}} には1日あたり最低 {{amount}} が必要です。合計を増やすか、終了日を早めてください。",
         "daily": "1日あたりのお支払い",
         "runTotal": "{{days}}日間で合計{{amount}}",
-        "atMinimumDaily": "これ以上は下げられません。この広告は1日{{amount}}が最低額です。"
+        "atMinimumDaily": "これ以上は下げられません。この広告は1日{{amount}}が最低額です。",
+        "runTotalLeft": "合計 {{amount}}、残り {{days}} 日",
+        "dailyUnknown": "この広告の1日あたりの金額は今は表示できません。終了日は変更できます。"
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "自分のブランド名と自分の素材を使ってください。",
         "prohibited": "アプリが許可していないものが含まれています。",
         "prohibitedFix": "画像や文字からその部分を外してください。"
+      },
+      "summary": {
+        "line": "今月：{{budget}} 中 {{spent}} · {{results}}",
+        "lineNoBudget": "今月：{{spent}} · {{results}}",
+        "lineNoSpend": "今月：{{results}}",
+        "results": "{{count}} 件の成果",
+        "resultOne": "{{count}} 件の成果",
+        "chartLabel": "過去30日間に支払った金額。{{line}}。",
+        "last30": "過去30日間"
       }
     }
   }

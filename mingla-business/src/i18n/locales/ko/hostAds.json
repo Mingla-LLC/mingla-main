@@ -549,7 +549,9 @@
         "appMinimum": "{{app}}은 하루 최소 {{amount}}이 필요해요. 총액을 늘리거나 종료일을 앞당기세요.",
         "daily": "하루에 내는 금액",
         "runTotal": "{{days}}일 동안 총 {{amount}}",
-        "atMinimumDaily": "더 낮출 수 없어요. 이 광고는 하루 {{amount}}가 최소예요."
+        "atMinimumDaily": "더 낮출 수 없어요. 이 광고는 하루 {{amount}}가 최소예요.",
+        "runTotalLeft": "총 {{amount}}, {{days}}일 남음",
+        "dailyUnknown": "지금은 이 광고의 하루 금액을 보여 드릴 수 없어요. 종료일은 계속 바꿀 수 있어요."
       },
       "ari": {
         "who": "Ari",
@@ -655,6 +657,15 @@
         "identityFix": "내 브랜드 이름과 내 소유의 자료를 쓰세요.",
         "prohibited": "앱이 허용하지 않는 것을 보여줘요.",
         "prohibitedFix": "이미지나 문구에서 그 부분을 빼세요."
+      },
+      "summary": {
+        "line": "이번 달: {{budget}} 중 {{spent}} · {{results}}",
+        "lineNoBudget": "이번 달: {{spent}} · {{results}}",
+        "lineNoSpend": "이번 달: {{results}}",
+        "results": "결과 {{count}}개",
+        "resultOne": "결과 {{count}}개",
+        "chartLabel": "지난 30일 동안 결제한 금액. {{line}}.",
+        "last30": "지난 30일"
       }
     }
   }
