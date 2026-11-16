@@ -12,7 +12,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Platform,
@@ -24,6 +23,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { showAlert } from "../ui/showAlert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -338,7 +338,7 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
       if (typeof window !== "undefined" && window.confirm(t("team.delete_confirm"))) go();
       return;
     }
-    Alert.alert(t("team.delete"), t("team.delete_confirm"), [
+    showAlert(t("team.delete"), t("team.delete_confirm"), [
       { text: t("team.cancel"), style: "cancel" },
       { text: t("team.delete"), style: "destructive", onPress: go },
     ]);

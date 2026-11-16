@@ -14,11 +14,11 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
+import { showAlert } from "../../../../src/components/ui/showAlert";
 import { useRouter } from "expo-router";
 
 import { CampaignCard } from "../../../../src/components/marketing/CampaignCard";
@@ -73,7 +73,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
     } catch (err) {
       const message = (err as { message?: unknown } | null)?.message;
       // #4273 extra (a): a send that is due or has started is read-only.
-      Alert.alert(
+      showAlert(
         "Couldn't cancel",
         typeof message === "string" && message.includes("campaign_locked")
           ? "This send has already started, so it can't be cancelled now."

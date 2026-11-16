@@ -137,6 +137,7 @@ export function TemplatePreviewDrawer(
   const handleApplyReplace = useCallback((): void => {
     if (currentTemplate === null) return;
     if (currentDraftIsDirty) {
+      // I-4420-NO-RAW-ALERT native-only: web loads TemplatePreviewDrawer.web.tsx; this file is the phone drawer.
       Alert.alert(
         "Replace current draft?",
         `This will overwrite your subject and body with "${currentTemplate.name}". Your unsaved edits will be lost.`,

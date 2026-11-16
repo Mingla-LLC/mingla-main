@@ -21,7 +21,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -29,6 +28,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { showAlert } from "../ui/showAlert";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -221,14 +221,17 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
       const next = addSupportImages(images, picked);
       setImages(next.images);
       if (next.refusals.includes("too_many")) {
-        Alert.alert(supportCopy("form.too_many_images", { max: MAX_SUPPORT_IMAGES }));
+        showAlert(supportCopy("form.too_many_images", { max: MAX_SUPPORT_IMAGES }), undefined, undefined, { kind: "warn" });
       } else if (next.refusals.length > 0) {
-        Alert.alert(
+        showAlert(
           next.refusals.includes("too_large") ? supportCopy("form.image_too_large") : supportCopy("form.image_type"),
+          undefined,
+          undefined,
+          { kind: "warn" },
         );
       }
     } catch (err) {
-      Alert.alert(
+      showAlert(
         err instanceof SupportPhotoAccessError
           ? supportCopy("form.photo_access_off")
           : supportCopy("form.pick_failed"),
@@ -259,11 +262,11 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
       await refresh();
     } catch (err) {
       if (err instanceof SupportSendError && err.code === "ticket_closed") {
-        Alert.alert(supportCopy("thread.banner_closed"), supportCopy("thread.closed_error"));
+        showAlert(supportCopy("thread.banner_closed"), supportCopy("thread.closed_error"), undefined, { kind: "warn" });
         await refresh();
       } else {
         // The message is NOT silently dropped: the words stay in the box.
-        Alert.alert(
+        showAlert(
           supportCopy("thread.not_sent_title"),
           err instanceof Error ? err.message : supportCopy("thread.not_sent_body"),
         );

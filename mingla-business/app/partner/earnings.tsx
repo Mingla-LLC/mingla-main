@@ -16,7 +16,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Platform,
   Pressable,
@@ -24,6 +23,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { showAlert } from "../../src/components/ui/showAlert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -138,7 +138,7 @@ export default function PartnerEarningsScreen(): React.ReactElement {
   }, []);
 
   const handleDisconnectPaystack = useCallback((): void => {
-    Alert.alert(
+    showAlert(
       "Disconnect bank?",
       "Your bank account will be unlinked from Mingla partner payouts. Splits already paid stay in your bank. You can reconnect anytime — with the same or a different account.",
       [
@@ -154,7 +154,7 @@ export default function PartnerEarningsScreen(): React.ReactElement {
               await paystackQuery.refetch();
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
-              Alert.alert("Couldn't disconnect", message);
+              showAlert("Couldn't disconnect", message);
             }
           },
         },
@@ -218,7 +218,7 @@ export default function PartnerEarningsScreen(): React.ReactElement {
   }, [statusQuery, refreshSession]);
 
   const handleDisconnectStripe = useCallback((): void => {
-    Alert.alert(
+    showAlert(
       "Disconnect your payout account?",
       "Your partner payout account will be unlinked from Mingla. Already-paid splits remain on the existing account. You can reconnect anytime — possibly with a different country or business.",
       [
@@ -232,7 +232,7 @@ export default function PartnerEarningsScreen(): React.ReactElement {
               statusQuery.refetch();
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
-              Alert.alert("Couldn't disconnect", message);
+              showAlert("Couldn't disconnect", message);
             }
           },
         },

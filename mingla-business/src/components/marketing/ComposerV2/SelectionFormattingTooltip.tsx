@@ -63,6 +63,7 @@ export function SelectionFormattingTooltip(
         "",
       );
     } else {
+      // I-4420-NO-RAW-ALERT native-only: the phone rich editor (pell webview) only; not mounted on web.
       Alert.alert(
         "Insert link",
         "Use the link option in the composer (coming soon on Android — iOS has Alert.prompt).",

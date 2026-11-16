@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { showAlert } from "../ui/showAlert";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { programFormChrome } from "../programs/programLayout";
@@ -191,21 +191,25 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
 
   const save = async () => {
     if (name.trim().length < 1)
-      return Alert.alert(
+      return showAlert(
         "Name this offer",
         "Use a short name your team will recognise.",
+        undefined,
+        { kind: "warn" },
       );
     if (scope === "listings" && targets.length === 0)
-      return Alert.alert("Choose a listing", "Select at least one listing.");
+      return showAlert("Choose a listing", "Select at least one listing.", undefined, { kind: "warn" });
     if (
       rewardKind === "cash" &&
       (!canCash || !Number.isFinite(cashBps) || cashBps < 100 || cashBps > 5000)
     ) {
-      return Alert.alert(
+      return showAlert(
         "Check the cash share",
         canCash
           ? "Choose between 1% and 50%."
           : "A finance manager must create cash offers.",
+        undefined,
+        { kind: "warn" },
       );
     }
     const voucherBps = Math.round(Number(voucherPercent) * 100);
@@ -219,9 +223,11 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
         days < 1 ||
         days > 365)
     ) {
-      return Alert.alert(
+      return showAlert(
         "Check the voucher",
         "Choose a valid percentage and an expiry from 1 to 365 days.",
+        undefined,
+        { kind: "warn" },
       );
     }
     if (
@@ -230,9 +236,11 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
         !Number.isInteger(Number(perkThreshold)) ||
         Number(perkThreshold) < 1)
     ) {
-      return Alert.alert(
+      return showAlert(
         "Describe the perk",
         "Say what unlocks and after how many sales.",
+        undefined,
+        { kind: "warn" },
       );
     }
     const budgetMinor = budget.trim() ? Math.round(Number(budget) * 100) : null;
@@ -240,9 +248,11 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
       budgetMinor !== null &&
       (!Number.isFinite(budgetMinor) || budgetMinor < 1)
     ) {
-      return Alert.alert(
+      return showAlert(
         "Check the budget",
         "Enter a positive amount or leave it empty for no cap.",
+        undefined,
+        { kind: "warn" },
       );
     }
     if (rewardKind === "cash") {
@@ -256,9 +266,11 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
           (index > 0 && tier.minSales <= tiers[index - 1].minSales),
       );
       if (invalidTier)
-        return Alert.alert(
+        return showAlert(
           "Check the tiers",
           "Sales thresholds must increase, and every share must be between 1% and 50%.",
+          undefined,
+          { kind: "warn" },
         );
     }
     setSaving(true);
@@ -297,7 +309,7 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
       });
       onClose();
     } catch (error) {
-      Alert.alert(
+      showAlert(
         "Couldn’t save the offer",
         error instanceof Error ? error.message : "Try again.",
       );

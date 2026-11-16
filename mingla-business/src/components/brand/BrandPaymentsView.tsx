@@ -21,7 +21,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { showAlert } from "../ui/showAlert";
 import type { LayoutChangeEvent } from "react-native";
 // #1834 [keyboard-blocks-bank-field] — the body ScrollViews route through the
 // canonical SmartScrollView wrapper (ORCH-0892-B: native = the keyboard
@@ -240,7 +241,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   );
   const handleMutatePayouts = useCallback((): void => {
     if (!canMutatePayouts) {
-      Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+      showAlert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY, undefined, { kind: "warn" });
       return;
     }
     onOpenOnboard();
@@ -276,7 +277,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const accountSession = useBrandStripeAccountSession();
   const handleOpenAccountManagement = useCallback(async (): Promise<void> => {
     if (!canMutatePayouts) {
-      Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+      showAlert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY, undefined, { kind: "warn" });
       return;
     }
     if (brand?.id === undefined || accountSession.isPending) return;
@@ -314,7 +315,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   }, [accountSession, brand?.id, canMutatePayouts]);
   const handleOpenTaxDashboard = useCallback((): void => {
     if (!canMutatePayouts) {
-      Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+      showAlert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY, undefined, { kind: "warn" });
       return;
     }
     if (brand?.id === undefined || taxAccountSession.isPending) return;
@@ -327,7 +328,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const [detachSheetVisible, setDetachSheetVisible] = useState<boolean>(false);
   const handleOpenDetach = useCallback((): void => {
     if (!canMutatePayouts) {
-      Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+      showAlert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY, undefined, { kind: "warn" });
       return;
     }
     setDetachSheetVisible(true);
@@ -552,10 +553,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
       paystackStatusQuery.data?.connected === true;
     const handleDisconnect = (): void => {
       if (!canMutatePayouts) {
-        Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+        showAlert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY, undefined, { kind: "warn" });
         return;
       }
-      Alert.alert(
+      showAlert(
         "Disconnect payout bank?",
         "This brand will stop receiving payouts until you connect a bank again.",
         [
@@ -570,7 +571,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                   paystackStatusQuery.refetch();
                 },
                 onError: () =>
-                  Alert.alert(
+                  showAlert(
                     "Couldn't disconnect",
                     "Please try again in a moment.",
                   ),
@@ -582,7 +583,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     };
     const handleClearProvider = (): void => {
       if (!canMutatePayouts) {
-        Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+        showAlert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY, undefined, { kind: "warn" });
         return;
       }
       clearPaystackMutation.mutate(brand.id, {
@@ -600,7 +601,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     // this same screen. Scroll to it and focus its first field.
     const handleGoToBankForm = (): void => {
       if (!canMutatePayouts) {
-        Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+        showAlert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY, undefined, { kind: "warn" });
         return;
       }
       if (connected) setPaystackEditing(true);

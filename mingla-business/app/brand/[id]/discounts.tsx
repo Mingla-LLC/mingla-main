@@ -1,5 +1,6 @@
 import React, { Suspense } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { showAlert } from "../../../src/components/ui/showAlert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,7 +35,7 @@ export default function DiscountsRoute(): React.ReactElement {
         blastInFlightRef.current
       ) {
         if (user?.id === undefined) {
-          Alert.alert(
+          showAlert(
             "Sign in again",
             "Your session is needed to create a Blast draft.",
           );
@@ -53,7 +54,7 @@ export default function DiscountsRoute(): React.ReactElement {
           );
         })
         .catch((error: unknown) => {
-          Alert.alert(
+          showAlert(
             "Couldn't create the Blast",
             error instanceof Error ? error.message : "Try again in a moment.",
           );
