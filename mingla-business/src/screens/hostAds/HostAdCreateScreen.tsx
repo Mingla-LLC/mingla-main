@@ -42,6 +42,7 @@ import {
   hostAdScheduleIsos,
   hostAdScheduleLimit,
   hostAdScrollBottomPadding,
+  hostAdAgeRangeValid,
   initialHostAdConnections,
 } from "../../components/marketing/ads/hostAdBuilderRules";
 import {
@@ -1126,11 +1127,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             app: PLATFORM_LABELS[radiusProblem.app] ?? radiusProblem.app,
             reason: radiusProblem.status.text,
           })
-        : !Number.isInteger(Number(ageMin)) ||
-            !Number.isInteger(Number(ageMax)) ||
-            Number(ageMin) < 18 ||
-            Number(ageMax) > 65 ||
-            Number(ageMin) > Number(ageMax)
+        : !hostAdAgeRangeValid(ageMin, ageMax)
           ? hb("audience.ageError")
           : null;
   const platformsError =
@@ -2452,7 +2449,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     setAgeMin(value);
                     touch();
                   }}
-                  variant="number"
+                  variant="integer"
                   accessibilityLabel={hb("audience.ageMin")}
                   testID="host-ad-age-min"
                 />
@@ -2465,7 +2462,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     setAgeMax(value);
                     touch();
                   }}
-                  variant="number"
+                  variant="integer"
                   accessibilityLabel={hb("audience.ageMax")}
                   testID="host-ad-age-max"
                 />

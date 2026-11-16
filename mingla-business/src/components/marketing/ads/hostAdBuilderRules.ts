@@ -272,3 +272,23 @@ export function hostAdScheduleIsos(
     ),
   };
 }
+
+/** The Host age range Mingla accepts (whole years, 18 to 65). */
+export const HOST_AD_AGE_FLOOR = 18;
+export const HOST_AD_AGE_CEILING = 65;
+
+/**
+ * #4238 W7 (native P3-5): the age fields use the Input `integer` variant
+ * (number pad, no decimal key), but the primitive does not validate, so the
+ * builder keeps its own whole-number rule: both ages are whole numbers
+ * written as digits only, 18 ≤ min ≤ max ≤ 65. A pasted "21.5", "2e1" or an
+ * empty field is refused.
+ */
+export function hostAdAgeRangeValid(ageMin: string, ageMax: string): boolean {
+  const whole = (value: string): number | null =>
+    /^\d{1,3}$/.test(value.trim()) ? Number(value.trim()) : null;
+  const min = whole(ageMin);
+  const max = whole(ageMax);
+  if (min === null || max === null) return false;
+  return min >= HOST_AD_AGE_FLOOR && max <= HOST_AD_AGE_CEILING && min <= max;
+}
