@@ -374,11 +374,12 @@ jest.mock("@mingla/offering-rendering", () => {
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
-    const { children, heroEyebrow, heroTitle, stickyPanel, ...rest } = props as {
+    const { children, heroEyebrow, heroTitle, stickyPanel, desktopFlyerActions, ...rest } = props as {
       children?: React.ReactNode;
       heroEyebrow?: React.ReactNode;
       heroTitle?: React.ReactNode;
       stickyPanel?: React.ReactNode;
+      desktopFlyerActions?: React.ReactNode;
     };
     return ReactLocal.createElement(
       "ParallaxCoverShell",
@@ -388,6 +389,8 @@ jest.mock("@mingla/offering-rendering", () => {
       ReactLocal.createElement("ShellHeroEyebrow", null, heroEyebrow),
       ReactLocal.createElement("ShellHeroTitle", null, heroTitle),
       ReactLocal.createElement("ShellStickyPanel", null, stickyPanel),
+      // [TEST-MOD-APPROVED #4420] the desktop flyer actions render as a child.
+      ReactLocal.createElement("ShellFlyerActions", null, desktopFlyerActions),
       ReactLocal.createElement("ShellBody", null, children),
     );
   };
@@ -631,11 +634,12 @@ const CASES: ParityCase[] = [
     anchors: [
       // #1561 — the category chip replaces the VERIFIED VENUE eyebrow, and the
       // answer bar replaces the bottom PHOTOS strip as this case's proof that
-      // the first screen rendered.
+      // the first screen rendered. [TEST-MOD-APPROVED #4420 D-V1] the bar now
+      // reads as fact rows: the booking cell is "Tables through Mingla".
       "Restaurant",
       "London",
       "Typically",
-      "Booking",
+      "Tables through Mingla",
       "Academy Street Bistro",
       "WHERE YOU'LL BE",
       "HOURS",

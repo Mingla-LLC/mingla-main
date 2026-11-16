@@ -1,7 +1,7 @@
 // issue #4420 wave 2 (§2.4) — the "Taking you to secure payment" step.
 //
-// Shown while a hosted payment page (Stripe Checkout, Paystack) opens in this
-// tab. If the page is still here after a few seconds (the browser stopped the
+// Shown while the hosted secure payment page opens in this tab. The copy
+// names no payment provider (Seth's standing rule). If the page is still here after a few seconds (the browser stopped the
 // navigation), it offers a real link the guest can press, which is a user
 // gesture no blocker stops, and a way back to review. Nothing has been
 // charged at this point, and the copy says so.
@@ -32,8 +32,6 @@ import {
 export interface SecurePaymentHandoffProps {
   url: string;
   palette: ThemePalette;
-  /** "Stripe" or "Paystack": who the guest is about to see. */
-  providerName: string;
   /** e.g. "Your table is held until 14:32." Null hides it. */
   holdLine?: string | null;
   onBack: () => void;
@@ -43,7 +41,6 @@ export interface SecurePaymentHandoffProps {
 export const SecurePaymentHandoff: React.FC<SecurePaymentHandoffProps> = ({
   url,
   palette,
-  providerName,
   holdLine = null,
   onBack,
   testID = "issue-4420-secure-payment",
@@ -134,14 +131,14 @@ export const SecurePaymentHandoff: React.FC<SecurePaymentHandoffProps> = ({
         Taking you to secure payment
       </Text>
       <Text style={[styles.body, { color: palette.secondaryText }]}>
-        {`${providerName} opens in this tab and brings you back here when you're done.`}
+        {"Our secure payment page opens in this tab and brings you back here when you're done."}
         {holdLine !== null ? ` ${holdLine}` : ""}
       </Text>
       {!stuck ? (
         <View style={styles.openingRow} accessibilityLiveRegion="polite">
           <ActivityIndicator color={palette.primaryText} />
           <Text style={[styles.openingText, { color: palette.secondaryText }]}>
-            {`Opening ${providerName}…`}
+            Opening secure payment…
           </Text>
         </View>
       ) : (

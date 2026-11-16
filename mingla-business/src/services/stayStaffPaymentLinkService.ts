@@ -12,6 +12,12 @@ export interface StayStaffPaymentLinkDetails {
   guestName: string;
   venueName: string;
   brandName: string;
+  /**
+   * issue #4420 wave 2 — the brand's public slug, so the pay page can wear
+   * the host's colours. Optional: absent until the details RPC returns it,
+   * and the page then stays on the Mingla default palette.
+   */
+  brandSlug?: string | null;
   expiresAt: string;
   paid: boolean;
   lines: {

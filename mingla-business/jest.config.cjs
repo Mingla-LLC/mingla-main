@@ -424,6 +424,12 @@ module.exports = {
     // A lightweight manual mock that renders a `LinearGradient` host element;
     // a suite's own jest.mock wins.
     "^expo-linear-gradient$": "<rootDir>/__manual_mocks__/expo-linear-gradient.js",
+    // #4420 — the venue page now draws the shared fact rows, whose icons
+    // (packages/offering-rendering/LucideIcons.tsx) import react-native-svg
+    // from packages/, where it is unresolvable (no node_modules there). The
+    // same host-element boundary stub the RN-web render configs use (#1561);
+    // a suite's own jest.mock("react-native-svg") still wins.
+    "^react-native-svg$": "<rootDir>/jest.issue1561.svg-stub.cjs",
     // #4420 — ui/Material.tsx (the one glass owner) imports expo-blur, whose
     // ESM build cannot run under node. A manual mock that renders a `BlurView`
     // host element; a suite's own jest.mock("expo-blur") still wins.

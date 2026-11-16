@@ -49,7 +49,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { color, space, materials } from "../../../src/constants/designSystem";
+import { space, materials } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
@@ -85,7 +86,10 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
+import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
+import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
+import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 import { tripFunnelTotalSteps, tripPaymentStepIndex } from "./tripFunnelSteps";
 // issue #3351 [free trip intake loop] — the flattener and the presence probe
 // both live in the step-order owner now, so the trip route holds exactly one
@@ -152,6 +156,7 @@ function CheckoutTripPaymentScreenContent({
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
+  const stripWide = useCheckoutWideLayout();
   // ORCH-1178 — anon-tolerant per-tier intake schemas, used ONLY to derive the
   // funnel length (whether /intake sits between /buyer and /payment). Mirrors
   // buyer.tsx's by-event query.
@@ -803,6 +808,16 @@ function CheckoutTripPaymentScreenContent({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* #4420 wave 2 (§4.1) — phone: the offering this step belongs to. */}
+        {trip !== null ? (
+          <CheckoutOfferingStrip
+            wide={stripWide}
+            title={trip.title.trim().length > 0 ? trip.title : "Untitled trip"}
+            eyebrow={formatTripCalendarRange(trip.businessTrip.startAt, trip.businessTrip.endAt)}
+            byline={publicTripQuery.data?.brand?.name ?? null}
+            coverUrl={trip.coverMediaUrl ?? null}
+          />
+        ) : null}
         {/* Order summary recap */}
         <GlassCard
           variant="base"
@@ -931,8 +946,15 @@ function CheckoutTripPaymentScreenContent({
           ) : null}
         </GlassCard>
 
+        {/* #4420 §4.2 — "Payment not completed": the step's own message,
+            framed as an alert banner in the host's status colours. */}
         {paymentError !== null ? (
-          <Text style={styles.errorText}>{paymentError}</Text>
+          <CheckoutStatusBanner
+            tone="error"
+            title="Payment not completed"
+            body={paymentError}
+            testID="checkout-payment-not-completed"
+          />
         ) : null}
       </ScrollView>
 
@@ -1061,7 +1083,7 @@ function CheckoutTripPaymentScreenContent({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
@@ -1278,4 +1300,4 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-});
+}));

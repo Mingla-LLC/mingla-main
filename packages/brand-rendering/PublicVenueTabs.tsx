@@ -7,20 +7,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import type {
-  PressableProps,
-  ScrollViewProps,
-  ViewProps,
-  ViewStyle,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+import type { ViewProps, ViewStyle } from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -30,10 +18,8 @@ import {
   reconcileInitialVenueTab,
   type PublicVenueTab,
 } from "./publicVenueTabState";
-import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
-// issue #4420 — the tab strip is a glass pill that stays under the header.
-import { OfferingGlassBackdrop } from "@mingla/offering-rendering/OfferingGlassContext";
-import { hexToRgba } from "@mingla/offering-rendering/themePalette";
+// issue #4420 — the tab strip is the shared glass pill.
+import { GlassTabs, type GlassTabNode } from "./GlassTabs";
 
 // This package is source-linked into both apps. Their isolated typecheck
 // sandboxes resolve React peers from the app root, while files under packages/
@@ -111,22 +97,6 @@ interface InlineScrollOwner {
   scrollLeft: number;
 }
 
-interface WebVenueTabProps
-  extends Omit<PressableProps, "onBlur" | "onFocus"> {
-  "aria-controls"?: string;
-  "aria-selected"?: boolean;
-  id?: string;
-  onBlur?: () => void;
-  onFocus?: (event: VenueTabFocusEvent) => void;
-  onKeyDown?: (event: VenueTabKeyboardEvent) => void;
-  onPointerDown?: () => void;
-  tabIndex?: 0 | -1;
-}
-
-interface WebVenueTabListProps extends ScrollViewProps {
-  "aria-label"?: string;
-}
-
 interface WebVenuePanelProps extends ViewProps {
   "aria-hidden"?: boolean;
   "aria-labelledby"?: string;
@@ -145,10 +115,6 @@ interface WebFocusOutline extends ViewStyle {
 // React Native Web forwards these DOM-only properties, while the installed
 // native component types intentionally omit them. Keeping the typed seams here
 // prevents web semantics from leaking into either native render branch.
-const WebVenueTab = Pressable as React.ComponentType<
-  WebVenueTabProps & React.RefAttributes<FocusableVenueTab>
->;
-const WebVenueTabList = ScrollView as React.ComponentType<WebVenueTabListProps>;
 const WebVenuePanel = View as React.ComponentType<WebVenuePanelProps>;
 
 const isWebFocusVisible = (event: VenueTabFocusEvent): boolean => {
@@ -397,129 +363,80 @@ export const PublicVenueTabs = forwardRef<
     reservations,
   };
 
-  // issue #4420 — the segmented glass pill (design file → .tabs): one
-  // rounded frosted strip, the chosen tab in ink. On web it sticks under the
-  // glass header so moving between Overview, Menu and Reservations never
-  // means scrolling back up; native keeps it in the flow.
-  const pillFill = palette.card.startsWith("#")
-    ? hexToRgba(palette.card, 0.82)
-    : palette.page.startsWith("#")
-      ? hexToRgba(palette.page, Platform.OS === "android" ? 1 : 0.9)
-      : palette.page;
+  // issue #4420 — the segmented glass pill is the shared GlassTabs (spec
+  // §1.1.7). On web it sticks under the glass header so moving between
+  // Overview, Menu and Reservations never means scrolling back up; native
+  // keeps it in the flow (the screen pins a copy, PublicVenueTabPill).
+  const webTabPropsFor = (
+    tab: PublicVenueTab,
+    index: number,
+    active: boolean,
+  ): Record<string, unknown> =>
+    Platform.OS === "web"
+      ? {
+          "aria-controls": panelId(tab),
+          "aria-selected": active,
+          id: tabId(tab),
+          onBlur: (): void => {
+            if (focusedTabRef.current === tab) {
+              focusedTabRef.current = null;
+            }
+            setFocusVisibleTab((current: PublicVenueTab | null) =>
+              current === tab ? null : current,
+            );
+          },
+          onFocus: (event: VenueTabFocusEvent): void => {
+            focusedTabRef.current = tab;
+            const pointerFocused = pointerFocusPendingRef.current;
+            const keyboardFocused = keyboardFocusPendingRef.current;
+            pointerFocusPendingRef.current = false;
+            keyboardFocusPendingRef.current = false;
+            setFocusVisibleTab(
+              !pointerFocused && (keyboardFocused || isWebFocusVisible(event))
+                ? tab
+                : null,
+            );
+          },
+          onKeyDown: (event: VenueTabKeyboardEvent): void => {
+            handleWebKeyDown(event, index, tab);
+          },
+          onPointerDown: (): void => {
+            pointerFocusPendingRef.current = true;
+            keyboardFocusPendingRef.current = false;
+            setFocusVisibleTab(null);
+          },
+          tabIndex: active ? 0 : -1,
+        }
+      : {};
+  const focusOutlineFor = (
+    tab: PublicVenueTab,
+    active: boolean,
+  ): WebFocusOutline | null =>
+    Platform.OS === "web" && focusVisibleTab === tab
+      ? {
+          outlineColor: active ? palette.accentText : palette.primaryText,
+          outlineOffset: -4,
+          outlineStyle: "solid",
+          outlineWidth: 3,
+        }
+      : null;
   return (
     <View>
-      <View
-        style={[
-          styles.pillWrap,
-          { backgroundColor: pillFill, borderColor: palette.panelBorder },
-          Platform.OS === "web"
-            ? ({
-                position: "sticky",
-                top: 72,
-                zIndex: 3,
-                backdropFilter: "blur(18px)",
-              } as unknown as ViewStyle)
-            : null,
-        ]}
+      <GlassTabs
+        items={tabs.map((tab: PublicVenueTab) => ({ key: tab, label: LABELS[tab] }))}
+        activeKey={activeTab}
+        onSelect={select}
+        palette={palette}
+        theme={theme}
+        stickyTop={72}
+        listLabel="Venue sections"
         testID="issue-4420-venue-tab-pill"
-      >
-      <OfferingGlassBackdrop radius={999} tint={palette.glassTint} />
-      <WebVenueTabList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabs}
-        accessibilityRole="tablist"
-        {...(Platform.OS === "web"
-          ? { "aria-label": "Venue sections" }
-          : {})}
-      >
-        {tabs.map((tab: PublicVenueTab, index: number) => {
-          const active = tab === activeTab;
-          const webTabProps =
-            Platform.OS === "web"
-              ? {
-                  "aria-controls": panelId(tab),
-                  "aria-selected": active,
-                  id: tabId(tab),
-                  onBlur: (): void => {
-                    if (focusedTabRef.current === tab) {
-                      focusedTabRef.current = null;
-                    }
-                    setFocusVisibleTab((current: PublicVenueTab | null) =>
-                      current === tab ? null : current,
-                    );
-                  },
-                  onFocus: (event: VenueTabFocusEvent): void => {
-                    focusedTabRef.current = tab;
-                    const pointerFocused = pointerFocusPendingRef.current;
-                    const keyboardFocused = keyboardFocusPendingRef.current;
-                    pointerFocusPendingRef.current = false;
-                    keyboardFocusPendingRef.current = false;
-                    setFocusVisibleTab(
-                      !pointerFocused &&
-                        (keyboardFocused || isWebFocusVisible(event))
-                        ? tab
-                        : null,
-                    );
-                  },
-                  onKeyDown: (event: VenueTabKeyboardEvent): void => {
-                    handleWebKeyDown(event, index, tab);
-                  },
-                  onPointerDown: (): void => {
-                    pointerFocusPendingRef.current = true;
-                    keyboardFocusPendingRef.current = false;
-                    setFocusVisibleTab(null);
-                  },
-                  tabIndex: active ? (0 as const) : (-1 as const),
-                }
-              : {};
-          const focusOutline: WebFocusOutline | null =
-            Platform.OS === "web" && focusVisibleTab === tab
-              ? {
-                  outlineColor: active
-                    ? palette.accentText
-                    : palette.primaryText,
-                  outlineOffset: -4,
-                  outlineStyle: "solid",
-                  outlineWidth: 3,
-                }
-              : null;
-          return (
-            <WebVenueTab
-              key={tab}
-              ref={(node: FocusableVenueTab | null) => {
-                tabRefs.current[tab] = node ?? undefined;
-              }}
-              onPress={() => select(tab)}
-              accessibilityRole="tab"
-              accessibilityLabel={LABELS[tab]}
-              accessibilityState={{ selected: active }}
-              {...webTabProps}
-              style={[
-                styles.chip,
-                active && {
-                  backgroundColor: palette.primaryText,
-                },
-                focusOutline,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.label,
-                  themeBoldFace(theme),
-                  {
-                    color: active ? palette.page : palette.secondaryText,
-                  },
-                ]}
-                numberOfLines={1}
-              >
-                {LABELS[tab]}
-              </Text>
-            </WebVenueTab>
-          );
-        })}
-      </WebVenueTabList>
-      </View>
+        tabProps={webTabPropsFor}
+        tabRef={(tab: PublicVenueTab, node: GlassTabNode | null) => {
+          tabRefs.current[tab] = (node as FocusableVenueTab | null) ?? undefined;
+        }}
+        tabStyle={focusOutlineFor}
+      />
       {Platform.OS === "web" ? (
         tabs.map((tab: PublicVenueTab) => {
           const active = tab === activeTab;
@@ -575,81 +492,20 @@ export const PublicVenueTabPill = ({
   const tabs: PublicVenueTab[] = hasMenu
     ? ["overview", "menu", "reservations"]
     : ["overview", "reservations"];
-  const fill = palette.card.startsWith("#")
-    ? hexToRgba(palette.card, Platform.OS === "android" ? 1 : 0.96)
-    : palette.page;
   return (
-    <View
-      style={[styles.pillWrap, styles.pinnedShadow, { backgroundColor: fill, borderColor: palette.panelBorder }]}
-      accessibilityRole="tablist"
+    <GlassTabs
+      items={tabs.map((tab: PublicVenueTab) => ({ key: tab, label: LABELS[tab] }))}
+      activeKey={activeTab}
+      onSelect={onSelect}
+      palette={palette}
+      theme={theme}
+      pinned
       testID={testID}
-    >
-      <OfferingGlassBackdrop radius={999} tint={palette.glassTint} />
-      <View style={styles.tabs}>
-        {tabs.map((tab) => {
-          const active = tab === activeTab;
-          return (
-            <Pressable
-              key={tab}
-              onPress={() => onSelect(tab)}
-              accessibilityRole="tab"
-              accessibilityLabel={LABELS[tab]}
-              accessibilityState={{ selected: active }}
-              style={[styles.chip, active && { backgroundColor: palette.primaryText }]}
-            >
-              <Text
-                style={[
-                  styles.label,
-                  themeBoldFace(theme),
-                  { color: active ? palette.page : palette.secondaryText },
-                ]}
-                numberOfLines={1}
-              >
-                {LABELS[tab]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
+    />
   );
 };
 
 const styles = StyleSheet.create({
-  pinnedShadow: {
-    shadowColor: "#000000",
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  pillWrap: {
-    borderRadius: 999,
-    borderWidth: 1,
-    padding: 4,
-    overflow: "hidden",
-  },
-  tabs: {
-    flexGrow: 1,
-    flexDirection: "row",
-    gap: 4,
-  },
-  chip: {
-    minHeight: 40,
-    flexGrow: 1,
-    flexShrink: 0,
-    flexBasis: "auto",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    overflow: "hidden",
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
   pane: {
     marginTop: 20,
   },

@@ -22,7 +22,8 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { radius as radiusTokens, space, color } from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { formatCurrency } from "../../../src/utils/currency";
 import {
@@ -403,7 +404,8 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.miniCard}>
+          {/* #4420 — on desktop the ticket stub carries this. */}
+          <View style={[styles.miniCard, wide ? styles.hiddenOnWide : null]}>
             <EventCoverMedia
               hue={0}
               mediaUrl={experience.coverMediaUrl}
@@ -450,7 +452,13 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
         </ScrollView>
 
         {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
-        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom} onBarHeight={setBarHeight}>
+        <CheckoutOrderSummary
+          wide={wide}
+          bottomInset={insets.bottom}
+          onBarHeight={setBarHeight}
+          // #4420 §4.1 — the desktop ticket stub carries the offering.
+          stub={{ title: experience.title.trim().length > 0 ? experience.title : "Untitled experience", eyebrow: typeof subline === "string" && subline.length > 0 ? subline : null, coverUrl: experience.coverMediaUrl ?? null }}
+        >
           <React.Suspense fallback={null}>
             <CheckoutDiscountCodeField
               collapsible={!wide}
@@ -498,7 +506,8 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
+  hiddenOnWide: { display: "none" },
   host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: {
@@ -573,4 +582,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

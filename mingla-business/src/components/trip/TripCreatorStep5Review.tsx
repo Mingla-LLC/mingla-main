@@ -36,7 +36,8 @@ import {
 } from "../../constants/designSystem";
 import type { Trip } from "../../services/tripsService";
 import { StripeBlockedCard } from "../offering/StripeBlockedCard";
-import { TripPreview, type TripPreviewBrand } from "./TripPreview";
+import { TripPreview } from "../offering/LazyPublicParts";
+import type { TripPreviewBrand } from "./TripPreview";
 import { TripGuideReviewSections } from "./TripGuideReviewSections";
 import { resolveProviderNeutralPaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 import { buildDraftPreviewSocialProof } from "../../utils/draftPreviewSocialProof";

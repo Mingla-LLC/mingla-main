@@ -20,7 +20,7 @@ import { supabase } from "../../services/supabase";
 import { Icon } from "../ui/Icon";
 import { formatCompactCount } from "@mingla/offering-rendering/followerCount";
 
-import { color } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 export function youreInFollowingDetail(count: number | null): string {
   if (count === null) return "New dates and offers first.";
   const others = count - 1;
@@ -257,7 +257,7 @@ export function YoureInFollowCard({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   card: {
     backgroundColor: color.card,
     borderWidth: 1,
@@ -319,4 +319,4 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: color.errorText,
   },
-});
+}));

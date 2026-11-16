@@ -80,13 +80,20 @@ describe("issue #4420 — secure payment handoff", () => {
         <SecurePaymentHandoff
           url={url}
           palette={palette}
-          providerName="Stripe"
           onBack={onBack}
           testID="h"
         />,
       );
     });
     expect(openSpy).toHaveBeenCalledWith(url);
+    // Seth's standing rule: guest copy names no payment provider.
+    const shown = tree.root
+      .findAll((n) => n.type === "Text")
+      .map((n) => [n.props.children].flat().filter((c) => typeof c === "string").join(""))
+      .join(" ");
+    expect(shown).toContain("Opening secure payment…");
+    expect(shown).toContain("Our secure payment page opens in this tab");
+    expect(shown).not.toMatch(/Stripe|Paystack/);
     const fallback = () => tree.root.findAll((n) => n.props.testID === "h-fallback");
     expect(fallback()).toHaveLength(0);
     await TestRenderer.act(async () => {

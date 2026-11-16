@@ -19,19 +19,41 @@ type StayEnvelope<T> =
   | { kind: "success"; data: T; requestId: string }
   | { kind: "error"; code: string; message: string; requestId: string };
 
+/**
+ * issue #4420 wave 2 (D-S7) — what the "booked under another email" page may
+ * show a non-owner, from the server: never dates, rooms or totals.
+ */
+export interface StayOtherContactView {
+  maskedEmail: string;
+  venueName: string | null;
+  brandSlug: string | null;
+  brandName: string | null;
+  publicReference: string | null;
+  /** The booking has a guest email the server can send again. */
+  resendable: boolean;
+}
+
 export class StayGuestError extends Error {
   readonly code: string;
+  /** issue #4420 wave 2 (D-S7) — `stay_group_other_contact` only. */
+  readonly otherContact: StayOtherContactView | null;
   /**
    * issue #4420 wave 2 (D-S7) — `stay_group_other_contact` only: the
    * booking contact's MASKED email ("g•••@example.com"), from the server.
    */
   readonly maskedEmail: string | null;
 
-  constructor(code: string, message?: string, maskedEmail: string | null = null) {
+  constructor(
+    code: string,
+    message?: string,
+    maskedEmail: string | null = null,
+    otherContact: StayOtherContactView | null = null,
+  ) {
     super(message ?? code.replaceAll("_", " "));
     this.name = "StayGuestError";
     this.code = code;
     this.maskedEmail = maskedEmail;
+    this.otherContact = otherContact;
   }
 }
 
@@ -45,7 +67,8 @@ async function invoke<T>(input: {
     | "get_group"
     | "create_payment"
     | "cancel_preview"
-    | "cancel";
+    | "cancel"
+    | "resend_guest_link";
   payload: Record<string, unknown>;
   expectedVersion?: number;
 }): Promise<T> {
@@ -63,6 +86,7 @@ async function invoke<T>(input: {
     let code = "stay_reservation_failed";
     let message = error.message;
     let maskedEmail: string | null = null;
+    let otherContact: StayOtherContactView | null = null;
     const context = error.context as Response | undefined;
     if (context && typeof context.json === "function") {
       try {
@@ -70,17 +94,32 @@ async function invoke<T>(input: {
           code?: unknown;
           message?: unknown;
           maskedEmail?: unknown;
+          venueName?: unknown;
+          brandSlug?: unknown;
+          brandName?: unknown;
+          publicReference?: unknown;
+          resendable?: unknown;
         };
         if (typeof body.code === "string") code = body.code;
         if (typeof body.message === "string") message = body.message;
         if (typeof body.maskedEmail === "string" && body.maskedEmail.includes("•••@")) {
           maskedEmail = body.maskedEmail;
+          const text = (value: unknown): string | null =>
+            typeof value === "string" && value.length > 0 ? value : null;
+          otherContact = {
+            maskedEmail: body.maskedEmail,
+            venueName: text(body.venueName),
+            brandSlug: text(body.brandSlug),
+            brandName: text(body.brandName),
+            publicReference: text(body.publicReference),
+            resendable: body.resendable === true,
+          };
         }
       } catch {
         // Use the stable fallback when the edge response is not JSON.
       }
     }
-    throw new StayGuestError(code, message, maskedEmail);
+    throw new StayGuestError(code, message, maskedEmail, otherContact);
   }
   if (!data || data.kind !== "success") {
     throw new StayGuestError(
@@ -135,6 +174,17 @@ export const stayGuestService = {
   getGroup(groupId: string): Promise<StayReservationGroup> {
     return invoke({
       action: "get_group",
+      payload: { groupId },
+    });
+  },
+
+  /**
+   * issue #4420 wave 2 (D-S7) — "Email me the booking link again": the server
+   * re-sends it to the booking's OWN address and answers with the mask only.
+   */
+  resendGuestLink(groupId: string): Promise<{ maskedEmail: string }> {
+    return invoke({
+      action: "resend_guest_link",
       payload: { groupId },
     });
   },

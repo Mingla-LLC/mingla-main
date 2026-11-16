@@ -98,7 +98,14 @@ import {
 } from "@mingla/offering-rendering";
 // issue #4420 — the shared glass bottom bar (no expo-blur).
 import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
-import { OFFERING_PREMIUM_HEADER_ROW } from "@mingla/offering-rendering/offeringFrameMetrics";
+import {
+  OFFERING_PREMIUM_HEADER_ROW,
+  premiumDesktopBarDockStyle,
+} from "@mingla/offering-rendering/offeringFrameMetrics";
+import {
+  OfferingFactRows,
+  type OfferingFact,
+} from "@mingla/offering-rendering/OfferingFactRows";
 
 import { PublicMenuSections } from "./PublicMenuSections";
 // The package-local React bridge (see PublicVenueTabs.tsx). Files under
@@ -134,11 +141,13 @@ import {
 import { formatSourceRange } from "./venueMoney";
 import {
   buildVenueAnswerBar,
+  venueAddressLines,
   venueCategoryChip,
   venueCoverPlaceholderLabel,
+  venueFacts,
   venueHeroAspectRatio,
   venuePlaceChip,
-  type VenueAnswerCell,
+  type VenueFactAction,
 } from "./venueFirstScreen";
 import {
   resolveVenueOpenState,
@@ -161,7 +170,8 @@ import {
 } from "./publicVenueReservationUiState";
 import { semantic } from "../offering-rendering/designTokens";
 import { PublicVenueRetryAction } from "./publicVenueRefreshState";
-import { accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentFill, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { neutralControl } from "@mingla/offering-rendering/themePalette";
 import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 type WebVenueViewStyle = Omit<ViewStyle, "position"> & {
@@ -286,7 +296,30 @@ export interface PublicVenueThemedContext {
  * #2) and is exactly how a sheet gets stuck open. The buyer-web host ignores
  * it: its body IS the form.
  */
+/**
+ * issue #4420 wave 2 (D-V3) — the live reserve bar on the Reservations tab.
+ * The inline booking body reports what the guest has picked so far and the
+ * one next step ("Continue", then "Confirm & pay"); the page draws it in the
+ * same glass bar (phone) or flyer dock (desktop) as Reserve elsewhere.
+ */
+export interface PublicVenueReservationBar {
+  /** "Fri 20 Nov · 7:30 PM", "$63.90 today", or the day when nothing is open. */
+  title: string;
+  /** "4 guests · Date night", "Deposit · …", "No tables this day". */
+  subtitle: string | null;
+  ctaLabel: string;
+  /** false greys the button out (no time picked, details missing, in flight). */
+  enabled: boolean;
+  onPress: () => void;
+}
+
 export type PublicVenueBookingSlotContext = PublicVenueThemedContext & {
+  /**
+   * issue #4420 wave 2 (D-V3) — set only on the Reservations tab's inline
+   * body (never the sheet copy): report the live bar, or null to hand the
+   * bar back. A body that never calls it keeps its own in-body button.
+   */
+  onReservationBarChange?: (bar: PublicVenueReservationBar | null) => void;
   /**
    * Raise the reservation sheet from inside the booking body. No-op when the
    * page is not reservable or the sheet is already open — the same fail-closed
@@ -376,6 +409,17 @@ export interface PublicVenueOrderingSlotContext
   extends PublicVenueThemedContext {
   /** The venue's menu, so the ordering renderer draws from the SAME payload. */
   menu: PublicMenuGroup[];
+  /**
+   * issue #4420 D-V2 — the basket bar docks at the bottom of the screen like
+   * every offering page's glass bar. These let the slot place it (desktop
+   * docks in the flyer column; the safe area clears the home bar) and tell
+   * the screen it owns that edge, so the reserve bar steps aside on the Menu
+   * tab instead of two bars stacking. Optional for hosts that keep the bar
+   * in the pane (Explorer, whose venue page has its own bottom bar).
+   */
+  isDesktop?: boolean;
+  bottomInset?: number;
+  onBottomBarChange?: (owned: boolean) => void;
 }
 
 export interface PublicVenueOrderingSlots {
@@ -894,7 +938,11 @@ const VenueHoursSection: VenueSectionRenderer = ({
     hours.find((entry) => entry.weekday === today) ?? null,
   );
   return (
-    <View style={[styles.hoursCard, surface.card]}>
+    <View
+      style={[styles.hoursCard, surface.card]}
+      testID="issue-4420-venue-hours-card"
+      nativeID="issue-4420-venue-hours-card"
+    >
       <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
         HOURS
       </Text>
@@ -1435,11 +1483,18 @@ export const PublicVenueScreen = ({
   );
 
   // ── Issue #1793 — the guest-ordering slot, resolved ONCE. ────────────────
+  const [orderingOwnsBar, setOrderingOwnsBar] = useState<boolean>(false);
+  // #4420 D-V3 — the inline booking body's live bar (Reservations tab only).
+  const [liveReservationBar, setLiveReservationBar] =
+    useState<PublicVenueReservationBar | null>(null);
   const orderingSlotContext: PublicVenueOrderingSlotContext = {
     palette,
     surface,
     theme: resolvedTheme,
     menu,
+    isDesktop,
+    bottomInset: insets.bottom,
+    onBottomBarChange: setOrderingOwnsBar,
   };
   const orderingMenuBody = ordering?.menuBody?.(orderingSlotContext) ?? null;
 
@@ -1450,7 +1505,18 @@ export const PublicVenueScreen = ({
   // #2331 — the buyer-web privacy bar no longer competes for this edge: the
   // app root ends above it (I-PRIVACY-BAR-NEVER-OCCLUDES), so the reserve bar
   // always shows.
-  const showPersistentReserveCta = showReserveCta;
+  // #4420 D-V2 — on the Menu tab an open ordering basket owns the bottom edge.
+  const showPersistentReserveCta =
+    showReserveCta &&
+    !(orderingOwnsBar && normalizedReservationUiState.activeTab === "menu");
+  // #4420 D-V3 — on the Reservations tab the bar stays, reading the guest's
+  // live pick and walking Continue → Confirm & pay.
+  const reservationTabBar =
+    normalizedReservationUiState.activeTab === "reservations" &&
+    !normalizedReservationUiState.reservationSheetOpen
+      ? liveReservationBar
+      : null;
+  const showReserveBar = showPersistentReserveCta || reservationTabBar !== null;
 
   // ── #1562 §6.5 the venue's own clock, resolved ONCE ──────────────────────
   //
@@ -1560,96 +1626,112 @@ export const PublicVenueScreen = ({
     canBook: canOpenReservationSheet,
   });
 
-  const renderAnswerCell = (cell: VenueAnswerCell): BrandRenderingReactElement => (
-    <View
-      key={cell.id}
-      style={[styles.answerCell, { borderColor: palette.cutoutBorder }]}
-      accessibilityRole="text"
-      accessibilityLabel={
-        cell.note === null
-          ? `${cell.label}: ${cell.value}`
-          : `${cell.label}: ${cell.value}, ${cell.note}`
+  // #4420 D-V1 — the answer bar's cells, read as the shared fact rows (the
+  // same component under every offering title). Each row has at most ONE
+  // action: Hours (Overview's hours card), Map (the maps chooser), Reserve.
+  const venueFactViews = venueFacts({
+    cells: answerCells,
+    profile,
+    place: venueAddressLines(venue),
+    todayHoursLine:
+      todayEntry === null
+        ? null
+        : `${VENUE_WEEKDAY_LABELS[todayEntry.weekday] ?? ""} · ${hoursLineFor(todayEntry)}`,
+    hasHoursCard:
+      profile.overview.includes("hours") && venue.hours.length > 0,
+    hasMap: mapsTarget !== null,
+    roomTypeCount:
+      // Explorer's adapter may hand a detail before its offerings load.
+      stayDetail === null || !Array.isArray(stayDetail.offerings)
+        ? null
+        : stayDetail.offerings.filter((o) => o.kind === "room").length,
+  });
+  const runFactAction = (action: VenueFactAction): void => {
+    switch (action) {
+      case "hours":
+        publicVenueTabsRef.current?.selectTab("overview");
+        if (Platform.OS === "web" && typeof document !== "undefined") {
+          // The Overview pane mounts on the frame after the switch.
+          requestAnimationFrame(() => {
+            document
+              .getElementById("issue-4420-venue-hours-card")
+              ?.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+        }
+        return;
+      case "map":
+        handleOpenMaps();
+        return;
+      case "reserve":
+        handleReserve();
+        return;
+      default: {
+        const never: never = action;
+        return never;
       }
-    >
-      <Text
-        numberOfLines={1}
-        style={[styles.answerLabel, { color: palette.tertiaryText }]}
-      >
-        {cell.label}
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={[styles.answerValue, themedBoldFont, { color: palette.primaryText }]}
-      >
-        {cell.value}
-      </Text>
-      {cell.note !== null ? (
-        <Text
-          numberOfLines={2}
-          style={[styles.answerNote, { color: palette.secondaryText }]}
-        >
-          {cell.note}
-        </Text>
-      ) : null}
-    </View>
-  );
+    }
+  };
+  const venueFactRows: OfferingFact[] = venueFactViews.map((fact) => {
+    // On the Reservations tab the guest is already where Reserve leads, and
+    // `handleReserve` is a no-op there: no action rather than a dead tap.
+    const action =
+      fact.action === "reserve" &&
+      normalizedReservationUiState.activeTab === "reservations"
+        ? null
+        : fact.action;
+    return {
+      key: fact.key,
+      icon: fact.icon,
+      value: fact.value,
+      detail: fact.detail,
+      action:
+        action === null
+          ? null
+          : {
+              label:
+                action === "hours" ? "Hours" : action === "map" ? "Map" : "Reserve",
+              accessibilityLabel:
+                action === "reserve"
+                  ? profile.reserveAction
+                  : action === "map"
+                    ? `Open ${venue.name} in maps`
+                    : `See ${venue.name}'s opening hours`,
+              onPress: () => runFactAction(action),
+            },
+    };
+  });
 
-  // issue #4420 — the premium frame prints the venue's name on the cover
-  // (phone) and at the top of the reading column (desktop), so the body keeps
-  // the category and place chips (the "what is it / where" answer, #1561),
-  // the brand line and the answer bar, without printing the name twice.
-  const identityOnCover = true;
+  // issue #4420 — the premium frame prints the category, the place and the
+  // name on the cover (phone) and at the top of the right column (desktop),
+  // so the body opens on the host row and the fact rows (D-V1).
+  const brandInitial = venue.brandName.trim().charAt(0).toUpperCase();
   const identityBlock = (
     <View style={styles.identityWrap}>
-      <View style={styles.chipRow}>
-        {categoryChip.length > 0 ? (
-          <View
-            style={[styles.chip, { backgroundColor: palette.card }]}
-            testID="issue-1561-category-chip"
-          >
-            <Text style={[styles.chipText, { color: palette.accent }]}>
-              {categoryChip}
+      <View style={styles.hostRow} testID="issue-4420-venue-host-row">
+        <View
+          style={[styles.hostAvatar, { backgroundColor: palette.accentWash }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <Text style={[styles.hostAvatarText, themedBoldFont, { color: palette.primaryText }]}>
+            {brandInitial}
+          </Text>
+        </View>
+        <Pressable
+          onPress={onOpenBrand}
+          accessibilityRole="link"
+          accessibilityLabel={`View ${venue.brandName} on Mingla`}
+          style={[styles.byBrandRow, styles.byBrandShrink]}
+        >
+          <Text style={[styles.byBrandBy, { color: palette.secondaryText }]}>
+            By{" "}
+            <Text style={[styles.byBrandName, { color: palette.primaryText }]}>
+              {venue.brandName}
             </Text>
-          </View>
-        ) : null}
-        {placeChip !== null ? (
-          <View
-            style={[styles.chip, { backgroundColor: palette.card }]}
-            testID="issue-1561-place-chip"
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.chipText, { color: palette.secondaryText }]}
-            >
-              {placeChip}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      {identityOnCover ? null : (
-      <Text
-        style={[styles.venueName, themedBoldFont, { color: palette.primaryText }]}
-      >
-        {venue.name}
-      </Text>
-      )}
-      {/* #4111 — with no Message (enquiries off / not loaded / desktop) the
-          "By {brand}" line renders exactly as before. */}
-      {onMessageBrand !== undefined && !isDesktop ? (
-        <View style={styles.byBrandLine}>
-          <Pressable
-            onPress={onOpenBrand}
-            accessibilityRole="link"
-            accessibilityLabel={`View ${venue.brandName} on Mingla`}
-            style={[styles.byBrandRow, styles.byBrandShrink]}
-          >
-            <Text style={[styles.byBrandBy, { color: palette.tertiaryText }]}>
-              By{" "}
-              <Text style={[styles.byBrandName, { color: palette.accent }]}>
-                {venue.brandName}
-              </Text>
-            </Text>
-          </Pressable>
+          </Text>
+        </Pressable>
+        {/* #4111 — Message only when enquiries are on (unchanged logic). */}
+        {onMessageBrand !== undefined ? (
           <Pressable
             onPress={onMessageBrand}
             accessibilityRole="button"
@@ -1657,7 +1739,7 @@ export const PublicVenueScreen = ({
             testID="issue-4111-venue-message"
             style={({ pressed }) => [
               styles.messageBrandBtn,
-              accentOutline(palette, { opaqueBackground: palette.page }),
+              { borderColor: neutralControl(palette) },
               pressed && styles.pressed,
             ]}
           >
@@ -1665,27 +1747,15 @@ export const PublicVenueScreen = ({
               Message
             </Text>
           </Pressable>
-        </View>
-      ) : isDesktop && identityOnCover ? null : (
-        // issue #4420 — on desktop the panel above carries "By {brand}".
-        <Pressable
-          onPress={onOpenBrand}
-          accessibilityRole="link"
-          accessibilityLabel={`View ${venue.brandName} on Mingla`}
-          style={styles.byBrandRow}
-        >
-          <Text style={[styles.byBrandBy, { color: palette.tertiaryText }]}>
-            By{" "}
-            <Text style={[styles.byBrandName, { color: palette.accent }]}>
-              {venue.brandName}
-            </Text>
-          </Text>
-        </Pressable>
-      )}
-      {answerCells.length > 0 ? (
-        <View style={styles.answerBar} testID="issue-1561-answer-bar">
-          {answerCells.map(renderAnswerCell)}
-        </View>
+        ) : null}
+      </View>
+      {venueFactRows.length > 0 ? (
+        <OfferingFactRows
+          facts={venueFactRows}
+          palette={palette}
+          theme={resolvedTheme}
+          testID="issue-4420-venue-facts"
+        />
       ) : null}
     </View>
   );
@@ -1937,8 +2007,11 @@ export const PublicVenueScreen = ({
     openReservationSheet: handleOpenReservationSheetFromBody,
     reserveAction: profile.reserveAction,
   };
-  const reservationBodies: Record<VenueBookingBody, () => BrandRenderingReactNode> = {
-    stay: () => (
+  const reservationBodies: Record<
+    VenueBookingBody,
+    (inline: boolean) => BrandRenderingReactNode
+  > = {
+    stay: (inline: boolean) => (
       <React.Suspense
         fallback={
           <View style={styles.reservationState}>
@@ -1950,6 +2023,7 @@ export const PublicVenueScreen = ({
       >
         {bookingBody({
           ...bookingSlotBase,
+          ...(inline ? { onReservationBarChange: setLiveReservationBar } : {}),
           kind: "stay",
           venueId: venue.id,
           brandId: venue.brandId,
@@ -1958,7 +2032,7 @@ export const PublicVenueScreen = ({
         })}
       </React.Suspense>
     ),
-    table: () =>
+    table: (inline: boolean) =>
       reservabilityState === "loading" ? (
         <View style={styles.reservationState} accessibilityLiveRegion="polite">
           <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
@@ -1984,6 +2058,7 @@ export const PublicVenueScreen = ({
       ) : reservable?.reservable === true && reservable.venueId !== null ? (
         bookingBody({
           ...bookingSlotBase,
+          ...(inline ? { onReservationBarChange: setLiveReservationBar } : {}),
           kind: "table",
           venueId: reservable.venueId,
           brandId: venue.brandId,
@@ -1997,29 +2072,9 @@ export const PublicVenueScreen = ({
         </View>
       ),
   };
-  const reservationsBlock = reservationBodies[profile.bookingBody]();
-
-  // ── §6.7 sticky reserve bar (phone) / §6.10 panel CTA (desktop) ──────────
-  const reserveCta = (
-    <Pressable
-      testID="issue-2729-reserve-cta"
-      onPress={handleReserve}
-      accessibilityRole="button"
-      // #1532 D7 / #1558 — the CTA, the accessibility label and the sheet
-      // heading all read ONE string off the category profile, so the three can
-      // no longer disagree, and a gallery or a gym is never offered a table.
-      accessibilityLabel={profile.reserveAction}
-      style={({ pressed }) => [
-        styles.reserveCta,
-        accentFill(palette),
-        pressed && styles.pressed,
-      ]}
-    >
-      <Text style={[styles.reserveCtaLabel, { color: palette.accentText }]}>
-        {profile.reserveAction}
-      </Text>
-    </Pressable>
-  );
+  const reservationsBlock = reservationBodies[profile.bookingBody](true);
+  // The sheet's copy never drives the page bar (it sits under the sheet).
+  const reservationsSheetBlock = reservationBodies[profile.bookingBody](false);
 
   // issue #4420 — the phone reserve bar is the shared glass bar (design
   // file → venueDef.bar): the venue on the left with what is true right now
@@ -2043,27 +2098,40 @@ export const PublicVenueScreen = ({
         : venueKindLine.length > 0
           ? venueKindLine
           : null;
+  // #4420 — desktop has no boxed panel: Reserve lives in the same glass bar,
+  // docked in the left flyer column so it never covers the reading column.
   const reserveBar =
-    showPersistentReserveCta && !isDesktop ? (
+    showReserveBar ? (
       <View
         testID="issue-2729-reserve-bar"
-        style={[
-          styles.reserveBarWrap,
-          Platform.OS === "web"
-            ? webVenueStyle({ position: "sticky", marginTop: 8 })
-            : null,
-          { paddingBottom: insets.bottom + 12 },
-        ]}
+        style={
+          isDesktop
+            ? premiumDesktopBarDockStyle(22 + insets.bottom)
+            : [
+                styles.reserveBarWrap,
+                Platform.OS === "web"
+                  ? webVenueStyle({ position: "sticky", marginTop: 8 })
+                  : null,
+                { paddingBottom: insets.bottom + 12 },
+              ]
+        }
         pointerEvents="box-none"
       >
         <OfferingGlassBar
           palette={palette}
           theme={resolvedTheme}
-          title={reserveBarTitle}
-          subtitle={reserveBarSubtitle}
-          ctaLabel={profile.reserveAction}
-          onPress={handleReserve}
-          ctaAccessibilityLabel={profile.reserveAction}
+          title={reservationTabBar?.title ?? reserveBarTitle}
+          subtitle={
+            reservationTabBar !== null
+              ? reservationTabBar.subtitle
+              : reserveBarSubtitle
+          }
+          ctaLabel={reservationTabBar?.ctaLabel ?? profile.reserveAction}
+          onPress={reservationTabBar?.onPress ?? handleReserve}
+          enabled={reservationTabBar?.enabled ?? true}
+          ctaAccessibilityLabel={
+            reservationTabBar?.ctaLabel ?? profile.reserveAction
+          }
           testID="issue-4420-venue-glass-bar"
           actionTestID="issue-2729-reserve-cta"
         />
@@ -2071,11 +2139,14 @@ export const PublicVenueScreen = ({
     ) : null;
 
   const reserveBarClearance =
-    showPersistentReserveCta && !isDesktop
-      ? Platform.OS === "web"
-        ? 0
-        : 68 + 8 + insets.bottom + 12 + 8
-      : insets.bottom + 24;
+    // #4420 D-V2 — the docked basket bar is fixed, not in flow: clear it.
+    orderingOwnsBar && Platform.OS === "web" && !isDesktop
+      ? 68 + 12 + insets.bottom + 16
+      : showReserveBar && !isDesktop
+        ? Platform.OS === "web"
+          ? 0
+          : 68 + 8 + insets.bottom + 12 + 8
+        : insets.bottom + 24;
 
   // #4347 wave 4 — a host bar replaces the shared reserve bar at every width.
   const hostActionBar =
@@ -2095,110 +2166,40 @@ export const PublicVenueScreen = ({
     ? actionBarHeight + insets.bottom + 8
     : reserveBarClearance;
 
-  // ── §6.10 desktop sticky panel ────────────────────────────────────────────
-  const stickyPanel = isDesktop ? (
-    <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, accentFill(palette)]} />
-      <View style={styles.deskInner}>
-        {/* issue #4420 — the premium frame prints the name above this panel. */}
-        {identityOnCover ? null : (
-          <Text
-            style={[styles.deskName, themedBoldFont, { color: palette.primaryText }]}
-          >
-            {venue.name}
-          </Text>
-        )}
-        {venue.address !== null ? (
-          <Text style={[styles.addrLine, { color: palette.tertiaryText }]}>
-            {venue.address}
-          </Text>
-        ) : null}
-        {/* META-ORCH-1290(C) §6.3 — desktop viewers see the venue's voice
-            (2-line clamp) without scrolling; the full pitch stays in the
-            in-body aboutBlock on the left column. Hidden when empty. */}
-        {hasPitch ? (
-          <Text
-            style={[
-              styles.deskPitch,
-              themedFont,
-              { color: palette.secondaryText },
-            ]}
-            numberOfLines={2}
-          >
-            {pitchText}
-          </Text>
-        ) : null}
-        {todayLine !== null ? (
-          <Text style={[styles.deskToday, { color: palette.secondaryText }]}>
-            {todayLine}
-          </Text>
-        ) : null}
+  // ── #4420 desktop flyer actions (the boxed panel is gone) ─────────────────
+  // Share and Directions as ghost pills under the flyer; the identity, the
+  // host row and the facts read in the right column; Reserve is the bar.
+  const desktopFlyerActions = isDesktop ? (
+    <View style={styles.flyerActions} testID="issue-4420-venue-flyer-actions">
+      <Pressable
+        onPress={onShare}
+        accessibilityRole="button"
+        accessibilityLabel="Share this venue"
+        style={({ pressed }) => [
+          styles.flyerPill,
+          { borderColor: neutralControl(palette) },
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={[styles.flyerPillLabel, { color: palette.primaryText }]}>Share</Text>
+      </Pressable>
+      {mapsTarget !== null ? (
         <Pressable
-          onPress={onOpenBrand}
-          accessibilityRole="link"
-          accessibilityLabel={`View ${venue.brandName} on Mingla`}
-          style={styles.byBrandRow}
+          onPress={handleOpenMaps}
+          accessibilityRole="button"
+          accessibilityLabel={`Directions to ${venue.name}`}
+          testID="issue-4420-venue-directions"
+          style={({ pressed }) => [
+            styles.flyerPill,
+            { borderColor: neutralControl(palette) },
+            pressed && styles.pressed,
+          ]}
         >
-          <Text style={[styles.byBrandBy, { color: palette.tertiaryText }]}>
-            By{" "}
-            <Text style={[styles.byBrandName, { color: palette.accent }]}>
-              {venue.brandName}
-            </Text>
+          <Text style={[styles.flyerPillLabel, { color: palette.primaryText }]}>
+            Directions
           </Text>
         </Pressable>
-        {onMessageBrand !== undefined ? (
-          <View style={styles.deskShareRow}>
-            <Pressable
-              onPress={onShare}
-              accessibilityRole="button"
-              accessibilityLabel="Share this venue"
-              style={({ pressed }) => [
-                styles.deskShareBtn,
-                styles.deskShareCell,
-                accentFill(palette),
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
-                Share
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={onMessageBrand}
-              accessibilityRole="button"
-              accessibilityLabel={`Message ${venue.brandName}`}
-              testID="issue-4111-venue-desk-message"
-              style={({ pressed }) => [
-                styles.deskShareBtn,
-                styles.deskShareCell,
-                styles.deskMessageBtn,
-                accentOutline(palette, { opaqueBackground: palette.page }),
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.deskShareLabel, { color: palette.primaryText }]}>
-                Message
-              </Text>
-            </Pressable>
-          </View>
-        ) : (
-          <Pressable
-            onPress={onShare}
-            accessibilityRole="button"
-            accessibilityLabel="Share this venue"
-            style={({ pressed }) => [
-              styles.deskShareBtn,
-              accentFill(palette),
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
-              Share
-            </Text>
-          </Pressable>
-        )}
-        {showPersistentReserveCta ? reserveCta : null}
-      </View>
+      ) : null}
     </View>
   ) : null;
 
@@ -2436,7 +2437,8 @@ export const PublicVenueScreen = ({
         coverIdentity={{
           // The category and place read in the body's chips right under the
           // cover; the cover carries the name and the live pill.
-          eyebrow: [],
+          // #4420 — "Restaurant · NoHo": what it is and where, above the name.
+          eyebrow: [categoryChip.length > 0 ? categoryChip : null, placeChip],
           title: venue.name,
           // Only when the venue's own clock says it is open right now
           // (Constitution 9: "unknown" claims nothing, so no pill).
@@ -2460,14 +2462,14 @@ export const PublicVenueScreen = ({
         // "VERIFIED VENUE" and the venue name OVER the photograph on desktop,
         // which is the second of the two places the name appeared and the only
         // place the redundant badge did. Both now live in `identityBlock`.
-        stickyPanel={stickyPanel}
+        desktopFlyerActions={desktopFlyerActions}
         {...(Platform.OS === "web" ? {} : { onScroll: handleShellScroll })}
         safeAreaTop={insets.top + 8}
         contentBottomInset={contentBottomInset}
         testID="orch-1255-public-venue"
       >
         {bodyContent}
-        {Platform.OS === "web" && !hasHostActionBar ? (
+        {Platform.OS === "web" && !hasHostActionBar && reserveBar !== null ? (
           <React.Fragment key="issue-2729-web-phone-action">
             {reserveBar}
           </React.Fragment>
@@ -2506,7 +2508,7 @@ export const PublicVenueScreen = ({
         // field as the CTA above, so a Stay guest can no longer tap "Reserve
         // this Stay" and land on a sheet headed "Reserve a table".
         title: profile.reserveAction,
-        children: reservationsBlock,
+        children: reservationsSheetBlock,
       })}
       {overlays}
     </View>
@@ -2514,6 +2516,33 @@ export const PublicVenueScreen = ({
 };
 
 const styles = StyleSheet.create({
+  // #4420 — the host row (36 avatar, "By {brand}", Message ghost pill).
+  hostRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  hostAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hostAvatarText: { fontSize: 15, fontWeight: "700" },
+  // #4420 — Share and Directions under the desktop flyer, 50% each.
+  flyerActions: { flexDirection: "row", gap: 10 },
+  flyerPill: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  flyerPillLabel: { fontSize: 14, fontWeight: "700" },
   // issue #4420 — the pinned tab pill (native), under the glass header.
   pinnedTabs: { position: "absolute", left: 16, right: 16, zIndex: 60 },
   // #1595 — NO `backgroundColor` here. The host's colour is themed and is
@@ -2533,80 +2562,13 @@ const styles = StyleSheet.create({
   identityWrap: {
     marginBottom: 4,
   },
-  // I-AXIS-SCOPED-FLEX: `chipRow` is the ONLY flexDirection:"row" context these
-  // three objects are used in. `chip` is a row CHILD (it never sets a direction
-  // of its own); `chipText` is a leaf. No object below is shared across two
-  // axes, so none can be released by an axis change somewhere else.
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 6,
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    maxWidth: "70%",
-  },
-  chipText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "800",
-    letterSpacing: 0.4,
-  },
-  // #3859 — no fixed lineHeight: the selected host font owns its native metrics.
-  venueName: {
-    fontSize: 30,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    marginTop: 6,
-  },
-  // I-AXIS-SCOPED-FLEX: `answerBar` is a row; `answerCell` is only ever its
-  // child, so its `flex: 1` is scoped to that one direction. The cell's own
-  // three lines stack on the default column axis and carry no flex key at all.
-  answerBar: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 8,
-    marginTop: 4,
-  },
-  answerCell: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  answerLabel: {
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  answerValue: {
-    fontSize: 17,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-  answerNote: {
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 2,
-  },
   byBrandRow: {
     paddingVertical: 12,
     alignSelf: "flex-start",
   },
-  byBrandLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
   byBrandShrink: {
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
   },
   messageBrandBtn: {
     minHeight: 36,
@@ -2650,10 +2612,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     maxWidth: 520,
-  },
-  addrLine: {
-    fontSize: 13,
-    lineHeight: 18,
   },
   // ---- about / pitch (§6.1) ----
   // The block groups the prose + `Read more` in a bare View; the toggle carries
@@ -2857,28 +2815,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     zIndex: 6,
   },
-  reserveCta: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    paddingHorizontal: 26,
-    paddingVertical: 15,
-    minHeight: 52,
-    ...Platform.select({
-      android: { elevation: 0, shadowOpacity: 0 },
-      default: {
-        shadowColor: "#000000",
-        shadowOpacity: 0.28,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 8 },
-      },
-    }),
-  },
-  reserveCtaLabel: {
-    fontSize: 16,
-    fontWeight: "900",
-  },
   pressed: {
     opacity: 0.85,
   },
@@ -2896,57 +2832,6 @@ const styles = StyleSheet.create({
   stateRetryText: {
     fontSize: 14,
     fontWeight: "800",
-  },
-  // ---- desktop panel (§6.10) ----
-  // #1561 deleted `heroEyebrow` / `heroTitle` / `heroAddr`: the desktop hero no
-  // longer carries a caption, so the venue name is printed once, in the reading
-  // column, instead of once over the photograph and once in the panel.
-  deskPanel: {
-    borderRadius: 22,
-    overflow: "hidden",
-  },
-  deskAccent: {
-    height: 3,
-  },
-  deskInner: {
-    padding: 20,
-    gap: 8,
-  },
-  deskName: {
-    fontSize: 20,
-    fontWeight: "700",
-  },
-  deskToday: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "600",
-  },
-  // META-ORCH-1290(C) §6.3 — desktop sticky-panel pitch (2-line clamp).
-  deskPitch: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  deskShareBtn: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    paddingVertical: 12,
-    marginTop: 4,
-  },
-  deskShareLabel: {
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  deskShareRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  deskShareCell: {
-    flex: 1,
-  },
-  deskMessageBtn: {
-    borderWidth: 1.5,
-    backgroundColor: "transparent",
   },
 });
 

@@ -24,7 +24,7 @@ import type {
 } from "@mingla/offering-rendering";
 
 import { captureWeb } from "../../analytics/webAnalytics";
-import { SecurePaymentHandoff } from "../checkout/SecurePaymentHandoff";
+import { SecurePaymentHandoff } from "../offering/LazyPublicParts";
 import { StayGuestError, stayGuestService } from "../../services/stayGuestService";
 import {
   stayGuestErrorKnown,
@@ -260,7 +260,6 @@ export function BuyerStayGuestExperience({
         <SecurePaymentHandoff
           url={handoff.url}
           palette={palette}
-          providerName="Paystack"
           holdLine="Your rooms are held while you pay."
           onBack={() => {
             setHandoff(null);

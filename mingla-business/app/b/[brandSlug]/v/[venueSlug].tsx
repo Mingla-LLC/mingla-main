@@ -562,6 +562,8 @@ function PublicVenueRouteBody(): React.ReactElement {
           // Stay branch two lines up already used it); the table branch simply
           // never read it, and painted Mingla orange on every brand's page.
           palette={context.palette}
+          // issue #4420 wave 2 (D-V3) — the Reservations tab's live bar.
+          onReservationBarChange={context.onReservationBarChange}
         />
       ),
     [],
@@ -758,6 +760,10 @@ function PublicVenueRouteBody(): React.ReactElement {
               timezone={venue.timezone}
               // issue #3380 — "Who's ordering?" starts on the venue's country.
               countryCode={venue.countryCode}
+              // issue #4420 D-V2 — the basket bar docks at the screen's foot.
+              isDesktop={context.isDesktop ?? false}
+              bottomInset={context.bottomInset ?? 0}
+              onBottomBarChange={context.onBottomBarChange}
             />
           </React.Suspense>
         ),

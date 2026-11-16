@@ -56,13 +56,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import {
-  radius as radiusTokens,
-  space,
-  color,
-  materials,
-  edge,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, materials, edge } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { formatCurrency } from "../../../src/utils/currency";
 import { phoneStartCountryForCurrency } from "../../../src/utils/phoneStartCountryForCurrency";
@@ -102,6 +97,9 @@ import {
   useCart,
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
+import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
+import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
+import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import {
   isContinueDisabled,
@@ -122,7 +120,8 @@ const TicketQuoteSummary = React.lazy(() =>
   ),
 );
 
-const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
+// #4420 — read per render: the tokens follow the host palette.
+const publicBuyerPhoneTheme = (): PhoneInputTheme => ({
   backgroundPrimary: color.canvas,
   fieldBackground: color.fill.input,
   textPrimary: color.text1,
@@ -137,7 +136,7 @@ const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   accessoryBorder: color.line,
   accent: color.text1,
   errorText: color.errorText,
-};
+});
 
 const resolveInitialCountry = (
   existingFullE164: string,
@@ -215,6 +214,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
+  const stripWide = useCheckoutWideLayout();
   const {
     lines,
     buyer,
@@ -552,6 +552,23 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* #4420 wave 2 (§4.1) — phone: the offering this step belongs to. */}
+        {experience !== null ? (
+          <CheckoutOfferingStrip
+            wide={stripWide}
+            title={experience.title.trim().length > 0 ? experience.title : "Untitled experience"}
+            eyebrow={
+              formatExperienceDateSubline({
+                venueText: null,
+                dateStartIsos: experience.dates.map((d) => d.startAt),
+                whenMode: experience.whenMode,
+                recurrenceRule: experience.recurrenceRule,
+              }) ?? null
+            }
+            byline={query.data?.brand?.name ?? null}
+            coverUrl={experience.coverMediaUrl ?? null}
+          />
+        ) : null}
         {/* Order summary recap */}
         <Pressable
           onPress={handleBack}
@@ -677,7 +694,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
               pickerSearchPlaceholder: "Search country or dial code",
               pickerCloseAccessibilityLabel: "Close country picker",
             }}
-            theme={PUBLIC_BUYER_PHONE_THEME}
+            theme={publicBuyerPhoneTheme()}
           />
         </View>
 
@@ -792,7 +809,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
@@ -963,4 +980,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

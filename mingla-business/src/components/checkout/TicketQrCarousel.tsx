@@ -23,7 +23,8 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import { radius as radiusTokens, space, color } from "../../constants/designSystem";
+import { radius as radiusTokens, space } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 import { buildQrPayload } from "../../utils/stubOrderId";
 
 export interface CarouselTicket {
@@ -212,7 +213,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
 const HOST_MIN_HEIGHT = 320;
 const PAGE_MIN_HEIGHT = 260;
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     alignSelf: "stretch",
     width: "100%",
@@ -274,4 +275,4 @@ const styles = StyleSheet.create({
     color: color.text3,
     fontStyle: "italic",
   },
-});
+}));

@@ -329,8 +329,9 @@ describe("#4304 desktop order summary", () => {
       (node) => node.props.testID === "checkout-order-summary",
     )[0];
     expect(summary).toBeDefined();
-    // Not a floating overlay.
-    expect(flatStyle(summary.props.style).position).toBeUndefined();
+    // Not a floating overlay. [TEST-MOD-APPROVED #4420 §4.1] the stub is
+    // sticky (in flow, pinned while the step scrolls), never absolute/fixed.
+    expect(["absolute", "fixed"]).not.toContain(flatStyle(summary.props.style).position);
     const json = textOf(tree);
     expect(json).toContain("Order summary");
     expect(json).toContain("General");
@@ -377,7 +378,8 @@ describe("#4304 desktop order summary", () => {
         path.join(__dirname, "../../../../app", route),
         "utf8",
       );
-      expect(source).toContain("<CheckoutOrderSummary wide={wide}");
+      // [TEST-MOD-APPROVED #4420] the call now also passes the stub identity.
+      expect(source).toContain("<CheckoutOrderSummary\n          wide={wide}");
       expect(source).toContain("collapsible={!wide}");
       expect(source).not.toMatch(/styles\.bottomBar/);
     }

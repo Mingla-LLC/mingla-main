@@ -79,18 +79,28 @@ describe("#4420 journey — quote summary text is readable on the checkout card"
     for (const [, c] of entries) expect(SURFACES).not.toContain(c);
   });
 
-  test("the light review panel renders the summary with the paper inks", () => {
+  // #4420 wave 2 — the review is the shared checkout hero over a host card,
+  // so its summary takes the same readable text tokens as every other card.
+  test("the Total changed review: hero, struck old total, the new total in ink", () => {
     const review = {
       quote: QUOTE,
       previousTotalCents: 3000,
       detail: "price_changed",
     } as unknown as import("@mingla/offering-rendering/discountQuote").TicketCheckoutReview;
-    const paper = textColours(
-      mount(<TicketCheckoutReviewPanel review={review} onAccept={() => undefined} onBack={() => undefined} />),
+    const onBack = jest.fn();
+    const tree = mount(
+      <TicketCheckoutReviewPanel review={review} onAccept={() => undefined} onBack={onBack} />,
     );
-    expect(paper["Total"]).toBe(color.ink);
-    expect(paper["$39.00"]).toBe(color.ink);
-    expect(paper["$35.00"]).toBe(color.ink);
-    for (const c of Object.values(paper)) expect(SURFACES).not.toContain(c);
+    const colours = textColours(tree);
+    expect(Object.keys(colours)).toContain("Your total changed");
+    expect(colours["New total"]).toBe(color.text1);
+    expect(colours["$39.00"]).toBe(color.text1);
+    expect(colours["$30.00"]).toBe(color.text3); // the old total, struck
+    for (const c of Object.values(colours)) expect(SURFACES).not.toContain(c);
+    const back = tree.root.findAll(
+      (n) => n.props.accessibilityLabel === "Back to tickets" && typeof n.props.onPress === "function",
+    )[0];
+    TestRenderer.act(() => (back?.props.onPress as () => void)());
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });

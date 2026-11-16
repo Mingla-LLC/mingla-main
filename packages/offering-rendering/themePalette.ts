@@ -519,6 +519,15 @@ const isDarkPalette = (palette: ThemePalette): boolean =>
 export const neutralHair = (palette: ThemePalette): string =>
   isDarkPalette(palette) ? "rgba(255,255,255,0.12)" : "rgba(16,20,31,0.12)";
 
+/**
+ * issue #4420 — a wash of the page's ink at `alpha` (white on a dark page,
+ * ink on a light one): checkout's quiet fills (insets, tiles, pressed rows).
+ */
+export const inkWash = (palette: ThemePalette, alpha: number): string =>
+  isDarkPalette(palette)
+    ? `rgba(255,255,255,${alpha})`
+    : `rgba(16,20,31,${alpha})`;
+
 /** Stepper rings, ghost buttons, input outlines (3:1 boundary). */
 export const neutralControl = (palette: ThemePalette): string =>
   isDarkPalette(palette) ? "rgba(255,255,255,0.34)" : "rgba(16,20,31,0.34)";

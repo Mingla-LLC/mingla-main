@@ -32,12 +32,9 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // web — buyer-web capture is a separate leg).
 import { postHogService } from "../../../src/services/postHogService";
 
-import {
-  radius as radiusTokens,
-  space,
-  color,
-  materials,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, materials } from "../../../src/constants/designSystem";
+import { CheckoutHero, youreInLine } from "../../../src/components/checkout/CheckoutHero";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
@@ -50,7 +47,7 @@ import {
   clearCheckoutResumePayload,
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
+import { BuyerClaimCard } from "../../../src/components/offering/LazyPublicParts";
 import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
 import {
   TicketConfirmVerdictHero,
@@ -600,12 +597,15 @@ function CheckoutConfirmScreenInner({
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.hero}>
-          <View style={styles.checkBadge}>
-            <Icon name="check" size={36} color={color.text1} />
-          </View>
-          <Text style={styles.heroTitle}>{BUYER_CLAIM_COPY.youreIn}</Text>
-        </View>
+        {/* #4420 wave 2 (§4.2) — the shared hero: the host accent disc, the
+            title in the host face, and what the guest now holds. */}
+        <CheckoutHero
+          tone="success"
+          icon="check"
+          title={BUYER_CLAIM_COPY.youreIn}
+          body={youreInLine(result.receipt, event.name.trim().length > 0 ? event.name : "this event", { one: "ticket", many: "tickets" })}
+          testID="checkout-youre-in-hero"
+        />
 
         <BuyerClaimCard
           kind="ticket"
@@ -643,7 +643,7 @@ function CheckoutConfirmScreenInner({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: color.canvas,
@@ -767,4 +767,4 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: color.line,
   },
-});
+}));

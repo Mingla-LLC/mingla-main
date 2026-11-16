@@ -90,7 +90,7 @@ import {
   resolveBuyerWebPublicLifecycle,
 } from "../../../src/analytics/publicParityWebAdapter";
 import { buildAdViewContentPayload } from "../../../src/analytics/adViewContentPayload";
-import { TripPreview } from "../../../src/components/trip/TripPreview";
+import { TripPreview } from "../../../src/components/offering/LazyPublicParts";
 import { SHOW_PRE_PURCHASE_APP_BOX } from "../../../src/components/event/prePurchaseAppBox";
 import { useBrandFollowerCount } from "../../../src/hooks/useBrandFollowerCount";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN

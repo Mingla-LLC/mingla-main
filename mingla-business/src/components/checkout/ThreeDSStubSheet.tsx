@@ -17,7 +17,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { space, color } from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -118,7 +119,7 @@ export const ThreeDSStubSheet: React.FC<ThreeDSStubSheetProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   body: {
     paddingHorizontal: space[6],
     paddingTop: space[4],
@@ -156,6 +157,6 @@ const styles = StyleSheet.create({
   cancelSpacer: {
     height: space[2],
   },
-});
+}));
 
 export default ThreeDSStubSheet;

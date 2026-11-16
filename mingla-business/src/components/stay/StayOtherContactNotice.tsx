@@ -9,6 +9,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { ThemePalette } from "@mingla/offering-rendering";
 import {
+  neutralControl,
   neutralHair,
   statusOn,
 } from "@mingla/offering-rendering/themePalette";
@@ -21,6 +22,16 @@ export interface StayOtherContactNoticeProps {
   /** The email the guest is signed in with, when known. */
   currentEmail: string | null;
   onSignInOther: () => void;
+  /** The Stay's name ("The Glasshouse"), when the server named it. */
+  stayName?: string | null;
+  /** The booking reference the host needs to find it. */
+  reference?: string | null;
+  /** "Email me the booking link again" (absent: nothing to resend). */
+  onResend?: (() => void) | null;
+  /** The resend is in flight. */
+  resending?: boolean;
+  /** "Ask {Stay} to change the email" (absent: the host takes no messages). */
+  onAskHost?: (() => void) | null;
 }
 
 export const StayOtherContactNotice: React.FC<StayOtherContactNoticeProps> = ({
@@ -28,8 +39,14 @@ export const StayOtherContactNotice: React.FC<StayOtherContactNoticeProps> = ({
   maskedEmail,
   currentEmail,
   onSignInOther,
+  stayName = null,
+  reference = null,
+  onResend = null,
+  resending = false,
+  onAskHost = null,
 }: StayOtherContactNoticeProps) => {
   const warning = statusOn(palette).warning;
+  const stay = stayName !== null && stayName.trim().length > 0 ? stayName.trim() : "The property";
   return (
     <View
       style={[styles.card, { backgroundColor: palette.card, borderColor: neutralHair(palette) }]}
@@ -49,7 +66,7 @@ export const StayOtherContactNotice: React.FC<StayOtherContactNoticeProps> = ({
             {". "}
           </>
         ) : null}
-        {"This Stay was booked for "}
+        {`${stay} booked this Stay for `}
         <Text style={[styles.strong, { color: palette.primaryText }]}>{maskedEmail}</Text>
         {". Sign in with that email to see it and pay."}
       </Text>
@@ -71,6 +88,48 @@ export const StayOtherContactNotice: React.FC<StayOtherContactNoticeProps> = ({
           {`Sign in as ${maskedEmail}`}
         </Text>
       </Pressable>
+      {onResend !== null ? (
+        <Pressable
+          onPress={onResend}
+          disabled={resending}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: resending, busy: resending }}
+          accessibilityLabel={`Email the booking link again to ${maskedEmail}`}
+          testID="issue-4420-stay-other-contact-resend"
+          style={({ pressed }) => [
+            styles.secondary,
+            { backgroundColor: palette.accentWash },
+            (pressed || resending) && styles.pressed,
+          ]}
+        >
+          <Text style={[styles.secondaryLabel, { color: palette.primaryText }]} numberOfLines={1}>
+            {resending ? "Sending…" : "Email me the booking link again"}
+          </Text>
+        </Pressable>
+      ) : null}
+      {onAskHost !== null ? (
+        <Pressable
+          onPress={onAskHost}
+          accessibilityRole="button"
+          accessibilityLabel={`Ask ${stay} to change the email`}
+          testID="issue-4420-stay-other-contact-ask-host"
+          style={({ pressed }) => [
+            styles.secondary,
+            styles.ghost,
+            { borderColor: neutralControl(palette) },
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={[styles.secondaryLabel, { color: palette.primaryText }]} numberOfLines={1}>
+            {`Ask ${stay} to change the email`}
+          </Text>
+        </Pressable>
+      ) : null}
+      {onAskHost !== null && reference !== null ? (
+        <Text style={[styles.foot, { color: palette.tertiaryText }]} testID="issue-4420-stay-other-contact-reference">
+          {`Mention booking reference ${reference} so they can find it.`}
+        </Text>
+      ) : null}
       <Text style={[styles.foot, { color: palette.tertiaryText }]}>
         We only show part of the address to keep the booking private.
       </Text>
@@ -100,6 +159,15 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   primaryLabel: { fontSize: 15, fontWeight: "800" },
+  secondary: {
+    minHeight: 52,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  ghost: { borderWidth: 1.5 },
+  secondaryLabel: { fontSize: 15, fontWeight: "700" },
   pressed: { opacity: 0.86 },
   foot: { fontSize: 12.5, lineHeight: 17, textAlign: "center" },
 });

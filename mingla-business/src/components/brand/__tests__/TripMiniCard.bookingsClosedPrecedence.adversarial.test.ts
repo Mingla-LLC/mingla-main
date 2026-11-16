@@ -53,15 +53,15 @@ describe("ORCH-0963 T-06 ADVERSARIAL — Bookings-closed precedence over scarcit
 
   test("T-06a bookingsClosed branch evaluated BEFORE spotsLabel branch", () => {
     // Pin the order: { trip.bookingsClosed ? <closed/> : spotsLabel !== null ? <scarce/> : null }
+    // #4420 wave 2 — the card is the shared BrandOfferingCard; the badge is
+    // its `scarcity` chip, chosen by ONE conditional with closed first.
     expect(tripCardBody).toMatch(
-      /trip\.bookingsClosed\s*\?\s*\(\s*<View\s+style=\{\[styles\.badge,\s*surface\.cardStrong\]\}>[\s\S]*?Booking closed[\s\S]*?\)\s*:\s*spotsLabel\s*!==\s*null\s*\?\s*\(\s*<View/,
+      /scarcity=\{\s*trip\.bookingsClosed\s*\?\s*\{\s*label:\s*"Booking closed"[\s\S]*?\}\s*:\s*spotsLabel\s*===\s*null\s*\?\s*null\s*:\s*\{\s*label:\s*spotsLabel/,
     );
   });
 
   test("T-06b bookingsClosed badge label is 'Booking closed' (not 'Closed' or 'Sold out')", () => {
-    expect(tripCardBody).toMatch(
-      /<View\s+style=\{\[styles\.badge,\s*surface\.cardStrong\]\}>\s*<Text[\s\S]*?>\s*Booking closed\s*<\/Text>/,
-    );
+    expect(tripCardBody).toMatch(/\{\s*label:\s*"Booking closed",\s*tone:\s*"glass"\s*\}/);
   });
 
   test("T-06c scarcity badge is mutually exclusive (no parallel render)", () => {
@@ -79,7 +79,7 @@ describe("ORCH-0963 T-06 ADVERSARIAL — Bookings-closed precedence over scarcit
     // visitor can see trip details (refund policy, past travelers, etc).
     // Pin the outer Pressable onPress wiring.
     expect(tripCardBody).toMatch(
-      /<Pressable\s+onPress=\{\(\)\s*=>\s*onPress\(trip\)\}/,
+      /<BrandOfferingCard\s+onPress=\{\(\)\s*=>\s*onPress\(trip\)\}/,
     );
     // And there is no `disabled={trip.bookingsClosed}` short-circuit.
     expect(tripCardBody).not.toMatch(/disabled=\{trip\.bookingsClosed\}/);

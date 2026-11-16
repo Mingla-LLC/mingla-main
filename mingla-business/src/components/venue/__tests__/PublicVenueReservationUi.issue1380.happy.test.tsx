@@ -274,15 +274,26 @@ describe("issue #1380 public venue Reserve CTA", () => {
     expect(page).toContain(
       'normalizedReservationUiState.activeTab !== "reservations"',
     );
-    expect(page).toContain("showPersistentReserveCta && !isDesktop");
-    expect(page).toContain("showPersistentReserveCta ? reserveCta : null");
+    // #4420 D-V3 — the bar also stays on Reservations as the live summary.
+    expect(page).toContain("showReserveBar && !isDesktop");
+    expect(page).toContain(
+      "const showReserveBar = showPersistentReserveCta || reservationTabBar !== null;",
+    );
+    // [TEST-MOD-APPROVED #4420] — the boxed desktop panel (and its own CTA)
+    // is gone: desktop shows the SAME gated glass bar, docked in the flyer
+    // column. One CTA, one visibility contract, at every width.
+    expect(page).toContain("const reserveBar =\n    showReserveBar ? (");
+    expect(page).toContain("premiumDesktopBarDockStyle(22 + insets.bottom)");
     expect(page).toContain(
       "normalizedReservationUiState.reservationSheetOpen\n            ? null\n            : reservationsBlock",
     );
     // The sheet is an injected host slot: the screen drives it, the route
     // renders it. Both halves are pinned so neither can quietly disappear.
     expect(page).toContain("reservationSheet({");
-    expect(page).toContain("children: reservationsBlock,");
+    // #4420 D-V3 — the sheet renders the same body without the live-bar
+    // sink (only the inline pane drives the page bar); the pane still yields
+    // to the sheet, so one instance is mounted at a time.
+    expect(page).toContain("children: reservationsSheetBlock,");
     expect(route).toContain("<PublicVenueReservationSheet");
     expect(route).toContain("{context.children}");
     expect(page).toContain(

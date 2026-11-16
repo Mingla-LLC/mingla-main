@@ -71,12 +71,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import {
-  radius as radiusTokens,
-  color,
-  space,
-  type,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, type } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { useCart, useCartQuoteTotals } from "../../../src/components/checkout/CartContext";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
@@ -746,7 +742,7 @@ export default function TripIntakeScreen(): React.ReactElement {
 // Touch unused-import for lint compatibility.
 void Pressable;
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
   },
@@ -896,4 +892,4 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: color.text2,
   },
-});
+}));

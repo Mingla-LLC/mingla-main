@@ -70,12 +70,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import {
-  radius as radiusTokens,
-  color,
-  space,
-  materials,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, materials } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
@@ -119,6 +115,9 @@ import {
   useCart,
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
+import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
+import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
+import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import {
   isContinueDisabled,
@@ -152,7 +151,8 @@ const TicketQuoteSummary = React.lazy(() =>
   ),
 );
 
-const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
+// #4420 — read per render: the tokens follow the host palette.
+const publicBuyerPhoneTheme = (): PhoneInputTheme => ({
   backgroundPrimary: color.canvas,
   textPrimary: color.text1,
   textTertiary: color.text3,
@@ -166,7 +166,7 @@ const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   accessoryBorder: color.line,
   accent: color.accent,
   errorText: color.errorText,
-};
+});
 
 const resolveInitialCountry = (
   existingFullE164: string,
@@ -270,6 +270,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
+  const stripWide = useCheckoutWideLayout();
   // issue #3351 — `intakeFormData` is read here for the first time. Without it
   // this screen could not tell "the organiser asks questions" from "the
   // traveller has answered them", which is the whole defect.
@@ -769,6 +770,16 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* #4420 wave 2 (§4.1) — phone: the offering this step belongs to. */}
+        {trip !== null ? (
+          <CheckoutOfferingStrip
+            wide={stripWide}
+            title={trip.title.trim().length > 0 ? trip.title : "Untitled trip"}
+            eyebrow={formatTripCalendarRange(trip.businessTrip.startAt, trip.businessTrip.endAt)}
+            byline={publicTripQuery.data?.brand?.name ?? null}
+            coverUrl={trip.coverMediaUrl ?? null}
+          />
+        ) : null}
         {/* Order summary recap */}
         <Pressable
           onPress={handleBack}
@@ -894,7 +905,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
               pickerSearchPlaceholder: "Search country or dial code",
               pickerCloseAccessibilityLabel: "Close country picker",
             }}
-            theme={PUBLIC_BUYER_PHONE_THEME}
+            theme={publicBuyerPhoneTheme()}
           />
         </View>
 
@@ -1032,7 +1043,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
@@ -1247,4 +1258,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));
