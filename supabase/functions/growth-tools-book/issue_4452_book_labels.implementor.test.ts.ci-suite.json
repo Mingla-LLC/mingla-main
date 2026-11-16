@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-book/issue_4452_book_labels.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4452-book-labels",
+  "profile": "deno-2-unit"
+}

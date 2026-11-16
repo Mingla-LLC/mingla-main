@@ -10,9 +10,11 @@ Deno.test("#3720 Admin gives scoped Support staff the Brand groups tab", () => {
   const access = read("lib/communitySupportAccess.js");
   const page = read("pages/CommunitySupportPage.jsx");
   assertStringIncludes(access, 'allowed.add("brand-groups")');
-  // #4130 Wave 6: the tab lists live in lib/supportCommunityTabs.js.
-  assertStringIncludes(read("lib/supportCommunityTabs.js"), '{ id: "brand-groups", label: "Brand groups" }');
-  assertStringIncludes(page, '<BrandGroupsPanel onCounts={onBrandGroupCounts} />');
+  // #4452 §7.2: Brand groups is its own Communications screen, for the same
+  // Support area (lib/access.js); Community no longer draws it.
+  assertStringIncludes(read("lib/access.js"), '"brand-groups": Object.freeze([SUPPORT_OPERATIONS_AREA]),');
+  assertStringIncludes(read("pages/communications/BrandGroupsPage.jsx"), "<BrandGroupsPanel onCounts={publishBrandGroupWaiting} />");
+  assert(!page.includes("<BrandGroupsPanel"), "Community no longer draws the panel");
 });
 
 Deno.test("#3720 Admin Brand groups use guarded RPCs and realtime read/message sync", () => {

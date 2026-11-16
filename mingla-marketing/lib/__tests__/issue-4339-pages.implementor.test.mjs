@@ -226,12 +226,17 @@ test('hand-offs go through the seam; no new file holds a store, OneLink or host 
     assert.doesNotMatch(source, /apps\.apple\.com|play\.google\.com|onelink\.me|https:\/\/host\.usemingla\.com/, `${rel}: URLs come from lib/cta-destination.ts`)
   }
   // Explorer buttons ("Use Mingla", "Get Mingla to apply", "Save", the About card) are the shared hand-off.
-  for (const rel of ['components/cities/city-page.tsx', 'app/locals/page.tsx', 'app/creators/page.tsx', 'app/(core)/about/page.tsx']) {
+  // #4452: the /creators hero (and its hand-off) moved into components/site-blocks/hero-words.tsx.
+  for (const rel of ['components/cities/city-page.tsx', 'app/locals/page.tsx', 'components/site-blocks/hero-words.tsx', 'app/(core)/about/page.tsx']) {
     assert.match(code(read(rel)), /<ExplorerHandoffButton\b/, `${rel}: the Explorer hand-off`)
   }
-  assert.match(code(read('app/locals/page.tsx')), /<ExplorerHandoffButton location="locals_apply"[^>]*>\s*Get Mingla to apply/)
+  // #4452: the /locals hero's hand-off is rendered by HeroWords from the coded words.
+  assert.match(code(read('app/locals/page.tsx')), /app: \{ text: 'Get Mingla to apply', location: 'locals_apply' \}/)
+  assert.match(code(read('components/site-blocks/hero-words.tsx')), /<ExplorerHandoffButton location=\{coded\.app\.location\}/)
   // #4339 calls: the agreement button became Book a call (issue-4339-calls pins the rest).
-  assert.match(code(read('app/locals/page.tsx')), /<Link className="btn soft" href="\/schedule\/locals">\s*Book a call/)
+  // #4452: the hero's Book a call is HeroWords' coded call (the band keeps its own link).
+  assert.match(code(read('app/locals/page.tsx')), /call: \{ text: 'Book a call', href: '\/schedule\/locals' \}/)
+  assert.match(code(read('components/site-blocks/hero-words.tsx')), /<Link className="btn soft" href=\{b1Href \?\? coded\.call\.href\}>/)
   assert.match(code(read('app/(core)/about/page.tsx')), /<Link className="vcard text-card reveal" href="\/host">/, 'the Mingla Host card opens /host')
   assert.match(code(read('components/cities/city-page.tsx')), /<Link className="btn ink" href="\/host">\s*See Mingla Host/, 'the city page has one host button, to /host')
   assert.doesNotMatch(code(read('components/cities/city-page.tsx')), /surface="host"|HostHandoffButton|CityDeviceAction/, 'no other host button on the city page')
@@ -251,7 +256,8 @@ test('hand-offs go through the seam; no new file holds a store, OneLink or host 
   assert.match(download, /<a className="btn soft" href=\{host\.computerHref\}>\s*Or use Mingla Host on web/)
   // #4339 calls: creator setup is in the Explorer app, so Creators joins through
   // the Explorer hand-off; the dead host web /creator/setup link is gone.
-  assert.match(code(read('app/creators/page.tsx')), /<ExplorerHandoffButton location="creators_join"[^>]*>\s*Get Mingla to join/)
+  // #4452: the hero's hand-off is HeroWords' coded app button.
+  assert.match(code(read('app/creators/page.tsx')), /app: \{ text: 'Get Mingla to join', location: 'creators_join' \}/)
   assert.equal('hostWebPageHref' in handoff, false, 'no host web page helper is left for a dead link')
   // And the stores on the computer page are the app's own listings.
   const explorer = handoff.appHandoffHrefs('explorer', links.siteAttribution('explorer_nav'))

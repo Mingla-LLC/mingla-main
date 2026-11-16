@@ -119,8 +119,13 @@ export function snapshotAudience(
 }
 
 export interface AudienceDefinition {
-  mode: "everyone" | "segment" | "person";
+  /** #4452 A1.5: "leads" (a Leads list selection) and "lead_reply" (one lead). */
+  mode: "everyone" | "segment" | "person" | "leads" | "lead_reply";
   profileId?: string;
+  /** #4452: the Leads list selection (admin_lead_selection_create). */
+  selectionId?: string;
+  /** #4452: the lead a one-to-one reply goes to. */
+  leadId?: string;
   /** #4226: a person with no account is addressed by email. */
   email?: string;
   filters?: {
@@ -434,6 +439,16 @@ export function normalizeAudience(input: unknown): AudienceDefinition {
     return { mode: "person", profileId };
   }
   if (raw.mode === "everyone") return { mode: "everyone", filters: {} };
+  // #4452 A1.5: leads are reached only from the Leads list, by a selection the
+  // server stored for this actor, or as a one-to-one reply to one lead.
+  if (raw.mode === "leads" || raw.mode === "lead_reply") {
+    const key = raw.mode === "leads" ? "selectionId" : "leadId";
+    const id = typeof raw[key] === "string" ? String(raw[key]).trim() : "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new Error(raw.mode === "leads" ? "lead_selection_invalid" : "lead_id_invalid");
+    }
+    return raw.mode === "leads" ? { mode: "leads", selectionId: id.toLowerCase() } : { mode: "lead_reply", leadId: id.toLowerCase() };
+  }
   if (raw.mode !== "segment") throw new Error("audience_mode_invalid");
   const source = raw.filters && typeof raw.filters === "object"
     ? raw.filters as Record<string, unknown>

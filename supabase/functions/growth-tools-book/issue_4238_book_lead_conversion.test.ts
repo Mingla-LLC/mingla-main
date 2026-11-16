@@ -62,16 +62,18 @@ Deno.test("#4238 W3-3 a Host booking with ad context fires Lead once; a replay f
   assertEquals(sent.length, before, "the same booking_key sends nothing twice");
 });
 
-Deno.test("#4238 W3-3 a Creator call is not a host lead", async () => {
+Deno.test("#4238 W3-3 recordBookingAdLead (host only) still refuses a Creator call", async () => {
   const { db, sent, fire } = setup("creator");
   assertEquals(await recordBookingAdLead("gcal:evt-1", ad, config, { db: db.client, fire }), null);
   assertEquals(sent.length, 0);
 });
 
-Deno.test("#4238 W3-3 the handler passes the ad context only for Host calls and returns lead_event_id", async () => {
+// #4452 §4.6 changed the wiring: every audience reads its ad context and fires a
+// labelled Lead (issue_4452_book_labels.implementor.test.ts). The host id stays lead:<id>.
+Deno.test("#4238 W3-3 / #4452 the handler reads the ad context for every audience and returns lead_event_id", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assert(src.includes('context.audience === "host" ? parseHostAdContext(body.ad, req) : null'));
-  assert(src.includes('ad && leadWrite === "written"'));
+  assert(src.includes("const ad = parseHostAdContext(body.ad, req);"));
+  assert(src.includes('leadWrite === "written"'));
   assert(src.includes("lead_event_id: leadEventId"));
   const gate = await Deno.readTextFile(new URL("../growth-tools-gate/index.ts", import.meta.url));
   assert(gate.includes("subjectId: `tool:${runId as string}`"));

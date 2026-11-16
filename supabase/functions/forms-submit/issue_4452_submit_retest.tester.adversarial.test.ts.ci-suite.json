@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/forms-submit/issue_4452_submit_retest.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4452-forms-submit-retest-tester",
+  "profile": "deno-2-unit"
+}

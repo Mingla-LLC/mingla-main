@@ -40,7 +40,8 @@ Deno.test("#4063 RSVP pass email is QR-free, one-button and linked", () => {
     email.subject,
     "You're on the list: Bachata Takeover, Sat 25 Oct",
   );
-  assertEquals(email.html.match(/background:#C4471A/g)?.length, 1);
+  // #4452 §5.9: the one CTA is the ink pill (SHELL_TOKENS.BRAND_ORANGE_BUTTON is ink now).
+  assertEquals(email.html.match(/background:#111110/g)?.length, 1);
   assertStringIncludes(email.text, "Get my pass: https://usemingla.com/c/");
   assertStringIncludes(message.sms, "Here's your pass: usemingla.com/c/");
   assert(!email.text.toLowerCase().includes("pdf"));

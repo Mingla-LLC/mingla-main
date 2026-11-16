@@ -54,10 +54,10 @@ const MENU = [
   // #4255 W4: Notifications left the menu for Messages in the top bar.
   ["Home", ["overview:Dashboard", "work-board:Work"]],
   // #4130 + #3872: the Creator Program pages sit right under Hosts and creators.
-  ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
+  ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Leads", "forms:Forms", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
   ["Support", ["support:Support", "community:Community"]],
   // #4383: what we tell hosts and explorers, each its own screen.
-  ["Communications", ["communications:Overview", "push:Push", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page"]],
+  ["Communications", ["communications:Overview", "push:Push", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page", "brand-groups:Brand groups", "website-pages:Website pages"]], // #4452 §7.2; §7.0 Website pages
   ["Business", ["people:People", "brands:Brands", "business-offerings:Offerings"]],
   ["Money", ["mingla-money:Mingla money", "business-payments:Payments", "business-orders:Orders", "business-money-ledger:Money ledger", "refund-operations:Refund operations", "subscriptions:Subscriptions", "pricing:Pricing and limits"]],
   ["Explorer app", ["placepool:Place pool"]],
@@ -82,6 +82,7 @@ const REDIRECTS = {
   claims: ["brands", "claims"],
   "beta-leads": ["inbound", "beta"],
   "tool-leads": ["inbound", "tools"],
+  leads: ["inbound", undefined], // #4452 A1.8: #/leads is the Leads list
   hosts: ["outreach", "hosts"],
   creators: ["outreach", "creators"],
   "launch-cities": ["placepool", "cities"],
@@ -118,7 +119,7 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     // #4255 W4: - Notifications (Messages is in the top bar).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(NAV_ITEMS.length, 40); // #4294: + Company tools; #4273: + SMS countries
+    assert.equal(NAV_ITEMS.length, 43); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
@@ -258,7 +259,8 @@ describe("#4130 W0-4: access is the union of the replaced pages, never wider", (
   });
   it("the two non-admin roles see Home, Work, Hosts and creators, Inbound leads and Calendar", () => {
     const ids = visibleNavGroups(NAV_GROUPS, growth).flatMap((g) => g.items.map((i) => i.id));
-    assert.deepEqual(ids, ["home", "work-board", "outreach", "inbound", "content-calendar"]);
+    // #4452 §7.0: Forms (after Leads) and Website pages (Communications) are open to whoever works the pipelines or beta leads, view-only for them.
+    assert.deepEqual(ids, ["home", "work-board", "outreach", "inbound", "forms", "content-calendar", "website-pages"]);
     assert.equal(canOpenOwnPage(growth, "tool-leads"), false, "Web tool leads stays admin-only inside Inbound leads");
     assert.deepEqual(visibleNavGroups(NAV_GROUPS, owner).flatMap((g) => g.items.map((i) => i.id)), NAV_ITEMS.map((i) => i.id));
   });
@@ -304,7 +306,8 @@ describe("#4130 W0-6: every page lights its own menu entry", () => {
 describe("#4130 W0-7: the Work entry counts only your own waiting cards", () => {
   it("the badge sits on Work and reads cards, not drafts", () => {
     const sidebar = stripComments(read("components/layout/Sidebar.jsx"));
-    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : 0;'));
+    // #4452 §7.2: + Brand groups' waiting count, from its own panel.
+    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : 0;'));
     assert.equal(sidebar.includes('item.id === "drafts"'), false);
     const hook = stripComments(read("hooks/useReviewCount.js"));
     // #4270 (D20): the count is your own open cards due today or overdue.

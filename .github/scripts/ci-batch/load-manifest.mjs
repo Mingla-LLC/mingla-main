@@ -304,7 +304,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4238 rework 2: merged origin/main 3c6bbd0d81 (#4435 leftovers row 20280710004435 kept in filename order between the #4238 rows); re-sealed.
 // #4238 rework 3: renumbered the three #4238 migrations to 20280715004238 / 20280716004238 / 20280717004238 (after origin/main 20280710004435 and the sibling #4452 20280714004452) in the #1857, #1931 and #2117 lanes and the #1931 exact-filename skip list; re-sealed.
-export const BOOTSTRAP_SHA256 = "5ba1812d4f6417381c413930eb169bf1ba76a4de5342effacafdcc4cd46656da";
+// #4452 retest 1: registered the tester rework adversarial pg17 suite and its sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
+// #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
+// #4238 rework 5: merged origin/main e4cb2564bd (#4452 rows kept in filename order ahead of the #4238 rows; both #1931 exact-filename skip blocks kept); re-sealed.
+export const BOOTSTRAP_SHA256 = "7bf426bfab2f36cd35cbb118992da08489c3f9bd664d19edbd21c255c343bfae";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

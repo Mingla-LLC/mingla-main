@@ -56,6 +56,8 @@ import {
 // issue #3526 M-4 — Layer-C passive health observation for the GEMINI_API_KEY
 // surface, which recorded nothing at all before this change.
 import { recordApiCall } from "../_shared/apiHealthLog.ts";
+// #4452 §6.2 — the adaptive follow-up answers (validated here, passed to the prompts).
+import { type EventFollowup, followupPromptLines, parseToolFollowup } from "../_shared/growthToolFollowups.ts";
 // ISSUE-1734 — the SINGLE shared app-lane auth/quota/cache/budget module (P-6).
 import {
   type AppLaneAuth,
@@ -202,6 +204,8 @@ interface EventInput {
   audience_size: number | null;
   lineup: string | null;
   currency: string; // ISO 4217-ish, display only
+  /** #4452 §6.2: the "Free, RSVP only" answers; null = not asked (today's behaviour). */
+  followup: EventFollowup | null;
 }
 
 function asStr(v: unknown): string {
@@ -237,7 +241,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const INOUT = new Set(["indoor", "outdoor", "mixed"]);
 
-function validateEventInput(
+export function validateEventInput(
   raw: unknown,
 ): { ok: true; input: EventInput } | { ok: false; fields: string[] } {
   const fields: string[] = [];
@@ -295,12 +299,17 @@ function validateEventInput(
   const cur = asStr(r.currency).trim().toUpperCase().slice(0, 3);
   const currency = /^[A-Z]{3}$/.test(cur) ? cur : "USD";
 
+  // #4452 §6.2: only a free event may carry the RSVP answers.
+  const fu = parseToolFollowup("events", r.followup, { ticketPrice: ticket_price });
+  if (!fu.ok) fields.push("followup");
+  const followup = fu.ok ? fu.value as EventFollowup | null : null;
+
   if (fields.length > 0) return { ok: false, fields };
   return {
     ok: true,
     input: {
       title, category, city, venue_name, date, start_time, indoor_outdoor,
-      ticket_price, capacity, budget, audience_size, lineup, currency,
+      ticket_price, capacity, budget, audience_size, lineup, currency, followup,
     },
   };
 }
@@ -696,7 +705,7 @@ interface EventResearch {
   cpc_note: string;
 }
 
-function buildResearchPrompt(input: EventInput): string {
+export function buildResearchPrompt(input: EventInput): string {
   const { weekday, leadDays } = eventTiming(input.date);
   return [
     "Research this upcoming event and return findings as a raw JSON object.",
@@ -711,6 +720,7 @@ function buildResearchPrompt(input: EventInput): string {
     `Ticket price: ${input.ticket_price} ${input.currency}${input.ticket_price === 0 ? " (free)" : ""}`,
     `Capacity: ${input.capacity}`,
     input.lineup ? `Lineup / host: ${input.lineup}` : "",
+    ...followupPromptLines(input.followup),
     "</untrusted_event_data>",
     "",
     "Use Google Search. Return EXACTLY this JSON shape:",
@@ -943,7 +953,7 @@ interface Synthesis {
   listing_preview: { title: string; tagline: string; vibe_tags: string[]; why_go: string[]; best_for: string[] };
 }
 
-function buildSynthesisPrompt(
+export function buildSynthesisPrompt(
   input: EventInput,
   research: EventResearch,
 ): string {
@@ -967,6 +977,7 @@ function buildSynthesisPrompt(
     `Capacity: ${input.capacity}`,
     input.audience_size !== null ? `Organiser audience size: ${input.audience_size}` : "Organiser audience size: (not given)",
     input.lineup ? `Lineup / host: ${input.lineup}` : "",
+    ...followupPromptLines(input.followup),
     "</untrusted_event_data>",
     "",
     "External research (from live search):",
@@ -1220,6 +1231,8 @@ async function handleRun(
     capacity: input.capacity, budget: input.budget,
     audience_size: input.audience_size, lineup: input.lineup,
     currency: input.currency,
+    // #4452 §6.2: present only when asked, so a run without it hashes and persists as today.
+    ...(input.followup ? { followup: input.followup } : {}),
   };
 
   let ipHash: string | null = null;
@@ -1418,6 +1431,8 @@ async function handleRun(
     listing_preview: { ...synth.listing_preview, cover_url: coverUrl },
     offer: { per_person_from: "$3.99" },
     narrative: synth.narrative,
+    // #4452 §6.2/§6.9: the situation the page and the email adapt to (absent = today).
+    ...(input.followup ? { followup: input.followup } : {}),
     meta: {
       generated_at: new Date().toISOString(),
       model: GEMINI_MODEL_ID,
@@ -1437,7 +1452,8 @@ async function handleRun(
     return json({ error: "server" }, 500);
   }
 
-  return json({ run_id: runId, report }, 200);
+  // #4452 §6.4: the app lane keeps the full report; the web lane gets the preview only.
+  return json(appLane ? { run_id: runId, report } : { run_id: runId, preview: previewOfEvents4452(report) }, 200);
 }
 
 export async function handler(req: Request): Promise<Response> {
@@ -1470,4 +1486,38 @@ export async function handler(req: Request): Promise<Response> {
 
 if (import.meta.main) {
   serve(handler);
+}
+
+// #4452 §6.4 (security): the anonymous web lane gets only the preview allowlist
+// (the full report is reached only through growth-tools-report with the emailed
+// token). The app lane is unchanged.
+// Invariant I-4452-REPORT-PREVIEW-ONLY (declared in its test): the anonymous web lane returns only the preview allowlist (issue_4452_minimise tests).
+function pick4452(o: unknown, path: string[]): unknown {
+  let v: unknown = o;
+  for (const k of path) {
+    if (v === null || typeof v !== "object") return null;
+    v = (v as Record<string, unknown>)[k];
+  }
+  return v === undefined ? null : v;
+}
+function firstFixTitle4452(report: unknown): unknown {
+  const fixes = pick4452(report, ["fixes"]);
+  return Array.isArray(fixes) && fixes.length > 0 ? pick4452(fixes[0], ["title"]) : null;
+}
+function fixCount4452(report: unknown): number {
+  const fixes = pick4452(report, ["fixes"]);
+  return Array.isArray(fixes) ? fixes.length : 0;
+}
+
+export function previewOfEvents4452(report: unknown): Record<string, unknown> {
+  return {
+    event: { title: pick4452(report, ["event", "title"]) },
+    forecast: {
+      low: pick4452(report, ["forecast", "total_low"]),
+      high: pick4452(report, ["forecast", "total_high"]),
+      capacity: pick4452(report, ["forecast", "capacity"]),
+    },
+    first_fix: { title: firstFixTitle4452(report) },
+    fix_count: fixCount4452(report),
+  };
 }

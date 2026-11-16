@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4452",
+  "suite": {
+    "id": "issue-4452-marketing-site-blocks",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/app/**",
+      "mingla-marketing/components/**",
+      "mingla-marketing/lib/**"
+    ],
+    "steps": [
+      {
+        "name": "Marketing #4452: site blocks, pop-up rules, form pages",
+        "cwd": "mingla-marketing",
+        "run": "node --test lib/__tests__/issue-4452-site-blocks.implementor.test.mjs",
+        "commandId": "assert:issue-4452-marketing-site-blocks:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test lib/__tests__/issue-4452-site-blocks.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution for #4452 replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4452",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/lib/__tests__/issue-4452-site-blocks.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-16"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell runs the reviewed #4452 assertion as a self-registering suite.",
+    "timeoutSeconds": 60
+  }
+}

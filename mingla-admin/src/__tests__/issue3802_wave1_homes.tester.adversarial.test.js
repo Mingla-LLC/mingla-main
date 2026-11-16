@@ -277,7 +277,7 @@ describe("#3802 TA-3: access for every combination of areas", () => {
 
   // #4255: email_drafts is the sixth (Email tab and sending, every teammate).
   it("there are six areas, and Beta leads is one of them", () => {
-    assert.deepEqual([...AREAS].sort(), ["admin_console", "beta_leads", "crm", "email_drafts", "role_home", "team_manage"]);
+    assert.deepEqual([...AREAS].sort(), ["admin_console", "beta_leads", "crm", "email_drafts", "role_home", "team_manage", "website"] /* #4452: + the Website editor area */);
   });
 
   it("Beta leads opens with its own area and with nothing else; the Team dashboard only with the admin area", () => {
@@ -305,7 +305,8 @@ describe("#3802 TA-3: access for every combination of areas", () => {
     // [TEST-MOD-APPROVED #3980] the Work board and Agent log follow the crm area.
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
     // #4130: Work, Hosts and creators, Calendar; My agent and Guide are in the header.
-    assert.deepEqual(ids, ["home", "work-board", "outreach", "content-calendar"]);
+    // #4452 §7.0: Forms and Website pages, view-only, for whoever works the pipelines or beta leads.
+    assert.deepEqual(ids, ["home", "work-board", "outreach", "forms", "content-calendar", "website-pages"]);
     const known = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id));
     // #4130: Beta leads is a tab of Inbound leads (#/beta-leads redirects there).
     assert.deepEqual(resolveRoute("inbound", p, known), { pageId: homePageFor(p), denied: true, requestedId: "inbound" });
@@ -317,7 +318,8 @@ describe("#3802 TA-3: access for every combination of areas", () => {
     const p = person(["role_home", "beta_leads"]);
     const ids = visibleNavGroups(NAV_GROUPS, p).flatMap((g) => g.items.map((i) => i.id));
     // #4130: Beta leads is a tab of Inbound leads.
-    assert.deepEqual(ids, ["home", "inbound"]);
+    // #4452 §7.0: + Forms and Website pages (view-only).
+    assert.deepEqual(ids, ["home", "inbound", "forms", "website-pages"]);
   });
 
   it("someone invited, removed or of unknown status opens nothing, whatever areas they are said to hold", () => {

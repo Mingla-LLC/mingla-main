@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { LandingMedia } from '@/components/landing/landing-media'
-import { PageHero, SitePage } from '@/components/site/site-page'
+import { SitePage } from '@/components/site/site-page'
+import { HeroWords } from '@/components/site-blocks/hero-words'
+import { Spot } from '@/components/site-blocks/spot'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #4339 phase 2b — Mingla Locals, in the approved design: the headline, "Get
@@ -41,23 +43,17 @@ export default function LocalsPage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       <SitePage surface="explorer">
-        <PageHero
-          title={
-            <>
-              One honest review, <em>every month.</em>
-            </>
-          }
-          lead="Mingla chooses up to three Locals in each open city. Complete one useful, independent place review each month and earn $150 after approval."
-        >
-          <div className="row">
-            <ExplorerHandoffButton location="locals_apply" className="btn cta" withArrow>
-              Get Mingla to apply
-            </ExplorerHandoffButton>
-            <Link className="btn soft" href="/schedule/locals">
-              Book a call
-            </Link>
-          </div>
-        </PageHero>
+        <HeroWords
+          page="locals"
+          coded={{
+            h1: 'One honest review,',
+            em: 'every month.',
+            lead: 'Mingla chooses up to three Locals in each open city. Complete one useful, independent place review each month and earn $150 after approval.',
+            app: { text: 'Get Mingla to apply', location: 'locals_apply' },
+            call: { text: 'Book a call', href: '/schedule/locals' },
+          }}
+        />
+        <Spot page="locals" id="after-hero" />
 
         <section className="pb-100" aria-labelledby="locals-how">
           <div className="wrap">
@@ -73,6 +69,7 @@ export default function LocalsPage() {
                 </li>
               ))}
             </ol>
+            <Spot page="locals" id="after-steps" />
             <div className="grid2 mt-24">
               <div className="card pad fact-card reveal">
                 <h3 className="h3">$150 after approval</h3>
@@ -89,6 +86,7 @@ export default function LocalsPage() {
                 </p>
               </div>
             </div>
+            <Spot page="locals" id="after-facts" />
             <div className="band reveal mt-24">
               <LandingMedia media="v:amb-locals" />
               <div className="in">
@@ -117,6 +115,7 @@ export default function LocalsPage() {
             </p>
           </div>
         </section>
+        <Spot page="locals" id="before-footer" />
       </SitePage>
     </div>
   )

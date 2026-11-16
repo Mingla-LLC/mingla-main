@@ -40,7 +40,7 @@ export function PageHeader({ title, description, meta, actions, back, tabs, titl
   const heading = (
     <h1
       id={titleId}
-      className="shrink-0 break-words text-[22px] font-semibold leading-7 tracking-[-0.02em] text-[var(--color-text-primary)]"
+      className="shrink-0 break-words font-serif text-[34px] font-normal leading-none tracking-[-0.01em] text-[var(--color-text-primary)]"
     >
       {title}
     </h1>

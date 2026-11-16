@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/forms-admin/issue_4452_forms_admin.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4452-forms-admin",
+  "profile": "deno-2-unit"
+}

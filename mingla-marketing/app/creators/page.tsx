@@ -2,9 +2,10 @@ import type { Metadata } from 'next'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
-import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { LandingMedia } from '@/components/landing/landing-media'
-import { PageHero, SitePage } from '@/components/site/site-page'
+import { SitePage } from '@/components/site/site-page'
+import { HeroWords } from '@/components/site-blocks/hero-words'
+import { Spot } from '@/components/site-blocks/spot'
 import type { LandingMediaRef } from '@/content/host-landing/icps'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
@@ -44,23 +45,17 @@ export default function CreatorsPage() {
       {/* #4339 (Seth): Creators sign up in Explorer, so the page is on the
           Explorer surface and its top bar's "Use Mingla" goes to Explorer. */}
       <SitePage surface="explorer">
-        <PageHero
-          title={
-            <>
-              Get hired to show people what a city <em>feels like.</em>
-            </>
-          }
-          lead="Mingla Creators make the videos and photos that help people choose. Become a Creator and complete paid gigs for places and events on Mingla."
-        >
-          <div className="row">
-            <ExplorerHandoffButton location="creators_join" className="btn cta" withArrow>
-              Get Mingla to join
-            </ExplorerHandoffButton>
-            <Link className="btn soft" href="/schedule/creators">
-              Book a call
-            </Link>
-          </div>
-        </PageHero>
+        <HeroWords
+          page="creators"
+          coded={{
+            h1: 'Get hired to show people what a city',
+            em: 'feels like.',
+            lead: 'Mingla Creators make the videos and photos that help people choose. Become a Creator and complete paid gigs for places and events on Mingla.',
+            app: { text: 'Get Mingla to join', location: 'creators_join' },
+            call: { text: 'Book a call', href: '/schedule/creators' },
+          }}
+        />
+        <Spot page="creators" id="after-hero" />
 
         <section className="pb-100" aria-label="How Mingla Creators works">
           <div className="wrap">
@@ -71,6 +66,7 @@ export default function CreatorsPage() {
                 </div>
               ))}
             </div>
+            <Spot page="creators" id="after-clips" />
             <ol className="grid3 mt-24 steps-list">
               {STEPS.map((step, index) => (
                 <li key={step.title} className="step reveal">
@@ -80,6 +76,7 @@ export default function CreatorsPage() {
                 </li>
               ))}
             </ol>
+            <Spot page="creators" id="after-steps" />
             <div className="band reveal mt-24">
               <LandingMedia media="v:salsa" />
               <div className="in">
@@ -100,6 +97,7 @@ export default function CreatorsPage() {
             </p>
           </div>
         </section>
+        <Spot page="creators" id="before-footer" />
       </SitePage>
     </div>
   )

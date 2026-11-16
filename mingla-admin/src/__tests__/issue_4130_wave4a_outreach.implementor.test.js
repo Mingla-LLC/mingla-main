@@ -280,13 +280,12 @@ describe("#4130 W4A-4: Inbound leads", () => {
     assert.deepEqual(toolLeadHostFields({ business: "Rooftop" }, null), { name: "Rooftop", source: "inbound" });
   });
 
-  it("the page reads the one inbound list, asks before Add to Hosts, and no longer holds Competitor Ops", () => {
+  it("the page reads the one Leads list and no longer holds Competitor Ops", () => {
+    // #4452 A1.8: Inbound leads became the Leads list (one row per person).
     const page = stripComments(read("pages/InboundLeadsPage.jsx"));
-    assert.match(read("services/dashboardService.js"), /rpc\("admin_inbound_leads", \{ p_show_test: !!showTest, p_limit: 500 \}\)/);
-    assert.ok(page.includes("listInboundLeads(showTest)"));
+    assert.match(read("services/leadsService.js"), /rpc\("admin_leads_list", \{ p_filter: filter \|\| \{\}, p_after: after, p_limit: limit \}\)/);
+    assert.match(page, /<LeadsList search=\{search\}/);
     assert.ok(!/CompetitorOps|tool_leads|lane/.test(page));
-    assert.match(page, /<Modal open=\{!!confirm\}/);
-    assert.match(page, /betaLeadToHost\(lead\.id\)/);
     assert.match(read("pages/ToolLeadsPage.jsx"), /export function CompetitorOpsPanel/);
     assert.match(read("App.jsx"), /inbound: InboundLeadsPage,/);
   });

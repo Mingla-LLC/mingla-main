@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
 
 export default function TripReportPage() {
   return (
-    <main id="main" className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+    <main id="main" className="mx-auto w-full max-w-[1072px] py-4">
       <Suspense fallback={<ReportSkeleton />}>
         <TripReportPageClient />
       </Suspense>

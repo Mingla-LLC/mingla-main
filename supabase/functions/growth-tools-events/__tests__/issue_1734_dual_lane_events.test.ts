@@ -161,11 +161,10 @@ Deno.test("events web lane byte-stable — pid/utm persisted, lane='web'", async
     assertEquals(row.pid, "tool_events");
     assertEquals(row.utm.source, "tiktok");
     assert(typeof row.ip_hash === "string");
-    assertEquals(
-      r.body.report.meta.schema_version,
-      1,
-      "P-11 stamps the web lane too",
-    );
+    // #4452 §6.4: the web lane returns the preview only; the full report (with its schema stamp) is stored for the emailed link.
+    assertEquals(r.body.report, undefined);
+    assert(r.body.preview && typeof r.body.preview === "object");
+    assertEquals(row.report.meta.schema_version, 1, "P-11 stamps the web lane too");
   } finally {
     stub.restore();
   }

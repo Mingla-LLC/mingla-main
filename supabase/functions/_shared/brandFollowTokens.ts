@@ -4,7 +4,7 @@
  */
 import {
   signUnsubscribeToken,
-  verifyUnsubscribeToken,
+  verifyBrandUnsubscribeToken,
 } from "./marketingTokens.ts";
 
 export type BrandFollowAction = "follow" | "unfollow";
@@ -65,7 +65,7 @@ export async function verifyBrandFollowToken(
   token: string,
   options: { nowSeconds?: number } = {},
 ): Promise<BrandFollowTokenPayload> {
-  const raw = await verifyUnsubscribeToken(token, {
+  const raw = await verifyBrandUnsubscribeToken(token, {
     secretEnvKey: secretEnvKey(),
     nowSeconds: options.nowSeconds,
   });

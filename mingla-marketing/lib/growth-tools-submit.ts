@@ -139,15 +139,26 @@ export interface GraderReport {
   head_to_head?: GraderHeadToHead
   where_you_win?: string[]
   offer?: { per_person_from: string }
-  meta?: { fetch_failed?: boolean; competition_source?: GraderCompetitionSource }
+  meta?: { fetch_failed?: boolean; competition_source?: GraderCompetitionSource; generated_at?: string }
+  followup?: ToolSituation
 }
 
 export interface GraderRunInput {
   name: string
   city: string
+  /** "" only with the no-website follow-up (#4452 §6.2). */
   website: string
   place_id?: string
+  /** #4452 §6.2: sent only when asked and answered, so the body is otherwise today's. */
+  followup?: { found_via: 'instagram' | 'whatsapp' | 'google_only' }
 }
+
+/** #4452 §6.2/§6.9: the situation a report was run for (absent = today's report). */
+export type ToolSituation =
+  | { reason: 'no_website'; found_via: 'instagram' | 'whatsapp' | 'google_only' }
+  | { reason: 'free_rsvp'; rsvp_goal: number; no_shows: 'lots' | 'few' }
+  | { reason: 'group_over_15'; coach: boolean; rooms: 'twin' | 'single' }
+  | { reason: 'free_today'; session_cost: number; deposit: 'probably' | 'not_sure' }
 
 // ─── Result unions ──────────────────────────────────────────────────────────
 
@@ -156,7 +167,7 @@ export type GrowthToolsSearchResponse =
   | { ok: false; error: GrowthToolsError }
 
 export type GrowthToolsRunResponse =
-  | { ok: true; run_id: string; report: GraderReport }
+  | { ok: true; run_id: string; report?: GraderReport; preview?: ToolPreview }
   | { ok: false; error: GrowthToolsError }
 
 export type GrowthToolsGateResponse =
@@ -195,6 +206,9 @@ export async function searchGrowthToolsPlaces(
   return { ok: true, results }
 }
 
+/** #4452 §6.4: the preview allowlist the web lane returns (no fixes beyond the first, no plan lines). */
+export type ToolPreview = Record<string, unknown>
+
 /** The run itself: {action:'run'} → {run_id, report}. Slow (LLM) — no timeout here. */
 export async function runVenueGrader(
   input: GraderRunInput,
@@ -215,11 +229,12 @@ export async function runVenueGrader(
     opts?.signal,
   )
   if (!result.ok) return result
-  const body = result.body as { run_id?: string; report?: GraderReport } | null
-  if (!body || typeof body.run_id !== 'string' || !body.report) {
+  // #4452 §6.4: the anonymous web lane answers {run_id, preview} (the full report comes by email).
+  const body = result.body as { run_id?: string; report?: GraderReport; preview?: ToolPreview } | null
+  if (!body || typeof body.run_id !== 'string' || (!body.report && !body.preview)) {
     return { ok: false, error: 'server' }
   }
-  return { ok: true, run_id: body.run_id, report: body.report }
+  return { ok: true, run_id: body.run_id, report: body.report, preview: body.preview }
 }
 
 /** Storefront-render subset for the "after" homepage preview page. */
@@ -259,12 +274,19 @@ export async function submitGrowthToolsGate(
   run_id: string,
   email: string,
   signal?: AbortSignal,
+  /** #4452 Q-A1-2: "Also send me tips for hosts. Optional." — unticked by default. */
+  marketingConsent = false,
 ): Promise<GrowthToolsGateResponse> {
   const origin = typeof window !== 'undefined' ? window.location.origin : undefined
   const ad = marketingAdContext()
+  // #4452 §6.9: with the tips box ticked, the follow-ups send at 10:00 in their own time zone.
+  let timeZone: string | undefined
+  if (marketingConsent) {
+    try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined } catch { timeZone = undefined }
+  }
   const result = await postGrowthTools(
     'growth-tools-gate',
-    { run_id, email, ...(origin ? { origin } : {}), ...(ad ? { ad } : {}) },
+    { run_id, email, ...(origin ? { origin } : {}), ...(ad ? { ad } : {}), ...(marketingConsent ? { marketing_consent: true, ...(timeZone ? { time_zone: timeZone } : {}) } : {}) },
     signal,
   )
   if (!result.ok) return result
@@ -309,6 +331,8 @@ export interface EventRunInput {
   audience_size: number | null
   lineup: string | null
   currency: string
+  /** #4452 §6.2: "Free, RSVP only" answers; sent only when asked and answered. */
+  followup?: { rsvp_goal: number; no_shows: 'lots' | 'few' }
 }
 
 export interface EventForecast {
@@ -436,10 +460,12 @@ export interface EventReport {
   offer?: { per_person_from: string }
   narrative: string
   meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+  /** #4452 §6.2/§6.9: the situation it was run for (absent = today's report). */
+  followup?: ToolSituation
 }
 
 export type EventRunResponse =
-  | { ok: true; run_id: string; report: EventReport }
+  | { ok: true; run_id: string; report?: EventReport; preview?: ToolPreview }
   | { ok: false; error: GrowthToolsError }
 
 /** City autocomplete for the event intake — validates the city against Google Places. */
@@ -481,11 +507,12 @@ export async function runEventPredictor(
     opts?.signal,
   )
   if (!result.ok) return result
-  const body = result.body as { run_id?: string; report?: EventReport } | null
-  if (!body || typeof body.run_id !== 'string' || !body.report) {
+  // #4452 §6.4: the anonymous web lane answers {run_id, preview} (the full report comes by email).
+  const body = result.body as { run_id?: string; report?: EventReport; preview?: ToolPreview } | null
+  if (!body || typeof body.run_id !== 'string' || (!body.report && !body.preview)) {
     return { ok: false, error: 'server' }
   }
-  return { ok: true, run_id: body.run_id, report: body.report }
+  return { ok: true, run_id: body.run_id, report: body.report, preview: body.preview }
 }
 
 /** Token-gated full event report (from the emailed link): {run_id, token} → {report}. */
@@ -548,6 +575,8 @@ export interface TripRunInput {
   vibe_note: string | null
   includes: { stay: boolean; activities: boolean; meals: boolean; transport: boolean }
   currency: string
+  /** #4452 §6.2: groups of 16 or more; sent only when asked and answered. */
+  followup?: { coach: boolean; rooms: 'twin' | 'single' }
 }
 
 export interface TripCostLine {
@@ -688,10 +717,14 @@ export interface TripReport {
   price_basis: { note: string; checked_on: string }
   offer?: { per_person_from: string }
   meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+  /** #4452 §6.5: 'unpriced' when live prices did not come back (absent on older reports). */
+  pricing_status?: 'priced' | 'unpriced'
+  /** #4452 §6.2/§6.9: the situation it was run for (absent = today's report). */
+  followup?: ToolSituation
 }
 
 export type TripRunResponse =
-  | { ok: true; run_id: string; report: TripReport }
+  | { ok: true; run_id: string; report?: TripReport; preview?: ToolPreview }
   | { ok: false; error: GrowthToolsError }
 
 /** The trip quote run: {action:'run', input} → {run_id, report}. Slow (LLM + search). */
@@ -712,11 +745,12 @@ export async function runTripQuoter(
     opts?.signal,
   )
   if (!result.ok) return result
-  const body = result.body as { run_id?: string; report?: TripReport } | null
-  if (!body || typeof body.run_id !== 'string' || !body.report) {
+  // #4452 §6.4: the anonymous web lane answers {run_id, preview} (the full report comes by email).
+  const body = result.body as { run_id?: string; report?: TripReport; preview?: ToolPreview } | null
+  if (!body || typeof body.run_id !== 'string' || (!body.report && !body.preview)) {
     return { ok: false, error: 'server' }
   }
-  return { ok: true, run_id: body.run_id, report: body.report }
+  return { ok: true, run_id: body.run_id, report: body.report, preview: body.preview }
 }
 
 /** Token-gated full trip report (from the emailed link): {run_id, token} → {report}. */
@@ -784,6 +818,8 @@ export interface PricingRunInput {
   materials_cost: number | null
   own_hours: number | null
   hourly_rate: number | null
+  /** #4452 §6.2: "Free right now" answers; sent only when asked and answered. */
+  followup?: { session_cost: number; deposit: 'probably' | 'not_sure' }
 }
 
 export interface PricingCostLine {
@@ -864,10 +900,12 @@ export interface PricingReport {
   price_basis: { note: string; checked_on: string }
   offer?: { per_person_from: string }
   meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+  /** #4452 §6.2/§6.9: the situation it was run for (absent = today's report). */
+  followup?: ToolSituation
 }
 
 export type PricingRunResponse =
-  | { ok: true; run_id: string; report: PricingReport }
+  | { ok: true; run_id: string; report?: PricingReport; preview?: ToolPreview }
   | { ok: false; error: GrowthToolsError }
 
 /** The pricing audit run: {action:'run', input} → {run_id, report}. Slow (LLM + search). */
@@ -888,11 +926,12 @@ export async function runPricingAudit(
     opts?.signal,
   )
   if (!result.ok) return result
-  const body = result.body as { run_id?: string; report?: PricingReport } | null
-  if (!body || typeof body.run_id !== 'string' || !body.report) {
+  // #4452 §6.4: the anonymous web lane answers {run_id, preview} (the full report comes by email).
+  const body = result.body as { run_id?: string; report?: PricingReport; preview?: ToolPreview } | null
+  if (!body || typeof body.run_id !== 'string' || (!body.report && !body.preview)) {
     return { ok: false, error: 'server' }
   }
-  return { ok: true, run_id: body.run_id, report: body.report }
+  return { ok: true, run_id: body.run_id, report: body.report, preview: body.preview }
 }
 
 /** Token-gated full pricing audit (from the emailed link): {run_id, token} → {report}. */

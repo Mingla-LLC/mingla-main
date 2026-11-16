@@ -250,7 +250,8 @@ describe("B-7 Due today for you", () => {
     assert.match(page, /<Kpi\s+label="Due today for you"\s+note=\{`\$\{Number\(review\.overdue \|\| 0\)\.toLocaleString\(\)\} overdue`\}/);
     assert.match(page, /<KpiFailed label="Due today for you"/);
     assert.ok(!/Waiting on you/.test(page));
-    assert.match(code("components/layout/Sidebar.jsx"), /`\$\{item\.label\}, \$\{waiting\} due`/);
+    // #4452 §7.2: Brand groups says "waiting"; Work still says "due".
+    assert.match(code("components/layout/Sidebar.jsx"), /`\$\{item\.label\}, \$\{waiting\} \$\{item\.id === "brand-groups" \? "waiting" : "due"\}`/);
   });
   it("the Dashboard item names what is due today and how much is overdue", () => {
     const items = needsYouToday({ work: { status: "ready", data: { dueToday: 1, overdue: 4 } } });

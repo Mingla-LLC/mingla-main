@@ -101,6 +101,12 @@ export function buildRedditConversionBody(
     conversion_id: input.eventId, // dedup key — shared with the browser pixel
     value,
     currency: value !== undefined ? input.currency ?? undefined : undefined,
+    // #4452 §4.2: the lead label as the one product's category (v3 metadata.products,
+    // corroborated by integration docs; Reddit's own page was not fetchable). Unset on purchases.
+    item_count: input.contentCategory ? 1 : undefined,
+    products: input.contentCategory
+      ? [{ id: input.contentCategory, name: input.contentName ?? input.contentCategory, category: input.contentCategory }]
+      : undefined,
   } as Record<string, unknown>);
   const event = definedOnly({
     event_at: Math.round(input.eventTimeMs), // Unix milliseconds (v3)

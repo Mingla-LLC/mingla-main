@@ -42,9 +42,10 @@ Deno.test(
     assertStringIncludes(result.html, "<!doctype html>");
     assertStringIncludes(result.html, ">Your code</h1>");
     assertStringIncludes(result.html, ">042731</p>");
-    assertStringIncludes(result.html, "Need help?");
+    // #4452 §5.9: the rebranded footer line.
+    assertStringIncludes(result.html, "Questions? Reply to this email");
     assert(
-      !result.html.includes("background:#C4471A"),
+      !result.html.includes("background:#111110"), // #4452: the button fill is ink now
       "verification email must not render a CTA button",
     );
   },

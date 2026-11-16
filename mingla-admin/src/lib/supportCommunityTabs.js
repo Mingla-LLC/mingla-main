@@ -30,7 +30,6 @@ export const COMMUNITY_PAGE_TABS = Object.freeze([
   // #4111 — kept next to Moderation; shown only to the Community area
   // (community_can('moderate')) and Admins.
   Object.freeze({ id: "enquiry-reports", label: "Reported enquiries" }),
-  Object.freeze({ id: "brand-groups", label: "Brand groups" }),
   Object.freeze({ id: "feature-guide", label: "Feature guide" }),
   // #4383: renamed to match #4382's Product board (the tab id is unchanged).
   Object.freeze({ id: "product", label: "Product board" }),
@@ -49,6 +48,8 @@ export const COMMUNICATIONS_TAB_PAGES = Object.freeze({
   links: "links",
   announcements: "announcements",
   roadmap: "roadmap",
+  // #4452 §7.2: Brand groups left Community for its own screen.
+  "brand-groups": "brand-groups",
 });
 
 /** The Communications screen that now holds an old tab, or null. */

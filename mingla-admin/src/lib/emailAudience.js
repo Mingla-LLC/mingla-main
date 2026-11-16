@@ -83,7 +83,10 @@ export function isRecipientChosen(recipient) {
 }
 
 /** The audience the edge function receives. */
-export function audienceFor(mode, selectedRecipient, filters) {
+export function audienceFor(mode, selectedRecipient, filters, leadTarget = null) {
+  // #4452 A1.5: a Leads list selection, or a one-to-one reply to one lead.
+  if (mode === "leads") return { mode, selectionId: leadTarget?.selectionId || "" };
+  if (mode === "lead_reply") return { mode, leadId: leadTarget?.leadId || "" };
   if (mode === "person") {
     if (selectedRecipient?.profile_id) return { mode, profileId: selectedRecipient.profile_id };
     if (selectedRecipient?.email) return { mode, email: selectedRecipient.email };
@@ -117,7 +120,10 @@ export function groupBreakdown(estimate) {
 }
 
 /** The audience in a few words, for the send button and the review. */
-export function audienceSummary(audienceMode, filters, estimate, selectedRecipient) {
+export function audienceSummary(audienceMode, filters, estimate, selectedRecipient, leadTarget = null) {
+  // #4452 A1.5: "<n> leads" and "Reply to <name>".
+  if (audienceMode === "leads") return `${estimate?.will_receive ?? "—"} leads`;
+  if (audienceMode === "lead_reply") return `Reply to ${leadTarget?.name || "this lead"}`;
   if (audienceMode === "everyone") {
     return estimate?.will_receive != null ? `Everyone (${estimate.will_receive})` : "Everyone";
   }
@@ -151,4 +157,40 @@ export function audienceFilterWords(filters) {
     f.beta && f.beta !== "all" ? f.beta : null,
     f.joinedFrom || f.joinedTo ? "joined date" : null,
   ].filter(Boolean);
+}
+
+const LEAD_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #4452 A1.5 — the Leads hand-off in the address: `#/email?leads=<selection>`
+ * opens a Leads list send, `#/email?lead=<lead>` a one-to-one reply. Leads are
+ * reached only from the Leads list (AUDIENCE_PRESETS is unchanged), and a
+ * restored draft never pre-selects one (lib/emailDraftAudience.js).
+ */
+export function leadTargetFromHash(hash) {
+  const raw = typeof hash === "string" ? hash : "";
+  const at = raw.indexOf("?");
+  if (at < 0) return null;
+  const p = new URLSearchParams(raw.slice(at + 1));
+  const selectionId = p.get("leads");
+  if (selectionId && LEAD_UUID.test(selectionId)) return { mode: "leads", selectionId: selectionId.toLowerCase() };
+  const leadId = p.get("lead");
+  if (leadId && LEAD_UUID.test(leadId)) return { mode: "lead_reply", leadId: leadId.toLowerCase() };
+  return null;
+}
+
+/** The composer's words for the leads send errors (admin-send-email). */
+export const LEADS_SEND_ERRORS = Object.freeze({
+  lead_selection_expired: "This selection expired. Go back to Leads and select again.",
+  leads_send_limit: "You've sent 5 emails to leads today. Ask an admin to send more.",
+  lead_reply_limit: "You've sent 60 replies this hour. Try again later.",
+  leads_audience_too_large: "That's more than 5,000 people. Narrow the selection in Leads.",
+  lead_reply_blocked: "This person asked not to be emailed at all.",
+  leads_access_denied: "You don't have access to Leads. Ask an admin.",
+});
+
+export function leadsSendError(error) {
+  const text = `${error?.message || ""} ${error?.error || ""}`;
+  const key = Object.keys(LEADS_SEND_ERRORS).find((k) => text.includes(k));
+  return key ? { key, message: LEADS_SEND_ERRORS[key] } : null;
 }

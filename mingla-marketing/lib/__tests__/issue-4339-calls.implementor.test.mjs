@@ -116,6 +116,8 @@ test('every link on /creators and /locals goes to a real route; none to host.use
     const source = code(read(rel))
     assert.doesNotMatch(source, /creator\/setup|hostWebPageHref|host\.usemingla\.com|CREATOR_SETUP/, `${rel}: no host web creator setup link`)
     const hrefs = [...source.matchAll(/href="([^"]+)"/g)].map((m) => m[1])
+    // #4452: the hero moved into <HeroWords coded={…}> (editable words), so its call href is a prop.
+    hrefs.push(...[...source.matchAll(/href: '([^']+)'/g)].map((m) => m[1]))
     assert.ok(hrefs.length >= 3, `${rel}: links found`)
     for (const href of hrefs) {
       assert.ok(href.startsWith('/'), `${rel}: ${href} is a site route`)
@@ -123,14 +125,15 @@ test('every link on /creators and /locals goes to a real route; none to host.use
     }
   }
   const creators = code(read('app/creators/page.tsx'))
-  assert.match(creators, /<ExplorerHandoffButton location="creators_join" className="btn cta" withArrow>\s*Get Mingla to join\s*<\/ExplorerHandoffButton>/)
-  assert.match(creators, /<Link className="btn soft" href="\/schedule\/creators">\s*Book a call\s*<\/Link>/)
+  // #4452: the hero's coded words and buttons (rendered by components/site-blocks/hero-words.tsx).
+  assert.match(creators, /app: \{ text: 'Get Mingla to join', location: 'creators_join' \}/)
+  assert.match(creators, /call: \{ text: 'Book a call', href: '\/schedule\/creators' \}/)
   assert.match(creators, /<span className="bring">Talk to the Creators team<\/span>\s*<Link className="btn white" href="\/schedule\/creators">\s*Book a call/)
   assert.match(creators, /Questions <em>first\?<\/em>/)
   assert.match(creators, /Build your profile in Mingla\. Creator mode stays private until every readiness check is complete\./)
   assert.match(creators, /You’ll read and accept the <Link href="\/creator-agreement">Creator agreement<\/Link> inside Mingla before\s+your first gig\./)
   const locals = code(read('app/locals/page.tsx'))
-  assert.match(locals, /<Link className="btn soft" href="\/schedule\/locals">\s*Book a call\s*<\/Link>/)
+  assert.match(locals, /call: \{ text: 'Book a call', href: '\/schedule\/locals' \}/)
   assert.match(locals, /<div className="band-actions">\s*<ExplorerHandoffButton location="locals_band" className="btn white">\s*Get Mingla to apply[\s\S]*?<Link className="btn glass" href="\/schedule\/locals">\s*Book a call/)
   assert.match(locals, /You’ll read and accept the <Link href="\/local-agreement">Local agreement<\/Link> inside Mingla when you\s+apply\./)
   assert.doesNotMatch(locals, />\s*Local agreement\s*<\/Link>\s*<\/div>/, 'the agreement is no longer a hero button')

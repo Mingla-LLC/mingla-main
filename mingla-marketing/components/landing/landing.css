@@ -362,6 +362,22 @@ html:has([data-landing]) body {
   border-radius: 8px;
   box-shadow: 0 0 0 3px var(--orange);
 }
+/* #4452 §2.12: the call half of the CTA bar — 47px like its neighbour (44 + the 3px ring), the soft variant.
+   #4452 rework 1 (P3-14): the -1.5px block margins let the 47px link take the 44px the ringed
+   button takes in layout, so the bar keeps today's height (61±1 px at 375 px). */
+[data-landing] .glassbar .btn.bring-call {
+  min-height: 47px;
+  margin: -1.5px 0;
+  box-shadow: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+}
 
 [data-landing] .about {
   position: relative;

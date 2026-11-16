@@ -514,7 +514,13 @@ export function phase3dContractDigest(manifest) {
 // #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4238 rework 2: merged origin/main 3c6bbd0d81 (#4435 leftovers row 20280710004435 kept in filename order between the #4238 rows); re-sealed.
 // #4238 rework 3: re-sealed after the three #4238 migrations were renumbered to 20280715004238 / 20280716004238 / 20280717004238 (lane inventories and the #1931 exact-filename skip list); MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f7e283eb8a20b8fee7dd815c86207833ef8ad00ecf18e3bde25e36de2ddabff3";
+// #4452 rework 1: registered the tester adversarial pg17 suite and the rework SQL suite (with sidecars) in the #1931 and #2117 inventories; re-sealed.
+// #4452 retest 1: registered the tester rework adversarial pg17 suite (with its sidecar) in the #1931 and #2117 inventories; re-sealed.
+// #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
+// #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
+// #4238 rework 5: merged origin/main e4cb2564bd (#4452 rows kept in filename order ahead of the #4238 rows; both #1931 exact-filename skip blocks kept); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e6b5744c3b90489c57b0500b1fef0b3170a09ad312fab24714c8440aaf016aa8";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -43,7 +43,10 @@ test('help articles: the new frame, the same content and behaviour', () => {
   assert.doesNotMatch(page, /CutoutNav|CutoutFooter|CutoutShell|CutoutSection/, 'no old frame')
   assert.match(code(read('app/help/layout.tsx')), /<main id="main" data-allow-copy="">/, '#3431 copy opt-in stays on the one <main>')
   // Content and behaviour.
-  assert.match(page, /export const dynamicParams = false/)
+  // #4452 rework 1: was `dynamicParams = false`; unknown slugs still 404 through the guard below (see the
+  // #4452 rework test: a false value 404s prerendered pages when the site-pages tag is revalidated).
+  assert.match(page, /export const dynamicParams = true/)
+  assert.match(page, /if \(!video\) notFound\(\)/)
   assert.match(page, /generateStaticParams\(\)[\s\S]*HELP_VIDEOS\.map/)
   assert.match(page, /<HelpVideoSchema video=\{video\} \/>/)
   assert.match(page, /<BreadcrumbSchema\s+crumbs=\{\[\s*\{ name: 'Mingla', path: '\/' \},\s*\{ name: 'Help centre', path: '\/help' \},\s*\{ name: video\.title, path: helpVideoPath\(video\.slug\) \},/)

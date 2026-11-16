@@ -72,7 +72,7 @@ const OLD_TAB_HOME = {
   questions: ["community", "questions"],
   moderation: ["community", "moderation"],
   "enquiry-reports": ["community", "enquiry-reports"],
-  "brand-groups": ["community", "brand-groups"],
+  "brand-groups": ["brand-groups", null], // #4452 §7.2: its own screen
   "feature-guide": ["community", "feature-guide"],
   product: ["community", "product"],
 };
@@ -162,7 +162,7 @@ describe("W6-3 access is unchanged", () => {
 
   it("each person sees exactly the tabs they saw before, split over the two pages and the Communications screens", () => {
     // #4383: a moved tab is now its own screen, opened by canOpenPage.
-    const SCREENS = ["email", "blog", "links", "announcements", "roadmap"];
+    const SCREENS = ["email", "blog", "links", "announcements", "roadmap", "brand-groups"]; // #4452: + Brand groups
     for (const [who, access] of Object.entries(PEOPLE)) {
       const support = ids(communitySupportTabsForAccess(access, SUPPORT_PAGE_TABS));
       const community = ids(communitySupportTabsForAccess(access, COMMUNITY_PAGE_TABS));

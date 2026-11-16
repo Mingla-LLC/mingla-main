@@ -257,6 +257,8 @@ const CREATOR = {
   makes: "video",
   work_url: "https://www.tiktok.com/@adashoots/video/1",
   time_zone: "Africa/Lagos",
+  // #4452 §4.6: Creators and Locals calls require a phone.
+  phone: { country: "NG", dial: "+234", number: "801 234 5678" },
 };
 const LOCAL = {
   audience: "local",
@@ -265,6 +267,7 @@ const LOCAL = {
   social_handle: "@tobieats",
   first_place: "Bida Manda",
   time_zone: "America/New_York",
+  phone: { country: "US", dial: "+1", number: "919 555 0100" },
   // Host-only fields are ignored on a program call.
   venue: "Not a venue",
   report_url: "https://example.com/report",

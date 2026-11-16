@@ -93,7 +93,8 @@ test('the page sends the new fields and the #3601 source through bookCall, and r
   const submit = code(read('lib/booking-call.ts'))
   assert.match(code(read('lib/growth-tools-submit.ts')), /export \{\s*bookCall,\s*fetchBookingSlots,/)
   // #4339 calls: the host shape is one arm of BookCallInput (audience absent).
-  assert.match(submit, /export async function bookCall\(input: BookCallInput\)/)
+  // #4452 §4.6: bookCall also takes the phone, UTM, form link, ad context and consent.
+  assert.match(submit, /export async function bookCall\(input: BookCallInput & BookCallExtras\)/)
   assert.match(submit, /audience\?: undefined\s+icp: string\s+social_platform: string\s+social_handle: string[\s\S]*website\?: string/)
   // The design's flow and states.
   for (const marker of ['data-schedule-days', 'data-schedule-slots', 'data-schedule-form', 'data-schedule-confirm', 'data-schedule-done']) {
