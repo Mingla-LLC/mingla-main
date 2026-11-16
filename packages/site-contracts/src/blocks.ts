@@ -19,8 +19,12 @@ import {
   boundedText,
   isCanonicalMinglaHref,
   isIanaTimeZone,
+  type ActionIntent,
+  isMinglaActionHref,
   isRegionCityTimeZone,
   isSafeHref,
+  type MinglaActionScope,
+  offersBookingOrPayment,
   plainObject,
   UUID_RE,
 } from "./safety.ts";
@@ -29,6 +33,14 @@ export type FieldSpec =
   | { kind: "text"; max: number; required?: boolean; label: string }
   | { kind: "href"; required?: boolean; label: string }
   | { kind: "mingla_href"; required?: boolean; label: string }
+  /*
+   * #4453 PR 2 — a BUTTON link (isMinglaActionHref). `booking: true` (and
+   * every action field on a BOOKING_BLOCK_TYPES block) is always a booking
+   * action, locked to this site's pages and this brand's Mingla routes.
+   * Otherwise the button is a booking action when its label (`labelField`)
+   * reads as booking or paying, and informational when it doesn't.
+   */
+  | { kind: "action_href"; booking?: true; labelField?: string; required?: boolean; label: string }
   /** A link to one of THIS artifact's media records (checked against the manifest). */
   | { kind: "media_url"; required?: boolean; label: string }
   /** #2829 W6 — a video this artifact carries (a file video or a stream video). */
@@ -66,7 +78,7 @@ const eyebrow: FieldSpec = { kind: "text", max: 120, label: "Small line above th
 const heading = (required = false): FieldSpec => ({ kind: "text", max: 120, required, label: "Heading" });
 const ctaPair = {
   cta_label: { kind: "text", max: 80, label: "Button label" },
-  cta_href: { kind: "href", label: "Button link" },
+  cta_href: { kind: "action_href", labelField: "cta_label", label: "Button link" },
 } as const satisfies Record<string, FieldSpec>;
 const menuSections: FieldSpec = {
   kind: "list",
@@ -128,7 +140,7 @@ export const BLOCK_CATALOG = {
         label: "Buttons",
         item: {
           label: { kind: "text", max: 80, required: true, label: "Label" },
-          href: { kind: "href", required: true, label: "Link" },
+          href: { kind: "action_href", booking: true, required: true, label: "Link" },
         },
       },
     },
@@ -173,7 +185,7 @@ export const BLOCK_CATALOG = {
       heading: heading(true),
       body: { kind: "text", max: 500, label: "Sentence" },
       label: { kind: "text", max: 80, required: true, label: "Button label" },
-      href: { kind: "href", required: true, label: "Button link" },
+      href: { kind: "action_href", labelField: "label", required: true, label: "Button link" },
     },
   },
   offering_grid: {
@@ -206,9 +218,9 @@ export const BLOCK_CATALOG = {
        */
       intro: { kind: "text", max: 500, label: "Line under the heading" },
       cta_label: { kind: "text", max: 80, label: "Button label" },
-      cta_href: { kind: "href", label: "Button link" },
+      cta_href: { kind: "action_href", booking: true, label: "Button link" },
       empty_cta_label: { kind: "text", max: 80, label: "Button when there is nothing to show" },
-      empty_cta_href: { kind: "href", label: "Its link" },
+      empty_cta_href: { kind: "action_href", booking: true, label: "Its link" },
       /*
        * The original (v1) grid: offerings chosen by id with their title and
        * link resolved at publish. Kept so earlier publications and gögi's
@@ -247,7 +259,7 @@ export const BLOCK_CATALOG = {
       eyebrow,
       heading: heading(),
       label: { kind: "text", max: 80, required: true, label: "Button label" },
-      href: { kind: "href", required: true, label: "Button link" },
+      href: { kind: "action_href", labelField: "label", required: true, label: "Button link" },
     },
   },
   menu_board: {
@@ -295,7 +307,7 @@ export const BLOCK_CATALOG = {
       eyebrow,
       group_heading: { kind: "text", max: 120, label: "Heading over a row of films" },
       group_cta_label: { kind: "text", max: 80, label: "Button under a row of films" },
-      group_cta_href: { kind: "href", label: "Button link under a row of films" },
+      group_cta_href: { kind: "action_href", labelField: "group_cta_label", label: "Button link under a row of films" },
       heading: heading(),
       caption: { kind: "text", max: 600, label: "Caption" },
       video_url: { kind: "video_url", required: true, label: "Film" },
@@ -416,7 +428,7 @@ export const BLOCK_CATALOG = {
       heading: heading(true),
       body: { kind: "text", max: 500, label: "Sentence" },
       label: { kind: "text", max: 80, required: true, label: "Button label" },
-      href: { kind: "href", required: true, label: "Button link" },
+      href: { kind: "action_href", labelField: "label", required: true, label: "Button link" },
     },
   },
   divider: { label: "Divider", description: "A thin line.", pageKinds: ANY_PAGE, fields: {} },
@@ -666,9 +678,35 @@ export type BlockValidationContext = {
   videoUrls?: ReadonlySet<string>;
   /** Validates one full media record and that it belongs to this artifact. */
   assertMedia: (value: unknown) => void;
+  /*
+   * #4453 PR 2 — this site's brand, pages and contact details. With it, every
+   * `action_href` must pass isMinglaActionHref. Without it (an artifact
+   * published before the booking lock) an action link is held to isSafeHref,
+   * so a site already live keeps serving until its next publish.
+   */
+  action?: MinglaActionScope;
 };
 
-function fieldOk(spec: FieldSpec, value: unknown, ctx: BlockValidationContext): boolean {
+/** #4453 PR 2 — blocks whose every button is a booking action (offerings and booking blocks). */
+export const BOOKING_BLOCK_TYPES: readonly string[] = ["offering_grid", "offering_history", "venue_reservation", "menu_board"];
+
+/** Whether one action field on one block (or list row) books/pays or only informs. */
+export function actionIntentFor(
+  blockType: string,
+  spec: Extract<FieldSpec, { kind: "action_href" }>,
+  row: Record<string, unknown>,
+): ActionIntent {
+  if (spec.booking || BOOKING_BLOCK_TYPES.includes(blockType)) return "booking";
+  return spec.labelField && offersBookingOrPayment(row[spec.labelField]) ? "booking" : "informational";
+}
+
+function fieldOk(
+  spec: FieldSpec,
+  value: unknown,
+  ctx: BlockValidationContext,
+  row: Record<string, unknown> = {},
+  blockType = "",
+): boolean {
   const absent = value === undefined || value === null;
   switch (spec.kind) {
     case "text":
@@ -677,6 +715,9 @@ function fieldOk(spec: FieldSpec, value: unknown, ctx: BlockValidationContext): 
       return absent ? spec.required !== true : isSafeHref(value);
     case "mingla_href":
       return absent ? spec.required !== true : isCanonicalMinglaHref(value);
+    case "action_href":
+      if (absent) return spec.required !== true;
+      return ctx.action ? isMinglaActionHref(value, ctx.action, actionIntentFor(blockType, spec, row)) : isSafeHref(value);
     case "media_url":
       return absent ? spec.required !== true : isSafeHref(value) && ctx.mediaUrls.has(value);
     case "video_url":
@@ -725,7 +766,7 @@ function fieldOk(spec: FieldSpec, value: unknown, ctx: BlockValidationContext): 
         if (!plainObject(row)) return false;
         const keys = Object.keys(spec.item);
         if (Object.keys(row).some((key) => !keys.includes(key))) return false;
-        return keys.every((key) => fieldOk(spec.item[key]!, row[key], ctx));
+        return keys.every((key) => fieldOk(spec.item[key]!, row[key], ctx, row, blockType));
       });
   }
 }
@@ -745,7 +786,7 @@ export function assertSiteBlock(value: unknown, ctx: BlockValidationContext): as
     throw new Error("ARTIFACT_BLOCK_TYPE_MISMATCH");
   }
   for (const [key, field] of Object.entries(spec.fields)) {
-    if (!fieldOk(field, value[key], ctx)) throw new Error(`ARTIFACT_BLOCK_CONTENT_MISMATCH:${value.type}.${key}`);
+    if (!fieldOk(field, value[key], ctx, value, value.type)) throw new Error(`ARTIFACT_BLOCK_CONTENT_MISMATCH:${value.type}.${key}`);
   }
   if (value.type === "offering_grid") assertOfferingGridSource(value);
   if (value.type === "testimonials") assertTestimonialsSource(value);
@@ -792,6 +833,36 @@ function assertOfferingGridSource(block: Record<string, unknown>): void {
   if (live === legacy || (legacy && liveFieldsPresent)) {
     throw new Error("ARTIFACT_BLOCK_CONTENT_MISMATCH:offering_grid.source");
   }
+}
+
+/** #4453 PR 2 — one action link found in a block: its field ("ctas[1].href") and value. */
+export type BlockActionLink = { field: string; href: unknown; intent: ActionIntent };
+
+/**
+ * Every `action_href` value a block carries, nested lists included (absent
+ * fields are skipped). Takes the catalogue shape, so it reads a v2 block and
+ * a Studio block alike (their action field names are the same).
+ */
+export function blockActionLinks(block: { type?: unknown; blockType?: unknown; [key: string]: unknown }): BlockActionLink[] {
+  const type = typeof block.type === "string" ? block.type : block.blockType;
+  if (!isBlockType(type)) return [];
+  const out: BlockActionLink[] = [];
+  const walk = (fields: Readonly<Record<string, FieldSpec>>, row: Record<string, unknown>, prefix: string): void => {
+    for (const [key, spec] of Object.entries(fields)) {
+      const value = row[key];
+      if (spec.kind === "action_href") {
+        if (value !== undefined && value !== null && value !== "") {
+          out.push({ field: `${prefix}${key}`, href: value, intent: actionIntentFor(type, spec, row) });
+        }
+      } else if (spec.kind === "list" && Array.isArray(value)) {
+        value.forEach((item, index) => {
+          if (plainObject(item)) walk(spec.item, item, `${prefix}${key}[${index}].`);
+        });
+      }
+    }
+  };
+  walk(BLOCK_CATALOG[type].fields, block, "");
+  return out;
 }
 
 /** The field names of a block type (Studio drift test, Ari schemas). */

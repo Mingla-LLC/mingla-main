@@ -30,8 +30,9 @@ import {
   workLogCitesProblem,
   type WorkLogCite,
 } from "../contracts/generated/ariToolSchemas.ts";
-import { BLOCK_CATALOG, isBlockType, type FieldSpec } from "../contracts/generated/blocks.ts";
-import { buildClaimEvidence, claimSentence, unbackedClaims, type ClaimOffering } from "../contracts/generated/claims.ts";
+import { BLOCK_CATALOG, blockActionLinks, isBlockType, type FieldSpec } from "../contracts/generated/blocks.ts";
+import { BOOKING_THROUGH_ENQUIRY, bookingThroughEnquiryFields, buildClaimEvidence, claimSentence, ENQUIRY_LABEL_FIELDS, offersBooking, unbackedClaims, type ClaimOffering } from "../contracts/generated/claims.ts";
+import { actionHrefProblem, normalizeBrandPhone, type MinglaActionScope } from "../contracts/generated/safety.ts";
 import { ariDesignVariants, designFor, designFontSlots, DESIGNS, isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
 import { assertOwnerTokenOverrides, resolveTokens, type OwnerTokenOverrides } from "../contracts/generated/tokens.ts";
 import { nearestPassingShade, readabilityWarnings, warningSentence } from "../contracts/generated/readability.ts";
@@ -62,7 +63,19 @@ function refuse(code: string, extra: Record<string, unknown> = {}): never {
 
 /** The Mingla facts Core signed into the request (copy is checked against these). */
 export type AriEvidence = {
-  brand: { id: string; name: string | null; description: string | null; city: string | null };
+  brand: {
+    id: string;
+    name: string | null;
+    description: string | null;
+    city: string | null;
+    /** #4453 PR 2 — the brand's Mingla slug and own contact details (booking lock). */
+    slug?: string | null;
+    contact_email?: string | null;
+    contact_phone?: string | null;
+    social_handles?: string[];
+  };
+  /** #4453 PR 2 — Core advertises that its evidence carries the brand's identity (deploy-order handshake). */
+  booking_identity?: boolean;
   offerings: Array<ClaimOffering & { id: string; kind?: string | null }>;
 };
 
@@ -80,13 +93,30 @@ export type AriActionContext = {
 
 /** Validates the Core-signed evidence's shape (anything else is treated as no evidence). */
 export function parseAriEvidence(value: unknown, brandId: string): AriEvidence | null {
+  const evidence = parseAriEvidenceBody(value, brandId);
+  if (evidence && (value as AnyDoc).booking_identity === 1) evidence.booking_identity = true;
+  return evidence;
+}
+
+function parseAriEvidenceBody(value: unknown, brandId: string): AriEvidence | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as AnyDoc;
   if (!raw.brand || raw.brand.id !== brandId || !Array.isArray(raw.offerings)) return null;
   const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : null);
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   return {
-    brand: { id: brandId, name: text(raw.brand.name, 200), description: text(raw.brand.description, 5000), city: text(raw.brand.city, 200) },
+    brand: {
+      id: brandId,
+      name: text(raw.brand.name, 200),
+      description: text(raw.brand.description, 5000),
+      city: text(raw.brand.city, 200),
+      slug: typeof raw.brand.slug === "string" && /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i.test(raw.brand.slug) ? raw.brand.slug : null,
+      contact_email: text(raw.brand.contact_email, 254),
+      contact_phone: text(raw.brand.contact_phone, 80),
+      social_handles: Array.isArray(raw.brand.social_handles)
+        ? raw.brand.social_handles.filter((handle: unknown): handle is string => typeof handle === "string" && /^[a-z0-9._-]{1,100}$/.test(handle)).slice(0, 20)
+        : [],
+    },
     offerings: raw.offerings.slice(0, 500).filter((row: AnyDoc) => row && typeof row.id === "string" && UUID.test(row.id)).map((row: AnyDoc) => ({
       id: row.id.toLowerCase(),
       kind: text(row.kind, 20),
@@ -351,11 +381,55 @@ function blockTexts(block: AnyDoc): string[] {
   return texts;
 }
 
+/*
+ * #4453 PR 2 (booking lock) — Ari's blocks: every BOOKING button must go to
+ * this brand's Mingla pages, a page of this site, or its own mailto/tel, and
+ * no button may link a third-party booking site
+ * (VALIDATION_FAILED names each field), and no question form may offer a
+ * booking (BOOKING_THROUGH_ENQUIRY). Whether a same-site page exists is
+ * checked at publish, against the whole page tree.
+ */
+function ariActionScope(ctx: AriActionContext): MinglaActionScope {
+  const brand = ctx.evidence?.brand;
+  // When Core advertises identity (booking_identity) and the brand is
+  // missing, fail closed: links that need it (its Mingla pages,
+  // checkout, email, phone, WhatsApp) are refused (`brand_unknown`).
+  return {
+    brandSlug: brand?.slug ?? null,
+    sitePaths: null,
+    contactEmail: brand?.contact_email ?? null,
+    contactPhone: normalizeBrandPhone(brand?.contact_phone ?? null),
+    checkoutEventIds: new Set((ctx.evidence?.offerings ?? []).filter((row) => row.kind === "event").map((row) => row.id)),
+    socialHandles: brand?.social_handles?.length ? new Set(brand.social_handles) : null,
+    // An older Core sends no identity: identity checks are shape-only then.
+    identityUnchecked: ctx.evidence?.booking_identity !== true,
+  };
+}
+
+export function assertAriBookingLock(ctx: AriActionContext, blocks: readonly AnyDoc[], path: string): void {
+  const scope = ariActionScope(ctx);
+  const problems: string[] = [];
+  blocks.forEach((block, index) => {
+    for (const link of blockActionLinks(block)) {
+      const problem = actionHrefProblem(link.href, scope, link.intent);
+      if (problem) {
+        problems.push(link.intent === "booking"
+          ? `${path}[${index}].${link.field} is a booking button: it must link to this website or this brand's own Mingla page (${problem})`
+          : `${path}[${index}].${link.field} may link to this website, this brand's Mingla pages, a map, its social profiles, a site file or its own WhatsApp, email or phone, never a booking site (${problem})`);
+      }
+    }
+  });
+  if (problems.length) refuse("VALIDATION_FAILED", { problems: problems.slice(0, 20) });
+  const enquiry = blocks.flatMap((block, index) => bookingThroughEnquiryFields(block).map((field) => `${path}[${index}].${field}`));
+  if (enquiry.length) refuse(BOOKING_THROUGH_ENQUIRY, { problems: enquiry.slice(0, 20) });
+}
+
 async function assertBlocks(ctx: AriActionContext, blocks: unknown, design: DesignKey, path: string, ownerTexts: readonly string[]): Promise<AnyDoc[]> {
   if (!Array.isArray(blocks) || blocks.length > MAX_BLOCKS_PER_PAGE) refuse("VALIDATION_FAILED", { problems: [`${path} must be a list of at most ${MAX_BLOCKS_PER_PAGE} blocks`] });
   const problems = blocks.flatMap((block, index) => ariBlockProblems(block, design, `${path}[${index}]`));
   if (problems.length) refuse("VALIDATION_FAILED", { problems: problems.slice(0, 20) });
   const typed = blocks as AnyDoc[];
+  assertAriBookingLock(ctx, typed, path);
   const images = typed.flatMap((block) => blockMedia(block).images);
   const videos = typed.flatMap((block) => blockMedia(block).videos);
   const heroVideos = typed.flatMap((block) => blockMedia(block).heroVideos);
@@ -647,6 +721,10 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
           if (spec?.kind === "text" && value.length > spec.max) refuse("VALIDATION_FAILED", { problems: [`edits[${n}].value is longer than ${spec.max} characters`] });
           if (spec?.kind === "rich_text") block.content = plainTextToLexical(value);
           else block[field] = value;
+          // #4453 PR 2 — a question form's labels never offer a booking.
+          if (ENQUIRY_LABEL_FIELDS[type]?.includes(field) && offersBooking(value)) {
+            refuse(BOOKING_THROUGH_ENQUIRY, { problems: [`edits[${n}].value offers a booking on a question form`] });
+          }
         }
         texts.push(value);
       }
@@ -864,4 +942,6 @@ export const ARI_REFUSAL_CODES = new Set([
   "OWNER_SOURCE_REQUIRED", "REVIEW_SOURCE_MISMATCH", "PAGE_NOT_FOUND", "PATH_COLLISION", "OFFERING_NOT_FOUND",
   "NOT_FOUND", "FORBIDDEN", "QUOTE_REQUIRED", "TITLE_REQUIRED", "SLUG_TAKEN", "CONTENT_LIMIT_EXCEEDED",
   "REVIEW_NOT_CONFIRMED",
+  // #4453 PR 2 — a question form may not take bookings.
+  "BOOKING_THROUGH_ENQUIRY",
 ]);

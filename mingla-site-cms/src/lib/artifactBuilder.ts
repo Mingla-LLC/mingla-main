@@ -27,6 +27,8 @@ import { ownerFontsOf, ownerTokensOf } from "./siteLook";
 import { fileVideoIntegrity, fitsHero, isFileVideoRecord, isStreamVideoRecord, streamVideoRef } from "./siteVideoRefs";
 import type { FileVideoIntegrity, StreamVideoRef } from "../contracts/generated/video.ts";
 import { offeringCoverRenditions, MAX_COVER_SOURCE_BYTES, type CoverRenditionDeps } from "./offeringCoverRenditions";
+import type { ArtifactActionScope } from "../contracts/generated/artifactV2.ts";
+import { assertNoOutboundActionLinks } from "./bookingLock";
 
 /*
  * #3149 wave 4 — where Mingla's own guest-facing flows live. Named once so a
@@ -233,6 +235,24 @@ export async function buildPublicationArtifact(
     fontPipeline?: FontPipelineDeps;
     /** #2829 W7c — where offering covers are read and their renditions kept (tests pass fakes). */
     coverRenditions?: CoverRenditionDeps;
+    /**
+     * #4453 PR 2 (booking lock) — the brand Core signed into this publish
+     * (slug, contact email, phone). Frozen into the artifact as
+     * `action_scope`, so every button is checked against THIS brand here and
+     * again by the runtime's validator.
+     */
+    actionScope?: ArtifactActionScope | null;
+    /**
+     * #4453 PR 2 — refuse the build with OUTBOUND_ACTION_LINK when a button
+     * points outside Mingla. Set by publish; a private preview still renders.
+     */
+    enforceActionLinks?: boolean;
+    /**
+     * #4453 PR 2 — the Core advertised `booking_identity` (it signs the
+     * brand's identity in). Without it the identity checks are shape-only,
+     * so Studio and Core may deploy in either order.
+     */
+    coreSendsIdentity?: boolean;
   },
 ): Promise<BuiltPublication> {
   const scopedReq = await tenantRequest(req, input.tenant);
@@ -1327,6 +1347,14 @@ export async function buildPublicationArtifact(
   artifact.fonts = fonts.slots;
   artifact.font_assets = fonts.assets;
   artifact.font_fallbacks = fonts.fallbacks;
+  if (input.actionScope) artifact.action_scope = input.actionScope;
+  /*
+   * #4453 PR 2 (booking lock, D5) — a booking button outside Mingla, or any
+   * button to a booking site or redirector, blocks the publish before
+   * anything is written. The brand-identity part runs only when Core
+   * advertised `booking_identity` (see bookingLock.ts), failing closed then.
+   */
+  if (input.enforceActionLinks) assertNoOutboundActionLinks(artifact, { coreSendsIdentity: input.coreSendsIdentity === true });
   const serialized = stable(artifact);
   // The public contract (assertArtifactV2) is enforced where it always was:
   // the runtime's candidate probe validates these exact bytes before Core

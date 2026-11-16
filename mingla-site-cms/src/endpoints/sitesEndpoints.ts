@@ -67,6 +67,8 @@ import {
 import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
+import { actionScopeFromCore, coreSendsBookingIdentity, OutboundActionLinkError } from "../lib/bookingLock";
+import { BOOKING_LINK_UNVERIFIED_MESSAGE, OUTBOUND_ACTION_LINK_MESSAGE } from "../contracts/generated/publishChecks.ts";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return sitesJsonResponse(data, status, headers);
@@ -125,6 +127,9 @@ function safeFailure(error: unknown, returnUrl?: string) {
       "IDEMPOTENCY_CONFLICT",
       // #2829 — a named refusal, never a truncated site.
       "PAGE_LIMIT_EXCEEDED",
+      // #4453 PR 2 — a button points outside Mingla (the publish is blocked).
+      "OUTBOUND_ACTION_LINK",
+      "BOOKING_LINK_UNVERIFIED",
       "PATH_COLLISION",
       // #2829 W9b — a first publish waits until the design checks have run.
       "DESIGN_CHECKS_REQUIRED",
@@ -159,12 +164,30 @@ function safeFailure(error: unknown, returnUrl?: string) {
               ? "This is still used in your draft website. Take it off the page or entry that uses it, then remove it."
               : code === "MEDIA_IN_USE_LIVE"
                 ? "Your live website (or a version you can restore) still shows this. Publish a version without it, then remove it."
-                : "Website tools are temporarily unavailable.",
+                // #4453 PR 2 — the booking lock (D5).
+                : code === "OUTBOUND_ACTION_LINK"
+                  ? OUTBOUND_ACTION_LINK_MESSAGE
+                  : code === "BOOKING_LINK_UNVERIFIED"
+                    ? BOOKING_LINK_UNVERIFIED_MESSAGE
+                  : "Website tools are temporarily unavailable.",
         retryable: [
           "MEDIA_PROCESSING",
           "SERVICE_TEMPORARILY_UNAVAILABLE",
+          "BOOKING_LINK_UNVERIFIED",
         ].includes(code),
         ...(returnUrl ? { return_url: returnUrl } : {}),
+        // #4453 PR 2 — which buttons to change (page, block, field; never the link itself).
+        ...(error instanceof OutboundActionLinkError
+          ? {
+              links: error.links.slice(0, 20).map((link) => ({
+                page_path: link.pagePath,
+                block_index: link.blockIndex,
+                block_type: link.blockType,
+                field: link.field,
+                problem: link.problem,
+              })),
+            }
+          : {}),
       },
     },
     code === "FORBIDDEN" || code === "SESSION_EXPIRED"
@@ -610,6 +633,10 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 sourceRevisionId: revisionId,
                 sourceDigest,
                 generatedAt,
+                // #4453 PR 2 — Core's signed brand; every button must resolve to it.
+                actionScope: actionScopeFromCore(body.action_scope),
+                enforceActionLinks: true,
+                coreSendsIdentity: coreSendsBookingIdentity(body),
               });
           await req.payload.update({
             collection: "publication-jobs",
@@ -680,6 +707,8 @@ async function publish(req: PayloadRequest): Promise<Response> {
         "PAGE_LIMIT_EXCEEDED",
         "PATH_COLLISION",
         "DESIGN_CHECKS_REQUIRED",
+        "OUTBOUND_ACTION_LINK",
+        "BOOKING_LINK_UNVERIFIED",
       ].includes(error.message);
     let failureRecorded = false;
     if (definitiveFailure && callbackContext) {
@@ -743,6 +772,8 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 "PAGE_LIMIT_EXCEEDED",
                 "PATH_COLLISION",
                 "DESIGN_CHECKS_REQUIRED",
+                "OUTBOUND_ACTION_LINK",
+                "BOOKING_LINK_UNVERIFIED",
               ].includes(error.message)
                 ? error.message
                 : "SERVICE_TEMPORARILY_UNAVAILABLE",

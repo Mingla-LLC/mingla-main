@@ -256,6 +256,8 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
         // Only pages that now exist at their address (what Core may tick).
         pages: result.pages.filter((key) => idBySlug.has(slugOf(key))),
         created,
+        // #4453 PR 2 — planned pages left out and why (the plan tells the owner).
+        left_out: result.left_out,
         draft_only: true,
       },
     }, 200);

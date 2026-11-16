@@ -7,6 +7,8 @@
  * stored run through this, so they give the same count and the same
  * sentences (each already names its page, "(Home, Call to action block 2)").
  */
+import { blockActionLinks } from "./blocks.ts";
+import { actionHrefProblem, type ActionHrefProblem, type ActionIntent, type MinglaActionScope } from "./safety.ts";
 
 export type PublishFinding = {
   /** The check it came from ("truth", "links"…). */
@@ -55,4 +57,86 @@ export function publishFindings(checks: unknown): PublishFinding[] {
 /** "1 thing to look at" / "3 things to look at". */
 export function publishFindingsCount(count: number): string {
   return `${count} ${count === 1 ? "thing" : "things"} to look at`;
+}
+
+/*
+ * #4453 PR 2 (booking lock, D5) — the one publish check that BLOCKS: a booking
+ * button that points outside Mingla, or any button to a third-party booking
+ * site (informational buttons may open maps, socials and files). Bookings and payments on a Mingla site go
+ * through Mingla, so a single action link that fails isMinglaActionHref stops
+ * the publish with this code, and the last good site stays live.
+ *
+ * invariant: I-SITES-ACTIONS-RESOLVE-TO-MINGLA (declared in safety.ts; this
+ * check's test is mingla-site-cms/src/lib/bookingLock.issue4453.test.ts).
+ */
+export const OUTBOUND_ACTION_LINK = "OUTBOUND_ACTION_LINK" as const;
+export const OUTBOUND_ACTION_LINK_MESSAGE =
+  "This button points outside Mingla. Bookings and payments on your site go through Mingla. Change the link to one of your Mingla pages.";
+
+/*
+ * The publish could not confirm the brand (Core sent no usable slug), so the
+ * buttons that need it (a Mingla brand page, checkout, the brand's email,
+ * phone or WhatsApp) fail closed. Retryable: nothing on the site is wrong.
+ */
+export const BOOKING_LINK_UNVERIFIED = "BOOKING_LINK_UNVERIFIED" as const;
+export const BOOKING_LINK_UNVERIFIED_MESSAGE =
+  "We couldn't confirm your brand's Mingla pages and contact details, so buttons that link to them can't be published right now. Nothing on your site changed. Try again in a few minutes.";
+
+/** One button that fails the booking lock: where it is and why. */
+export type OutboundActionLink = {
+  /** The page address ("" is Home), or null for the header button. */
+  readonly pagePath: string | null;
+  /** The block's position on its page, or null for the header button. */
+  readonly blockIndex: number | null;
+  readonly blockType: string | null;
+  /** The field ("href", "ctas[0].href", "header_cta.href"). */
+  readonly field: string;
+  readonly href: string;
+  /** Booking buttons must resolve to Mingla; informational ones may also open maps, socials, files. */
+  readonly intent: ActionIntent;
+  readonly problem: ActionHrefProblem;
+};
+
+type ScannedPage = {
+  path: string;
+  blocks?: ReadonlyArray<Record<string, unknown>> | null;
+};
+
+/**
+ * Every action link in a site that the booking lock refuses, in page order,
+ * then the header button. Pages are given by address ("" is Home); blocks may
+ * be v2 blocks (`type`) or Studio blocks (`blockType`).
+ */
+export function outboundActionLinks(input: {
+  pages: readonly ScannedPage[];
+  headerCtaHref?: unknown;
+  scope: MinglaActionScope | null;
+}): OutboundActionLink[] {
+  const out: OutboundActionLink[] = [];
+  const asText = (value: unknown): string => (typeof value === "string" ? value : String(value)).slice(0, 2048);
+  for (const page of input.pages) {
+    (page.blocks ?? []).forEach((block, blockIndex) => {
+      for (const link of blockActionLinks(block)) {
+        const problem = actionHrefProblem(link.href, input.scope, link.intent);
+        if (problem) {
+          out.push({
+            pagePath: page.path,
+            blockIndex,
+            blockType: String(block.type ?? block.blockType),
+            field: link.field,
+            href: asText(link.href),
+            intent: link.intent,
+            problem,
+          });
+        }
+      }
+    });
+  }
+  if (input.headerCtaHref !== undefined && input.headerCtaHref !== null && input.headerCtaHref !== "") {
+    const problem = actionHrefProblem(input.headerCtaHref, input.scope);
+    if (problem) {
+      out.push({ pagePath: null, blockIndex: null, blockType: null, field: "header_cta.href", href: asText(input.headerCtaHref), intent: "booking", problem });
+    }
+  }
+  return out;
 }

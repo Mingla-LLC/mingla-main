@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v37"); // #3355 + #4389 merge: understand-first prompt with the brand setup lines
+    assertEquals(PROMPT_VERSION, "v38"); // #4453 PR 2: booking lock website rules on top of the #3355 + #4389 prompt
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [
