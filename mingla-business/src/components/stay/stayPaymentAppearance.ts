@@ -8,6 +8,8 @@
 import type { ThemePalette } from "@mingla/offering-rendering";
 import {
   neutralControl,
+  paletteIsDark,
+  paymentFieldBackground,
   statusOn,
 } from "@mingla/offering-rendering/themePalette";
 
@@ -31,12 +33,12 @@ export const STAY_PAYMENT_FONT =
 export const stayPaymentAppearance = (
   palette: ThemePalette,
 ): StayPaymentAppearance => {
-  const dark = palette.primaryText === "#ffffff";
+  const dark = paletteIsDark(palette);
   return {
     theme: dark ? "night" : "stripe",
     variables: {
       colorPrimary: palette.accent,
-      colorBackground: dark ? "#16161a" : "#ffffff",
+      colorBackground: paymentFieldBackground(palette),
       colorText: palette.primaryText,
       colorDanger: statusOn(palette).error.text,
       fontFamily: STAY_PAYMENT_FONT,

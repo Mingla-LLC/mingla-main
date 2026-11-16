@@ -574,3 +574,16 @@ const LIGHT_STATUS: StatusTones = {
 /** Error / success / warning colours readable on this palette's page. */
 export const statusOn = (palette: ThemePalette): StatusTones =>
   isDarkPalette(palette) ? DARK_STATUS : LIGHT_STATUS;
+
+/** issue #4420 wave 2 — true when the page is dark (white primary text). */
+export const paletteIsDark = (palette: ThemePalette): boolean =>
+  isDarkPalette(palette);
+
+/**
+ * issue #4420 wave 2 (D-S1) — the field background an embedded payment form
+ * (Stripe Payment Element) uses on this page: near-black on a dark page,
+ * white on a light one. Opaque, so card digits never sit on a translucent
+ * card over a photo.
+ */
+export const paymentFieldBackground = (palette: ThemePalette): string =>
+  isDarkPalette(palette) ? "#16161a" : "#ffffff";
