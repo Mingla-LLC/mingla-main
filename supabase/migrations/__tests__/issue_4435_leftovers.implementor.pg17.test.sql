@@ -9,7 +9,7 @@
 -- MINGLA-INVARIANT: I-4436-UNUSED-GROUP-FIELDS-SERVER-ONLY | issue #4436 | app clients cannot change is_active, archived_at, participant_prefs, deck_version or deck_params_hash; the fields the live apps write still work and server functions are unaffected (L-FIELDS)
 -- MINGLA-INVARIANT: I-4435-ACCEPT-SIGNED-IN-ONLY | issue #4435 | accept_session_with_prefs is not executable without signing in (L-GRANT)
 -- MINGLA-INVARIANT: I-4435-SOCIAL-REALTIME-PUBLISHED-ONLY | issue #4435 | the app's social realtime channels bind only tables in supabase_realtime (L-REALTIME)
--- MINGLA-INVARIANT: I-4435-SESSION-NOTICE-CHECK | issue #4435 | the session notice check counts members and people who left in the last 10 minutes, needs the sender to have been accepted, and is service-role only (L-NOTICE)
+-- MINGLA-INVARIANT: I-4435-SESSION-NOTICE-CHECK | issue #4435 | the session notice check counts members and people who left in the last 10 minutes; a sender must have been accepted and, if gone, have left on their own (never removed); service-role only (L-NOTICE)
 
 BEGIN;
 
@@ -304,9 +304,10 @@ BEGIN
   PERFORM pg_temp.ok('L-NOTICE an outsider is not a sender', NOT (v_j ->> 'sender_member')::boolean);
   v_j := public.issue_4435_session_notice_check(v_s, pg_temp.u('a'), pg_temp.u('x'));
   PERFORM pg_temp.ok('L-NOTICE an outsider is not a recipient', NOT (v_j ->> 'recipient_member')::boolean);
-  -- the creator deletes the group (partners first, then the session)
-  DELETE FROM public.session_participants WHERE session_id = v_s AND user_id <> pg_temp.u('a');
-  DELETE FROM public.collaboration_sessions WHERE id = v_s;
+  -- the creator deletes the group the app's way (partners first, then the session)
+  PERFORM pg_temp.try_as('a', format($$DELETE FROM public.session_participants WHERE session_id = %L AND user_id <> %L$$, v_s, pg_temp.u('a')));
+  PERFORM pg_temp.try_as('a', format($$DELETE FROM public.collaboration_sessions WHERE id = %L$$, v_s));
+  PERFORM pg_temp.ok('L-NOTICE fixture: the group is gone', NOT EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s));
   v_j := public.issue_4435_session_notice_check(v_s, pg_temp.u('a'), pg_temp.u('b'));
   PERFORM pg_temp.ok('L-NOTICE right after a delete, the members are still known and the group is gone',
     NOT (v_j ->> 'session_exists')::boolean AND (v_j ->> 'sender_member')::boolean AND (v_j ->> 'recipient_member')::boolean);
@@ -326,6 +327,22 @@ BEGIN
     AND has_function_privilege('service_role', 'public.issue_4435_session_notice_check(uuid, uuid, uuid)', 'EXECUTE')
     AND NOT has_table_privilege('authenticated', 'public.issue_4435_member_departures', 'SELECT')
     AND NOT has_table_privilege('anon', 'public.issue_4435_member_departures', 'SELECT'));
+  -- left on their own vs removed: only the first still counts as a sender
+  v_s2 := pg_temp.mk_group('notice3', ARRAY['a','b','c']);
+  PERFORM pg_temp.try_as('a', format($$SELECT public.remove_group_member(%L, %L)$$, pg_temp.conv_of(v_s2), pg_temp.u('b')));
+  PERFORM pg_temp.try_as('c', format($$SELECT public.leave_group_conversation(%L)$$, pg_temp.conv_of(v_s2)));
+  PERFORM pg_temp.ok('L-NOTICE the departure record tells removed (b) from left (c)',
+    (SELECT NOT left_voluntarily AND was_accepted FROM public.issue_4435_member_departures WHERE session_id = v_s2 AND user_id = pg_temp.u('b'))
+    AND (SELECT left_voluntarily AND was_accepted FROM public.issue_4435_member_departures WHERE session_id = v_s2 AND user_id = pg_temp.u('c')));
+  v_j := public.issue_4435_session_notice_check(v_s2, pg_temp.u('b'), pg_temp.u('a'));
+  PERFORM pg_temp.ok('L-NOTICE a removed member cannot send to the group', NOT (v_j ->> 'sender_member')::boolean);
+  v_j := public.issue_4435_session_notice_check(v_s2, pg_temp.u('c'), pg_temp.u('a'));
+  PERFORM pg_temp.ok('L-NOTICE someone who just left on their own still can (the leave notice)', (v_j ->> 'sender_member')::boolean);
+  v_j := public.issue_4435_session_notice_check(v_s2, pg_temp.u('a'), pg_temp.u('b'));
+  PERFORM pg_temp.ok('L-NOTICE a removed member can still be told (the removal notice)', (v_j ->> 'recipient_member')::boolean);
+  DELETE FROM public.session_participants WHERE session_id = v_s2 AND user_id = pg_temp.u('a');
+  PERFORM pg_temp.ok('L-NOTICE a server-side delete is not voluntary',
+    NOT (SELECT left_voluntarily FROM public.issue_4435_member_departures WHERE session_id = v_s2 AND user_id = pg_temp.u('a')));
   -- old rows are pruned on the next departure
   v_s2 := pg_temp.mk_group('notice2', ARRAY['a','b']);
   UPDATE public.issue_4435_member_departures SET departed_at = now() - interval '2 days' WHERE session_id = v_s;

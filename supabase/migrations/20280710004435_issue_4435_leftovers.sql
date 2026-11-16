@@ -16,13 +16,15 @@
 --   L3. accept_session_with_prefs needs a signed-in caller at the grant level
 --       too (it already refused one inside).
 --   L4. A short record of who left a group, kept for a day, which the server
---       reads to check session notices (service role only).
+--       reads to check session notices (service role only). It tells a
+--       member who left on their own from one who was removed: only someone
+--       who left on their own still counts as a sender for a few minutes.
 --
 -- Invariants (declared in
 -- supabase/migrations/__tests__/issue_4435_leftovers.implementor.pg17.test.sql):
 --   I-4435-CREATOR-PASSES-ON-LEAVE, I-4435-ONE-HEIR-RULE,
 --   I-4436-UNUSED-GROUP-FIELDS-SERVER-ONLY, I-4435-ACCEPT-SIGNED-IN-ONLY,
---   I-4435-SESSION-NOTICE-CHECK.
+--   I-4435-SESSION-NOTICE-CHECK, I-4435-SOCIAL-REALTIME-PUBLISHED-ONLY.
 --
 -- Replaced bodies are copied from their latest definitions and change only the
 -- lines named here.
@@ -153,10 +155,14 @@ GRANT EXECUTE ON FUNCTION public.accept_session_with_prefs(
 ) TO authenticated, service_role;
 
 -- L4a. Who left a group recently (kept for a day). No app access.
+-- left_voluntarily: the row was deleted by the person themself (leave, or
+-- their own row going with a group they deleted). A removal by an admin, a
+-- server job or an account deletion is not voluntary.
 CREATE TABLE IF NOT EXISTS public.issue_4435_member_departures (
   session_id uuid NOT NULL,
   user_id uuid NOT NULL,
   was_accepted boolean NOT NULL,
+  left_voluntarily boolean NOT NULL DEFAULT false,
   departed_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (session_id, user_id)
 );
@@ -169,10 +175,12 @@ GRANT SELECT ON TABLE public.issue_4435_member_departures TO service_role;
 CREATE OR REPLACE FUNCTION public.tg_issue_4435_record_departure()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
-  INSERT INTO public.issue_4435_member_departures (session_id, user_id, was_accepted, departed_at)
-  VALUES (OLD.session_id, OLD.user_id, COALESCE(OLD.has_accepted, false), now())
+  INSERT INTO public.issue_4435_member_departures (session_id, user_id, was_accepted, left_voluntarily, departed_at)
+  VALUES (OLD.session_id, OLD.user_id, COALESCE(OLD.has_accepted, false),
+          auth.uid() IS NOT DISTINCT FROM OLD.user_id AND auth.uid() IS NOT NULL, now())
   ON CONFLICT (session_id, user_id) DO UPDATE
-    SET was_accepted = EXCLUDED.was_accepted, departed_at = EXCLUDED.departed_at;
+    SET was_accepted = EXCLUDED.was_accepted, left_voluntarily = EXCLUDED.left_voluntarily,
+        departed_at = EXCLUDED.departed_at;
   DELETE FROM public.issue_4435_member_departures WHERE departed_at < now() - interval '1 day';
   RETURN OLD;
 END $$;
@@ -185,8 +193,9 @@ CREATE TRIGGER issue_4435_record_departure
 
 -- L4b. The check the server runs before a session notice an app asked for:
 -- does the session still exist, is the sender an accepted member, and is the
--- recipient a member? "Member" includes someone who left in the last 10
--- minutes (a notice sent while a group is being deleted).
+-- recipient a member? A sender may also be someone who left on their own in
+-- the last 10 minutes (a notice sent while a group is being deleted), never
+-- someone who was removed. A recipient may be anyone who left in that time.
 CREATE OR REPLACE FUNCTION public.issue_4435_session_notice_check(
   p_session_id uuid, p_sender uuid, p_recipient uuid
 ) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -197,7 +206,7 @@ CREATE OR REPLACE FUNCTION public.issue_4435_session_notice_check(
                WHERE session_id = p_session_id AND user_id = p_sender AND has_accepted = true)
       OR EXISTS (SELECT 1 FROM public.issue_4435_member_departures
                   WHERE session_id = p_session_id AND user_id = p_sender AND was_accepted
-                    AND departed_at > now() - interval '10 minutes'),
+                    AND left_voluntarily AND departed_at > now() - interval '10 minutes'),
     'recipient_member',
       EXISTS (SELECT 1 FROM public.session_participants
                WHERE session_id = p_session_id AND user_id = p_recipient)

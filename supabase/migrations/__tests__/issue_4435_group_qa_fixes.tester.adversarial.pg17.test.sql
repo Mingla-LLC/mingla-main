@@ -253,6 +253,10 @@ BEGIN
   PERFORM pg_temp.try_as('c', format($q$DELETE FROM public.session_participants WHERE session_id = %L AND user_id = %L$q$, v_s, pg_temp.u('c')));
   r := pg_temp.try_as('b', format($q$SELECT public.add_group_members(%L, ARRAY[%L]::uuid[])$q$, v_conv, pg_temp.u('c')));
   PERFORM pg_temp.ok('T-REJOIN Add people brings the person who left straight back', r = 'ok:1' AND pg_temp.accepted(v_s, 'c'));
+  -- b has been a member longest (c left and came back three times above; in
+  -- one transaction every now() is equal, so the join time is set to say so)
+  UPDATE public.session_participants SET joined_at = now() - interval '1 hour'
+   WHERE session_id = v_s AND user_id = pg_temp.u('b');
   -- the creator leaves, is re-invited, accepts: they are an ordinary member
   -- (#4435 leftovers, Seth's decision; before this it was the creator again)
   PERFORM pg_temp.try_as('a', format($q$DELETE FROM public.session_participants WHERE session_id = %L AND user_id = %L$q$, v_s, pg_temp.u('a')));
@@ -263,10 +267,9 @@ BEGIN
   r := pg_temp.try_as('a', format($q$UPDATE public.session_participants SET is_admin = false WHERE session_id = %L AND user_id = %L$q$, v_s, pg_temp.u('b')));
   PERFORM pg_temp.ok('T-REJOIN back as a member, the old creator is an ordinary member and the heir keeps the role',
     NOT public.is_session_creator(v_s, pg_temp.u('a'))
-    AND (SELECT created_by FROM public.collaboration_sessions WHERE id = v_s) IN (pg_temp.u('b'), pg_temp.u('c'))
-    AND public.is_session_creator(v_s, (SELECT created_by FROM public.collaboration_sessions WHERE id = v_s))
-    AND (SELECT sp.is_admin FROM public.session_participants sp JOIN public.collaboration_sessions cs
-          ON cs.id = sp.session_id AND cs.created_by = sp.user_id WHERE cs.id = v_s)
+    AND (SELECT created_by FROM public.collaboration_sessions WHERE id = v_s) = pg_temp.u('b')
+    AND public.is_session_creator(v_s, pg_temp.u('b'))
+    AND (SELECT is_admin FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('b'))
     AND r = 'ok:0');
 END $rejoin$;
 
