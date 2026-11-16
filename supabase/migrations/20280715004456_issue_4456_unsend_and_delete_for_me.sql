@@ -50,6 +50,9 @@ ALTER TABLE public.messages
   ADD COLUMN IF NOT EXISTS unsent_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS unsent_kind text;
 
+-- Every foreign key on a hot table has an index (#4423 W4a).
+CREATE INDEX IF NOT EXISTS messages_unsent_by_idx ON public.messages (unsent_by);
+
 ALTER TABLE public.messages DROP CONSTRAINT IF EXISTS messages_unsent_kind_check;
 ALTER TABLE public.messages ADD CONSTRAINT messages_unsent_kind_check
   CHECK (unsent_kind IS NULL OR unsent_kind IN ('sender', 'admin', 'host', 'server', 'legacy'));

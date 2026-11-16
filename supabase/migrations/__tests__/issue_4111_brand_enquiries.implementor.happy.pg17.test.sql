@@ -221,8 +221,20 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_err := SQLSTATE;
   END;
   IF v_err IS DISTINCT FROM '42501' THEN RAISE EXCEPTION 'guest_direct_message_insert_allowed:%', v_err; END IF;
-  UPDATE public.messages SET content = 'edited directly' WHERE conversation_id = v_conversation AND sender_id = v_guest;
-  DELETE FROM public.messages WHERE conversation_id = v_conversation AND sender_id = v_guest;
+  -- #4456: app clients have no privilege to change a message's text or delete
+  -- it at all now (before, the enquiry policies made these reach no row).
+  v_err := NULL;
+  BEGIN
+    UPDATE public.messages SET content = 'edited directly' WHERE conversation_id = v_conversation AND sender_id = v_guest;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLSTATE;
+  END;
+  IF v_err IS DISTINCT FROM '42501' THEN RAISE EXCEPTION 'guest_direct_message_update_allowed:%', v_err; END IF;
+  v_err := NULL;
+  BEGIN
+    DELETE FROM public.messages WHERE conversation_id = v_conversation AND sender_id = v_guest;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLSTATE;
+  END;
+  IF v_err IS DISTINCT FROM '42501' THEN RAISE EXCEPTION 'guest_direct_message_delete_allowed:%', v_err; END IF;
   v_err := NULL;
   BEGIN
     INSERT INTO public.conversations(type, linked_entity_type, brand_id, name, created_by)

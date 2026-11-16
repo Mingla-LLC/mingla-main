@@ -73,7 +73,8 @@ BEGIN
   END IF;
   BEGIN
     UPDATE public.messages SET view_once_purged_at = now() WHERE id = v_id;
-  EXCEPTION WHEN check_violation THEN v_refused := true;
+  -- #4456: refused by the column grants before the trigger.
+  EXCEPTION WHEN check_violation OR insufficient_privilege THEN v_refused := true;
   END;
   IF NOT v_refused THEN
     RAISE EXCEPTION 'V-01: a client set view_once_purged_at on its own message';
