@@ -45,6 +45,7 @@ import Animated, {
 import {
   durations,
   color,
+  radius,
   space,
   type,
 } from "../../constants/designSystem";
@@ -56,6 +57,12 @@ import {
 import { useCreateVenueListing } from "../../hooks/useVenueListings";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import {
+  DESKTOP_BEZEL_MARGIN,
+  DESKTOP_WIZARD_FORM_MAX_WIDTH,
+  DESKTOP_WIZARD_RAIL_WIDTH,
+} from "../../constants/desktopLayout";
 import {
   commitNewVenueDiscoveryRange,
   fetchVenuePipelineState,
@@ -88,6 +95,7 @@ import {
   venueWizardSteps,
 } from "./venueWizardValidation";
 import { Button } from "../ui/Button";
+import { GlassCard } from "../ui/GlassCard";
 import { IconChrome } from "../ui/IconChrome";
 import { Stepper, type StepperStep } from "../ui/Stepper";
 // META-ORCH-1290 Leg B (D-1) — the wizard NEVER mounts VenueDeckReadinessSetup:
@@ -187,6 +195,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   onClose,
 }) => {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const { user } = useAuth();
   // META-ORCH-1255 — the venue attaches to the CURRENT brand (F-1 kill).
@@ -668,38 +677,14 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       ? "Pick a cover to continue"
       : null;
 
-  return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.chrome}>
-        <IconChrome
-          icon="close"
-          accessibilityLabel="Close venue setup"
-          onPress={onClose}
-        />
-        <View style={styles.chromeMid}>
-          <Text style={styles.chromeTitle}>
-            {isClaim ? "Claim your place" : "List your venue"}
-          </Text>
-          <Text style={styles.chromeSub}>
-            Step {clampedStep + 1} of {TOTAL}
-          </Text>
-        </View>
-        <View style={{ width: 36 }} />
-      </View>
+  const onStepPress = (index: number): void => {
+    if (submitting || index === clampedStep) return;
+    if (index > Math.max(furthestValidStep, clampedStep)) return;
+    jumpToStep(baseSteps[index].id);
+  };
 
-      <Stepper
-        steps={stepperSteps}
-        currentIndex={clampedStep}
-        furthestValidIndex={furthestValidStep}
-        onStepPress={(index) => {
-          if (submitting || index === clampedStep) return;
-          if (index > Math.max(furthestValidStep, clampedStep)) return;
-          jumpToStep(baseSteps[index].id);
-        }}
-        sheetTitle="Steps"
-        testID="venue-wizard-stepper"
-      />
-
+  const pane = (
+    <>
       {isClaim ? (
         <ClaimAdoptionBanner
           venueName={draft.displayName.trim() || draft.workingName.trim()}
@@ -716,6 +701,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={{
+          paddingTop: isWideDesktop ? space[5] : 0,
           paddingBottom: insets.bottom + space[7],
         }}
         keyboardShouldPersistTaps="handled"
@@ -765,9 +751,70 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           </View>
         </View>
       ) : null}
+    </>
+  );
+
+  return (
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={[styles.chrome, isWideDesktop ? styles.chromeDesktop : null]}>
+        <IconChrome
+          icon="close"
+          accessibilityLabel="Close venue setup"
+          onPress={onClose}
+        />
+        <View style={styles.chromeMid}>
+          <Text style={styles.chromeTitle}>
+            {isClaim ? "Claim your place" : "List your venue"}
+          </Text>
+          <Text style={styles.chromeSub}>
+            Step {clampedStep + 1} of {TOTAL}
+          </Text>
+        </View>
+        <View style={{ width: 36 }} />
+      </View>
+
+      {isWideDesktop ? (
+        // #4420 journey: on desktop the inline stepper ran edge to edge and
+        // clipped its first and last labels. Desktop uses the wizard
+        // template instead: the step list in a rail beside the form pane.
+        <View style={styles.desktopShell} testID="venue-wizard-desktop">
+          <GlassCard
+            variant="base"
+            padding={space[4]}
+            radius="lg"
+            style={styles.desktopStepRail}
+          >
+            <Text style={styles.desktopStepEyebrow}>
+              {isClaim ? "Claim your place" : "List your venue"}
+            </Text>
+            <Stepper
+              layout="list"
+              steps={stepperSteps}
+              currentIndex={clampedStep}
+              furthestValidIndex={furthestValidStep}
+              onStepPress={onStepPress}
+              testID="venue-wizard-stepper"
+            />
+          </GlassCard>
+          <View style={styles.desktopFormPane}>{pane}</View>
+        </View>
+      ) : (
+        <>
+          <Stepper
+            steps={stepperSteps}
+            currentIndex={clampedStep}
+            furthestValidIndex={furthestValidStep}
+            onStepPress={onStepPress}
+            sheetTitle="Steps"
+            testID="venue-wizard-stepper"
+          />
+          {pane}
+        </>
+      )}
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   root: {
@@ -780,6 +827,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     paddingVertical: space[2],
     gap: space[2],
+  },
+  chromeDesktop: {
+    paddingHorizontal: DESKTOP_BEZEL_MARGIN,
+    paddingBottom: space[3],
   },
   chromeMid: {
     flex: 1,
@@ -816,6 +867,34 @@ const styles = StyleSheet.create({
     color: color.text3,
     textAlign: "center",
     paddingBottom: space[2],
+  },
+  desktopShell: {
+    flex: 1,
+    flexDirection: "row",
+    gap: space[4],
+    paddingHorizontal: DESKTOP_BEZEL_MARGIN,
+    paddingBottom: DESKTOP_BEZEL_MARGIN,
+  },
+  desktopStepRail: {
+    width: DESKTOP_WIZARD_RAIL_WIDTH,
+    flexShrink: 0,
+    alignSelf: "flex-start",
+  },
+  desktopStepEyebrow: {
+    ...type.label,
+    textTransform: "uppercase",
+    color: color.accent,
+    marginBottom: space[3],
+  },
+  desktopFormPane: {
+    flex: 1,
+    maxWidth: DESKTOP_WIZARD_FORM_MAX_WIDTH,
+    minWidth: 0,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.tableHead,
+    overflow: "hidden",
   },
   dockRow: {
     flexDirection: "row",

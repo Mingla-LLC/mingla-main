@@ -600,6 +600,7 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
       radius="lg"
       padding={space[4]}
       style={option.isHidden ? styles.optionHidden : undefined}
+      contentStyle={styles.optionContent}
       testID={`experience-price-option-${index}`}
     >
       <View style={styles.optionHeader}>
@@ -871,6 +872,11 @@ const styles = StyleSheet.create({
   modeSegTextActive: { color: color.text1 },
   modeSegDisabled: { opacity: 0.4 },
   modeSegTextDisabled: { color: color.text3 },
+  // #4420 journey: the price card stacked label, field, helper and the next
+  // label with no space between them.
+  optionContent: {
+    gap: space[2],
+  },
   helper: {
     fontSize: type.caption.fontSize,
     lineHeight: type.caption.lineHeight,
