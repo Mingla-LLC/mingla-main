@@ -65,6 +65,9 @@ const PAIRS = [
   ["--a-live-ink", "--a-live-bg"], ["--a-stop-ink", "--a-stop-bg"], ["--a-sched-ink", "--a-sched-bg"],
   ["--a-panel", "--a-text"],
   ["--a-hover-ink", "--a-hover-bg"],
+  // Pass 2: the refreshed menu reads these tokens.
+  ["--sidebar-active-text", "--sidebar-active-bg"], ["--sidebar-text", "--sidebar-bg"], ["--sidebar-text-dim", "--sidebar-bg"],
+  ["--a-chip-ink", "--a-chip"], ["--a-draft-ink", "--a-soft"],
 ];
 
 describe("#4452 T-7.1 admin contrast", () => {

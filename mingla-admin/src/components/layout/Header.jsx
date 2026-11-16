@@ -41,7 +41,9 @@ export function Header({ activeTab, title, collapsed, onToggleCollapsed, onMobil
 
   return (
     <header
-      className="sticky top-0 flex shrink-0 items-center gap-3 border-b border-[var(--header-border)] bg-[var(--header-bg)] px-[var(--page-gutter)]"
+      /* #4452 §7.1: frosted panel (82% panel over the page, 12 px blur). */
+      data-admin-header=""
+      className="sticky top-0 flex shrink-0 items-center gap-3 border-b border-[var(--header-border)] bg-[var(--header-bg)] backdrop-blur-[12px] px-[var(--page-gutter)]"
       style={{ zIndex: "var(--z-sticky)", height: "var(--header-height)" }}
     >
       {/* The first control's icon, not its box, sits on the gutter. */}
@@ -73,8 +75,9 @@ export function Header({ activeTab, title, collapsed, onToggleCollapsed, onMobil
           onClick={onOpenSearch}
           aria-label={searchLabel}
           className={[
-            "flex h-8 items-center gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-secondary)]",
-            "text-[13px] text-[var(--color-text-tertiary)] hover:border-[var(--gray-300)] hover:text-[var(--color-text-secondary)]",
+            // #4452 §7.1: search is radius 10 on --a-soft.
+            "flex h-8 items-center gap-2 rounded-[10px] border border-transparent bg-[var(--a-soft)]",
+            "text-[13px] text-[var(--color-text-tertiary)] hover:border-[var(--a-line)] hover:text-[var(--color-text-secondary)]",
             "transition-colors duration-150 cursor-pointer w-8 justify-center px-0 md:w-60 md:justify-start md:px-2.5",
           ].join(" ")}
         >

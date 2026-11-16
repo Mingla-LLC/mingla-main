@@ -1,6 +1,13 @@
 import { forwardRef, useId, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
+// #4452 §7.1: fields are 44 px, radius 12, a 1.5 px --a-line border, 14 px
+// text; focus is an ink border with a 4 px orange ring (rgba(235,120,37,.16)).
+const FIELD_OK = "border-[1.5px] border-[var(--a-line)] focus:border-[var(--a-text)] focus:shadow-[0_0_0_4px_rgba(235,120,37,.16)]";
+const FIELD_ERR = "border-[1.5px] border-[#ef4444] focus:border-[#ef4444] focus:shadow-[0_0_0_4px_rgba(239,68,68,.16)]";
+const LABEL = "block text-[12.5px] font-semibold text-[var(--a-text2)] mb-1.5";
+
+
 export const Input = forwardRef(function Input(
   { label, error, helper, className = "", type = "text", onFocus, onBlur, id, ...props },
   ref
@@ -16,7 +23,7 @@ export const Input = forwardRef(function Input(
   return (
     <div className="w-full">
       {label && (
-        <label htmlFor={inputId} className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
+        <label htmlFor={inputId} className={LABEL}>
           {label}
         </label>
       )}
@@ -26,12 +33,10 @@ export const Input = forwardRef(function Input(
           id={inputId}
           type={inputType}
           className={[
-            "w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
-            "border rounded-lg outline-none transition-all duration-150",
+            "w-full h-11 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
+            "rounded-xl outline-none transition-all duration-150",
             isPassword ? "pl-3 pr-10" : "px-3",
-            error
-              ? "border-[#ef4444] focus:border-[#ef4444] focus:ring-2 focus:ring-[#fee2e2]"
-              : "border-[var(--gray-300)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
+            error ? FIELD_ERR : FIELD_OK,
             className,
           ].join(" ")}
           onFocus={onFocus}
@@ -64,7 +69,7 @@ export const Textarea = forwardRef(function Textarea(
   return (
     <div className="w-full">
       {label && (
-        <label htmlFor={textareaId} className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
+        <label htmlFor={textareaId} className={LABEL}>
           {label}
         </label>
       )}
@@ -72,12 +77,10 @@ export const Textarea = forwardRef(function Textarea(
         ref={ref}
         id={textareaId}
         className={[
-          "w-full min-h-[100px] p-3 text-sm font-mono",
+          "w-full min-h-[100px] px-3 py-2.5 text-sm font-mono",
           "bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
-          "border rounded-lg outline-none resize-y transition-all duration-150",
-          error
-            ? "border-[#ef4444] focus:border-[#ef4444] focus:ring-2 focus:ring-[#fee2e2]"
-            : "border-[var(--gray-300)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
+          "rounded-xl outline-none resize-y transition-all duration-150",
+          error ? FIELD_ERR : FIELD_OK,
           className,
         ].join(" ")}
         onFocus={onFocus}
@@ -101,13 +104,13 @@ export function Toggle({ label, checked, onChange, disabled = false }) {
         onClick={() => onChange?.(!checked)}
         className={[
           "relative inline-flex w-11 h-6 shrink-0 rounded-full transition-colors duration-150",
-          checked ? "bg-[var(--color-brand-500)]" : "bg-[var(--gray-300)]",
+          checked ? "bg-[var(--a-text)]" : "bg-[var(--gray-300)]", /* #4452 §7.1: the checked track is ink */
           disabled ? "cursor-not-allowed" : "cursor-pointer",
         ].join(" ")}
       >
         <span
           className={[
-            "pointer-events-none inline-block w-5 h-5 rounded-full bg-white shadow-sm",
+            "pointer-events-none inline-block w-5 h-5 rounded-full bg-[var(--a-panel)] shadow-sm",
             "transition-transform duration-150 mt-0.5",
             checked ? "translate-x-[22px]" : "translate-x-0.5",
           ].join(" ")}
@@ -117,3 +120,43 @@ export function Toggle({ label, checked, onChange, disabled = false }) {
     </label>
   );
 }
+
+/** #4452 §7.1: a native select with the field look (44 px, radius 12). */
+export const Select = forwardRef(function Select(
+  { label, error, helper, className = "", id, options = [], placeholder, children, ...props },
+  ref
+) {
+  const autoId = useId();
+  const selectId = id || autoId;
+  return (
+    <div className="w-full">
+      {label && (
+        <label htmlFor={selectId} className={LABEL}>
+          {label}
+        </label>
+      )}
+      <select
+        ref={ref}
+        id={selectId}
+        className={[
+          "w-full h-11 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
+          "rounded-xl outline-none transition-all duration-150 cursor-pointer",
+          error ? FIELD_ERR : FIELD_OK,
+          className,
+        ].join(" ")}
+        aria-invalid={error ? true : undefined}
+        {...props}
+      >
+        {placeholder !== undefined && <option value="">{placeholder}</option>}
+        {options.map((o) => (
+          <option key={o.value} value={o.value} disabled={o.disabled}>
+            {o.label}
+          </option>
+        ))}
+        {children}
+      </select>
+      {error && <p className="text-xs text-[#ef4444] mt-1">{error}</p>}
+      {helper && !error && <p className="text-xs text-[var(--color-text-tertiary)] mt-1">{helper}</p>}
+    </div>
+  );
+});

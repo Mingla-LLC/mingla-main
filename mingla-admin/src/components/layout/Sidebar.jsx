@@ -218,20 +218,15 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
           aria-label={spokenLabel}
           title={rail ? spokenLabel : undefined}
           className={[
-            "relative flex h-[34px] w-full items-center gap-2.5 rounded-lg text-left text-[13.5px] font-medium",
+            // #4452 §7.1: items are 36 px, radius 10; the active item is an ink pill with an orange icon.
+            "relative flex h-9 w-full items-center gap-2.5 rounded-[10px] text-left text-[13.5px] font-medium",
             "transition-colors duration-150 cursor-pointer",
             rail ? "pl-3 pr-0" : "px-3",
             isActive
-              ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-text-active)]"
+              ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]"
               : "text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text-active)]",
           ].join(" ")}
         >
-          {isActive && (
-            <span
-              aria-hidden="true"
-              className="absolute -left-3 top-2 bottom-2 w-[3px] rounded-r-[3px] bg-[var(--sidebar-accent)]"
-            />
-          )}
           {Icon ? (
             <Icon
               aria-hidden="true"
@@ -241,7 +236,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
             <span aria-hidden="true" className="h-4 w-4 shrink-0" />
           )}
           <span className={rail ? "sr-only" : "min-w-0 truncate"}>{item.label}</span>
-          {waiting > 0 && <span aria-hidden="true" className={`${rail ? "absolute right-0.5" : "ml-auto"} inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--sidebar-active-bg)] px-1.5 text-[10.5px] font-semibold tabular-nums text-[var(--sidebar-accent)]`}>{waiting > 99 ? "99+" : waiting}</span>}
+          {waiting > 0 && <span aria-hidden="true" className={`${rail ? "absolute right-0.5" : "ml-auto"} inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--sidebar-count-bg)] px-1.5 text-[10.5px] font-semibold tabular-nums text-[var(--sidebar-count-text)]`}>{waiting > 99 ? "99+" : waiting}</span>}
         </button>
       </li>
     );
@@ -298,7 +293,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
             return (
               <li key={group.label || `group-${gi}`}>
                 {hasLabel && !rail && !foldable && (
-                  <div className="px-3 pb-1.5 pt-3.5 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-[var(--sidebar-text-dim)]">
+                  <div className="px-3 pb-1.5 pt-3.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--sidebar-text-dim)]">
                     {group.label}
                   </div>
                 )}
@@ -310,7 +305,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
                     aria-controls={listId}
                     className={[
                       "flex w-full items-center justify-between rounded-md px-3 pb-1.5 pt-3.5",
-                      "text-[10.5px] font-semibold uppercase tracking-[0.09em]",
+                      "font-mono text-[10px] font-medium uppercase tracking-[0.14em]",
                       "text-[var(--sidebar-text-dim)] hover:text-[var(--sidebar-text-active)]",
                       "transition-colors duration-150 cursor-pointer",
                     ].join(" ")}

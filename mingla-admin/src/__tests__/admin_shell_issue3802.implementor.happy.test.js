@@ -368,7 +368,11 @@ describe("#3802 S-7: the frame", () => {
       assert.ok(token(name, light), `--${name} has no light value`);
       assert.ok(token(name, dark), `--${name} has no dark value`);
     }
-    assert.notEqual(token("sidebar-bg", light), token("sidebar-bg", dark));
+    // #4452 §7.1: both themes name the same --a-* token, and the token itself
+    // differs between the themes, so the menu still follows the theme.
+    assert.equal(token("sidebar-bg", light), "var(--a-bg)");
+    assert.equal(token("sidebar-bg", dark), "var(--a-bg)");
+    assert.notEqual(token("a-bg", light), token("a-bg", dark));
   });
   it("no hard-coded white or black in the menu", () => {
     const code = stripComments(SIDEBAR);
