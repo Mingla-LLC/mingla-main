@@ -99,16 +99,39 @@ function DocHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
+/** #4452 §6.7 / §6.8: the homepage words before and after (data the report already has). */
+function RewrittenHero({ rewritten }: { rewritten: { before_excerpt: string; after_copy: string } }) {
+  return (
+    <div className="mt-4 grid gap-3 sm:grid-cols-2" data-rewritten-hero="">
+      {rewritten.before_excerpt ? (
+        <div className="rounded-md border border-divider-strong p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">Your words today</p>
+          <p className="mt-2 text-sm leading-relaxed text-text-secondary">{rewritten.before_excerpt}</p>
+        </div>
+      ) : null}
+      {rewritten.after_copy ? (
+        <div className="rounded-md border border-divider-strong p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-warm">Rewritten</p>
+          <p className="mt-2 text-sm leading-relaxed text-text-primary">{rewritten.after_copy}</p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 // Interactive before/after: the redesigned homepage (after) clipped over the
 // current site (before), split by a range slider. Keyboard-accessible; the clip
 // is the only thing that moves, so it's smooth and dependency-free.
 function BeforeAfterSlider({
   before,
   after,
+  afterFrame,
   host,
 }: {
   before: string
-  after: string
+  after: string | null
+  /** #4452 §6.8: no after_url → the existing venue preview page, drawn live. */
+  afterFrame?: string | null
   host: string
 }) {
   const [pos, setPos] = useState(50)
@@ -174,14 +197,31 @@ function BeforeAfterSlider({
           className="absolute inset-0 overflow-hidden"
           style={{ clipPath: `inset(0 0 0 ${pos}%)` }}
         >
-          <img
-            src={after}
-            alt="Redesigned in a Mingla template"
-            onLoad={() => setAfterLoaded(true)}
-            onError={() => setAfterLoaded(true)}
-            className="block aspect-[16/10] w-full max-w-full object-cover object-top"
-            draggable={false}
-          />
+          {after ? (
+            <img
+              src={after}
+              alt="Redesigned in a Mingla template"
+              onLoad={() => setAfterLoaded(true)}
+              onError={() => setAfterLoaded(true)}
+              className="block aspect-[16/10] w-full max-w-full object-cover object-top"
+              draggable={false}
+            />
+          ) : afterFrame ? (
+            // #4452 §6.8: the live preview page (same origin; its client needs scripts), scaled into the frame.
+            <div className="relative aspect-[16/10] w-full overflow-hidden bg-white" data-after-frame="">
+              <iframe
+                src={afterFrame}
+                title="Redesigned in a Mingla template (live preview)"
+                sandbox="allow-scripts allow-same-origin"
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                tabIndex={-1}
+                onLoad={() => setAfterLoaded(true)}
+                className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
+                style={{ width: '1280px', height: '800px', transform: 'scale(var(--ba-scale, 0.5))' }}
+              />
+            </div>
+          ) : null}
         </div>
         {/* Divider + handle */}
         <div
@@ -384,6 +424,9 @@ export function ReportView({
   // Prefer the live ScreenshotOne capture; fall back to the site's og:image.
   const siteImage = report.screenshot.image_url || report.screenshot.og_image_url || null
   const afterImage = report.screenshot.after_url || null
+  // #4452 §6.8: without after_url the after side is the live preview page of this run.
+  const afterFrame = !afterImage && runId ? `/venue-preview?run_id=${encodeURIComponent(runId)}` : null
+  const rewritten = report.rewritten_hero && (report.rewritten_hero.before_excerpt || report.rewritten_hero.after_copy) ? report.rewritten_hero : null
 
   // The offer view fires once, when the report first renders unlocked.
   useEffect(() => {
@@ -895,16 +938,23 @@ export function ReportView({
           ) : null}
 
           {/* Before / After — the visual redesign */}
-          {siteImage && afterImage ? (
-            <div className="mt-10">
+          {siteImage && (afterImage || afterFrame) ? (
+            <div className="mt-10" data-before-after={afterImage ? 'image' : 'live'}>
               <DocHeading>Your homepage, redesigned</DocHeading>
               <p className="mt-2 text-sm leading-relaxed text-text-secondary">
                 Your current site vs. the same venue rebuilt in a premium Mingla
                 template — your real photos, a clearer story, a reason to book.
               </p>
               <div className="mt-4">
-                <BeforeAfterSlider before={siteImage} after={afterImage} host={host} />
+                <BeforeAfterSlider before={siteImage} after={afterImage} afterFrame={afterFrame} host={host} />
               </div>
+              {rewritten ? <RewrittenHero rewritten={rewritten} /> : null}
+            </div>
+          ) : rewritten ? (
+            // #4452 §6.8: neither image: the words before and after, no slider.
+            <div className="mt-10" data-before-after="copy">
+              <DocHeading>Your homepage, redesigned</DocHeading>
+              <RewrittenHero rewritten={rewritten} />
             </div>
           ) : null}
         </div>

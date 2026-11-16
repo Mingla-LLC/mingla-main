@@ -313,7 +313,8 @@ export function PricingReportView({
     >
       {/* ── FREE ZONE ─────────────────────────────────────────────────────── */}
       <header>
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-warm">{e.category}</span>
+        {/* #4452 §6.6: the category as they picked it, so a wrong pick is visible. */}
+        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-warm" data-told-us="">You told us: {e.category}</span>
         <h1 className="mt-2 break-words font-display text-2xl leading-tight text-text-primary md:text-3xl">
           {shortTitle}
         </h1>

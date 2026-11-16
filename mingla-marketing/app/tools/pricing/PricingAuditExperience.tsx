@@ -157,7 +157,8 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
   const [phase, setPhase] = useState<Phase>('intake')
 
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState(CATEGORIES[0])
+  // #4452 §6.6: no default; a pick is required.
+  const [category, setCategory] = useState('')
   const [city, setCity] = useState('')
   const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([])
   const [citySearching, setCitySearching] = useState(false)
@@ -239,6 +240,7 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
 
   const missing: string[] = []
   if (description.trim().length < 4) missing.push('what your experience is')
+  if (!category) missing.push('what kind it is')
   if (!cityValid) missing.push('city')
   if (!seatsValid) missing.push('seats per event')
   if (!priceValid) missing.push('your current price (or mark it free)')
@@ -377,16 +379,15 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
               <label htmlFor="pr-category" className={MICRO_LABEL}>
                 Type <span aria-hidden="true" className="text-warm">*</span>
               </label>
-              <select
-                id="pr-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className={cn(FIELD, 'mt-2 appearance-none')}
-              >
+              {/* #4452 §6.6: choice cards with no default; a pick is required. */}
+              <div id="pr-category" role="radiogroup" aria-label="Type" className="mt-2 flex flex-wrap gap-2" data-category-cards="">
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="bg-[#0d0d10]">{c}</option>
+                  <button key={c} type="button" role="radio" aria-checked={category === c} onClick={() => setCategory(c)}
+                    className={cn('min-h-11 rounded-full border px-3 text-sm', category === c ? 'border-white bg-white text-[#0d0d10]' : 'border-white/20 text-white/80 hover:border-white/50')}>
+                    {c}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
             <div className="relative">
               <label htmlFor="pr-city" className={MICRO_LABEL}>
