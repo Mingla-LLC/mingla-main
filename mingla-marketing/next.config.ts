@@ -63,7 +63,17 @@ const CSP_AD_PIXEL_CONNECT_SRC = [
 // specs run on `next dev`). Production builds never get it.
 const CSP_DEV_SCRIPT_SRC = process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"
 
-function contentSecurityPolicy(): { enforced: string; reportOnly: string } {
+// #4452 (B6) — the Website pages editor in Admin frames /site-preview/<token>.
+// Only that route may be framed, and only by Admin (and a local Admin in
+// development, the same origins lib/site-pages/editor.ts talks to). Every
+// other route keeps frame-ancestors 'self' and X-Frame-Options.
+export const SITE_PREVIEW_FRAME_ANCESTORS = [
+  "'self'",
+  'https://admin.usemingla.com',
+  ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:*', 'http://127.0.0.1:*']),
+]
+
+function contentSecurityPolicy(frameAncestors?: string): { enforced: string; reportOnly: string } {
   const base = [
     "frame-ancestors 'self'",
     "object-src 'none'",
@@ -83,17 +93,36 @@ function contentSecurityPolicy(): { enforced: string; reportOnly: string } {
     "worker-src 'self' blob:",
     "manifest-src 'self'",
   ]
-  return { enforced: base.join('; '), reportOnly: full.join('; ') }
+  // #4452 (B6): one route (the editor preview) names who else may frame it.
+  const frame = (list: string[]) => (frameAncestors ? list.map((d) => (d.startsWith('frame-ancestors ') ? `frame-ancestors ${frameAncestors}` : d)) : list)
+  return { enforced: frame(base).join('; '), reportOnly: frame(full).join('; ') }
 }
 
 const csp = contentSecurityPolicy()
-const securityHeaders = [
+export const securityHeaders = [
   { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
   { key: 'Content-Security-Policy', value: csp.enforced },
   { key: 'Content-Security-Policy-Report-Only', value: csp.reportOnly },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
 ]
+
+// #4452 (B6) — /site-preview/<token>: the same policy except frame-ancestors
+// (Admin may frame it), no X-Frame-Options (it cannot name another origin and
+// a later rule cannot remove it, so the global rule skips this route), and
+// never indexed.
+const previewCsp = contentSecurityPolicy(SITE_PREVIEW_FRAME_ANCESTORS.join(' '))
+export const sitePreviewHeaders = [
+  { key: 'Content-Security-Policy', value: previewCsp.enforced },
+  { key: 'Content-Security-Policy-Report-Only', value: previewCsp.reportOnly },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+]
+
+// Every route but /site-preview and /site-preview/… gets securityHeaders.
+export const SECURITY_HEADERS_SOURCE = '/:path((?!site-preview(?:/|$)).*)'
+export const SITE_PREVIEW_SOURCE = '/site-preview/:path*'
 
 // #4137 — blog images are served from the public `blog-media` bucket and go
 // through next/image (optimised on Vercel, never Supabase's billed
@@ -245,7 +274,10 @@ const config: NextConfig = {
     optimizePackageImports: ['lucide-react', 'framer-motion'],
   },
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }]
+    return [
+      { source: SECURITY_HEADERS_SOURCE, headers: securityHeaders },
+      { source: SITE_PREVIEW_SOURCE, headers: sitePreviewHeaders },
+    ]
   },
   // issue #2981 — lifecycle redirects are declared once in the typed search
   // registry, beside sitemap/noindex ownership. Query strings are preserved by

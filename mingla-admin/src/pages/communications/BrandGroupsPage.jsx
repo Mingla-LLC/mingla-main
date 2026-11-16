@@ -12,7 +12,11 @@ import { publishBrandGroupWaiting } from "../../lib/brandGroupWaiting";
 
 export function BrandGroupsPage() {
   return (
-    <div className="space-y-6">
+    // #4452 (B2): the page fills the space under the top bar exactly (the
+    // shell's gutter above and below is the breathing room), and the
+    // workspace takes whatever the header and the summary leave, so the
+    // composer never meets the window's edge and the page does not scroll.
+    <div data-brand-groups-page="" className="flex h-[calc(100dvh-var(--header-height)-var(--page-gutter)*2)] min-h-[600px] min-w-0 flex-col gap-6">
       <PageHeader
         title="Brand groups"
         description="Every host brand's group chat with the team. Moved here from Support › Community."

@@ -21,6 +21,7 @@ import {
   isIanaTimeZone,
   type ActionIntent,
   isMinglaActionHref,
+  isRegionCityTimeZone,
   isSafeHref,
   type MinglaActionScope,
   offersBookingOrPayment,
@@ -54,6 +55,8 @@ export type FieldSpec =
   | { kind: "boolean"; label: string }
   | { kind: "enum"; values: readonly string[]; required?: boolean; label: string }
   | { kind: "timezone"; label: string }
+  /** A real Region/City zone (no bare UTC): venue clocks need a city. */
+  | { kind: "city_timezone"; label: string }
   | { kind: "currency"; label: string }
   | { kind: "icon"; values: readonly string[]; label: string }
   | { kind: "rich_text"; required?: boolean; label: string }
@@ -356,7 +359,7 @@ export const BLOCK_CATALOG = {
           value: { kind: "text", max: 80, required: true, label: "Hours" },
         },
       },
-      timezone: { kind: "timezone", label: "Time zone" },
+      timezone: { kind: "city_timezone", label: "Time zone" },
       always_open: { kind: "boolean", label: "Never closes" },
     },
   },
@@ -741,6 +744,8 @@ function fieldOk(
       return absent ? spec.required !== true : spec.values.includes(String(value)) && typeof value === "string";
     case "timezone":
       return absent || isIanaTimeZone(value);
+    case "city_timezone":
+      return absent || isRegionCityTimeZone(value);
     case "currency":
       return absent || (typeof value === "string" && /^[A-Z]{3}$/.test(value));
     case "icon":

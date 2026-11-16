@@ -33,12 +33,16 @@ const VIEWS = {
   pricing: ['app/tools/pricing/PricingReportView.tsx', 'PricingReportView', PRICING],
 }
 
-// The baseline: origin/main's views (before the redesign), read from git.
+// The baseline: main's views BEFORE the redesign, read from git. Pinned to the
+// commit #4455 landed on: once the redesign merged, origin/main WAS the
+// redesign and this comparison failed against itself on every marketing build.
+// A shallow clone without the commit skips TR-1 (TR-1b still runs).
+const PRE_REDESIGN = '3c6bbd0d81c0df51e55e4c38cd4822c1c2f7e5aa'
 let mainSource = null
 try {
   mainSource = (rel) => {
     if (!Object.values(VIEWS).some(([f]) => f === rel)) return null
-    return execFileSync('git', ['show', `origin/main:mingla-marketing/${rel}`], { cwd: MARKETING, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    return execFileSync('git', ['show', `${PRE_REDESIGN}:mingla-marketing/${rel}`], { cwd: MARKETING, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
   }
   mainSource(VIEWS.venues[0])
 } catch {

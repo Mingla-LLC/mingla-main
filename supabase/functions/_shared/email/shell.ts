@@ -24,7 +24,13 @@ export interface ShellInput {
   preheader: string;
   bodyHtml: string;
   supportEmail: string;
-  logoUrl: string;
+  /**
+   * #4452 (B7): no longer drawn. §5.9 puts the LOGO PILL (LOGO_PILL_URL) in
+   * the header and the footer of every shell email; callers still passed the
+   * old orange wordmark here, so most emails kept the old logo. Optional for
+   * the callers that still pass it; the shell ignores it.
+   */
+  logoUrl?: string;
   footerAddress: string;
   /**
    * Optional: when set, replaces the logo header row with a full-width
@@ -68,7 +74,8 @@ export function renderShell(input: ShellInput): string {
   const support = escapeHtml(input.supportEmail);
   const address = escapeHtml(input.footerAddress);
   const preheader = escapeHtml(input.preheader);
-  const logo = escapeHtml(input.logoUrl);
+  // #4452 (B7) §5.9: always the logo pill, whatever the caller passed.
+  const logo = escapeHtml(LOGO_PILL_URL);
   // escapeHtml(...) is inlined at the call site so the ORCH-0785-C
   // buyer-string-escape gate sees brand strings as already-escaped.
   const hasBrandBanner = input.brandHeaderImageUrl !== null &&

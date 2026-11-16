@@ -1,4 +1,4 @@
-import { actionHrefProblem, offersBookingOrPayment } from "../contracts/generated/safety.ts";
+import { actionHrefProblem, isIanaTimeZone, isRegionCityTimeZone, offersBookingOrPayment } from "../contracts/generated/safety.ts";
 const FORBIDDEN_TEXT = /<(?:script|style|iframe|svg)|\son[a-z]+\s*=|javascript:|data:|blob:|file:/i;
 const HEX = /^#[0-9a-f]{6}$/i;
 // #3149 wave 4 — `reservations` links straight into Mingla's own booking
@@ -52,33 +52,30 @@ export function buttonUrl(labelField: string) {
 }
 export function boundedColor(value: unknown): true | string { return value == null || value === "" || (typeof value === "string" && HEX.test(value)) ? true : "Use a six-digit color value."; }
 /*
- * #3149 wave 4 — an IANA timezone, and only an IANA timezone.
+ * #3149 wave 4 / #4453 — timezone validators built on the ONE rule in
+ * packages/site-contracts/src/safety.ts (generated copy). The runtime is the
+ * authority and refuses the publish; these are the messages the editor sees
+ * first.
  *
- * The live "open now, 22:03 in Lagos" line is the one moving claim a published
- * site makes, and it is built from this field alone. An offset ("+1") drifts
- * across a daylight-saving boundary and an abbreviation ("WAT") is not
- * something a clock can be constructed from, so both are refused here rather
- * than surfacing as a wrong hour on a real restaurant's real page.
- *
- * Two checks: the shape must be `Region/City`, and the platform must actually
- * KNOW the zone — `Intl` throws on one it cannot resolve, and a zone the
- * renderer cannot format would print this server's own time under a city's
- * name.
- *
- * Kept byte-identical in spirit to `isIanaTimeZone` in
- * `mingla-sites/src/contracts/artifact.ts`; the runtime is the authority and
- * refuses the publish, this is the message the editor sees first.
+ * `safeTimeZone` accepts Region/City zones plus UTC and GMT (offerings,
+ * routes, settings). `safeCityTimeZone` is for the venue clock ("open now,
+ * 22:03 in Lagos"), which needs a real city, so a bare UTC is refused.
  */
 export function safeTimeZone(value: unknown): true | string {
   if (value == null || value === "") return true;
   if (typeof value !== "string" || value.length > 60) return "Enter a timezone name.";
-  if (!/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value)) {
-    return "Use a region and city, for example Africa/Lagos.";
-  }
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: value });
-    return true;
-  } catch {
-    return "That timezone is not one this system knows.";
-  }
+  if (isIanaTimeZone(value)) return true;
+  const text: string = value;
+  return text.includes("/") || text === "UTC" || text === "GMT"
+    ? "That timezone is not one this system knows."
+    : "Use a region and city, for example Africa/Lagos, or UTC.";
+}
+export function safeCityTimeZone(value: unknown): true | string {
+  if (value == null || value === "") return true;
+  if (typeof value !== "string" || value.length > 60) return "Enter a timezone name.";
+  if (isRegionCityTimeZone(value)) return true;
+  const text: string = value;
+  return text.includes("/")
+    ? "That timezone is not one this system knows."
+    : "Use a region and city, for example Africa/Lagos.";
 }

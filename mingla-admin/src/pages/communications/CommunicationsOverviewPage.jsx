@@ -6,7 +6,7 @@
 // is for full admins (issue_4383_communications_failures). It only reads:
 // each item's time lives on its own row (I-4383-SCHEDULE-ONE-OWNER).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { AlertTriangle, CalendarClock, RefreshCw } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { SectionCard, StatCard } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
@@ -110,8 +110,8 @@ export function CommunicationsOverviewPage() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <StatCard label="Scheduled" value={coming.state === "ready" ? counts.scheduled : "–"} />
-        {isAdmin ? <StatCard label="Need attention" value={attention.state === "ready" ? counts.attention : "–"} /> : null}
+        <StatCard icon={CalendarClock} label="Scheduled" value={coming.state === "ready" ? counts.scheduled : "–"} />
+        {isAdmin ? <StatCard icon={AlertTriangle} label="Need attention" value={attention.state === "ready" ? counts.attention : "–"} /> : null}
       </div>
 
       {isAdmin ? (

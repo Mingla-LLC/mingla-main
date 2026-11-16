@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node scripts/ci/require-sentry-dsn-on-prod.mjs && vite build",
+  "buildCommand": "node scripts/ci/require-sentry-dsn-on-prod.mjs && node scripts/build-forms-kit.mjs && vite build && node scripts/verify-forms-kit-dist.mjs",
   "outputDirectory": "dist",
   "headers": [
     {

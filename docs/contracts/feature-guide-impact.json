@@ -1134,7 +1134,12 @@
         "supabase/functions/_shared/siteContracts/blocks.ts",
         "supabase/functions/_shared/siteContracts/safety.ts",
         "supabase/functions/brand-site-control/bookingLock.ts",
-        "supabase/functions/brand-site-control/siteAri.ts"
+        "supabase/functions/brand-site-control/siteAri.ts",
+        "mingla-site-cms/src/contracts/generated/offerings.ts",
+        "mingla-sites/src/contracts/artifact.ts",
+        "mingla-sites/src/contracts/generated/offerings.ts",
+        "packages/site-contracts/src/offerings.ts",
+        "supabase/functions/_shared/siteContracts/offerings.ts"
       ]
     },
     {
@@ -1726,7 +1731,8 @@
         "mingla-admin/src/components/ui/Input.jsx",
         "mingla-admin/src/components/ui/Table.jsx",
         "mingla-admin/src/components/ui/Tabs.jsx",
-        "mingla-admin/src/lib/flowModel.js"
+        "mingla-admin/src/lib/flowModel.js",
+        "supabase/migrations/20280720004452_issue_4452_dashboard_last_lead.sql"
       ]
     },
     {
@@ -1820,7 +1826,9 @@
         "supabase/functions/forms-submit/index.ts",
         "supabase/functions/forms-submit/submit.ts",
         "supabase/migrations/20280712004452_issue_4452_forms_core.sql",
-        "supabase/migrations/20280712044452_issue_4452_leads.sql"
+        "supabase/migrations/20280712044452_issue_4452_leads.sql",
+        "mingla-admin/scripts/verify-forms-kit-dist.mjs",
+        "mingla-marketing/app/apply/[slug]/resolve.ts"
       ]
     },
     {
@@ -3668,7 +3676,8 @@
         "supabase/functions/growth-tools-pricing/index.ts",
         "supabase/functions/growth-tools-run/index.ts",
         "supabase/functions/growth-tools-trips/index.ts",
-        "supabase/migrations/20280714004452_issue_4452_tool_followups.sql"
+        "supabase/migrations/20280714004452_issue_4452_tool_followups.sql",
+        "mingla-marketing/lib/visitor-region.ts"
       ]
     },
     {
