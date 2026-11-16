@@ -509,7 +509,8 @@ export function phase3dContractDigest(manifest) {
 // #4435 CI fix: re-sealed after skipping 20280708054435 by exact filename in the #1931 filtered replay; MANIFEST.json phase3eContractSha256 matches.
 // #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4452 rework 1: registered the tester adversarial pg17 suite and the rework SQL suite (with sidecars) in the #1931 and #2117 inventories; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c05b28541e660c422a1c8c9ce9870f041e35e833df86db79c5857e77befb0cd5";
+// #4452 retest 1: registered the tester rework adversarial pg17 suite (with its sidecar) in the #1931 and #2117 inventories; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9112b8bd3391b4bc42a076966999064b5e95615b12a0310969c223af6c187382";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
