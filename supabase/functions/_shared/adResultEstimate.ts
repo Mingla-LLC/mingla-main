@@ -79,6 +79,8 @@ export type GuidanceApp = {
   recommended_daily_credit_cents: number;
   run_goal: GuidanceRunGoal;
   expected_week: GuidanceWeek;
+  /** #4238 W2: the uncapped mid estimate a week (the ladder's start rule). */
+  expected_week_mid: number;
   learning_ok: boolean;
 };
 
@@ -218,6 +220,7 @@ export function hostBudgetGuidance(input: GuidanceInput): GuidanceResult {
       recommended_daily_credit_cents: recommendedCredit,
       run_goal: RUN_GOAL[input.goal],
       expected_week: week,
+      expected_week_mid: Math.floor(mid),
       learning_ok: mid >= LEARNING_EVENTS_PER_WEEK,
     };
   });
@@ -261,4 +264,54 @@ export function typicalPaidPriceCents(
     .sort((a, b) => a - b);
   if (prices.length === 0) return null;
   return prices[Math.floor((prices.length - 1) / 2)];
+}
+
+/** #4238 item 5d: the slow-sales nudge window and thresholds (A5). */
+export const NUDGE_EVENT_MIN_DAYS = 2;
+export const NUDGE_EVENT_MAX_DAYS = 10;
+export const NUDGE_MIN_DAYS_LIVE = 4;
+export const NUDGE_LOOKBACK_DAYS = 4;
+export const NUDGE_BELOW_RATIO = 0.5;
+export const NUDGE_STOCK_LEFT_RATIO = 0.2;
+
+/**
+ * #4238 item 5d: true when sales are slower than the guidance expected: the
+ * event is 2–10 days away, the ad has been live 4 days or more, the tickets
+ * attributed over the last 4 days are below half of the guidance's LOW figure
+ * for those 4 days, and 20% or more of the stock is left (unlimited counts as
+ * left). Pure; the sweep records it once (I-4238-LOW-STOCK-ONCE) and W4
+ * delivers the notification (business.ad_sales_slow).
+ */
+export function slowSalesNudgeDue(input: {
+  nowMs: number;
+  eventStartMs: number | null;
+  liveSinceMs: number | null;
+  ticketsLast4Days: number;
+  /** The guidance's low expected results a week, at the plan's budget. */
+  expectedWeekLow: number | null;
+  stock:
+    | { total: number | null; remaining: number | null; unlimited: boolean }
+    | null;
+}): boolean {
+  const day = 86_400_000;
+  if (input.eventStartMs === null || input.liveSinceMs === null) return false;
+  const daysAway = (input.eventStartMs - input.nowMs) / day;
+  if (daysAway < NUDGE_EVENT_MIN_DAYS || daysAway > NUDGE_EVENT_MAX_DAYS) {
+    return false;
+  }
+  if ((input.nowMs - input.liveSinceMs) / day < NUDGE_MIN_DAYS_LIVE) {
+    return false;
+  }
+  if (input.expectedWeekLow === null || !(input.expectedWeekLow > 0)) {
+    return false;
+  }
+  const expected = (input.expectedWeekLow * NUDGE_LOOKBACK_DAYS) / 7;
+  if (!(input.ticketsLast4Days < NUDGE_BELOW_RATIO * expected)) return false;
+  const stock = input.stock;
+  if (!stock) return false;
+  if (stock.unlimited) return true;
+  if (stock.total === null || stock.remaining === null || stock.total <= 0) {
+    return false;
+  }
+  return stock.remaining >= NUDGE_STOCK_LEFT_RATIO * stock.total;
 }

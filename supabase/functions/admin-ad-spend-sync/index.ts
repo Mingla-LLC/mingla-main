@@ -55,8 +55,17 @@ import { googleAdsRequest, resolveGoogleClient } from "../_shared/google.ts";
 import { redditRequest, resolveRedditClient } from "../_shared/reddit.ts";
 import {
   AdDestinationError,
+  type HostAdStopReason,
+  type OfferingStock,
+  parseOfferingStock,
+  pauseReasonFor,
   resolveAdDestination,
 } from "../_shared/adDestination.ts";
+import {
+  parseMetaResultCounts,
+  runHostAdAutomation,
+} from "../_shared/adGoalPromotion.ts";
+import { loadHostLiveSinceMs } from "../_shared/adHostLiveEdit.ts";
 import { markPlanPaused } from "../_shared/adPlanPauseTransition.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -109,6 +118,12 @@ async function isActiveAdmin(
   return !!adminRow;
 }
 
+/** #4238 W2: Meta result counts per day, filled by fetchMetaSpendDays. */
+const metaResultCounts = new Map<
+  string,
+  Map<string, { purchase: number; checkout: number; signup: number }>
+>();
+
 async function fetchMetaSpendDays(
   conn: AdConnectionRow,
   externalCampaignId: string,
@@ -123,7 +138,7 @@ async function fetchMetaSpendDays(
     `${externalCampaignId}/insights`,
     {
       fields:
-        "spend,impressions,clicks,inline_link_clicks,account_currency,date_start",
+        "spend,impressions,clicks,inline_link_clicks,account_currency,date_start,actions",
       time_increment: 1,
       time_range: JSON.stringify({
         since: since.toISOString().slice(0, 10),
@@ -133,6 +148,7 @@ async function fetchMetaSpendDays(
       limit: 100,
     },
   );
+  metaResultCounts.set(externalCampaignId, parseMetaResultCounts(payload));
   return parseMetaInsightsSpend(payload);
 }
 
@@ -505,6 +521,76 @@ async function reconcileStoppedCampaign(
     : { settlement: data?.state ?? "ready_to_settle" };
 }
 
+/** #4238 W2: ad_offering_stock; "unavailable" when the read failed. */
+async function readOfferingStock(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  eventId: string | null,
+  occurrenceKey: string | null,
+): Promise<OfferingStock | null | "unavailable"> {
+  if (!eventId || !UUID_REGEX.test(eventId)) return null;
+  const { data, error } = await supabase.rpc("ad_offering_stock", {
+    p_event_id: eventId,
+    p_occurrence_key: occurrenceKey,
+  });
+  if (error) return "unavailable";
+  return parseOfferingStock(data) ?? "unavailable";
+}
+
+async function hostAutomation(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: {
+    row: Record<string, unknown>;
+    target: CampaignSpendTarget;
+    connection: AdConnectionRow;
+    planId: string;
+    canonical: Record<string, unknown>;
+    eventId: string | null;
+    occurrenceKey: string | null;
+    destination: Record<string, unknown> | null;
+  },
+): Promise<Record<string, unknown>> {
+  try {
+    const meta = input.target.platform === "meta"
+      ? resolveMetaClient(input.connection)
+      : null;
+    const nextDate = Date.parse(String(input.destination?.next_date ?? ""));
+    const endsAt = Date.parse(String(input.target.ends_at ?? ""));
+    return await runHostAdAutomation({
+      db: supabase,
+      graph: meta
+        ? (method, path, params) => metaGraph(meta, method, path, params)
+        : null,
+      adAccountId: meta ? String(meta.config.adAccountId ?? "") || null : null,
+      readStock: async () => {
+        const stock = await readOfferingStock(
+          supabase,
+          input.eventId,
+          input.occurrenceKey,
+        );
+        return stock === "unavailable" ? null : stock;
+      },
+    }, {
+      planId: input.planId,
+      campaignId: input.target.id,
+      platform: input.target.platform,
+      externalCampaignId: input.target.external_campaign_id,
+      canonical: input.canonical,
+      eventId: input.eventId,
+      eventStartMs: Number.isFinite(nextDate) ? nextDate : null,
+      endsAtMs: Number.isFinite(endsAt) ? endsAt : null,
+      liveSinceMs: await loadHostLiveSinceMs(supabase, [input.row]),
+      nowMs: Date.now(),
+    });
+  } catch (error) {
+    return {
+      automation_error: (error instanceof Error ? error.message : String(error))
+        .slice(0, 200),
+    };
+  }
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -532,7 +618,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, plan_version:ad_plan_versions(plan_id)",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id, owner_kind, created_at, plan_version:ad_plan_versions(plan_id, canonical_plan)",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -620,21 +706,47 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
+    const planVersion = row.plan_version as
+      | { plan_id?: unknown; canonical_plan?: unknown }
+      | null;
+    const canonical = planVersion?.canonical_plan &&
+        typeof planVersion.canonical_plan === "object"
+      ? planVersion.canonical_plan as Record<string, unknown>
+      : {};
+    const isHost = row.owner_kind === "host";
+    const eventId = typeof row.dest_event_id === "string"
+      ? row.dest_event_id
+      : null;
+    const occurrenceKey = typeof canonical.occurrence_key === "string"
+      ? canonical.occurrence_key
+      : null;
+    let resolvedDestination: Record<string, unknown> | null = null;
     if (target.status === "ACTIVE") {
-      let destinationPause:
-        | "destination_unavailable"
-        | "destination_check_failed"
-        | null = null;
+      let destinationPause: HostAdStopReason | null = null;
       try {
-        await resolveAdDestination(supabase, {
+        resolvedDestination = await resolveAdDestination(supabase, {
           page_type: row.dest_page_type,
           brand_slug: row.dest_brand_slug,
           entity_slug: row.dest_entity_slug,
-        });
+        }) as unknown as Record<string, unknown>;
+        // #4238 5e: a one-date ad stops when THAT date sells out, even while
+        // other dates still have tickets.
+        if (isHost && occurrenceKey) {
+          const keyed = await readOfferingStock(supabase, eventId, occurrenceKey);
+          if (keyed === "unavailable") destinationPause = "destination_check_failed";
+          else if (keyed?.sold_out) destinationPause = "sold_out";
+        }
       } catch (err) {
-        destinationPause = err instanceof AdDestinationError && err.status < 500
-          ? "destination_unavailable"
-          : "destination_check_failed";
+        // #4238 5b (I-4238-TRUE-PAUSE-REASON): the true reason, never
+        // "ended or isn't public" for a sold-out page.
+        if (err instanceof AdDestinationError && err.status < 500) {
+          const stock = err.availability === "nothing_on_sale"
+            ? await readOfferingStock(supabase, eventId, occurrenceKey)
+            : null;
+          destinationPause = pauseReasonFor(err.availability, stock);
+        } else {
+          destinationPause = "destination_check_failed";
+        }
       }
       if (destinationPause) {
         const cumulative = await loadCumulativeSpendCents(supabase, target.id);
@@ -667,10 +779,36 @@ serve(async (req: Request): Promise<Response> => {
           continue;
         }
         paused += 1;
+        const planIdForEvent = planVersion?.plan_id;
+        // #4238 5b: the event has passed → end the plan; unspent credit comes
+        // back through the existing settlement (unspend_return, fee share
+        // included — F-2 unchanged).
+        let stop: Record<string, unknown> = {};
+        if (destinationPause === "event_ended") {
+          const { error: stopError } = await supabase.rpc(
+            "ad_request_campaign_stop",
+            { p_campaign_id: target.id },
+          );
+          stop = stopError
+            ? { stop_failed: String(stopError.message ?? "").slice(0, 200) }
+            : { stop_requested: true };
+        }
+        if (isHost && typeof planIdForEvent === "string") {
+          await supabase.from("ad_plan_automation_events").insert({
+            plan_id: planIdForEvent,
+            campaign_id: target.id,
+            platform: target.platform,
+            kind: destinationPause === "event_ended" ? "auto_ended" : "auto_paused",
+            status: stop.stop_failed ? "failed" : "applied",
+            applied_at: new Date().toISOString(),
+            detail: { reason: destinationPause, ...stop },
+          });
+        }
         results.push({
           campaign_id: target.id,
           paused: destinationPause,
           total_spend_cents: cumulative.cents,
+          ...stop,
         });
         continue;
       }
@@ -851,6 +989,22 @@ serve(async (req: Request): Promise<Response> => {
         upserted += safeUpserts.length;
       }
     }
+    // #4238 W2: Meta's own purchases / started checkouts / sign-ups per day
+    // (the ladder reads purchase_events). Best effort; never blocks a pause.
+    const counts = platform === "meta"
+      ? metaResultCounts.get(target.external_campaign_id)
+      : undefined;
+    if (counts && !upsertError) {
+      for (const [day, value] of counts) {
+        await supabase.from("ad_spend_daily").update({
+          purchase_events: value.purchase,
+          checkout_events: value.checkout,
+          signup_events: value.signup,
+        }).eq("campaign_id", target.id).eq("platform", "meta")
+          .eq("spend_date", day);
+      }
+      metaResultCounts.delete(target.external_campaign_id);
+    }
 
     const cumulative = await loadCumulativeSpendCents(supabase, target.id);
     if (!cumulative.ok) {
@@ -976,9 +1130,27 @@ serve(async (req: Request): Promise<Response> => {
       });
       await touchSpendSyncWatermark(supabase, target.id);
     } else {
+      // #4238 items 4, 5c, 5d: the Host automation, after a clean spend read.
+      let automation: Record<string, unknown> | null = null;
+      if (
+        isHost && target.status === "ACTIVE" && spendConnection &&
+        typeof planVersion?.plan_id === "string"
+      ) {
+        automation = await hostAutomation(supabase, {
+          row,
+          target,
+          connection: spendConnection,
+          planId: planVersion.plan_id,
+          canonical,
+          eventId,
+          occurrenceKey,
+          destination: resolvedDestination,
+        });
+      }
       results.push({
         campaign_id: target.id,
         total_spend_cents: decision.total_spend_cents,
+        ...(automation ? { automation } : {}),
         ...(settlementResult ?? {}),
         days: decision.upserts.length,
         stage_metric_days: stageMetrics.length,
