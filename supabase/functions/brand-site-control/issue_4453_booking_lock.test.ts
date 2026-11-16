@@ -71,6 +71,8 @@ Deno.test("#4453 the publish carries Core's brand as action_scope", async () => 
   // Fail closed: an unreadable brand stops the publish instead of sending no scope.
   assert(/if \(actionBrandError\) \{\s*return sitesFailure\("SERVICE_TEMPORARILY_UNAVAILABLE", 503/.test(source));
   assert(source.includes("action_scope: actionScope,"));
+  // Deploy-order handshake: this Core advertises that it sends identity.
+  assert(source.includes("booking_identity: BOOKING_IDENTITY_CAPABILITY,"));
   assert(source.indexOf("...input,") < source.indexOf("action_scope: actionScope,"));
   // The booking lock is checked before the outage fallback.
   assert(source.indexOf("bookingLockRefusal(payload?.error") < source.indexOf("sitesOwnerFixableRefusal(reportedCode"));
@@ -84,6 +86,7 @@ Deno.test("#4453 Ari's evidence carries the brand slug and contact details; its 
     "b",
   );
   assertEquals(evidence?.brand.slug, "young-and-stamped");
+  assertEquals(evidence?.booking_identity, 1);
   assertEquals(evidence?.brand.contact_email, "hello@ys.test");
   assertEquals(evidence?.brand.contact_phone, "+2348012345678");
   const refused = await ariFailureFrom({ ok: false, error: { code: "BOOKING_THROUGH_ENQUIRY", problems: ["blocks[0].heading"] } }, 409).json();

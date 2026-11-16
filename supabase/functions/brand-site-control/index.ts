@@ -22,7 +22,7 @@ import { handleSitePlanRoute, planFailureFromRpc } from "./sitePlan.ts";
 import { handleSiteContentRoute } from "./siteContent.ts";
 import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
-import { bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
+import { BOOKING_IDENTITY_CAPABILITY, bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
 
 type JsonObject = Record<string, unknown>;
 const CUSTOMER_FAILURE_CODES = new Set<string>(SITES_SAFE_CUSTOMER_CODES);
@@ -830,6 +830,9 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
             : null,
           // Always Core's value: the caller's `action_scope` is overwritten.
           action_scope: actionScope,
+          // Deploy-order handshake: this Core signs the brand's identity in,
+          // so Studio enforces the identity part of the lock (fail closed).
+          booking_identity: BOOKING_IDENTITY_CAPABILITY,
         },
       });
     }

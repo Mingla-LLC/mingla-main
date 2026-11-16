@@ -441,3 +441,10 @@ describe("#4453 rework P3: deny-list domains, site media and mailto", () => {
     ]) expect(actionHrefProblem(href, SCOPE), href).toBe("not_brand_contact");
   });
 });
+
+describe("#4453 retest P2-A: format characters can't hide booking intent", () => {
+  it.each([
+    "Res\u200Derve", "Reser\u200Dve", "Tick\u200Bets", "Re\u00ADserve", "R\u2060eserve", "B\u200Bo\u200Bo\u200Bk",
+    "Bo\u200Dok", "\u202Eevreser", "\u202Ekoob", "Bo\u200Dok now", "\uFEFFReserve", "Re\u200Cserve", "\u2066Book\u2069",
+  ])("%j reads as booking", (label) => expect(offersBookingOrPayment(label)).toBe(true));
+});

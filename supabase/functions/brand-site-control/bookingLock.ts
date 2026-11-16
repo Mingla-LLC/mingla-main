@@ -68,6 +68,15 @@ export function bookingLockRefusal(
   }, 409);
 }
 
+/**
+ * Deploy-order handshake (#4453 PR 2): Core advertises that it signs the
+ * brand's identity into every publish and into Ari's evidence. Studio
+ * enforces the identity part of the booking lock only when it sees this, so
+ * Studio and this function may deploy in either order. Bump only with
+ * Studio's `BOOKING_IDENTITY_CAPABILITY`.
+ */
+export const BOOKING_IDENTITY_CAPABILITY = 1;
+
 export type PublicationActionScope = {
   brand_slug: string;
   contact_email?: string;

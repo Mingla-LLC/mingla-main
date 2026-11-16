@@ -74,17 +74,43 @@ export function actionScopeFromCore(value: unknown): ArtifactActionScope | null 
 }
 
 /** Every failing button of a built v2 artifact (empty = the publish may go ahead). */
-export function artifactOutboundActionLinks(artifact: ArtifactV2): OutboundActionLink[] {
+/*
+ * Deploy-order handshake. Core (brand-site-control) advertises that it signs
+ * the brand's identity into a publish with `booking_identity: 1`
+ * (BOOKING_IDENTITY_CAPABILITY). Only then is the identity part of the lock
+ * enforced, failing closed (BOOKING_LINK_UNVERIFIED) when the identity is
+ * missing. A publish from an older Core is still checked for everything that
+ * needs no identity (booking and ticketing sites, redirectors and
+ * shorteners, the Mingla host and route shapes, same-site pages, own media);
+ * only the "is it THIS brand's page / email / phone" part is shape-only, as
+ * before the lock. So Studio and Core may deploy in either order.
+ */
+export const BOOKING_IDENTITY_CAPABILITY = 1;
+
+/** Does this Core publish request advertise that it sends brand identity? */
+export function coreSendsBookingIdentity(body: unknown): boolean {
+  return Boolean(body) && typeof body === "object" &&
+    (body as Record<string, unknown>).booking_identity === BOOKING_IDENTITY_CAPABILITY;
+}
+
+export type BookingLockOptions = {
+  /** The Core advertised `booking_identity` (default true: fail closed). */
+  coreSendsIdentity?: boolean;
+};
+
+export function artifactOutboundActionLinks(artifact: ArtifactV2, options: BookingLockOptions = {}): OutboundActionLink[] {
+  const coreSendsIdentity = options.coreSendsIdentity !== false;
   return outboundActionLinks({
     pages: artifact.pages.filter((page) => page.enabled),
     headerCtaHref: artifact.navigation.header_cta?.href,
-    // Fail closed: with no Core scope, links that need the brand are refused.
-    scope: artifactActionScope(artifact, { failClosed: true }),
+    // Fail closed when Core advertises identity but none came; shape-only for
+    // the identity checks when the Core predates it.
+    scope: artifactActionScope(artifact, { failClosed: true, identityUnchecked: !coreSendsIdentity }),
   });
 }
 
-/** Throws OUTBOUND_ACTION_LINK when any button of the artifact points outside Mingla. */
-export function assertNoOutboundActionLinks(artifact: ArtifactV2): void {
-  const links = artifactOutboundActionLinks(artifact);
+/** Throws OUTBOUND_ACTION_LINK (or BOOKING_LINK_UNVERIFIED) when a button breaks the booking lock. */
+export function assertNoOutboundActionLinks(artifact: ArtifactV2, options: BookingLockOptions = {}): void {
+  const links = artifactOutboundActionLinks(artifact, options);
   if (links.length) throw new OutboundActionLinkError(links);
 }

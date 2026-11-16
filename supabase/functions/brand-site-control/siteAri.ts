@@ -11,7 +11,7 @@
  *     latest revision, the layouts this design draws).
  */
 import { sitesJson } from "../_shared/sitesContracts.ts";
-import { BOOKING_LOCK_REASONS } from "./bookingLock.ts";
+import { BOOKING_IDENTITY_CAPABILITY, BOOKING_LOCK_REASONS } from "./bookingLock.ts";
 import { socialHandlesFrom } from "../_shared/siteContracts/safety.ts";
 
 type JsonObject = Record<string, unknown>;
@@ -143,6 +143,8 @@ export function ariFailureFrom(body: JsonObject | null, status: number): Respons
 }
 
 export type SiteEvidence = {
+  /** Deploy-order handshake: this evidence carries the brand's identity. */
+  booking_identity: typeof BOOKING_IDENTITY_CAPABILITY;
   /*
    * #4453 PR 2 (booking lock) — `slug`, `contact_email` and `contact_phone`:
    * Ari's buttons may only go to this brand's own Mingla pages and its own
@@ -182,6 +184,7 @@ export async function siteEvidence(
   if (!Array.isArray(offerings)) return null;
   const text = (value: unknown) => (typeof value === "string" ? value : null);
   return {
+    booking_identity: BOOKING_IDENTITY_CAPABILITY,
     brand: {
       id: brandId,
       name: text(brand.name),

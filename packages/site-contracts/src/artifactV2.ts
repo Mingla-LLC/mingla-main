@@ -343,7 +343,7 @@ export function artifactActionScope(
    * publish when Core couldn't name the brand; never by the runtime, which
    * keeps serving earlier artifacts unchanged.
    */
-  options: { failClosed?: boolean } = {},
+  options: { failClosed?: boolean; identityUnchecked?: boolean } = {},
 ): MinglaActionScope | null {
   const scope = artifact.action_scope;
   if (!scope && !options.failClosed) return null;
@@ -367,6 +367,8 @@ export function artifactActionScope(
     socialHandles: scope?.social_handles?.length ? new Set(scope.social_handles) : null,
     mediaIds: new Set((artifact.media ?? []).map((item) => item.id.toLowerCase())),
     siteHosts: siteHost ? new Set([siteHost]) : new Set(),
+    // Only meaningful with no brand: an older Core that sends no identity.
+    identityUnchecked: !scope && options.identityUnchecked === true,
   };
 }
 

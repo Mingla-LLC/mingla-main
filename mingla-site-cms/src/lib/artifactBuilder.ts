@@ -247,6 +247,12 @@ export async function buildPublicationArtifact(
      * points outside Mingla. Set by publish; a private preview still renders.
      */
     enforceActionLinks?: boolean;
+    /**
+     * #4453 PR 2 — the Core advertised `booking_identity` (it signs the
+     * brand's identity in). Without it the identity checks are shape-only,
+     * so Studio and Core may deploy in either order.
+     */
+    coreSendsIdentity?: boolean;
   },
 ): Promise<BuiltPublication> {
   const scopedReq = await tenantRequest(req, input.tenant);
@@ -1333,15 +1339,12 @@ export async function buildPublicationArtifact(
   artifact.font_fallbacks = fonts.fallbacks;
   if (input.actionScope) artifact.action_scope = input.actionScope;
   /*
-   * #4453 PR 2 (booking lock, D5) — one button outside Mingla blocks the
-   * publish, before anything is written.
-   * [TRANSITIONAL] A publish from a Core that does not yet sign the brand in
-   * (brand-site-control before its #3381 deploy) has no scope, so the check
-   * is brand-agnostic: any Mingla buyer page passes, every other site is
-   * refused. Exit: brand-site-control deployed with `action_scope`; then
-   * every publish carries it.
+   * #4453 PR 2 (booking lock, D5) — a booking button outside Mingla, or any
+   * button to a booking site or redirector, blocks the publish before
+   * anything is written. The brand-identity part runs only when Core
+   * advertised `booking_identity` (see bookingLock.ts), failing closed then.
    */
-  if (input.enforceActionLinks) assertNoOutboundActionLinks(artifact);
+  if (input.enforceActionLinks) assertNoOutboundActionLinks(artifact, { coreSendsIdentity: input.coreSendsIdentity === true });
   const serialized = stable(artifact);
   // The public contract (assertArtifactV2) is enforced where it always was:
   // the runtime's candidate probe validates these exact bytes before Core

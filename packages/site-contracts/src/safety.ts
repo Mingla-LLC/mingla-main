@@ -274,8 +274,16 @@ const CONFUSABLES: Readonly<Record<string, string>> = {
 };
 
 /** A label reduced to plain lowercase Latin words, or null when it mixes scripts. */
+/* Bidi overrides and isolates: no legitimate use in a button label (they make "koob" display as "book"). */
+const BIDI_CONTROL_RE = /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]/u;
+
 export function normalizeActionLabel(label: string): { text: string; mixedScript: boolean } {
-  let text = label.normalize("NFKC").toLowerCase();
+  // A label carrying bidi controls is treated as suspect (booking).
+  const bidi = BIDI_CONTROL_RE.test(label);
+  // Format characters (zero-width joiner and non-joiner, zero-width space,
+  // word joiner, soft hyphen, BOM, bidi controls) are REMOVED, never turned
+  // into a space, so "Res\u200Derve" reads as "reserve".
+  let text = label.replace(/[\p{Cf}\u00AD\u180E\uFEFF]/gu, "").normalize("NFKC").toLowerCase();
   text = text.normalize("NFD").replace(/\p{M}+/gu, "");
   let mapped = "";
   let nonLatin = false;
@@ -294,7 +302,7 @@ export function normalizeActionLabel(label: string): { text: string; mixedScript
     .replace(/[\p{P}]+/gu, " ") // hyphens, apostrophes, punctuation
     .replace(/\s+/g, " ")
     .trim();
-  return { text: words, mixedScript: (nonLatin || otherScript) && latin };
+  return { text: words, mixedScript: bidi || ((nonLatin || otherScript) && latin) };
 }
 
 const BOOKING_STEMS = [
@@ -377,6 +385,16 @@ export type MinglaActionScope = {
    * hostnames, for an absolute link to its media.
    */
   readonly mediaIds?: ReadonlySet<string> | null;
+  /**
+   * Deploy-order handshake (#4453 PR 2): true when the brand is unknown
+   * because the Core that sent this publish does not yet send brand identity
+   * (it doesn't advertise `booking_identity`). Then the identity checks are
+   * shape-only, as before the lock, and everything else (booking sites,
+   * redirectors, the Mingla host and route shapes, same-site pages, own
+   * media) is still enforced. False or absent with `brandSlug: null`: the
+   * check fails closed (`brand_unknown`).
+   */
+  readonly identityUnchecked?: boolean;
   readonly siteHosts?: ReadonlySet<string> | null;
 };
 
@@ -421,7 +439,7 @@ function mailtoProblem(url: URL, scope: MinglaActionScope | null): ActionHrefPro
   if (/@|https?:|www\./i.test(extra)) return "not_brand_contact";
   if (recipients.length === 0) return "not_brand_contact";
   if (!scope) return null;
-  if (scope.brandSlug === null && !scope.contactEmail) return "brand_unknown";
+  if (scope.brandSlug === null && !scope.contactEmail) return scope.identityUnchecked ? null : "brand_unknown";
   const own = (scope.contactEmail ?? "").trim().toLowerCase();
   return own && recipients.every((to) => to === own) ? null : "not_brand_contact";
 }
@@ -465,7 +483,7 @@ function informationalProblem(url: URL, scope: MinglaActionScope | null): Action
   if (whatsapp !== null) {
     if (!/^\d{5,20}$/.test(bareDigits(whatsapp)) || /https?:|www\./i.test(url.search)) return "not_brand_contact";
     if (!scope) return null;
-    if (!scope.contactPhone) return scope.brandSlug === null ? "brand_unknown" : "not_brand_contact";
+    if (!scope.contactPhone) return scope.brandSlug === null ? (scope.identityUnchecked ? null : "brand_unknown") : "not_brand_contact";
     return samePhone(whatsapp, scope) ? null : "not_brand_contact";
   }
   return "outside_mingla";
@@ -511,7 +529,7 @@ export function actionHrefProblem(
   if (url.protocol === "mailto:") return mailtoProblem(url, scope);
   if (url.protocol === "tel:") {
     if (!scope) return null;
-    if (!scope.contactPhone) return scope.brandSlug === null ? "brand_unknown" : "not_brand_contact";
+    if (!scope.contactPhone) return scope.brandSlug === null ? (scope.identityUnchecked ? null : "brand_unknown") : "not_brand_contact";
     return samePhone(decodeURIComponent(url.pathname), scope) ? null : "not_brand_contact";
   }
   if (url.protocol !== "https:") return "outside_mingla";
@@ -525,7 +543,7 @@ export function actionHrefProblem(
   if (root === "checkout") {
     if (segments.length !== 2 || !UUID_RE.test(brand ?? "")) return "outside_mingla";
     if (!scope) return null;
-    if (scope.brandSlug === null) return "brand_unknown";
+    if (scope.brandSlug === null) return scope.identityUnchecked ? null : "brand_unknown";
     return scope.checkoutEventIds?.has(brand!.toLowerCase()) ? null : "other_brand";
   }
   const offeringRoute = (root === "t" || root === "e" || root === "exp") && segments.length >= 3;
@@ -533,7 +551,7 @@ export function actionHrefProblem(
     (segments.length === 2 || (segments.length === 4 && segments[2] === "v" && ACTION_SLUG_RE.test(segments[3]!)));
   if (!(offeringRoute || brandRoute) || !ACTION_SLUG_RE.test(brand ?? "")) return "outside_mingla";
   if (!scope) return null;
-  if (scope.brandSlug === null) return "brand_unknown";
+  if (scope.brandSlug === null) return scope.identityUnchecked ? null : "brand_unknown";
   return brand!.toLowerCase() === scope.brandSlug.toLowerCase() ? null : "other_brand";
 }
 

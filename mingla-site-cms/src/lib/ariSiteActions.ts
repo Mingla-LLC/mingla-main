@@ -74,6 +74,8 @@ export type AriEvidence = {
     contact_phone?: string | null;
     social_handles?: string[];
   };
+  /** #4453 PR 2 — Core advertises that its evidence carries the brand's identity (deploy-order handshake). */
+  booking_identity?: boolean;
   offerings: Array<ClaimOffering & { id: string; kind?: string | null }>;
 };
 
@@ -91,6 +93,12 @@ export type AriActionContext = {
 
 /** Validates the Core-signed evidence's shape (anything else is treated as no evidence). */
 export function parseAriEvidence(value: unknown, brandId: string): AriEvidence | null {
+  const evidence = parseAriEvidenceBody(value, brandId);
+  if (evidence && (value as AnyDoc).booking_identity === 1) evidence.booking_identity = true;
+  return evidence;
+}
+
+function parseAriEvidenceBody(value: unknown, brandId: string): AriEvidence | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as AnyDoc;
   if (!raw.brand || raw.brand.id !== brandId || !Array.isArray(raw.offerings)) return null;
@@ -383,7 +391,8 @@ function blockTexts(block: AnyDoc): string[] {
  */
 function ariActionScope(ctx: AriActionContext): MinglaActionScope {
   const brand = ctx.evidence?.brand;
-  // Fail closed: without the brand, links that need it (its Mingla pages,
+  // When Core advertises identity (booking_identity) and the brand is
+  // missing, fail closed: links that need it (its Mingla pages,
   // checkout, email, phone, WhatsApp) are refused (`brand_unknown`).
   return {
     brandSlug: brand?.slug ?? null,
@@ -392,6 +401,8 @@ function ariActionScope(ctx: AriActionContext): MinglaActionScope {
     contactPhone: normalizeBrandPhone(brand?.contact_phone ?? null),
     checkoutEventIds: new Set((ctx.evidence?.offerings ?? []).filter((row) => row.kind === "event").map((row) => row.id)),
     socialHandles: brand?.social_handles?.length ? new Set(brand.social_handles) : null,
+    // An older Core sends no identity: identity checks are shape-only then.
+    identityUnchecked: ctx.evidence?.booking_identity !== true,
   };
 }
 

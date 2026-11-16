@@ -67,7 +67,7 @@ import {
 import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
-import { actionScopeFromCore, OutboundActionLinkError } from "../lib/bookingLock";
+import { actionScopeFromCore, coreSendsBookingIdentity, OutboundActionLinkError } from "../lib/bookingLock";
 import { BOOKING_LINK_UNVERIFIED_MESSAGE, OUTBOUND_ACTION_LINK_MESSAGE } from "../contracts/generated/publishChecks.ts";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
@@ -636,6 +636,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 // #4453 PR 2 — Core's signed brand; every button must resolve to it.
                 actionScope: actionScopeFromCore(body.action_scope),
                 enforceActionLinks: true,
+                coreSendsIdentity: coreSendsBookingIdentity(body),
               });
           await req.payload.update({
             collection: "publication-jobs",

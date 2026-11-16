@@ -16,10 +16,10 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./observability", () => ({ emitCmsObservation: vi.fn(), observeCmsEndpoint: (_r: string, _d: string, handler: unknown) => handler }));
 vi.mock("./gateway", () => ({ callCore: vi.fn(), verifyCoreRequest: vi.fn(), readCoreProjection: vi.fn() }));
 
-import { actionScopeFromCore, artifactOutboundActionLinks, assertNoOutboundActionLinks, OutboundActionLinkError } from "./bookingLock";
+import { actionScopeFromCore, artifactOutboundActionLinks, assertNoOutboundActionLinks, coreSendsBookingIdentity, OutboundActionLinkError } from "./bookingLock";
 import { buttonUrl, safeActionUrl, safeUrl } from "./validation";
 import { composeFromPlan, type ComposePlan } from "./composeFromPlan";
-import { assertAriBookingLock, ARI_REFUSAL_CODES, AriRefusal, type AriActionContext } from "./ariSiteActions";
+import { assertAriBookingLock, ARI_REFUSAL_CODES, AriRefusal, parseAriEvidence, type AriActionContext } from "./ariSiteActions";
 import { siteBlocks } from "../blocks/siteBlocks";
 import type { ArtifactV2 } from "../contracts/generated/artifactV2.ts";
 import { bookingThroughEnquiryFields } from "../contracts/generated/claims.ts";
@@ -121,6 +121,59 @@ describe("#4453 rework: informational buttons publish, booking ones go to Mingla
   it("a hero button to any outside site is refused", () => {
     expect(artifactOutboundActionLinks(withBlocks([{ type: "hero", heading: "Gogi", ctas: [{ label: "Follow us", href: "https://www.instagram.com/gogi" }] }])))
       .toEqual([expect.objectContaining({ blockType: "hero", intent: "booking", problem: "outside_mingla" })]);
+  });
+});
+
+describe("#4453 deploy-order handshake (booking_identity)", () => {
+  const site = (href: string) => {
+    const built = artifact(href, undefined) as any;
+    built.pages[1].blocks = [{ type: "contact_handoff", variant: "band", heading: "Get in touch", label: "Email us", href: "mailto:hello@youngandstamped.com" }];
+    return built as ArtifactV2;
+  };
+
+  it("reads the capability only as Core's exact value", () => {
+    expect(coreSendsBookingIdentity({ booking_identity: 1 })).toBe(true);
+    expect(coreSendsBookingIdentity({ booking_identity: "1" })).toBe(false);
+    expect(coreSendsBookingIdentity({})).toBe(false);
+    expect(coreSendsBookingIdentity(null)).toBe(false);
+  });
+
+  it("an older Core (no booking_identity): a valid site publishes, OpenTable is still refused", () => {
+    const old = { coreSendsIdentity: false };
+    expect(() => assertNoOutboundActionLinks(site("https://host.usemingla.com/t/young-and-stamped/lagos-weekend"), old)).not.toThrow();
+    expect(() => assertNoOutboundActionLinks(site("/about"), old)).not.toThrow();
+    expect(() => assertNoOutboundActionLinks(site("https://www.opentable.com/r/young-and-stamped"), old)).toThrow(OUTBOUND_ACTION_LINK);
+    expect(() => assertNoOutboundActionLinks(site("https://bit.ly/abc"), old)).toThrow(OUTBOUND_ACTION_LINK);
+    expect(() => assertNoOutboundActionLinks(site("https://example.com/book"), old)).toThrow(OUTBOUND_ACTION_LINK);
+  });
+
+  it("a Core that advertises identity but sends none: BOOKING_LINK_UNVERIFIED", () => {
+    expect(() => assertNoOutboundActionLinks(site("https://host.usemingla.com/t/young-and-stamped/lagos-weekend"), { coreSendsIdentity: true }))
+      .toThrow("BOOKING_LINK_UNVERIFIED");
+  });
+
+  it("a Core that sends identity: the brand check runs as before", () => {
+    const withScope = (href: string) => {
+      const built = site(href) as any;
+      built.action_scope = { brand_slug: "young-and-stamped", contact_email: "hello@youngandstamped.com" };
+      return built as ArtifactV2;
+    };
+    expect(() => assertNoOutboundActionLinks(withScope("https://host.usemingla.com/t/young-and-stamped/x"), { coreSendsIdentity: true })).not.toThrow();
+    expect(() => assertNoOutboundActionLinks(withScope("https://host.usemingla.com/t/another-brand/x"), { coreSendsIdentity: true })).toThrow(OUTBOUND_ACTION_LINK);
+  });
+
+  it("the publish passes Core's advertisement through", async () => {
+    const source = await import("node:fs").then((fs) => fs.readFileSync(new URL("../endpoints/sitesEndpoints.ts", import.meta.url), "utf8"));
+    expect(source).toContain("coreSendsIdentity: coreSendsBookingIdentity(body)");
+  });
+
+  it("Ari: an older Core's evidence keeps identity checks shape-only; a new Core's fails closed", () => {
+    const evidence = (extra: Record<string, unknown>) => ({ brand: { id: "b", name: null, description: null, city: null }, offerings: [], ...extra });
+    const older = { evidence: parseAriEvidence(evidence({}), "b") } as unknown as AriActionContext;
+    expect(() => assertAriBookingLock(older, [{ type: "cta", href: "https://host.usemingla.com/e/young-and-stamped/x" }], "blocks")).not.toThrow();
+    expect(() => assertAriBookingLock(older, [{ type: "cta", href: "https://www.opentable.com/r/x" }], "blocks")).toThrow("VALIDATION_FAILED");
+    const newer = { evidence: parseAriEvidence(evidence({ booking_identity: 1 }), "b") } as unknown as AriActionContext;
+    expect(() => assertAriBookingLock(newer, [{ type: "cta", href: "https://host.usemingla.com/e/young-and-stamped/x" }], "blocks")).toThrow("VALIDATION_FAILED");
   });
 });
 
