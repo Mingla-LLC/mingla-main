@@ -21,6 +21,7 @@
 // FAILS-ON-REVERT: delete `cardBodyInset` from Sheet.web.tsx and the inset
 // tests go red; delete the opaque base View and the opacity tests go red.
 
+// MINGLA-INVARIANT: I-4420-SHEET-SIDE-GUTTER | issue #4420 | Every default wide-web sheet card pads its body by SHEET_SIDE_GUTTER (the bottom sheet body's own 20) on both sides, so no sheet content sits flush on, or is clipped by, the card edge.
 // MINGLA-INVARIANT: I-SHEET-BREATHING-ROOM | issue #3355 | Every default wide-web sheet card reserves space[6] below its content, so a pinned footer never sits flush on the card's bottom border.
 
 import React from "react";
@@ -37,6 +38,7 @@ jest.mock("../SheetMobile", () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   Sheet: (props: { children: React.ReactNode }) => require("react").createElement("MobileSheetProbe", null, props.children),
   SHEET_TOP_INSET: 24,
+  SHEET_SIDE_GUTTER: 20,
   WEB_OPAQUE_BACKGROUND: "#16181b",
 }));
 
@@ -93,6 +95,30 @@ describe("#3827 wide-desktop Sheet card", () => {
     const pad = flat(byTestID(root, "probe-desktop-body")[0].props.style).paddingBottom;
     expect(pad).toBe(space[6]);
     expect(pad).toBeGreaterThanOrEqual(16);
+  });
+
+  test("#4420 the body keeps the bottom sheet's 20 side gutter, so content never sits on the card edge", async () => {
+    mockWide = true;
+    // The real constant is the kit's 20 (space[5]); the bottom sheet's body reads it too.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const src = (require("fs") as typeof import("fs")).readFileSync(
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      (require("path") as typeof import("path")).join(__dirname, "..", "SheetMobile.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/export const SHEET_SIDE_GUTTER = space\[5\];/);
+    expect(src).toMatch(/paddingHorizontal: SHEET_SIDE_GUTTER,/);
+    const style = flat(byTestID(await mount(), "probe-desktop-body")[0].props.style);
+    expect(style.paddingHorizontal).toBe(20);
+    // A brand-filled default card gets the same gutter.
+    const brand = flat(byTestID(await mount({ panelBackground: "#222222" }), "probe-desktop-body")[0].props.style);
+    expect(brand.paddingHorizontal).toBe(20);
+  });
+
+  test("#4420 a Competition panel lays out its own side insets", async () => {
+    mockWide = true;
+    const root = await mount({ presentation: "competition", panelBackground: "#101010" });
+    expect(flat(byTestID(root, "probe-desktop-body")[0].props.style).paddingHorizontal).toBeUndefined();
   });
 
   test("#3355 a Competition panel still lays out its own bottom inset", async () => {

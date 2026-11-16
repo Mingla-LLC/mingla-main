@@ -199,6 +199,13 @@ const HANDLE_REGION_HEIGHT = HANDLE_PAD_TOP + HANDLE_HEIGHT + HANDLE_PAD_BOTTOM;
  * every platform and no consumer has to know which one it is rendered in.
  */
 export const SHEET_TOP_INSET = HANDLE_REGION_HEIGHT;
+/**
+ * #4420 — the side gutter every sheet body keeps (kit `.sheet-body`, 20 on
+ * each side). The bottom sheet's body and the wide-desktop centred card
+ * (`Sheet.web.tsx`) both read this ONE constant, so a sheet's text, inputs,
+ * rows and buttons sit on the same gutter on every platform.
+ */
+export const SHEET_SIDE_GUTTER = space[5];
 const CLOSE_THRESHOLD_PX = 80;
 const CLOSE_VELOCITY = 600;
 /**
@@ -1229,7 +1236,7 @@ const styles = StyleSheet.create({
   // bottom added at render.
   body: {
     flex: 1,
-    paddingHorizontal: space[5],
+    paddingHorizontal: SHEET_SIDE_GUTTER,
     paddingBottom: space[6],
   },
 });

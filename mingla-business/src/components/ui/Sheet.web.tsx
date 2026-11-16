@@ -72,6 +72,7 @@ import { useSheetGone } from "./useSheetGone";
 // it always resolves to the real bottom-sheet implementation.
 import {
   Sheet as MobileSheet,
+  SHEET_SIDE_GUTTER,
   SHEET_TOP_INSET,
   WEB_OPAQUE_BACKGROUND,
   type SheetPresentation,
@@ -441,8 +442,17 @@ const styles = StyleSheet.create({
   // Invariant I-SHEET-BREATHING-ROOM | issue #3355 | Every default wide-web
   // sheet card reserves spacing.lg below its content. Enforced by
   // issue_3827_desktop_sheet_inset_and_opaque.implementor.test.tsx.
+  // #4420 (shots-bundle 03/04) — the card keeps the SAME 20 side gutter the
+  // bottom sheet's body keeps. #4420 moved the side padding off
+  // SheetScrollLayout onto the bottom sheet's body; this card never had one,
+  // so every desktop sheet's text, inputs, rows and buttons sat flush on the
+  // card edge and a bordered row was clipped by it.
+  // Invariant I-4420-SHEET-SIDE-GUTTER | issue #4420 | Every default wide-web
+  // sheet card pads its body by SHEET_SIDE_GUTTER on both sides. Enforced by
+  // issue_3827_desktop_sheet_inset_and_opaque.implementor.test.tsx.
   cardBodyInset: {
     paddingTop: SHEET_TOP_INSET,
+    paddingHorizontal: SHEET_SIDE_GUTTER,
   },
   cardBodyBreathing: {
     paddingBottom: space[6],
