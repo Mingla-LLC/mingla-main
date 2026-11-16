@@ -514,7 +514,8 @@ export function phase3dContractDigest(manifest) {
 // #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
 // #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "cbff7b0a77723de9176db26158e2eace2550c819772bacc77379bde0e76e0599";
+// #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "50db0225e4a65b180fbd473396056962d6cf9154339bf2e671dac9cb05d08f25";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

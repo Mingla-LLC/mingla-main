@@ -487,7 +487,19 @@ export function openGroupStep(conversationId, { selectedId, viewGroup, sideOpen 
  */
 export function hostCardFacts({ inboxStatus, group, fallback }) {
   if (!group) return { status: "none", host: null, needsFallback: false };
-  if (inboxStatus === "loading" && !group.inbox_known) return { status: "loading", host: null, needsFallback: false };
+  // #4452 (B3): while the inbox (every group's facts and plans, the slowest
+  // read on the page) is still loading, this group's own host lookup runs
+  // beside it, so the header avatar and the Plan tab never wait on the inbox.
+  // Its "ready" and "none" are reliable; anything else keeps the skeleton
+  // until the inbox answers.
+  if (inboxStatus === "loading" && !group.inbox_known) {
+    const early = fallback || { status: "idle" };
+    if (early.status === "ready" && early.recordId) {
+      return { status: "ready", host: { record_id: early.recordId, name: early.name || "Host", owners: null, plan: null, stage: null, region_id: null, icp: null, mine: null }, needsFallback: true };
+    }
+    if (early.status === "none") return { status: "none", host: null, needsFallback: true };
+    return { status: "loading", host: null, needsFallback: true };
+  }
   if (inboxStatus === "ready" && group.inbox_known) {
     return group.host ? { status: "ready", host: group.host, needsFallback: false } : { status: "none", host: null, needsFallback: false };
   }
@@ -498,6 +510,18 @@ export function hostCardFacts({ inboxStatus, group, fallback }) {
   if (fb.status === "none") return { status: "none", host: null, needsFallback: true };
   if (fb.status === "error") return { status: "unknown", host: null, needsFallback: true };
   return { status: "loading", host: null, needsFallback: true };
+}
+
+/**
+ * #4452 (B3): the group to keep open once the list's filter settles. The
+ * address's group wins; a selection still in the filtered list stays; else
+ * the first group the list shows (or the selection, when the list is empty).
+ */
+export function settledSelection({ selectedId, viewGroup, visible }) {
+  const rows = Array.isArray(visible) ? visible : [];
+  if (viewGroup) return selectedId;
+  if (selectedId && rows.some((row) => row.conversation_id === selectedId)) return selectedId;
+  return rows[0]?.conversation_id ?? selectedId ?? null;
 }
 
 /** D-6 / D-14: plain words when the brand team cannot be read (never the database's text). */

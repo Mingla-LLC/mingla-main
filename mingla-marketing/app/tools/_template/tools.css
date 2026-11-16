@@ -20,7 +20,8 @@
   --tp-mono: var(--font-landing-mono), 'Geist Mono', ui-monospace, Menlo, monospace;
   --tp-ink: #111110;
   --tp-body: #3f3d39;
-  --tp-muted: #7c7870;
+  /* #4452 follow-up (B9): #66625a reads 6.07:1 on white (the old #7c7870 was 4.40:1). */
+  --tp-muted: #66625a;
   --tp-line: rgba(17, 17, 16, 0.06);
   --tp-hair: #efede7;
   --tp-orange: #eb7825;
@@ -49,9 +50,12 @@
 .tp-card h2 em { font-size: 18px; }
 .tp-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tp-two > * { min-width: 0; }
-.tp-tag { margin-left: 8px; font-family: var(--tp-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 500; color: var(--tp-muted); border: 1px solid #d8d5cd; border-radius: 999px; padding: 2px 7px; vertical-align: middle; white-space: nowrap; }
+.tp-tag { margin-left: 8px; font-family: var(--tp-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 500; color: var(--tp-muted); border: 1px solid #d8d5cd; border-radius: 999px; padding: 2px 7px; vertical-align: middle; display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+/* #4452 follow-up (B11): a long tag ("Asked because groups over 15 need transport") wraps inside the card at 375 instead of running past it. */
 .tp-tag.why { color: #9a4810; border-color: #fed7aa; background: #fff7ed; }
-.tp-adapt { border-left: 3px solid var(--tp-orange); padding-left: 12px; display: grid; gap: 14px; animation: tp-fade .3s ease both; }
+/* #4452 follow-up (B12): the follow-up questions are visible from their first frame (only a short slide in), so no blank
+   gap shows while an opacity fade waits to run. Reduced motion: no movement at all (below). */
+.tp-adapt { border-left: 3px solid var(--tp-orange); padding-left: 12px; display: grid; gap: 14px; animation: tp-slide .2s ease-out; }
 .tp-go { min-height: 56px; border-radius: 999px; border: 0; background: var(--tp-ink); color: #fff; font-weight: 600; font-size: 16px; box-shadow: 0 0 0 4px #f47e1e; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 24px; cursor: pointer; width: 100%; text-decoration: none; font-family: var(--tp-sans); }
 .tp-go[disabled] { opacity: .45; box-shadow: none; cursor: not-allowed; }
 .tp-ghost { min-height: 44px; border-radius: 999px; border: 1.5px solid #e7e3da; background: #fff; color: var(--tp-ink); font-weight: 600; font-size: 14px; padding: 0 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-family: var(--tp-sans); }
@@ -61,7 +65,7 @@
 .tp-need b { color: #9a4810; }
 .tp-placecard { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; align-items: center; background: #fff; border-radius: 16px; padding: 12px; border: 1.5px solid var(--tp-ink); }
 .tp-placecard .im { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #8c5a3c, #eb7825) center / cover; display: grid; place-items: center; color: #fff; font-family: var(--tp-serif); font-size: 24px; }
-.tp-placecard b { display: block; font-size: 15px; }
+.tp-placecard b { display: block; font-size: 15px; color: var(--tp-ink); }
 .tp-placecard span { font-size: 13px; color: var(--tp-muted); }
 .tp-results { border: 1.5px solid #e7e3da; border-radius: 14px; padding: 8px; background: #fff; }
 .tp-results ul { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto; display: grid; gap: 2px; }
@@ -117,7 +121,7 @@
 .tp-report { padding: 0 16px 24px; }
 
 @keyframes tp-spin { to { transform: rotate(360deg); } }
-@keyframes tp-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes tp-slide { from { transform: translateY(4px); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tp-adapt { animation: none; } .tp-run .d.on { animation: none; border-right-color: var(--tp-ink); } }
 @media (max-width: 900px) {
   .tp-work { grid-template-columns: minmax(0, 1fr); padding: 16px 16px 28px; }
