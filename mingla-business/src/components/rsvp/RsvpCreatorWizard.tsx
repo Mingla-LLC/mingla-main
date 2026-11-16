@@ -826,7 +826,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // Dock "Back" button — decrement step. Step 1's dock has no Back
   // (chrome X handles wizard exit instead).
   const handleStepBack = useCallback((): void => {
-    if (currentStep === 5 && inviteNavigation?.phase !== "ready") return;
+    if (currentStep === 5 && inviteNavigation?.phase === "saving") return;
     setShowStepErrors(false);
     setCurrentStep((prev) => prev === 6 && !inviteEnabled ? 4 : Math.max(0, prev - 1));
   }, [currentStep, inviteEnabled, inviteNavigation?.phase]);
@@ -837,7 +837,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const handleStepPress = useCallback((ordinal: number): void => {
     const target = visibleStepDefs[ordinal]?.index;
     if (target === undefined || target === currentStep) return;
-    if (currentStep === 5 && inviteNavigation?.phase !== "ready") return;
+    if (currentStep === 5 && inviteNavigation?.phase === "saving") return;
     if (checkingInvitePublish || isPublishing) return;
     if (ordinal > Math.max(furthestValidOrdinal, currentOrdinal)) return;
     setShowStepErrors(false);
@@ -1540,7 +1540,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
                 variant="ghost"
                 size="md"
                 onPress={handleStepBack}
-                disabled={currentStep === 5 && inviteNavigation?.phase !== "ready"}
+                disabled={currentStep === 5 && inviteNavigation?.phase === "saving"}
                 fullWidth
               />
             </View>

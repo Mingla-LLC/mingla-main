@@ -1783,7 +1783,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   // onboarding on a save; it toasts and goes back like any other failure.
   const handleStepBack = useCallback(async (): Promise<void> => {
     if (step <= 1) return;
-    if (step === 7 && inviteNavigation?.phase !== "ready") return;
+    if (step === 7 && inviteNavigation?.phase === "saving") return;
     const goBack = (): void => {
       setStep((s) => {
         if (s === 8 && !inviteEnabled) return 6;
@@ -2294,7 +2294,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     const target = Number(visibleStepperSteps[ordinal]?.id.slice(5)) as StepIndex;
     if (!Number.isFinite(target) || target === step) return;
     if (submitting || checkingInvitePublish || isDiscarding) return;
-    if (step === 7 && inviteNavigation?.phase !== "ready") return;
+    if (step === 7 && inviteNavigation?.phase === "saving") return;
     if (saveQueue.isBusy()) {
       await waitForSaveInFlight();
       return;
@@ -2782,7 +2782,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
                   onPress={() => {
                     void handleStepBack();
                   }}
-                  disabled={submitting || (step === 7 && inviteNavigation?.phase !== "ready")}
+                  disabled={submitting || (step === 7 && inviteNavigation?.phase === "saving")}
                   fullWidth
                 />
               </View>

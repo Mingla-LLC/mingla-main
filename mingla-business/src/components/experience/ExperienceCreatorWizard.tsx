@@ -958,7 +958,7 @@ export const ExperienceCreatorWizard: React.FC<
   }, [stepIsValid, steps.length]);
 
   const goBack = useCallback((): void => {
-    if (step === 6 && inviteNavigation?.phase !== "ready") return;
+    if (step === 6 && inviteNavigation?.phase === "saving") return;
     if (step === 1) onCancel?.();
     else setStep((prev) => Math.max(1, prev - 1) as StepIndex);
   }, [inviteNavigation?.phase, onCancel, step]);
@@ -1150,7 +1150,7 @@ export const ExperienceCreatorWizard: React.FC<
   const goToStep = useCallback((ordinal: number): void => {
     const target = (ordinal + 1) as StepIndex;
     if (target === step || target > finalStep) return;
-    if (step === 6 && inviteNavigation?.phase !== "ready") return;
+    if (step === 6 && inviteNavigation?.phase === "saving") return;
     if (checkingInvitePublish) return;
     if (target > step && ordinal > furthestValidIndex) return;
     setShowStepErrors(false);
@@ -1852,7 +1852,7 @@ export const ExperienceCreatorWizard: React.FC<
         <Pressable
           onPress={goBack}
           // #1780 — no stepping back to Invite while Publish re-reads the plan.
-          disabled={(step === 6 && inviteNavigation?.phase !== "ready") || checkingInvitePublish}
+          disabled={(step === 6 && inviteNavigation?.phase === "saving") || checkingInvitePublish}
           accessibilityRole="button"
             accessibilityLabel={
               step === 1 ? "Cancel experience creation" : "Back"
@@ -1892,7 +1892,7 @@ export const ExperienceCreatorWizard: React.FC<
             <Pressable
           onPress={goBack}
           // #1780 — no stepping back to Invite while Publish re-reads the plan.
-          disabled={(step === 6 && inviteNavigation?.phase !== "ready") || checkingInvitePublish}
+          disabled={(step === 6 && inviteNavigation?.phase === "saving") || checkingInvitePublish}
           accessibilityRole="button"
             accessibilityLabel={
               step === 1 ? "Cancel experience creation" : "Back"

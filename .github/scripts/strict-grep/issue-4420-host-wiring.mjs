@@ -84,7 +84,7 @@ export const RULES = [
       'previousLabel={isFirstStep ? undefined : isWideDesktop ? "Back" : previousStepLabel ?? "Back"}',
       'return state.lastSavedAt !== null ? "Saved" : "Not saved yet";',
       /<StepperFooter\s+wide=\{isWideDesktop\}/,
-      /backDisabled=\{\s*isLastStep\s*\?\s*checkingInvitePublish\s*:\s*currentStep === 6 && inviteNavigation\?\.phase !== "ready"\s*\}/,
+      /backDisabled=\{\s*isLastStep\s*\?\s*checkingInvitePublish\s*:\s*currentStep === 6 && inviteNavigation\?\.phase === "saving"\s*\}/,
       'continueTestID={isLastStep ? "event-wizard-publish" : "event-wizard-continue"}',
     ],
     lacks: ["Draft saved", /styles\.footer\b/],
@@ -94,7 +94,7 @@ export const RULES = [
     why: "a step jump is guarded like the dock Back: not mid invite save, not during the publish re-read",
     from: "const handleStepPress",
     to: "// ---- Publish gate ----",
-    has: ['if (currentStep === 6 && inviteNavigation?.phase !== "ready") return;', "if (checkingInvitePublish || isPublishing) return;", "setShowStepErrors(false);"],
+    has: ['if (currentStep === 6 && inviteNavigation?.phase === "saving") return;', "if (checkingInvitePublish || isPublishing) return;", "setShowStepErrors(false);"],
   },
   {
     file: "src/components/event/EventCreatorWizard.tsx",

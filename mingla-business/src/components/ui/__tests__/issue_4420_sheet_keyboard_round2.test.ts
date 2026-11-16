@@ -84,7 +84,7 @@ describe("#4420 round 2: wiring", () => {
 
   test("the scroll view adds the measured footer gap inside a sheet only", () => {
     expect(scroll).toMatch(/useContext\(SheetKeyboardContext\)/);
-    expect(scroll).toMatch(/sheet === null \? 0 : sheetScrollExtraOffset\(footerGap, sheet\.topShift\) \+ fieldTail/);
+    expect(scroll).toMatch(/\(sheet === null \? 0 : sheetScrollExtraOffset\(footerGap, sheet\.topShift\)\) \+ fieldTail/);
     expect(scroll).toMatch(/useReanimatedFocusedInput\(\)/);
     expect(scroll).not.toMatch(/from "react-native-reanimated"/);
     expect(scroll).toMatch(/bottomOffset=\{bottomOffset \+ sheetExtraOffset\}/);

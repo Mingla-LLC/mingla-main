@@ -159,6 +159,17 @@ export const DEFAULT_BOTTOM_OFFSET =
   DONE_BAR_OCCUPIED + CARET_LINE_TO_FIELD_BOTTOM + MIN_VISIBLE_CLEARANCE;
 
 /**
+ * #4420 (round 3) — the spacer a full-screen scroll view (a creation wizard,
+ * a settings page) adds under its content while the keyboard is open, on top
+ * of the keyboard height the library already adds: the app-drawn Done bar plus
+ * the visible clearance. Without it the content's end (what a `scrollToEnd`
+ * reveal lands, e.g. the event Basics Description) sat flush on the keyboard
+ * top, i.e. BEHIND the Done bar. A sheet's body already pads for the keyboard,
+ * the bar and the clearance itself, so inside a sheet this is 0.
+ */
+export const SCREEN_KEYBOARD_EXTRA_SPACE = DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE;
+
+/**
  * #4420 (device round 2) — inside a docked bottom Sheet the body is lifted
  * above the keyboard + Done bar, so a footer pinned under this scroll view
  * (Save / Cancel) sits between the field and the bar. The library only knows
@@ -181,14 +192,16 @@ interface MeasurableNode {
  * execute the real element builder per platform branch (#1834 TA-2).
  */
 export function smartScrollElement(
-  { bottomOffset = DEFAULT_BOTTOM_OFFSET, ...rest }: ScrollViewProps,
+  { bottomOffset = DEFAULT_BOTTOM_OFFSET, extraKeyboardSpace, ...rest }: ScrollViewProps,
   ref: React.Ref<RNScrollView> | null,
   sheetExtraOffset: number,
+  inSheet = false,
 ): React.ReactElement {
   return (
     <KeyboardAwareScrollView
       ref={ref as React.Ref<never>}
       bottomOffset={bottomOffset + sheetExtraOffset}
+      extraKeyboardSpace={extraKeyboardSpace ?? (inSheet ? 0 : SCREEN_KEYBOARD_EXTRA_SPACE)}
       {...rest}
     />
   );
@@ -212,13 +225,15 @@ export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
     const readFieldTail = useCallback(() => {
       setFieldTail(focusedFieldTail(input?.value?.layout.height ?? 0));
     }, [input]);
+    // #4420 (round 3): every container, not only sheets — a multiline field
+    // on a full-screen wizard (event Description) has the same caret-on-the-
+    // first-line geometry, and its box bottom sat under the Done bar.
     useEffect(() => {
-      if (sheetBottomPad === undefined) return undefined;
       const subscription = FocusedInputEvents?.addListener("focusDidSet", () => {
         requestAnimationFrame(readFieldTail);
       });
       return (): void => subscription?.remove();
-    }, [readFieldTail, sheetBottomPad]);
+    }, [readFieldTail]);
 
     const setRefs = useCallback(
       (node: RNScrollView | null) => {
@@ -254,7 +269,7 @@ export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
       [measureFooterGap, onLayout],
     );
 
-    const sheetExtra = sheet === null ? 0 : sheetScrollExtraOffset(footerGap, sheet.topShift) + fieldTail;
-    return smartScrollElement({ ...rest, onLayout: handleLayout }, setRefs, sheetExtra);
+    const sheetExtra = (sheet === null ? 0 : sheetScrollExtraOffset(footerGap, sheet.topShift)) + fieldTail;
+    return smartScrollElement({ ...rest, onLayout: handleLayout }, setRefs, sheetExtra, sheet !== null);
   },
 );

@@ -885,7 +885,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // Dock "Back" button — decrement step. Step 1's dock has no Back
   // (chrome X handles wizard exit instead).
   const handleStepBack = useCallback((): void => {
-    if (currentStep === 6 && inviteNavigation?.phase !== "ready") return;
+    if (currentStep === 6 && inviteNavigation?.phase === "saving") return;
     setShowStepErrors(false);
     setCurrentStep((prev) => prev === 7 && !inviteEnabled ? 5 : Math.max(0, prev - 1));
   }, [currentStep, inviteEnabled, inviteNavigation?.phase]);
@@ -945,7 +945,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const handleStepPress = useCallback((ordinal: number): void => {
     const target = visibleStepDefs[ordinal]?.index;
     if (target === undefined || target === currentStep) return;
-    if (currentStep === 6 && inviteNavigation?.phase !== "ready") return;
+    if (currentStep === 6 && inviteNavigation?.phase === "saving") return;
     if (checkingInvitePublish || isPublishing) return;
     setShowStepErrors(false);
     setCurrentStep(target);
@@ -1477,11 +1477,12 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
           previousLabel={isFirstStep ? undefined : isWideDesktop ? "Back" : previousStepLabel ?? "Back"}
           onBack={handleStepBack}
           // #1780 — no stepping back to Invite while Publish re-reads the
-          // plan, and no leaving Invite people before its save settles.
+          // plan, and no leaving Invite people before its save settles. A
+          // failed check or estimate never holds Back (#4420: no dead end).
           backDisabled={
             isLastStep
               ? checkingInvitePublish
-              : currentStep === 6 && inviteNavigation?.phase !== "ready"
+              : currentStep === 6 && inviteNavigation?.phase === "saving"
           }
           continueLabel={
             isLastStep

@@ -151,7 +151,9 @@ function mutationCopy(error: unknown): string {
     return "Your staff permission does not allow this change.";
   }
   if (code.includes("stay_publish_incomplete")) {
-    return "Finish the listed readiness items before making this live.";
+    // #4420 round 3: the server also refuses a room or place while the Stay
+    // itself is not published, which no readiness row lists. Say what to do.
+    return "Publish the Stay first. After that, this needs a cover photo, a price, a policy, a description and open availability.";
   }
   return "That change did not save. Check your connection and try again.";
 }
