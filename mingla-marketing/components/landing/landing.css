@@ -362,6 +362,19 @@ html:has([data-landing]) body {
   border-radius: 8px;
   box-shadow: 0 0 0 3px var(--orange);
 }
+/* #4452 §2.12: the call half of the CTA bar — 47px like its neighbour (44 + the 3px ring), the soft variant. */
+[data-landing] .glassbar .btn.bring-call {
+  min-height: 47px;
+  box-shadow: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+}
 
 [data-landing] .about {
   position: relative;

@@ -104,7 +104,10 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
           <div className="bottom">
             <p>{d.sub}</p>
             <div className="glassbar">
-              <span className="bring">{d.bring}</span>
+              {/* #4452 §2.12: the text half is now the call (d.bring stays in icps.ts). */}
+              <Link className="btn bring-call" href={scheduleHref(slug)} data-icp-event="icp_talk_to_team_clicked">
+                Book a call
+              </Link>
               <HostHandoffButton location="hero" className="btn white" />
             </div>
           </div>

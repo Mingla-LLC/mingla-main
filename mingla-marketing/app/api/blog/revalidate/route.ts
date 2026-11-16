@@ -3,6 +3,7 @@ import { revalidateTag } from 'next/cache'
 import { BLOG_CACHE_TAG } from '@/lib/blog/data'
 import { LINKS_CACHE_TAG } from '@/lib/links-data'
 import { revalidateTargetFor } from '@/lib/revalidate-tag'
+import { SITE_PAGES_CACHE_TAG } from '@/lib/site-pages/tags'
 
 // #4137 — the admin-blog edge function calls this after publish, unpublish
 // and feature changes so /blog shows the change on the next request. Without
@@ -13,7 +14,8 @@ import { revalidateTargetFor } from '@/lib/revalidate-tag'
 // JSON body {"tag":"links"}. No body (or {"tag":"blog"}) keeps the blog
 // behaviour byte for byte; any other tag is refused (400) before anything runs.
 const NO_STORE = { 'Cache-Control': 'no-store' }
-const TAGS = { blog: BLOG_CACHE_TAG, links: LINKS_CACHE_TAG } as const
+// #4452: {"tag":"pages"} drops the site-pages cache (blocks, form pages, forms).
+const TAGS = { blog: BLOG_CACHE_TAG, links: LINKS_CACHE_TAG, pages: SITE_PAGES_CACHE_TAG } as const
 
 function secretMatches(given: string | null): boolean {
   const expected = process.env.MARKETING_REVALIDATE_SECRET ?? ''

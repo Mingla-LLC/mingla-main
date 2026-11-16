@@ -5,7 +5,9 @@
 //   {"tag":"links"}            → 'links'  (#4318 admin strips)
 //   anything else              → null     (400, nothing is revalidated)
 
-export type RevalidateTarget = 'blog' | 'links'
+//   {"tag":"pages"}            → 'pages'  (#4452 Website pages and forms: the site-pages tag)
+
+export type RevalidateTarget = 'blog' | 'links' | 'pages'
 
 export function revalidateTargetFor(rawBody: string): RevalidateTarget | null {
   const raw = rawBody.trim()
@@ -15,7 +17,7 @@ export function revalidateTargetFor(rawBody: string): RevalidateTarget | null {
     if (typeof body !== 'object' || body === null || Array.isArray(body)) return null
     const tag = (body as Record<string, unknown>).tag
     if (tag === undefined) return 'blog'
-    return tag === 'blog' || tag === 'links' ? tag : null
+    return tag === 'blog' || tag === 'links' || tag === 'pages' ? tag : null
   } catch {
     return null
   }

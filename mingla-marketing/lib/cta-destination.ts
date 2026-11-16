@@ -133,3 +133,50 @@ export function resolveStoreListingHrefs(surface: CtaSurface): StoreListingHrefs
     ? { appStore: APP_STORE_URL, googlePlay: PLAY_STORE_URL }
     : { appStore: BUSINESS_APP_STORE_URL, googlePlay: BUSINESS_PLAY_STORE_URL }
 }
+
+// ---------------------------------------------------------------------------
+// #4452 §2.11: the top bar's "Book a 20-min call", routed by audience.
+// Pure, so the table is unit tested (lib/__tests__/issue-4452-cta.implementor.test.mjs).
+// ---------------------------------------------------------------------------
+export type CallAudience = 'host' | 'creator' | 'local'
+
+export interface CallLink {
+  href: string
+  /** Desktop label. */
+  label: string
+  /** Phone label. */
+  short: string
+}
+
+const HOST_ICP_PATHS = ['events', 'trips', 'experiences', 'restaurants', 'hotels', 'art', 'play'] as const
+const TOOL_ICP: Record<string, string> = {
+  venues: 'restaurants',
+  events: 'events',
+  trips: 'trips',
+  pricing: 'experiences',
+}
+
+/**
+ * Where the call button goes on a page. `/apply/<slug>` pages pass the form's
+ * audience (the route knows it); every other page is decided by its path.
+ */
+export function callHrefFor(pathname: string, applyAudience?: CallAudience | null): CallLink {
+  const path = (pathname.split(/[?#]/)[0] || '/').replace(/\/+$/, '') || '/'
+  const creators: CallLink = { href: '/schedule/creators', label: 'Talk to the Creators team', short: 'Talk to us' }
+  const locals: CallLink = { href: '/schedule/locals', label: 'Talk to the Locals team', short: 'Talk to us' }
+  const generic: CallLink = { href: '/schedule', label: 'Book a 20-min call', short: 'Book a call' }
+  if (path === '/creators' || path.startsWith('/creators/')) return creators
+  if (path === '/locals' || path.startsWith('/locals/')) return locals
+  if (path.startsWith('/apply/')) {
+    if (applyAudience === 'creator') return creators
+    if (applyAudience === 'local') return locals
+    return generic
+  }
+  const host = path.match(/^\/host\/([a-z-]+)$/)
+  if (host && (HOST_ICP_PATHS as readonly string[]).includes(host[1])) {
+    return { ...generic, href: `/schedule?icp=${host[1]}` }
+  }
+  const tool = path.match(/^\/tools\/([a-z]+)(\/|$)/)
+  if (tool && TOOL_ICP[tool[1]]) return { ...generic, href: `/schedule?icp=${TOOL_ICP[tool[1]]}` }
+  return generic
+}

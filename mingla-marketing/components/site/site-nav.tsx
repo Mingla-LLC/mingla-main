@@ -2,7 +2,9 @@ import Link from 'next/link'
 import { ICP_LANDINGS, ICP_SLUGS, icpLandingPath } from '@/content/host-landing/icps'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { HostHandoffButton } from '@/components/landing/host-handoff'
-import { Wordmark } from './wordmark'
+import { LogoPill } from './logo-pill'
+import { NavCallLink } from './nav-call-link'
+import type { CallAudience } from '@/lib/cta-destination'
 import { SiteNavMenu } from './site-nav-menu'
 
 // #4339 — the site nav on every redesigned page: a floating white pill.
@@ -86,9 +88,11 @@ interface SiteNavProps {
    * left out there because its no-JavaScript fallback is a relative page.
    */
   origin?: string
+  /** #4452: an /apply/<slug> page passes its form's audience for the call button. */
+  callAudience?: CallAudience | null
 }
 
-export function SiteNav({ surface, current, origin }: SiteNavProps) {
+export function SiteNav({ surface, current, origin, callAudience }: SiteNavProps) {
   const abs = (href: string) => (origin && href.startsWith('/') ? `${origin}${href}` : href)
   return (
     <SiteNavMenu
@@ -96,7 +100,7 @@ export function SiteNav({ surface, current, origin }: SiteNavProps) {
       lead={
         <>
           <Link className="brand" href={abs('/')} aria-label="Mingla home">
-            <Wordmark height={24} title={null} />
+            <LogoPill />
           </Link>
           <nav className="nav-links" aria-label="Main">
             {TOP_LINKS.map((l) => (
@@ -105,6 +109,7 @@ export function SiteNav({ surface, current, origin }: SiteNavProps) {
               </Link>
             ))}
           </nav>
+          <NavCallLink audience={callAudience} origin={origin} />
           {origin ? null : surface === 'host' ? (
             <HostHandoffButton location="nav" className="btn cta nav-cta" />
           ) : (

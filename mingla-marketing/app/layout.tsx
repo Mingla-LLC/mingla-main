@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { GoogleAnalytics } from '@next/third-parties/google'
 import { inter, mochiy, nunito } from './fonts'
 import './globals.css'
@@ -28,6 +28,12 @@ void GA_CONSENT_DEFAULT_COMMAND
 void GA_CONSENT_DEFAULTS
 
 const homeRoute = requireRouteContract('/', 'search_ready') as SearchReadyRouteContract
+
+// #4452 §2.14 (F-PB-1): viewport-fit=cover makes env(safe-area-inset-bottom)
+// real in iOS Safari, so the privacy strip is pinned to the screen's bottom
+// edge instead of riding on the moving toolbar.
+// MINGLA-INVARIANT: I-4452-PRIVACY-BAR-PINNED | issue #4452 | viewportFit 'cover' + the strip fixed at bottom:0 with the inset height (lib/__tests__/issue-4452-privacy-bar.implementor.test.mjs).
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' }
 
 export const metadata: Metadata = {
   title: { default: homeRoute.title, template: '%s — Mingla' },
