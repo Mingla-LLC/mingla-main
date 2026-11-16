@@ -3385,6 +3385,15 @@ function MessageInterfaceInner({
             >
               <ActivityIndicator size="small" color={chatTokens.textSoft} />
             </View>
+          ) : (isClearingChat || clearedAt) && !isTripEventGroupChat ? (
+            // Issue #4435 QA: a chat I cleared (nothing new since) says so,
+            // instead of "Start your conversation".
+            <View style={styles.clearedNotice} accessibilityRole="text" testID="chat-thread-cleared">
+              {isClearingChat ? <ActivityIndicator size="small" color={colors.gray400} /> : null}
+              <Text style={styles.clearedNoticeText}>
+                {isClearingChat ? t("chat:clearing") : t("chat:cleared_notice")}
+              </Text>
+            </View>
           ) : (
           <View style={styles.emptyState}>
             <View style={styles.emptyStateIcon}>
@@ -4098,7 +4107,9 @@ function MessageInterfaceInner({
           onPurchaseComplete={onPurchaseComplete}
           onOpenPreferences={onOpenPreferences}
           onShareGroupLink={conversationId ? () => { void shareGroupLinkFromDeck(); } : undefined}
-          onAddGroupPeople={friend.sessionId ? () => { setShowCollabDeckSheet(false); setTimeout(() => { setGroupInfoStartsOnAdd(true); setShowGroupInfo(true); }, MENU_PRESENT_AFTER_DISMISS_MS); } : undefined}
+          // #4435 QA F-2: the deck closes itself and calls this only after its
+          // full-screen modal is gone (no timer racing the iOS dismissal).
+          onAddGroupPeople={friend.sessionId ? () => { setGroupInfoStartsOnAdd(true); setShowGroupInfo(true); } : undefined}
         />
       ) : null}
 

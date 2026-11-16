@@ -4760,16 +4760,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  // #4435 QA F-4: the deck sits on black, so the outline button reads as
+  // white text with a light outline (21:1 text, 14:1 outline; WCAG AA).
   soloSecondaryButton: {
     marginTop: 10,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: colors.gray[300],
   },
   soloSecondaryButtonText: {
-    color: '#111827',
+    color: colors.text.inverse,
     fontSize: 15,
     fontWeight: '600',
   },
