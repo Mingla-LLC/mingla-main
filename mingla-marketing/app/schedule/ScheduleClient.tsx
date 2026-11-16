@@ -37,7 +37,9 @@ import { captureMarketing, captureSearchMeasurement } from '@/components/marketi
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { landingIcp } from '@/lib/page-measurement'
 import { bookCall, fetchBookingSlots, type BookingSlot } from '@/lib/booking-call'
-import { fireBrowserHostLead, marketingAdContext } from '@/lib/marketing-ad-context'
+import { marketingAdContext } from '@/lib/marketing-ad-context'
+import { fireMarketingGoal, fireMarketingLead } from '@/lib/marketing-pixels'
+import { sessionUtm } from '@/lib/forms/submit'
 import {
   BOOKING_ICPS,
   CREATOR_MAKES,
@@ -113,9 +115,11 @@ interface ScheduleClientProps {
   cities?: readonly string[]
   /** Program calls: the page's words (lib/program-call-copy.ts, passed from the server so they stay out of the client bundle). */
   copy?: ProgramCallCopy
+  /** #4452 §2.2: the /schedule details-step spot (a server-rendered <Spot>), or nothing. */
+  detailsSlot?: ReactNode
 }
 
-export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], copy }: ScheduleClientProps = {}) {
+export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], copy, detailsSlot = null }: ScheduleClientProps = {}) {
   const params = useSearchParams()
   const isHost = audience === 'host'
   // No live city could be read: "Somewhere else" and a free-text city, so nobody is blocked.
@@ -141,6 +145,11 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
   const [makes, setMakes] = useState('')
   const [workUrl, setWorkUrl] = useState('')
   const [firstPlace, setFirstPlace] = useState('')
+  // #4452 §4.6: a phone (required for Creators and Locals calls) and the optional, unticked consent box (Q-A1-2).
+  const [phone, setPhone] = useState('')
+  const [phoneTouched, setPhoneTouched] = useState(false)
+  const [phoneServer, setPhoneServer] = useState(false)
+  const [consent, setConsent] = useState(false)
   const [touched, setTouched] = useState<Partial<Record<Field, boolean>>>({})
   const [serverField, setServerField] = useState<Field | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -196,7 +205,10 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
   const errors: Partial<Record<Field, string>> = isHost
     ? bookingErrors({ name, email, icp, socialPlatform, socialHandle, venue, website })
     : programBookingErrors({ audience, name, email, city: bookedCity, socialPlatform, socialHandle, makes, workUrl, firstPlace })
-  const valid = Object.keys(errors).length === 0
+  const phoneDigits = phone.replace(/[^0-9]/g, '')
+  const phoneOk = phone.trim() === '' ? isHost : /^\s*\+/.test(phone) && phoneDigits.length >= 7 && phoneDigits.length <= 15 && phoneDigits[0] !== '0'
+  const phoneMessage = (phoneTouched || phoneServer) && !phoneOk ? 'That number looks short. Start with your country code, like +234.' : undefined
+  const valid = Object.keys(errors).length === 0 && phoneOk
   const fieldOrder = FIELD_ORDER[audience]
 
   const message = (field: Field): string | undefined => {
@@ -213,6 +225,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
     if (!selectedSlot || phase === 'confirming') return
     if (!valid) {
       setTouched(Object.fromEntries(fieldOrder.map((f) => [f, true])))
+      setPhoneTouched(true)
       const first = fieldOrder.find((f) => errors[f])
       if (first) focusField(first)
       return
@@ -221,7 +234,9 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
     setError(null)
     setServerField(null)
     captureMarketing('schedule_details_submitted', isHost ? { audience, icp, source } : { audience, source })
-    const adContext = isHost ? marketingAdContext() : null
+    // #4452 §4.6: every audience sends its ad context (ads-gated inside) and its landing UTM.
+    const adContext = marketingAdContext()
+    const formSubmissionId = params.get('form_submission_id') ?? undefined
     const res = await bookCall({
       start: selectedSlot,
       name: name.trim(),
@@ -230,6 +245,11 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
       // backend maps 'direct' and absent to the same shared-scheduler-link label.
       source,
       time_zone: bookerTimeZone(),
+      ...(phone.trim() ? { phone: phone.trim() } : {}),
+      utm: sessionUtm(),
+      ...(formSubmissionId ? { form_submission_id: formSubmissionId } : {}),
+      ...(consent ? { marketing_consent: true, consent_text: 'Send me occasional emails from Mingla. Unsubscribe anytime.' } : {}),
+      ...(adContext ? { ad: adContext } : {}),
       ...(isHost
         ? {
             icp,
@@ -268,8 +288,9 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
       if (leadIcp) {
         captureSearchMeasurement('generate_lead', { audience: 'host', page_family: 'host_pillar', icp: leadIcp, action_state: 'succeeded' })
       }
-      // #4238 W3-3: the browser Lead twin of the server's host lead (ads on only).
-      if (isHost) void fireBrowserHostLead(res.lead_event_id)
+      // #4238 W3-3 / #4452: the browser twins of the server's labelled Lead and booked call (ads on only).
+      if (res.lead_event_id) fireMarketingLead(audience, res.lead_event_id)
+      if (res.goal_event_id) fireMarketingGoal(audience, res.goal_event_id)
       setConfirmed({ start: res.start, email: email.trim(), meet_url: res.meet_url })
       setPhase('done')
       return
@@ -285,6 +306,11 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
       return
     }
     setPhase('ready')
+    if (res.error === 'validation' && res.field === 'phone') {
+      setPhoneServer(true)
+      window.requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[data-field="phone"]')?.focus())
+      return
+    }
     if (res.error === 'validation' && res.field && (fieldOrder as readonly string[]).includes(res.field)) {
       const field = res.field as Field
       setServerField(field)
@@ -460,6 +486,26 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
                 {...describe('email')}
               />
               {fieldError('email')}
+            </div>
+            <div className="field">
+              <label htmlFor={`${ids}-phone`}>
+                Your phone{isHost ? ' (optional)' : <> <span className="req" aria-hidden="true">*</span></>}
+              </label>
+              <input
+                id={`${ids}-phone`}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="+234 801 234 5678"
+                value={phone}
+                maxLength={24}
+                data-field="phone"
+                required={!isHost}
+                aria-invalid={phoneMessage ? true : undefined}
+                onBlur={() => setPhoneTouched(true)}
+                onChange={(e) => { setPhone(e.target.value); setPhoneServer(false) }}
+              />
+              {phoneMessage ? <p className="err" role="alert">{phoneMessage}</p> : null}
             </div>
             {isHost ? (
               <div className="field full">
@@ -669,6 +715,13 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
                 {fieldError('first_place')}
               </div>
             )}
+            {/* #4452 Q-A1-2: optional, never pre-ticked; the same words the forms use. */}
+            <label className="field full consent-box">
+              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />{' '}
+              Send me occasional emails from Mingla. Unsubscribe anytime.
+            </label>
+            {/* #4452 §2.2: extra questions from a form go in the details step. */}
+            {detailsSlot}
             <button className="btn ink full" type="submit" disabled={phase === 'confirming'} data-schedule-confirm="">
               {phase === 'confirming' ? 'Booking…' : `Confirm ${timeFmt.format(new Date(selectedSlot))}`}
               {phase === 'confirming' ? null : <ArrowRight aria-hidden="true" />}

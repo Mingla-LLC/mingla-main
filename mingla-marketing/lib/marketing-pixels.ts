@@ -21,7 +21,12 @@
 // as host web). A missing id means that provider stays off.
 
 import { isMarketingAdsOn } from '@/components/marketing/marketing-capture'
-import { MARKETING_HOST_LEAD_EVENT } from '@/lib/ad-event-catalog'
+import {
+  MARKETING_HOST_FUNNEL_PIXEL_EVENTS,
+  MARKETING_HOST_LEAD_EVENT,
+  MARKETING_LEAD_LABEL_VALUE,
+  type MarketingLeadLabel,
+} from '@/lib/ad-event-catalog'
 import { isAnalyticsPrivatePathname } from '@/lib/analytics-private-routes'
 
 export interface MarketingPixelIds {
@@ -249,6 +254,40 @@ export function fireMarketingHostLead(
   safe(() => w.ttq?.track?.(names.tiktok, {}, { event_id: eventId }))
   safe(() => w.snaptr?.('track', names.snap, { client_dedup_id: eventId }))
   safe(() => w.rdt?.('track', names.reddit, { conversionId: eventId }))
+}
+
+/**
+ * #4452 §4.2 / §4.6: a labelled Lead or a booked call on the four pixels, with
+ * the server's event id as the shared dedup id. The label rides as
+ * content_category (Meta, TikTok), item_category (Snap pixel) and the one
+ * product's category (Reddit). Only fires when the ads choice is on (bootMissing).
+ */
+export function fireMarketingLabelled(
+  kind: 'lead' | 'call',
+  label: MarketingLeadLabel,
+  eventId: string,
+  ids: MarketingPixelIds = marketingPixelIds(),
+): void {
+  if (!eventId || typeof window === 'undefined') return
+  if (isPixelPrivatePage(window.location.pathname, window.location.search)) return
+  if (!bootMissing(ids)) return
+  const w = pixelWindow()
+  const rowKey = kind === 'lead' ? `${label}_lead` : `${label}_call_booked`
+  const names = MARKETING_HOST_FUNNEL_PIXEL_EVENTS[rowKey as keyof typeof MARKETING_HOST_FUNNEL_PIXEL_EVENTS]
+  const v = MARKETING_LEAD_LABEL_VALUE[label]
+  const category = kind === 'lead' ? v.lead : v.call
+  safe(() => w.fbq?.('track', names.meta, { content_category: category, content_name: v.name }, { eventID: eventId }))
+  safe(() => w.ttq?.track?.(names.tiktok, { content_category: category, content_name: v.name }, { event_id: eventId }))
+  safe(() => w.snaptr?.('track', names.snap, { item_category: category, client_dedup_id: eventId }))
+  safe(() => w.rdt?.('track', names.reddit, { conversionId: eventId, products: [{ id: category, name: v.name, category }] }))
+}
+
+export function fireMarketingLead(label: MarketingLeadLabel, eventId: string): void {
+  fireMarketingLabelled('lead', label, eventId)
+}
+
+export function fireMarketingGoal(label: MarketingLeadLabel, eventId: string): void {
+  fireMarketingLabelled('call', label, eventId)
 }
 
 function expireCookie(name: string): void {

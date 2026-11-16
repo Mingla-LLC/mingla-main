@@ -5,6 +5,7 @@ import './globals.css'
 import { ContentProtection } from '@/components/marketing/content-protection'
 import { PostHogProvider } from '@/components/marketing/posthog-provider'
 import { ConsentBanner } from '@/components/marketing/consent-banner'
+import { PopupMount } from '@/components/forms/popup-mount'
 import { requireRouteContract, type SearchReadyRouteContract } from '@/lib/search/route-registry'
 import { SITE_ORIGIN } from '@/lib/site'
 import { SkipLink } from '@/components/marketing/skip-link'
@@ -79,6 +80,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </noscript>
         <SkipLink />
         {children}
+        {/* #4452 §2.4: the page's pop-up form, only when one is published. */}
+        <PopupMount />
         <ContentProtection />
         {/* META-ORCH-1187 — analytics (consent-gated). */}
         <PostHogProvider>

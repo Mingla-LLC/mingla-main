@@ -1,0 +1,12 @@
+/* #4452 §2.3 — brand-locked blocks (the look cannot be changed from Admin). */
+.sb-buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin: 32px auto; max-width: 1100px; padding: 0 16px; }
+.sb-btn { display: inline-flex; align-items: center; min-height: 47px; padding: 0 22px; border-radius: 999px; font-weight: 600; text-decoration: none; }
+.sb-btn-primary { background: #111110; color: #fff; box-shadow: 0 0 0 3px #eb7825; }
+.sb-btn-secondary { background: #fff; color: #111110; border: 1.5px solid #e7e3da; }
+.sb-banner { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: #111110; color: #fff; border-radius: 18px; padding: 16px 20px; margin: 32px auto; max-width: 1100px; box-sizing: border-box; }
+.sb-banner p { margin: 0; font-weight: 600; }
+.sb-banner .sb-btn-primary { background: #fff; color: #111110; }
+.sb-form { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 40px; background: #f5f4f0; border-radius: 28px; padding: 40px; margin: 40px auto; max-width: 1100px; box-sizing: border-box; }
+@media (max-width: 860px) { .sb-form { grid-template-columns: 1fr; padding: 24px; gap: 20px; } }
+.sb-form-copy h2 { font-family: var(--font-landing-serif, 'Instrument Serif', Georgia, serif); font-weight: 400; font-size: clamp(32px, 4vw, 48px); line-height: 1; margin: 0 0 12px; }
+.sb-form-card { background: #fff; border-radius: 22px; padding: 24px; }

@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react'
 import { SiteFooter } from '@/components/marketing/footer'
+import { Spot } from '@/components/site-blocks/spot'
 import { SiteNav } from '@/components/site/site-nav'
 import '@/components/site/site.css'
 import {
@@ -113,6 +114,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
           </div>
         </div>
       </section>
+      <Spot page={slug} id="after-hero" />
 
       {/* 2. About, over the hero by 25px */}
       <section className="about">
@@ -203,6 +205,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
           </div>
         </div>
       </section>
+      <Spot page={slug} id="after-features" />
 
       {/* 4. Who it's for */}
       <section className="sec">
@@ -264,6 +267,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
       </section>
 
       {/* 6. FAQ */}
+      <Spot page={slug} id="before-faq" />
       <section className="sec" style={{ paddingTop: 0 }}>
         <div className="wrap split" style={{ alignItems: 'start' }}>
           <div className="reveal">
@@ -310,6 +314,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
         </div>
       </section>
 
+      <Spot page={slug} id="before-footer" />
       <SiteFooter surface="host" />
     </LandingRoot>
   )
