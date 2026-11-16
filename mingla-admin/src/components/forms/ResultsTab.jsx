@@ -4,7 +4,7 @@
 // zeros show as 0; "Illustrative" never appears. Submissions for this form is
 // the Leads list with the form filter (A1.8).
 import { useCallback, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { Coins, ExternalLink, PhoneCall, Receipt, Users } from "lucide-react";
 import { StatCard } from "../ui/Card";
 import { LoadError } from "../ui/LoadError";
 import { Skeleton } from "../ui/Skeleton";
@@ -33,10 +33,10 @@ export function ResultsTab({ form }) {
       {status === "loading" ? <Skeleton height={300} rounded="16px" /> : status === "error" ? <LoadError message={formsErrorWords(error)} onRetry={retry} /> : (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label={`${LABEL_NAME[data.label] || "Leads"}s`} value={sent} />
-            <StatCard label="Cost per lead" value={spend ? perUnit(spend.cents, sent, spend.currency) : "—"} />
-            <StatCard label="Calls booked (end goal)" value={calls} />
-            <StatCard label="Cost per booked call" value={spend ? perUnit(spend.cents, calls, spend.currency) : "—"} />
+            <StatCard icon={Users} label={`${LABEL_NAME[data.label] || "Leads"}s`} value={sent} />
+            <StatCard icon={Coins} label="Cost per lead" value={spend ? perUnit(spend.cents, sent, spend.currency) : "—"} />
+            <StatCard icon={PhoneCall} label="Calls booked (end goal)" value={calls} />
+            <StatCard icon={Receipt} label="Cost per booked call" value={spend ? perUnit(spend.cents, calls, spend.currency) : "—"} />
           </div>
           <Panel title="Funnel" data-funnel="">
             <ol className="flex flex-col gap-2.5">

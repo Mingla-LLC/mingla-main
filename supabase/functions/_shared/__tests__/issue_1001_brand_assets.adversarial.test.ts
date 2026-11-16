@@ -7,8 +7,8 @@
 //   A2  padded env URL (trailing/leading spaces) is trimmed BEFORE it reaches
 //       the rendered src attribute — the padded variant must never appear in
 //       html (a space inside src breaks the attribute on strict clients).
-//   A3  brandInviteEmail CALLER-OVERRIDE PRECEDENCE: input.logoUrl beats the
-//       env override, which beats the default (three-level precedence pinned).
+//   A3  #4452 (B7): the shell's logo is always the logo pill (§5.9); neither
+//       a caller logoUrl nor the env override replaces it in the html.
 //   A4  resolver output is always a parseable https URL (new URL() proof) —
 //       the PDF entrypoints' module-level binding can therefore never be null
 //       or unfetchable-by-shape under ANY of the hostile env values.
@@ -106,6 +106,8 @@ function inviteFixture(logoUrl?: string) {
   });
 }
 
+// #4452 (B7) §5.9: the logo pill every shell email draws.
+const PILL = "https://usemingla.com/brand/mingla-logo-white-on-orange.png";
 const HOSTILE_ENV_VALUES = ["", "   ", "\t", "\n", " \t\n ", " 	"];
 
 Deno.test("A1: hostile env values (empty/whitespace/control-ws) never leak — canonical default wins", () => {
@@ -123,15 +125,12 @@ Deno.test("A1: hostile env values (empty/whitespace/control-ws) never leak — c
   }
 });
 
-Deno.test("A2: padded env URL is trimmed before the src attribute — padded variant never appears in html", () => {
+Deno.test("A2: a padded env URL never reaches the shell html — #4452 B7: the shell always draws the logo pill", () => {
   try {
     Deno.env.set("MINGLA_LOGO_URL", "  https://cdn.example/custom-logo.png  ");
     const result = renderTransactionalEmail(ticketFixture());
-    assertStringIncludes(result.html, "https://cdn.example/custom-logo.png");
-    assert(
-      !result.html.includes(" https://cdn.example/custom-logo.png "),
-      "padded (untrimmed) URL leaked into the rendered html",
-    );
+    assertStringIncludes(result.html, PILL);
+    assert(!result.html.includes("cdn.example/custom-logo.png"), "the env logo leaked into the shell (§5.9: the pill only)");
     assert(
       !result.html.includes('src=" '),
       "src attribute begins with whitespace — trim guard bypassed at render",
@@ -141,29 +140,20 @@ Deno.test("A2: padded env URL is trimmed before the src attribute — padded var
   }
 });
 
-Deno.test("A3: brandInviteEmail precedence — caller override beats env override beats default", () => {
+Deno.test("A3: brandInviteEmail — #4452 B7: neither a caller logoUrl nor the env override replaces the shell's logo pill", () => {
   try {
-    // Level 1: caller wins over a SET env.
     Deno.env.set("MINGLA_LOGO_URL", "https://env.example/env-logo.png");
-    const callerWins = inviteFixture("https://caller.example/override.png");
-    assertStringIncludes(callerWins.html, "https://caller.example/override.png");
-    assert(
-      !callerWins.html.includes("https://env.example/env-logo.png"),
-      "env override leaked past an explicit caller logoUrl",
-    );
-    assert(
-      !callerWins.html.includes(CANONICAL),
-      "default leaked past an explicit caller logoUrl",
-    );
-
-    // Level 2: env wins when the caller passes nothing.
-    const envWins = inviteFixture();
-    assertStringIncludes(envWins.html, "https://env.example/env-logo.png");
-
-    // Level 3: default when neither.
+    const callerPassed = inviteFixture("https://caller.example/override.png");
+    assertStringIncludes(callerPassed.html, PILL);
+    assert(!callerPassed.html.includes("caller.example/override.png"), "a caller logoUrl replaced the pill");
+    assert(!callerPassed.html.includes("env.example/env-logo.png"), "the env logo replaced the pill");
+    const envOnly = inviteFixture();
+    assertStringIncludes(envOnly.html, PILL);
+    assert(!envOnly.html.includes("env.example/env-logo.png"), "the env logo replaced the pill");
     Deno.env.delete("MINGLA_LOGO_URL");
-    const defaultWins = inviteFixture();
-    assertStringIncludes(defaultWins.html, CANONICAL);
+    const neither = inviteFixture();
+    assertStringIncludes(neither.html, PILL);
+    assert(!neither.html.includes(CANONICAL), "the old wordmark is not the shell logo");
   } finally {
     Deno.env.delete("MINGLA_LOGO_URL");
   }
@@ -299,6 +289,6 @@ Deno.test("A6: with env unset, transactional + marketing + invite html carry ZER
       !html.includes("www.usemingla.com"),
       `${name}: www host leaked (bare-host canon violated)`,
     );
-    assertStringIncludes(html, CANONICAL);
+    assertStringIncludes(html, PILL);
   }
 });
