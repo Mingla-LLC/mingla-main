@@ -255,7 +255,6 @@ function CheckoutTripPaymentScreenContent({
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(
     null,
   );
-  const [declineToast, setDeclineToast] = useState<boolean>(false);
   const [successToast, setSuccessToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
@@ -1051,12 +1050,6 @@ function CheckoutTripPaymentScreenContent({
 
       {/* Toast — absolute-positioned wrap per feedback_toast_needs_absolute_wrap.md */}
       <View style={styles.toastWrap} pointerEvents="box-none">
-        <Toast
-          visible={declineToast}
-          kind="error"
-          message="Card declined — try another payment method."
-          onDismiss={() => setDeclineToast(false)}
-        />
         <Toast
           visible={successToast}
           kind="success"
