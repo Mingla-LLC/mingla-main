@@ -251,8 +251,6 @@ export type HostAdEditMoney = {
   topUpPay: number;
   /** The lowest total the sheet allows (already spent + one step). */
   minimumPay: number;
-  /** Over 20% during learning: the server asks for the restart confirm. */
-  restartsLearning: boolean;
 };
 
 /**
@@ -267,7 +265,6 @@ export function hostAdEditMoney(input: {
   capCredit: number;
   spentCredit: number | null;
   walletCredit: number | null;
-  learning: boolean;
   step: number;
 }): HostAdEditMoney {
   const cap = Math.max(0, Math.trunc(input.capCredit));
@@ -281,7 +278,6 @@ export function hostAdEditMoney(input: {
   const shortCredit = Math.max(0, extraCredit - freeCredit);
   const shortPay = hostAdPayFromCredit(shortCredit);
   const step = Math.max(1, Math.trunc(input.step));
-  const changePct = cap > 0 ? Math.abs(newCredit - cap) / cap : 0;
   return {
     newCredit,
     stillHeldPay: hostAdPayFromCredit(Math.max(0, cap - spent)),
@@ -295,7 +291,6 @@ export function hostAdEditMoney(input: {
     freePay: hostAdPayFromCredit(freeCredit),
     topUpPay: shortPay > 0 ? Math.ceil(shortPay / step) * step : 0,
     minimumPay: hostAdPayFromCredit(spent) + step,
-    restartsLearning: input.learning && changePct > 0.2,
   };
 }
 
@@ -488,6 +483,9 @@ export function hostAdStatementMonth(iso: string): string {
 
 // ── Edit budget sheet, in the DAILY amount the Host pays (W6c) ───────────
 
+/** The learning-week change the apps tolerate (the server's HOST_LEARNING_MAX_CHANGE). */
+export const HOST_AD_LEARNING_MAX_CHANGE = 0.2;
+
 /**
  * The daily amount the sheet steps (pay terms, 15% fee inside) and every
  * number under it. #4238 rework 1 (tester P1-2): the new TOTAL is what is
@@ -496,10 +494,20 @@ export function hostAdStatementMonth(iso: string): string {
  * daily = total, never days from cap ÷ daily. The server then spreads what
  * is left over the same days left, so it runs at the daily the Host picked.
  * Nothing changed (same daily, same end) sends the cap as it is.
+ *
+ * #4238 rework 2 (tester P1-1): `restartsLearning` judges the DAILY amount
+ * the apps get (new daily vs the daily now, in credit) and the end date,
+ * never the total, by the server's rule (planHostLiveEdit, 20%; exactly 20%
+ * passes). Guards I-4238-LIVE-DAILY-NOW.
  */
 export function hostAdEditDailyMoney(input: {
   dailyPay: number;
   startDailyPay: number;
+  /**
+   * The daily the apps get now, in credit (server plan_daily_credit_cents).
+   * Absent: converted from startDailyPay.
+   */
+  startDailyCredit?: number;
   /** Days left to the (new) end date; at least 1. */
   daysLeft: number;
   /** The end date moved: the total follows the daily over the new days left. */
@@ -509,7 +517,13 @@ export function hostAdEditDailyMoney(input: {
   walletCredit: number | null;
   learning: boolean;
   step: number;
-}): HostAdEditMoney & { runTotalPay: number; dailyChanged: boolean; daysLeft: number } {
+}): HostAdEditMoney & {
+  runTotalPay: number;
+  dailyChanged: boolean;
+  daysLeft: number;
+  /** Learning week: the daily moves over 20%, or the end date moves. */
+  restartsLearning: boolean;
+} {
   const dailyChanged = input.dailyPay !== input.startDailyPay;
   const daysLeft = Math.max(1, Math.trunc(input.daysLeft));
   const spent = Math.max(0, Math.trunc(input.spentCredit ?? 0));
@@ -523,10 +537,19 @@ export function hostAdEditDailyMoney(input: {
     capCredit: input.capCredit,
     spentCredit: input.spentCredit,
     walletCredit: input.walletCredit,
-    learning: input.learning,
     step: input.step,
   });
-  return { ...base, runTotalPay: hostAdPayFromCredit(newCredit), dailyChanged, daysLeft };
+  const startDailyCredit =
+    input.startDailyCredit !== undefined && input.startDailyCredit > 0
+      ? Math.trunc(input.startDailyCredit)
+      : hostAdCreditFromPay(Math.max(0, Math.trunc(input.startDailyPay)));
+  const dailyPct =
+    dailyChanged && startDailyCredit > 0
+      ? Math.abs(plan.dailyCreditCents - startDailyCredit) / startDailyCredit
+      : 0;
+  const restartsLearning =
+    input.learning && (input.endChanged === true || dailyPct > HOST_AD_LEARNING_MAX_CHANGE);
+  return { ...base, runTotalPay: hostAdPayFromCredit(newCredit), dailyChanged, daysLeft, restartsLearning };
 }
 
 /**
@@ -561,4 +584,33 @@ export function hostAdBrandLinkDecision(input: {
   if (input.memberBrandIds.includes(input.linkBrandId)) return "switch";
   if (input.listStatus === "loading") return "wait";
   return input.listStatus === "ready" ? "notMember" : "stay";
+}
+
+// ── Share results (rework 2, tester P3-3) ────────────────────────────────
+
+export type HostAdShareOutcome = "shared" | "copied" | "cancelled";
+
+/**
+ * Share the ad's public page; where the device has no share sheet (desktop
+ * browsers without Web Share, e.g. Firefox) copy the link instead, so the
+ * sheet can say "Link copied". A Host closing the share sheet is not an
+ * error. Anything else (and a copy that also fails) throws.
+ */
+export async function hostAdShareOrCopy(deps: {
+  share: () => Promise<void>;
+  copy: () => Promise<void>;
+}): Promise<HostAdShareOutcome> {
+  try {
+    await deps.share();
+    return "shared";
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "";
+    const text = error instanceof Error ? error.message : String(error);
+    if (name === "AbortError") return "cancelled";
+    if (text === "native_share_unavailable") {
+      await deps.copy();
+      return "copied";
+    }
+    throw error;
+  }
 }

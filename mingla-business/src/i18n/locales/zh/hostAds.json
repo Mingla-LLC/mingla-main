@@ -638,7 +638,8 @@
         "line": "{{event}}：通过 Mingla 获得 {{result}}。",
         "soldOut": "{{event}} 已售罄：通过 Mingla 获得 {{result}}。",
         "go": "分享",
-        "failed": "无法在此设备上打开分享。"
+        "failed": "无法在此设备上打开分享。",
+        "copied": "链接已复制，可以粘贴到任何地方。"
       },
       "reject": {
         "text_heavy": "图片中文字太多。",

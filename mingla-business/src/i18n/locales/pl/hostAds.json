@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} dzięki Mingla.",
         "soldOut": "{{event}} wyprzedane: {{result}} dzięki Mingla.",
         "go": "Udostępnij",
-        "failed": "Nie udało się otworzyć udostępniania na tym urządzeniu."
+        "failed": "Nie udało się otworzyć udostępniania na tym urządzeniu.",
+        "copied": "Link skopiowany. Wklej go, gdzie chcesz."
       },
       "reject": {
         "text_heavy": "Obraz ma za dużo tekstu.",

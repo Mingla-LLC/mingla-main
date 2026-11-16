@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} via Mingla.",
         "soldOut": "{{event}} är slutsålt: {{result}} via Mingla.",
         "go": "Dela",
-        "failed": "Det gick inte att öppna delning på den här enheten."
+        "failed": "Det gick inte att öppna delning på den här enheten.",
+        "copied": "Länken är kopierad. Klistra in den var du vill."
       },
       "reject": {
         "text_heavy": "Bilden har för mycket text.",

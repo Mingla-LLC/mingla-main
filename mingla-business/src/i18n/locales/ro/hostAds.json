@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} prin Mingla.",
         "soldOut": "{{event}} e sold out: {{result}} prin Mingla.",
         "go": "Distribuie",
-        "failed": "Nu am putut deschide distribuirea pe acest dispozitiv."
+        "failed": "Nu am putut deschide distribuirea pe acest dispozitiv.",
+        "copied": "Link copiat. Lipește-l unde vrei."
       },
       "reject": {
         "text_heavy": "Imaginea are prea mult text.",

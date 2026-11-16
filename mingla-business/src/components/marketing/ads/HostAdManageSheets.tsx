@@ -24,7 +24,8 @@ import {
 import { mapAdCreditQuoteError } from "../../../services/adCreditQuoteErrors";
 import type { HostAdSuggestion } from "../../../services/hostAdCampaignService";
 import { randomId } from "../../../utils/randomId";
-import { sharePublicUrl } from "../../../utils/sharePublicUrl";
+import { copyPublicUrl, sharePublicUrl } from "../../../utils/sharePublicUrl";
+import { Toast } from "../../ui/Toast";
 import { builderStyles as bs, BuilderCard, BuilderLabel, BuilderList, Note, ValueRow } from "./HostAdBuilderBits";
 import { type HostAdGoal, hostAdPayFromCredit } from "./hostAdBuilderModel";
 import { hostAdDayBoundaryIso, hostAdDayOf } from "./hostAdBuilderRules";
@@ -35,6 +36,7 @@ import {
   hostAdEditMinDailyPay,
   hostAdDaysLeft,
   hostAdEditStep,
+  hostAdShareOrCopy,
   hostAdStatementMonth,
   hostAdSuggestionMoneyRows,
   hostAdWithdrawLines,
@@ -152,6 +154,7 @@ export function HostAdEditBudgetSheet(props: {
   const m = hostAdEditDailyMoney({
     dailyPay,
     startDailyPay: startDaily,
+    startDailyCredit: dailyKnown && props.dailyCredit !== null ? props.dailyCredit : undefined,
     daysLeft,
     endChanged: dailyKnown && endChanged,
     capCredit: props.capCredit,
@@ -727,6 +730,7 @@ export function HostAdShareSheet(props: {
   onClose: () => void;
 }): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   return (
     <SheetFrame
       visible={props.visible}
@@ -740,9 +744,15 @@ export function HostAdShareSheet(props: {
           fullWidth
           onPress={() => {
             setError(null);
-            sharePublicUrl({ title: props.title, url: props.url, description: props.message }).catch(() =>
-              setError(hm("share.failed")),
-            );
+            // #4238 rework 2 (P3-3): no share sheet (desktop web) → copy the link.
+            hostAdShareOrCopy({
+              share: () => sharePublicUrl({ title: props.title, url: props.url, description: props.message }),
+              copy: () => copyPublicUrl(props.url),
+            })
+              .then((outcome) => {
+                if (outcome === "copied") setCopied(true);
+              })
+              .catch(() => setError(hm("share.failed")));
           }}
           testID="host-ad-share-go"
         />
@@ -753,6 +763,13 @@ export function HostAdShareSheet(props: {
       </View>
       <Text style={bs.small}>{hm("share.body")}</Text>
       {error ? <Note tone="error" text={error} /> : null}
+      <Toast
+        visible={copied}
+        kind="success"
+        message={hm("share.copied")}
+        onDismiss={() => setCopied(false)}
+        testID="host-ad-share-copied"
+      />
     </SheetFrame>
   );
 }

@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} via Mingla.",
         "soldOut": "{{event}} is uitverkocht: {{result}} via Mingla.",
         "go": "Delen",
-        "failed": "Delen kon op dit apparaat niet worden geopend."
+        "failed": "Delen kon op dit apparaat niet worden geopend.",
+        "copied": "Link gekopieerd. Plak hem waar je wilt."
       },
       "reject": {
         "text_heavy": "De afbeelding bevat te veel tekst.",

@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} über Mingla.",
         "soldOut": "{{event}} ist ausverkauft: {{result}} über Mingla.",
         "go": "Teilen",
-        "failed": "Teilen konnte auf diesem Gerät nicht geöffnet werden."
+        "failed": "Teilen konnte auf diesem Gerät nicht geöffnet werden.",
+        "copied": "Link kopiert. Füge ihn ein, wo du möchtest."
       },
       "reject": {
         "text_heavy": "Das Bild enthält zu viel Text.",

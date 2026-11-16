@@ -638,7 +638,8 @@
         "line": "{{event}}：Mingla で {{result}}。",
         "soldOut": "{{event}} は完売：Mingla で {{result}}。",
         "go": "シェア",
-        "failed": "この端末ではシェアを開けませんでした。"
+        "failed": "この端末ではシェアを開けませんでした。",
+        "copied": "リンクをコピーしました。好きな場所に貼り付けてください。"
       },
       "reject": {
         "text_heavy": "画像に文字が多すぎます。",

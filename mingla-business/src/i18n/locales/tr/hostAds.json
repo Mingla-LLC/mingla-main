@@ -638,7 +638,8 @@
         "line": "{{event}}: Mingla ile {{result}}.",
         "soldOut": "{{event}} tükendi: Mingla ile {{result}}.",
         "go": "Paylaş",
-        "failed": "Bu cihazda paylaşım açılamadı."
+        "failed": "Bu cihazda paylaşım açılamadı.",
+        "copied": "Bağlantı kopyalandı. İstediğin yere yapıştır."
       },
       "reject": {
         "text_heavy": "Görselde çok fazla yazı var.",

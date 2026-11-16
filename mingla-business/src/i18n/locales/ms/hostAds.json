@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} lewat Mingla.",
         "soldOut": "{{event}} habis terjual: {{result}} lewat Mingla.",
         "go": "Kongsi",
-        "failed": "Tidak dapat membuka fitur kongsi di perangkat ini."
+        "failed": "Tidak dapat membuka fitur kongsi di perangkat ini.",
+        "copied": "Pautan disalin. Tampal di mana-mana sahaja."
       },
       "reject": {
         "text_heavy": "Gambarnya terlalu banyak teks.",

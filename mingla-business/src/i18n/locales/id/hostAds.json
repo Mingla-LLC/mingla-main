@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} lewat Mingla.",
         "soldOut": "{{event}} habis terjual: {{result}} lewat Mingla.",
         "go": "Bagikan",
-        "failed": "Tidak bisa membuka fitur bagikan di perangkat ini."
+        "failed": "Tidak bisa membuka fitur bagikan di perangkat ini.",
+        "copied": "Tautan disalin. Tempel di mana saja."
       },
       "reject": {
         "text_heavy": "Gambarnya terlalu banyak teks.",

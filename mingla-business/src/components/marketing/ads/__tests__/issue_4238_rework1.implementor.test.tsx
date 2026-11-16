@@ -28,6 +28,7 @@ const { act, create } = require("react-test-renderer") as {
 };
 
 const mockShare = jest.fn();
+const mockCopy = jest.fn();
 const mockQuote = jest.fn();
 const mockStart = jest.fn();
 const mockApply = jest.fn();
@@ -37,6 +38,7 @@ const mockStatement = jest.fn();
 jest.mock("../../../../services/supabase", () => ({ supabase: { functions: { invoke: jest.fn() } } }));
 jest.mock("../../../../utils/sharePublicUrl", () => ({
   sharePublicUrl: (...args: unknown[]) => mockShare(...args),
+  copyPublicUrl: (...args: unknown[]) => mockCopy(...args),
 }));
 jest.mock("../../../ui/Button", () => {
   const { Pressable, Text: RNText } = jest.requireActual("react-native");
@@ -49,6 +51,13 @@ jest.mock("../../../ui/Button", () => {
   };
 });
 jest.mock("../../../ui/DateField", () => ({ DateField: () => null }));
+// #4238 rework 2: the share sheet shows a "Link copied" toast (reanimated-backed).
+jest.mock("../../../ui/Toast", () => ({
+  Toast: (props: { visible: boolean; message: string; testID?: string }) => {
+    const { Text: RNText } = jest.requireActual("react-native");
+    return props.visible ? <RNText testID={props.testID}>{props.message}</RNText> : null;
+  },
+}));
 jest.mock("../../../ui/Input", () => ({ Input: () => null }));
 jest.mock("../../../ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../ui/Switch", () => ({ Switch: () => null }));
@@ -234,6 +243,42 @@ describe("P1-1: Share results goes through the sanctioned share helper", () => {
       url: "https://usemingla.com/e/rooftop/summer-jam",
       description: "Summer Jam sold out: 40 tickets through Mingla.",
     });
+  });
+});
+
+describe("rework 2 (tester P3-3): Share results on a desktop browser without Web Share", () => {
+  const sheet = (
+    <HostAdShareSheet
+      visible
+      title="Summer Jam"
+      url="https://usemingla.com/e/rooftop/summer-jam"
+      message="Summer Jam: 40 tickets through Mingla."
+      onClose={jest.fn()}
+    />
+  );
+  test("copies the public link and shows the Link copied toast, never the error (fail-on-revert)", async () => {
+    mockShare.mockReset().mockRejectedValue(new Error("native_share_unavailable"));
+    mockCopy.mockReset().mockResolvedValue(undefined);
+    let r!: ReactTestRenderer;
+    await act(async () => {
+      r = create(sheet);
+    });
+    await press(r, "host-ad-share-go");
+    expect(mockCopy).toHaveBeenCalledWith("https://usemingla.com/e/rooftop/summer-jam");
+    expect(r.root.findAll((n) => n.props.testID === "host-ad-share-copied" && n.props.visible === true)).toHaveLength(1);
+    expect(allText(r)).toContain("Link copied");
+    expect(allText(r)).not.toContain("Couldn't open sharing");
+  });
+  test("a copy that fails too says so", async () => {
+    mockShare.mockReset().mockRejectedValue(new Error("native_share_unavailable"));
+    mockCopy.mockReset().mockRejectedValue(new Error("clipboard_unavailable"));
+    let r!: ReactTestRenderer;
+    await act(async () => {
+      r = create(sheet);
+    });
+    await press(r, "host-ad-share-go");
+    expect(allText(r)).not.toContain("Link copied");
+    expect(allText(r)).toContain("Couldn't open sharing");
   });
 });
 

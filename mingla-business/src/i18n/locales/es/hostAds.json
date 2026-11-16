@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} con Mingla.",
         "soldOut": "{{event}} se agotó: {{result}} con Mingla.",
         "go": "Compartir",
-        "failed": "No se pudo abrir la opción de compartir en este dispositivo."
+        "failed": "No se pudo abrir la opción de compartir en este dispositivo.",
+        "copied": "Enlace copiado. Pégalo donde quieras."
       },
       "reject": {
         "text_heavy": "La imagen tiene demasiado texto.",

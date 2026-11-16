@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} nípasẹ̀ Mingla.",
         "soldOut": "A ti ta gbogbo tíkẹ́ẹ̀tì {{event}}: {{result}} nípasẹ̀ Mingla.",
         "go": "Pín",
-        "failed": "A kò lè ṣí pínpín lórí ẹ̀rọ yìí."
+        "failed": "A kò lè ṣí pínpín lórí ẹ̀rọ yìí.",
+        "copied": "A ti da ìjápọ̀ náà kọ. Lẹ̀ ẹ́ síbikíbi tí o bá fẹ́."
       },
       "reject": {
         "text_heavy": "Àwòrán náà ní ọ̀rọ̀ jù.",

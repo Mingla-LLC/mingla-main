@@ -51,6 +51,7 @@ import {
   hostLiveEditUnknownField,
   type HostLiveEditProblem,
   HOST_LEARNING_WINDOW_DAYS,
+  hostLiveDailyNowCents,
   hostPlanDailyCreditCents,
   hostPlanPublicPageUrl,
   loadHostLiveSinceMs,
@@ -826,6 +827,9 @@ serve(async (req: Request): Promise<Response> => {
     // through get_ad_campaign_report; change_live recomputes the suggestion).
     const nowMs = Date.now();
     let w5: Record<string, unknown> = {};
+    // #4238 rework 2 (tester P3-2): a lifetime (total) budget app spends its
+    // pace, not the plan daily; set from the live-edit context below.
+    let liveDailyNow: number | null | undefined;
     if (planId) {
       const { data: planRow } = await supabase.from("ad_plans")
         .select("id,brand_id,owner_kind,state,current_version_id,destination_family,destination_key")
@@ -834,6 +838,13 @@ serve(async (req: Request): Promise<Response> => {
           planRow.brand_id === brandId
         ? await loadLiveEditContext(supabase, planRow)
         : null;
+      if (loaded?.ok && loaded.ctx.lines.some((line) => line.lifetime === true)) {
+        liveDailyNow = hostLiveDailyNowCents(
+          loaded.ctx.lines,
+          nowMs,
+          Date.parse(loaded.ctx.currentEnds ?? ""),
+        );
+      }
       const counts = await loadPlanResults(supabase, planCampaignIds, "sales", nowMs);
       const spendForCost = hostSpendEquivalentCents;
       const learningUntil = loaded?.ok && loaded.ctx.liveSinceMs !== null
@@ -887,7 +898,9 @@ serve(async (req: Request): Promise<Response> => {
       // #4238 rework 1 (tester P1-2/P1-3): the apps' daily amount in the
       // brand's money, from the plan allocation (amendment-aware). Null when
       // unknown (no plan, or an app without a readable allocation).
-      plan_daily_credit_cents: typeof data.plan_version_id === "string"
+      plan_daily_credit_cents: liveDailyNow !== undefined
+        ? liveDailyNow
+        : typeof data.plan_version_id === "string"
         ? hostPlanDailyCreditCents({
           campaigns: planCampaigns,
           allocations: providerAllocations,

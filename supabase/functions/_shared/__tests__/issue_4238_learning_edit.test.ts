@@ -3,9 +3,13 @@
 //
 // @invariant I-4238-LEARNING-CONFIRM
 //   owner: supabase/functions/_shared/adHostLiveEdit.ts planHostLiveEdit
-//   rule: inside the first 7 days live, a budget change over 20% or any
-//         end-date change is refused with host_ad_live_edit_learning_reset
-//         (409) unless acknowledge_learning_reset is literally true.
+//   rule: inside the first 7 days live, a change of over 20% in the DAILY
+//         amount the apps get (rework 2: never the total) or any end-date
+//         change is refused with host_ad_live_edit_learning_reset (409)
+//         unless acknowledge_learning_reset is literally true.
+//
+// Fixture: 1,000 a day now, 2,000 spent, 10 days left, so a new total T
+// gives a daily of (T - 2,000) / 10.
 
 import {
   assert,
@@ -33,7 +37,7 @@ const base = (over: Record<string, unknown> = {}) => ({
   planState: "live",
   lastEditAt: null,
   nowMs: NOW,
-  newHostBudgetCents: 13_000,
+  newHostBudgetCents: 15_000, // daily 1,300: +30%
   newEndsAt: null,
   currentHostBudgetCents: 10_000,
   currentEndsAt: new Date(NOW + 10 * DAY).toISOString(),
@@ -44,7 +48,7 @@ const base = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-Deno.test("SC-6.1: day 3, 10,000 → 13,000 refused; with the acknowledgement it passes; day 8 passes without", () => {
+Deno.test("SC-6.1: day 3, daily 1,000 → 1,300 refused; with the acknowledgement it passes; day 8 passes without", () => {
   const refused = planHostLiveEdit(base());
   assertEquals(refused.ok, false);
   if (refused.ok) return;
@@ -59,12 +63,12 @@ Deno.test("SC-6.1: day 3, 10,000 → 13,000 refused; with the acknowledgement it
   assert(planHostLiveEdit(base({ liveSinceMs: NOW - 7 * DAY })).ok);
 });
 
-Deno.test("adversarial: exactly 20% passes; 20.01% and −25% are refused", () => {
-  assert(planHostLiveEdit(base({ newHostBudgetCents: 12_000 })).ok);
-  assert(planHostLiveEdit(base({ newHostBudgetCents: 8_000 })).ok);
-  const over = planHostLiveEdit(base({ newHostBudgetCents: 12_001 }));
+Deno.test("adversarial: a daily change of exactly 20% passes; 20.1% and −25% are refused", () => {
+  assert(planHostLiveEdit(base({ newHostBudgetCents: 14_000 })).ok); // 1,200 a day
+  assert(planHostLiveEdit(base({ newHostBudgetCents: 10_000 })).ok); // 800 a day
+  const over = planHostLiveEdit(base({ newHostBudgetCents: 14_010 })); // 1,201
   assert(!over.ok && over.error === "host_ad_live_edit_learning_reset");
-  const cut = planHostLiveEdit(base({ newHostBudgetCents: 7_500 }));
+  const cut = planHostLiveEdit(base({ newHostBudgetCents: 9_500 })); // 750
   assert(!cut.ok && cut.error === "host_ad_live_edit_learning_reset");
 });
 

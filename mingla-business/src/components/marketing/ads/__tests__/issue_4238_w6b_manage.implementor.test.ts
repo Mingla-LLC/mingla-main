@@ -83,7 +83,6 @@ describe("#4238 W6b money in pay terms", () => {
       capCredit: 10_000_000,
       spentCredit: 2_000_000,
       walletCredit: 1_000_000,
-      learning: true,
       step: 50_000,
     });
     expect(m.newCredit).toBe(11_900_000); // 14,000,000 × 0.85
@@ -92,13 +91,11 @@ describe("#4238 W6b money in pay terms", () => {
     expect(m.freePay).toBe(1_176_471);
     // short 900,000 credit = 1,058,824 pay → rounded UP to the 50,000 step
     expect(m.topUpPay).toBe(1_100_000);
-    expect(m.restartsLearning).toBe(false); // 19%: up to 20% passes without the restart confirm
-    const big = hostAdEditMoney({ newTotalPay: 15_000_000, capCredit: 10_000_000, spentCredit: 0, walletCredit: 9_000_000, learning: true, step: 50_000 });
-    expect(big.restartsLearning).toBe(true); // 27.5%
-    const tiny = hostAdEditMoney({ newTotalPay: 12_000_000, capCredit: 10_000_000, spentCredit: 0, walletCredit: 9_000_000, learning: true, step: 50_000 });
-    expect(tiny.restartsLearning).toBe(false);
+    // #4238 rework 2 (tester P1-1): the restart-learning rule moved to the
+    // DAILY amount (hostAdEditDailyMoney), pinned in issue_4238_rework2.implementor.test.ts.
+    const tiny = hostAdEditMoney({ newTotalPay: 12_000_000, capCredit: 10_000_000, spentCredit: 0, walletCredit: 9_000_000, step: 50_000 });
     expect(tiny.topUpPay).toBe(0);
-    const lower = hostAdEditMoney({ newTotalPay: 8_000_000, capCredit: 10_000_000, spentCredit: 1_000_000, walletCredit: 0, learning: false, step: 50_000 });
+    const lower = hostAdEditMoney({ newTotalPay: 8_000_000, capCredit: 10_000_000, spentCredit: 1_000_000, walletCredit: 0, step: 50_000 });
     expect(lower.changePay).toBe(-3_764_706); // 3.2M credit comes back
     expect(lower.minimumPay).toBe(1_176_471 + 50_000);
   });

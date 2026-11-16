@@ -1,14 +1,15 @@
 -- #4238 — LOCAL-ONLY Host ads fixture: one test brand with funded Ads credit
 -- and one ad per state, so every Promote screen state can be walked.
 --
--- TEST DATA ONLY. Loaded by scripts/sites/local/seed-host-ads.mjs, which
--- refuses any non-loopback database. No real payment: the credit is ledger
+-- TEST DATA ONLY. Loaded by scripts/sites/local/seed-host-ads.mjs into this
+-- worktree's own Host ads stack only (start-host-ads-stack.sh; see the guard). No real payment: the credit is ledger
 -- rows (a synthetic top-up), never a payment provider call. No ad platform is
 -- called: the connections are "connected" rows with a fake token env name and
 -- fake external ids. Never run against a shared or production database.
 --
--- psql variable: :owner_email — an existing local auth user (the seed-local.mjs
--- "brand_owner"); it owns the brand. Runs once per database (fixed ids; a second
+-- psql variables: :owner_email — an existing local auth user (the stack's
+-- host-ads-owner@local.invalid); it owns the brand. :stack_project and
+-- :stack_token — the stack identity. Runs once per database (fixed ids; a second
 -- run says so and changes nothing).
 --
 -- States (one ad plan + campaign each; brand currency USD, 15% fee on top-up):
@@ -24,9 +25,23 @@
 
 \set ON_ERROR_STOP on
 
+-- #4238 rework 2 (tester P2-1): only THIS worktree's Host ads stack. The
+-- psql variables :stack_project and :stack_token come from seed-host-ads.mjs
+-- (.state/host-ads-stack.json); start-host-ads-stack.sh wrote the same token
+-- inside the stack's container. Missing variables are a syntax error; another
+-- database has no matching row. Either way nothing below runs.
+SELECT EXISTS (
+  SELECT 1 FROM sites_local.stack_identity
+  WHERE project_id = :'stack_project' AND token = :'stack_token'
+) AS host_ads_stack_ok \gset
+\if :host_ads_stack_ok
+\else
+DO $refuse$ BEGIN RAISE EXCEPTION 'host-ads seed: this database is not this worktree''s Host ads stack; nothing written'; END $refuse$;
+\endif
+
 -- Run once per local database: plan versions, holds and ledger rows are
 -- immutable by design, so a second run stops here (wipe the local stack to
--- start over: scripts/sites/local/stop-local-sites.sh --wipe).
+-- start over: scripts/sites/local/start-host-ads-stack.sh --stop --wipe).
 SELECT EXISTS (SELECT 1 FROM public.brands WHERE id = '4238f1a0-0000-4000-8000-000000000001') AS host_ads_seeded \gset
 \if :host_ads_seeded
 \echo 'host-ads seed: already loaded in this database (brand 4238f1a0-0000-4000-8000-000000000001); nothing to do.'
@@ -38,6 +53,12 @@ BEGIN;
 CREATE TEMP TABLE seed_ids ON COMMIT DROP AS
 SELECT
   (SELECT id FROM auth.users WHERE lower(email) = lower(:'owner_email') LIMIT 1) AS owner_id,
+  -- Checked again inside the transaction (the guard below), under a share lock.
+  EXISTS (
+    SELECT 1 FROM sites_local.stack_identity
+    WHERE project_id = :'stack_project' AND token = :'stack_token'
+    FOR SHARE
+  ) AS stack_ok,
   '4238f1a0-0000-4000-8000-000000000001'::uuid AS brand_id,
   '4238f1a0-0000-4000-8000-000000000002'::uuid AS event_id,
   '4238f1a0-0000-4000-8000-000000000003'::uuid AS tier_id,
@@ -46,6 +67,9 @@ SELECT
 
 DO $guard$
 BEGIN
+  IF NOT (SELECT stack_ok FROM seed_ids) THEN
+    RAISE EXCEPTION 'host-ads seed: this database is not this worktree''s Host ads stack; nothing written';
+  END IF;
   IF (SELECT owner_id FROM seed_ids) IS NULL THEN
     RAISE EXCEPTION 'host-ads seed: no local auth user with that email (run seed-local.mjs first)';
   END IF;
@@ -59,6 +83,8 @@ ALTER TABLE public.ad_campaigns DISABLE TRIGGER ad_campaign_plan_binding;
 ALTER TABLE public.ad_campaigns DISABLE TRIGGER ad_campaign_record_plan_create_success;
 
 -- ── Brand, event, ticket stock ──────────────────────────────────────────────
+INSERT INTO public.creator_accounts (id) SELECT owner_id FROM seed_ids
+ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.brands (id, account_id, name, slug, pricing_currency, default_currency)
 SELECT brand_id, owner_id, 'Host Ads Test Brand', 'host-ads-test-brand', 'USD', 'USD' FROM seed_ids;
 -- A FAKE payout rail row (never called) so the brand's Ads currency resolves.

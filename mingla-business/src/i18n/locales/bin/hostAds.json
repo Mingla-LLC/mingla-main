@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} vbe Mingla.",
         "soldOut": "A khiẹn {{event}} fo: {{result}} vbe Mingla.",
         "go": "Rhie ẹre ma emwa",
-        "failed": "Ma sẹtin rhie ẹre vbe ẹmwẹ na."
+        "failed": "Ma sẹtin rhie ẹre vbe ẹmwẹ na.",
+        "copied": "A ha copy link na. Paste ẹre vbe ehe ne ọ ghi khu ruẹ."
       },
       "reject": {
         "text_heavy": "Ẹmwẹ buobuo rre foto na.",

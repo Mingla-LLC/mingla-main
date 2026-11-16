@@ -8,12 +8,10 @@
 // the daily the Host picked, including a Naira brand on a USD ad account where
 // the amended provider daily is converted back for the detail page.
 //
-// The learning-window cases marked `test.failing` reproduce a defect reported
-// in the tester retest verdict on #4238: the restart-learning confirm is judged
-// on the change of the TOTAL, but since rework 1 the total is spent + daily x
-// days left, so a daily change over 20% can slip under the confirm and a small
-// daily change on an under-spent ad trips it. They pass while the defect
-// exists and fail once it is fixed; then turn them into plain `test`s.
+// The learning-window cases reproduce a defect the tester retest verdict on
+// #4238 reported: the restart-learning confirm was judged on the change of
+// the TOTAL. Rework 2 judges the DAILY amount on both sides, so these were
+// turned from `test.failing` repros into plain tests.
 
 import { describe, expect, test } from "@jest/globals";
 import { hostAdCreditFromPay, hostAdPayFromCredit } from "../hostAdBuilderModel";
@@ -182,7 +180,7 @@ describe("tester: the daily the Host picks is the daily the apps get (client + s
   });
 });
 
-describe("tester: the restart-learning confirm after rework 1 (defect repro)", () => {
+describe("tester: the restart-learning confirm judges the daily (fixed in rework 2)", () => {
   // Day 3 of a 10-day TikTok ad at 7,000 credit a day, on plan: 21,000 spent, 7 days left.
   const cap = 70_000;
   const endsAtIso = new Date(NOW + 7 * DAY - 60_000).toISOString();
@@ -219,14 +217,14 @@ describe("tester: the restart-learning confirm after rework 1 (defect repro)", (
     return { m, serverAsks };
   }
 
-  test.failing("raising the daily by 28% in learning asks to confirm the restart (client and server)", () => {
+  test("raising the daily by 28% in learning asks to confirm the restart (client and server)", () => {
     const { m, serverAsks } = inLearning(Math.round(startDailyPay * 1.28), 21_000);
     // The apps' daily moves by 28% (> the 20% the learning rule allows) ...
     expect(m.restartsLearning).toBe(true);
     expect(serverAsks).toBe(true);
   });
 
-  test.failing("lowering the daily by 5% on an under-spent ad in learning does not warn that a change 'this big' restarts it", () => {
+  test("lowering the daily by 5% on an under-spent ad in learning does not warn that a change 'this big' restarts it", () => {
     // Only 5,000 spent of the 21,000 planned: the total drops by >20% although the daily moves 5%.
     const { m, serverAsks } = inLearning(Math.round(startDailyPay * 0.95), 5_000);
     expect(m.restartsLearning).toBe(false);

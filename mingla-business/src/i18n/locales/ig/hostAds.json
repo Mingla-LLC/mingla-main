@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} site na Mingla.",
         "soldOut": "Ere tiketi niile nke {{event}}: {{result}} site na Mingla.",
         "go": "Kesaa",
-        "failed": "Anyị enweghị ike imepe nkesa na ngwaọrụ a."
+        "failed": "Anyị enweghị ike imepe nkesa na ngwaọrụ a.",
+        "copied": "E depụtala njikọ ahụ. Mado ya ebe ọ bụla ịchọrọ."
       },
       "reject": {
         "text_heavy": "Foto ahụ nwere ederede karịrị akarị.",

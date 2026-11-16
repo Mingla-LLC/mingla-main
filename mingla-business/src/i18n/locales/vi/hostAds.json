@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} qua Mingla.",
         "soldOut": "{{event}} đã hết vé: {{result}} qua Mingla.",
         "go": "Chia sẻ",
-        "failed": "Không mở được chia sẻ trên thiết bị này."
+        "failed": "Không mở được chia sẻ trên thiết bị này.",
+        "copied": "Đã sao chép liên kết. Dán vào bất cứ đâu bạn muốn."
       },
       "reject": {
         "text_heavy": "Hình có quá nhiều chữ.",

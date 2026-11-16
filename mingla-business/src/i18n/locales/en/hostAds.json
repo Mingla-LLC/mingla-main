@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} through Mingla.",
         "soldOut": "{{event}} sold out: {{result}} through Mingla.",
         "go": "Share",
-        "failed": "Couldn't open sharing on this device."
+        "failed": "Couldn't open sharing on this device.",
+        "copied": "Link copied. Paste it wherever you like."
       },
       "reject": {
         "text_heavy": "The picture has too much text.",

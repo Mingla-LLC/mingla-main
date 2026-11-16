@@ -638,7 +638,8 @@
         "line": "{{event}} : {{result}} grâce à Mingla.",
         "soldOut": "{{event}} est complet : {{result}} grâce à Mingla.",
         "go": "Partager",
-        "failed": "Impossible d'ouvrir le partage sur cet appareil."
+        "failed": "Impossible d'ouvrir le partage sur cet appareil.",
+        "copied": "Lien copié. Collez-le où vous voulez."
       },
       "reject": {
         "text_heavy": "L'image contient trop de texte.",

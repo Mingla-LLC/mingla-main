@@ -357,12 +357,15 @@ Deno.test("T8b live edit learning: exactly 20% passes, 20% + 1 cent refuses, an 
     campaigns: [liveCampaign()],
     liveSinceMs: now - 2 * DAY,
   };
-  const exact = planHostLiveEdit({ ...common, newHostBudgetCents: 120_000 });
+  // #4238 rework 2 (P1-1): judged on the DAILY the apps get, (T - 20,000
+  // spent) / 10 days left, against 10,000 a day now; never on the total.
+  const exact = planHostLiveEdit({ ...common, newHostBudgetCents: 140_000 });
   assert(exact.ok, "exactly 20% passes without the confirm");
-  const over = planHostLiveEdit({ ...common, newHostBudgetCents: 120_001 });
+  const over = planHostLiveEdit({ ...common, newHostBudgetCents: 140_010 });
   assertEquals(over.ok, false);
   if (!over.ok) assertEquals(over.error, "host_ad_live_edit_learning_reset");
-  const down = planHostLiveEdit({ ...common, newHostBudgetCents: 79_999 });
+  assert(planHostLiveEdit({ ...common, newHostBudgetCents: 100_000 }).ok, "exactly -20% passes");
+  const down = planHostLiveEdit({ ...common, newHostBudgetCents: 99_990 });
   assertEquals(down.ok, false);
   const moveEnd = planHostLiveEdit({
     ...common,

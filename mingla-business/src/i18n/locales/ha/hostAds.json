@@ -638,7 +638,8 @@
         "line": "{{event}}: {{result}} ta Mingla.",
         "soldOut": "An sayar da duk tikitin {{event}}: {{result}} ta Mingla.",
         "go": "Raba",
-        "failed": "Ba a iya buɗe rabawa a wannan na'urar ba."
+        "failed": "Ba a iya buɗe rabawa a wannan na'urar ba.",
+        "copied": "An kwafi hanyar haɗi. Liƙa ta duk inda kake so."
       },
       "reject": {
         "text_heavy": "Hoton yana da rubutu da yawa.",

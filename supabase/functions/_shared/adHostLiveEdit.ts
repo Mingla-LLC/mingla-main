@@ -211,6 +211,72 @@ function wholeDaysLeft(nowMs: number, endMs: number): number {
 }
 
 /**
+ * #4238 rework 2: the daily (brand's money) a new total gives: what is left
+ * after the spend so far, over the whole days left. The same rule
+ * planHostLiveEdit uses for the daily it pushes, and the Host app's edit
+ * sheet uses (total = spent + daily x days left).
+ */
+export function hostLiveNewDailyCents(
+  newHostBudgetCents: number,
+  hostSpendCents: number,
+  nowMs: number,
+  endMs: number,
+): number {
+  const remaining = Math.max(0, newHostBudgetCents - hostSpendCents);
+  return Math.max(1, Math.floor(Math.max(1, remaining) / wholeDaysLeft(nowMs, endMs)));
+}
+
+/**
+ * #4238 rework 2 (tester P1-1 / P3-2): what the apps really spend a day now,
+ * in the brand's money, all apps added up.
+ * - A daily-budget app: its current daily (amendment-aware) at the frozen
+ *   host/app ratio.
+ * - A lifetime (total) budget app, e.g. Meta CBO: the app paces what is left
+ *   of its cap over the days left, so that pace IS its daily. Showing the
+ *   plan daily instead would let "Raise" set a smaller total than the app
+ *   is already pacing, which lowers real delivery.
+ * Any unreadable row gives null, never 0.
+ *
+ * MINGLA-INVARIANT: I-4238-LIVE-DAILY-NOW | issue #4238 | The learning-restart rule (server planHostLiveEdit and the Host edit sheet) and the edit sheet's starting daily judge the daily the apps get now: a daily app's current daily, a lifetime app's pace (cap - spent) / days left, both at the frozen ratio; never the plan total.
+ */
+export function hostLiveDailyNowCents(
+  campaigns: readonly HostLiveCampaign[],
+  nowMs: number,
+  endMs: number,
+): number | null {
+  if (campaigns.length === 0 || !Number.isFinite(endMs)) return null;
+  const days = wholeDaysLeft(nowMs, endMs);
+  let total = 0;
+  for (const row of campaigns) {
+    if (row.lifetime === true) {
+      const host = row.host_budget_cents;
+      const provider = row.provider_budget_cents;
+      if (
+        !Number.isSafeInteger(host) || host <= 0 ||
+        !Number.isSafeInteger(provider) || provider <= 0 ||
+        !Number.isSafeInteger(row.current_cap_cents) ||
+        !Number.isSafeInteger(row.provider_spend_cents)
+      ) return null;
+      const pace = Math.floor(
+        Math.max(0, row.current_cap_cents - row.provider_spend_cents) / days,
+      );
+      total += provider === host ? pace : Math.floor((pace * host) / provider);
+      continue;
+    }
+    const host = row.host_delivery_budget_cents;
+    const provider = row.provider_delivery_budget_cents;
+    const daily = row.current_daily_cents;
+    if (
+      !Number.isSafeInteger(host) || host <= 0 ||
+      !Number.isSafeInteger(provider) || provider <= 0 ||
+      !Number.isSafeInteger(daily) || daily <= 0
+    ) return null;
+    total += provider === host ? daily : Math.floor((daily * host) / provider);
+  }
+  return total;
+}
+
+/**
  * Pure. `hostSpendCents` is the spend so far in the brand's money. The new
  * daily total spreads what is left of the budget over the days left.
  */
@@ -227,7 +293,7 @@ export function planHostLiveEdit(input: {
   campaigns: HostLiveCampaign[];
   /**
    * #4238 6a: when the ad first went live (ms); null = not live yet. Inside
-   * the first 7 days a budget change over 20% or any end-date change resets
+   * the first 7 days a DAILY-amount change over 20% (rework 2) or any end-date change resets
    * the apps' learning, so it needs `acknowledgeLearningReset: true`.
    */
   liveSinceMs?: number | null;
@@ -270,20 +336,37 @@ export function planHostLiveEdit(input: {
     return { ok: false, error: "host_ad_live_edit_empty" };
   }
   // #4238 6a (I-4238-LEARNING-CONFIRM): server-side, never only a client
-  // warning. Exactly 20% passes; more needs the explicit acknowledgement.
+  // warning. #4238 rework 2 (tester P1-1): judged on the DAILY amount the
+  // apps get (what is left over the days left, the same daily this plan
+  // pushes below) against the daily they get now (hostLiveDailyNowCents),
+  // never on the total: the total is spent + daily x days left, so it does
+  // not track the daily. Exactly 20% passes; more, or any end-date change,
+  // needs the explicit acknowledgement.
   const liveSince = input.liveSinceMs ?? null;
   if (
     liveSince !== null && Number.isFinite(liveSince) &&
     input.nowMs - liveSince < HOST_LEARNING_WINDOW_DAYS * 86_400_000 &&
     input.acknowledgeLearningReset !== true
   ) {
-    const current = input.currentHostBudgetCents;
-    const changePct = budget !== null && current > 0
-      ? Math.abs(budget - current) / current
+    const endMsForDaily = Date.parse(endsAt ?? input.currentEndsAt ?? "");
+    const currentEndMs = Date.parse(input.currentEndsAt ?? "");
+    const currentDaily = Number.isFinite(currentEndMs)
+      ? hostLiveDailyNowCents(input.campaigns, input.nowMs, currentEndMs)
+      : null;
+    const nextDaily = budget !== null && Number.isFinite(endMsForDaily)
+      ? hostLiveNewDailyCents(budget, input.hostSpendCents, input.nowMs, endMsForDaily)
+      : null;
+    const changePct = nextDaily !== null && currentDaily !== null && currentDaily > 0
+      ? Math.abs(nextDaily - currentDaily) / currentDaily
       : null;
     const endChanged = endsAt !== null &&
       Date.parse(endsAt) !== Date.parse(input.currentEndsAt ?? "");
-    if ((changePct !== null && changePct > HOST_LEARNING_MAX_CHANGE) || endChanged) {
+    // A budget change whose daily can't be read is treated as a big one.
+    const unreadable = budget !== null && changePct === null;
+    if (
+      (changePct !== null && changePct > HOST_LEARNING_MAX_CHANGE) || endChanged ||
+      unreadable
+    ) {
       return {
         ok: false,
         error: "host_ad_live_edit_learning_reset",
@@ -319,7 +402,7 @@ export function planHostLiveEdit(input: {
   );
   // Daily: what is left, over the days left (unchanged when no end date).
   const dailyTotal = Number.isFinite(endMs)
-    ? Math.max(1, Math.floor(Math.max(1, remaining) / wholeDaysLeft(input.nowMs, endMs)))
+    ? hostLiveNewDailyCents(newBudget, input.hostSpendCents, input.nowMs, endMs)
     : null;
   const hostDailies = dailyTotal === null ? null : proportionalSplit(
     dailyTotal,

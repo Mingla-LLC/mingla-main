@@ -638,7 +638,8 @@
         "line": "{{event}}: Mingla로 {{result}}.",
         "soldOut": "{{event}} 매진: Mingla로 {{result}}.",
         "go": "공유",
-        "failed": "이 기기에서 공유를 열 수 없어요."
+        "failed": "이 기기에서 공유를 열 수 없어요.",
+        "copied": "링크를 복사했어요. 원하는 곳에 붙여 넣으세요."
       },
       "reject": {
         "text_heavy": "이미지에 글자가 너무 많아요.",
