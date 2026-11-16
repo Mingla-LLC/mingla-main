@@ -8,6 +8,8 @@
 // the parchment audit document (PricingReportView), gated behind an emailed link.
 
 import { useEffect, useRef, useState } from 'react'
+import { PreviewGate } from '../_preview/PreviewGate'
+import type { ToolPreview } from '@/lib/growth-tools-submit'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
@@ -178,6 +180,7 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
   const [attempt, setAttempt] = useState(0)
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<PricingReport | null>(null)
+  const [preview, setPreview] = useState<ToolPreview | null>(null)
 
   // Debounced city autocomplete (validates the city against Google Places).
   useEffect(() => {
@@ -269,7 +272,9 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
     const res = await runPricingAudit(input, { pid: 'tool_pricing', utm: collectUtm() })
     if (res.ok) {
       setRunId(res.run_id)
-      setReport(res.report)
+      // #4452 §6.4: the web lane answers the preview only.
+      if (res.report) setReport(res.report)
+      else if (res.preview) setPreview(res.preview)
       captureMarketing('tool_report_ready', { tool: 'experiences', run_id: res.run_id })
       setPhase('report')
       return
@@ -278,6 +283,21 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
   }
 
   // ── REPORT ──────────────────────────────────────────────────────────────
+  if (phase === 'report' && preview && !report && runId) {
+    return (
+      <PreviewGate
+        tool="experiences"
+        preview={preview}
+        runId={runId}
+        resetLabel="← Audit another experience"
+        onReset={() => {
+          setPhase('intake')
+          setPreview(null)
+          setRunId(null)
+        }}
+      />
+    )
+  }
   if (phase === 'report' && report && runId) {
     return (
       <div className={embedded ? 'p-0' : 'px-4 py-10 sm:px-6 md:px-10 md:py-16 [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))]'}>

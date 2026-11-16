@@ -1079,7 +1079,8 @@ async function handleRun(
     return json({ error: "server" }, 500);
   }
 
-  return json({ run_id: runId, report }, 200);
+  // #4452 §6.4: the app lane keeps the full report; the web lane gets the preview only.
+  return json(appLane ? { run_id: runId, report } : { run_id: runId, preview: previewOfPricing4452(report) }, 200);
 }
 
 export async function handler(req: Request): Promise<Response> {
@@ -1112,4 +1113,36 @@ export async function handler(req: Request): Promise<Response> {
 
 if (import.meta.main) {
   serve(handler);
+}
+
+// #4452 §6.4 (security): the anonymous web lane gets only the preview allowlist
+// (the full report is reached only through growth-tools-report with the emailed
+// token). The app lane is unchanged.
+// MINGLA-INVARIANT: I-4452-REPORT-PREVIEW-ONLY | issue #4452 | the anonymous web lane returns only the preview allowlist (issue_4452_minimise tests).
+function pick4452(o: unknown, path: string[]): unknown {
+  let v: unknown = o;
+  for (const k of path) {
+    if (v === null || typeof v !== "object") return null;
+    v = (v as Record<string, unknown>)[k];
+  }
+  return v === undefined ? null : v;
+}
+function firstFixTitle4452(report: unknown): unknown {
+  const fixes = pick4452(report, ["fixes"]);
+  return Array.isArray(fixes) && fixes.length > 0 ? pick4452(fixes[0], ["title"]) : null;
+}
+function fixCount4452(report: unknown): number {
+  const fixes = pick4452(report, ["fixes"]);
+  return Array.isArray(fixes) ? fixes.length : 0;
+}
+
+export function previewOfPricing4452(report: unknown): Record<string, unknown> {
+  return {
+    experience: { description: pick4452(report, ["experience", "description"]) },
+    current_price: pick4452(report, ["audit", "current_price"]),
+    recommended_price: pick4452(report, ["audit", "recommended_price"]),
+    currency: pick4452(report, ["audit", "currency"]),
+    monthly_upside: pick4452(report, ["audit", "monthly_upside"]),
+    first_fix: { title: firstFixTitle4452(report) },
+  };
 }

@@ -1477,6 +1477,9 @@ async function handleRun(
 
   // COST + PRICING ENGINE (deterministic).
   const plan = computePricing(input, research, organicMid);
+  // #4452 §6.5: an honest $0 — when live prices did not come back the plan is
+  // "unpriced": no margins are shown and no "$0" ever reaches the page or email.
+  const pricingStatus = tripPricingStatus4452(plan);
 
   // Best-effort cover image (Pexels). P-24: skipped when budget is under 8s.
   const coverUrl = budget.remainingMs() >= PEXELS_CALL_TIMEOUT_MS
@@ -1497,6 +1500,7 @@ async function handleRun(
     cover_narrative: synth.cover_narrative,
     confidence: synth.confidence,
     plan,
+    pricing_status: pricingStatus,
     itinerary: synth.itinerary,
     hotels: research.hotels,
     activities: research.activities,
@@ -1532,7 +1536,8 @@ async function handleRun(
     return json({ error: "server" }, 500);
   }
 
-  return json({ run_id: runId, report }, 200);
+  // #4452 §6.4: the app lane keeps the full report; the web lane gets the preview only.
+  return json(appLane ? { run_id: runId, report } : { run_id: runId, preview: previewOfTrips4452(report) }, 200);
 }
 
 export async function handler(req: Request): Promise<Response> {
@@ -1565,4 +1570,48 @@ export async function handler(req: Request): Promise<Response> {
 
 if (import.meta.main) {
   serve(handler);
+}
+
+// #4452 §6.4 (security): the anonymous web lane gets only the preview allowlist
+// (the full report is reached only through growth-tools-report with the emailed
+// token). The app lane is unchanged.
+// MINGLA-INVARIANT: I-4452-REPORT-PREVIEW-ONLY | issue #4452 | the anonymous web lane returns only the preview allowlist (issue_4452_minimise tests).
+function pick4452(o: unknown, path: string[]): unknown {
+  let v: unknown = o;
+  for (const k of path) {
+    if (v === null || typeof v !== "object") return null;
+    v = (v as Record<string, unknown>)[k];
+  }
+  return v === undefined ? null : v;
+}
+function firstFixTitle4452(report: unknown): unknown {
+  const fixes = pick4452(report, ["fixes"]);
+  return Array.isArray(fixes) && fixes.length > 0 ? pick4452(fixes[0], ["title"]) : null;
+}
+function fixCount4452(report: unknown): number {
+  const fixes = pick4452(report, ["fixes"]);
+  return Array.isArray(fixes) ? fixes.length : 0;
+}
+
+export function previewOfTrips4452(report: unknown): Record<string, unknown> {
+  const status = pick4452(report, ["pricing_status"]) === "unpriced" ? "unpriced" : "priced";
+  return {
+    trip: { title: pick4452(report, ["trip", "title"]), destination: pick4452(report, ["trip", "destination"]) },
+    plan: {
+      // An unpriced plan never shows a price (no "$0" on the page).
+      recommended_price_per_person: status === "unpriced" ? null : pick4452(report, ["plan", "recommended_price_per_person"]),
+      currency: pick4452(report, ["plan", "currency"]),
+    },
+    pricing_status: status,
+    first_fix: { title: firstFixTitle4452(report) },
+  };
+}
+
+/** #4452 §6.5: all cost lines 0, a price ≤ 0, or fewer than 2 priced lines → "unpriced". */
+export function tripPricingStatus4452(plan: { cost_lines: Array<{ per_person: number }>; recommended_price_per_person: number }): "priced" | "unpriced" {
+  const lines = Array.isArray(plan.cost_lines) ? plan.cost_lines : [];
+  const sum = lines.reduce((s, l) => s + (Number.isFinite(l.per_person) ? l.per_person : 0), 0);
+  const positive = lines.filter((l) => l.per_person > 0).length;
+  if (sum <= 0 || !(plan.recommended_price_per_person > 0) || positive < 2) return "unpriced";
+  return "priced";
 }

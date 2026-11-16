@@ -8,6 +8,8 @@
 // document (EventReportView), gated behind an emailed link like the grader.
 
 import { useEffect, useRef, useState } from 'react'
+import { PreviewGate } from '../_preview/PreviewGate'
+import type { ToolPreview } from '@/lib/growth-tools-submit'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
@@ -182,6 +184,7 @@ export function EventPredictorExperience({ embedded = false }: { readonly embedd
   const [attempt, setAttempt] = useState(0)
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<EventReport | null>(null)
+  const [preview, setPreview] = useState<ToolPreview | null>(null)
 
   // Debounced city autocomplete (validates the city against Google Places). Skips while
   // a suggestion is already chosen; degrades to free text if the geocoder is down.
@@ -277,7 +280,9 @@ export function EventPredictorExperience({ embedded = false }: { readonly embedd
     const res = await runEventPredictor(input, { pid: 'tool_events', utm: collectUtm() })
     if (res.ok) {
       setRunId(res.run_id)
-      setReport(res.report)
+      // #4452 §6.4: the web lane answers the preview only.
+      if (res.report) setReport(res.report)
+      else if (res.preview) setPreview(res.preview)
       captureMarketing('tool_report_ready', { tool: 'events', run_id: res.run_id })
       setPhase('report')
       return
@@ -286,6 +291,21 @@ export function EventPredictorExperience({ embedded = false }: { readonly embedd
   }
 
   // ── REPORT ──────────────────────────────────────────────────────────────
+  if (phase === 'report' && preview && !report && runId) {
+    return (
+      <PreviewGate
+        tool="events"
+        preview={preview}
+        runId={runId}
+        resetLabel="← Forecast another event"
+        onReset={() => {
+          setPhase('intake')
+          setPreview(null)
+          setRunId(null)
+        }}
+      />
+    )
+  }
   if (phase === 'report' && report && runId) {
     return (
       <div className={embedded ? 'p-0' : 'px-4 py-10 sm:px-6 md:px-10 md:py-16 [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))]'}>
