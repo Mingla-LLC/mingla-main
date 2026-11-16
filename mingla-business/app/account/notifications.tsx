@@ -103,14 +103,14 @@ export function MinglaTeamPrefsGroup({ userId }: { userId: string | null }): Rea
 interface ChildType {
   readonly type: BusinessNotificationType;
   readonly label: string;
-  readonly description: string;
+  readonly description?: string;
 }
 
 const ORDER_CHILDREN: readonly ChildType[] = [
-  { type: "business.order_paid", label: "New sale", description: "When a ticket sells" },
-  { type: "business.event_sold_out", label: "Sold out", description: "When a listing sells out" },
-  { type: "business.low_inventory", label: "Almost gone", description: "When inventory runs low" },
-  { type: "business.refund_processed", label: "Refunds", description: "When a refund is processed" },
+  { type: "business.order_paid", label: "New sale" },
+  { type: "business.event_sold_out", label: "Sold out" },
+  { type: "business.low_inventory", label: "Almost gone" },
+  { type: "business.refund_processed", label: "Refunds" },
   {
     type: "business.cancel_refunds_released",
     label: "Cancel refunds released",
@@ -119,18 +119,18 @@ const ORDER_CHILDREN: readonly ChildType[] = [
 ];
 
 const PAYMENTS_CHILDREN: readonly ChildType[] = [
-  { type: "business.dispute_opened", label: "Disputes opened", description: "When a buyer disputes a charge" },
-  { type: "business.dispute_action_needed", label: "Evidence due", description: "When you must submit dispute evidence" },
-  { type: "business.payout_paid", label: "Payouts", description: "When money lands in your bank" },
+  { type: "business.dispute_opened", label: "Disputes opened" },
+  { type: "business.dispute_action_needed", label: "Evidence due" },
+  { type: "business.payout_paid", label: "Payouts" },
   { type: "business.account_status_changed", label: "Account status", description: "When payments are paused or restored" },
 ];
 
 const AUDIENCE_CHILDREN: readonly ChildType[] = [
-  { type: "business.new_review", label: "New reviews", description: "When someone reviews your brand" },
+  { type: "business.new_review", label: "New reviews" },
 ];
 
 const TEAM_CHILDREN: readonly ChildType[] = [
-  { type: "business.team_member_joined", label: "Teammate joined", description: "When an invited teammate accepts" },
+  { type: "business.team_member_joined", label: "Teammate joined" },
   { type: "business.claim_decision", label: "Claim decisions", description: "When a venue claim is approved or declined" },
 ];
 
@@ -528,9 +528,11 @@ const MasterCard: React.FC<MasterCardProps> = ({
           >
             <View style={styles.childTextCol}>
               <Text style={styles.childLabel}>{child.label}</Text>
-              <Text style={styles.childDescription} numberOfLines={1}>
-                {child.description}
-              </Text>
+              {child.description !== undefined ? (
+                <Text style={styles.childDescription} numberOfLines={1}>
+                  {child.description}
+                </Text>
+              ) : null}
             </View>
             <View style={styles.childToggles}>
               <ChannelToggle
