@@ -2358,7 +2358,8 @@
         "mingla-business/src/components/location/sharedAddressField.tsx",
         "mingla-business/src/components/location/sharedAddressField.web.tsx",
         "supabase/migrations/20280525004334_issue_4334_place_id_repick.sql",
-        "mingla-business/src/utils/liveEventConverter.ts"
+        "mingla-business/src/utils/liveEventConverter.ts",
+        "mingla-business/playwright/issue2399/entry.tsx"
       ]
     },
     {
