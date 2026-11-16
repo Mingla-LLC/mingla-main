@@ -70,3 +70,15 @@ export function hostAdCountryMatches(
     .filter((country) => q === "" || country.name.toLowerCase().includes(q) || country.code.toLowerCase() === q)
     .map((country) => ({ code: country.code, name: country.name, flag: country.flag }));
 }
+
+/**
+ * #4238 rework 4 (retest 4 P3-5): the place in "People in {{place}}": the
+ * event's city, else the chosen countries by NAME ("United States"), never
+ * the raw code ("US").
+ */
+export function hostAdAudiencePlace(
+  city: string | null | undefined,
+  countries: readonly string[],
+): string {
+  return city ?? countries.map(countryName).join(", ");
+}

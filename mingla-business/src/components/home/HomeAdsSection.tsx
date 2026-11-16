@@ -18,13 +18,13 @@ import {
 } from "../../services/hostAdCampaignService";
 import { formatCurrencyRound } from "../../utils/currency";
 import { hostAdPayFromCredit } from "../marketing/ads/hostAdBuilderModel";
+import { hostAdListSummaryLine } from "../marketing/ads/results/AdListSummaryCard";
 import {
   campaignCurrencies,
   homeAdAttentionReason,
   homeAdCanPause,
   homeAdNetworkList,
   homeAdStatusLabel,
-  homeAdPayTotals,
   homeAdTileSpan,
   selectHomeAdCampaigns,
 } from "../../utils/homeAdLifecycle";
@@ -234,9 +234,10 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
     [ads.campaigns],
   );
   const campaigns = activeCampaigns.slice(0, 4);
-  // #4238 rework 3b (P2-2): the total covers EVERY active ad, not the 4
-  // tiles, and is what the Host pays (same hostAdPayFromCredit as Promote).
-  const totals = useMemo(() => homeAdPayTotals(activeCampaigns), [activeCampaigns]);
+  // #4238 rework 4 (retest 4 P2-1): the card's total is Promote's "This month"
+  // line, from the same server summary and the same helper (pay terms, ended
+  // ads included), so the two never show different figures for the same data.
+  const monthLine = ads.summary === null ? null : hostAdListSummaryLine(ads.summary);
   const [busyCampaignId, setBusyCampaignId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -244,14 +245,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
     row.source === "mingla_ads"
   )?.valueByCurrency ?? {};
   const salesLines = currencyLines(adSales, "");
-  const spendLines = [...totals.entries()]
-    .filter(([, total]) => total.spent > 0)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([currency, total]) =>
-      total.budget > 0
-        ? `${formatCurrencyRound(total.spent, currency, true)} spent of ${formatCurrencyRound(total.budget, currency, true)} budget`
-        : `${formatCurrencyRound(total.spent, currency, true)} spent`
-    );
+  const spendLines = monthLine === null ? [] : [monthLine];
 
   const openAds = useCallback((): void => {
     router.push("/(tabs)/marketing/ads" as never);

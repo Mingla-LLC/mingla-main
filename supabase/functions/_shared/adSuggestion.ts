@@ -192,6 +192,30 @@ async function suggestionId(parts: readonly unknown[]): Promise<string> {
     .slice(0, 40);
 }
 
+/**
+ * #4238 rework 4 (retest 4 P3-3): the reason on the NEWEST pause/end event
+ * only. An older recorded reason (a sold-out pause since resumed) must never
+ * outlive a later pause with no reason (the Host paused it by hand).
+ */
+export function latestStopReason(
+  events: readonly { provider_response?: unknown; created_at?: unknown }[],
+): string | null {
+  let newest: (typeof events)[number] | null = null;
+  let newestMs = -Infinity;
+  for (const event of events) {
+    const at = Date.parse(String(event.created_at ?? ""));
+    const ms = Number.isFinite(at) ? at : -Infinity;
+    if (newest === null || ms > newestMs) {
+      newest = event;
+      newestMs = ms;
+    }
+  }
+  const reason =
+    (newest?.provider_response as Record<string, unknown> | null | undefined)
+      ?.reason;
+  return typeof reason === "string" ? reason : null;
+}
+
 /** The one suggestion for this plan right now, or null. */
 export async function hostAdSuggestion(
   input: HostAdSuggestionInput,
@@ -285,7 +309,7 @@ export async function hostAdSuggestion(
       });
     }
   }
-  if (editable && guide && input.goal !== "visits") {
+  if (editable && !soldOut && guide && input.goal !== "visits") {
     // 3. Lower: results cost far more than similar events.
     const tooDear = cpr !== null
       ? cpr > SUGGESTION_LOWER_AT_HIGH * guide.highCents
@@ -299,7 +323,8 @@ export async function hostAdSuggestion(
     }
   }
   if (input.lastTicketsOffered) return await build("accept_last_tickets", {});
-  if (spend > 0 && input.resultsLast3Days === 0) {
+  // #4238 rework 4 (retest 4 P3-2): nothing to promote with no stock left.
+  if (!soldOut && spend > 0 && input.resultsLast3Days === 0) {
     return await build("new_video", {});
   }
   return null;

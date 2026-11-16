@@ -63,6 +63,7 @@ import { parseOfferingStock } from "../_shared/adDestination.ts";
 import {
   hostAdResultCounts,
   hostAdSuggestion,
+  latestStopReason,
   type HostAdSuggestion,
   resolveSuggestedEdit,
 } from "../_shared/adSuggestion.ts";
@@ -1993,9 +1994,7 @@ async function loadPlanSuggestion(
       .in("campaign_id", ids).in("action", ["pause", "end"])
       .order("created_at", { ascending: false }).limit(20)
     : { data: [] };
-  const stopReason = ((stops ?? []) as Record<string, unknown>[])
-    .map((row) => (row.provider_response as Record<string, unknown> | null)?.reason)
-    .find((value): value is string => typeof value === "string") ?? null;
+  const stopReason = latestStopReason((stops ?? []) as Record<string, unknown>[]);
   const suggestion = await hostAdSuggestion({
     planId: String(plan.id),
     planState: String(plan.state),

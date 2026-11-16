@@ -7,7 +7,6 @@
  * combined here; presentation keeps each provider currency separate.
  */
 
-import { hostAdPayFromCredit } from "../components/marketing/ads/hostAdBuilderModel";
 import type { HostAdCampaign } from "../services/hostAdCampaignService";
 import { currencyCodeOrNull } from "./currency";
 
@@ -192,33 +191,3 @@ export const campaignCurrencies = (
   if (byCurrency.length > 0) return byCurrency;
   return currency === null ? [] : [{ currency, spent: 0, budget }];
 };
-
-/**
- * #4238 rework 3b (tester P2-2): the Home Ads card total covers EVERY active
- * ad passed in (not only the tiles shown) and is in pay terms, what the Host
- * pays (15% Mingla fee inside), through the same hostAdPayFromCredit Promote
- * uses. Credit is summed per currency first, then converted once, as the
- * Promote summary does.
- */
-export function homeAdPayTotals(
-  campaigns: readonly HostAdCampaign[],
-): Map<string, { spent: number; budget: number }> {
-  const credit = new Map<string, { spent: number; budget: number }>();
-  for (const campaign of campaigns) {
-    for (const row of campaignCurrencies(campaign)) {
-      const current = credit.get(row.currency) ?? { spent: 0, budget: 0 };
-      credit.set(row.currency, {
-        spent: current.spent + row.spent,
-        budget: current.budget + row.budget,
-      });
-    }
-  }
-  const pay = new Map<string, { spent: number; budget: number }>();
-  for (const [currency, total] of credit) {
-    pay.set(currency, {
-      spent: hostAdPayFromCredit(total.spent),
-      budget: hostAdPayFromCredit(total.budget),
-    });
-  }
-  return pay;
-}

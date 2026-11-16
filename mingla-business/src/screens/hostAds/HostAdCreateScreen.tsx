@@ -141,6 +141,7 @@ import {
   HOST_AD_LANGUAGE_NAMES,
 } from "../../components/marketing/ads/hostAdTargeting";
 import {
+  hostAdAudiencePlace,
   initialHostAdCountries,
 } from "../../components/marketing/ads/hostAdCountries";
 import {
@@ -2060,7 +2061,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const toggleAdvanced = (key: string): void =>
     setAdvanced((current) => ({ ...current, [key]: !current[key] }));
   const unit = hostAdGoalUnit(goal);
-  const place = page?.city ?? countries.join(", ");
+  const place = hostAdAudiencePlace(page?.city, countries);
   const firstPoster = pickedCreatives[0]?.poster_url ?? pickedCreatives[0]?.source_url ?? null;
   const ctaId = cta ?? hostAdDefaultCta(page?.page_type);
   const ctaLabel = HOST_AD_CTA_OPTIONS.find((option) => option.id === ctaId)?.label ?? "";

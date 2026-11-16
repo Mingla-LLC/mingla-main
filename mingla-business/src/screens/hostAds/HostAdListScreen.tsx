@@ -31,6 +31,7 @@ import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { applyAdCreditTopUp } from "../../services/adCreditService";
 import { minorFromMajor } from "../../utils/currency";
+import { HOST_AD_NAME_COL_MIN } from "../../components/marketing/ads/hostAdListLayout";
 import { buildHostAdList, hostAdRowIdentity, type HostAdListItem } from "../../services/hostAdLifecycle";
 import { AdListSummaryCard } from "../../components/marketing/ads/results/AdListSummaryCard";
 import { hostAdScrollBottomPadding } from "../../components/marketing/ads/hostAdBuilderRules";
@@ -608,11 +609,12 @@ const styles = StyleSheet.create({
   th: { backgroundColor: color.fill.tableHead, borderTopWidth: 0 },
   thText: { color: color.text2 },
   td: { ...type.small, color: color.text1, flex: 1, textAlign: "right" },
-  tdName: { flex: 2, textAlign: "left" },
+  // #4238 rework 4: the name column never narrows below what "apps · start day" needs at 1280.
+  tdName: { flex: 3, minWidth: HOST_AD_NAME_COL_MIN, textAlign: "left" },
   // #4238 rework 3: the name wraps to two lines with apps · start day under it.
-  tdNameCell: { flex: 2, minWidth: 0, gap: space[1] },
+  tdNameCell: { flex: 3, minWidth: HOST_AD_NAME_COL_MIN, gap: space[1] },
   tdNameText: { ...type.small, color: color.text1, fontWeight: "600" },
   // Money never breaks between the currency code and the amount.
   tdNum: { minWidth: 112, flexShrink: 0 },
-  tdStatus: { flex: 2, alignItems: "flex-start" },
+  tdStatus: { flex: 1, minWidth: 120, alignItems: "flex-start" },
 });

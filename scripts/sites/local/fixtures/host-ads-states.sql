@@ -107,8 +107,12 @@ SELECT tier_id, event_id, 'General', 25_00, 300, 'USD', 40 FROM seed_ids;
 -- take $6,570.00 of it, leaving $1,930.00 free.
 INSERT INTO public.ad_credit_wallets (brand_id, currency, balance_cents, held_cents, currency_status)
 SELECT brand_id, 'USD', 0, 0, 'aligned' FROM seed_ids;
-INSERT INTO public.ad_credit_ledger (brand_id, entry_kind, amount_cents, fee_cents, pay_cents, balance_after_cents, currency, idempotency_key, metadata)
-SELECT brand_id, 'top_up', 8_500_00, 1_500_00, 10_000_00, 8_500_00, 'USD', 'local-seed-4238-top-up-1', '{"local_seed":"4238"}'::jsonb FROM seed_ids;
+-- #4238 rework 4 (retest 4 P3-4): every ledger row gets its OWN created_at.
+-- The whole seed runs in one transaction, so now() ties on every row and the
+-- statement's "balance after the month's last entry" picked an arbitrary one
+-- (closing $3,330 against the wallet's $6,475).
+INSERT INTO public.ad_credit_ledger (brand_id, entry_kind, amount_cents, fee_cents, pay_cents, balance_after_cents, currency, idempotency_key, metadata, created_at)
+SELECT brand_id, 'top_up', 8_500_00, 1_500_00, 10_000_00, 8_500_00, 'USD', 'local-seed-4238-top-up-1', '{"local_seed":"4238"}'::jsonb, now() - interval '2 hours' FROM seed_ids;
 
 -- ── Ad connections (fake; never called) ─────────────────────────────────────
 -- #4238 rework 3 (tester P2-1): Host ads read the accounts on HOST_AD_LANE
@@ -184,11 +188,12 @@ BEGIN
     -- The hold: credit set aside for this plan (ledger + funding hold).
     v_balance := v_balance - v_cap;
     v_held := v_held + v_cap;
-    INSERT INTO public.ad_credit_ledger (brand_id, entry_kind, amount_cents, fee_cents, balance_after_cents, currency, idempotency_key, metadata)
+    INSERT INTO public.ad_credit_ledger (brand_id, entry_kind, amount_cents, fee_cents, balance_after_cents, currency, idempotency_key, metadata, created_at)
     VALUES (v_ids.brand_id, 'campaign_spend', -v_cap, 0, greatest(v_balance, 0), 'USD', 'local-seed-4238-hold-' || s.n,
       -- #4238 rework 3 (tester P3-10): plan_id, as the real hold writes it, so
       -- the statement's "Per ad" rows carry each ad's name.
-      jsonb_build_object('local_seed', '4238', 'plan_id', v_plan))
+      jsonb_build_object('local_seed', '4238', 'plan_id', v_plan),
+      now() - interval '1 hour' + make_interval(secs => s.n))
     RETURNING id INTO v_ledger;
     INSERT INTO public.ad_plan_funding_holds (id, plan_id, plan_version_id, plan_hash, funding_source, brand_id, ledger_id, currency, amount_cents, state)
     VALUES (('4238f1a0-0000-4000-8000-6000000000' || lpad(s.n::text, 2, '0'))::uuid, v_plan, v_version, v_hash, 'host_credit',
