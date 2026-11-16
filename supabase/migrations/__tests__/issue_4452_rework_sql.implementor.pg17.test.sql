@@ -84,8 +84,8 @@ COMMIT;
 -- ═══ RW-SQL-1: concurrent retries with one key ══════════════════════════════
 DO $t$
 DECLARE
-  v_conn text := format('dbname=%L user=%L host=%L port=%L', current_database(), current_user,
-                        current_setting('unix_socket_directories'), current_setting('port'));
+  -- Loopback is trust on the CI image (supabase/postgres), the unix socket is scram there.
+  v_conn text := format('dbname=%L user=%L host=127.0.0.1 port=5432', current_database(), current_user);
   v_form uuid := (SELECT form_id FROM public.zz_rw4452_fixture);
   v_key uuid := gen_random_uuid();
   v_call text;
