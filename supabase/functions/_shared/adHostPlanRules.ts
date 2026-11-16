@@ -351,3 +351,143 @@ export function hostFrequencyCap(
     ? { impressions: 3, days: 7 }
     : null;
 }
+
+/**
+ * #4238 T-2 (amendment A decisions 1–2): the ONE Host/Ari ad-set split.
+ * One prospecting ad set always. One retarget ad set (page viewers and
+ * checkout starters, codes M1–M5 / S1–S3 / T1–T3) is added on Meta, Snap or
+ * TikTok only when the app's daily ad spend S is at least 2F (F = the
+ * one-ad-set floor) AND the retarget audience is ready (≥ 1,000 people,
+ * event → brand → market) AND the pixel buyer exclusion (M6/S4/T4) is ready.
+ * Retarget R = max(F, floor(0.2·S)), prospecting S − R; both stay ≥ F.
+ *
+ * Setup/guidance, create_version (preflight) and create all call this, so
+ * create never refuses a split preflight accepted (X-1). It never changes the
+ * Host minimum: the minimum stays the one-ad-set price (binding floor rule).
+ *
+ * MINGLA-INVARIANT: I-4238-RETARGET-NEVER-RAISES-MINIMUM | issue #4238 | hostAdSetSplit adds the retarget ad set only at S >= 2F with a ready >=1,000 audience and a ready buyer exclusion, keeps every ad set >= F, and the Host minimum is never derived from it (hostDailyMinimumCents is the one-ad-set floor).
+ */
+export const HOST_RETARGET_PLATFORMS: ReadonlySet<string> = new Set([
+  "meta",
+  "snapchat",
+  "tiktok",
+]);
+export const HOST_RETARGET_SHARE = 0.2;
+export const HOST_RETARGET_MIN_AUDIENCE = 1000;
+
+export type HostRetargetReadiness = {
+  /** The page-viewer / checkout-starter audience has ≥ 1,000 people. */
+  audienceReady: boolean;
+  /** The pixel buyer exclusion exists for this app. */
+  buyerExclusionReady: boolean;
+};
+
+export type HostAdSetSplit = {
+  ad_sets: 1 | 2;
+  prospecting_cents: number;
+  retarget_cents: number;
+  retarget: {
+    added: boolean;
+    reason:
+      | null
+      | "retarget_not_supported"
+      | "budget_below_retarget_threshold"
+      | "retarget_audience_not_ready";
+  };
+};
+
+export function hostAdSetSplit(
+  platform: string,
+  spendCents: number,
+  floorCents: number | null,
+  readiness: HostRetargetReadiness | null,
+): HostAdSetSplit {
+  const spend = Number.isSafeInteger(spendCents) && spendCents > 0
+    ? spendCents
+    : 0;
+  const one = (
+    reason: HostAdSetSplit["retarget"]["reason"],
+  ): HostAdSetSplit => ({
+    ad_sets: 1,
+    prospecting_cents: spend,
+    retarget_cents: 0,
+    retarget: { added: false, reason },
+  });
+  if (!HOST_RETARGET_PLATFORMS.has(platform)) {
+    return one("retarget_not_supported");
+  }
+  const floor = floorCents !== null && Number.isFinite(floorCents) &&
+      floorCents > 0
+    ? Math.ceil(floorCents)
+    : null;
+  // Retargeting never runs without leaving out buyers (SC-T2.2).
+  if (
+    !readiness || readiness.audienceReady !== true ||
+    readiness.buyerExclusionReady !== true
+  ) {
+    return one("retarget_audience_not_ready");
+  }
+  if (floor === null || spend < 2 * floor) {
+    return one("budget_below_retarget_threshold");
+  }
+  const retarget = Math.max(floor, Math.floor(HOST_RETARGET_SHARE * spend));
+  return {
+    ad_sets: 2,
+    prospecting_cents: spend - retarget,
+    retarget_cents: retarget,
+    retarget: { added: true, reason: null },
+  };
+}
+
+/**
+ * #4238 T-2: readiness from the existing stage resolver's plan
+ * (buildAdStagePlan, read-only): not blocked (buyer exclusion ready) and the
+ * retarget or checkout-starter stage has a ≥ 1,000-person audience.
+ */
+export function hostRetargetReadiness(
+  plan:
+    | {
+      blocked: boolean;
+      stages: readonly { stage: string; executable: boolean }[];
+    }
+    | null,
+): HostRetargetReadiness {
+  if (!plan) return { audienceReady: false, buyerExclusionReady: false };
+  const warm = plan.stages.some((stage) =>
+    (stage.stage === "retarget" || stage.stage === "abandoners") &&
+    stage.executable
+  );
+  return {
+    audienceReady: !plan.blocked && warm,
+    buyerExclusionReady: !plan.blocked,
+  };
+}
+
+/**
+ * #4238 T-3 (amendment A decision 3): the past-guests starting audience for
+ * "Let Mingla choose". It is added ONLY when the audience choice is Mingla's,
+ * EVERY chosen app has the staff switch on (ad_connections.extra
+ * .past_guest_seed_enabled === true, set only through
+ * admin_set_ad_past_guest_seed with a privacy-review reference), and the brand
+ * has a ready past-guests list or lookalike. With the switch off, no list id
+ * enters a Host plan unless the Host picked it (SC-T3).
+ */
+export function hostPastGuestSeedKeys(input: {
+  audienceChoice: unknown;
+  platforms: readonly string[];
+  connections: readonly { platform: string; extra?: unknown }[];
+  readyListKeys: readonly string[];
+}): string[] {
+  if (input.audienceChoice !== "mingla") return [];
+  if (input.platforms.length === 0 || input.readyListKeys.length === 0) {
+    return [];
+  }
+  const on = input.platforms.every((platform) => {
+    const row = input.connections.find((item) => item.platform === platform);
+    const extra = row?.extra && typeof row.extra === "object"
+      ? row.extra as Record<string, unknown>
+      : {};
+    return extra.past_guest_seed_enabled === true;
+  });
+  return on ? [...new Set(input.readyListKeys)] : [];
+}

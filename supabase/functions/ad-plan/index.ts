@@ -82,8 +82,24 @@ import {
   cachedSalesReadiness,
   cachedSignupsReadiness,
 } from "../_shared/adSalesReadiness.ts";
-import { calendarDaysBetween, hostMinimumPayCents } from "../_shared/adMoney.ts";
+import {
+  calendarDaysBetween,
+  creditCentsFromPay,
+  hostMinimumPayCents,
+} from "../_shared/adMoney.ts";
 import { hostCopyWarnings } from "../_shared/adCopyPolicy.ts";
+import { hostAppsForBudget } from "../_shared/adBudgetSplit.ts";
+import {
+  type AdAudienceRow,
+  buildAdStagePlan,
+} from "../_shared/adAudienceStages.ts";
+import {
+  hostAdSetSplit,
+  hostPastGuestSeedKeys,
+  type HostRetargetReadiness,
+  hostRetargetReadiness,
+  splitDailyWithMinimums,
+} from "../_shared/adHostPlanRules.ts";
 import {
   hostBudgetGuidance,
   OWN_RESULTS_MIN,
@@ -387,6 +403,10 @@ export async function buildHostBudgetGuidance(
     destination: Record<string, unknown> | null;
     runDays: number | null;
     occurrenceKey?: string | null;
+    /** #4238 T-6: "mingla" = Let Mingla choose the apps. */
+    appChoice?: "mingla" | "host";
+    /** #4238 T-2: retarget readiness per app (absent = not ready). */
+    retargetReadiness?: Record<string, HostRetargetReadiness>;
   },
 ): Promise<Record<string, unknown>> {
   const { data: connections, error } = await db.from("ad_connections")
@@ -401,8 +421,73 @@ export async function buildHostBudgetGuidance(
     return { ok: false, status: 409, detail: `platform_not_connected:${missing}` };
   }
   const minimumRows = await hostDailyMinimums(db, rows, input.currency);
+  // #4238 T-6 + amendment B §3: under "Let Mingla choose", fewer apps for a
+  // small budget, in ad spend; the Host's own pick is kept as chosen.
+  let appsPlan: Record<string, unknown> | null = null;
+  let guidedPlatforms = input.platforms;
+  const floorRows = input.platforms.map((platform) => {
+    const row = minimumRows.find((item) => item.platform === platform);
+    return {
+      platform,
+      floor: row?.[`${input.goal}_daily_minimum_cents`],
+      viability: row?.[`${input.goal}_viability_cents`],
+    };
+  });
+  if (floorRows.some((row) => typeof row.floor !== "number")) {
+    return { ok: false, status: 409, detail: "currency_unavailable" };
+  }
+  if (input.appChoice === "mingla") {
+    const split = hostAppsForBudget({
+      spendCents: creditCentsFromPay(input.dailyPayCents),
+      apps: floorRows.map((row) => ({
+        platform: row.platform,
+        floorCents: Number(row.floor),
+        ...(typeof row.viability === "number"
+          ? { viabilityCents: row.viability }
+          : {}),
+      })),
+    });
+    appsPlan = {
+      fit: split.fit,
+      funded: split.funded.map((row) => ({
+        platform: row.platform,
+        daily_credit_cents: row.dailyCents,
+        daily_pay_cents: hostMinimumPayCents(row.dailyCents),
+      })),
+      // apps_trimmed: every app left off says why and how much more it needs.
+      trimmed: split.trimmed.map((row) => ({
+        platform: row.platform,
+        reason: row.reason,
+        needs_more_pay_cents: hostMinimumPayCents(row.needs_more_cents),
+      })),
+      smallest_overall: split.smallest_overall
+        ? {
+          platform: split.smallest_overall.platform,
+          pay_cents: hostMinimumPayCents(split.smallest_overall.spend_cents),
+        }
+        : null,
+    };
+    if (split.fit === "none") {
+      return {
+        ok: false,
+        status: 422,
+        detail: "host_ad_budget_below_every_minimum",
+        apps_plan: appsPlan,
+        per_app: floorRows.map((row) => ({
+          platform: row.platform,
+          smallest_working_pay_cents: hostMinimumPayCents(Number(row.floor)),
+          learning_pay_cents: hostMinimumPayCents(
+            typeof row.viability === "number"
+              ? row.viability
+              : Math.max(Number(row.floor), 500),
+          ),
+        })),
+      };
+    }
+    guidedPlatforms = split.funded.map((row) => row.platform as Platform);
+  }
   const apps: { platform: string; minimumCreditCents: number }[] = [];
-  for (const platform of input.platforms) {
+  for (const platform of guidedPlatforms) {
     const row = minimumRows.find((item) => item.platform === platform);
     const value = row?.[`${input.goal}_daily_minimum_cents`];
     // No rate to the brand's currency: never show a USD number as local money.
@@ -463,7 +548,68 @@ export async function buildHostBudgetGuidance(
     stock: { remaining: stock.remaining, runDays: input.runDays },
   });
   if (!guidance.ok) return { ok: false, status: 422, detail: guidance.detail };
-  return { ...guidance, stock_known: stock.known };
+  // #4238 T-1 + T-2 + amendment B §3: per app, the ad sets the plan will
+  // really run (the same hostAdSetSplit create_version freezes), the smallest
+  // working amount (exactly the minimum) and the learning amount (advice).
+  const dailyCredit = creditCentsFromPay(input.dailyPayCents);
+  const shares = appsPlan
+    ? Object.fromEntries(
+      (appsPlan.funded as { platform: string; daily_credit_cents: number }[])
+        .map((row) => [row.platform, row.daily_credit_cents]),
+    )
+    : Object.fromEntries(
+      guidedPlatforms.map((platform, index) => [
+        platform,
+        splitDailyWithMinimums(
+          dailyCredit,
+          guidedPlatforms,
+          Object.fromEntries(
+            apps.map((app) => [app.platform, app.minimumCreditCents]),
+          ),
+        )[index],
+      ]),
+    );
+  const perApp = guidance.per_app.map((app) => {
+    const floor = floorRows.find((row) => row.platform === app.platform);
+    const split = hostAdSetSplit(
+      app.platform,
+      Number(shares[app.platform] ?? 0),
+      app.minimum_daily_credit_cents,
+      input.retargetReadiness?.[app.platform] ?? null,
+    );
+    return {
+      ...app,
+      ad_sets: split.ad_sets,
+      retarget: split.retarget,
+      smallest_working_pay_cents: app.minimum_daily_cents,
+      learning_pay_cents: hostMinimumPayCents(
+        typeof floor?.viability === "number"
+          ? floor.viability
+          : Math.max(app.minimum_daily_credit_cents, 500),
+      ),
+    };
+  });
+  const learningAll = perApp.every((app) => app.learning_ok);
+  return {
+    ...guidance,
+    per_app: perApp,
+    fit: appsPlan ? appsPlan.fit : (learningAll ? "ok" : "slow"),
+    ...(appsPlan ? { apps_plan: appsPlan } : {}),
+    smallest_overall: appsPlan?.smallest_overall ??
+      (perApp.length > 0
+        ? perApp.reduce(
+          (best, app) =>
+            app.minimum_daily_cents < best.pay_cents
+              ? { platform: app.platform, pay_cents: app.minimum_daily_cents }
+              : best,
+          {
+            platform: perApp[0].platform,
+            pay_cents: perApp[0].minimum_daily_cents,
+          },
+        )
+        : null),
+    stock_known: stock.known,
+  };
 }
 
 /**
@@ -535,8 +681,12 @@ export async function freezeHostW2Fields(
     if (selection || !creative) {
       return { ok: false, detail: selection?.error ?? "creative_not_reusable" };
     }
-    if (creative.kind !== "video") {
+    if (creative.kind !== "video" && creative.kind !== "image") {
       return { ok: false, detail: "host_video_creative_required" };
+    }
+    const refused = hostImageRefusedPlatform(creative.kind, input.platforms);
+    if (refused) {
+      return { ok: false, detail: `host_image_not_supported:${refused}` };
     }
     const ownership = adCreativeOwnershipError({
       ownerKind: input.plan.owner_kind,
@@ -671,6 +821,74 @@ export async function freezeHostW2Fields(
   return { ok: true };
 }
 
+/**
+ * #4238 T-9 (decision 9): apps whose Host create path takes a photo from the
+ * creative library. Meta takes the hosted image at create. TikTok (Pangle
+ * only) and Google (Demand Gen video) stay video-only. Snapchat (per-image
+ * media upload in the launch) and Reddit (the library-image create path) are
+ * carried to W4 — the spec's "ship without it" fallback.
+ */
+export const HOST_IMAGE_PLATFORMS: ReadonlySet<string> = new Set(["meta"]);
+
+/** #4238 T-9: the first app in the plan that can't take a photo. */
+export function hostImageRefusedPlatform(
+  kind: unknown,
+  platforms: readonly string[],
+): string | null {
+  if (kind !== "image") return null;
+  return platforms.find((platform) => !HOST_IMAGE_PLATFORMS.has(platform)) ??
+    null;
+}
+
+/**
+ * #4238 T-2: per-app retarget readiness, read-only from ad_audiences through
+ * the existing stage resolver (event → brand → market). Only a one-country
+ * event page can retarget; anything else is "not ready".
+ */
+export async function loadHostRetargetReadiness(
+  db: Db,
+  input: {
+    platforms: readonly string[];
+    countries: readonly string[];
+    brandId: unknown;
+    eventId: unknown;
+  },
+): Promise<Record<string, HostRetargetReadiness>> {
+  const out: Record<string, HostRetargetReadiness> = {};
+  const market = input.countries.length === 1
+    ? String(input.countries[0]).trim().toUpperCase()
+    : "";
+  if (
+    !/^[A-Z]{2}$/.test(market) || typeof input.brandId !== "string" ||
+    typeof input.eventId !== "string" || !input.eventId
+  ) return out;
+  const paid = input.platforms.filter((platform) =>
+    platform === "meta" || platform === "snapchat" || platform === "tiktok"
+  );
+  if (paid.length === 0) return out;
+  const { data, error } = await db.from("ad_audiences")
+    .select(
+      "id,platform,code,scope,market,brand_id,event_id,platform_audience_id,approx_size,status",
+    )
+    .in("platform", paid).eq("market", market);
+  if (error) {
+    // Not ready is the safe side: one ad set, never a retarget without data.
+    console.error("[ad-plan] retarget readiness unavailable");
+    return out;
+  }
+  for (const platform of paid) {
+    out[platform] = hostRetargetReadiness(buildAdStagePlan({
+      platform: platform as Platform,
+      rows: (data ?? []) as AdAudienceRow[],
+      market,
+      brandId: input.brandId,
+      eventId: input.eventId,
+      totalBudgetCents: 0,
+    }));
+  }
+  return out;
+}
+
 /** The Host goals setup.minimums carries a minimum for. */
 const HOST_MINIMUM_GOALS = ["visits", "sales", "signups"] as const;
 
@@ -710,6 +928,28 @@ export async function hostDailyMinimums(
       if (credit === null) continue;
       row[`${goal}_daily_minimum_cents`] = credit;
       row[`${goal}_daily_minimum_pay_cents`] = hostMinimumPayCents(credit);
+      // #4238 T-6 / amendment B §3: the "enough to learn" amount max(F, 500)
+      // in the same money (advice, never a floor).
+      const viabilityProvider = Math.max(provider, 500);
+      let viability: number | null = null;
+      if (viabilityProvider === provider) viability = credit;
+      else if (connection.currency === hostCurrency) {
+        viability = viabilityProvider;
+      } else if (snapshot?.id) {
+        const { data: converted, error } = await db.rpc("fx_convert_minor", {
+          p_amount: viabilityProvider,
+          p_source: connection.currency,
+          p_target: hostCurrency,
+          p_snapshot: snapshot.id,
+        });
+        if (!error && Number.isSafeInteger(converted)) {
+          viability = Math.max(credit, Math.ceil(Number(converted) * 1.02));
+        }
+      }
+      if (viability !== null) {
+        row[`${goal}_viability_cents`] = viability;
+        row[`${goal}_viability_pay_cents`] = hostMinimumPayCents(viability);
+      }
     }
     out.push(row);
   }
@@ -1927,6 +2167,9 @@ export async function handleAdPlan(
     const rawCountry = typeof brand.data?.country_code === "string"
       ? brand.data.country_code.trim().toUpperCase()
       : "";
+    const guidanceCountries = Array.isArray(body.countries)
+      ? body.countries.map((value) => String(value))
+      : (/^[A-Z]{2}$/.test(rawCountry) ? [rawCountry] : []);
     const result = await buildHostBudgetGuidance(db, {
       brandId,
       currency: authority.currency,
@@ -1939,11 +2182,22 @@ export async function handleAdPlan(
       occurrenceKey: typeof body.occurrence_key === "string"
         ? body.occurrence_key
         : null,
+      appChoice: body.app_choice === "mingla" ? "mingla" : "host",
+      retargetReadiness: await loadHostRetargetReadiness(db, {
+        platforms,
+        countries: guidanceCountries,
+        brandId,
+        eventId: destination?.event_id,
+      }),
     });
     if (result.ok !== true) {
       return json({
-        error: "guidance_unavailable",
+        error: result.detail === "host_ad_budget_below_every_minimum"
+          ? "host_ad_budget_below_every_minimum"
+          : "guidance_unavailable",
         detail: result.detail,
+        ...(result.apps_plan ? { apps_plan: result.apps_plan } : {}),
+        ...(result.per_app ? { per_app: result.per_app } : {}),
       }, Number(result.status ?? 422));
     }
     // #4238 6b: fewer than 3 videos gives the apps less to rotate.
@@ -2004,7 +2258,9 @@ export async function handleAdPlan(
             .select(
               "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at,width,height,has_audio,mime_type,byte_size,variants",
             )
-            .eq("brand_id", brandId).eq("kind", "video").eq("status", "active")
+            // #4238 T-9: photos and flyers too (Meta only in W3).
+            .eq("brand_id", brandId).in("kind", ["video", "image"])
+            .eq("status", "active")
             .order("created_at", { ascending: false }).limit(100),
           resolveAdBrandCurrency(db, brandId),
           db.from("ad_plans")
@@ -2098,6 +2354,16 @@ export async function handleAdPlan(
       creatives: withHostCreativeFit(
         creatives.data ?? [],
         hostConnections,
+      ).map((creative) =>
+        creative.kind === "image"
+          ? {
+            ...creative,
+            // #4238 T-9: the apps a photo can't run on ("Needs a video").
+            video_only_platforms: hostConnections
+              .map((row) => String(row.platform))
+              .filter((platform) => !HOST_IMAGE_PLATFORMS.has(platform)),
+          }
+          : creative
       ),
       plans: plans.data ?? [],
     });
@@ -2795,13 +3061,17 @@ export async function handleAdPlan(
         detail: "creative_library_id_required",
       }, 422);
     }
+    let firstCreativeKind: string | null = null;
     if (!sparkOnly) {
       const { data: creative, error: creativeError } = await db
         .from("ad_creatives")
-        .select("id,brand_id,status,source,source_brand_id,purged_at")
+        .select("id,brand_id,kind,status,source,source_brand_id,purged_at")
         .eq("id", creativeId)
         .maybeSingle();
       if (creativeError) return databaseFailure(creativeError);
+      firstCreativeKind = typeof creative?.kind === "string"
+        ? creative.kind
+        : null;
       // #3697 (C-13) — an archived creative stays usable for a plan whose
       // current version already carries it; a new selection refuses it.
       let carriedOver = false;
@@ -3109,6 +3379,111 @@ export async function handleAdPlan(
         return w2.database
           ? databaseFailure(w2.database)
           : json({ error: "plan_preflight_failed", detail: w2.detail }, 422);
+      }
+      // #4238 T-9: a photo runs only where the Host create path takes one;
+      // TikTok and Google say "Needs a video". The kind is frozen so the
+      // launch payload sends the right one.
+      const imageRefused = hostImageRefusedPlatform(
+        firstCreativeKind,
+        platforms,
+      );
+      if (imageRefused) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: `host_image_not_supported:${imageRefused}`,
+        }, 422);
+      }
+      canonical.creative_kind = firstCreativeKind === "image"
+        ? "image"
+        : "video";
+      // #4238 T-6: whether Mingla chose the apps (frozen; the Host's own
+      // pick is kept as chosen).
+      canonical.app_choice = canonicalInput.app_choice === "mingla"
+        ? "mingla"
+        : "host";
+      // #4238 T-2 (I-4238-RETARGET-NEVER-RAISES-MINIMUM): the ad-set split
+      // per app, from the same hostAdSetSplit guidance shows, frozen in the
+      // hash so create builds exactly this. Never client-authored.
+      delete canonical.retarget_by_platform;
+      const retargetReadiness = await loadHostRetargetReadiness(db, {
+        platforms,
+        countries,
+        brandId: plan.brand_id,
+        eventId: resolvedDestination.event_id,
+      });
+      canonical.retarget_by_platform = Object.fromEntries(
+        normalized.rows.map((row) => {
+          const platform = String(row.platform);
+          const connection = (minimumConnections ?? []).find((
+            item: Record<string, unknown>,
+          ) => item.id === row.connection_id) ?? {};
+          return [
+            platform,
+            hostAdSetSplit(
+              platform,
+              Number(row.provider_delivery_budget_cents),
+              hostDailyMinimumCents(
+                platform,
+                connection,
+                optimization.map[platform] ?? "visits",
+              ),
+              retargetReadiness[platform] ?? null,
+            ),
+          ];
+        }),
+      );
+      // #4238 T-3 (I-4238-PAST-GUEST-SEED-NEEDS-REVIEW): the past-guests
+      // seed only under Mingla's audience choice with every app's staff
+      // switch on; otherwise no list id the Host didn't pick.
+      canonical.audience_choice = canonicalInput.audience_choice === "mingla"
+        ? "mingla"
+        : "host";
+      if (canonical.audience_choice === "mingla" && plan.brand_id) {
+        const { data: seedConnections, error: seedConnectionError } = await db
+          .from("ad_connections").select("platform,extra")
+          .in("id", normalized.rows.map((row) => String(row.connection_id)));
+        if (seedConnectionError) return databaseFailure(seedConnectionError);
+        const switchedOn = (seedConnections ?? []).some((
+          row: Record<string, unknown>,
+        ) =>
+          (row.extra as Record<string, unknown> | null)
+            ?.past_guest_seed_enabled === true
+        );
+        let readyKeys: string[] = [];
+        if (switchedOn) {
+          const { data: lists, error: listError } = await db
+            .from("ad_list_audiences").select("audience_key,host_visible")
+            .eq("owner_kind", "host").eq("brand_id", plan.brand_id)
+            .eq("source", "guests").eq("status", "active");
+          if (listError) return databaseFailure(listError);
+          const excluded = new Set(audienceSelection.selection.exclude_keys);
+          readyKeys = (lists ?? [])
+            .filter((row: Record<string, unknown>) =>
+              row.host_visible !== false &&
+              !excluded.has(String(row.audience_key))
+            )
+            .map((row: Record<string, unknown>) => String(row.audience_key));
+        }
+        const seed = hostPastGuestSeedKeys({
+          audienceChoice: canonical.audience_choice,
+          platforms,
+          connections: (seedConnections ?? []) as {
+            platform: string;
+            extra?: unknown;
+          }[],
+          readyListKeys: readyKeys,
+        });
+        if (seed.length > 0) {
+          canonical.audience_selection = {
+            ...audienceSelection.selection,
+            include_keys: [
+              ...new Set([
+                ...audienceSelection.selection.include_keys,
+                ...seed,
+              ]),
+            ],
+          };
+        }
       }
     }
     const paidSocialPlatforms = platforms.filter((platform) =>

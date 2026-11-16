@@ -112,7 +112,7 @@ export type HostAdTargetingSearchResult = {
 export type HostAdCreative = {
   id: string;
   name: string;
-  kind: "video";
+  kind: "video" | "image";
   status: "active";
   source_url: string | null;
   poster_url: string | null;
@@ -583,6 +583,17 @@ export type PrepareHostAdPlanInput = {
    * (minimums first, then even). Absent: an even split, as before.
    */
   shares?: { dailyCents: number[]; capCents: number[] };
+  /** #4238 6b: 1–5 creatives (the first is `creative`); one ad each. */
+  creativeIds?: string[];
+  /** #4238 5e: one date of a series (null = all dates). */
+  occurrenceKey?: string | null;
+  /** #4238 T-6: "mingla" when the Host let Mingla choose the apps. */
+  appChoice?: "mingla" | "host";
+  /** #4238 T-3: "mingla" when the Host let Mingla choose the audience. */
+  audienceChoice?: "mingla" | "host";
+  /** #4238 U-3: the goal asked for, and the apps whose visits fallback the Host accepted. */
+  optimizationGoal?: "sales" | "signups" | "visits";
+  acknowledgedVisitsFallback?: HostAdPlatform[];
 };
 
 export type PreparedHostAdPlan = {
@@ -833,6 +844,18 @@ export async function prepareHostAdPlan(
       },
       copy,
       creative_library_id: input.creative.id,
+      ...(input.creativeIds && input.creativeIds.length > 0
+        ? { creative_library_ids: input.creativeIds }
+        : {}),
+      ...(input.occurrenceKey ? { occurrence_key: input.occurrenceKey } : {}),
+      ...(input.appChoice ? { app_choice: input.appChoice } : {}),
+      ...(input.audienceChoice ? { audience_choice: input.audienceChoice } : {}),
+      ...(input.optimizationGoal
+        ? { optimization_goal: input.optimizationGoal }
+        : {}),
+      ...(input.acknowledgedVisitsFallback
+        ? { acknowledged_visits_fallback: input.acknowledgedVisitsFallback }
+        : {}),
       creative_url: null,
       media_rights: {
         rights_confirmed: input.rightsConfirmed,
@@ -1096,6 +1119,8 @@ export function providerCreatePayload(
   );
   const providerCap = Number(allocation.provider_budget_cents);
   const commonTargeting = hostExecutionTargeting(snapshot);
+  // #4238 T-9: the creative kind frozen at create_version (photos: Meta only).
+  const creativeKind = canonical.creative_kind === "image" ? "image" : "video";
   // #4238: no lane (the server derives it from the owner) and no objective
   // fields (the server derives them from the plan's optimization_by_platform).
   const base: Record<string, unknown> = {
@@ -1113,7 +1138,7 @@ export function providerCreatePayload(
     audience_intent: audience,
     copy_intent: copy,
     creative_intent: {
-      kind: "video",
+      kind: creativeKind,
       creative_library_id: String(canonical.creative_library_id ?? ""),
       image_url: null,
     },
@@ -1137,7 +1162,7 @@ export function providerCreatePayload(
     return {
       ...base,
       creative: {
-        kind: "video",
+        kind: creativeKind,
         creative_library_id: creativeId,
         // #4238: TikTok doesn't show emoji (the builder says so); nothing is
         // cut — create_version refused text over 100 characters.
@@ -1149,7 +1174,7 @@ export function providerCreatePayload(
     return {
       ...base,
       creative: {
-        kind: "video",
+        kind: creativeKind,
         creative_library_id: creativeId,
         headline: primary,
       },
@@ -1159,7 +1184,7 @@ export function providerCreatePayload(
     return {
       ...base,
       creative: {
-        kind: "video",
+        kind: creativeKind,
         creative_library_id: creativeId,
         headline,
         brand_name: String(destination.brand_slug ?? "Mingla").slice(0, 32),
@@ -1170,7 +1195,7 @@ export function providerCreatePayload(
     return {
       ...base,
       creative: {
-        kind: "video",
+        kind: creativeKind,
         creative_library_id: creativeId,
         headlines: [headline],
         long_headlines: [primary],
@@ -1183,7 +1208,7 @@ export function providerCreatePayload(
   return {
     ...base,
     creative: {
-      kind: "video",
+      kind: creativeKind,
       creative_library_id: creativeId,
       message: primary,
       headline,
@@ -1490,6 +1515,16 @@ export function hostAdDraftFromPlan(
       String(allocation.connection_id),
     ),
     creative_id: canonical.creative_library_id ?? null,
+    // #4238 K-7: every creative, the date and the choices carry over; the
+    // media-rights confirmation and the wider-area offer are asked again.
+    creative_ids: Array.isArray(canonical.creative_library_ids)
+      ? canonical.creative_library_ids
+      : canonical.creative_library_id
+      ? [canonical.creative_library_id]
+      : [],
+    occurrence_key: canonical.occurrence_key ?? null,
+    app_choice: canonical.app_choice === "mingla" ? "mingla" : "host",
+    audience_choice: canonical.audience_choice === "mingla" ? "mingla" : "host",
     rights_confirmed: false,
     rights_basis: recordValue(canonical.media_rights)?.rights_basis ?? "owned",
     ai_generated: recordValue(canonical.media_rights)?.ai_generated === true,
@@ -1497,7 +1532,11 @@ export function hostAdDraftFromPlan(
     primary_text: String(copy.primary ?? ""),
     headline: String(copy.headline ?? ""),
     countries: Array.isArray(audience.countries) ? audience.countries : [],
-    optimization: Object.values(goal).includes("sales") ? "sales" : "visits",
+    optimization: Object.values(goal).includes("sales")
+      ? "sales"
+      : Object.values(goal).includes("signups")
+      ? "signups"
+      : "visits",
     age_min: String(audience.ageMin ?? 21),
     age_max: String(audience.ageMax ?? 45),
     gender: ["men", "women"].includes(String(audience.gender))
@@ -1510,7 +1549,10 @@ export function hostAdDraftFromPlan(
     radius_km: String(
       typeof audience.radiusKm === "number" ? audience.radiusKm : 17,
     ),
-    audience_keys: Array.isArray(selection.include_keys)
+    // #4238 T-3: a Mingla-chosen audience is chosen again (never copied as
+    // the Host's own pick, so a past-guest seed never becomes one).
+    audience_keys: canonical.audience_choice !== "mingla" &&
+      Array.isArray(selection.include_keys)
       ? selection.include_keys
       : [],
     exclude_past_buyers: Array.isArray(selection.exclude_keys),
