@@ -276,7 +276,7 @@ Deno.test("T-4 data: Meta level-ad insights parse into per-ad daily rows; Host a
     3,
   );
   const sync = await Deno.readTextFile(
-    new URL("../adCreativeFatigue.ts", import.meta.url),
+    new URL("../../admin-ad-spend-sync/index.ts", import.meta.url),
   );
   assertEquals(sync.includes('level: "ad"'), true);
   assertEquals(
