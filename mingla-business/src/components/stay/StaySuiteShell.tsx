@@ -291,7 +291,6 @@ function ManagementRow({
 interface StayOverviewProps {
   brandId: string;
   venueId: string;
-  venueName: string;
   venueApproved: boolean;
   onSelect: (module: StayModule) => void;
   /** #4420 B8 — the page's Local reviews panel, scrolling with Overview. */
@@ -301,7 +300,6 @@ interface StayOverviewProps {
 function StayOverview({
   brandId,
   venueId,
-  venueName,
   venueApproved,
   onSelect,
   header = null,
@@ -570,8 +568,8 @@ function StayOverview({
     >
       <View style={styles.titleRow}>
         <View style={styles.titleCopy}>
+          {/* #4420 — the venue name already heads the page right above. */}
           <Text style={styles.pageTitle}>Stay overview</Text>
-          <Text style={styles.helper}>{venueName}</Text>
         </View>
         <View style={[styles.statePill, isActive && styles.statePillLive]}>
           <Text
@@ -1053,7 +1051,6 @@ export interface StaySuiteShellProps {
 export function StaySuiteShell({
   brandId,
   venueId,
-  venueName,
   venueApproved,
   overviewHeader = null,
 }: StaySuiteShellProps): React.ReactElement {
@@ -1112,7 +1109,6 @@ export function StaySuiteShell({
         <StayOverview
           brandId={brandId}
           venueId={venueId}
-          venueName={venueName}
           venueApproved={venueApproved}
           onSelect={setActiveModule}
           header={overviewHeader}
