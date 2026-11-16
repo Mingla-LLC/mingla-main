@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 
-import { BuyerClaimCard } from "../../src/components/checkout/DownloadMinglaCta";
+import { BuyerClaimCard } from "../../src/components/offering/LazyPublicParts";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { BUYER_CLAIM_COPY } from "../../src/constants/buyerClaimCopy";
 import { mintAttendanceClaimHandoff } from "../../src/services/attendanceClaimHandoffService";

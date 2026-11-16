@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 
-import { SecurePaymentHandoff } from "../checkout/SecurePaymentHandoff";
+import { SecurePaymentHandoff } from "../offering/LazyPublicParts";
 import {
   captureWeb,
   getStoredClickAttribution,
@@ -56,7 +56,7 @@ import { composeE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
-import { BuyerClaimCard } from "../checkout/DownloadMinglaCta";
+import { BuyerClaimCard } from "../offering/LazyPublicParts";
 import { mintClaimLinkHandoff } from "../../services/claimLinkService";
 import { accentIcon, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";

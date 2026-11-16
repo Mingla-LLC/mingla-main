@@ -24,7 +24,7 @@ import type {
 } from "@mingla/offering-rendering";
 
 import { captureWeb } from "../../analytics/webAnalytics";
-import { SecurePaymentHandoff } from "../checkout/SecurePaymentHandoff";
+import { SecurePaymentHandoff } from "../offering/LazyPublicParts";
 import { StayGuestError, stayGuestService } from "../../services/stayGuestService";
 import {
   stayGuestErrorKnown,

@@ -34,7 +34,7 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
-import { BuyerClaimCard } from "../checkout/DownloadMinglaCta";
+import { BuyerClaimCard } from "../offering/LazyPublicParts";
 import { BUYER_CLAIM_COPY } from "../../constants/buyerClaimCopy";
 
 // issue #3827 — the shared multi-select day chooser the public event page

@@ -54,7 +54,7 @@ import type {
   CancelTripBookingError,
   CancelTripBookingResult,
 } from "../../../src/services/cancelTripBookingService";
-import { RefundPreviewBody } from "../../../src/components/trip/RefundPreviewBody";
+import { RefundPreviewBody } from "../../../src/components/offering/LazyPublicParts";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { resolveTheme } from "@mingla/offering-rendering";
 import { useBrandMessage } from "../../../src/components/brandContact/useBrandMessage";

@@ -37,7 +37,7 @@ import type {
   CancelTripBookingResult,
 } from "../../services/cancelTripBookingService";
 import { Sheet } from "../ui/Sheet";
-import { RefundPreviewBody } from "./RefundPreviewBody";
+import { RefundPreviewBody } from "../offering/LazyPublicParts";
 // #3372 — a naira refund confirmation shows "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 

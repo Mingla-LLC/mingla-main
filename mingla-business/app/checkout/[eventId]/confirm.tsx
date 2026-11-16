@@ -50,7 +50,7 @@ import {
   clearCheckoutResumePayload,
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
+import { BuyerClaimCard } from "../../../src/components/offering/LazyPublicParts";
 import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
 import {
   TicketConfirmVerdictHero,

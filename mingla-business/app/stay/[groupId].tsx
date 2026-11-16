@@ -28,7 +28,7 @@ import { StayStripePayment } from "../../src/components/stay/StayStripePayment";
 import { useStayReservationGroup } from "../../src/hooks/useStayGuest";
 import { StayGuestError, stayGuestService } from "../../src/services/stayGuestService";
 import { StayOtherContactNotice } from "../../src/components/stay/StayOtherContactNotice";
-import { SecurePaymentHandoff } from "../../src/components/checkout/SecurePaymentHandoff";
+import { SecurePaymentHandoff } from "../../src/components/offering/LazyPublicParts";
 import { useAuth } from "../../src/context/AuthContext";
 
 import { color } from "../../src/constants/designSystem";

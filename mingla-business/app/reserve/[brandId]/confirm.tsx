@@ -18,7 +18,7 @@ import {
 } from "../../../src/services/venueGuestReservationService";
 import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
 import { Button } from "../../../src/components/ui/Button";
-import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
+import { BuyerClaimCard } from "../../../src/components/offering/LazyPublicParts";
 
 type State = "loading" | "completed" | "pending" | "error";
 
