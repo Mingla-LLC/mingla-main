@@ -14,9 +14,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { type RendererForm } from './form-renderer'
 import { PopupDialog, type CloseHow } from './popup-dialog'
+import type { BookingBasics } from '@/lib/forms/booking'
 import { POPUP_OPEN_EVENT } from './popup-bus'
 import { virtualPageView } from './virtual-page'
-import { captureMarketing } from '@/components/marketing/marketing-capture'
+import { formEvent } from './form-events'
+import type { FormContext } from '@/lib/forms/events'
 import { trackFunnel } from '@/lib/forms/submit'
 import {
   type Block,
@@ -44,6 +46,11 @@ function storage(): Storage | null {
   }
 }
 
+/** §8: the fixed properties for this page's pop-up. */
+function ctxOf(entry: PopupEntry): FormContext {
+  return { form_key: entry.form.key, form_version: entry.form.version, label: entry.form.audience, placement: 'popup', spot: 'popup' }
+}
+
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])'
 
 export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, PopupEntry>; keyForPath: Record<string, string> }) {
@@ -51,7 +58,7 @@ export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, Popup
   const entry = byPage[keyForPath[pathname] ?? ''] ?? null
   const [open, setOpen] = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
-  const [done, setDone] = useState<{ id: string; first: string | null } | null>(null)
+  const [done, setDone] = useState<{ id: string; first: string | null; booking?: BookingBasics | null } | null>(null)
   const dirty = useRef(false)
   const asked = useRef(false)
   const shownThisView = useRef(false)
@@ -78,7 +85,7 @@ export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, Popup
     try { window.sessionStorage.setItem(memKey, '1') } catch { /* private mode */ }
     setOpen(true)
     visitId.current = crypto.randomUUID()
-    captureMarketing('popup_shown', { form_key: entry.form.key, trigger, style: isPhone ? 'sheet' : entry.block.popup!.style, device: isPhone ? 'phone' : 'desktop' })
+    formEvent('popup_shown', ctxOf(entry), { trigger, style: isPhone ? 'sheet' : entry.block.popup!.style })
     trackFunnel('popup_shown', { formId: entry.form.id, visitId: visitId.current, placement: 'popup', props: { trigger } })
   }, [entry, memKey, isPhone])
 
@@ -131,7 +138,7 @@ export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, Popup
     setConfirmClose(false)
     try { storage()?.setItem(memKey, String(Date.now())) } catch { /* ignore */ }
     if (entry) {
-      captureMarketing('popup_closed', { form_key: entry.form.key, how, had_answers: dirty.current, stage: done ? 'success' : 'form' })
+      formEvent('popup_closed', ctxOf(entry), { how, had_answers: dirty.current, stage: done ? 'success' : 'form' })
       trackFunnel('popup_closed', { formId: entry.form.id, visitId: visitId.current, placement: 'popup', props: { how } })
     }
     ;(opener.current ?? document.body).focus?.()
@@ -183,10 +190,11 @@ export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, Popup
       onClose={close}
       done={done}
       onDirty={(d) => { dirty.current = d }}
-      onDone={(o, first) => {
-        setDone({ id: o.submissionId, first })
+      onDone={(o, first, booking) => {
+        setDone({ id: o.submissionId, first, booking })
         virtualPageView(`/apply/${entry.form.slug ?? entry.form.key}/thanks`)
       }}
+      onBooked={() => virtualPageView(`/apply/${entry.form.slug ?? entry.form.key}/booked`)}
     />
   )
 }

@@ -1,4 +1,5 @@
 import { IcpLandingAnalytics } from './icp-landing-analytics'
+import { CallButtonAnalytics } from '@/components/forms/call-button-analytics'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import {
@@ -85,6 +86,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
   return (
     <LandingRoot slug={slug}>
       <IcpLandingAnalytics slug={slug} />
+      <CallButtonAnalytics />
       <SiteNav surface="host" current="host" />
 
       {/* 1. Hero */}
@@ -106,7 +108,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
             <p>{d.sub}</p>
             <div className="glassbar">
               {/* #4452 §2.12: the text half is now the call (d.bring stays in icps.ts). */}
-              <Link className="btn bring-call" href={scheduleHref(slug)} data-icp-event="icp_talk_to_team_clicked">
+              <Link className="btn bring-call" href={scheduleHref(slug)} data-icp-event="icp_talk_to_team_clicked" data-call-button="cta_bar">
                 Book a call
               </Link>
               <HostHandoffButton location="hero" className="btn white" />

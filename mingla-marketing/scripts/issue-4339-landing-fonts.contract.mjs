@@ -26,6 +26,7 @@ export const LANDING_FONT_CONSUMERS = [
   'app/(core)/cities/page.tsx',
   'app/(core)/going-out/page.tsx',
   'app/(explorer)/page.tsx',
+  'app/apply/[slug]/page.tsx', // #4452 §2.6: form pages are drawn in the brand faces
   'app/blog/[slug]/page.tsx',
   'app/blog/category/[category]/page.tsx',
   'app/blog/page.tsx',
@@ -46,6 +47,7 @@ export const LANDING_FONT_CONSUMERS = [
   'app/schedule/creators/page.tsx',
   'app/schedule/locals/page.tsx',
   'app/schedule/page.tsx',
+  'app/site-preview/[token]/page.tsx', // #4452 §2.9: the draft preview draws the real pages
   'app/sms-terms/page.tsx',
   'app/support/page.tsx',
   'app/terms-of-service/page.tsx',

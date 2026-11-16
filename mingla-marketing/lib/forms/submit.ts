@@ -2,9 +2,8 @@
 // the save-and-resume draft and the UTM / ad context. Browser-only helpers are
 // guarded; the pure parts are unit tested.
 
-import { isMarketingAdsOn, isMarketingAnalyticsOn } from '@/components/marketing/marketing-capture'
+import { isMarketingAnalyticsOn } from '@/components/marketing/marketing-capture'
 import { marketingAdContext } from '@/lib/marketing-ad-context'
-import { readLandingCampaign } from '@/lib/landing-campaign'
 
 const FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ?? 'https://gqnoajqerqhnvulmnyvv.functions.supabase.co'
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -12,20 +11,8 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 export { FAILURE_COPY, outcomeFor, type SubmitOutcome } from './outcome'
 import { outcomeFor, type SubmitOutcome } from './outcome'
 
-export function sessionUtm(): Record<string, string> {
-  if (typeof window === 'undefined') return {}
-  try {
-    const c = readLandingCampaign(isMarketingAdsOn())
-    const u = c.utm as Record<string, string | undefined>
-    const out: Record<string, string> = {}
-    for (const [k, v] of Object.entries({ source: u.utm_source, medium: u.utm_medium, campaign: u.utm_campaign, content: u.utm_content, term: u.utm_term })) {
-      if (v) out[k] = v
-    }
-    return out
-  } catch {
-    return {}
-  }
-}
+export { sessionUtm } from './utm'
+import { sessionUtm } from './utm'
 
 export async function postForm(payload: Record<string, unknown>, timeoutMs = 15_000): Promise<SubmitOutcome> {
   try {

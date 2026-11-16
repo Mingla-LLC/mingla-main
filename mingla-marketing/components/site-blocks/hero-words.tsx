@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { PageHero } from '@/components/site/site-page'
 import { editorMode, siteContent } from '@/lib/site-pages/content'
-import { HeroOutline } from './editor-bridge'
+import { LazyHeroOutline as HeroOutline } from './lazy'
 import { destHref } from '@/lib/site-pages/model'
 
 export interface CodedHero {

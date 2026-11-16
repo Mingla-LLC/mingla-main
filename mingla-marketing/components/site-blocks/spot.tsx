@@ -6,10 +6,7 @@
 import { editorMode, siteContent } from '@/lib/site-pages/content'
 import { blockForSpot, destHref } from '@/lib/site-pages/model'
 import { HOST_ICP_KEYS, SITE_PAGES } from '@/lib/site-pages/registry'
-import { AddHere, BlockOutline } from './editor-bridge'
-import { BannerBlock } from './banner'
-import { ButtonRow } from './button-row'
-import { FormBlock } from './form-block'
+import { LazyAddHere as AddHere, LazyBannerBlock as BannerBlock, LazyBlockOutline as BlockOutline, LazyButtonRow as ButtonRow, LazyFormBlock as FormBlock } from './lazy'
 
 export async function Spot({ page, id }: { page: string; id: string }) {
   const content = await siteContent()

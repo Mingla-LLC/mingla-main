@@ -4,7 +4,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { callHrefFor, type CallAudience } from '@/lib/cta-destination'
-import { captureMarketing } from '@/components/marketing/marketing-capture'
+import { formEvent } from '@/components/forms/form-events'
 
 export function NavCallLink({ audience, origin }: { audience?: CallAudience | null; origin?: string }) {
   const pathname = usePathname() ?? '/'
@@ -15,7 +15,7 @@ export function NavCallLink({ audience, origin }: { audience?: CallAudience | nu
       className="btn nav-call"
       href={href}
       data-call-href={call.href}
-      onClick={() => captureMarketing('call_button_clicked', { where: 'top_bar', dest: call.href })}
+      onClick={() => formEvent('call_button_clicked', null, { where: 'top_bar', dest: call.href })}
     >
       <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6">
         <rect x="2" y="3" width="12" height="11" rx="2" />

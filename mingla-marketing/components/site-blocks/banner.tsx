@@ -3,7 +3,7 @@
 // date at 23:59 in the visitor's zone (checked after hydration); the server
 // keeps it until the date has passed in UTC−12, so no cache shows it stale.
 import { useEffect, useState } from 'react'
-import { captureMarketing } from '@/components/marketing/marketing-capture'
+import { formEvent } from '@/components/forms/form-events'
 import { bannerVisible } from '@/lib/site-pages/model'
 import { openSitePopup } from '@/components/forms/popup-bus'
 import './site-blocks.css'
@@ -19,7 +19,7 @@ export function BannerBlock({ text, btn, href, showUntil, kind }: { text: string
         className="sb-btn sb-btn-primary"
         href={href}
         onClick={(e) => {
-          captureMarketing('site_block_clicked', { block: 'banner', dest_kind: kind })
+          formEvent('site_block_clicked', null, { block: 'banner', dest_kind: kind })
           if (kind === 'popup') {
             e.preventDefault()
             openSitePopup(e.currentTarget)

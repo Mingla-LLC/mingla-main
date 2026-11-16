@@ -21,6 +21,7 @@ import SchedulePage from '@/app/schedule/page'
 import { IcpLandingPage } from '@/components/landing/icp-landing'
 import { isIcpSlug } from '@/content/host-landing/icps'
 import '@/components/forms/forms.css'
+import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: { absolute: 'Preview · Mingla' }, robots: { index: false, follow: false } }
@@ -44,8 +45,9 @@ export default async function SitePreviewPage({ params, searchParams }: { readon
   const popup = popupFor(preview, preview.pageKey, HOST_ICP_KEYS.includes(preview.pageKey))
   const popupForm = popup?.form_id ? preview.forms[popup.form_id] : null
   const details = preview.pageKey !== 'schedule' ? 'none' : preview.pages.schedule?.blocks?.some((b) => b.spot === 'details-step') ? 'filled' : 'empty'
+  // The previewed pages are drawn in the brand faces (#4339 font contract).
   return (
-    <>
+    <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       {origin ? <EditorBridge origin={origin} page={preview.pageKey} /> : null}
       <div className="sp-bar" role="status">
         Preview · Draft of {page?.path ?? preview.pageKey} · {preview.changes} unpublished change{preview.changes === 1 ? '' : 's'} · only people with this link see this · expires in 1 hour
@@ -53,6 +55,6 @@ export default async function SitePreviewPage({ params, searchParams }: { readon
       {origin ? <EditorChrome page={preview.pageKey} hasPopup={Boolean(popupForm)} details={details} /> : null}
       {!origin && popup && popupForm ? <PreviewPopup form={popupForm as unknown as RendererForm & { name: string }} block={popup} /> : null}
       {body}
-    </>
+    </div>
   )
 }

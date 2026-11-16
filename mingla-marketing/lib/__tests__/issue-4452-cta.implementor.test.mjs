@@ -49,7 +49,7 @@ test('T-2.11 the nav renders the call link before the hand-off CTA, with an aria
 
 test('T-2.12 SC-124/125 the CTA bar text half is a "Book a call" link to /schedule?icp=; Get Mingla Host is unchanged', () => {
   const icp = read('components/landing/icp-landing.tsx')
-  assert.match(icp, /<Link className="btn bring-call" href=\{scheduleHref\(slug\)\} data-icp-event="icp_talk_to_team_clicked">\s*Book a call\s*<\/Link>/)
+  assert.match(icp, /<Link className="btn bring-call" href=\{scheduleHref\(slug\)\} data-icp-event="icp_talk_to_team_clicked" data-call-button="cta_bar">\s*Book a call\s*<\/Link>/)
   assert.match(icp, /<HostHandoffButton location="hero" className="btn white" \/>/)
   assert.doesNotMatch(icp, /<span className="bring">\{d\.bring\}<\/span>/)
   const css = read('components/landing/landing.css')

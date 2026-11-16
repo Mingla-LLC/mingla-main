@@ -38,8 +38,7 @@ import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { landingIcp } from '@/lib/page-measurement'
 import { bookCall, fetchBookingSlots, type BookingSlot } from '@/lib/booking-call'
 import { marketingAdContext } from '@/lib/marketing-ad-context'
-import { fireMarketingGoal, fireMarketingLead } from '@/lib/marketing-pixels'
-import { sessionUtm } from '@/lib/forms/submit'
+import { sessionUtm } from '@/lib/forms/utm'
 import {
   BOOKING_ICPS,
   CREATOR_MAKES,
@@ -289,8 +288,15 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
         captureSearchMeasurement('generate_lead', { audience: 'host', page_family: 'host_pillar', icp: leadIcp, action_state: 'succeeded' })
       }
       // #4238 W3-3 / #4452: the browser twins of the server's labelled Lead and booked call (ads on only).
-      if (res.lead_event_id) fireMarketingLead(audience, res.lead_event_id)
-      if (res.goal_event_id) fireMarketingGoal(audience, res.goal_event_id)
+      // #4452: the pixel helpers load on booking, not with the page (the #4339 first-load budget).
+      if (res.lead_event_id || res.goal_event_id) {
+        const leadId = res.lead_event_id
+        const goalId = res.goal_event_id
+        void import('@/lib/marketing-pixels').then(({ fireMarketingGoal, fireMarketingLead }) => {
+          if (leadId) fireMarketingLead(audience, leadId)
+          if (goalId) fireMarketingGoal(audience, goalId)
+        })
+      }
       setConfirmed({ start: res.start, email: email.trim(), meet_url: res.meet_url })
       setPhase('done')
       return

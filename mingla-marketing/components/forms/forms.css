@@ -89,3 +89,7 @@
 .pu-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 /* The builder's preview frame: the scrim fills the frame, not the window. */
 .pu-framed { position: absolute; }
+.fk-step { margin: 0; font-size: 13px; font-weight: 600; color: #66625a; }
+/* #4452 §2.8 in-form booking */
+.fk-booking { display: grid; gap: 12px; margin-top: 8px; }
+.fk-booking h3 { margin: 0; font-family: var(--font-landing-serif, 'Instrument Serif', Georgia, serif); font-weight: 400; font-size: 26px; }

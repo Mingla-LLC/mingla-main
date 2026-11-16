@@ -11,6 +11,7 @@ import { SuccessScreen } from './success-screen'
 import { FormLook } from './form-look'
 import { designOf } from '@/lib/forms/design'
 import type { SubmitOutcome } from '@/lib/forms/submit'
+import type { BookingBasics } from '@/lib/forms/booking'
 import type { Block } from '@/lib/site-pages/model'
 
 export type CloseHow = 'close_button' | 'not_now' | 'esc' | 'scrim' | 'done'
@@ -23,14 +24,16 @@ export interface PopupDialogProps {
   confirmClose: boolean
   onKeepGoing: () => void
   onClose: (how: CloseHow) => void
-  done: { id: string; first: string | null } | null
+  done: { id: string; first: string | null; booking?: BookingBasics | null } | null
+  /** §2.8: after an in-form booking. */
+  onBooked?: (start: string) => void
   onDirty?: (dirty: boolean) => void
-  onDone: (o: Extract<SubmitOutcome, { ok: true }>, first: string | null) => void
+  onDone: (o: Extract<SubmitOutcome, { ok: true }>, first: string | null, booking?: BookingBasics | null) => void
   /** The builder's preview: drawn inside its frame, not over a page. */
   framed?: boolean
 }
 
-export function PopupDialog({ dialogRef, style, form, block, confirmClose, onKeepGoing, onClose, done, onDirty, onDone, framed = false }: PopupDialogProps) {
+export function PopupDialog({ dialogRef, style, form, block, confirmClose, onKeepGoing, onClose, done, onDirty, onDone, onBooked, framed = false }: PopupDialogProps) {
   const design = designOf(form.design)
   const title = style === 'side' ? `${block.head ?? design.head}` : block.head ?? design.title ?? form.name
   return (
@@ -57,7 +60,7 @@ export function PopupDialog({ dialogRef, style, form, block, confirmClose, onKee
           ) : null}
           <div className="pu-body">
             {done ? (
-              <SuccessScreen audience={form.audience} firstName={done.first} submissionId={done.id} preview={form.preview} onClose={() => onClose('done')} />
+              <SuccessScreen audience={form.audience} firstName={done.first} submissionId={done.id} preview={form.preview} onClose={() => onClose('done')} booking={done.booking ?? null} onBooked={onBooked} />
             ) : (
               <FormRenderer form={form} placement="popup" blockId={block.id} sendLabel={design.send} onDirty={onDirty} onDone={onDone} />
             )}

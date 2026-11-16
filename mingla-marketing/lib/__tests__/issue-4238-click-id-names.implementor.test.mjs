@@ -203,8 +203,11 @@ test('5b. /schedule sends the ad context for every audience and fires the labell
   const src = fs.readFileSync(path.join(MARKETING, 'app/schedule/ScheduleClient.tsx'), 'utf8')
   assert.match(src, /const adContext = marketingAdContext\(\)/)
   assert.match(src, /\.\.\.\(adContext \? \{ ad: adContext \} : \{\}\)/)
-  assert.match(src, /if \(res\.lead_event_id\) fireMarketingLead\(audience, res\.lead_event_id\)/)
-  assert.match(src, /if \(res\.goal_event_id\) fireMarketingGoal\(audience, res\.goal_event_id\)/)
+  // #4452: the pixel helpers load on booking (the #4339 first-load budget); the twins are unchanged.
+  assert.match(src, /void import\('@\/lib\/marketing-pixels'\)\.then\(\(\{ fireMarketingGoal, fireMarketingLead \}\) => \{/)
+  assert.match(src, /if \(leadId\) fireMarketingLead\(audience, leadId\)/)
+  assert.match(src, /if \(goalId\) fireMarketingGoal\(audience, goalId\)/)
+  assert.match(src, /const leadId = res\.lead_event_id\n\s+const goalId = res\.goal_event_id/)
 })
 
 test('6. the tools email gate sends `ad` and fires the browser Lead with lead:tool:<id>; ads off sends the opt-out only', async () => {

@@ -31,7 +31,10 @@ import {
   writeDraft,
   type SubmitOutcome,
 } from '@/lib/forms/submit'
-import { captureMarketing } from '@/components/marketing/marketing-capture'
+import { formEvent } from './form-events'
+import { designOf } from '@/lib/forms/design'
+import { type BookingBasics, bookingFromAnswers } from '@/lib/forms/booking'
+import type { FormContext } from '@/lib/forms/events'
 import { fireMarketingLead } from '@/lib/marketing-pixels'
 import { postGrowthTools } from '@/lib/growth-tools-transport'
 import './forms.css'
@@ -426,7 +429,7 @@ export interface FormRendererProps {
   spotKey?: string | null
   blockId?: string | null
   sendLabel?: string
-  onDone?: (outcome: Extract<SubmitOutcome, { ok: true }>, firstName: string | null) => void
+  onDone?: (outcome: Extract<SubmitOutcome, { ok: true }>, firstName: string | null, booking?: BookingBasics | null) => void
   onDirty?: (dirty: boolean) => void
 }
 
@@ -450,6 +453,41 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
   const started = useRef(false)
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const consentKeys = useMemo(() => form.fields.filter((f) => f.type === 'consent').map((f) => f.key), [form])
+  // #4452 §8: the fixed properties every forms event carries.
+  const ctx = useMemo<FormContext>(() => ({ form_key: form.key, form_version: form.version, label: form.audience, placement, spot: spotKey ?? null }), [form, placement, spotKey])
+  const design = useMemo(() => designOf(form.design), [form])
+  // §2.7: one question per screen on phones, when the Design tab says so.
+  const [isPhone, setIsPhone] = useState(false)
+  const [step, setStep] = useState(0)
+  const rootRef = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 859px)')
+    const on = () => setIsPhone(mq.matches)
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  // §8 form_viewed: an inline or form-page form at least 50% in view for 1 s, once per page view.
+  useEffect(() => {
+    if (placement !== 'inline' && placement !== 'form_page') return
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let sent = false
+    const io = new IntersectionObserver(([entry]) => {
+      if (sent) return
+      if (entry.intersectionRatio >= 0.5) {
+        timer = timer ?? setTimeout(() => {
+          sent = true
+          formEvent('form_viewed', ctx)
+          trackFunnel('form_viewed', { formId: form.id, visitId: visitId.current, placement })
+          io.disconnect()
+        }, 1000)
+      } else if (timer) { clearTimeout(timer); timer = null }
+    }, { threshold: [0, 0.5, 1] })
+    io.observe(el)
+    return () => { io.disconnect(); if (timer) clearTimeout(timer) }
+  }, [ctx, form.id, placement])
 
   useEffect(() => {
     idem.current = crypto.randomUUID()
@@ -470,7 +508,7 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
     else answers.current[key] = value
     if (!started.current) {
       started.current = true
-      captureMarketing('form_started', { form_key: form.key, form_version: form.version, label: form.audience, placement, first_field: key })
+      formEvent('form_started', ctx, { first_field: key })
       trackFunnel('form_started', { formId: form.id, visitId: visitId.current, placement, props: { first_field: key } })
     }
     if (key === form.fields.find((f) => f.type === 'name')?.key && typeof value === 'string') setFirstName(value.trim().split(' ')[0] || null)
@@ -478,7 +516,7 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
     if (structural) setStructure((n) => n + 1)
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => writeDraft(form.id, answers.current, consentKeys, Date.now()), 400)
-  }, [form, placement, consentKeys, onDirty])
+  }, [form, placement, consentKeys, onDirty, ctx])
 
   const send = async () => {
     if (state === 'sending') return  // no double send
@@ -486,7 +524,7 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
     const res = validateAnswers(def, answers.current, localToday())
     if (!res.ok) {
       setErrorCount(res.errors.length)
-      captureMarketing('form_error', { form_key: form.key, fields: res.errors.map((e) => e.key).join(','), count: res.errors.length, source: 'client' })
+      formEvent('form_error', ctx, { fields: res.errors.map((e) => e.key).join(','), count: res.errors.length, source: 'client' })
       trackFunnel('form_error', { formId: form.id, visitId: visitId.current, placement, props: { count: res.errors.length, source: 'client' } })
       const first = res.errors[0]?.key
       if (first) document.getElementById(`fk-${first}`)?.focus()
@@ -495,7 +533,7 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
     setErrorCount(0)
     if (form.preview) {
       setState('done')
-      onDone?.({ ok: true, submissionId: 'preview', leadEventId: null, deduped: false, goal: 'none' }, res.first_name)
+      onDone?.({ ok: true, submissionId: 'preview', leadEventId: null, deduped: false, goal: 'none' }, res.first_name, bookingFromAnswers(form.fields, answers.current, form.audience))
       return
     }
     setState('sending')
@@ -509,25 +547,43 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
     if (outcome.ok) {
       clearDraft(form.id)
       if (outcome.leadEventId) fireMarketingLead(form.audience, outcome.leadEventId)
-      captureMarketing('form_submitted', { form_key: form.key, form_version: form.version, label: form.audience, placement, deduped: outcome.deduped })
+      formEvent('form_submitted', ctx, { deduped: outcome.deduped })
       try { window.localStorage.setItem(`mingla:form-done:${form.id}`, String(Date.now())) } catch { /* storage off */ }
       setState('done')
-      onDone?.(outcome, res.first_name)
+      onDone?.(outcome, res.first_name, bookingFromAnswers(form.fields, visible, form.audience))
       return
     }
     setState('idle')
     setFailure(FAILURE_COPY[outcome.kind])
-    captureMarketing(outcome.kind === 'validation' || outcome.kind === 'form_changed' ? 'form_error' : 'form_submit_failed',
-      { form_key: form.key, reason: outcome.kind, source: 'server' })
+    if (outcome.kind === 'validation' || outcome.kind === 'form_changed') formEvent('form_error', ctx, { fields: '', count: 1, source: 'server' })
+    else formEvent('form_submit_failed', ctx, { reason: outcome.kind })
     if (outcome.kind === 'form_closed') clearDraft(form.id)
   }
 
   const visibleFields = form.fields.filter((f) => isVisible(f, form.fields, answers.current))
   void structure
+  const stepMode = design.phone_steps && isPhone && visibleFields.length > 1
+  const at = Math.min(step, Math.max(0, visibleFields.length - 1))
+  const shownFields = stepMode ? visibleFields.slice(at, at + 1) : visibleFields
+  const lastStep = !stepMode || at >= visibleFields.length - 1
+  const next = () => {
+    const f = visibleFields[at]
+    const err = f ? validateAnswers(def, answers.current, localToday()).errors.find((e) => e.key === f.key) : null
+    if (err) {
+      setShowErrors(true)
+      document.getElementById(`fk-${f!.key}`)?.focus()
+      return
+    }
+    setShowErrors(false)
+    setStep(at + 1)
+    // §2.7 / §8: each Continue in phone step mode logs form_step with the step number.
+    formEvent('form_step', ctx, { step: at + 1, of: visibleFields.length })
+    trackFunnel('form_step', { formId: form.id, visitId: visitId.current, placement, step: at + 1 })
+  }
   if (state === 'done') return null
 
   return (
-    <form className="fk-form" noValidate onSubmit={(e) => { e.preventDefault(); void send() }} data-columns={String(form.design?.columns ?? 1)}>
+    <form ref={rootRef} className="fk-form" noValidate onSubmit={(e) => { e.preventDefault(); if (lastStep) void send(); else next() }} data-columns={String(design.columns)} data-steps={stepMode ? `${at + 1}/${visibleFields.length}` : undefined}>
       {resume ? (
         <div className="fk-resume" role="status">
           <p>Pick up where you left off{firstName || typeof resume.name === 'string' ? `, ${String(resume.name ?? firstName).split(' ')[0]}` : ''}?</p>
@@ -535,7 +591,7 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
             answers.current = { ...resume }
             setResume(null)
             setStructure((n) => n + 1)
-            captureMarketing('form_resumed', { form_key: form.key })
+            formEvent('form_resumed', ctx)
           }}>Pick up</button>
           <button type="button" className="fk-link" onClick={() => { clearDraft(form.id); setResume(null) }}>Start again</button>
         </div>
@@ -547,7 +603,8 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
         <label>Leave this empty <input ref={honeypot} tabIndex={-1} autoComplete="off" name="website_url" /></label>
       </div>
       <div key={structure === 0 ? 'base' : `s${resume ? 'r' : ''}`} className="fk-fields">
-        {visibleFields.map((f) => {
+        {stepMode ? <p className="fk-step" aria-live="polite">Question {at + 1} of {visibleFields.length}</p> : null}
+        {shownFields.map((f) => {
           const p: FieldProps = { field: f, def, answers, showErrors, onValue, phoneCountryHint: cityCountry }
           switch (f.type) {
             case 'name': return <TextField key={f.key} {...p} kind="name" />
@@ -572,8 +629,9 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
         </p>
       ) : null}
       <div className="fk-actions">
+        {stepMode && at > 0 ? <button type="button" className="fk-link" onClick={() => setStep(at - 1)}>Back</button> : null}
         <button type="submit" className="fk-send" disabled={state === 'sending'} aria-busy={state === 'sending'}>
-          {state === 'sending' ? 'Sending…' : sendLabel}
+          {state === 'sending' ? 'Sending…' : lastStep ? sendLabel : 'Continue'}
         </button>
       </div>
     </form>

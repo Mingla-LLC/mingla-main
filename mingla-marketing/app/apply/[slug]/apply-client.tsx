@@ -5,6 +5,7 @@
 import { useRouter } from 'next/navigation'
 import { FormRenderer, type RendererForm } from '@/components/forms/form-renderer'
 import type { PublicForm } from '@/lib/site-pages/model'
+import { setBookingHandoff } from '@/lib/forms/booking'
 
 export function ApplyClient({ form, slug }: { form: PublicForm; slug: string }) {
   const router = useRouter()
@@ -13,7 +14,9 @@ export function ApplyClient({ form, slug }: { form: PublicForm; slug: string }) 
       form={form as unknown as RendererForm}
       placement="form_page"
       sendLabel="Send application"
-      onDone={(o, first) => {
+      onDone={(o, first, booking) => {
+        // §2.8: the answers for in-form booking stay in memory for the thanks page (never stored, never in the URL).
+        setBookingHandoff({ basics: booking ?? null, submissionId: o.submissionId, first, audience: form.audience })
         try {
           window.sessionStorage.setItem('mingla:apply-done', JSON.stringify({ first, sub: o.submissionId, audience: form.audience }))
         } catch {
