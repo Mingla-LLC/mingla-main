@@ -396,20 +396,22 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
   }, [analyticsSurface, kind, scan]);
 
   /**
-   * #4420 — Seth's call: on a phone the ONE button opens THAT phone's store
-   * (the OneLink once it is live, which routes the same way). The ticket is
-   * reconnected after install by `attendance-claim-identity`, which matches
-   * the account's own verified email or phone against the order (#2217), so
-   * nothing rides this URL and nothing is lost by skipping the claim page.
+   * #4420 — Seth's call: on a phone the ONE button is named for THAT phone's
+   * store. When the order has a claim short link it still goes through it:
+   * that page's button is the claim OneLink, which opens the app and claims
+   * the tickets when installed, and otherwise lands iPhone on the App Store
+   * and Android on the Play listing with the claim riding the install (deferred
+   * deep link). Without a claim it goes straight to the store.
    */
   const open = (): void => {
     if (device === null) return;
-    const target = resolveConfirmationAppTarget(fallbackEntity, device).ctaUrl;
+    const target =
+      shortUrl ?? resolveConfirmationAppTarget(fallbackEntity, device).ctaUrl;
     captureBuyerClaim("buyer_claim_cta_tapped", {
       surface: analyticsSurface,
       kind,
       platform: device,
-      target: "store",
+      target: shortUrl === null ? "store_fallback" : "short_url",
     });
     if (Platform.OS === "web") openExternal(target);
     else void Linking.openURL(target);
@@ -423,10 +425,9 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
     device === "android"
       ? BUYER_CLAIM_COPY.storeButton.android
       : BUYER_CLAIM_COPY.storeButton.ios;
-  // The desktop QR that always works: the device-routing download URL, so the
-  // phone that scans it lands on its own store. A minted hand-off QR (when a
-  // surface passes `handoff`) replaces it only while that code is live; every
-  // failure falls back here instead of to a dead end.
+  // Desktop: the minted hand-off QR (the claim, desktop to phone) whenever it
+  // is live. With no claim to hand off, or when minting fails, the QR is the
+  // device-routing download URL, so it always works and never shows an error.
   const storeQrUrl = resolveConfirmationAppTarget(fallbackEntity, "other").qrUrl;
   const showStoreQr =
     scan.phase === "idle" ||

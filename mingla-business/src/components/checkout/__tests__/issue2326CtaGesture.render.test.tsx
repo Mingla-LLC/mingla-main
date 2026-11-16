@@ -98,7 +98,9 @@ jest.mock("../../../services/postHogService", () => ({
 // the whole offering-rendering package; this gesture harness only needs the
 // Graphite defaults, so it gets the plain design-system colours.
 jest.mock("../checkoutTheme", () => {
-  const { color } = jest.requireActual("../../../constants/designSystem");
+  const { color } = jest.requireActual<
+    typeof import("../../../constants/designSystem")
+  >("../../../constants/designSystem");
   return {
     color,
     checkoutStyles: <T,>(factory: () => T): T => factory(),

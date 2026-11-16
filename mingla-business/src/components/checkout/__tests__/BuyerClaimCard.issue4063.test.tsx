@@ -128,7 +128,7 @@ describe("#4063 BuyerClaimCard", () => {
     mockDetectClientPlatform.mockReset().mockReturnValue("other");
   });
 
-  test("an iPhone gets one App Store button that opens the store synchronously", async () => {
+  test("an iPhone gets one App Store button that carries the claim short link", async () => {
     mockDetectClientPlatform.mockReturnValue("ios");
     const tree = await mount({ variant: "phone" });
 
@@ -145,16 +145,16 @@ describe("#4063 BuyerClaimCard", () => {
     expect(nodesByTestId(tree, "claim-handoff-qr")).toHaveLength(0);
 
     nodesByTestId(tree, "buyer-claim-primary")[0]?.props.onPress?.();
-    expect(mockOpenExternal).toHaveBeenCalledWith("https://store.test/ios");
+    expect(mockOpenExternal).toHaveBeenCalledWith(baseProps.shortUrl);
     expect(JSON.stringify(mockCaptureWeb.mock.calls)).not.toContain(
       "buyer@example.com",
     );
     await unmount(tree);
   });
 
-  test("an Android phone gets one Google Play button", async () => {
+  test("an Android phone with no claim gets one plain Google Play button", async () => {
     mockDetectClientPlatform.mockReturnValue("android");
-    const tree = await mount({ variant: "phone" });
+    const tree = await mount({ variant: "phone", shortUrl: null });
 
     expect(visibleText(tree)).toContain("Get Mingla on Google Play");
     expect(visibleText(tree)).not.toContain("App Store");
@@ -165,7 +165,7 @@ describe("#4063 BuyerClaimCard", () => {
     await unmount(tree);
   });
 
-  test("desktop without a handoff shows a store-routing QR at once, never an error", async () => {
+  test("fallback: desktop with no claim to hand off shows the store-routing QR, never an error", async () => {
     const tree = await mount({ variant: "desktop", handoff: null });
     const text = visibleText(tree);
 
@@ -190,7 +190,7 @@ describe("#4063 BuyerClaimCard", () => {
     await unmount(tree);
   });
 
-  test("a failed hand-off mint falls back to the store QR instead of a dead end", async () => {
+  test("fallback: a failed claim hand-off mint shows the store-routing QR, never an error", async () => {
     const mint = jest.fn().mockResolvedValue({
       ok: false,
       reason: "network",
@@ -199,12 +199,16 @@ describe("#4063 BuyerClaimCard", () => {
     const tree = await mount({ variant: "desktop", handoff: { mint } });
 
     expect(visibleText(tree)).not.toContain("couldn't prepare");
+    expect(visibleText(tree)).toContain(
+      "Scan with your phone camera to get the Mingla app.",
+    );
     expect(
       nodesByTestId(tree, "claim-handoff-qr").some(
         (node) =>
           node.props.accessibilityLabel === "https://usemingla.com/download",
       ),
     ).toBe(true);
+    expect(nodesByTestId(tree, "buyer-claim-scan-refresh")).toHaveLength(0);
     await unmount(tree);
   });
 

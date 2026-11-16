@@ -152,10 +152,7 @@ describe("#2217 — the guest-list card is deleted from every confirmation route
     expect(source).toContain("<BuyerClaimCard");
     expect(source).toContain("email={result.buyerContact?.email ?? null}");
     expect(source).toContain("shortUrl={result.claim?.shortUrl ?? null}");
-    // #4420 — Seth's call: the confirmation QR is the store-routing download
-    // link, never a minted hand-off code that can fail.
-    expect(source).toContain("handoff={null}");
-    expect(source).not.toContain("mintClaimLinkHandoff");
+    expect(source).toContain("handoff={claimHandoff}");
   });
 });
 
