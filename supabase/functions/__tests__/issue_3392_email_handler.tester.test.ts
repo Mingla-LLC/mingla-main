@@ -521,10 +521,19 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
         const token = created.body.guestCancelToken;
         await drain(outbox());
         const valid = dispatches[0];
+        // #4435: a caller without the service key cannot use the v2 contract
+        // at all any more (refused, nothing sent).
+        for (const bearer of ["Bearer fixture-user-jwt", `Bearer ${SERVICE}suffix`]) {
+          emails = [];
+          const refused = await post(dispatchOrigin, {
+            ...valid,
+            idempotency_key: crypto.randomUUID(),
+          }, bearer);
+          assert(refused.status === 401 || refused.status === 403, `refused: ${refused.status}`);
+          assertEquals(emails.length, 0, "nothing is sent for a non-service caller");
+        }
         for (
           const [bearer, link] of [
-            ["Bearer fixture-user-jwt", valid.reservation_manage_url],
-            [`Bearer ${SERVICE}suffix`, valid.reservation_manage_url],
             [
               `Bearer ${SERVICE}`,
               valid.reservation_manage_url.replace(
