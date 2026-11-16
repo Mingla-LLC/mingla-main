@@ -486,6 +486,13 @@ export interface CreateAdSetInput {
   promotedObject?: Record<string, unknown>;
   /** Provider-native impression cap, only when that goal supports it. */
   frequencyCap?: { impressions: number; days: number };
+  /**
+   * #4238 W4c (Z-6): a 7-day click-only attribution window (no view-through),
+   * matching how Mingla counts a Host sale. Sent only where the app's docs
+   * confirm the field: Meta ad set attribution_spec and TikTok ad group
+   * click_attribution_window / view_attribution_window (website conversions).
+   */
+  clickOnlyAttributionDays?: 7;
   validateOnly?: boolean;
 }
 

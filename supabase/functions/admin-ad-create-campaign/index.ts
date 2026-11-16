@@ -5077,6 +5077,11 @@ serve(async (req: Request): Promise<Response> => {
         name: `${name} — ad group`,
         optimizationGoal: optimizationGoalT,
         billingEvent: billingEventT,
+        // #4238 W4c (Z-6): Host website-conversion ad groups: 7-day click,
+        // view-through off (the builder sends them only with WEBSITE).
+        ...(requestedOwnerKind === "host" && objectiveT === "WEB_CONVERSIONS"
+          ? { clickOnlyAttributionDays: 7 as const }
+          : {}),
         ...(budgetLevelT === "adset"
           ? { budgetCents: providerAmountCents }
           : {}),
@@ -6646,6 +6651,12 @@ serve(async (req: Request): Promise<Response> => {
           custom_event_type: hostMetaCustomEvent ?? "PURCHASE",
         },
       }
+      : {}),
+    // #4238 W4c (Z-6): a Host conversion ad set counts a sale within 7 days
+    // of a tap, with no view-through (how Mingla counts it).
+    ...(requestedOwnerKind === "host" &&
+        optimizationGoal === "OFFSITE_CONVERSIONS"
+      ? { clickOnlyAttributionDays: 7 as const }
       : {}),
     ...(schedule.starts_at ? { startTime: schedule.starts_at } : {}),
     ...(schedule.ends_at ? { endTime: schedule.ends_at } : {}),

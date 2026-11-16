@@ -161,6 +161,8 @@ export async function startGoalPromotion(deps: {
         body[field] = old[field];
       }
     }
+    // #4238 W4c (Z-6): the purchases ad set counts 7-day click, no view.
+    body.attribution_spec = [{ event_type: "CLICK_THROUGH", window_days: 7 }];
     const created = await graph("POST", `act_${deps.adAccountId}/adsets`, body);
     newAdSetId = String(created.id ?? "");
     if (!newAdSetId) return await fail("adset_create_returned_no_id");

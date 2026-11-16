@@ -2034,6 +2034,12 @@ export interface TikTokAdGroupSpec {
   /** Minor units (cents). ABO daily/lifetime budget; OMITTED under CBO. */
   budgetCents?: number;
   budgetMode?: "daily" | "lifetime";
+  /**
+   * #4238 W4c (Z-6): website-conversion attribution windows (TikTok v1.3
+   * adgroup/create: both must be sent together; set once, not updatable).
+   */
+  clickAttributionWindow?: "SEVEN_DAYS";
+  viewAttributionWindow?: "OFF";
   /** True when the parent campaign was created with budget_optimize_on (CBO). */
   cboOnCampaign?: boolean;
   /** Campaign budget in cents — bid_price must be lower than BOTH budgets. */
@@ -2168,6 +2174,14 @@ export function buildTikTokAdGroupBody(
       ? { optimization_event: spec.optimizationEvent }
       : {}),
     ...(spec.promotionType ? { promotion_type: spec.promotionType } : {}),
+    // #4238 W4c (Z-6): only on website conversions, always as a pair.
+    ...(spec.promotionType === "WEBSITE" && spec.clickAttributionWindow &&
+        spec.viewAttributionWindow
+      ? {
+        click_attribution_window: spec.clickAttributionWindow,
+        view_attribution_window: spec.viewAttributionWindow,
+      }
+      : {}),
   };
   const webConversion = spec.promotionType === "WEBSITE" ||
     spec.pixelId !== undefined || spec.optimizationEvent !== undefined;
@@ -3070,6 +3084,12 @@ function adGroupSpecFromInterfaceInput(
     billingEvent: input.billingEvent,
     budgetCents: input.budgetCents,
     budgetMode: t.budget_mode,
+    ...(input.clickOnlyAttributionDays === 7
+      ? {
+        clickAttributionWindow: "SEVEN_DAYS" as const,
+        viewAttributionWindow: "OFF" as const,
+      }
+      : {}),
     cboOnCampaign: t.campaign_budget_optimize_on === true,
     campaignBudgetCents: t.campaign_budget_cents,
     bidType: t.bid_type,
