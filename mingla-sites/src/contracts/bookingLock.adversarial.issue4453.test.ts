@@ -114,3 +114,74 @@ describe("#4453 adversarial: booking words in any casing or with emoji lock the 
     expect(actionHrefProblem("https://maps.apple.com/?q=gogi", scope, intent)).toBe("outside_mingla");
   });
 });
+
+/*
+ * Retest 1 (tester, after the rework): the fail-closed scope, subdomain
+ * redirectors on social hosts, tracking parameters that must NOT trip the
+ * "query carries a URL" rule, and NFKC-folded labels.
+ */
+describe("#4453 retest: fail closed, social subdomains, tracking params, NFKC", () => {
+  const closed: MinglaActionScope = { brandSlug: null, sitePaths: new Set(["", "menu"]), contactEmail: null, contactPhone: null };
+  const own: MinglaActionScope = { ...scope, socialHandles: new Set(["gogi.lagos"]) };
+
+  it.each([
+    ["own brand page", `${H}/b/gogi`, "booking"],
+    ["own event", `${H}/e/gogi/supper`, "booking"],
+    ["checkout", `${H}/checkout/11111111-1111-4111-8111-111111111111`, "booking"],
+    ["mailto", "mailto:hi@gogi.example", "informational"],
+    ["tel", "tel:+442079460000", "informational"],
+    ["own WhatsApp", "https://wa.me/442079460000", "informational"],
+  ] as const)("no brand from Core: %s fails closed as brand_unknown", (_name, href, intent) => {
+    expect(actionHrefProblem(href, closed, intent)).toBe("brand_unknown");
+  });
+
+  it.each([
+    "/menu",
+    "https://www.google.com/maps/place/Gogi",
+    "https://maps.app.goo.gl/AbC123?g_st=iw",
+    "https://www.instagram.com/gogi.lagos",
+  ])("no brand from Core: informational %s still publishes", (href) => {
+    expect(actionHrefProblem(href, closed, "informational")).toBeNull();
+  });
+
+  it("no brand from Core: a booking site is still a booking site (not brand_unknown)", () => {
+    expect(actionHrefProblem("https://www.opentable.com/r/gogi", closed, "booking")).toBe("booking_site");
+  });
+
+  it.each([
+    "https://lm.instagram.com/?u=https%3A%2F%2Fresy.com",
+    "https://l.threads.net/?u=https%3A%2F%2Fresy.com",
+    "https://l.youtube.com/x",
+    "https://out.linkedin.com/x",
+    "https://web.facebook.com/gogi.lagos",
+    "https://business.facebook.com/gogi.lagos",
+    "https://mobile.instagram.com/gogi.lagos",
+  ])("a social host's other subdomain %s is not a social link", (href) => {
+    expect(actionHrefProblem(href, own, "informational")).toBe("outside_mingla");
+    expect(actionHrefProblem(href, null, "informational")).toBe("outside_mingla");
+  });
+
+  it.each([
+    "https://www.instagram.com/gogi.lagos?igsh=MTd4bXZ6dGQ0",
+    "https://www.instagram.com/gogi.lagos/?utm_source=ig_web_copy_link&igsh=abc",
+    "https://www.facebook.com/gogi.lagos?utm_source=share&utm_medium=web&mibextid=ZbWKwL",
+    "https://www.tiktok.com/@gogi.lagos?_t=8abc&_r=1",
+    "https://WWW.INSTAGRAM.COM/GOGI.LAGOS?utm_campaign=launch",
+    "https://www.google.com/maps/place/Gogi?entry=ttu&g_ep=EgoyMDI1",
+  ])("the brand's own profile with tracking params %s still publishes", (href) => {
+    expect(actionHrefProblem(href, own, "informational")).toBeNull();
+  });
+
+  it.each([
+    "https://www.instagram.com/gogi.lagos?ref=https%3A%2F%2Fopentable.com",
+    "https://www.instagram.com/gogi.lagos?u=https%253A%252F%252Fresy.com",
+    "https://www.instagram.com/gogi.lagos#https://resy.com",
+    "https://www.instagram.com/gogi.lagos?next=%2F%2Fresy.com",
+  ])("the brand's own profile carrying a URL %s is a redirect", (href) => {
+    expect(actionHrefProblem(href, own, "informational")).toBe("redirect");
+  });
+
+  it.each(["Ｂｏｏｋ", "Ｒｅｓｅｒｖｅ", "𝐁𝐨𝐨𝐤", "Ⓑⓞⓞⓚ", "ℬook", "Bo‍ok now", "Booḱ"])("NFKC-folded %j reads as booking", (label) => {
+    expect(offersBookingOrPayment(label)).toBe(true);
+  });
+});
