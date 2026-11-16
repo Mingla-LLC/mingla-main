@@ -59,11 +59,17 @@ function isMetaOrch0952PR() {
 // retired aliases), which is not the lane it guards.
 function isOrch0948Lane() {
   try {
-    const log = execSync("git log origin/main..HEAD --pretty=%s%n%b", {
+    // Subjects only, and only a subject that LEADS with the ORCH-0948 work id
+    // (optionally after a "[deploy]"-style tag, "Close" or "toward"). A
+    // commit that merely mentions this fence (like the one that scoped it)
+    // is not ORCH-0948 work.
+    const log = execSync("git log origin/main..HEAD --pretty=%s", {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
-    return /ORCH-0948\b/.test(log);
+    const branch = process.env.GITHUB_HEAD_REF ?? "";
+    return /0948/.test(branch) ||
+      /^(?:\[[^\]]*\]\s*)?(?:Close\s+|toward\s+)?ORCH-0948\b/m.test(log);
   } catch {
     return true; // cannot read the branch: keep the fence on (fail closed)
   }
