@@ -1306,13 +1306,16 @@ BEGIN
   v_fields := jsonb_build_object(
     'name', COALESCE(v_s.name, split_part(v_s.email, '@', 1)),
     'contact', v_s.email, 'channel', 'email',
-    'source', left('Form · ' || v_f.name || ' · ' || v_s.page_path, 200),
+    'source', 'inbound',
     'icp', v_icp, 'identifiers', v_idents, 'owners', v_owners);
   BEGIN
     v_res := public.crm_record_create_core(v_pipeline, v_fields, 'forms@usemingla.com', left('form-' || v_f.key, 40));
     IF v_res->>'status' = 'created' THEN
       v_rec := (v_res->'record'->>'id')::uuid;
       v_status := 'routed';
+      INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body, occurred_at, created_at)
+      VALUES (v_rec, 'note', 'forms@usemingla.com', left('form-' || v_f.key, 40),
+              left(format('Came from the form ''%s'' on %s', v_f.name, v_s.page_path), 4000), now(), now());
     ELSE
       v_rec := (v_res->'existing'->>'id')::uuid;
       v_status := 'noted_existing';
