@@ -711,11 +711,13 @@ export function publishChecks(
   const fields = def.fields ?? [];
   const kinds = flow ? emailKinds(flow) : {};
   const hasFollowUp = Object.values(kinds).includes("follow_up");
+  // #4452 B22: "Send me a test" has nothing to send when no email reaches the person.
+  const sendsEmail = Object.values(kinds).some((k) => k === "confirmation" || k === "follow_up");
   return [
     { id: "email_required", ok: fields.some((f) => f.type === "email" && f.required) },
     { id: "consent_for_follow_ups", ok: !hasFollowUp || fields.some((f) => f.type === "consent") },
     { id: "consent_optional", ok: !fields.some((f) => f.type === "consent" && f.required) },
     { id: "lead_label_set", ok: LEAD_LABELS.includes(def.audience) },
-    { id: "tested", ok: testedAt !== null },
+    { id: "tested", ok: testedAt !== null || !sendsEmail },
   ];
 }

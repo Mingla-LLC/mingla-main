@@ -114,7 +114,9 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
       addToast({ variant: "success", title: `Sent you ${res.sent} test ${res.sent === 1 ? "email" : "emails"}.` });
       setMeta((m) => ({ ...m, form: { ...m.form, tested_at: new Date().toISOString() } }));
     } catch (e) {
-      addToast({ variant: "error", title: e.code === "no_email_steps" ? "Add an email step in Automations first." : formsErrorWords(e) });
+      // #4452 B22/B24: no email steps means nothing to test (check 5 passes); an info toast that closes itself.
+      if (e.code === "no_email_steps") addToast({ variant: "info", title: "This form sends no emails yet, so there is nothing to test." });
+      else addToast({ variant: "error", title: formsErrorWords(e) });
     } finally {
       setTesting(false);
     }
