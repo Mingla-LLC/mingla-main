@@ -125,6 +125,9 @@ import {
   useCart,
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
+import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
+import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
+import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import {
   isContinueDisabled,
@@ -272,6 +275,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
       : null;
 
   const publicEventQuery = usePublicEventById(eventId);
+  const stripWide = useCheckoutWideLayout();
   const event = publicEventQuery.data?.event ?? null;
   const brand = publicEventQuery.data?.brand ?? null;
   // ORCH-1162 Bug 3 — CTA brand accent (matches the public page button).
@@ -901,6 +905,18 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* #4420 wave 2 (§4.1) — phone: the offering this step belongs to. */}
+        <CheckoutOfferingStrip
+          wide={stripWide}
+          title={event.name.trim().length > 0 ? event.name : "Untitled event"}
+          eyebrow={resolveChosenDaysLine(
+            event,
+            publicEventQuery.data?.occurrences ?? [],
+            eventDateIds,
+          )}
+          byline={brand?.displayName ?? null}
+          coverUrl={event.coverMediaUrl ?? null}
+        />
         {/* Order summary recap */}
         <Pressable
           onPress={handleBack}

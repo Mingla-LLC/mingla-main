@@ -104,6 +104,9 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
+import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
+import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
+import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
 import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
@@ -182,6 +185,7 @@ function CheckoutPaymentScreenContent({
       : null;
 
   const publicEventQuery = usePublicEventById(eventId);
+  const stripWide = useCheckoutWideLayout();
   const event = publicEventQuery.data?.event ?? null;
   const brand = publicEventQuery.data?.brand ?? null;
   // ORCH-1162 Bug 3 — CTA brand accent (matches the public page Pay button).
@@ -1010,6 +1014,18 @@ function CheckoutPaymentScreenContent({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* #4420 wave 2 (§4.1) — phone: the offering this step belongs to. */}
+        <CheckoutOfferingStrip
+          wide={stripWide}
+          title={event.name.trim().length > 0 ? event.name : "Untitled event"}
+          eyebrow={resolveChosenDaysLine(
+            event,
+            publicEventQuery.data?.occurrences ?? [],
+            eventDateIds,
+          )}
+          byline={brand?.displayName ?? null}
+          coverUrl={event.coverMediaUrl ?? null}
+        />
         {/* Order summary recap */}
         <GlassCard
           variant="base"

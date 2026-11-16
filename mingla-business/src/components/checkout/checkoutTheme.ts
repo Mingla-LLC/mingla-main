@@ -27,9 +27,14 @@
 import {
   createThemePalette,
   resolveTheme,
+  type ResolvedTheme,
   type ThemeInput,
   type ThemePalette,
 } from "@mingla/offering-rendering";
+import {
+  accentFill,
+  themeBoldFace,
+} from "@mingla/offering-rendering/themeAccentStyle";
 import {
   inkWash,
   neutralControl,
@@ -119,6 +124,18 @@ export function checkoutColorFor(palette: ThemePalette): CheckoutColor {
   };
 }
 
+/**
+ * #4420 wave 2 — the offering's resolved theme (for the host's title face),
+ * resolved exactly as its public page resolves it.
+ */
+export function resolveCheckoutTheme(input: {
+  brandTheme: ThemeInput | null | undefined;
+  offeringThemeOverrides: ThemeInput | null | undefined;
+}): ResolvedTheme | null {
+  if (!CHECKOUT_USES_HOST_PALETTE) return null;
+  return resolveTheme(input.brandTheme ?? null, input.offeringThemeOverrides ?? null);
+}
+
 /** The offering's palette, resolved exactly as its public page resolves it. */
 export function resolveCheckoutPalette(input: {
   brandTheme: ThemeInput | null | undefined;
@@ -138,6 +155,34 @@ const tokenCache = new WeakMap<ThemePalette, CheckoutColor>();
 
 /** The active palette (null = Graphite). */
 export const activeCheckoutPalette = (): ThemePalette | null => activePalette;
+
+let activeTheme: ResolvedTheme | null = null;
+
+/** Set beside the palette by the flow's layout (null = Graphite). */
+export function setActiveCheckoutTheme(theme: ResolvedTheme | null): void {
+  activeTheme = theme;
+}
+
+/**
+ * #4420 wave 2 (spec §0.1) — the host's bold face for host-owned titles (the
+ * offering strip, "You're in.", "Your total changed"). Graphite: no face, so
+ * the platform system font draws them exactly as before.
+ */
+export const checkoutTitleFace = (): {
+  fontFamily?: string;
+  fontWeight?: "normal";
+} => (activeTheme === null ? {} : themeBoldFace(activeTheme));
+
+/**
+ * #4420 wave 2 — the accent FILL (gradient-aware, #1023) for the success disc
+ * and the primary button. Graphite: the Graphite accent, solid.
+ */
+export const checkoutAccentFill = (): { backgroundColor: string } =>
+  activePalette === null ? { backgroundColor: graphite.accent } : accentFill(activePalette);
+
+/** The colour drawn on the accent fill (white or ink, WCAG-picked). */
+export const checkoutOnAccent = (): string =>
+  activePalette === null ? graphite.textStrong : activePalette.accentText;
 
 /**
  * Called by a checkout layout during render, before its steps render, with

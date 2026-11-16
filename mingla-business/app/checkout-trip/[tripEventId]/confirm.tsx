@@ -36,6 +36,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { postHogService } from "../../../src/services/postHogService";
 
 import { radius as radiusTokens, space, materials } from "../../../src/constants/designSystem";
+import { CheckoutHero, youreInLine } from "../../../src/components/checkout/CheckoutHero";
 import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
@@ -563,12 +564,15 @@ function CheckoutTripConfirmScreenInner({
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.hero}>
-          <View style={styles.checkBadge}>
-            <Icon name="check" size={36} color={color.text1} />
-          </View>
-          <Text style={styles.heroTitle}>{BUYER_CLAIM_COPY.youreIn}</Text>
-        </View>
+        {/* #4420 wave 2 (§4.2) — the shared hero: the host accent disc, the
+            title in the host face, and what the guest now holds. */}
+        <CheckoutHero
+          tone="success"
+          icon="check"
+          title={BUYER_CLAIM_COPY.youreIn}
+          body={youreInLine(result.receipt, trip.title.trim().length > 0 ? trip.title : "your trip", { one: "place", many: "places" })}
+          testID="checkout-youre-in-hero"
+        />
 
         <BuyerClaimCard
           kind="booking"

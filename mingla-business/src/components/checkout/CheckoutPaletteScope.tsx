@@ -12,29 +12,51 @@
  */
 import React, { useContext, useEffect, useMemo } from "react";
 import { QueryClientContext } from "@tanstack/react-query";
-import type { ThemeInput, ThemePalette } from "@mingla/offering-rendering";
+import type { ResolvedTheme, ThemeInput, ThemePalette } from "@mingla/offering-rendering";
+import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 import { usePublicEventById } from "../../hooks/usePublicEvents";
 import { tripKeys } from "../../hooks/tripKeys";
 import { usePublicExperienceById } from "../../hooks/usePublicExperience";
 import {
   resolveCheckoutPalette,
+  resolveCheckoutTheme,
   setActiveCheckoutPalette,
+  setActiveCheckoutTheme,
 } from "./checkoutTheme";
+import { useThemeFont } from "../../theme/useThemeFont";
 
 /**
  * Sets the active checkout palette during render (so the very first paint of
  * a step already has it) and hands Graphite back when the flow unmounts.
  */
-export function useActiveCheckoutPalette(palette: ThemePalette | null): void {
+export function useActiveCheckoutPalette(
+  palette: ThemePalette | null,
+  theme: ResolvedTheme | null = null,
+): void {
   setActiveCheckoutPalette(palette);
+  setActiveCheckoutTheme(palette === null ? null : theme);
+  // #4420 wave 2 — host-owned titles draw in the host's bold face.
+  useThemeFont(palette !== null && theme !== null ? boldFontFamily(theme) : null);
   useEffect(
     () => () => {
       setActiveCheckoutPalette(null);
+      setActiveCheckoutTheme(null);
     },
     [],
   );
 }
+
+const useThemeOf = (
+  brandTheme: ThemeInput | null | undefined,
+  offeringThemeOverrides: ThemeInput | null | undefined,
+  ready: boolean,
+): ResolvedTheme | null =>
+  useMemo(
+    () =>
+      ready ? resolveCheckoutTheme({ brandTheme, offeringThemeOverrides }) : null,
+    [brandTheme, offeringThemeOverrides, ready],
+  );
 
 const usePaletteOf = (
   brandTheme: ThemeInput | null | undefined,
@@ -60,7 +82,8 @@ export const EventCheckoutPaletteScope: React.FC<{
     data?.event.themeOverrides,
     data !== null,
   );
-  useActiveCheckoutPalette(palette);
+  const theme = useThemeOf(data?.brand?.theme, data?.event.themeOverrides, data !== null);
+  useActiveCheckoutPalette(palette, theme);
   return <>{children}</>;
 };
 
@@ -77,7 +100,8 @@ export const ExperienceCheckoutPaletteScope: React.FC<{
     data?.experience.themeOverrides,
     data !== null,
   );
-  useActiveCheckoutPalette(palette);
+  const theme = useThemeOf(data?.brand.theme, data?.experience.themeOverrides, data !== null);
+  useActiveCheckoutPalette(palette, theme);
   return <>{children}</>;
 };
 
@@ -119,6 +143,7 @@ export const TripCheckoutPaletteScope: React.FC<{
     page?.themeOverrides,
     page !== null,
   );
-  useActiveCheckoutPalette(palette);
+  const theme = useThemeOf(page?.brand?.theme, page?.themeOverrides, page !== null);
+  useActiveCheckoutPalette(palette, theme);
   return <>{children}</>;
 };

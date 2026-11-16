@@ -71,6 +71,9 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
+import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
+import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
+import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
 import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 
 const formatQuoteMoney = (minor: number, currency: string): string => {
@@ -132,6 +135,7 @@ function CheckoutExperiencePaymentScreenContent({
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
+  const stripWide = useCheckoutWideLayout();
   const {
     lines,
     buyer,
@@ -688,6 +692,23 @@ function CheckoutExperiencePaymentScreenContent({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* #4420 wave 2 (§4.1) — phone: the offering this step belongs to. */}
+        {experience !== null ? (
+          <CheckoutOfferingStrip
+            wide={stripWide}
+            title={experience.title.trim().length > 0 ? experience.title : "Untitled experience"}
+            eyebrow={
+              formatExperienceDateSubline({
+                venueText: null,
+                dateStartIsos: experience.dates.map((d) => d.startAt),
+                whenMode: experience.whenMode,
+                recurrenceRule: experience.recurrenceRule,
+              }) ?? null
+            }
+            byline={query.data?.brand?.name ?? null}
+            coverUrl={experience.coverMediaUrl ?? null}
+          />
+        ) : null}
         {/* Order summary recap */}
         <GlassCard
           variant="base"
