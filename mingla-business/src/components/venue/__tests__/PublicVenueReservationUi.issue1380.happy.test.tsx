@@ -275,7 +275,11 @@ describe("issue #1380 public venue Reserve CTA", () => {
       'normalizedReservationUiState.activeTab !== "reservations"',
     );
     expect(page).toContain("showPersistentReserveCta && !isDesktop");
-    expect(page).toContain("showPersistentReserveCta ? reserveCta : null");
+    // [TEST-MOD-APPROVED #4420] — the boxed desktop panel (and its own CTA)
+    // is gone: desktop shows the SAME gated glass bar, docked in the flyer
+    // column. One CTA, one visibility contract, at every width.
+    expect(page).toContain("const reserveBar =\n    showPersistentReserveCta ? (");
+    expect(page).toContain("premiumDesktopBarDockStyle(22 + insets.bottom)");
     expect(page).toContain(
       "normalizedReservationUiState.reservationSheetOpen\n            ? null\n            : reservationsBlock",
     );
