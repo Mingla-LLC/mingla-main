@@ -10,6 +10,7 @@ import {
 } from "../types";
 import type { Recommendation } from "../types/recommendation";
 import { logger } from "../utils/logger";
+import { registerExplorerAnalyticsOptOutReader } from "../services/analyticsOptOut";
 import {
   hydrateDeckSessionHistory,
   resetAndFlushDeckSessionHistory,
@@ -530,4 +531,10 @@ export const useAppStore = create<AppState>()(
       },
     }
   )
+);
+
+// #4238 P1-4: the checkout and RevenueCat paths read the "share usage data"
+// switch through services/analyticsOptOut.ts without loading this store.
+registerExplorerAnalyticsOptOutReader(
+  () => useAppStore.getState().analyticsOptOut === true,
 );

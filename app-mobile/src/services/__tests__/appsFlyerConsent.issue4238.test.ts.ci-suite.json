@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/appsFlyerConsent.issue4238.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-explorer-appsflyer-dma-consent",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

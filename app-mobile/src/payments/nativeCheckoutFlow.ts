@@ -40,6 +40,7 @@ import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
 
 import { supabase } from "../services/supabase";
+import { checkoutAdTrackingFields } from "./checkoutAdTracking";
 import {
   extractFunctionError,
   extractFunctionErrorFields,
@@ -856,6 +857,9 @@ export const useNativeCheckoutFlow = (): ((
           eventId: input.eventId,
           surface: "native",
           returnContract: "host_v1",
+          // #4238 P1-4: the "share usage data" switch rides the checkout so the
+          // server's af_purchase post honours it (session ad_tracking_opt_out).
+          ...checkoutAdTrackingFields(),
           ...(input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION
             ? {
               checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
